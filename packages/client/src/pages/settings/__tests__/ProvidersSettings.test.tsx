@@ -286,9 +286,7 @@ describe("ProvidersSettings additional models", () => {
 
     render(<ProvidersSettings />);
 
-    expect(
-      screen.queryByText("providersClaudeAutoCompactTitle"),
-    ).toBeNull();
+    expect(screen.queryByText("providersClaudeAutoCompactTitle")).toBeNull();
   });
 
   it("saves and clears the global Claude auto-compaction setting", async () => {
@@ -343,21 +341,16 @@ describe("ProvidersSettings additional models", () => {
         name: /providersAdditionalModelsNone/u,
       }),
     );
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: /Opus 4\.8/u }),
-    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Opus 4\.8/u }));
 
     await waitFor(() => {
-      expect(mockUpdateSetting).toHaveBeenCalledWith(
-        "claudeAdditionalModels",
-        [
-          {
-            id: "claude-opus-4-8",
-            label: "Opus 4.8",
-            origin: "registry",
-          },
-        ],
-      );
+      expect(mockUpdateSetting).toHaveBeenCalledWith("claudeAdditionalModels", [
+        {
+          id: "claude-opus-4-8",
+          label: "Opus 4.8",
+          origin: "registry",
+        },
+      ]);
       expect(mockReloadProviders).toHaveBeenCalledTimes(1);
     });
   });
@@ -370,13 +363,9 @@ describe("ProvidersSettings additional models", () => {
         name: /providersAdditionalModelsNone/u,
       }),
     );
-    fireEvent.click(
-      screen.getByText("providersAdditionalModelsCustomTitle"),
-    );
+    fireEvent.click(screen.getByText("providersAdditionalModelsCustomTitle"));
     fireEvent.change(
-      screen.getByPlaceholderText(
-        "providersAdditionalModelsCustomPlaceholder",
-      ),
+      screen.getByPlaceholderText("providersAdditionalModelsCustomPlaceholder"),
       { target: { value: "claude-experimental-6" } },
     );
     fireEvent.click(
@@ -386,16 +375,13 @@ describe("ProvidersSettings additional models", () => {
     );
 
     await waitFor(() => {
-      expect(mockUpdateSetting).toHaveBeenCalledWith(
-        "claudeAdditionalModels",
-        [
-          {
-            id: "claude-experimental-6",
-            label: "claude-experimental-6",
-            origin: "custom",
-          },
-        ],
-      );
+      expect(mockUpdateSetting).toHaveBeenCalledWith("claudeAdditionalModels", [
+        {
+          id: "claude-experimental-6",
+          label: "claude-experimental-6",
+          origin: "custom",
+        },
+      ]);
     });
   });
 
@@ -417,9 +403,10 @@ describe("ProvidersSettings additional models", () => {
       screen.getByRole("button", { name: /providersAdditionalModelsOne/u }),
     );
 
-    expect(
-      screen.getByRole("checkbox", { name: /Opus 4\.5/u }),
-    ).toHaveProperty("checked", true);
+    expect(screen.getByRole("checkbox", { name: /Opus 4\.5/u })).toHaveProperty(
+      "checked",
+      true,
+    );
     expect(
       screen.getByText("providersAdditionalModelsUnlistedDescription"),
     ).toBeTruthy();

@@ -178,10 +178,7 @@ export function SessionShareModal({
           sessionId: managementScope === "session" ? sessionId : undefined,
           mode: managementMode,
         });
-        if (
-          cancelled ||
-          refreshGeneration !== managementRefreshRef.current
-        ) {
+        if (cancelled || refreshGeneration !== managementRefreshRef.current) {
           return;
         }
         setManagementItems(response.items);
@@ -389,9 +386,7 @@ export function SessionShareModal({
     const copied = await writeClipboardTextLater(Promise.resolve(item.url));
     setHighlightedShareId(item.shareId);
     setManagementNotice(
-      copied
-        ? t("publicShareManagementCopied")
-        : t("sessionShareManualCopy"),
+      copied ? t("publicShareManagementCopied") : t("sessionShareManualCopy"),
     );
   };
 
@@ -439,9 +434,7 @@ export function SessionShareModal({
           },
         );
 
-  const prepareManagedCategoryRevoke = async (
-    target: RevokeCategoryTarget,
-  ) => {
+  const prepareManagedCategoryRevoke = async (target: RevokeCategoryTarget) => {
     setPendingCategoryRevoke(null);
     setManagementScope(target.scope);
     setShowFrozenShares(target.mode === undefined || target.mode === "frozen");
@@ -754,9 +747,7 @@ export function SessionShareModal({
                                 typeLabel:
                                   mode === "live"
                                     ? t("publicShareLiveBadge")
-                                    : t(
-                                        "publicShareManagementModeReadOnly",
-                                      ),
+                                    : t("publicShareManagementModeReadOnly"),
                               }))
                         }
                         title={revokeLabel}
@@ -844,9 +835,7 @@ export function SessionShareModal({
                         <div className={styles.rowActions}>
                           <span
                             className={`${styles.rowTypeIcon} ${
-                              item.mode === "live"
-                                ? styles.rowTypeIconLive
-                                : ""
+                              item.mode === "live" ? styles.rowTypeIconLive : ""
                             }`}
                             title={
                               item.mode === "live"
@@ -1211,9 +1200,7 @@ function ShareFilterIcon({
         <path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" />
       </>
     ),
-    project: (
-      <path d="M3 6.5h7l2 2h9v10.5H3zM3 6.5V5h7l2 2" />
-    ),
+    project: <path d="M3 6.5h7l2 2h9v10.5H3zM3 6.5V5h7l2 2" />,
     session: (
       <>
         <rect x="3" y="4" width="18" height="14" rx="3" />

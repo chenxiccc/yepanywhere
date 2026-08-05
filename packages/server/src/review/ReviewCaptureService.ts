@@ -57,10 +57,9 @@ export class ReviewCaptureService {
             side: projection.side,
           }
         : { kind: projection.kind, path, side: projection.side };
-    const captureBlobId =
-      projectStorageEnabled
-        ? await resolveProjectionBlob(projectPath, safeProjection)
-        : await this.captureInAppData(projectPath, safeProjection);
+    const captureBlobId = projectStorageEnabled
+      ? await resolveProjectionBlob(projectPath, safeProjection)
+      : await this.captureInAppData(projectPath, safeProjection);
     if (projectStorageEnabled) {
       await this.pin(projectPath, captureBlobId);
     }

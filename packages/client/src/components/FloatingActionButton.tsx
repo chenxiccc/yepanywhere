@@ -508,10 +508,7 @@ export function FloatingActionButton() {
   }, []);
 
   const handlePendingSpeechChange = useCallback(
-    (
-      kind: SpeechPendingKind | null,
-      settlement?: SpeechCycleSettlement,
-    ) => {
+    (kind: SpeechPendingKind | null, settlement?: SpeechCycleSettlement) => {
       speechPendingRef.current = kind;
       if (kind === "listening") handleSpeechSelectionTarget();
       if (kind === null) {
@@ -690,11 +687,7 @@ export function FloatingActionButton() {
               className="fab-submit"
               onClick={handleSubmit}
               disabled={
-                !(
-                  message.trim() ||
-                  speechPending !== null ||
-                  interimTranscript
-                )
+                !(message.trim() || speechPending !== null || interimTranscript)
               }
               aria-label={t("fabGoToNewSession")}
             >

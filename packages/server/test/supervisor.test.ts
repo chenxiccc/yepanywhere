@@ -3694,7 +3694,10 @@ describe("Supervisor", () => {
                 session_id: "heartbeat-deadline-session",
               };
               await queue[Symbol.asyncIterator]().next();
-              yield { type: "result", session_id: "heartbeat-deadline-session" };
+              yield {
+                type: "result",
+                session_id: "heartbeat-deadline-session",
+              };
 
               while (!aborted) {
                 await new Promise((resolve) => setTimeout(resolve, 10));
@@ -3722,9 +3725,12 @@ describe("Supervisor", () => {
           }),
         });
 
-        const started = await supervisorWithHeartbeat.startSession("/tmp/test", {
-          text: "start",
-        });
+        const started = await supervisorWithHeartbeat.startSession(
+          "/tmp/test",
+          {
+            text: "start",
+          },
+        );
         if (!("id" in started)) {
           throw new Error("expected process");
         }
@@ -3767,7 +3773,8 @@ describe("Supervisor", () => {
 
         await vi.advanceTimersByTimeAsync(10 * 60_000);
 
-        const metrics = supervisorWithoutHeartbeat.getHeartbeatScheduleMetrics();
+        const metrics =
+          supervisorWithoutHeartbeat.getHeartbeatScheduleMetrics();
         expect(metrics.sweeps).toBe(1);
         expect(metrics.armedAtMs).toBeNull();
       } finally {

@@ -118,8 +118,7 @@ function getPublicShareReadiness(deps: PublicShareRoutesDeps): {
   const configured = !!relayConfig?.url && !!relayConfig.username;
   const remoteAccessEnabled = deps.getRemoteAccessEnabled?.() ?? false;
   const relayStatus = deps.getRelayStatus?.() ?? null;
-  const storageReady =
-    deps.publicShareService.getReadiness().state === "ready";
+  const storageReady = deps.publicShareService.getReadiness().state === "ready";
   return {
     enabled,
     relayConfig,
@@ -164,8 +163,7 @@ function publicShareStoreUnavailable(
   c.header("Retry-After", "2");
   return c.json(
     {
-      error:
-        readiness.error ?? `Public share store is ${readiness.state}`,
+      error: readiness.error ?? `Public share store is ${readiness.state}`,
       retryable:
         readiness.state === "opening" || readiness.state === "migrating",
       storageState: readiness.state,
@@ -771,14 +769,13 @@ async function servePublicShareProjectFile(
     viewerId && record.viewerSnapshots?.[viewerId],
   );
   if (record.mode === "frozen" || viewerHasSnapshot) {
-    const presentation =
-      await deps.publicShareService.getFrozenPresentation(record, viewerId);
+    const presentation = await deps.publicShareService.getFrozenPresentation(
+      record,
+      viewerId,
+    );
     authorized = presentation?.authorizedPaths.includes(relativePath) ?? false;
   } else {
-    const shareResponse = await loadLivePublicShareResponse(
-      deps,
-      record,
-    );
+    const shareResponse = await loadLivePublicShareResponse(deps, record);
     authorized = Boolean(
       shareResponse &&
         (publicShareSessionMentionsFile(
@@ -1261,11 +1258,7 @@ export function createPublicSharePublicRoutes(
       (record.mode === "frozen" ||
         (viewerId && record.viewerSnapshots?.[viewerId]))
     ) {
-      const response = streamFrozenPublicShareResponse(
-        deps,
-        record,
-        viewerId,
-      );
+      const response = streamFrozenPublicShareResponse(deps, record, viewerId);
       if (!response) return notFound(c);
       if (viewerId) {
         deps.publicShareService.recordViewerHeartbeat(record, viewerId);

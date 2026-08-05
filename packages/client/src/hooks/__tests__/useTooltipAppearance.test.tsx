@@ -85,9 +85,7 @@ describe("useTooltipAppearance", () => {
     expect(getEffectiveTooltipDelayMs()).toBe(0);
     endTooltipVisibility(token);
     vi.setSystemTime(
-      1_000 +
-        DEFAULT_TOOLTIP_DELAY_MS * TOOLTIP_WARM_GRACE_MULTIPLIER -
-        1,
+      1_000 + DEFAULT_TOOLTIP_DELAY_MS * TOOLTIP_WARM_GRACE_MULTIPLIER - 1,
     );
     expect(getEffectiveTooltipDelayMs()).toBe(0);
 

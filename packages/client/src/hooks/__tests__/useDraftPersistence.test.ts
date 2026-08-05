@@ -210,9 +210,9 @@ describe("useDraftPersistence", () => {
     expect(
       window.localStorage.getItem("draft-message:host%3Amacbook:session-a"),
     ).not.toBe(null);
-    expect(
-      readStoredText("draft-message:host%3Amacbook:session-a"),
-    ).toBe("indexed draft");
+    expect(readStoredText("draft-message:host%3Amacbook:session-a")).toBe(
+      "indexed draft",
+    );
     expect(
       window.localStorage.getItem(
         "draft-presence-message:host%3Amacbook:session-a",

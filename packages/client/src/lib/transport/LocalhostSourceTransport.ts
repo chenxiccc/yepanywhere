@@ -1,8 +1,5 @@
 import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
-import {
-  fetchPlainBlob,
-  fetchPlainJSON,
-} from "../../api/plainFetch";
+import { fetchPlainBlob, fetchPlainJSON } from "../../api/plainFetch";
 import {
   uploadFile,
   uploadStagedFile,
@@ -41,7 +38,9 @@ export interface LocalhostSourceTransportOptions {
 }
 
 class LocalhostTransportStatus implements SourceTransportStatus {
-  constructor(private readonly getSnapshotFn: () => SourceTransportStatusSnapshot) {}
+  constructor(
+    private readonly getSnapshotFn: () => SourceTransportStatusSnapshot,
+  ) {}
   private listeners = new Set<() => void>();
   private visibilityRestoredListeners = new Set<() => void>();
 
@@ -227,8 +226,7 @@ export class LocalhostSourceTransport implements SourceTransport {
 
   private handleStreamSocketState(state: WebSocketConnectionSocketState): void {
     if (this.disposed) return;
-    this.streamSocketState =
-      state === "connected" ? "connected" : state;
+    this.streamSocketState = state === "connected" ? "connected" : state;
     if (state === "connected") {
       this.lastStreamError = undefined;
       this.startStreamManager();
@@ -243,9 +241,8 @@ export class LocalhostSourceTransport implements SourceTransport {
     }
 
     this.streamManagerStarted = true;
-    this.removeManagerStateListener = this.streamManager.on(
-      "stateChange",
-      () => this.mutableStatus.emit(),
+    this.removeManagerStateListener = this.streamManager.on("stateChange", () =>
+      this.mutableStatus.emit(),
     );
     this.removeManagerFailureListener = this.streamManager.on(
       "reconnectFailed",

@@ -490,9 +490,7 @@ describe("SessionShareModal", () => {
       shareType.querySelectorAll('button[aria-pressed="true"]'),
     ).toHaveLength(2);
     expect(screen.getByText(/0 active public viewer/)).toBeTruthy();
-    expect(
-      screen.getByRole("img", { name: "Read-only" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Read-only" })).toBeTruthy();
     expect(api.createPublicSessionShare).not.toHaveBeenCalled();
     expect(screen.getByText(/could not snapshot linked files/i)).toBeTruthy();
 
@@ -544,7 +542,9 @@ describe("SessionShareModal", () => {
   });
 
   it("offers scoped type revokes before inventory resolves", () => {
-    vi.mocked(api.getPublicShares).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(api.getPublicShares).mockImplementation(
+      () => new Promise(() => {}),
+    );
     render(
       <I18nProvider>
         <SessionShareModal
@@ -655,14 +655,12 @@ describe("SessionShareModal", () => {
         .closest("button"),
     ).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Read-only" }).getAttribute(
-        "aria-pressed",
-      ),
+      screen
+        .getByRole("button", { name: "Read-only" })
+        .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
-      screen.getByRole("button", { name: "Live" }).getAttribute(
-        "aria-pressed",
-      ),
+      screen.getByRole("button", { name: "Live" }).getAttribute("aria-pressed"),
     ).toBe("false");
     expect(api.revokePublicShare).not.toHaveBeenCalled();
 
@@ -699,9 +697,7 @@ describe("SessionShareModal", () => {
       name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /^All projects$/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^All projects$/ }));
     await waitFor(() => {
       expect(api.getPublicShares).toHaveBeenLastCalledWith({
         projectId: undefined,
@@ -754,15 +750,12 @@ describe("SessionShareModal", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
-      screen.getByRole("button", { name: "Read-only" }).getAttribute(
-        "aria-pressed",
-      ),
+      screen
+        .getByRole("button", { name: "Read-only" })
+        .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
-      screen.getByRole("button", { name: "Live" }).getAttribute(
-        "aria-pressed",
-      ),
+      screen.getByRole("button", { name: "Live" }).getAttribute("aria-pressed"),
     ).toBe("true");
   });
-
 });

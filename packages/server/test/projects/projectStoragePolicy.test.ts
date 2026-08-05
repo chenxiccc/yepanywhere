@@ -1,5 +1,13 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -107,17 +115,37 @@ describe("ProjectStoragePolicy", () => {
     await expect(
       policy.ensureWriteDirectory(missingProject, "attachments"),
     ).rejects.toThrow("Could not verify project storage Git state");
-    await expect(stat(missingProject)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(missingProject)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("rejects a tracked .yep root", async () => {
     await execFileAsync("git", ["-C", projectPath, "init"]);
-    await execFileAsync("git", ["-C", projectPath, "config", "user.email", "test@example.com"]);
-    await execFileAsync("git", ["-C", projectPath, "config", "user.name", "Test"]);
+    await execFileAsync("git", [
+      "-C",
+      projectPath,
+      "config",
+      "user.email",
+      "test@example.com",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      projectPath,
+      "config",
+      "user.name",
+      "Test",
+    ]);
     await mkdir(join(projectPath, ".yep"));
     await writeFile(join(projectPath, ".yep", "owned.txt"), "user data\n");
     await execFileAsync("git", ["-C", projectPath, "add", ".yep/owned.txt"]);
-    await execFileAsync("git", ["-C", projectPath, "commit", "-m", "track yep"]);
+    await execFileAsync("git", [
+      "-C",
+      projectPath,
+      "commit",
+      "-m",
+      "track yep",
+    ]);
     const policy = new ProjectStoragePolicy({
       dataDir,
       getMode: () => "project",

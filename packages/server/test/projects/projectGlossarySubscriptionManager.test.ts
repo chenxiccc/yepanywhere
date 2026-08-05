@@ -135,10 +135,7 @@ describe("ProjectGlossarySubscriptionManager", () => {
       await createHarness();
     await mkdir(join(projectPath, "unqueried"));
     await writeFile(join(projectPath, "GLOSSARY.md"), "root");
-    await writeFile(
-      join(projectPath, "unqueried", "GLOSSARY.md"),
-      "unqueried",
-    );
+    await writeFile(join(projectPath, "unqueried", "GLOSSARY.md"), "unqueried");
     observePath("GLOSSARY.md");
     const events: GlossarySubscriptionEvent[] = [];
 

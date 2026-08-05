@@ -1,10 +1,5 @@
 import type { SessionSandboxEnforcement } from "@yep-anywhere/shared";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { fetchJSON } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
@@ -110,7 +105,9 @@ function subscribeProcessSnapshots(listener: () => void): () => void {
   };
 }
 
-function getProcessSnapshot(sourceKey: ClientSummarySourceKey): ProcessSnapshot {
+function getProcessSnapshot(
+  sourceKey: ClientSummarySourceKey,
+): ProcessSnapshot {
   return processSnapshotsBySource.get(sourceKey) ?? EMPTY_PROCESS_SNAPSHOT;
 }
 
@@ -234,17 +231,19 @@ export function useProcesses() {
     [sourceSummary],
   );
 
-  const { loading, error, refetch } = useRetainedClientQuery<ProcessesResponse>({
-    sourceKey,
-    key: PROCESS_LIST_QUERY_KEY,
-    bootstrapTier: "supplementary",
-    ready,
-    hasData,
-    revalidateOn: PROCESS_LIST_REVALIDATE_EVENTS,
-    fetcher: () =>
-      fetchJSON<ProcessesResponse>("/processes?includeTerminated=true"),
-    applySnapshot,
-  });
+  const { loading, error, refetch } = useRetainedClientQuery<ProcessesResponse>(
+    {
+      sourceKey,
+      key: PROCESS_LIST_QUERY_KEY,
+      bootstrapTier: "supplementary",
+      ready,
+      hasData,
+      revalidateOn: PROCESS_LIST_REVALIDATE_EVENTS,
+      fetcher: () =>
+        fetchJSON<ProcessesResponse>("/processes?includeTerminated=true"),
+      applySnapshot,
+    },
+  );
 
   useEffect(() => {
     const handleMetadataChange = (event: SessionMetadataChangedEvent) => {
@@ -262,10 +261,7 @@ export function useProcesses() {
 
   useEffect(() => {
     return activityBus.on("file-change", (event) => {
-      if (
-        event.fileType === "agent-session" &&
-        event.changeType === "create"
-      ) {
+      if (event.fileType === "agent-session" && event.changeType === "create") {
         void refetch();
       }
     });

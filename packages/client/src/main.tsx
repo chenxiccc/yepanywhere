@@ -88,9 +88,9 @@ function WrongPortNotice({ backendUrl }: { backendUrl: string }) {
             color: "#b6bcc8",
           }}
         >
-          You've hit the internal HMR / asset server on port {__VITE_DEV_PORT__},
-          which has no backend. The Yep Anywhere UI runs on the main server — open
-          the link below instead.
+          You've hit the internal HMR / asset server on port {__VITE_DEV_PORT__}
+          , which has no backend. The Yep Anywhere UI runs on the main server —
+          open the link below instead.
         </p>
         <a
           href={backendUrl}
@@ -196,7 +196,10 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                 <Route path="/inbox" element={<InboxPage />} />
                 <Route path="/-/hosts" element={<HostsRoute />} />
                 <Route path="/settings" element={<SettingsLayout />} />
-                <Route path="/settings/:category" element={<SettingsLayout />} />
+                <Route
+                  path="/settings/:category"
+                  element={<SettingsLayout />}
+                />
                 {/* Project-scoped pages */}
                 <Route
                   path="/projects/:projectId/workstreams"
@@ -211,7 +214,10 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                 <Route path="/devices" element={<EmulatorPage />} />
                 <Route path="/devices/:deviceId" element={<EmulatorPage />} />
                 <Route path="/new-session" element={<NewSessionPage />} />
-                <Route path="/projects/:projectId/file" element={<FilePage />} />
+                <Route
+                  path="/projects/:projectId/file"
+                  element={<FilePage />}
+                />
                 <Route
                   path="/projects/:projectId/sessions/:sessionId"
                   element={<SessionDomLingerRouteMarker />}

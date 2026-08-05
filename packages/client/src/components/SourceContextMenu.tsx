@@ -93,8 +93,9 @@ export function useSourceContextMenu(
     y: number;
   } | null>(null);
   const suppressNextClickRef = useRef(false);
-  const suppressionClearTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const close = useCallback(() => setOpen(null), []);
 

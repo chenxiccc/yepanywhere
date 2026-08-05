@@ -82,11 +82,7 @@ function isPointerJitter(
   event: PointerEvent,
   position: PointerPosition | null,
 ): boolean {
-  return !exceedsTooltipPointerJitter(
-    position,
-    event.clientX,
-    event.clientY,
-  );
+  return !exceedsTooltipPointerJitter(position, event.clientX, event.clientY);
 }
 
 function normalizeVisibleText(value: string): string {
@@ -103,9 +99,7 @@ function repeatsFullyVisibleContent(target: Element, text: string): boolean {
     exactOwners.push(target);
   }
   for (const descendant of target.querySelectorAll<HTMLElement>("*")) {
-    if (
-      normalizeVisibleText(descendant.textContent ?? "") === normalizedText
-    ) {
+    if (normalizeVisibleText(descendant.textContent ?? "") === normalizedText) {
       exactOwners.push(descendant);
     }
   }
@@ -175,10 +169,7 @@ function isContextMenuOperable(event: MouseEvent): boolean {
   );
 }
 
-function wheelDeltaYPixels(
-  event: WheelEvent,
-  tooltip: HTMLElement,
-): number {
+function wheelDeltaYPixels(event: WheelEvent, tooltip: HTMLElement): number {
   if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
     return event.deltaY * tooltip.clientHeight;
   }
@@ -213,10 +204,12 @@ export function TooltipLayer() {
   const savedDescriptionRef = useRef<SavedDescription | null>(null);
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blockedActivationTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blockedPointerActivationRef =
-    useRef<BlockedPointerActivation | null>(null);
+  const blockedActivationTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const blockedPointerActivationRef = useRef<BlockedPointerActivation | null>(
+    null,
+  );
   const visibilityTokenRef = useRef<symbol | null>(null);
   const lastPointerPositionRef = useRef<PointerPosition | null>(null);
   const visibleRef = useRef(false);
@@ -306,8 +299,7 @@ export function TooltipLayer() {
       return existing?.value ?? "";
     }
     const injectedDataTooltip =
-      existing?.injectedDataTooltip ??
-      !target.hasAttribute("data-tooltip");
+      existing?.injectedDataTooltip ?? !target.hasAttribute("data-tooltip");
     detachedTitlesRef.current.set(target, {
       value: liveTitle,
       injectedDataTooltip,
@@ -360,8 +352,7 @@ export function TooltipLayer() {
 
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) return;
-    const delayMs =
-      getTooltipDelayMs() * TOOLTIP_CLOSE_DELAY_MULTIPLIER;
+    const delayMs = getTooltipDelayMs() * TOOLTIP_CLOSE_DELAY_MULTIPLIER;
     if (delayMs === 0) {
       hide();
       return;
@@ -692,10 +683,7 @@ export function TooltipLayer() {
         return;
       }
       movementDismissedTargetRef.current = null;
-      const target = pointIsInsidePassiveTooltip(
-        event.clientX,
-        event.clientY,
-      )
+      const target = pointIsInsidePassiveTooltip(event.clientX, event.clientY)
         ? activeTargetRef.current
         : tooltipTargetFromNode(event.target, activeTargetRef.current);
       if (!target) return;
@@ -722,17 +710,12 @@ export function TooltipLayer() {
       ) {
         return;
       }
-      const target = pointIsInsidePassiveTooltip(
-        event.clientX,
-        event.clientY,
-      )
+      const target = pointIsInsidePassiveTooltip(event.clientX, event.clientY)
         ? activeTargetRef.current
         : tooltipTargetFromNode(event.target, activeTargetRef.current);
       if (!target) {
         if (visibleRef.current) {
-          if (
-            isPointerJitter(event, lastPointerPositionRef.current)
-          ) {
+          if (isPointerJitter(event, lastPointerPositionRef.current)) {
             return;
           }
           scheduleHide();
@@ -769,14 +752,11 @@ export function TooltipLayer() {
         movementDismissedTargetRef.current = null;
       }
       if (!activeTarget) return;
-      if (
-        pointIsInsidePassiveTooltip(event.clientX, event.clientY)
-      ) {
+      if (pointIsInsidePassiveTooltip(event.clientX, event.clientY)) {
         clearHideTimer();
         return;
       }
-      const eventTarget =
-        event.target instanceof Node ? event.target : null;
+      const eventTarget = event.target instanceof Node ? event.target : null;
       const tooltip = tooltipRef.current;
       const leftActiveRegion =
         !!eventTarget &&
@@ -837,9 +817,7 @@ export function TooltipLayer() {
     const onPointerDown = (event: PointerEvent) => {
       if (event.button === 2) return;
       const activeTarget = activeTargetRef.current;
-      if (
-        pointIsInsidePassiveTooltip(event.clientX, event.clientY)
-      ) {
+      if (pointIsInsidePassiveTooltip(event.clientX, event.clientY)) {
         if (
           event.target instanceof Node &&
           activeTarget?.contains(event.target)
@@ -881,11 +859,7 @@ export function TooltipLayer() {
     };
     const onBlockedClick = (event: MouseEvent) => {
       const blocked = blockedPointerActivationRef.current;
-      if (
-        !blocked ||
-        event.detail === 0 ||
-        event.button !== blocked.button
-      ) {
+      if (!blocked || event.detail === 0 || event.button !== blocked.button) {
         return;
       }
       clearBlockedPointerActivation();
@@ -980,11 +954,7 @@ export function TooltipLayer() {
     document.addEventListener("pointercancel", onPointerCancel, true);
     document.addEventListener("click", onBlockedClick, true);
     document.addEventListener("auxclick", onBlockedClick, true);
-    document.addEventListener(
-      "contextmenu",
-      onPassiveTooltipContextMenu,
-      true,
-    );
+    document.addEventListener("contextmenu", onPassiveTooltipContextMenu, true);
     document.addEventListener("contextmenu", onContextMenu);
     document.addEventListener("wheel", onWheel, {
       capture: true,

@@ -255,12 +255,7 @@ describe("speech transcript text edits", () => {
 
   it("arms a hot-mic selection target with a final-chunk grace window", () => {
     const range = createSpeechInsertionRange(4, 4);
-    const retargeted = retargetSpeechInsertionRange(
-      range,
-      8,
-      12,
-      1000,
-    );
+    const retargeted = retargetSpeechInsertionRange(range, 8, 12, 1000);
 
     expect(retargeted).toMatchObject({
       start: 4,
@@ -331,11 +326,7 @@ describe("speech transcript text edits", () => {
     );
     const withTyping = `${first.text} [typed]`;
     const retargeted = retargetSpeechInsertionRange(
-      mapSpeechInsertionRangeThroughEdit(
-        first.text,
-        withTyping,
-        first.range,
-      ),
+      mapSpeechInsertionRangeThroughEdit(first.text, withTyping, first.range),
       withTyping.length,
       withTyping.length,
     );
@@ -398,12 +389,12 @@ describe("speech transcript text edits", () => {
     );
 
     expect(second.text).toBe("alpha second first suffix");
-    expect(removeLatestSpeechChunkFromRange(second.text, second.range)).toMatchObject(
-      {
-        text: "alpha first suffix",
-        replacementStart: "alpha".length,
-      },
-    );
+    expect(
+      removeLatestSpeechChunkFromRange(second.text, second.range),
+    ).toMatchObject({
+      text: "alpha first suffix",
+      replacementStart: "alpha".length,
+    });
   });
 
   it("smooths ordinary capitalization on later mid-sentence chunks", () => {

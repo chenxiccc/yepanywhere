@@ -575,8 +575,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
   {
     name: "CODEX_READER_LOG_PARSE",
     group: "Diagnostics & development",
-    description:
-      "Log Codex entry-read parse/cache timings and memory deltas.",
+    description: "Log Codex entry-read parse/cache timings and memory deltas.",
   },
   {
     name: "CLAUDE_READER_LOG_PARSE",

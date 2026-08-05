@@ -63,35 +63,32 @@ export function useProject(projectId: string | undefined) {
   );
   const enabled = Boolean(projectId);
 
-  const {
-    loading,
-    error,
-    scheduleRevalidation,
-  } = useRetainedClientQuery<ProjectResponse>({
-    sourceKey,
-    key: queryKey,
-    // The selected project is one of the facts the route needs to paint.
-    bootstrapTier: "route",
-    enabled,
-    ready,
-    hasData: project !== null,
-    meta: { projectId },
-    revalidateOn: ["refresh", "reconnect"],
-    fetcher: (context) => {
-      const requestProjectId = (context.meta as ProjectQueryMeta | undefined)
-        ?.projectId;
-      if (!requestProjectId) {
-        throw new Error("Project id is required");
-      }
-      return api.getProject(requestProjectId);
-    },
-    applySnapshot: (data, context) => {
-      sourceSummary.reportProjectCollectionSnapshot(
-        { project: data.project },
-        context.requestStartedAt,
-      );
-    },
-  });
+  const { loading, error, scheduleRevalidation } =
+    useRetainedClientQuery<ProjectResponse>({
+      sourceKey,
+      key: queryKey,
+      // The selected project is one of the facts the route needs to paint.
+      bootstrapTier: "route",
+      enabled,
+      ready,
+      hasData: project !== null,
+      meta: { projectId },
+      revalidateOn: ["refresh", "reconnect"],
+      fetcher: (context) => {
+        const requestProjectId = (context.meta as ProjectQueryMeta | undefined)
+          ?.projectId;
+        if (!requestProjectId) {
+          throw new Error("Project id is required");
+        }
+        return api.getProject(requestProjectId);
+      },
+      applySnapshot: (data, context) => {
+        sourceSummary.reportProjectCollectionSnapshot(
+          { project: data.project },
+          context.requestStartedAt,
+        );
+      },
+    });
 
   useEffect(() => {
     if (!projectId) {

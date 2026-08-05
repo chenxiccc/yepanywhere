@@ -50,7 +50,7 @@ describe("class-production evidence", () => {
   it("separates class-producing syntax from generic source strings", () => {
     const templateSource = [
       'const state = "active";',
-      'const templateClass = `card $' +
+      "const templateClass = `card $" +
         '{state === "active" ? "card-selected" : ""}`;',
       "export const view = <div className={templateClass} />;",
     ].join("\n");

@@ -32,9 +32,7 @@ describe("annotateGlossaryHtml", () => {
     expect(result.changed).toBe(true);
     expect(template.content.textContent).toBe("The published oracle wins.");
     expect(term?.textContent).toBe("published oracle");
-    expect(term?.title).toBe(
-      "published oracle: The best published system.",
-    );
+    expect(term?.title).toBe("published oracle: The best published system.");
     expect(term?.dataset.tooltip).toBeUndefined();
     expect(term?.tabIndex).toBe(0);
   });

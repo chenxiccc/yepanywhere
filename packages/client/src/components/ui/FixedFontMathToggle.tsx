@@ -1058,18 +1058,15 @@ export function FixedFontMathToggle({
   );
   const { btnRef: toggleBtnRef, handleClick: handleToggleClick } =
     useScrollPreservingToggle(showRendered, toggleLocalMode);
-  const presentedHtml = useMemo(
-    () => {
-      const tooltipHtml = applyRenderedTooltipMode(rendered.html, tooltipMode);
-      return annotateGlossaryHtml(
-        tooltipHtml,
-        glossary.state === "ready" && glossary.result?.status === "ready"
-          ? glossary.result.artifact
-          : undefined,
-      ).html;
-    },
-    [glossary, rendered.html, tooltipMode],
-  );
+  const presentedHtml = useMemo(() => {
+    const tooltipHtml = applyRenderedTooltipMode(rendered.html, tooltipMode);
+    return annotateGlossaryHtml(
+      tooltipHtml,
+      glossary.state === "ready" && glossary.result?.status === "ready"
+        ? glossary.result.artifact
+        : undefined,
+    ).html;
+  }, [glossary, rendered.html, tooltipMode]);
 
   useEffect(() => {
     const element = copySourceRef.current;
@@ -1130,7 +1127,9 @@ export function FixedFontMathToggle({
     <div
       ref={copySourceRef}
       className="fixed-font-render-toggle"
-      data-render-mode={showRendered && rendered.changed ? "rendered" : "source"}
+      data-render-mode={
+        showRendered && rendered.changed ? "rendered" : "source"
+      }
     >
       {showRendered && rendered.changed ? (
         // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to rendered file links inside the HTML

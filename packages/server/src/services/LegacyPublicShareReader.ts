@@ -304,11 +304,7 @@ function normalizeLegacyMentionedPath(
     ? path.resolve(candidate)
     : path.resolve(projectRoot, candidate);
   const relative = path.relative(path.resolve(projectRoot), absolute);
-  if (
-    !relative ||
-    relative.startsWith("..") ||
-    path.isAbsolute(relative)
-  ) {
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     return null;
   }
   return relative.split(path.sep).join("/");
@@ -665,8 +661,7 @@ export async function inspectLegacySessionBody(
     }
     return {
       repairRequired:
-        messageCount > 0 &&
-        (!messagesSeen || messagesNonWhitespace === "[]"),
+        messageCount > 0 && (!messagesSeen || messagesNonWhitespace === "[]"),
     };
   } finally {
     await reader.close();

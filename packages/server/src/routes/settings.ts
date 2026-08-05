@@ -17,7 +17,10 @@ import {
   parseClaudeAdditionalModelSelections,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
-import { type FileAccessSettings, getFileAccessInfo } from "../middleware/file-access.js";
+import {
+  type FileAccessSettings,
+  getFileAccessInfo,
+} from "../middleware/file-access.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import { testSSHConnection } from "../sdk/remote-spawn.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
@@ -278,8 +281,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
           400,
         );
       }
-      updates.hostAwakeBatteryFloorPercent =
-        body.hostAwakeBatteryFloorPercent;
+      updates.hostAwakeBatteryFloorPercent = body.hostAwakeBatteryFloorPercent;
     }
     if ("deferredJoinWindowSeconds" in body) {
       if (
@@ -581,10 +583,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         body.claudeAdditionalModels,
       );
       if (parsedSelections === null) {
-        return c.json(
-          { error: "Invalid claudeAdditionalModels setting" },
-          400,
-        );
+        return c.json({ error: "Invalid claudeAdditionalModels setting" }, 400);
       }
       updates.claudeAdditionalModels = parsedSelections;
     }
@@ -763,8 +762,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     const nextHostAwakeMode =
       updates.hostAwakeMode ?? currentSettings.hostAwakeMode;
     const hasHostAwakeUpdate =
-      "hostAwakeMode" in updates ||
-      "hostAwakeBatteryFloorPercent" in updates;
+      "hostAwakeMode" in updates || "hostAwakeBatteryFloorPercent" in updates;
     if (hasHostAwakeUpdate && !hostAwakeService) {
       return c.json({ error: "Host-awake control is unavailable" }, 503);
     }

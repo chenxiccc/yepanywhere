@@ -78,7 +78,9 @@ class MultiplexTransportStatus implements SourceTransportStatus {
   private readonly listeners = new Set<() => void>();
   private readonly visibilityRestoredListeners = new Set<() => void>();
 
-  constructor(private readonly getSnapshotFn: () => SourceTransportStatusSnapshot) {}
+  constructor(
+    private readonly getSnapshotFn: () => SourceTransportStatusSnapshot,
+  ) {}
 
   getSnapshot(): SourceTransportStatusSnapshot {
     return this.getSnapshotFn();

@@ -580,7 +580,7 @@ describe("public share owner routes", () => {
     const revokeResponse = await app.request(
       `/public-shares/${list.items[0].shareId}`,
       {
-      method: "DELETE",
+        method: "DELETE",
       },
     );
     expect(revokeResponse.status).toBe(200);
@@ -620,10 +620,14 @@ describe("public share owner routes", () => {
     const secondPage = await secondResponse.json();
 
     expect(secondPage.items).toHaveLength(2);
-    expect(new Set(secondPage.items.map((item: { title: string }) => item.title))).toEqual(
-      new Set(["first", "second", "third"].filter(
-        (title) => title !== firstPage.items[0].title,
-      )),
+    expect(
+      new Set(secondPage.items.map((item: { title: string }) => item.title)),
+    ).toEqual(
+      new Set(
+        ["first", "second", "third"].filter(
+          (title) => title !== firstPage.items[0].title,
+        ),
+      ),
     );
     expect(secondPage.nextCursor).toBeNull();
   });

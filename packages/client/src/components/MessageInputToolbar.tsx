@@ -2254,18 +2254,18 @@ export function MessageInputToolbarView({
                 }`}
                 aria-label={
                   actionsControl.send.primarySpeechMessagePrefix
-                      ? t("speechPrefixDeliveryLabel", {
-                          action: actionsControl.send.primaryActionLabel,
-                          prefix: actionsControl.send.primarySpeechMessagePrefix,
-                        })
+                    ? t("speechPrefixDeliveryLabel", {
+                        action: actionsControl.send.primaryActionLabel,
+                        prefix: actionsControl.send.primarySpeechMessagePrefix,
+                      })
                     : actionsControl.send.primaryActionLabel
                 }
                 {...getTextTooltipAttributes(
                   actionsControl.send.primarySpeechMessagePrefix
-                      ? t("speechPrefixDeliveryTooltip", {
-                          tooltip: actionsControl.send.tooltip,
-                          prefix: actionsControl.send.primarySpeechMessagePrefix,
-                        })
+                    ? t("speechPrefixDeliveryTooltip", {
+                        tooltip: actionsControl.send.tooltip,
+                        prefix: actionsControl.send.primarySpeechMessagePrefix,
+                      })
                     : actionsControl.send.tooltip,
                   tooltipMode,
                 )}

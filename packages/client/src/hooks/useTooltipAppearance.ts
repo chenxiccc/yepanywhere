@@ -259,12 +259,7 @@ export function useVisibilityAwareTextTooltip<T extends HTMLElement>(
         tooltipMode,
       );
     },
-    [
-      fullText,
-      omittedContentPreview,
-      tooltipMode,
-      visibilitySelector,
-    ],
+    [fullText, omittedContentPreview, tooltipMode, visibilitySelector],
   );
   return { ...attributes, onPointerEnter };
 }
@@ -277,9 +272,7 @@ export function areTooltipsSuppressed(nowMs = Date.now()): boolean {
   return tooltipSuppressionHolds.size > 0 || nowMs < tooltipSuppressedUntilMs;
 }
 
-export function subscribeTooltipSuppression(
-  listener: () => void,
-): () => void {
+export function subscribeTooltipSuppression(listener: () => void): () => void {
   tooltipSuppressionListeners.add(listener);
   return () => tooltipSuppressionListeners.delete(listener);
 }
@@ -352,16 +345,12 @@ export function beginTooltipVisibility(onSuperseded?: () => void): symbol {
   return token;
 }
 
-export function endTooltipVisibility(
-  token: symbol,
-  nowMs = Date.now(),
-): void {
+export function endTooltipVisibility(token: symbol, nowMs = Date.now()): void {
   visibleTooltipDismissers.delete(token);
   if (!visibleTooltipTokens.delete(token) || visibleTooltipTokens.size > 0) {
     return;
   }
-  warmUntilMs =
-    nowMs + getTooltipDelayMs() * TOOLTIP_WARM_GRACE_MULTIPLIER;
+  warmUntilMs = nowMs + getTooltipDelayMs() * TOOLTIP_WARM_GRACE_MULTIPLIER;
 }
 
 /** Clears process-local hover state after navigation/tests or a hard reset. */

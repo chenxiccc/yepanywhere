@@ -247,7 +247,9 @@ export class PublicShareService {
     return this.store.getAllGrants();
   }
 
-  getPublicMetadata(record: PublicShareRecord): PublicSessionSharePublicMetadata {
+  getPublicMetadata(
+    record: PublicShareRecord,
+  ): PublicSessionSharePublicMetadata {
     return {
       mode: record.mode,
       title: record.title,
@@ -346,9 +348,9 @@ export class PublicShareService {
     sessionId: string,
     options: PublicShareStatusOptions = {},
   ): PublicSessionShareSessionStatusResponse {
-    const records = this.store.getAllGrants().filter((record) =>
-      matchesSession(record, projectId, sessionId),
-    );
+    const records = this.store
+      .getAllGrants()
+      .filter((record) => matchesSession(record, projectId, sessionId));
     return {
       ...summarizeRecords(records),
       activeViewerCount: this.countViewersForRecords(records, options),
@@ -539,8 +541,7 @@ export class PublicShareService {
   ): string | null {
     const snapshot = viewerId ? record.viewerSnapshots?.[viewerId] : undefined;
     const revisionId = snapshot?.revisionId ?? record.revisionId;
-    const linkedFileMode =
-      snapshot?.linkedFileMode ?? record.linkedFileMode;
+    const linkedFileMode = snapshot?.linkedFileMode ?? record.linkedFileMode;
     return revisionId && linkedFileMode === "cow"
       ? this.store.getRevisionProjectRoot(record, revisionId)
       : null;
@@ -702,5 +703,4 @@ export class PublicShareService {
       }
     }
   }
-
 }

@@ -301,7 +301,9 @@ export function PublicSharePage() {
     [share, metadata?.title, hints.title],
   );
   const projectName =
-    share?.share.source.projectName ?? metadata?.projectName ?? hints.projectName;
+    share?.share.source.projectName ??
+    metadata?.projectName ??
+    hints.projectName;
   const mode = share?.share.mode ?? metadata?.mode ?? hints.mode;
   const capturedAt =
     share?.share.capturedAt ?? metadata?.capturedAt ?? hints.capturedAt;
@@ -326,8 +328,7 @@ export function PublicSharePage() {
   const isFetching = loading || retrying;
   const cautionKey = getPublicShareCautionKey(mode);
   const cautionLabel = cautionKey ? t(cautionKey) : null;
-  const initialPromptPreview =
-    metadata?.initialPrompt ?? hints.initialPrompt;
+  const initialPromptPreview = metadata?.initialPrompt ?? hints.initialPrompt;
 
   const refresh = useCallback(
     async (afterMessageId?: string) => {
@@ -358,12 +359,7 @@ export function PublicSharePage() {
   );
 
   useEffect(() => {
-    if (
-      hints.version !== 2 ||
-      !secret ||
-      !relayUsername ||
-      relayConfig.error
-    ) {
+    if (hints.version !== 2 || !secret || !relayUsername || relayConfig.error) {
       return undefined;
     }
     let cancelled = false;

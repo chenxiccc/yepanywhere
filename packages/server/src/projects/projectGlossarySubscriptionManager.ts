@@ -293,17 +293,16 @@ export class ProjectGlossarySubscriptionManager {
   ): Promise<void> {
     do {
       state.refreshQueued = false;
-      const observations =
-        this.glossaryIndexService.getObservedGlossaryPaths(state.projectPath);
+      const observations = this.glossaryIndexService.getObservedGlossaryPaths(
+        state.projectPath,
+      );
       const nextPaths = await this.scanObservedPaths(
         state.projectPath,
         observations.map(({ path }) => path),
       );
       if (!state.initialized) {
         state.paths = nextPaths;
-        state.observedPaths = new Set(
-          observations.map(({ path }) => path),
-        );
+        state.observedPaths = new Set(observations.map(({ path }) => path));
         state.initialized = true;
         continue;
       }

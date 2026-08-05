@@ -381,9 +381,7 @@ export function useGlobalSessionsFeed(
   }, [queryKey, requestedRows]);
 
   const fetch = useCallback(
-    async (
-      fetchOptions: { force?: boolean; conditional?: boolean } = {},
-    ) => {
+    async (fetchOptions: { force?: boolean; conditional?: boolean } = {}) => {
       if (!readyRef.current) {
         if (!queryStateRef.current) {
           setLoading(true);

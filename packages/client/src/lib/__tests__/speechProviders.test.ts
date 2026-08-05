@@ -674,8 +674,7 @@ describe("browser-native speech provider", () => {
     const onResult = vi.fn();
     const provider = new BrowserNativeProvider({ onResult });
     const draft = "It would be more pleasant when using YA Mike.";
-    const revision =
-      "It would be more pleasant when using the YA Mic button.";
+    const revision = "It would be more pleasant when using the YA Mic button.";
 
     provider.start();
     Recognition.instance?.onresult?.({
@@ -971,91 +970,95 @@ describe("YA server speech provider", () => {
     provider.dispose();
   });
 
-  it.each([
-    "ya-parakeet",
-    "ya-nemo",
-  ] as const)("passes the selected Parakeet model to %s batch transcription", async (backendId) => {
-    const fakeStream = {
-      getTracks: () => [{ stop: vi.fn() }],
-    } as unknown as MediaStream;
-    const getUserMedia = vi.fn(async () => fakeStream);
-    const fetchMock = vi.fn(
-      async (_url: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(JSON.stringify({ text: "ok" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
+  it.each(["ya-parakeet", "ya-nemo"] as const)(
+    "passes the selected Parakeet model to %s batch transcription",
+    async (backendId) => {
+      const fakeStream = {
+        getTracks: () => [{ stop: vi.fn() }],
+      } as unknown as MediaStream;
+      const getUserMedia = vi.fn(async () => fakeStream);
+      const fetchMock = vi.fn(
+        async (_url: RequestInfo | URL, _init?: RequestInit) =>
+          new Response(JSON.stringify({ text: "ok" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
 
-    Object.defineProperty(navigator, "mediaDevices", {
-      configurable: true,
-      value: { getUserMedia },
-    });
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia },
+      });
 
-    class FakeMediaRecorder {
-      static isTypeSupported() {
-        return true;
+      class FakeMediaRecorder {
+        static isTypeSupported() {
+          return true;
+        }
+
+        state: RecordingState = "inactive";
+        ondataavailable: ((event: BlobEvent) => void) | null = null;
+        onstop: (() => void) | null = null;
+
+        start() {
+          this.state = "recording";
+        }
+
+        stop() {
+          this.state = "inactive";
+          this.ondataavailable?.({
+            data: new Blob(["audio"], { type: "audio/webm;codecs=opus" }),
+          } as BlobEvent);
+          this.onstop?.();
+        }
       }
 
-      state: RecordingState = "inactive";
-      ondataavailable: ((event: BlobEvent) => void) | null = null;
-      onstop: (() => void) | null = null;
+      class FakeBlob {
+        readonly size: number;
+        readonly type: string;
 
-      start() {
-        this.state = "recording";
+        constructor(
+          parts: Array<{ size?: number } | string> = [],
+          options = {},
+        ) {
+          this.size = parts.reduce(
+            (total, part) =>
+              total +
+              (typeof part === "string" ? part.length : (part.size ?? 1)),
+            0,
+          );
+          this.type = (options as { type?: string }).type ?? "";
+        }
+
+        async arrayBuffer(): Promise<ArrayBuffer> {
+          return new Uint8Array([1]).buffer;
+        }
       }
 
-      stop() {
-        this.state = "inactive";
-        this.ondataavailable?.({
-          data: new Blob(["audio"], { type: "audio/webm;codecs=opus" }),
-        } as BlobEvent);
-        this.onstop?.();
-      }
-    }
+      vi.stubGlobal("Blob", FakeBlob);
+      vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+      vi.stubGlobal("fetch", fetchMock);
+      vi.stubGlobal("btoa", () => "YXVkaW8=");
 
-    class FakeBlob {
-      readonly size: number;
-      readonly type: string;
+      const provider = new YaServerProvider(backendId, "", {
+        parakeetModel: "nvidia/parakeet-ctc-1.1b",
+      });
 
-      constructor(parts: Array<{ size?: number } | string> = [], options = {}) {
-        this.size = parts.reduce(
-          (total, part) =>
-            total + (typeof part === "string" ? part.length : (part.size ?? 1)),
-          0,
-        );
-        this.type = (options as { type?: string }).type ?? "";
-      }
+      provider.start();
+      await vi.waitFor(() =>
+        expect(provider.getState().status).toBe("listening"),
+      );
+      provider.stop();
 
-      async arrayBuffer(): Promise<ArrayBuffer> {
-        return new Uint8Array([1]).buffer;
-      }
-    }
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        backendId,
+        model: "nvidia/parakeet-ctc-1.1b",
+      });
 
-    vi.stubGlobal("Blob", FakeBlob);
-    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
-    vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("btoa", () => "YXVkaW8=");
-
-    const provider = new YaServerProvider(backendId, "", {
-      parakeetModel: "nvidia/parakeet-ctc-1.1b",
-    });
-
-    provider.start();
-    await vi.waitFor(() =>
-      expect(provider.getState().status).toBe("listening"),
-    );
-    provider.stop();
-
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      backendId,
-      model: "nvidia/parakeet-ctc-1.1b",
-    });
-
-    provider.dispose();
-  });
+      provider.dispose();
+    },
+  );
 
   it("keeps a stopped batch recording tied to its speech target while starting another", async () => {
     const fakeStream = {

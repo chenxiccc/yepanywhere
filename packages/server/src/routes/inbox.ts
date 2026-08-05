@@ -27,10 +27,7 @@ import { listSessionListSummariesAcrossProviders } from "../sessions/provider-re
 import { SessionCollectionGeneration } from "../sessions/sessionCollectionGeneration.js";
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
-import type {
-  ISessionReader,
-  SessionListSummary,
-} from "../sessions/types.js";
+import type { ISessionReader, SessionListSummary } from "../sessions/types.js";
 import type { ProjectQueueService } from "../services/ProjectQueueService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {

@@ -445,10 +445,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   useEffect(() => {
     if (!followUpSnapshot.active || !followUpEnabled) return;
     const owner = speechCaptureOwnerRef.current;
-    if (
-      followUpSnapshot.owner !== null &&
-      followUpSnapshot.owner !== owner
-    ) {
+    if (followUpSnapshot.owner !== null && followUpSnapshot.owner !== owner) {
       return;
     }
     if (!claimSpeechFollowUp(owner, endFollowUpListening)) return;

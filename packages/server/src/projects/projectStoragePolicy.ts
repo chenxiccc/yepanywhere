@@ -111,10 +111,7 @@ function containedPath(root: string, segments: readonly string[]): string {
   const resolvedRoot = resolve(root);
   const target = resolve(resolvedRoot, ...segments);
   const relativePath = relative(resolvedRoot, target);
-  if (
-    relativePath.startsWith("..") ||
-    isAbsolute(relativePath)
-  ) {
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
     throw new Error("Project storage path escaped its managed root");
   }
   return target;
@@ -163,10 +160,14 @@ async function runProjectStorageGit(
   output: "text" | "buffer",
 ): Promise<string | Buffer> {
   if (output === "buffer") {
-    const { stdout } = await execFileAsync("git", ["-C", projectPath, ...args], {
-      timeout: 5000,
-      encoding: "buffer",
-    });
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", projectPath, ...args],
+      {
+        timeout: 5000,
+        encoding: "buffer",
+      },
+    );
     return stdout;
   }
   const { stdout } = await execFileAsync("git", ["-C", projectPath, ...args], {

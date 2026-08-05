@@ -154,7 +154,10 @@ function forgetRuntime(runtimeId: string): void {
 
 function forgetRuntimeAfterOwnerLoss(runtimeId: string): void {
   if (hostedRuntimeForgetTimers.has(runtimeId)) return;
-  const timer = setTimeout(() => forgetRuntime(runtimeId), RUNTIME_OWNER_LOSS_GRACE_MS);
+  const timer = setTimeout(
+    () => forgetRuntime(runtimeId),
+    RUNTIME_OWNER_LOSS_GRACE_MS,
+  );
   timer.unref?.();
   hostedRuntimeForgetTimers.set(runtimeId, timer);
 }
@@ -181,7 +184,10 @@ function requestHost<T>(
       fn();
     };
     const timeout = setTimeout(
-      () => finish(() => reject(new Error(`Provider runtime host ${op} timed out`))),
+      () =>
+        finish(() =>
+          reject(new Error(`Provider runtime host ${op} timed out`)),
+        ),
       HOST_REQUEST_TIMEOUT_MS,
     );
     socket.on("connect", () => {
@@ -201,7 +207,9 @@ function requestHost<T>(
       const newline = buffer.indexOf("\n");
       if (newline < 0) return;
       try {
-        const response = JSON.parse(buffer.slice(0, newline)) as HostResponse<T>;
+        const response = JSON.parse(
+          buffer.slice(0, newline),
+        ) as HostResponse<T>;
         if (!response.ok) {
           finish(() => reject(new Error(response.error ?? `${op} failed`)));
           return;
@@ -301,7 +309,9 @@ export async function retainProviderRuntimeProcessGroup(
   await requestHost("retainProcessGroup", { processGroupId });
 }
 
-function cloneableOptions(options: StartSessionOptions): Record<string, unknown> {
+function cloneableOptions(
+  options: StartSessionOptions,
+): Record<string, unknown> {
   const {
     onToolApproval: _onToolApproval,
     onPermissionModeApplied: _onPermissionModeApplied,
@@ -313,7 +323,9 @@ function cloneableOptions(options: StartSessionOptions): Record<string, unknown>
   return cloneable;
 }
 
-function reattachSpec(options: StartSessionOptions): HostedProviderReattachSpec {
+function reattachSpec(
+  options: StartSessionOptions,
+): HostedProviderReattachSpec {
   return {
     permissionMode: options.permissionMode,
     model: options.model,
@@ -552,7 +564,8 @@ class HostedAgentSession {
       });
       this.socket.on("close", () => {
         clearTimeout(timeout);
-        if (!attached) reject(new Error("Provider worker closed during attach"));
+        if (!attached)
+          reject(new Error("Provider worker closed during attach"));
         if (!this.done && !this.detaching) {
           this.providerAlive = false;
           forgetRuntimeAfterOwnerLoss(this.runtime.runtimeId);
@@ -697,7 +710,8 @@ class HostedAgentSession {
   }
 
   private send(message: unknown): void {
-    if (this.socket.destroyed) throw new Error("Provider worker is disconnected");
+    if (this.socket.destroyed)
+      throw new Error("Provider worker is disconnected");
     this.socket.write(`${JSON.stringify(message)}\n`);
   }
 
@@ -730,13 +744,17 @@ class HostedAgentSession {
     this.pendingRpc.delete(id);
     clearTimeout(pending.timeout);
     if (message.ok === false) {
-      pending.reject(new Error(String(message.error ?? "Provider worker RPC failed")));
+      pending.reject(
+        new Error(String(message.error ?? "Provider worker RPC failed")),
+      );
     } else {
       pending.resolve(message.result);
     }
   }
 
-  private async handleApproval(message: Record<string, unknown>): Promise<void> {
+  private async handleApproval(
+    message: Record<string, unknown>,
+  ): Promise<void> {
     const requestId = String(message.requestId);
     if (this.handledApprovals.has(requestId)) return;
     if (!this.callbacksActive) {
@@ -797,9 +815,7 @@ class HostedAgentSession {
     if (this.callbacksActive) return;
     this.callbacksActive = true;
     if (this.pendingAppliedPermissionMode) {
-      this.options.onPermissionModeApplied?.(
-        this.pendingAppliedPermissionMode,
-      );
+      this.options.onPermissionModeApplied?.(this.pendingAppliedPermissionMode);
     }
     for (const approval of this.queuedApprovals.values()) {
       void this.handleApproval(approval);
@@ -907,7 +923,10 @@ class HostedAgentSession {
         ? { steer: (message) => this.rpc("steer", [message]) }
         : {}),
       ...(capabilities.setMaxThinkingTokens
-        ? { setMaxThinkingTokens: (tokens) => this.rpc("setMaxThinkingTokens", [tokens]) }
+        ? {
+            setMaxThinkingTokens: (tokens) =>
+              this.rpc("setMaxThinkingTokens", [tokens]),
+          }
         : {}),
       ...(capabilities.setEffort
         ? { setEffort: (effort) => this.rpc("setEffort", [effort]) }
@@ -954,9 +973,7 @@ function reviveRetention(
     backgroundTaskCount: value?.backgroundTaskCount,
     sessionCronCount: value?.sessionCronCount,
     liveTaskCount: value?.liveTaskCount,
-    lastUpdatedAt: value?.lastUpdatedAt
-      ? new Date(value.lastUpdatedAt)
-      : null,
+    lastUpdatedAt: value?.lastUpdatedAt ? new Date(value.lastUpdatedAt) : null,
   };
 }
 

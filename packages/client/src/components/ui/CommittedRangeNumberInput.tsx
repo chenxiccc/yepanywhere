@@ -68,12 +68,7 @@ export function CommittedRangeNumberInput({
   }, [max, min, value]);
 
   const commit = useCallback(
-    (
-      next: number,
-      snapToStep = true,
-      lowerBound = min,
-      upperBound = max,
-    ) => {
+    (next: number, snapToStep = true, lowerBound = min, upperBound = max) => {
       const normalized = snapToStep
         ? normalizeRange(next)
         : clamp(next, lowerBound, upperBound);

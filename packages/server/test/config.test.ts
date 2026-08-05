@@ -12,7 +12,9 @@ interface ConfigEnvReadReport {
 }
 
 function collectConfigEnvReads(): ConfigEnvReadReport {
-  const configPath = fileURLToPath(new URL("../src/config.ts", import.meta.url));
+  const configPath = fileURLToPath(
+    new URL("../src/config.ts", import.meta.url),
+  );
   const sourceText = fs.readFileSync(configPath, "utf8");
   const sourceFile = ts.createSourceFile(
     configPath,
@@ -43,10 +45,7 @@ function collectConfigEnvReads(): ConfigEnvReadReport {
   }
 
   function visit(node: ts.Node): void {
-    if (
-      ts.isPropertyAccessExpression(node) &&
-      isProcessEnv(node.expression)
-    ) {
+    if (ts.isPropertyAccessExpression(node) && isProcessEnv(node.expression)) {
       names.add(node.name.text);
     } else if (
       ts.isElementAccessExpression(node) &&

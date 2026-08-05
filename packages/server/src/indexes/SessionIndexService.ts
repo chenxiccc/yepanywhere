@@ -95,9 +95,9 @@ function needsClaudeTitleRefresh(summary: CachedSessionSummary): boolean {
   }
   const fullTitle = summary.fullTitle ?? summary.title;
   return (
-    fullTitle?.trimStart().startsWith(
-      CLAUDE_LOCAL_COMMAND_CAVEAT_TITLE_PREFIX,
-    ) ?? false
+    fullTitle
+      ?.trimStart()
+      .startsWith(CLAUDE_LOCAL_COMMAND_CAVEAT_TITLE_PREFIX) ?? false
   );
 }
 
@@ -635,7 +635,10 @@ export class SessionIndexService implements ISessionIndexService {
     );
   }
 
-  private markSessionDirtyByScopeKey(scopeKey: string, sessionId: string): void {
+  private markSessionDirtyByScopeKey(
+    scopeKey: string,
+    sessionId: string,
+  ): void {
     const current = this.dirtySessionsByDir.get(scopeKey) ?? new Set();
     current.add(sessionId);
     this.dirtySessionsByDir.set(scopeKey, current);
@@ -983,10 +986,7 @@ export class SessionIndexService implements ISessionIndexService {
     force: boolean,
     now = Date.now(),
   ): void {
-    if (
-      !force &&
-      now - job.lastLoggedAtMs < this.warmupProgressLogIntervalMs
-    ) {
+    if (!force && now - job.lastLoggedAtMs < this.warmupProgressLogIntervalMs) {
       return;
     }
     job.lastLoggedAtMs = now;
@@ -1040,7 +1040,8 @@ export class SessionIndexService implements ISessionIndexService {
         sessionId: args.sessionId,
         filePath: args.filePath,
         size: args.size,
-        run: () => args.reader.getSessionSummary(args.sessionId, args.projectId),
+        run: () =>
+          args.reader.getSessionSummary(args.sessionId, args.projectId),
         resolve,
         reject,
       };
@@ -1224,9 +1225,7 @@ export class SessionIndexService implements ISessionIndexService {
   ): { sessionId: string; scopeKey: string; isSubagent: boolean } {
     return {
       sessionId: metadata.id,
-      scopeKey: `codex::${sessionsDir}::${getProjectIdentityKey(
-        metadata.cwd,
-      )}`,
+      scopeKey: `codex::${sessionsDir}::${getProjectIdentityKey(metadata.cwd)}`,
       isSubagent: metadata.isSubagent,
     };
   }

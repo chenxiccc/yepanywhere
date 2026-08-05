@@ -110,9 +110,7 @@ describe("PublicShareFilePage", () => {
     expect(mediaLink.getAttribute("href")).toContain(
       "/share/share-secret/file",
     );
-    expect(mediaLink.getAttribute("href")).toContain(
-      "viewerId=viewer-token-1",
-    );
+    expect(mediaLink.getAttribute("href")).toContain("viewerId=viewer-token-1");
     expect(fetchPublicShareJsonViaRelayMock).toHaveBeenCalledWith(
       expect.objectContaining({
         path: expect.stringContaining("viewerId=viewer-token-1"),

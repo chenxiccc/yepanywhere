@@ -575,9 +575,7 @@ describe("createSessionSubscription", () => {
     if (!complete) {
       throw new Error("expected complete event");
     }
-    expect((complete[1] as Record<string, unknown>).sessionId).toBe(
-      "sess-1",
-    );
+    expect((complete[1] as Record<string, unknown>).sessionId).toBe("sess-1");
     expect((complete[1] as Record<string, unknown>).timestamp).toBeDefined();
     expect(
       (complete[1] as Record<string, unknown>).providerRuntimeStatus,

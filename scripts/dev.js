@@ -249,7 +249,10 @@ function readProcessStartTime(pid) {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const commandEnd = stat.lastIndexOf(")");
     if (commandEnd < 0) return null;
-    const fields = stat.slice(commandEnd + 1).trim().split(/\s+/);
+    const fields = stat
+      .slice(commandEnd + 1)
+      .trim()
+      .split(/\s+/);
     return fields[19] ?? null;
   } catch (error) {
     if (error?.code === "ENOENT" || error?.code === "ESRCH") return null;
@@ -684,8 +687,7 @@ async function startWrapperControlServer() {
             obsoleteInstanceReapPromise = reapObsoleteDevInstances({
               bindKey: acquiredBindKey,
               currentInstanceId: devInstanceProvenance.instanceId,
-              currentSourceRoot:
-                devInstanceProvenance.env.YEP_DEV_SOURCE_ROOT,
+              currentSourceRoot: devInstanceProvenance.env.YEP_DEV_SOURCE_ROOT,
             }).catch((error) => {
               console.error(
                 `[Startup] Failed to reap prior YA dev instance: ${errorMessage(error)}`,

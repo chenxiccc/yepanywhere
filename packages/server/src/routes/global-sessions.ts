@@ -514,11 +514,13 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
               deps.sessionMetadataService.getRecapMessages(session.id),
             )
           : session;
-        const effectiveProjectId = metadata?.workingProjectId ?? session.projectId;
+        const effectiveProjectId =
+          metadata?.workingProjectId ?? session.projectId;
         if (filterProjectId && effectiveProjectId !== filterProjectId) {
           continue;
         }
-        const effectiveProject = projectsById.get(effectiveProjectId) ?? project;
+        const effectiveProject =
+          projectsById.get(effectiveProjectId) ?? project;
 
         const isArchived =
           metadata?.isArchived ??
@@ -533,8 +535,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         const parentSessionKind =
           metadata?.parentSessionKind ?? overlaidSession.parentSessionKind;
         const forkedFromSessionId =
-          metadata?.forkedFromSessionId ??
-          overlaidSession.forkedFromSessionId;
+          metadata?.forkedFromSessionId ?? overlaidSession.forkedFromSessionId;
         const initialPrompt =
           metadata?.initialPrompt ?? overlaidSession.fullTitle;
         const executor = metadata?.executor;

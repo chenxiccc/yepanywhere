@@ -103,9 +103,7 @@ function reportPublicShareStatusError(
   publicShareStatusSnapshotsBySource.set(sourceKey, {
     ...current,
     error:
-      error instanceof Error
-        ? error.message
-        : "Failed to load share status",
+      error instanceof Error ? error.message : "Failed to load share status",
   });
   emitPublicShareStatusSnapshotChange();
 }

@@ -4776,10 +4776,7 @@ export class Process {
   }
 
   private rescheduleIdleTimerForCurrentIdlePeriod(): void {
-    if (
-      this._state.type !== "idle" ||
-      !this.shouldScheduleIdleReapCheck()
-    ) {
+    if (this._state.type !== "idle" || !this.shouldScheduleIdleReapCheck()) {
       this.clearIdleTimer();
       return;
     }

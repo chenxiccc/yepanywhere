@@ -294,11 +294,7 @@ export function getSpeechInterimDisplayTranscript(
   ) {
     return trimmedTranscript;
   }
-  return smoothPausedSpeechCapitalization(
-    base,
-    trimmedTranscript,
-    range.end,
-  );
+  return smoothPausedSpeechCapitalization(base, trimmedTranscript, range.end);
 }
 
 /**
@@ -324,11 +320,8 @@ export function getSpeechVisibleDraftText(
         range.end,
         range.replaceEnd ?? range.end,
       ).text
-    : getSpeechTranscriptInsertionParts(
-        base,
-        displayTranscript,
-        base.length,
-      ).text;
+    : getSpeechTranscriptInsertionParts(base, displayTranscript, base.length)
+        .text;
 }
 
 function normalizeSpeechTranscriptForReplacementContext(
@@ -602,9 +595,7 @@ export function replaceSpeechTranscriptInRange(
     Math.min(replacementEnd, base.length),
   );
   const normalizedTranscript =
-    range.chunks.length > 0 &&
-    previousChars === 0 &&
-    !replacingExplicitRange
+    range.chunks.length > 0 && previousChars === 0 && !replacingExplicitRange
       ? smoothPausedSpeechCapitalization(base, transcript, replacementStart)
       : transcript;
   const insertion = replacingExplicitRange

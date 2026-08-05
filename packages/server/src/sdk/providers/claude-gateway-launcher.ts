@@ -162,10 +162,7 @@ function spawnGatewayCommand(command: string): ChildProcess {
   });
 }
 
-function signalGatewayChild(
-  child: ChildProcess,
-  signal: NodeJS.Signals,
-): void {
+function signalGatewayChild(child: ChildProcess, signal: NodeJS.Signals): void {
   try {
     if (process.platform !== "win32" && child.pid) {
       process.kill(-child.pid, signal);
@@ -224,8 +221,7 @@ export class ClaudeGatewayLauncher {
     this.now = options.now ?? Date.now;
     this.readinessTimeoutMs =
       options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
-    this.readinessPollMs =
-      options.readinessPollMs ?? DEFAULT_READINESS_POLL_MS;
+    this.readinessPollMs = options.readinessPollMs ?? DEFAULT_READINESS_POLL_MS;
     this.stopGraceMs = options.stopGraceMs ?? DEFAULT_STOP_GRACE_MS;
   }
 

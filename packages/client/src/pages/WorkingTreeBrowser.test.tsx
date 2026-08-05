@@ -84,12 +84,8 @@ describe("WorkingTreeBrowser", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      await screen.findByText("gitStatusWorkingTreeClean"),
-    ).toBeDefined();
-    expect(
-      screen.getByText("sourceWorkingTreeCleanDescription"),
-    ).toBeDefined();
+    expect(await screen.findByText("gitStatusWorkingTreeClean")).toBeDefined();
+    expect(screen.getByText("sourceWorkingTreeCleanDescription")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "sourceCommitHistory" }),
     ).toBeDefined();
@@ -99,9 +95,7 @@ describe("WorkingTreeBrowser", () => {
       screen.getByRole("button", { name: "sourceCommitHistory" }),
     );
     expect(onBrowseHistory).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
-      expect(listReviewComments).toHaveBeenCalledWith("p1"),
-    );
+    await waitFor(() => expect(listReviewComments).toHaveBeenCalledWith("p1"));
     expect(getGitDiff).not.toHaveBeenCalled();
   });
 
@@ -167,9 +161,7 @@ describe("WorkingTreeBrowser", () => {
 
     expect(await screen.findByText("sourceWorktreePartial")).toBeDefined();
     expect(
-      screen
-        .getByText("sourceWorktreePartial")
-        .getAttribute("data-tooltip"),
+      screen.getByText("sourceWorktreePartial").getAttribute("data-tooltip"),
     ).toBe("sourceWorktreePartialDescription");
     expect(screen.queryByText("sourceWorktreeUnstaged")).toBeNull();
     expect(screen.queryByText("sourceWorktreeUntracked")).toBeNull();
@@ -193,9 +185,7 @@ describe("WorkingTreeBrowser", () => {
 
     // The diff HTML and its delegated comment listener mount asynchronously.
     await waitFor(() =>
-      expect(
-        document.querySelector('[data-diff-line="0"]'),
-      ).not.toBeNull(),
+      expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
     );
     fireEvent.click(document.querySelector('[data-diff-line="0"]')!);
     fireEvent.change(await screen.findByRole("textbox"), {
@@ -270,9 +260,7 @@ describe("WorkingTreeBrowser", () => {
     const link = await screen.findByRole("link", {
       name: "sourceOpenLastEditorSession",
     });
-    expect(link.getAttribute("href")).toBe(
-      "/projects/p1/sessions/session-1",
-    );
+    expect(link.getAttribute("href")).toBe("/projects/p1/sessions/session-1");
   });
 
   it("keeps last-editor links when an untracked folder expands", async () => {
@@ -515,9 +503,9 @@ describe("WorkingTreeBrowser", () => {
       ".commit-file-item",
     );
     if (!stagedRow) throw new Error("Staged file row is missing");
-    expect(
-      stagedRow.querySelector(".worktree-file-state")?.textContent,
-    ).toBe("✓");
+    expect(stagedRow.querySelector(".worktree-file-state")?.textContent).toBe(
+      "✓",
+    );
     expect(
       stagedRow
         .querySelector(".worktree-file-state")
@@ -584,12 +572,8 @@ describe("WorkingTreeBrowser", () => {
     );
 
     await screen.findByText("src/keep.ts");
-    await waitFor(() =>
-      expect(listReviewComments).toHaveBeenCalledWith("p1"),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "sourceFilterFiles" }),
-    );
+    await waitFor(() => expect(listReviewComments).toHaveBeenCalledWith("p1"));
+    fireEvent.click(screen.getByRole("button", { name: "sourceFilterFiles" }));
     const input = screen.getByPlaceholderText("sourceFilterFiles");
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "keep" } });
@@ -806,76 +790,76 @@ describe("WorkingTreeBrowser", () => {
     });
   });
 
-  it.each([
-    false,
-    true,
-  ])("opens the exact Edit-linked dirty file (wide=%s)", async (isWideScreen) => {
-    getGitDiff.mockResolvedValue({
-      diffHtml:
-        `<pre class="shiki"><code>` +
-        `<span class="line line-inserted" data-diff-line="0">+target</span>` +
-        `</code></pre>`,
-      structuredPatch: [
-        {
-          oldStart: 1,
-          oldLines: 0,
-          newStart: 1,
-          newLines: 1,
-          lines: ["+target"],
-        },
-      ],
-    });
-    listReviewComments.mockResolvedValue({
-      comments: [],
-      batches: [],
-      pendingCount: 0,
-    });
+  it.each([false, true])(
+    "opens the exact Edit-linked dirty file (wide=%s)",
+    async (isWideScreen) => {
+      getGitDiff.mockResolvedValue({
+        diffHtml:
+          `<pre class="shiki"><code>` +
+          `<span class="line line-inserted" data-diff-line="0">+target</span>` +
+          `</code></pre>`,
+        structuredPatch: [
+          {
+            oldStart: 1,
+            oldLines: 0,
+            newStart: 1,
+            newLines: 1,
+            lines: ["+target"],
+          },
+        ],
+      });
+      listReviewComments.mockResolvedValue({
+        comments: [],
+        batches: [],
+        pendingCount: 0,
+      });
 
-    render(
-      <MemoryRouter>
-        <WorkingTreeBrowser
-          projectId="p1"
-          status={{
-            isGitRepo: true,
-            branch: "main",
-            upstream: "origin/main",
-            ahead: 0,
-            behind: 0,
-            isClean: false,
-            files: [
-              {
-                path: "src/other.ts",
-                status: "M",
-                staged: false,
-                linesAdded: 1,
-                linesDeleted: 0,
-              },
-              {
-                path: "src/target.ts",
-                status: "M",
-                staged: false,
-                linesAdded: 1,
-                linesDeleted: 0,
-              },
-            ],
-            recentCommits: [],
-          }}
-          isWideScreen={isWideScreen}
-          initialWorkingTreePath="src/target.ts"
-          t={t}
-        />
-      </MemoryRouter>,
-    );
+      render(
+        <MemoryRouter>
+          <WorkingTreeBrowser
+            projectId="p1"
+            status={{
+              isGitRepo: true,
+              branch: "main",
+              upstream: "origin/main",
+              ahead: 0,
+              behind: 0,
+              isClean: false,
+              files: [
+                {
+                  path: "src/other.ts",
+                  status: "M",
+                  staged: false,
+                  linesAdded: 1,
+                  linesDeleted: 0,
+                },
+                {
+                  path: "src/target.ts",
+                  status: "M",
+                  staged: false,
+                  linesAdded: 1,
+                  linesDeleted: 0,
+                },
+              ],
+              recentCommits: [],
+            }}
+            isWideScreen={isWideScreen}
+            initialWorkingTreePath="src/target.ts"
+            t={t}
+          />
+        </MemoryRouter>,
+      );
 
-    await waitFor(() =>
-      expect(getGitDiff).toHaveBeenCalledWith(
-        "p1",
-        expect.objectContaining({
-          path: "src/target.ts",
-          againstHead: true,
-        }),
-      ),
-    );
-    expect(document.querySelector(".modal") !== null).toBe(!isWideScreen);
-  });
+      await waitFor(() =>
+        expect(getGitDiff).toHaveBeenCalledWith(
+          "p1",
+          expect.objectContaining({
+            path: "src/target.ts",
+            againstHead: true,
+          }),
+        ),
+      );
+      expect(document.querySelector(".modal") !== null).toBe(!isWideScreen);
+    },
+  );
 });

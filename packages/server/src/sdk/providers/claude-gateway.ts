@@ -115,7 +115,8 @@ const CLAUDE_GATEWAY_EFFORT_LEVELS = new Set<EffortLevel>([
 function isGatewayModelVisible(item: GatewayModel, id: string): boolean {
   if (item.model_picker_enabled === false) return false;
   if (item.policy?.state && item.policy.state !== "enabled") return false;
-  if (item.capabilities?.type && item.capabilities.type !== "chat") return false;
+  if (item.capabilities?.type && item.capabilities.type !== "chat")
+    return false;
   if (id.startsWith("text-embedding-") || id === "trajectory-compaction") {
     return false;
   }

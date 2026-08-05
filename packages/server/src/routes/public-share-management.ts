@@ -77,7 +77,10 @@ export function createPublicShareManagementRoutes(
     const cursor = decodeCursor(c.req.query("cursor"));
     const limit = parsePageSize(c.req.query("limit"));
     if (cursor === null || limit === null) {
-      return c.json({ error: "Invalid public share page cursor or limit" }, 400);
+      return c.json(
+        { error: "Invalid public share page cursor or limit" },
+        400,
+      );
     }
     const projectId = c.req.query("projectId");
     if (projectId && !isUrlProjectId(projectId)) {
@@ -108,25 +111,22 @@ export function createPublicShareManagementRoutes(
         )
       : 0;
     const page = start < 0 ? [] : records.slice(start, start + limit);
-    const items: PublicShareManagementItem[] = page
-      .map((record) => ({
-        shareId: record.shareId,
-        url: record.publicUrl,
-        mode: record.mode,
-        title: record.title,
-        projectName: record.source.projectName ?? null,
-        sessionId: record.source.sessionId,
-        provider: record.source.provider,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        capturedAt: record.capturedAt,
-        linkedFileMode: record.linkedFileMode,
-        snapshotBytes: record.snapshotBytes,
-        activeViewerCount:
-          deps.publicShareService.getActiveViewerCount(record),
-        hasViewerSnapshots:
-          Object.keys(record.viewerSnapshots ?? {}).length > 0,
-      }));
+    const items: PublicShareManagementItem[] = page.map((record) => ({
+      shareId: record.shareId,
+      url: record.publicUrl,
+      mode: record.mode,
+      title: record.title,
+      projectName: record.source.projectName ?? null,
+      sessionId: record.source.sessionId,
+      provider: record.source.provider,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      capturedAt: record.capturedAt,
+      linkedFileMode: record.linkedFileMode,
+      snapshotBytes: record.snapshotBytes,
+      activeViewerCount: deps.publicShareService.getActiveViewerCount(record),
+      hasViewerSnapshots: Object.keys(record.viewerSnapshots ?? {}).length > 0,
+    }));
     const last = page.at(-1);
     const hasMore = start >= 0 && start + page.length < records.length;
     return c.json({
@@ -164,7 +164,10 @@ export function createPublicShareManagementRoutes(
       return c.json({ error: "Invalid JSON body" }, 400);
     }
     if (body.confirmation !== REVOKE_ALL_CONFIRMATION) {
-      return c.json({ error: "Explicit revoke-all confirmation is required" }, 400);
+      return c.json(
+        { error: "Explicit revoke-all confirmation is required" },
+        400,
+      );
     }
     const revokedCount = await deps.publicShareService.revokeAllShares();
     return c.json({

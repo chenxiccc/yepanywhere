@@ -23,13 +23,10 @@ function createProcRoot() {
   return procRoot;
 }
 
-function writeProcess(procRoot, {
-  pid,
-  startTime,
-  instanceId,
-  bindKey,
-  sourceRoot,
-}) {
+function writeProcess(
+  procRoot,
+  { pid, startTime, instanceId, bindKey, sourceRoot },
+) {
   const processDir = join(procRoot, String(pid));
   mkdirSync(processDir);
   const environment = createDevInstanceProvenance({

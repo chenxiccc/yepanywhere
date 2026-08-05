@@ -328,9 +328,9 @@ describe("InboxContent", () => {
     renderInbox(<InboxContent />);
 
     expect(
-      screen.getByRole("button", { name: "inboxRefresh" }).getAttribute(
-        "title",
-      ),
+      screen
+        .getByRole("button", { name: "inboxRefresh" })
+        .getAttribute("title"),
     ).toBeNull();
   });
 

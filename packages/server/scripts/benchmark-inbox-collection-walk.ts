@@ -132,8 +132,16 @@ async function main(): Promise<void> {
     `${PROJECTS} projects x ${SESSIONS_PER_PROJECT} sessions, ` +
       `${TABS} tabs x ${ROW_EVENTS + 1} reads = ${reads}`,
   );
-  report("project listings", independent.projectListings, shared.projectListings);
-  report("session listings", independent.sessionListings, shared.sessionListings);
+  report(
+    "project listings",
+    independent.projectListings,
+    shared.projectListings,
+  );
+  report(
+    "session listings",
+    independent.sessionListings,
+    shared.sessionListings,
+  );
   console.log(
     `elapsed: ${independent.ms.toFixed(2)} ms -> ${shared.ms.toFixed(2)} ms ` +
       `(${(independent.ms / shared.ms).toFixed(2)}x)`,

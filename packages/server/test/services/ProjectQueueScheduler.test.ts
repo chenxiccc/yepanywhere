@@ -457,7 +457,9 @@ describe("ProjectQueueScheduler", () => {
       message: { text: "blocked then retry" },
     });
     await waitFor(async () => {
-      await expect(scheduler.getProjectStatus(projectId)).resolves.toMatchObject({
+      await expect(
+        scheduler.getProjectStatus(projectId),
+      ).resolves.toMatchObject({
         state: "empty",
         itemCount: 0,
         inFlight: false,

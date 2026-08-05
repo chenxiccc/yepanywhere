@@ -238,9 +238,7 @@ export class RelayProtocol {
    * Source-owned connections inject their transport manager here. Connections
    * without an owning manager run uploads without a health-check guard.
    */
-  setBeginCriticalOperation(
-    cb: BeginCriticalOperation | undefined,
-  ): void {
+  setBeginCriticalOperation(cb: BeginCriticalOperation | undefined): void {
     this.options.beginCriticalOperation = cb;
   }
 

@@ -296,10 +296,7 @@ describe("Files API", () => {
     });
 
     it("sniffs unknown-extension UTF-8 files as displayable text", async () => {
-      await writeFile(
-        join(projectPath, "job.output"),
-        "alpha\nbeta\ngamma\n",
-      );
+      await writeFile(join(projectPath, "job.output"), "alpha\nbeta\ngamma\n");
       const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),

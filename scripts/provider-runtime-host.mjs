@@ -54,7 +54,10 @@ function readProcessStartTime(pid) {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const commandEnd = stat.lastIndexOf(")");
     if (commandEnd < 0) return null;
-    const fields = stat.slice(commandEnd + 1).trim().split(/\s+/);
+    const fields = stat
+      .slice(commandEnd + 1)
+      .trim()
+      .split(/\s+/);
     return fields[19] ?? null;
   } catch (error) {
     if (error?.code === "ENOENT" || error?.code === "ESRCH") return null;
@@ -269,7 +272,9 @@ export class ProviderRuntimeHost {
         const generation = this.requireString(request.generation, "generation");
         const current = this.registeredServers.get(generation);
         if (current && current !== socket) {
-          throw new Error(`Server generation ${generation} is already registered`);
+          throw new Error(
+            `Server generation ${generation} is already registered`,
+          );
         }
         return { generation, protocolVersion: HOST_PROTOCOL_VERSION };
       }
@@ -298,7 +303,9 @@ export class ProviderRuntimeHost {
         );
         return {};
       default:
-        throw new Error(`Unknown provider runtime host operation: ${request.op}`);
+        throw new Error(
+          `Unknown provider runtime host operation: ${request.op}`,
+        );
     }
   }
 
@@ -333,7 +340,10 @@ export class ProviderRuntimeHost {
     if (!this.registeredServers.has(generation)) {
       throw new Error(`Server generation ${generation} is not registered`);
     }
-    const providerName = this.requireString(request.providerName, "providerName");
+    const providerName = this.requireString(
+      request.providerName,
+      "providerName",
+    );
     const projectPath = this.requireString(request.projectPath, "projectPath");
     const sessionId =
       typeof request.sessionId === "string" && request.sessionId
@@ -343,14 +353,18 @@ export class ProviderRuntimeHost {
       const existing = this.runtimeForSession(sessionId);
       if (existing) {
         if (this.isRuntimeClaimable(existing)) {
-          throw new Error(`Provider session ${sessionId} already has a runtime`);
+          throw new Error(
+            `Provider session ${sessionId} already has a runtime`,
+          );
         }
         await this.terminateRuntime(
           existing.runtimeId,
           "replace stale provider session runtime",
         );
         if (this.runtimeForSession(sessionId)) {
-          throw new Error(`Provider session ${sessionId} already has a runtime`);
+          throw new Error(
+            `Provider session ${sessionId} already has a runtime`,
+          );
         }
       }
     }
@@ -425,13 +439,14 @@ export class ProviderRuntimeHost {
         process.stderr.write(
           `[ProviderRuntimeHost] Worker ${runtimeId} sent an invalid lifecycle update: ${errorMessage(error)}\n`,
         );
-        void this.terminateRuntime(runtimeId, "invalid worker lifecycle update").catch(
-          (terminationError) => {
-            process.stderr.write(
-              `[ProviderRuntimeHost] Failed to reap ${runtimeId}: ${errorMessage(terminationError)}\n`,
-            );
-          },
-        );
+        void this.terminateRuntime(
+          runtimeId,
+          "invalid worker lifecycle update",
+        ).catch((terminationError) => {
+          process.stderr.write(
+            `[ProviderRuntimeHost] Failed to reap ${runtimeId}: ${errorMessage(terminationError)}\n`,
+          );
+        });
       });
     });
     child.on("error", (error) => {
@@ -465,7 +480,8 @@ export class ProviderRuntimeHost {
           ),
         );
       const timeout = setTimeout(
-        () => finish(() => reject(new Error("Provider worker startup timed out"))),
+        () =>
+          finish(() => reject(new Error("Provider worker startup timed out"))),
         WORKER_READY_TIMEOUT_MS,
       );
       child.on("message", onMessage);
@@ -483,7 +499,10 @@ export class ProviderRuntimeHost {
     try {
       const readyMessage = await ready;
       entry.workerMetadata = readyMessage.metadata;
-      if (Number.isInteger(readyMessage.providerPid) && readyMessage.providerPid > 1) {
+      if (
+        Number.isInteger(readyMessage.providerPid) &&
+        readyMessage.providerPid > 1
+      ) {
         this.rememberProviderProcessGroup(entry, readyMessage.providerPid);
       }
       this.armAttachDeadline(
@@ -604,7 +623,10 @@ export class ProviderRuntimeHost {
       this.clearAttachDeadline(entry);
     } else {
       entry.state = "starting";
-      this.armAttachDeadline(entry, "provider runtime controller did not attach");
+      this.armAttachDeadline(
+        entry,
+        "provider runtime controller did not attach",
+      );
     }
     return publicRuntimeEntry(entry);
   }
@@ -645,7 +667,9 @@ export class ProviderRuntimeHost {
       !this.isRuntimeAlive(entry) ||
       entry.attachedServerGeneration !== generation
     ) {
-      throw new Error(`Provider runtime ${runtimeId} is not claimed by ${generation}`);
+      throw new Error(
+        `Provider runtime ${runtimeId} is not claimed by ${generation}`,
+      );
     }
     entry.controllerAttached = true;
     if (entry.sessionId) {

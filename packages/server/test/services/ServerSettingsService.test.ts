@@ -336,31 +336,31 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("claudeAdditionalModels")).toBeUndefined();
   });
 
-  it.each([
-    "heartbeat",
-    "yepanywhere heartbeat",
-  ])("migrates legacy built-in heartbeat turn text default %j", async (heartbeatTurnText) => {
-    await fs.writeFile(
-      path.join(testDir, "server-settings.json"),
-      JSON.stringify({
-        version: 1,
-        settings: {
-          heartbeatTurnText,
-        },
-      }),
-      "utf-8",
-    );
-    const service = new ServerSettingsService({ dataDir: testDir });
+  it.each(["heartbeat", "yepanywhere heartbeat"])(
+    "migrates legacy built-in heartbeat turn text default %j",
+    async (heartbeatTurnText) => {
+      await fs.writeFile(
+        path.join(testDir, "server-settings.json"),
+        JSON.stringify({
+          version: 1,
+          settings: {
+            heartbeatTurnText,
+          },
+        }),
+        "utf-8",
+      );
+      const service = new ServerSettingsService({ dataDir: testDir });
 
-    await service.initialize();
+      await service.initialize();
 
-    expect(service.getSetting("heartbeatTurnText")).toBe("continue");
-    const persisted = JSON.parse(
-      await fs.readFile(path.join(testDir, "server-settings.json"), "utf-8"),
-    ) as { settings: { heartbeatTurnText?: string }; version: number };
-    expect(persisted.version).toBe(2);
-    expect(persisted.settings.heartbeatTurnText).toBe("continue");
-  });
+      expect(service.getSetting("heartbeatTurnText")).toBe("continue");
+      const persisted = JSON.parse(
+        await fs.readFile(path.join(testDir, "server-settings.json"), "utf-8"),
+      ) as { settings: { heartbeatTurnText?: string }; version: number };
+      expect(persisted.version).toBe(2);
+      expect(persisted.settings.heartbeatTurnText).toBe("continue");
+    },
+  );
 
   it("preserves custom heartbeat turn text", async () => {
     await fs.writeFile(

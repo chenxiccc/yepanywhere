@@ -2821,7 +2821,9 @@ export class CodexProvider implements AgentProvider {
     const structuredSkills: UserInput[] = [];
     const seenPaths = new Set<string>();
     for (const match of canonical.matches) {
-      const skill = skillByName.get(canonicalInvocationName(match.command.name));
+      const skill = skillByName.get(
+        canonicalInvocationName(match.command.name),
+      );
       if (!skill || seenPaths.has(skill.path)) continue;
       seenPaths.add(skill.path);
       structuredSkills.push({
@@ -4117,9 +4119,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "turn/plan/updated": {
-        const params = asCodexTurnPlanUpdatedNotification(
-          notification.params,
-        );
+        const params = asCodexTurnPlanUpdatedNotification(notification.params);
         if (!params) return [];
 
         const sequence =
@@ -5523,9 +5523,7 @@ export class CodexProvider implements AgentProvider {
                   {
                     type: "tool_result",
                     tool_use_id: item.id,
-                    ...(item.status !== "completed"
-                      ? { is_error: true }
-                      : {}),
+                    ...(item.status !== "completed" ? { is_error: true } : {}),
                     content:
                       item.status === "completed"
                         ? `File changes applied:\n${changesSummary}`

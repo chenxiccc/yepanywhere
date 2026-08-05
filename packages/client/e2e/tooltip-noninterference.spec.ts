@@ -124,9 +124,7 @@ for (const viewport of [
     await page.mouse.move(4, 4);
     const small = page.locator("#small-trigger");
     await small.hover({ position: { x: 12, y: 12 } });
-    await expect(tooltip).toHaveText(
-      "A tooltip covering an unrelated control",
-    );
+    await expect(tooltip).toHaveText("A tooltip covering an unrelated control");
     const covered = page.locator("#covered-control");
     const coveredBox = await covered.boundingBox();
     const coveredTooltipBox = await tooltip.boundingBox();

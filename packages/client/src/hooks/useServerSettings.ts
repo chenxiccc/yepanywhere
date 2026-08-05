@@ -153,7 +153,11 @@ export function useServerSettings(): UseServerSettingsResult {
   const snapshot = useServerSettingsSnapshot(sourceKey);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const { loading, error: queryError, refetch } = useRetainedClientQuery({
+  const {
+    loading,
+    error: queryError,
+    refetch,
+  } = useRetainedClientQuery({
     sourceKey,
     key: SERVER_SETTINGS_QUERY_KEY,
     bootstrapTier: "route",

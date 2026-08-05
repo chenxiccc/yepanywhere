@@ -399,7 +399,9 @@ describe("RemoteAccessSettings host identity", () => {
     render(<RemoteAccessSettings />);
 
     fireEvent.click(
-      screen.getByText("advancedPublicShareTitle").closest(".settings-item")!
+      screen
+        .getByText("advancedPublicShareTitle")
+        .closest(".settings-item")!
         .querySelector('input[type="checkbox"]')!,
     );
 

@@ -346,9 +346,9 @@ describe("SessionListItem links", () => {
       </I18nProvider>,
     );
 
-    const title = screen.getByRole("link", { name: "Active row" }).querySelector(
-      "strong",
-    );
+    const title = screen
+      .getByRole("link", { name: "Active row" })
+      .querySelector("strong");
     expect(title?.firstElementChild?.firstElementChild).not.toBeNull();
   });
 
@@ -369,9 +369,9 @@ describe("SessionListItem links", () => {
       </I18nProvider>,
     );
 
-    const title = screen.getByRole("link", { name: "Active row" }).querySelector(
-      "strong",
-    );
+    const title = screen
+      .getByRole("link", { name: "Active row" })
+      .querySelector("strong");
     expect(title?.children).toHaveLength(1);
   });
 

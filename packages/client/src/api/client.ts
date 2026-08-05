@@ -1328,10 +1328,10 @@ export const api = {
       permissionMode: PermissionMode;
       appliedPermissionMode?: PermissionMode;
       modeVersion: number;
-    }>(
-      `/sessions/${sessionId}/mode`,
-      { method: "PUT", body: JSON.stringify({ mode }) },
-    ),
+    }>(`/sessions/${sessionId}/mode`, {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    }),
 
   getProcessInfo: (sessionId: string) =>
     fetchJSON<{
@@ -1564,13 +1564,15 @@ export const api = {
       `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}`,
     ),
 
-  getPublicShares: (options: {
-    cursor?: string;
-    limit?: number;
-    projectId?: string;
-    sessionId?: string;
-    mode?: "frozen" | "live";
-  } = {}) => {
+  getPublicShares: (
+    options: {
+      cursor?: string;
+      limit?: number;
+      projectId?: string;
+      sessionId?: string;
+      mode?: "frozen" | "live";
+    } = {},
+  ) => {
     const params = new URLSearchParams();
     if (options.cursor) params.set("cursor", options.cursor);
     if (options.limit) params.set("limit", String(options.limit));

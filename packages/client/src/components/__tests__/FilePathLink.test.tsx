@@ -234,9 +234,7 @@ describe("FilePathLink", () => {
     const copyButton = screen.getByRole("button", { name: "Copy path" });
     fireEvent.click(copyButton);
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Copied path" }),
-      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Copied path" })).toBeDefined();
     });
 
     expect(writeText).toHaveBeenCalledWith("docs/guide.md");
@@ -258,9 +256,7 @@ describe("FilePathLink", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Copied path" }),
-      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Copied path" })).toBeDefined();
     });
 
     expect(writeText).toHaveBeenCalledWith("ui-report/README.md");
@@ -281,9 +277,7 @@ describe("FilePathLink", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Copied path" }),
-      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Copied path" })).toBeDefined();
     });
 
     expect(writeText).toHaveBeenCalledWith("/home/graehl/.claude/CLAUDE.md");

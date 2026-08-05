@@ -1209,9 +1209,7 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").classList).toContain(styles.glossary);
     expect(screen.getByRole("tooltip").classList).toContain(styles.enlarged);
     expect(writeText).toHaveBeenCalledWith("oracle — Best published system.");
-    expect(term.getAttribute("title")).toBe(
-      "oracle — Best published system.",
-    );
+    expect(term.getAttribute("title")).toBe("oracle — Best published system.");
     expect(term.getAttribute("data-tooltip")).toBeNull();
   });
 

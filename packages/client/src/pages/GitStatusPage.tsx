@@ -78,11 +78,7 @@ interface SourceControlRouteState {
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
 
 /** Source-control modes with a built body (topic: source-review-to-session). */
-const SOURCE_TABS: readonly SourceTab[] = [
-  "changes",
-  "files",
-  "comments",
-];
+const SOURCE_TABS: readonly SourceTab[] = ["changes", "files", "comments"];
 const SOURCE_TABS_WITH_REVIEWS: readonly SourceTab[] = [
   ...SOURCE_TABS,
   "reviews",
@@ -107,7 +103,7 @@ function useSourceTab(reviewsEnabled = false): {
         ? "comments"
         : tabParam === "reviews" && reviewsEnabled
           ? "reviews"
-        : "changes";
+          : "changes";
   const setTab = useCallback(
     (next: SourceTab) => {
       setSearchParams(
@@ -288,10 +284,7 @@ function SourceActionButton({
       onClick={onClick}
       disabled={disabled}
     >
-      <span
-        className="git-status-action-indicator"
-        aria-hidden="true"
-      >
+      <span className="git-status-action-indicator" aria-hidden="true">
         {running ? null : showOutcome ? (
           tone === "success" ? (
             "✓"
@@ -307,11 +300,7 @@ function SourceActionButton({
   );
 }
 
-function SourceActionGlyph({
-  action,
-}: {
-  action: "pull" | "push" | "check";
-}) {
+function SourceActionGlyph({ action }: { action: "pull" | "push" | "check" }) {
   if (action === "check") {
     return (
       <svg
@@ -415,10 +404,8 @@ export function GitStatusPage() {
   } = useVersion();
   const { settings: serverSettings } = useServerSettings();
   const reviewsEnabled =
-    serverHasCapability(
-      version,
-      GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
-    ) && (serverSettings?.sourceReviewSubmissionsEnabled ?? false);
+    serverHasCapability(version, GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY) &&
+    (serverSettings?.sourceReviewSubmissionsEnabled ?? false);
   const { setTab: setHeaderTab } = useSourceTab(reviewsEnabled);
   const supportsEnhancedGitStatus = serverHasCapability(
     version,
@@ -557,9 +544,7 @@ export function GitStatusPage() {
         isWideScreen={isWideScreen}
         isSidebarCollapsed={isSidebarCollapsed}
         actions={
-          supportsSourceReview &&
-          effectiveProjectId &&
-          gitStatus?.isGitRepo ? (
+          supportsSourceReview && effectiveProjectId && gitStatus?.isGitRepo ? (
             <SourceHeaderTabs
               status={gitStatus}
               pendingCount={reviewComments.pending.length}
@@ -590,7 +575,9 @@ export function GitStatusPage() {
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
           ) : gitStatus && effectiveProjectId && supportsSourceReview ? (
             <GlossaryProjectBoundary projectId={effectiveProjectId}>
-              <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
+              <SourceReviewDefaultSessionContext.Provider
+                value={defaultSession}
+              >
                 <GitStatusContent
                   key={`${sourceKey}:${effectiveProjectId}`}
                   status={gitStatus}
@@ -694,8 +681,7 @@ function GitStatusContent({
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [showProjectionNotice, setShowProjectionNotice] = useState(false);
   const projectionNoticeNeedsPortal = useMediaQuery("(max-width: 600px)");
-  const activeIgnoreWhitespace =
-    supportsProjections && ignoreWhitespace;
+  const activeIgnoreWhitespace = supportsProjections && ignoreWhitespace;
   useEffect(() => {
     if (!supportsProjections) setIgnoreWhitespace(false);
   }, [supportsProjections]);

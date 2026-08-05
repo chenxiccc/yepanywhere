@@ -272,7 +272,8 @@ export class ProjectQueueScheduler {
     options: PromoteNowOptions = {},
   ): Promise<ProjectQueuePromoteNowResult> {
     if (this.projectQueueService.isDispatchPaused()) {
-      const projectItems = this.projectQueueService.listProject(projectId).items;
+      const projectItems =
+        this.projectQueueService.listProject(projectId).items;
       const requestedItem = options.itemId
         ? projectItems.find((item) => item.id === options.itemId)
         : projectItems[0];
@@ -389,10 +390,13 @@ export class ProjectQueueScheduler {
     this.clearProjectTimer(projectId);
     const scheduledAtMs = Date.now();
     const eligibleAtMs = scheduledAtMs + Math.max(0, Math.round(delayMs));
-    const timer = setTimeout(() => {
-      this.timers.delete(projectId);
-      void this.runProject(projectId);
-    }, Math.max(0, Math.round(delayMs)));
+    const timer = setTimeout(
+      () => {
+        this.timers.delete(projectId);
+        void this.runProject(projectId);
+      },
+      Math.max(0, Math.round(delayMs)),
+    );
     timer.unref?.();
     this.timers.set(projectId, {
       timer,
@@ -417,7 +421,10 @@ export class ProjectQueueScheduler {
         this.options.blockedRetryMs ??
           Math.max(
             1_000,
-            Math.min(BLOCKED_RETRY_MS, this.getIdleGraceMs() || BLOCKED_RETRY_MS),
+            Math.min(
+              BLOCKED_RETRY_MS,
+              this.getIdleGraceMs() || BLOCKED_RETRY_MS,
+            ),
           ),
       ),
     );
@@ -460,7 +467,10 @@ export class ProjectQueueScheduler {
       return { promoted: false, reason: "paused" };
     }
     const projectItems = this.projectQueueService.listProject(projectId).items;
-    if (options.itemId && !projectItems.some((item) => item.id === options.itemId)) {
+    if (
+      options.itemId &&
+      !projectItems.some((item) => item.id === options.itemId)
+    ) {
       return { promoted: false, reason: "not-found", itemId: options.itemId };
     }
     if (!this.hasRunnableQueuedItem(projectId, options.itemId)) {

@@ -1,9 +1,5 @@
 import { randomBytes } from "node:crypto";
-import {
-  readFileSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 
 const MARKER_VERSION = "1";
 const MARKER_VERSION_ENV = "YEP_DEV_INSTANCE_VERSION";
@@ -75,7 +71,10 @@ function readStartTime(procRoot, pid) {
   const stat = readFileSync(`${procRoot}/${pid}/stat`, "utf8");
   const commandEnd = stat.lastIndexOf(")");
   if (commandEnd < 0) return null;
-  const fields = stat.slice(commandEnd + 1).trim().split(/\s+/);
+  const fields = stat
+    .slice(commandEnd + 1)
+    .trim()
+    .split(/\s+/);
   return fields[19] ?? null;
 }
 
@@ -173,12 +172,10 @@ async function waitForNoMatches(
   }
 }
 
-function signalMatches(matches, {
-  procRoot,
-  expectedUid,
-  signalProcess,
-  signal,
-}) {
+function signalMatches(
+  matches,
+  { procRoot, expectedUid, signalProcess, signal },
+) {
   let signaled = 0;
   for (const processInfo of matches) {
     if (!stillMatches(procRoot, processInfo, expectedUid)) continue;

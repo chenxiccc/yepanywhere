@@ -1,19 +1,11 @@
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MessageQueue,
   Process,
   createControllableIterator,
   createMockIterator,
 } from "./process.test-support.js";
-import type {
-  SDKMessage,
-  UrlProjectId,
-} from "./process.test-support.js";
+import type { SDKMessage, UrlProjectId } from "./process.test-support.js";
 import { SessionViewerPresence } from "../src/supervisor/SessionViewerPresence.js";
 
 describe("Process", () => {

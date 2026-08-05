@@ -4195,9 +4195,7 @@ function SessionPageContent({
       return;
     }
     setShareModalAnchor(null);
-    setShareModalView(
-      publicShareManagementAvailable ? "manage" : "session",
-    );
+    setShareModalView(publicShareManagementAvailable ? "manage" : "session");
     setShowShareModal(true);
   }, [publicShareManagementAvailable, showShareModal]);
 
@@ -4217,9 +4215,7 @@ function SessionPageContent({
         top: rect.top,
         width: rect.width,
       });
-      setShareModalView(
-        publicShareManagementAvailable ? "manage" : "session",
-      );
+      setShareModalView(publicShareManagementAvailable ? "manage" : "session");
       setShowShareModal(true);
     },
     [publicShareManagementAvailable, showShareModal],

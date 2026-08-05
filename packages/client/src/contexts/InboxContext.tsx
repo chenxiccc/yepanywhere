@@ -26,9 +26,7 @@ import {
   type ClientQueryRequestContext,
 } from "../lib/clientQueryController";
 import { isRemoteClient } from "../lib/connection";
-import {
-  useInboxResponseSnapshot,
-} from "../lib/clientSummaryStore";
+import { useInboxResponseSnapshot } from "../lib/clientSummaryStore";
 import { INBOX_TIERS, type InboxTier } from "../lib/inboxTiers";
 import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
 import { useCurrentSourceRuntime } from "./SourceRuntimeContext";

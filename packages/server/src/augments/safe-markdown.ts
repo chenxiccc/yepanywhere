@@ -876,14 +876,15 @@ function renderLinkOpen(
             projectOptions,
           )
         : null;
-      open = projectOptions && projectTarget
-        ? renderProjectFileLinkOpen(projectOptions, projectTarget, {
-            title: title ?? formatLocalPathReference(localPath),
-          })
-        : renderLocalFileLinkOpen(localPath, {
-            renderMarkdown: isMarkdownExtension(ext),
-            title: title ?? formatLocalPathReference(localPath),
-          });
+      open =
+        projectOptions && projectTarget
+          ? renderProjectFileLinkOpen(projectOptions, projectTarget, {
+              title: title ?? formatLocalPathReference(localPath),
+            })
+          : renderLocalFileLinkOpen(localPath, {
+              renderMarkdown: isMarkdownExtension(ext),
+              title: title ?? formatLocalPathReference(localPath),
+            });
       close = "</a>";
     }
   } else {

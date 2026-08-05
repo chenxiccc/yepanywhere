@@ -69,9 +69,7 @@ export const SERVER_CAPABILITIES = {
         "DELETE /api/public-shares/:shareId",
         "POST /api/public-shares/revoke-all",
       ],
-      routeModules: [
-        "packages/server/src/routes/public-share-management.ts",
-      ],
+      routeModules: ["packages/server/src/routes/public-share-management.ts"],
       responseFields: [
         "publicShares.items",
         "publicShares.nextCursor",

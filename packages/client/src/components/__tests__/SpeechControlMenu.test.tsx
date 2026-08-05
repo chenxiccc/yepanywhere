@@ -233,46 +233,46 @@ describe("SpeechControlMenu", () => {
     expect(screen.queryByLabelText("Browser xAI STT Key")).toBeNull();
   });
 
-  it.each([
-    "ya-parakeet",
-    "ya-nemo",
-  ] as const)("shows preset and free-text Parakeet model controls for %s", async (selectedMethod) => {
-    installMediaDevices([]);
-    const onBeforeCaptureChange = vi.fn();
+  it.each(["ya-parakeet", "ya-nemo"] as const)(
+    "shows preset and free-text Parakeet model controls for %s",
+    async (selectedMethod) => {
+      installMediaDevices([]);
+      const onBeforeCaptureChange = vi.fn();
 
-    renderSpeechControlMenu({
-      trigger: <button type="button">voice</button>,
-      showMethodSelector: false,
-      methodOptions: [],
-      selectedMethod,
-      onMethodChange: vi.fn(),
-      onBeforeCaptureChange,
-    });
+      renderSpeechControlMenu({
+        trigger: <button type="button">voice</button>,
+        showMethodSelector: false,
+        methodOptions: [],
+        selectedMethod,
+        onMethodChange: vi.fn(),
+        onBeforeCaptureChange,
+      });
 
-    await openSpeechMenu();
-    const preset = screen.getByLabelText("Parakeet model preset");
-    expect(screen.getByText("CTC 1.1B English lowercase")).toBeDefined();
-    fireEvent.change(preset, {
-      target: { value: "nvidia/parakeet-ctc-1.1b" },
-    });
+      await openSpeechMenu();
+      const preset = screen.getByLabelText("Parakeet model preset");
+      expect(screen.getByText("CTC 1.1B English lowercase")).toBeDefined();
+      fireEvent.change(preset, {
+        target: { value: "nvidia/parakeet-ctc-1.1b" },
+      });
 
-    const input = screen.getByLabelText("Parakeet model id");
-    fireEvent.change(input, {
-      target: { value: "nvidia/custom-parakeet" },
-    });
+      const input = screen.getByLabelText("Parakeet model id");
+      fireEvent.change(input, {
+        target: { value: "nvidia/custom-parakeet" },
+      });
 
-    expect(modelSettings.setParakeetSpeechModel).toHaveBeenCalledWith(
-      "nvidia/parakeet-ctc-1.1b",
-    );
-    expect(modelSettings.setParakeetSpeechModel).toHaveBeenCalledWith(
-      "nvidia/custom-parakeet",
-    );
-    expect(onBeforeCaptureChange).toHaveBeenCalledTimes(2);
-    expect(prewarmYaServerSpeechBackend).toHaveBeenCalledWith(
-      selectedMethod,
-      "nvidia/parakeet-ctc-1.1b",
-    );
-  });
+      expect(modelSettings.setParakeetSpeechModel).toHaveBeenCalledWith(
+        "nvidia/parakeet-ctc-1.1b",
+      );
+      expect(modelSettings.setParakeetSpeechModel).toHaveBeenCalledWith(
+        "nvidia/custom-parakeet",
+      );
+      expect(onBeforeCaptureChange).toHaveBeenCalledTimes(2);
+      expect(prewarmYaServerSpeechBackend).toHaveBeenCalledWith(
+        selectedMethod,
+        "nvidia/parakeet-ctc-1.1b",
+      );
+    },
+  );
 
   it("hides Parakeet presets that no enabled backend can run", async () => {
     installMediaDevices([]);

@@ -221,10 +221,7 @@ export function SettingsLayout() {
     ...getSettingsCategories((key) => t(key as never)),
   ];
   if (
-    !serverHasCapability(
-      versionInfo,
-      GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
-    )
+    !serverHasCapability(versionInfo, GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY)
   ) {
     const sourceControlIndex = categories.findIndex(
       (item) => item.id === "source-control",

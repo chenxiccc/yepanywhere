@@ -71,10 +71,7 @@ function saveToStorage(
 
   try {
     const previousValue = localStorage.getItem(key);
-    const nextValue = draftStorageValueForText(
-      value,
-      previousValue,
-    );
+    const nextValue = draftStorageValueForText(value, previousValue);
     if (nextValue) {
       localStorage.setItem(key, nextValue);
     } else {
@@ -105,10 +102,7 @@ function saveAttachmentStateToStorage(
 
   try {
     const previousValue = localStorage.getItem(key);
-    const nextValue = draftStorageValueForAttachments(
-      value,
-      previousValue,
-    );
+    const nextValue = draftStorageValueForAttachments(value, previousValue);
     if (nextValue) {
       localStorage.setItem(key, nextValue);
     } else {

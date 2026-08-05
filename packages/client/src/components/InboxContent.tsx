@@ -541,14 +541,7 @@ export function InboxContent({
       }
     }
     return names;
-  }, [
-    projects,
-    needsAttention,
-    active,
-    recentActivity,
-    unread8h,
-    unread24h,
-  ]);
+  }, [projects, needsAttention, active, recentActivity, unread8h, unread24h]);
   // Keep the queue feed mounted for known inbox projects. Badge rendering
   // reads from the shared client summary store selector below, while new-session
   // queue items render as pending Active rows because they have no session yet.

@@ -196,9 +196,9 @@ describe("AttachmentStagingService", () => {
     await expect(service.deleteDraftAttachment(batchId, ref.id)).resolves.toBe(
       false,
     );
-    await expect(service.listQueueAttachments("queue-item-a")).resolves.toEqual([
-      expect.objectContaining({ id: ref.id }),
-    ]);
+    await expect(service.listQueueAttachments("queue-item-a")).resolves.toEqual(
+      [expect.objectContaining({ id: ref.id })],
+    );
   });
 
   it("transfers draft attachments to queue ownership", async () => {
@@ -320,9 +320,9 @@ describe("AttachmentStagingService", () => {
       refs: [ref],
     });
 
-    await expect(
-      service.deleteQueueAttachments("queue-item-a"),
-    ).resolves.toBe(1);
+    await expect(service.deleteQueueAttachments("queue-item-a")).resolves.toBe(
+      1,
+    );
     await expect(service.listQueueAttachments("queue-item-a")).resolves.toEqual(
       [],
     );
@@ -392,9 +392,9 @@ describe("AttachmentStagingService", () => {
     await expect(reloaded.listDraftAttachments(stale.batchId)).resolves.toEqual(
       [],
     );
-    await expect(reloaded.listQueueAttachments("queue-item-a")).resolves.toEqual(
-      [expect.objectContaining({ id: queued.ref.id })],
-    );
+    await expect(
+      reloaded.listQueueAttachments("queue-item-a"),
+    ).resolves.toEqual([expect.objectContaining({ id: queued.ref.id })]);
   });
 
   it("removes missing index records on startup", async () => {

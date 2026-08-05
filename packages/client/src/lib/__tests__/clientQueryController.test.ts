@@ -241,8 +241,10 @@ describe("clientQueryController", () => {
     const secondRequest = deferred<string>();
     const fetcherA = vi.fn(() => firstRequest.promise);
     const fetcherB = vi.fn(() => secondRequest.promise);
-    const applied: Array<{ sourceKey: ClientSummarySourceKey; result: string }> =
-      [];
+    const applied: Array<{
+      sourceKey: ClientSummarySourceKey;
+      result: string;
+    }> = [];
 
     const first = ensureClientQuery({
       sourceKey: SOURCE_A,
