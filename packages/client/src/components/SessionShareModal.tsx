@@ -918,28 +918,11 @@ export function SessionShareModal({
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            className={styles.confirmRevokeBanner}
-            disabled={managementWorking !== null}
-            onClick={() =>
-              void (pendingCategoryRevoke
-                ? confirmManagedCategoryRevoke()
-                : prepareManagedCategoryRevoke({
-                    key: "scope:all",
-                    scope: "all",
-                    scopeLabel: t("publicShareManagementScopeAll"),
-                  }))
-            }
-            data-revoke-confirm-action
-          >
-            {pendingCategoryRevoke ? <ConfirmIcon /> : <RevokeIcon />}
-            <span>
-              {pendingCategoryRevoke
-                ? categoryConfirmLabel(pendingCategoryRevoke, true)
-                : t("publicShareManagementRevokeEverything")}
-            </span>
-          </button>
+          {pendingCategoryRevoke && (
+            <div className={styles.revokeConfirmationBanner} role="status">
+              {categoryConfirmLabel(pendingCategoryRevoke, true)}
+            </div>
+          )}
         </div>
       </Modal>
     );

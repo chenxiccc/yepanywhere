@@ -810,7 +810,6 @@
   "publicShareManagementRevokeScopeConfirmAgain": "Click again to revoke {count} share link(s) in {scope} ({viewers} active client(s)). Anyone using one will immediately lose access.",
   "publicShareManagementRevokeScopeEmpty": "No links to revoke in {scope}.",
   "publicShareManagementRevokeScopeRevoked": "Revoked {count} share link(s) in {scope}.",
-  "publicShareManagementRevokeEverything": "Review every public share link across all projects for revocation",
   "publicShareManagementRevokeOne": "Revoke",
   "publicShareManagementLoading": "Loading public shares…",
   "publicShareManagementLoadingExisting": "Loading existing share controls…",

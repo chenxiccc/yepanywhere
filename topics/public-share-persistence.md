@@ -241,13 +241,13 @@ two-step flow. A location `×` selects that location and both types; a type `×`
 keeps the selected location and isolates that type. The first click therefore
 makes the visible inventory exactly the set that a second click will revoke,
 then resolves every metadata page so its `×` can become a `✓`. The bottom red
-action is the all-projects/all-types shortcut while idle; when armed, that slot
-becomes a wordy confirmation stating the exact type/location intersection,
-link count, and active-client count. A second click on either confirmation
-control revokes. Any other in-pane control cancels the armed action;
-outside-click or clicking the broadcast icon dismisses the pane. Each listed
-share carries a compact right-side live/read-only glyph before its copy and
-smaller red revoke actions.
+banner is inert status, not another action: while armed it states the exact
+type/location intersection, link count, and active-client count. A second
+click on the same category control revokes; the All projects `×` is therefore
+the direct all-projects/all-types path. Any other in-pane control cancels the
+armed action; outside-click or clicking the broadcast icon dismisses the pane.
+Each listed share carries a compact right-side live/read-only glyph before its
+copy and smaller red revoke actions.
 
 Legacy migration is record-at-a-time and streaming. It must not `readFile`,
 `JSON.parse`, or `JSON.stringify` the complete aggregate or one huge embedded

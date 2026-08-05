@@ -493,11 +493,6 @@ describe("SessionShareModal", () => {
     expect(
       screen.getByRole("img", { name: "Read-only" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", {
-        name: "Review every public share link across all projects for revocation",
-      }),
-    ).toBeTruthy();
     expect(api.createPublicSessionShare).not.toHaveBeenCalled();
     expect(screen.getByText(/could not snapshot linked files/i)).toBeTruthy();
 
@@ -652,6 +647,13 @@ describe("SessionShareModal", () => {
         "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
       ),
     ).toBeTruthy();
+    expect(
+      screen
+        .getByText(
+          "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+        )
+        .closest("button"),
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Read-only" }).getAttribute(
         "aria-pressed",

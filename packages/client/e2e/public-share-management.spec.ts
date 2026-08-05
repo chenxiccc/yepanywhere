@@ -110,11 +110,6 @@ test("left and right click open the same share manager", async ({
       name: "Review all share links in This project for revocation",
     }),
   ).toBeEnabled();
-  await expect(
-    dialog.getByRole("button", {
-      name: "Review every public share link across all projects for revocation",
-    }),
-  ).toBeEnabled();
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
   await expect(dialog.getByRole("img", { name: "Live" })).toBeVisible();
   await expect(dialog.getByRole("img", { name: "Read-only" })).toBeVisible();
@@ -148,6 +143,11 @@ test("left and right click open the same share manager", async ({
       "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
     ),
   ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", {
+      name: /Click again to revoke 1 Read-only/,
+    }),
+  ).toHaveCount(0);
   if (captureDirectory) {
     mkdirSync(captureDirectory, { recursive: true });
     await page.screenshot({

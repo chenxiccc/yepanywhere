@@ -140,7 +140,7 @@
   transform: translateY(-1px);
 }
 
-.confirmRevokeBanner {
+.revokeConfirmationBanner {
   align-items: center;
   background: color-mix(in srgb, var(--error-color) 82%, #320d12);
   border: 1px solid color-mix(in srgb, var(--error-color) 78%, #fff);
@@ -149,24 +149,12 @@
     inset 0 1px rgba(255, 255, 255, 0.2),
     0 1px 3px rgba(0, 0, 0, 0.28);
   color: #fff;
-  cursor: pointer;
   display: flex;
   font-size: 0.72rem;
-  gap: 7px;
   line-height: 1.25;
   padding: 7px;
   text-align: left;
   width: 100%;
-}
-
-.confirmRevokeBanner svg {
-  flex: 0 0 18px;
-  height: 18px;
-  width: 18px;
-}
-
-.confirmRevokeBanner:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--error-color) 91%, #320d12);
 }
 
 .addButton:active:not(:disabled),
@@ -326,7 +314,6 @@
 }
 
 .addButton:disabled,
-.confirmRevokeBanner:disabled,
 .revokeTypeButton:disabled,
 .iconButton:disabled,
 .filterButton:disabled {
