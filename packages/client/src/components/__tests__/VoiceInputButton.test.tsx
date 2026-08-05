@@ -247,6 +247,26 @@ describe("VoiceInputButton", () => {
     expect(onPendingSpeechChange).toHaveBeenCalledWith("listening");
   });
 
+  it("does not clear the parent speech target while capture is starting", () => {
+    speechState.status = "starting";
+    const onPendingSpeechChange = vi.fn();
+    const props = {
+      onTranscript: vi.fn(),
+      onInterimTranscript: vi.fn(),
+      onPendingSpeechChange,
+      speechMethod: "browser-native",
+    };
+
+    const { rerender } = render(<VoiceInputButton {...props} />);
+    expect(onPendingSpeechChange).not.toHaveBeenCalled();
+
+    speechState.status = "listening";
+    speechState.isListening = true;
+    rerender(<VoiceInputButton {...props} />);
+    expect(onPendingSpeechChange).toHaveBeenCalledOnce();
+    expect(onPendingSpeechChange).toHaveBeenLastCalledWith("listening");
+  });
+
   it("suppresses redundant listening text when a live waveform is available", () => {
     speechState.status = "listening";
     speechState.isListening = true;

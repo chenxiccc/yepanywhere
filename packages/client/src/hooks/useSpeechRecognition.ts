@@ -74,6 +74,7 @@ export interface UseSpeechRecognitionReturn {
   /** Abandon an in-flight post-capture transcription; late result is discarded. */
   cancelProcessing: () => void;
   prewarm: () => void;
+  beginInsertionBoundary: () => void;
   error: string | null;
 }
 
@@ -329,6 +330,10 @@ export function useSpeechRecognition(
     providerRef.current?.prewarm?.();
   }, []);
 
+  const beginInsertionBoundary = useCallback(() => {
+    providerRef.current?.beginInsertionBoundary?.();
+  }, []);
+
   return {
     isSupported: providerRef.current?.isSupported ?? false,
     isListening: state.isListening,
@@ -339,6 +344,7 @@ export function useSpeechRecognition(
     toggleListening,
     cancelProcessing,
     prewarm,
+    beginInsertionBoundary,
     error: state.error,
   };
 }

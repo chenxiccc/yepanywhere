@@ -104,6 +104,7 @@ vi.mock("../VoiceInputButton", () => ({
         toggle: mockVoiceToggle,
         cancelProcessing: mockVoiceCancelProcessing,
         prewarm: mockVoicePrewarm,
+        beginInsertionBoundary: vi.fn(),
         isListening: false,
         isAvailable: true,
       }),

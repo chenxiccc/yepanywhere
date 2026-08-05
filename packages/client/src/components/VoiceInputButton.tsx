@@ -87,6 +87,8 @@ export interface VoiceInputButtonRef {
   cancelProcessing: () => void;
   /** Speculatively warm capture resources before the first click. */
   prewarm: () => void;
+  /** Keep cumulative provider finals after a newly selected insertion target. */
+  beginInsertionBoundary: () => void;
   /** Keep listening briefly after a speech-triggered Smart Turn send. */
   continueAfterSpeechSend: () => void;
   /** Whether currently listening */
@@ -256,6 +258,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     startListening,
     cancelProcessing,
     prewarm,
+    beginInsertionBoundary,
     error,
     interimTranscript,
   } = useSpeechRecognition({
@@ -351,6 +354,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       toggle: toggleListening,
       cancelProcessing,
       prewarm,
+      beginInsertionBoundary,
       continueAfterSpeechSend: () => {
         if (!followUpEnabled) return;
         armSpeechFollowUp(
@@ -370,6 +374,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       followUpSnapshot.owner,
       isActive,
       cancelProcessing,
+      beginInsertionBoundary,
       endFollowUpListening,
       prewarm,
       stopListening,
@@ -452,6 +457,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
 
   useEffect(() => {
     const previousKind = previousPendingKindRef.current;
+    if (previousKind === pendingKind) return;
     const settlement =
       previousKind !== null && pendingKind === null
         ? status === "error" || error

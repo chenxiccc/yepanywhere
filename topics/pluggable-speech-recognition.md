@@ -113,11 +113,12 @@ streaming/confidence surface exists.
 - Client speech capture was refactored behind a `SpeechProvider` interface.
   `BrowserNativeProvider` owns the Web Speech state machine, explicit
   language setting, interim/final result handling, mobile cumulative-final
-  deduplication, and auto-restart behavior. Browser-native final-result indices
-  are also text-ownership boundaries: a changed final emitted again at the
-  same index replaces the text YA committed for that index, while a higher
-  index remains a distinct result and appends normally. A recognizer restart
-  clears that index ownership before accepting results from the new run.
+  deduplication, and auto-restart behavior. Browser-native result handling uses
+  `resultIndex` as the changed-range boundary: immutable final entries before
+  it remain history, a changed final at the same index can replace text YA
+  committed for that index, and a higher index remains a distinct result. A
+  recognizer restart clears that index ownership before accepting results from
+  the new run.
 - `YaServerProvider` captures microphone audio with `MediaRecorder`, buffers a
   complete utterance, and posts it to `/api/speech/transcribe` through the
   shared client API helper. Remote/SecureConnection clients therefore use the
@@ -153,7 +154,9 @@ streaming/confidence surface exists.
   in the same visual compose plane as the committed draft and highlights the
   mutable tail, but it is not part of the textarea value. The textarea remains
   the committed draft only, so user edits do not accidentally freeze recognizer
-  text that may still be revised.
+  text that may still be revised. A caret move during an interim queues the
+  insertion target for the following provider fragment; the current interim
+  stays anchored until its final arrives.
   Appending committed speech deltas must not steal the textarea cursor: if the
   user is editing earlier committed text, preserve selection and scroll; if the
   cursor was already at the old end, let it follow the appended speech.

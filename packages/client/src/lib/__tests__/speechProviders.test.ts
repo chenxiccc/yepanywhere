@@ -722,6 +722,123 @@ describe("browser-native speech provider", () => {
 
     provider.dispose();
   });
+
+  it("starts a new cumulative-final suffix after the insertion target moves", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const onResult = vi.fn();
+    const provider = new BrowserNativeProvider({ onResult });
+
+    provider.start();
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: { isFinal: true, 0: { transcript: "spoken first" } },
+      },
+    } as unknown as Event);
+    expect(onResult).toHaveBeenLastCalledWith("spoken first");
+
+    provider.beginInsertionBoundary();
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: {
+          isFinal: true,
+          0: { transcript: "spoken first resumed speech" },
+        },
+      },
+    } as unknown as Event);
+    expect(onResult).toHaveBeenLastCalledWith("resumed speech");
+
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: {
+          isFinal: true,
+          0: { transcript: "spoken first resumed speech revised" },
+        },
+      },
+    } as unknown as Event);
+    expect(onResult).toHaveBeenLastCalledWith("resumed speech revised", {
+      replacePreviousTranscriptChars: "resumed speech".length,
+    });
+
+    provider.dispose();
+  });
+
+  it("commits a finalized fragment before exposing its next interim", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const events: string[] = [];
+    const provider = new BrowserNativeProvider({
+      onResult: (transcript) => events.push(`final:${transcript}`),
+      onInterimResult: (transcript) => events.push(`interim:${transcript}`),
+    });
+
+    provider.start();
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: { isFinal: false, 0: { transcript: "spoken first" } },
+      },
+    } as unknown as Event);
+    expect(events).toEqual(["interim:spoken first"]);
+
+    events.length = 0;
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 2,
+        0: {
+          isFinal: true,
+          0: { transcript: "spoken first" },
+        },
+        1: { isFinal: false, 0: { transcript: "resumed speech" } },
+      },
+    } as unknown as Event);
+    expect(events).toEqual([
+      "interim:",
+      "final:spoken first",
+      "interim:resumed speech",
+    ]);
+
+    provider.dispose();
+  });
+
+  it("keeps a boundary created inside the final callback", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const onResult = vi.fn();
+    const provider = new BrowserNativeProvider({
+      onResult: (transcript, metadata) => {
+        onResult(transcript, metadata);
+        if (transcript === "spoken first") provider.beginInsertionBoundary();
+      },
+    });
+
+    provider.start();
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: { isFinal: true, 0: { transcript: "spoken first" } },
+      },
+    } as unknown as Event);
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: {
+          isFinal: true,
+          0: { transcript: "spoken first resumed speech" },
+        },
+      },
+    } as unknown as Event);
+
+    expect(onResult).toHaveBeenLastCalledWith("resumed speech", undefined);
+    provider.dispose();
+  });
 });
 
 describe("YA server speech provider", () => {

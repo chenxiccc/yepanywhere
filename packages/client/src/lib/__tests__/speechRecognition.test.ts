@@ -10,10 +10,11 @@ import {
   getSpeechTranscriptReplacementParts,
   getSpeechTranscriptSeparator,
   insertSpeechTranscriptAt,
+  mapSpeechInsertionRangeThroughEdit,
   mapSpeechInsertionRangeThroughReplacement,
   mapTextIndexThroughEdit,
   processSpeechResults,
-  retargetSpeechInsertionRangeReplacement,
+  retargetSpeechInsertionRange,
   removeLatestSpeechChunkFromRange,
   replaceSpeechTranscriptBefore,
   replaceSpeechTranscriptInRange,
@@ -233,7 +234,7 @@ describe("speech transcript text edits", () => {
 
   it("arms a hot-mic selection target with a final-chunk grace window", () => {
     const range = createSpeechInsertionRange(4, 4);
-    const retargeted = retargetSpeechInsertionRangeReplacement(
+    const retargeted = retargetSpeechInsertionRange(
       range,
       8,
       12,
@@ -259,12 +260,80 @@ describe("speech transcript text edits", () => {
     ).toBe(0);
   });
 
-  it("does not retarget speech replacement for a collapsed selection", () => {
+  it("retargets the next speech chunk to a collapsed caret", () => {
     const range = createSpeechInsertionRange(4, 4);
 
-    expect(retargetSpeechInsertionRangeReplacement(range, 8, 8, 1000)).toBe(
-      range,
+    expect(retargetSpeechInsertionRange(range, 8, 8, 1000)).toMatchObject({
+      start: 4,
+      end: 8,
+      replaceEnd: undefined,
+      replaceSelectedAtMs: undefined,
+      chunks: [],
+    });
+  });
+
+  it("keeps manually typed text before the next speech chunk", () => {
+    const first = replaceSpeechTranscriptInRange(
+      "",
+      "spoken first",
+      createSpeechInsertionRange(0, 0),
+      0,
     );
+    const withTyping = `${first.text} [typing this]`;
+    const mapped = mapSpeechInsertionRangeThroughEdit(
+      first.text,
+      withTyping,
+      first.range,
+    );
+    const retargeted = retargetSpeechInsertionRange(
+      mapped,
+      withTyping.length,
+      withTyping.length,
+    );
+
+    expect(
+      replaceSpeechTranscriptInRange(
+        withTyping,
+        "resumed speech",
+        retargeted,
+        0,
+      ).text,
+    ).toBe("spoken first [typing this] resumed speech");
+  });
+
+  it("revises speech-owned text without consuming typed text after the caret moved", () => {
+    const first = replaceSpeechTranscriptInRange(
+      "",
+      "draft",
+      createSpeechInsertionRange(0, 0),
+      0,
+    );
+    const withTyping = `${first.text} [typed]`;
+    const retargeted = retargetSpeechInsertionRange(
+      mapSpeechInsertionRangeThroughEdit(
+        first.text,
+        withTyping,
+        first.range,
+      ),
+      withTyping.length,
+      withTyping.length,
+    );
+    const revision = replaceSpeechTranscriptInRange(
+      withTyping,
+      "draft revised",
+      retargeted,
+      "draft".length,
+    );
+
+    expect(revision.text).toBe("draft revised [typed]");
+    expect(
+      replaceSpeechTranscriptInRange(
+        revision.text,
+        "continued",
+        revision.range,
+        0,
+      ).text,
+    ).toBe("draft revised [typed] continued");
   });
 
   it("removes only the latest committed speech chunk", () => {
@@ -290,6 +359,30 @@ describe("speech transcript text edits", () => {
       replacementStart: "prefix first.".length,
       replacementEnd: "prefix first. second.".length,
     });
+  });
+
+  it("removes the latest spoken chunk after the caret moves backward", () => {
+    const first = replaceSpeechTranscriptInRange(
+      "alpha suffix",
+      "first",
+      createSpeechInsertionRange(6, 6),
+      0,
+    );
+    const retargeted = retargetSpeechInsertionRange(first.range, 6, 6);
+    const second = replaceSpeechTranscriptInRange(
+      first.text,
+      "second",
+      retargeted,
+      0,
+    );
+
+    expect(second.text).toBe("alpha second first suffix");
+    expect(removeLatestSpeechChunkFromRange(second.text, second.range)).toMatchObject(
+      {
+        text: "alpha first suffix",
+        replacementStart: "alpha".length,
+      },
+    );
   });
 
   it("smooths ordinary capitalization on later mid-sentence chunks", () => {

@@ -565,6 +565,7 @@ vi.mock("../VoiceInputButton", () => ({
         stopAndFinalize: () => "",
         toggle: mockVoiceToggle,
         cancelProcessing: mockVoiceCancelProcessing,
+        beginInsertionBoundary: vi.fn(),
         continueAfterSpeechSend: mockVoiceContinueAfterSpeechSend,
         isListening: false,
         isAvailable: true,

@@ -51,6 +51,7 @@ const {
   mockVoiceToggle,
   mockVoiceStopAndFinalize,
   mockVoiceCancelProcessing,
+  mockVoiceBeginInsertionBoundary,
   mockVoiceContinueAfterSpeechSend,
   voiceButtonState,
   voicePropsState,
@@ -90,6 +91,7 @@ const {
   mockVoiceToggle: vi.fn(),
   mockVoiceStopAndFinalize: vi.fn(() => ""),
   mockVoiceCancelProcessing: vi.fn(),
+  mockVoiceBeginInsertionBoundary: vi.fn(),
   mockVoiceContinueAfterSpeechSend: vi.fn(),
   voiceButtonState: {
     isListening: false,
@@ -427,6 +429,7 @@ vi.mock("../VoiceInputButton", async () => {
           toggle: mockVoiceToggle,
           cancelProcessing: mockVoiceCancelProcessing,
           prewarm: vi.fn(),
+          beginInsertionBoundary: mockVoiceBeginInsertionBoundary,
           continueAfterSpeechSend: mockVoiceContinueAfterSpeechSend,
           isAvailable: true,
           isListening: voiceButtonState.isListening,
@@ -728,6 +731,7 @@ describe("MessageInput", () => {
     mockVoiceToggle.mockReset();
     mockVoiceStopAndFinalize.mockReset();
     mockVoiceCancelProcessing.mockReset();
+    mockVoiceBeginInsertionBoundary.mockReset();
     mockVoiceContinueAfterSpeechSend.mockReset();
     voiceButtonState.isListening = false;
     voicePropsState.current = null;
@@ -1913,6 +1917,146 @@ describe("MessageInput", () => {
     expect(textarea.value).toBe("replace spoken text");
   });
 
+  it("resumes speech after text typed at the live caret", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onTranscript?.("spoken first");
+    });
+
+    await waitFor(() => expect(textarea.value).toBe("spoken first"));
+    const withTyping = `${textarea.value} [typing this]`;
+    fireEvent.change(textarea, {
+      target: {
+        value: withTyping,
+        selectionStart: withTyping.length,
+        selectionEnd: withTyping.length,
+      },
+    });
+    expect(mockVoiceBeginInsertionBoundary).toHaveBeenCalledOnce();
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("resumed speech");
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe(
+        "spoken first [typing this] resumed speech",
+      );
+      expect(textarea.selectionStart).toBe(textarea.value.length);
+    });
+  });
+
+  it("resumes speech at a caret moved manually while listening", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "alpha omega" } });
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onTranscript?.("spoken first");
+    });
+    await waitFor(() =>
+      expect(textarea.value).toBe("alpha omega spoken first"),
+    );
+
+    textarea.setSelectionRange("alpha".length, "alpha".length);
+    fireEvent.select(textarea);
+    expect(mockVoiceBeginInsertionBoundary).toHaveBeenCalledOnce();
+    act(() => {
+      voicePropsState.current?.onTranscript?.("resumed speech");
+    });
+
+    await waitFor(() =>
+      expect(textarea.value).toBe(
+        "alpha resumed speech omega spoken first",
+      ),
+    );
+  });
+
+  it("keeps an interim fragment anchored until its final arrives", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "existing text" } });
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("spoken first");
+    });
+    await waitFor(() =>
+      expect(document.querySelector(".speech-interim-inline")).not.toBeNull(),
+    );
+
+    textarea.setSelectionRange(0, 0);
+    fireEvent.pointerUp(textarea);
+
+    expect(mockVoiceBeginInsertionBoundary).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("existing text");
+
+    act(() => {
+      voicePropsState.current?.onInterimTranscript?.(
+        "spoken first still speaking",
+      );
+    });
+    expect(textarea.value).toBe("existing text");
+    expect(document.querySelector(".speech-interim-inline")?.textContent).toBe(
+      "spoken first still speaking",
+    );
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("spoken first still speaking");
+    });
+    await waitFor(() =>
+      expect(textarea.value).toBe("existing text spoken first still speaking"),
+    );
+    expect(mockVoiceBeginInsertionBoundary).toHaveBeenCalledOnce();
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("resumed speech");
+    });
+    await waitFor(() =>
+      expect(textarea.value).toBe(
+        "resumed speech existing text spoken first still speaking",
+      ),
+    );
+  });
+
+  it("keeps a stopped batch result at its captured mapped target", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "alpha suffix" } });
+    textarea.setSelectionRange("alpha".length, "alpha".length);
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onListeningStop?.();
+      voicePropsState.current?.onPendingSpeechChange?.("transcribing");
+    });
+
+    const withTyping = `${textarea.value} [typed later]`;
+    fireEvent.change(textarea, {
+      target: {
+        value: withTyping,
+        selectionStart: withTyping.length,
+        selectionEnd: withTyping.length,
+      },
+    });
+    act(() => {
+      voicePropsState.current?.onTranscript?.("batch speech");
+    });
+
+    await waitFor(() =>
+      expect(textarea.value).toBe(
+        "alpha batch speech suffix [typed later]",
+      ),
+    );
+  });
+
   it("leaves a selected replacement untouched when speech is cancelled first", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
@@ -2010,7 +2154,7 @@ describe("MessageInput", () => {
     });
   });
 
-  it("relayouts interim speech over a hot selected replacement span", async () => {
+  it("queues a selected replacement behind the current interim", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "alpha beta gamma" } });
@@ -2036,10 +2180,24 @@ describe("MessageInput", () => {
 
     await waitFor(() => {
       expect(document.querySelector(".speech-draft-mirror")?.textContent).toBe(
-        "alpha draft gamma",
+        "alpha beta gamma draft",
       );
       expect(textarea.value).toBe("alpha beta gamma");
     });
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("draft");
+    });
+    await waitFor(() =>
+      expect(textarea.value).toBe("alpha beta gamma draft"),
+    );
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("replacement");
+    });
+    await waitFor(() =>
+      expect(textarea.value).toBe("alpha replacement gamma draft"),
+    );
   });
 
   it("uses selected text context to case speech replacements", async () => {

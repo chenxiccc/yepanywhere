@@ -2,9 +2,11 @@ import type { SpeechTranscriptionResultMetadata } from "./speechProviders/Speech
 import {
   type SpeechInsertionRange,
   mapSpeechInsertionRangeThroughReplacement,
+  mapTextIndexThroughEdit,
   removeLatestSpeechChunkFromRange,
   replaceSpeechTranscriptBefore,
   replaceSpeechTranscriptInRange,
+  retargetSpeechInsertionRange,
 } from "./speechRecognition";
 import {
   captureTextareaAppendSelection,
@@ -15,6 +17,13 @@ import {
 export interface PendingTextareaSelectionRestore {
   value: string;
   restore: (textarea: HTMLTextAreaElement) => void;
+}
+
+/** A manual caret target that becomes active after the current interim finalizes. */
+export interface PendingSpeechRetarget {
+  draft: string;
+  start: number;
+  end: number;
 }
 
 export const ASR_TURN_MARKER = "[ASR]";
@@ -43,6 +52,13 @@ export interface SpeechCommitContext {
   pendingTextareaSelectionRef: {
     current: PendingTextareaSelectionRestore | null;
   };
+  pendingSpeechRetargetRef: {
+    current: PendingSpeechRetarget | null;
+  };
+  /** Tell a cumulative provider that later results belong to the new target. */
+  onInsertionBoundary: () => void;
+  /** Refresh the provisional mirror after the active target changes. */
+  onSpeechTargetChanged: () => void;
   /** Record a programmatic draft edit (composition timing); no-op if absent. */
   onEdit?: (next: string) => void;
   /** Capture a transcription id for submission metadata; no-op if absent. */
@@ -89,6 +105,9 @@ export function commitSpeechTranscript(
     activeSpeechTargetIdRef,
     speechInsertionRangesRef,
     pendingTextareaSelectionRef,
+    pendingSpeechRetargetRef,
+    onInsertionBoundary,
+    onSpeechTargetChanged,
     onEdit,
     onTranscriptionId,
     onSmartTurnSend,
@@ -260,6 +279,48 @@ export function commitSpeechTranscript(
     if (nextSpeechRange) {
       updateSpeechRange(nextSpeechRange);
     }
+  }
+
+  const pendingRetarget = pendingSpeechRetargetRef.current;
+  const retargetsActiveSpeech =
+    pendingRetarget !== null &&
+    (targetId === undefined || targetId === activeSpeechTargetIdRef.current);
+  const committedRange = retargetsActiveSpeech ? getSpeechRange() : null;
+  if (pendingRetarget && committedRange) {
+    const startBeforeCommit = mapTextIndexThroughEdit(
+      pendingRetarget.draft,
+      currentText,
+      pendingRetarget.start,
+    );
+    const endBeforeCommit = mapTextIndexThroughEdit(
+      pendingRetarget.draft,
+      currentText,
+      pendingRetarget.end,
+    );
+    const selectionStart = mapTextIndexThroughEdit(
+      currentText,
+      nextText,
+      startBeforeCommit,
+    );
+    const selectionEnd = mapTextIndexThroughEdit(
+      currentText,
+      nextText,
+      endBeforeCommit,
+    );
+    const nextRange = retargetSpeechInsertionRange(
+      committedRange,
+      selectionStart,
+      selectionEnd,
+    );
+    pendingSpeechRetargetRef.current = null;
+    updateSpeechRange(nextRange);
+    pendingTextareaSelectionRef.current = {
+      value: nextText,
+      restore: (textarea) =>
+        textarea.setSelectionRange(selectionStart, selectionEnd),
+    };
+    onInsertionBoundary();
+    onSpeechTargetChanged();
   }
   setInterimTranscript("");
   if (metadata?.smartTurnCommand) {

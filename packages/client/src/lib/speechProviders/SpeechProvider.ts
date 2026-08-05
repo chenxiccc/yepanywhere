@@ -193,6 +193,13 @@ export interface SpeechProvider {
   /** Speculatively acquire reusable resources before the user clicks. */
   prewarm?(): void;
 
+  /**
+   * Start a new provider-result insertion boundary without stopping capture.
+   * Providers with cumulative mutable finals use this to keep later revisions
+   * scoped to speech committed after the user's new textarea target.
+   */
+  beginInsertionBoundary?(): void;
+
   /** Release all resources. Provider must not be used after dispose(). */
   dispose(): void;
 }

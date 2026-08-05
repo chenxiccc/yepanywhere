@@ -219,8 +219,13 @@ export class BrowserNativeProvider implements SpeechProvider {
         if (result) {
           const transcript = result[0]?.transcript ?? "";
           if (result.isFinal) {
-            latestFinal = transcript;
-            latestFinalResultIndex = i;
+            // Final results before resultIndex are immutable history. Chrome
+            // includes them in every complete result list; reprocessing them
+            // would misclassify old speech as the current utterance.
+            if (i >= event.resultIndex) {
+              latestFinal = transcript;
+              latestFinalResultIndex = i;
+            }
           } else {
             interimText += transcript;
           }
@@ -252,31 +257,46 @@ export class BrowserNativeProvider implements SpeechProvider {
         this.lastFinalResultIndex = latestFinalResultIndex;
       }
 
+      const trimmedFinalChunk = finalChunk.trim();
+      const previousCommittedFinalChunk = this.lastCommittedFinalChunk;
+      let shouldEmitFinal = false;
+      let replacePreviousTranscriptChars: number | undefined;
+      if (
+        revisesLastFinal &&
+        trimmedFinalChunk !== previousCommittedFinalChunk
+      ) {
+        shouldEmitFinal = true;
+        replacePreviousTranscriptChars = previousCommittedFinalChunk.length;
+        this.lastCommittedFinalChunk = trimmedFinalChunk;
+      } else if (!revisesLastFinal && trimmedFinalChunk) {
+        shouldEmitFinal = true;
+      }
+      if (!revisesLastFinal) {
+        this.lastCommittedFinalChunk = trimmedFinalChunk;
+      }
+
+      // A final closes the old provisional fragment. Commit it before exposing
+      // any following interim entry so a queued caret can become the anchor for
+      // that next fragment without relocating text that is still provisional.
+      if (shouldEmitFinal) {
+        const hadInterim = this.state.interimTranscript.length > 0;
+        this.setState({ interimTranscript: "" });
+        if (hadInterim) this.options.onInterimResult?.("");
+        if (replacePreviousTranscriptChars) {
+          this.options.onResult?.(trimmedFinalChunk, {
+            replacePreviousTranscriptChars,
+          });
+        } else {
+          this.options.onResult?.(trimmedFinalChunk);
+        }
+      }
+
       const trimmedInterim = interimText.trim();
       if (trimmedInterim) {
         this.setState({ interimTranscript: trimmedInterim });
         this.options.onInterimResult?.(trimmedInterim);
       } else if (interimText && !trimmedInterim) {
         this.setState({ interimTranscript: "" });
-      }
-
-      const trimmedFinalChunk = finalChunk.trim();
-      if (
-        revisesLastFinal &&
-        trimmedFinalChunk !== this.lastCommittedFinalChunk
-      ) {
-        this.setState({ interimTranscript: "" });
-        this.options.onInterimResult?.("");
-        this.options.onResult?.(trimmedFinalChunk, {
-          replacePreviousTranscriptChars: this.lastCommittedFinalChunk.length,
-        });
-        this.lastCommittedFinalChunk = trimmedFinalChunk;
-      } else if (!revisesLastFinal && trimmedFinalChunk) {
-        this.setState({ interimTranscript: "" });
-        this.options.onResult?.(trimmedFinalChunk);
-      }
-      if (!revisesLastFinal) {
-        this.lastCommittedFinalChunk = trimmedFinalChunk;
       }
     };
 
@@ -369,6 +389,14 @@ export class BrowserNativeProvider implements SpeechProvider {
       status: "idle",
       error: null,
     });
+  }
+
+  beginInsertionBoundary(): void {
+    // Chrome may keep extending the same finalized result-list slot across
+    // pauses. Make the already-finalized cumulative text the immutable prefix
+    // so the next same-slot update emits only its new tail at the live caret.
+    this.lastFinalResultPrefix = this.lastFinalTranscript;
+    this.lastCommittedFinalChunk = "";
   }
 
   dispose(): void {

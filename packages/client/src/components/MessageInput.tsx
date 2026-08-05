@@ -72,13 +72,14 @@ import {
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
   mapSpeechInsertionRangeThroughReplacement,
-  retargetSpeechInsertionRangeReplacement,
+  retargetSpeechInsertionRange,
   type SpeechInsertionRange,
 } from "../lib/speechRecognition";
 import {
   commitSpeechTranscript,
   hasNonWhitespaceEdit,
   markAsrSubmittedTurn,
+  type PendingSpeechRetarget,
   type PendingTextareaSelectionRestore,
 } from "../lib/speechDraftTransaction";
 import {
@@ -172,6 +173,9 @@ interface PendingSpeechDelivery {
   };
   pendingTextareaSelectionRef: {
     current: PendingTextareaSelectionRestore | null;
+  };
+  pendingSpeechRetargetRef: {
+    current: PendingSpeechRetarget | null;
   };
 }
 
@@ -448,6 +452,7 @@ export function MessageInput({
   const speechInsertionRangesRef = useRef<Map<string, SpeechInsertionRange>>(
     new Map(),
   );
+  const pendingSpeechRetargetRef = useRef<PendingSpeechRetarget | null>(null);
   const pendingSpeechFinalRef = useRef<PendingSpeechFinal | null>(null);
   const pendingDraftInputRef = useRef<PendingDraftInputEdit | null>(null);
   const draftTextChangeMetadataRef = useRef<DraftTextChangeMetadata | null>(
@@ -463,6 +468,8 @@ export function MessageInput({
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const interimTranscriptRef = useRef(interimTranscript);
+  interimTranscriptRef.current = interimTranscript;
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
   );
@@ -1176,13 +1183,18 @@ export function MessageInput({
           current: new Map(speechInsertionRangesRef.current),
         },
         pendingTextareaSelectionRef: { current: null },
+        pendingSpeechRetargetRef: {
+          current: pendingSpeechRetargetRef.current,
+        },
       };
       pendingSpeechDeliverySettledRef.current = false;
       speechInsertionRangeRef.current = null;
       activeSpeechTargetIdRef.current = null;
       speechInsertionRangesRef.current = new Map();
+      pendingSpeechRetargetRef.current = null;
       controls.clearInput();
       resetCompositionMetadata();
+      interimTranscriptRef.current = "";
       setInterimTranscript("");
       if (voice?.isListening) voice.stopAndFinalize();
       return true;
@@ -2262,6 +2274,7 @@ export function MessageInput({
     speechInsertionRangeRef.current = range;
     speechInsertionRangesRef.current.set(targetId, range);
     pendingTextareaSelectionRef.current = null;
+    pendingSpeechRetargetRef.current = null;
     composerEditedDuringSpeechRef.current = false;
     if (textarea) {
       // On touch devices, the mic is a complete input path of its own. Only a
@@ -2269,6 +2282,7 @@ export function MessageInput({
       if (!hasCoarsePointer()) textarea.focus();
       textarea.setSelectionRange(selectionStart, selectionEnd);
     }
+    interimTranscriptRef.current = "";
     setInterimTranscript("");
   }, [controls]);
 
@@ -2281,15 +2295,57 @@ export function MessageInput({
 
   useEffect(() => clearPendingSpeechFinal, [clearPendingSpeechFinal]);
 
-  const handleSpeechSelectionTarget = useCallback(() => {
-    const textarea = textareaRef.current;
-    const range = speechInsertionRangeRef.current;
-    if (!textarea || !range) return;
-    const selectionStart = textarea.selectionStart;
-    const selectionEnd = textarea.selectionEnd;
-    if (selectionStart === selectionEnd) {
-      clearPendingSpeechFinal();
-      const nextRange = clearSpeechInsertionRangeReplacement(range);
+  const handleSpeechSelectionTarget = useCallback(
+    (manualInteraction = false, draftAtSelection?: string) => {
+      const textarea = textareaRef.current;
+      const range = speechInsertionRangeRef.current;
+      if (!textarea || !range) return;
+      const selectionStart = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      const getNextRange = (
+        currentRange: SpeechInsertionRange,
+      ): SpeechInsertionRange => {
+        if (selectionStart === selectionEnd) {
+          return speechPendingRef.current === "listening"
+            ? retargetSpeechInsertionRange(
+                currentRange,
+                selectionStart,
+                selectionEnd,
+              )
+            : clearSpeechInsertionRangeReplacement(currentRange);
+        }
+        if (
+          currentRange.replaceSelectedAtMs === undefined &&
+          currentRange.end === selectionStart &&
+          currentRange.replaceEnd === selectionEnd
+        ) {
+          return currentRange;
+        }
+        return retargetSpeechInsertionRange(
+          currentRange,
+          selectionStart,
+          selectionEnd,
+        );
+      };
+
+      if (selectionStart === selectionEnd) clearPendingSpeechFinal();
+      const hasVisibleInterim = interimTranscriptRef.current.trim().length > 0;
+      if (
+        manualInteraction &&
+        (hasVisibleInterim || pendingSpeechRetargetRef.current !== null)
+      ) {
+        pendingSpeechRetargetRef.current = {
+          draft: draftAtSelection ?? controls.getDraft(),
+          start: selectionStart,
+          end: selectionEnd,
+        };
+        return;
+      }
+
+      const nextRange = getNextRange(range);
+      if (speechPendingRef.current === "listening" && nextRange !== range) {
+        voiceButtonRef.current?.beginInsertionBoundary();
+      }
       speechInsertionRangeRef.current = nextRange;
       if (activeSpeechTargetIdRef.current) {
         speechInsertionRangesRef.current.set(
@@ -2298,35 +2354,19 @@ export function MessageInput({
         );
       }
       setSpeechPreviewRevision((revision) => revision + 1);
-      return;
-    }
-    if (
-      range.replaceSelectedAtMs === undefined &&
-      range.end === selectionStart &&
-      range.replaceEnd === selectionEnd
-    ) {
-      return;
-    }
-    const nextRange = retargetSpeechInsertionRangeReplacement(
-      range,
-      selectionStart,
-      selectionEnd,
-    );
-    speechInsertionRangeRef.current = nextRange;
-    if (activeSpeechTargetIdRef.current) {
-      speechInsertionRangesRef.current.set(
-        activeSpeechTargetIdRef.current,
-        nextRange,
-      );
-    }
-    setSpeechPreviewRevision((revision) => revision + 1);
-  }, [clearPendingSpeechFinal]);
+    },
+    [clearPendingSpeechFinal, controls],
+  );
 
   const handleTextareaSelectionTarget = useCallback(() => {
-    handleSpeechSelectionTarget();
+    handleSpeechSelectionTarget(true);
     setComposerCursor(textareaRef.current?.selectionStart ?? text.length);
     revealCollapsedTextareaCursor();
   }, [handleSpeechSelectionTarget, revealCollapsedTextareaCursor, text.length]);
+
+  const handleTextareaClickTarget = useCallback(() => {
+    window.setTimeout(handleTextareaSelectionTarget, 0);
+  }, [handleTextareaSelectionTarget]);
 
   const clearSpeechSelectionTarget = useCallback(() => {
     clearPendingSpeechFinal();
@@ -2380,6 +2420,9 @@ export function MessageInput({
       const targetPendingSelectionRef = commitsPendingDelivery
         ? pendingDelivery.pendingTextareaSelectionRef
         : pendingTextareaSelectionRef;
+      const targetPendingSpeechRetargetRef = commitsPendingDelivery
+        ? pendingDelivery.pendingSpeechRetargetRef
+        : pendingSpeechRetargetRef;
       commitSpeechTranscript(
         {
           textareaRef: commitsPendingDelivery
@@ -2393,13 +2436,23 @@ export function MessageInput({
                 pendingDelivery.draft = next;
               }
             : controls.setDraft,
-          setInterimTranscript: commitsPendingDelivery
-            ? () => {}
-            : setInterimTranscript,
+          setInterimTranscript: (next) => {
+            if (commitsPendingDelivery) return;
+            interimTranscriptRef.current = next;
+            setInterimTranscript(next);
+          },
           speechInsertionRangeRef: targetInsertionRangeRef,
           activeSpeechTargetIdRef: targetActiveSpeechTargetIdRef,
           speechInsertionRangesRef: targetInsertionRangesRef,
           pendingTextareaSelectionRef: targetPendingSelectionRef,
+          pendingSpeechRetargetRef: targetPendingSpeechRetargetRef,
+          onInsertionBoundary: commitsPendingDelivery
+            ? () => {}
+            : () => voiceButtonRef.current?.beginInsertionBoundary(),
+          onSpeechTargetChanged: commitsPendingDelivery
+            ? () => {}
+            : () =>
+                setSpeechPreviewRevision((revision) => revision + 1),
           onEdit: commitsPendingDelivery ? undefined : noteComposerEdit,
           onTranscriptionId: (id) => {
             if (commitsPendingDelivery) {
@@ -2445,7 +2498,6 @@ export function MessageInput({
       noteSpeechAttribution,
     ],
   );
-
   const handleVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
       const pendingDelivery = pendingSpeechDeliveryRef.current;
@@ -2462,7 +2514,9 @@ export function MessageInput({
           : speechInsertionRangeRef.current);
       const delayMs = metadata?.smartTurnCommand
         ? 0
-        : getSpeechSelectionFinalDelayMs(speechRange);
+        : pendingSpeechRetargetRef.current
+          ? 0
+          : getSpeechSelectionFinalDelayMs(speechRange);
       if (delayMs > 0) {
         clearPendingSpeechFinal();
         const timer = setTimeout(() => {
@@ -2491,6 +2545,8 @@ export function MessageInput({
 
   const handleListeningStop = useCallback(() => {
     flushPendingSpeechFinal();
+    pendingSpeechRetargetRef.current = null;
+    interimTranscriptRef.current = "";
     setInterimTranscript("");
     // Preserve desktop's ready-to-type caret without summoning a touch
     // keyboard merely because YA-owned dictation finished.
@@ -2513,6 +2569,7 @@ export function MessageInput({
   }, [controls]);
 
   const handleInterimTranscript = useCallback((transcript: string) => {
+    interimTranscriptRef.current = transcript;
     setInterimTranscript(transcript);
   }, []);
 
@@ -2530,6 +2587,7 @@ export function MessageInput({
         pendingSpeechDeliverySettledRef.current = true;
       }
       speechPendingRef.current = kind;
+      if (kind === "listening") handleSpeechSelectionTarget();
       if (kind === null) {
         // The active recording finished (its result has already committed);
         // forget its insertion target so the range map does not accumulate
@@ -2540,11 +2598,13 @@ export function MessageInput({
         }
         speechInsertionRangeRef.current = null;
         activeSpeechTargetIdRef.current = null;
+        pendingSpeechRetargetRef.current = null;
       }
       setSpeechPending(kind);
       if (kind === null) maybeRunPendingSpeechDelivery();
     },
     [
+      handleSpeechSelectionTarget,
       maybeRunPendingSpeechDelivery,
       noteSpeechAttribution,
       restorePendingSpeechDeliveryDraft,
@@ -2572,6 +2632,7 @@ export function MessageInput({
         clearPendingSpeechFinal();
         speechInsertionRangeRef.current = null;
         activeSpeechTargetIdRef.current = null;
+        pendingSpeechRetargetRef.current = null;
         setSpeechPending(null);
         speechPendingRef.current = null;
         setInterimTranscript("");
@@ -2598,6 +2659,7 @@ export function MessageInput({
     }
     speechInsertionRangeRef.current = null;
     activeSpeechTargetIdRef.current = null;
+    pendingSpeechRetargetRef.current = null;
     setSpeechPending(null);
     speechPendingRef.current = null;
     setInterimTranscript("");
@@ -2835,6 +2897,7 @@ export function MessageInput({
                 ) {
                   composerEditedDuringSpeechRef.current = true;
                 }
+                handleSpeechSelectionTarget(true, nextText);
                 noteComposerEdit(nextText);
                 setText(nextText);
                 const nextCursor = e.target.selectionStart;
@@ -2864,6 +2927,7 @@ export function MessageInput({
               onKeyDown={handleKeyDown}
               onSelect={handleTextareaSelectionTarget}
               onPointerUp={handleTextareaSelectionTarget}
+              onClick={handleTextareaClickTarget}
               onKeyUp={handleTextareaSelectionTarget}
               onCut={clearSpeechSelectionTarget}
               onCopy={clearSpeechSelectionTarget}

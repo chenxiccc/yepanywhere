@@ -32,8 +32,37 @@ When final speech lands in the middle of draft text, subsequent final chunks in
 the same mic transaction insert after the previous final chunk, not at the
 draft end and not over the previous chunk.
 
+While capture is still listening and no provisional fragment is visible, the
+textarea's live selection becomes the target for the next new final speech
+chunk. Typing retargets a collapsed caret immediately; arrow-key movement and
+mouse or touch placement retarget it when the native selection moves. A new
+final therefore follows manually entered text at the visible blinking caret.
+Previously finalized speech remains tracked as speech-owned chunks: a provider
+revision still corrects its own latest span, and spoken `cancel` still removes
+the most recently committed speech chunk even when the user moved backward in
+the draft. Post-capture batch processing keeps its click-time target mapped
+through edits rather than following later caret movement.
+
+Browser-native Web Speech result events carry the complete result list, while
+`resultIndex` identifies the first entry that changed. Final entries before
+that index are immutable history and must not be reprocessed as the current
+utterance. YA considers only changed final entries, so an old result retained
+in Chrome's list cannot pull resumed speech back into its earlier contiguous
+span.
+
+While browser-native speech is still provisional, a manual caret action queues
+the target for the next fragment without changing the current fragment's
+anchor. Continued interim revisions remain underlined at their original target
+and never enter the draft early. When Chrome finalizes that fragment, YA commits
+it at the original target, maps the queued selection through that edit, and
+then creates the provider insertion boundary. If the same result event also
+contains the next interim fragment, the final commits before that interim is
+shown, so the new underlined text starts at the queued caret. Repeated caret
+moves replace the queued target; stopping or cancelling capture discards it.
+
 Interim streaming text is only a preview at the transaction insertion point. It
-does not delete pending selected text and does not enter the textarea value.
+does not delete pending selected text and does not enter the textarea value
+until the provider finalizes it.
 When a provisional selected replacement target exists, the preview mirror
 renders as if the selected text were replaced so following text wraps at the
 same positions it will use once a final chunk commits.
@@ -330,6 +359,10 @@ The distinct surface wording is deliberate and stays — `Transcribing…` for
 batch and `Finalizing…` for streaming. The composer still receives the pending
 *kind* (`listening` | `transcribing` | `finalizing`) from the mic button for
 transaction lifecycle, but none of those status strings enter the draft.
+The absence of a pending kind during provider startup is not a completed
+transaction. A composer target is cleared only when a previously non-null kind
+returns to null (or its mic control unmounts), so the normal
+`idle -> starting -> listening` sequence preserves the captured caret.
 
 Cancel (Escape) abandons only the in-progress, non-final portion of the active
 mini-turn; already-accepted `is_final` blocks remain in the draft. For batch
