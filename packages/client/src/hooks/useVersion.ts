@@ -210,6 +210,22 @@ function useVersionSnapshot(
   );
 }
 
+/**
+ * Read the retained version/capability snapshot without retaining the query.
+ *
+ * A capability gate inside a feed the app shell already mounts wants the
+ * answer, not another acquisition: `useVersion` retains this fact at the
+ * `route` tier, so a second retainer here would only add a consumer competing
+ * for a request already in flight. Before it resolves this reads `null`, which
+ * every gate must treat as "capability absent" — the first request of a
+ * session is unconditional either way.
+ */
+export function useRetainedVersionInfo(
+  sourceKey: ClientSummarySourceKey,
+): VersionInfo | null {
+  return useVersionSnapshot(sourceKey).version;
+}
+
 export function resetVersionSnapshotsForTests(): void {
   versionSnapshotsBySource.clear();
   versionSnapshotListeners.clear();

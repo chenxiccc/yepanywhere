@@ -174,5 +174,10 @@ enumeration rather than a degraded stub. The server half now exists —
 `GET /api/sessions` reports `generation`, accepts `knownGeneration`, and answers
 `{ unchanged: true }` on a match — and is additive: an older server ignores the
 parameter and returns a full response, so a client without the capability is
-safe either way. Release corpus is filled in when the client half ships; see
-[Server Capabilities](server-capabilities.md) § Session-catalog gate.
+safe either way. The client half now sends the token behind the capability;
+release corpus audited at that point was `v0.7.0` (2026-07-25), `v0.6.2`
+(2026-07-11), and `v0.6.1` (2026-07-10) — no stable release advertises
+`progressive-session-catalog`, so every released server takes the enumeration
+fallback and receives no `knownGeneration`. No existing capability's meaning
+changed. See [Server Capabilities](server-capabilities.md) § Session-catalog
+gate.

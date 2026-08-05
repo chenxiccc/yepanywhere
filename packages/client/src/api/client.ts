@@ -184,6 +184,49 @@ export interface GlobalSessionsResponse {
   stats: GlobalSessionStats;
   /** All projects for filter dropdown */
   projects: ProjectOption[];
+  /**
+   * The collection revision these rows reflect, present only on a server with
+   * `progressive-session-catalog`. Replaying it as `knownGeneration` against
+   * the same query is what earns {@link GlobalSessionsUnchangedResponse}.
+   */
+  generation?: number;
+}
+
+/**
+ * The answer to a conditional read whose `knownGeneration` still holds: the
+ * collection did not change, so the response carries no rows and the client
+ * keeps the ones it has.
+ */
+export interface GlobalSessionsUnchangedResponse {
+  unchanged: true;
+  generation: number;
+}
+
+export interface GlobalSessionsRequest {
+  project?: string;
+  q?: string;
+  after?: string;
+  limit?: number;
+  includeArchived?: boolean;
+  starred?: boolean;
+  includeStats?: boolean;
+}
+
+/**
+ * A read that offers a generation this client already holds rows for, from a
+ * prior response to this same query. Only send it behind
+ * `progressive-session-catalog`; an older server ignores the parameter and
+ * walks anyway, which is correct but pointless.
+ */
+export interface ConditionalGlobalSessionsRequest
+  extends GlobalSessionsRequest {
+  knownGeneration: number;
+}
+
+export function isUnchangedGlobalSessionsResponse(
+  response: GlobalSessionsResponse | GlobalSessionsUnchangedResponse,
+): response is GlobalSessionsUnchangedResponse {
+  return (response as GlobalSessionsUnchangedResponse).unchanged === true;
 }
 
 export interface SessionOptions {
@@ -281,6 +324,36 @@ export interface UpdateBindingResponse {
   success: boolean;
   error?: string;
   redirectUrl?: string;
+}
+
+/**
+ * Overloaded so only a caller that sends `knownGeneration` has to narrow: the
+ * server answers `unchanged` exactly when it was asked to.
+ */
+function getGlobalSessionsRequest(
+  params?: GlobalSessionsRequest,
+): Promise<GlobalSessionsResponse>;
+function getGlobalSessionsRequest(
+  params: ConditionalGlobalSessionsRequest,
+): Promise<GlobalSessionsResponse | GlobalSessionsUnchangedResponse>;
+function getGlobalSessionsRequest(
+  params?: Partial<ConditionalGlobalSessionsRequest>,
+): Promise<GlobalSessionsResponse | GlobalSessionsUnchangedResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.project) searchParams.set("project", params.project);
+  if (params?.q) searchParams.set("q", params.q);
+  if (params?.after) searchParams.set("after", params.after);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.includeArchived) searchParams.set("includeArchived", "true");
+  if (params?.starred) searchParams.set("starred", "true");
+  if (params?.includeStats) searchParams.set("includeStats", "true");
+  if (params?.knownGeneration !== undefined) {
+    searchParams.set("knownGeneration", String(params.knownGeneration));
+  }
+  const query = searchParams.toString();
+  return fetchJSON<GlobalSessionsResponse | GlobalSessionsUnchangedResponse>(
+    query ? `/sessions?${query}` : "/sessions",
+  );
 }
 
 export const api = {
@@ -1376,28 +1449,7 @@ export const api = {
     ),
 
   // Global Sessions API
-  getGlobalSessions: (params?: {
-    project?: string;
-    q?: string;
-    after?: string;
-    limit?: number;
-    includeArchived?: boolean;
-    starred?: boolean;
-    includeStats?: boolean;
-  }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.project) searchParams.set("project", params.project);
-    if (params?.q) searchParams.set("q", params.q);
-    if (params?.after) searchParams.set("after", params.after);
-    if (params?.limit) searchParams.set("limit", String(params.limit));
-    if (params?.includeArchived) searchParams.set("includeArchived", "true");
-    if (params?.starred) searchParams.set("starred", "true");
-    if (params?.includeStats) searchParams.set("includeStats", "true");
-    const query = searchParams.toString();
-    return fetchJSON<GlobalSessionsResponse>(
-      query ? `/sessions?${query}` : "/sessions",
-    );
-  },
+  getGlobalSessions: getGlobalSessionsRequest,
   getGlobalSessionStats: () =>
     fetchJSON<{
       stats: GlobalSessionStats;

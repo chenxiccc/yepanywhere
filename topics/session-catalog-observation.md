@@ -222,6 +222,14 @@ fallback a performance floor rather than a penalty: a client without
 `progressive-session-catalog` cannot send a token, so its repeat reads land on
 the retained walk instead of running their own.
 
+The client that sends the token is `useGlobalSessionsFeed`, and it does so only
+on automatic revalidation. What makes that safe alongside the local patching
+this feed does from `session-created` and `session-metadata-changed` is that
+those same events advance the collection generation, so a patched client is
+told `changed` on its next conditional read and re-reads the rows it guessed
+at. A deny-list clock is what buys that: an event nobody thought about still
+advances the generation, so the guess is still corrected.
+
 It is also deliberately coarse where the catalog's is a vector: the unfiltered
 global list genuinely depends on every project, so a single counter is the
 right shape for it. A `project=`-filtered read is the case a vector component

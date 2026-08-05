@@ -154,10 +154,10 @@ non-optimal performance level. The ungated path therefore stays a working
 enumeration rather than a degraded stub, and that — not the size of the release
 corpus audited — is what a review of this gate should check.
 
-**Landed so far: the server half on `GET /api/sessions`.** The response carries
+**The wire surface is `GET /api/sessions`.** The response carries
 `generation`; a request may carry `knownGeneration`, and a match answers
-`{ unchanged: true, generation }` without walking any project. Two rules a
-caller must respect, because neither is enforceable from the server side alone:
+`{ unchanged: true, generation }` without walking any project. Three rules a
+caller must respect, because none is enforceable from the server side alone:
 
 - a token is only meaningful against **identical query parameters**. The
   generation covers the collection, not a particular filter, so replaying a
@@ -167,10 +167,17 @@ caller must respect, because neither is enforceable from the server side alone:
 - a client without the capability must not send `knownGeneration` and must
   ignore `generation`; an older server silently ignores the parameter and
   returns a full response, so the fallback is safe either way.
+- a token claims the client **still holds those rows**, which is a claim about
+  coverage as well as content. `unchanged` is a truthful answer to a consumer
+  asking for a wider window than it retains, and a useless one: it would leave
+  that consumer permanently short of rows. Offer the token only when the
+  retained collection already covers the request.
 
-The client half — sending the token, handling `unchanged`, and bounded deltas —
-is not built. Its release corpus is filled in then; the fields above are the
-whole current wire surface.
+Both halves have landed. `useGlobalSessionsFeed` offers its accepted generation
+on automatic revalidation and treats `unchanged` as keeping its retained rows;
+an explicit user refresh always asks for rows, since that is a fidelity request
+rather than a freshness one. Bounded deltas, and the cross-tab/IndexedDB
+persistence in the same plan step, are not built.
 
 Tool-result preservation is independently gated by the proposed permanent
 `tool-result-media-preservation-policy` capability. It owns `GET

@@ -973,6 +973,39 @@ Acceptance:
 
 ### 12 — reuse catalog generations across browser clients
 
+Status: Conditional reads complete 2026-08-05, on both sides. The server
+answers a matching `knownGeneration` on `GET /api/sessions` with
+`{ unchanged: true, generation }` and walks no project
+(`sessions/sessionCollectionGeneration.ts`); `useGlobalSessionsFeed` offers the
+generation it last accepted rows for and treats `unchanged` as keeping those
+rows. Contract and the caller obligations: `topics/server-capabilities.md`
+§ Session-catalog gate.
+
+Three rules carry the correctness, and only the first is obvious:
+
+- the token is per query, never across filters, and never on a cursor page;
+- offering it claims the client still holds those rows, so it is gated on
+  retained *coverage* as well as a retained token — `unchanged` is a truthful
+  and useless answer to a consumer that just widened its window, and would
+  leave it permanently short of rows. `knownGenerationToSend` is that predicate;
+- an explicit user refresh sends no token. A refresh is a fidelity request; a
+  user who presses it is entitled to rows rather than to being told the server
+  agrees with what they are looking at.
+
+What makes local event patching safe alongside a retained token is that every
+event this feed patches from also advances the server's generation, so a
+patched client is told `changed` on its next conditional read and re-reads the
+rows it guessed at.
+
+Measured: `benchmark:global-sessions-conditional-read` — 20 tabs, 11 reads
+each, collection actually changed twice: 220 walks become 60 (72.73%, 3.67x),
+and 22,000 returned rows become 6,000. The client arm drives the real
+predicate. The server-side herd figure is separate and multiplies with this
+one: `pnpm --filter @yep-anywhere/server benchmark:session-collection-generation`.
+
+Not built: bounded deltas, and the IndexedDB persistence plus cross-tab
+generation advertisement described below. Inbox still enumerates.
+
 Consume tactical 093's approved catalog epoch/generation on collection
 snapshots and deltas. A retained query sends its known generation on
 revalidation; the server may answer no-change, bounded deltas, or a replacement

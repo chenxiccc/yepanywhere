@@ -7,9 +7,16 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
+  PROGRESSIVE_SESSION_CATALOG_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
+import {
   api,
+  isUnchangedGlobalSessionsResponse,
   type GlobalSessionItem,
+  type GlobalSessionsRequest,
   type GlobalSessionsResponse,
+  type GlobalSessionsUnchangedResponse,
   type GlobalSessionStats,
   type ProjectOption,
 } from "../api/client";
@@ -40,6 +47,7 @@ import {
   type SessionMetadataChangedEvent,
   useFileActivity,
 } from "./useFileActivity";
+import { useRetainedVersionInfo } from "./useVersion";
 
 const REFETCH_DEBOUNCE_MS = 500;
 /**
@@ -148,6 +156,67 @@ function useGlobalSessionsAuxiliary(
   );
 }
 
+/**
+ * The newest collection generation this client accepted rows for, per
+ * `(source, query)`.
+ *
+ * Module level, not a ref, for the same reason the auxiliary state above is:
+ * `applySnapshot` runs in whichever consumer owns the request, and every
+ * consumer of a query must end up holding the same accepted generation as the
+ * rows they share.
+ *
+ * Replaying the token claims "I still hold the rows of that generation", so it
+ * is only ever sent together with a check that the retained collection still
+ * covers the request — see `knownGenerationForRequest`. What makes local event
+ * patching safe alongside it is that every event this feed patches from also
+ * advances the server's generation, so a patched client is told `changed` on
+ * its next conditional read and re-reads the rows it guessed at.
+ */
+const acceptedGenerations = new Map<string, number>();
+
+function acceptedGenerationKey(
+  sourceKey: ClientSummarySourceKey,
+  queryKey: string,
+): string {
+  return `${sourceKey}\0${queryKey}`;
+}
+
+export interface ConditionalReadInputs {
+  /** Whether the connected server advertises `progressive-session-catalog`. */
+  supported: boolean;
+  /** The generation this client last accepted rows for on this query. */
+  accepted?: number;
+  /** False when no retained collection state exists for the query at all. */
+  retained: boolean;
+  /** Rows currently retained for the query. */
+  retainedRows: number;
+  /** Rows this consumer is asking for. */
+  requestedRows: number;
+  /** Whether the collection is known to continue past the retained rows. */
+  hasMore: boolean;
+}
+
+/**
+ * The generation to offer with a read, or `undefined` to ask for rows.
+ *
+ * Three things must hold, and the middle one is the easy one to forget: an
+ * `unchanged` answer says the collection did not change, not that this client
+ * holds as much of it as it is now asking for. A consumer that widened its
+ * window past the retained rows needs those rows, and the server cannot tell
+ * that from the token.
+ */
+export function knownGenerationToSend(
+  inputs: ConditionalReadInputs,
+): number | undefined {
+  if (!inputs.supported || inputs.accepted === undefined || !inputs.retained) {
+    return undefined;
+  }
+  if (inputs.retainedRows < inputs.requestedRows && inputs.hasMore) {
+    return undefined;
+  }
+  return inputs.accepted;
+}
+
 function createGlobalSessionsControllerQueryKey(
   descriptor: SessionCollectionQueryDescriptor,
 ): string {
@@ -163,6 +232,7 @@ function createGlobalSessionsControllerQueryKey(
 export function resetGlobalSessionsFeedForTests(): void {
   globalSessionsAuxiliaryBySource.clear();
   globalSessionsAuxiliaryListeners.clear();
+  acceptedGenerations.clear();
 }
 
 function shouldRefetchGlobalSessionsAfterProcessState(
@@ -257,6 +327,14 @@ export function useGlobalSessionsFeed(
   const projectsRef = useRef<ProjectOption[]>([]);
   projectsRef.current = auxiliary.projects;
   const requestSequenceRef = useRef(0);
+  // A ref, not a dependency: the capability resolves once, and letting it
+  // change `fetch`'s identity would re-run the mount effect and buy a second
+  // acquisition of the thing this gate exists to avoid acquiring twice.
+  const conditionalReadsRef = useRef(false);
+  conditionalReadsRef.current = serverHasCapability(
+    useRetainedVersionInfo(sourceKey),
+    PROGRESSIVE_SESSION_CATALOG_CAPABILITY,
+  );
 
   useEffect(() => {
     void sourceKey;
@@ -288,8 +366,24 @@ export function useGlobalSessionsFeed(
     });
   }, [includeStats, projectId, sourceKey]);
 
+  const knownGenerationForRequest = useCallback((): number | undefined => {
+    const state = queryStateRef.current;
+    return knownGenerationToSend({
+      supported: conditionalReadsRef.current,
+      accepted: acceptedGenerations.get(
+        acceptedGenerationKey(sourceKeyRef.current, queryKey),
+      ),
+      retained: state !== undefined,
+      retainedRows: queryRecordsRef.current.length,
+      requestedRows,
+      hasMore: state?.hasMore ?? false,
+    });
+  }, [queryKey, requestedRows]);
+
   const fetch = useCallback(
-    async (fetchOptions: { force?: boolean } = {}) => {
+    async (
+      fetchOptions: { force?: boolean; conditional?: boolean } = {},
+    ) => {
       if (!readyRef.current) {
         if (!queryStateRef.current) {
           setLoading(true);
@@ -317,22 +411,44 @@ export function useGlobalSessionsFeed(
           }
         }
 
-        const sessionsPromise = ensureClientQuery<GlobalSessionsResponse>({
+        const sessionsPromise = ensureClientQuery<
+          GlobalSessionsResponse | GlobalSessionsUnchangedResponse
+        >({
           sourceKey: requestSourceKey,
           key: queryKey,
           coverage: { minRows: requestedRows },
           staleTimeMs: GLOBAL_SESSIONS_STALE_TIME_MS,
           force: fetchOptions.force,
-          fetcher: () =>
-            api.getGlobalSessions({
+          fetcher: () => {
+            const request: GlobalSessionsRequest = {
               project: projectId ?? undefined,
               q: searchQuery || undefined,
               limit,
               includeArchived,
               starred,
               includeStats: false,
-            }),
+            };
+            const knownGeneration =
+              fetchOptions.conditional === false
+                ? undefined
+                : knownGenerationForRequest();
+            return knownGeneration === undefined
+              ? api.getGlobalSessions(request)
+              : api.getGlobalSessions({ ...request, knownGeneration });
+          },
           applySnapshot: (data, context) => {
+            const generationKey = acceptedGenerationKey(
+              context.sourceKey,
+              queryKey,
+            );
+            if (isUnchangedGlobalSessionsResponse(data)) {
+              // There is nothing to apply: the retained rows are the answer.
+              // The freshness this refresh buys is the retained query entry's,
+              // which the controller stamps on any settled request.
+              acceptedGenerations.set(generationKey, data.generation);
+              return;
+            }
+
             sourceSummary.reportGlobalSessionsCollectionSnapshot(
               {
                 query: queryForRequest,
@@ -345,6 +461,13 @@ export function useGlobalSessionsFeed(
             updateGlobalSessionsAuxiliary(context.sourceKey, {
               projects: data.projects,
             });
+            if (data.generation === undefined) {
+              // An ungated server, or one that stopped reporting: forget the
+              // token rather than replay one these rows did not come with.
+              acceptedGenerations.delete(generationKey);
+            } else {
+              acceptedGenerations.set(generationKey, data.generation);
+            }
           },
         });
         const statsPromise =
@@ -387,6 +510,7 @@ export function useGlobalSessionsFeed(
       requestedRows,
       sourceKey,
       sourceSummary,
+      knownGenerationForRequest,
     ],
   );
 
@@ -401,7 +525,9 @@ export function useGlobalSessionsFeed(
       return;
     }
     if (!lastRecord.updatedAt) {
-      await fetch({ force: true });
+      // Asking for a page we do not have: an `unchanged` answer would be true
+      // and useless, so this one always reads rows.
+      await fetch({ force: true, conditional: false });
       return;
     }
 
@@ -598,7 +724,10 @@ export function useGlobalSessionsFeed(
     error,
     hasMore: queryState?.hasMore ?? false,
     loadMore,
-    refetch: () => fetch({ force: true }),
+    // An explicit refresh is a fidelity request, not a freshness one: a user
+    // who presses refresh is entitled to rows, not to being told the server
+    // agrees with what they are already looking at.
+    refetch: () => fetch({ force: true, conditional: false }),
     stats:
       includeStats && !projectId
         ? auxiliary.stats

@@ -139,6 +139,22 @@ event invalidation, debounce/deadline timers, and in-flight work. Component
 subscriptions express coverage and render state; mounting the same hook twice
 must not install two revalidation owners.
 
+**Landed instance: the session-collection generation.** `GET /api/sessions`
+carries one, and `useGlobalSessionsFeed` replays it as `knownGeneration` behind
+`progressive-session-catalog` to be told `unchanged` instead of re-reading rows
+it holds. That clock is the *list's*, not the catalog's — it advances on
+anything that can change a rendered row, including metadata, unread state, and
+ownership, which the catalog's row-oriented generation does not cover. Do not
+conflate the two or persist one under the other's key.
+
+Offering an accepted generation claims the client still holds those rows, which
+binds it to coverage and not only to content. A consumer widening its window
+past the rows it retains needs rows; `unchanged` would answer it truthfully and
+leave it short forever. The accepted generation is therefore stored per
+`(source, query)` at module level — like any other shared per-source snapshot,
+because `applySnapshot` runs in whichever consumer owns the request — and read
+only together with a coverage check.
+
 An optional browser-persistence adapter may store bounded, serializable compact
 summary snapshots in IndexedDB, keyed by source/auth scope, schema, and catalog
 epoch/generation. `BroadcastChannel` or a small `localStorage` notice can tell
