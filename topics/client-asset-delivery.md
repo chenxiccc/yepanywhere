@@ -64,8 +64,10 @@ Serve compressible generated assets with a negotiated representation:
 
 Stream the selected file or use an equivalently bounded send primitive. A
 request for a large cached asset must not require a new full raw-file buffer in
-the V8 heap. Runtime gzip middleware is an acceptable measured first slice for
-transfer size, but it does not satisfy this allocation contract by itself.
+process memory (Node `Buffer` storage is generally external to V8's managed
+heap, but still raises resident/transient memory). Runtime gzip middleware is
+an acceptable measured first slice for transfer size, but it does not satisfy
+this allocation contract by itself.
 
 ## Deployment generations
 
