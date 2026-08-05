@@ -109,7 +109,7 @@
   "settingsToolbarTitle": "Toolbar",
   "settingsToolbarDescription": "Composer controls to show",
   "settingsModelTitle": "Session Defaults",
-  "settingsModelDescription": "Provider, model, thinking",
+  "settingsModelDescription": "Provider, model, thinking, compact context early, recaps",
   "settingsCacheMissBillingTitle": "Cache Billing",
   "settingsCacheMissBillingDescription": "Prompt-cache accounting",
   "settingsMessageDeliveryTitle": "Message Delivery",

@@ -110,6 +110,33 @@ describe("SettingsItem under search scope", () => {
     );
     expect(screen.getByLabelText("Theme")).toBeTruthy();
   });
+
+  it("matches multi-word product names on Session Defaults-style rows", () => {
+    render(
+      <SettingsSearchScopeProvider
+        value={makeScope({ query: "compact context early" })}
+      >
+        <SettingsItem
+          id="session-default-compact-early"
+          label="Compact context early"
+          description="Optionally ask for compaction once this model's live context passes the chosen share of its full window."
+          keywords={["early compact", "autocompact", "/compact"]}
+        >
+          <input
+            type="range"
+            aria-label="Compact context early"
+            min={0}
+            max={99}
+          />
+        </SettingsItem>
+        <SettingsItem label="Unrelated recap">
+          <input aria-label="Unrelated recap" />
+        </SettingsItem>
+      </SettingsSearchScopeProvider>,
+    );
+    expect(screen.getByLabelText("Compact context early")).toBeTruthy();
+    expect(screen.queryByLabelText("Unrelated recap")).toBeNull();
+  });
 });
 
 describe("SettingsSection under search scope", () => {
