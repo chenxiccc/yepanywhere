@@ -42,6 +42,8 @@ interface PathNode {
   name: string;
   state: NodeState;
   watcher: FSWatcher | undefined;
+  /** Whether one listing proved this directory too wide to retain whole. */
+  wide: boolean;
 }
 
 interface MutablePathIndexStats {
@@ -110,6 +112,7 @@ function createNode(name: string, state: NodeState): PathNode {
     name,
     state,
     watcher: undefined,
+    wide: false,
   };
 }
 
@@ -351,10 +354,23 @@ class SparseProjectPathIndex implements ProjectPathIndex {
     }
     if (unresolved.length === 0) return states;
 
-    if (unresolved.length >= DIRECTORY_LISTING_THRESHOLD && !parent.complete) {
+    if (
+      unresolved.length >= DIRECTORY_LISTING_THRESHOLD &&
+      !parent.complete &&
+      !parent.wide
+    ) {
       const listing = await this.listDirectory(parent, parentAbsolutePath);
+      // A listing too wide to retain whole still proved these exact names, and
+      // its watch was attached before the read that covered them. Keeping the
+      // queried edges costs the batch's size rather than the directory's, so
+      // asking again needs no second full read.
+      const keepQueried = listing !== null && parent.wide;
       for (const name of unresolved) {
-        states.set(name, listing?.get(name) ?? "absent");
+        const state = listing?.get(name) ?? "absent";
+        states.set(name, state);
+        if (keepQueried) {
+          this.cacheChildState(parent, parentAbsolutePath, name, state);
+        }
       }
       return states;
     }
@@ -491,6 +507,10 @@ class SparseProjectPathIndex implements ProjectPathIndex {
     }
     if (entries.length > this.maxRetainedEntries) {
       this.stats.oversizedListings += 1;
+      // Retaining every name here would spend a large share of the project's
+      // whole budget on one directory. Recording the width instead keeps later
+      // batches on exact probes rather than re-reading it every time.
+      node.wide = true;
     } else if (watched) {
       this.replaceChildren(node, kinds);
     }
@@ -628,6 +648,10 @@ class SparseProjectPathIndex implements ProjectPathIndex {
       node.complete = false;
       this.completeDirectories -= 1;
     }
+    // A new generation re-learns the width along with everything else, so a
+    // directory that has since shrunk is listed again rather than probed
+    // forever.
+    node.wide = false;
   }
 
   private closeWatcher(node: PathNode): void {

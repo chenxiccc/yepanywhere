@@ -374,7 +374,7 @@ describe("project path index", () => {
     index.dispose();
   });
 
-  it("uses an oversized listing for its batch without retaining it", async () => {
+  it("keeps the queried names from an oversized listing without claiming it", async () => {
     const repo = await createRepo();
     await mkdir(join(repo, "wide"), { recursive: true });
     await Promise.all(
@@ -390,7 +390,21 @@ describe("project path index", () => {
 
     const diagnostics = __test__.diagnostics(index);
     expect(diagnostics.oversizedListings).toBe(1);
+    // Too wide to answer arbitrary absence, but the eight names it did prove
+    // are worth exactly what the batch asked for.
     expect(diagnostics.completeDirectories).toBe(0);
+    io.listed.length = 0;
+    io.probed.length = 0;
+
+    expect((await index.findExisting(names)).size).toBe(8);
+    expect(io.listed).toEqual([]);
+    expect(io.probed).toEqual([]);
+
+    // A name outside that batch was never proven, so it costs one probe rather
+    // than a second full read of the directory.
+    expect(await index.has("wide/unqueried.txt")).toBe(false);
+    expect(io.listed).toEqual([]);
+    expect(io.probed).toEqual([join("wide", "unqueried.txt")]);
     index.dispose();
   });
 

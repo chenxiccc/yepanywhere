@@ -69,8 +69,15 @@ candidates by parent directory. A sparse set is probed exactly with `lstat` —
 `lstat`, not `stat`, so a symlink is a leaf and a link cannot walk the
 traversal out of the project. Four or more unknown names in one not-yet-complete
 directory are worth a single `readdir` instead, which then answers every later
-name in that directory. A listing wider than 20,000 entries answers its batch
-without being retained.
+name in that directory. A listing wider than 20,000 entries is not retained
+whole — one directory would otherwise claim a large share of the project's
+entire budget — but the names that batch asked about are kept as ordinary
+proven edges, since the watch was already attached when the read covered them.
+The width itself is remembered, so later batches in that directory probe
+exactly instead of re-reading it every time; the cap therefore bounds what may
+be *claimed complete*, not what may be known. Discarding the directory's
+generation forgets the width too, so a directory that has since shrunk is
+listed again rather than probed forever.
 
 **Retention is byte-bounded at two levels.** Within a project, least-recently-used
 hydrated directories are dropped once retained bytes exceed 4 MiB. Across the
