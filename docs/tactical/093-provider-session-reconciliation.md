@@ -517,3 +517,19 @@ Approval prompt to settle at implementation time:
 - The process-to-listener metric covers module evaluation, eligibility load,
   watcher activation, and all other pre-timer work; the old 42 ms internal
   timer is not presented as full cold boot.
+
+### Suggested measurement: time to witness every provider's model catalog
+
+While the catalog coordinator is being built, record the wall time from a cold
+server to a complete `GET /api/providers` answer, plus the per-provider split.
+The 2026-08-05 baseline is 6.211 s aggregate, of which OpenCode was 4.407 s,
+Claude 0.747 s, and Codex 0.239 s
+([`094-new-session-provider-catalog-readiness.md`](094-new-session-provider-catalog-readiness.md)
+criterion 4, which the OpenCode single-invocation change has since improved by
+an unmeasured amount).
+
+This number decides the deferred half of 094. New Session no longer waits on the
+aggregate — it resolves the selected provider alone and renders the rest from a
+client snapshot — so a gradual/async provider-status protocol is only worth its
+new capability if the aggregate stays slow enough to be felt after this
+tactical's retained catalogs land. Measure before proposing that capability.

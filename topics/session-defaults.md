@@ -95,6 +95,17 @@ and model capabilities in place. An unselected provider's discovery must not
 delay, clear, or replace that choice. The opening composer/project region stays
 stable while catalog rows activate.
 
+Two mechanisms carry that requirement today. The selected provider's status and
+models come from its own single-provider request rather than the aggregate, so
+the aggregate's slowest member cannot gate the selection; the server coalesces
+that request with any aggregate already probing the provider, so it costs no
+extra probe. And a client may render the previous visit's provider rows from a
+retained per-source snapshot, which is an opening guess and never a probe
+result: it arrives already expired, consumers still report loading, the rendered
+group is marked busy, and the probe's answer replaces it. A row shown this way
+may name a provider the server no longer exposes until the probe corrects it;
+selecting it is still checked at launch.
+
 The server retains a bounded, non-secret last-successful model snapshot per
 provider across restarts. A stale snapshot may render choices but does not
 prove current authentication or launch validity. Do not persist credentials,

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PROVIDER,
   DEFAULT_RECAP_AFTER_SECONDS,
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   HELPER_SIDE_MODEL_CHEAPEST,
@@ -6,6 +7,7 @@ import {
   type EffortLevel,
   type ModelInfo,
   type PromptSuggestionMode,
+  type ProviderInfo,
   type ProviderName,
   type RecapMode,
   type SessionSandboxLevel,
@@ -46,6 +48,7 @@ import { useProjectQueues } from "../hooks/useProjectQueues";
 import {
   getAvailableProviders,
   getDefaultProvider,
+  useProviderRow,
   useProviders,
 } from "../hooks/useProviders";
 import {
@@ -236,6 +239,23 @@ function createSpeechTargetId(): string {
   return `speech-target-${generateUUID()}`;
 }
 
+/**
+ * Stand-in row for seeding the form before any provider has been probed.
+ *
+ * It carries no status or capability claims: it exists so the saved provider
+ * and its provider-local model defaults can resolve, and it is replaced by the
+ * probed row the moment one arrives. It is never rendered as a provider card.
+ */
+function unprobedProviderRow(name: ProviderName): ProviderInfo {
+  return {
+    name,
+    displayName: name,
+    installed: false,
+    authenticated: false,
+    enabled: false,
+  };
+}
+
 export interface NewSessionFormProps {
   projectId?: string;
   selectedProject?: Project | null;
@@ -414,6 +434,7 @@ export function NewSessionForm({
   const composerEditedDuringSpeechRef = useRef(false);
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
+  const hasSeededDefaultsRef = useRef(false);
   const hasInitializedDefaultsRef = useRef(false);
   const hasUserCustomizedDefaultsRef = useRef(false);
   const lastSyncedProjectIdRef = useRef<string | null>(null);
@@ -802,6 +823,7 @@ export function NewSessionForm({
   const {
     providers,
     loading: providersLoading,
+    stale: providersStale,
     refetch: refetchProviders,
   } = useProviders();
   const { usage: subscriptionUsage } =
@@ -851,10 +873,18 @@ export function NewSessionForm({
       native: t("promptSuggestionModeNativeDescription"),
     };
 
-  // Get models and capabilities for the currently selected provider
-  const selectedProviderInfo = providers.find(
+  // Get models and capabilities for the currently selected provider.
+  // The selected provider's own row arrives well before the aggregate request,
+  // which cannot answer until its slowest unselected provider does, so it wins
+  // while the aggregate is missing or is a previous visit's snapshot.
+  const selectedProviderRow = useProviderRow(selectedProvider);
+  const aggregateProviderInfo = providers.find(
     (p) => p.name === selectedProvider,
   );
+  const selectedProviderInfo =
+    !aggregateProviderInfo || providersStale
+      ? (selectedProviderRow ?? aggregateProviderInfo)
+      : aggregateProviderInfo;
   const availableModels: ModelInfo[] = selectedProviderInfo?.models ?? [];
   const visibleModels = useMemo(
     () =>
@@ -1220,7 +1250,130 @@ export function NewSessionForm({
     t,
   ]);
 
-  // Initialize provider/model/mode from saved defaults once settings and providers load.
+  // Apply saved defaults against whatever provider rows are known so far.
+  // `providerRows` may be empty (nothing probed yet) or a previous visit's
+  // snapshot; the standing choice is settings state, so an unknown catalog
+  // seeds the saved provider rather than blanking the form.
+  const applyInitialDefaults = useCallback(
+    (providerRows: ProviderInfo[]) => {
+      const catalogKnown = providerRows.length > 0;
+      const availableProviderNames = new Set(
+        getAvailableProviders(providerRows).map((p) => p.name),
+      );
+      const isSelectable = (name: ProviderName) =>
+        !catalogKnown || availableProviderNames.has(name);
+      const savedDefaults = settings?.newSessionDefaults;
+      // An explicit caller preference (e.g. "clear" from an existing session)
+      // outranks saved new-session defaults.
+      const requestedProviderName =
+        preferredProvider && isSelectable(preferredProvider)
+          ? preferredProvider
+          : null;
+      const savedProviderName =
+        requestedProviderName ??
+        (savedDefaults?.provider && isSelectable(savedDefaults.provider)
+          ? savedDefaults.provider
+          : null);
+      const initialProvider =
+        providerRows.find((p) => p.name === savedProviderName) ??
+        getDefaultProvider(providerRows) ??
+        (catalogKnown
+          ? null
+          : unprobedProviderRow(savedProviderName ?? DEFAULT_PROVIDER));
+
+      if (!initialProvider) return;
+
+      const initialModels = initialProvider.models ?? [];
+      const requestedModelId =
+        requestedProviderName &&
+        initialProvider.name === requestedProviderName &&
+        preferredModel &&
+        ((initialProvider.name !== "claude-gateway" &&
+          initialModels.length === 0) ||
+          initialModels.some((model) => model.id === preferredModel))
+          ? preferredModel
+          : null;
+      const preferredPromptSuggestionMode =
+        getPreferredPromptSuggestionMode(savedDefaults);
+      const initialProviderDefaults = getProviderSessionDefaults(
+        savedDefaults,
+        initialProvider.name,
+        getLegacyProviderDefaultSeed(initialProvider.name),
+      );
+      setSelectedProvider(initialProvider.name);
+      setSelectedModel(
+        requestedModelId ??
+          getPreferredProviderModelId(
+            initialProvider.name,
+            initialModels,
+            initialProviderDefaults.model,
+          ),
+      );
+      const preferredThinkingSelection = preferredThinking
+        ? parseThinkingOption(preferredThinking)
+        : null;
+      setSelectedThinkingMode(
+        preferredThinkingSelection?.mode ??
+          initialProviderDefaults.thinkingMode ??
+          "off",
+      );
+      setSelectedEffortLevel(
+        preferredThinkingSelection?.effort ??
+          initialProviderDefaults.effortLevel ??
+          "high",
+      );
+      const savedSandboxLevel =
+        supportsSessionSandboxing &&
+        savedDefaults?.sandboxLevel === "project-write"
+          ? "project-write"
+          : "none";
+      const savedRecapMode = getPreferredRecapMode(
+        initialProvider,
+        savedDefaults,
+      );
+      setSelectedRecapMode(
+        providerSupportsLocalSessionSandbox(initialProvider.name) &&
+          savedSandboxLevel === "project-write" &&
+          savedRecapMode === "side-session"
+          ? "off"
+          : savedRecapMode,
+      );
+      setSandboxLevel(savedSandboxLevel);
+      setRecapAfterSeconds(
+        normalizeRecapAfterSeconds(savedDefaults?.recapAfterSeconds),
+      );
+      setSelectedPromptSuggestionMode(preferredPromptSuggestionMode);
+      setHelperSideModel(
+        getDefaultHelperSideModel(initialModels, initialProviderDefaults),
+      );
+      setMode(
+        preferredPermissionMode ?? savedDefaults?.permissionMode ?? "default",
+      );
+      setSelectedExecutor(preferredExecutor ?? null);
+    },
+    [
+      settings,
+      supportsSessionSandboxing,
+      getLegacyProviderDefaultSeed,
+      preferredProvider,
+      preferredModel,
+      preferredThinking,
+      preferredPermissionMode,
+      preferredExecutor,
+    ],
+  );
+
+  // Seed provider/model/mode from saved defaults as soon as settings resolve.
+  // Waiting for the provider catalog here would hand an unselected provider's
+  // discovery cost to the saved one; see topics/session-defaults.md.
+  useEffect(() => {
+    if (hasSeededDefaultsRef.current || settingsLoading) return;
+    hasSeededDefaultsRef.current = true;
+    if (hasUserCustomizedDefaultsRef.current) return;
+    applyInitialDefaults(providers);
+  }, [applyInitialDefaults, providers, settingsLoading]);
+
+  // Reconcile that seed once the probed catalog and version capabilities land.
   useEffect(() => {
     if (
       hasInitializedDefaultsRef.current ||
@@ -1237,110 +1390,13 @@ export function NewSessionForm({
     }
 
     if (providers.length === 0) return;
-
-    const availableProviderNames = new Set(
-      availableProviders.map((p) => p.name),
-    );
-    const savedDefaults = settings?.newSessionDefaults;
-    // An explicit caller preference (e.g. "clear" from an existing session)
-    // outranks saved new-session defaults.
-    const requestedProviderName =
-      preferredProvider && availableProviderNames.has(preferredProvider)
-        ? preferredProvider
-        : null;
-    const savedProviderName =
-      requestedProviderName ??
-      (savedDefaults?.provider &&
-      availableProviderNames.has(savedDefaults.provider)
-        ? savedDefaults.provider
-        : null);
-    const initialProvider =
-      providers.find((p) => p.name === savedProviderName) ??
-      getDefaultProvider(providers);
-
-    if (!initialProvider) return;
-
-    const initialModels = initialProvider.models ?? [];
-    const requestedModelId =
-      requestedProviderName &&
-      initialProvider.name === requestedProviderName &&
-      preferredModel &&
-      ((initialProvider.name !== "claude-gateway" &&
-        initialModels.length === 0) ||
-        initialModels.some((model) => model.id === preferredModel))
-        ? preferredModel
-        : null;
-    const preferredPromptSuggestionMode =
-      getPreferredPromptSuggestionMode(savedDefaults);
-    const initialProviderDefaults = getProviderSessionDefaults(
-      savedDefaults,
-      initialProvider.name,
-      getLegacyProviderDefaultSeed(initialProvider.name),
-    );
-    setSelectedProvider(initialProvider.name);
-    setSelectedModel(
-      requestedModelId ??
-        getPreferredProviderModelId(
-          initialProvider.name,
-          initialModels,
-          initialProviderDefaults.model,
-        ),
-    );
-    const preferredThinkingSelection = preferredThinking
-      ? parseThinkingOption(preferredThinking)
-      : null;
-    setSelectedThinkingMode(
-      preferredThinkingSelection?.mode ??
-        initialProviderDefaults.thinkingMode ??
-        "off",
-    );
-    setSelectedEffortLevel(
-      preferredThinkingSelection?.effort ??
-        initialProviderDefaults.effortLevel ??
-        "high",
-    );
-    const savedSandboxLevel =
-      supportsSessionSandboxing &&
-      savedDefaults?.sandboxLevel === "project-write"
-        ? "project-write"
-        : "none";
-    const savedRecapMode = getPreferredRecapMode(
-      initialProvider,
-      savedDefaults,
-    );
-    setSelectedRecapMode(
-      providerSupportsLocalSessionSandbox(initialProvider.name) &&
-        savedSandboxLevel === "project-write" &&
-        savedRecapMode === "side-session"
-        ? "off"
-        : savedRecapMode,
-    );
-    setSandboxLevel(savedSandboxLevel);
-    setRecapAfterSeconds(
-      normalizeRecapAfterSeconds(savedDefaults?.recapAfterSeconds),
-    );
-    setSelectedPromptSuggestionMode(preferredPromptSuggestionMode);
-    setHelperSideModel(
-      getDefaultHelperSideModel(initialModels, initialProviderDefaults),
-    );
-    setMode(
-      preferredPermissionMode ?? savedDefaults?.permissionMode ?? "default",
-    );
-    setSelectedExecutor(preferredExecutor ?? null);
+    applyInitialDefaults(providers);
   }, [
-    availableProviders,
+    applyInitialDefaults,
     providers,
     providersLoading,
-    settings,
     settingsLoading,
-    supportsSessionSandboxing,
     versionLoading,
-    getLegacyProviderDefaultSeed,
-    preferredProvider,
-    preferredModel,
-    preferredThinking,
-    preferredPermissionMode,
-    preferredExecutor,
   ]);
 
   useEffect(() => {
@@ -1449,6 +1505,35 @@ export function NewSessionForm({
         getDefaultHelperSideModel(availableModels, providerDefaults),
       );
     }
+  }, [
+    availableModels,
+    getLegacyProviderDefaultSeed,
+    selectedModel,
+    selectedProvider,
+    settings?.newSessionDefaults,
+  ]);
+
+  // A provider chosen before its catalog answered has no model yet. Fill the
+  // provider-local saved default once its models arrive, leaving any existing
+  // pick alone.
+  useEffect(() => {
+    if (!selectedProvider || selectedModel) return;
+    if (availableModels.length === 0) return;
+    const providerDefaults = getProviderSessionDefaults(
+      settings?.newSessionDefaults,
+      selectedProvider,
+      getLegacyProviderDefaultSeed(selectedProvider),
+    );
+    const nextModel = getPreferredProviderModelId(
+      selectedProvider,
+      availableModels,
+      providerDefaults.model,
+    );
+    if (!nextModel) return;
+    setSelectedModel(nextModel);
+    setHelperSideModel(
+      getDefaultHelperSideModel(availableModels, providerDefaults),
+    );
   }, [
     availableModels,
     getLegacyProviderDefaultSeed,
@@ -3263,7 +3348,7 @@ export function NewSessionForm({
     availableProviders.length > 1 ? (
       <div className="new-session-provider-section">
         <h3>{t("newSessionProviderTitle")}</h3>
-        <div className="provider-options">
+        <div className="provider-options" aria-busy={providersStale}>
           {providers.map((p) => {
             const isAvailable = p.installed && (p.authenticated || p.enabled);
             const isSelected = selectedProvider === p.name;

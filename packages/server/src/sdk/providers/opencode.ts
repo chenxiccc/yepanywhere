@@ -44,7 +44,7 @@ import {
   LOCAL_GLM_MODEL_PREFIX,
   type OpenCodeModelSelection,
   parseOpenCodeModelSelection,
-  parseOpenCodeModelVariants,
+  parseOpenCodeVerboseModels,
 } from "./opencode-models.js";
 import type {
   CanUseTool,
@@ -140,8 +140,7 @@ function aggregateOpenCodeUsage(
     aggregate.input_tokens += usage.input_tokens;
     aggregate.output_tokens += usage.output_tokens;
     aggregate.cache_read_input_tokens += usage.cache_read_input_tokens;
-    aggregate.cache_creation_input_tokens +=
-      usage.cache_creation_input_tokens;
+    aggregate.cache_creation_input_tokens += usage.cache_creation_input_tokens;
   }
   return aggregate;
 }
@@ -298,29 +297,25 @@ export class OpenCodeProvider implements AgentProvider {
     }
 
     try {
-      const { stdout: result } = await execFileUtf8(opencodePath, ["models"], {
-        encoding: "utf-8",
-        timeout: 10000,
-      });
+      // `models --verbose` prints the same model list as `models` plus each
+      // model's variant defs, so one invocation answers both. Running them in
+      // series doubled this provider's discovery cost, and `/api/providers`
+      // waits for its slowest provider.
+      const verbose = await this.getVerboseModels(opencodePath);
+      const variantMap = verbose?.variants ?? new Map<string, EffortLevel[]>();
+      const modelIds = verbose?.ids.length
+        ? verbose.ids
+        : await this.listModelIds(opencodePath);
 
-      // Best-effort: learn each model's reasoning-effort variants so the UI can
-      // offer an effort selector for models that support it (e.g. copilot opus).
-      const variantMap = await this.getModelVariantMap(opencodePath);
-
-      const discoveredModels: ModelInfo[] = [];
-
-      for (const line of result.split("\n")) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith("─")) {
-          const model: ModelInfo = { id: trimmed, name: trimmed };
-          const effortLevels = variantMap.get(trimmed);
-          if (effortLevels && effortLevels.length > 0) {
-            model.supportsEffort = true;
-            model.supportedEffortLevels = effortLevels;
-          }
-          discoveredModels.push(model);
+      const discoveredModels: ModelInfo[] = modelIds.map((id) => {
+        const model: ModelInfo = { id, name: id };
+        const effortLevels = variantMap.get(id);
+        if (effortLevels && effortLevels.length > 0) {
+          model.supportsEffort = true;
+          model.supportedEffortLevels = effortLevels;
         }
-      }
+        return model;
+      });
 
       const localGlmModels = discoveredModels
         .filter((model) => model.id.startsWith(LOCAL_GLM_MODEL_PREFIX))
@@ -350,23 +345,35 @@ export class OpenCodeProvider implements AgentProvider {
     }
   }
 
+  /** Plain `opencode models` ids, for a CLI whose verbose output we cannot use. */
+  private async listModelIds(opencodePath: string): Promise<string[]> {
+    const { stdout } = await execFileUtf8(opencodePath, ["models"], {
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith("─"));
+  }
+
   /**
-   * Best-effort fetch of per-model reasoning-effort variants from
-   * `opencode models --verbose`. Returns an empty map on any failure so model
-   * discovery still works without effort metadata.
+   * Best-effort `opencode models --verbose` catalog: advertised model ids in
+   * listing order plus their reasoning-effort variants. Returns null on any
+   * failure so model discovery falls back to the plain list.
    */
-  private async getModelVariantMap(
+  private async getVerboseModels(
     opencodePath: string,
-  ): Promise<Map<string, EffortLevel[]>> {
+  ): Promise<{ ids: string[]; variants: Map<string, EffortLevel[]> } | null> {
     try {
       const { stdout } = await execFileUtf8(
         opencodePath,
         ["models", "--verbose"],
         { encoding: "utf-8", timeout: 15000 },
       );
-      return parseOpenCodeModelVariants(stdout);
+      return parseOpenCodeVerboseModels(stdout);
     } catch {
-      return new Map();
+      return null;
     }
   }
 

@@ -368,6 +368,10 @@ vi.mock("../../hooks/useProviders", () => ({
     refetch: mockRefetchProviders,
     reload: vi.fn(),
   }),
+  useProviderRow: (providerName: string | null | undefined) =>
+    providersState.providers.find(
+      (provider) => provider.name === providerName,
+    ) ?? null,
   getAvailableProviders: (providers: typeof providersState.providers) =>
     providers.filter(
       (provider) => provider.installed && provider.authenticated,

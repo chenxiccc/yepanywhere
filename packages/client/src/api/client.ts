@@ -383,6 +383,24 @@ export const api = {
         : undefined,
     ),
 
+  /**
+   * Fetch one provider's status and model catalog.
+   *
+   * The aggregate `/providers` request waits for every exposed provider, so a
+   * slow unselected provider delays the selected one. This route resolves the
+   * selected provider on its own; the server coalesces it with any aggregate
+   * request already probing that provider.
+   */
+  getProvider: (provider: ProviderName, options?: { refresh?: boolean }) =>
+    fetchJSON<{ provider: ProviderInfo }>(
+      `/providers/${encodeURIComponent(provider)}${
+        options?.refresh ? "?refresh=1" : ""
+      }`,
+      options?.refresh
+        ? { headers: { "Cache-Control": "no-cache" } }
+        : undefined,
+    ),
+
   getProviderSubscriptionUsage: (
     provider: ProviderName,
     options?: { refresh?: boolean },

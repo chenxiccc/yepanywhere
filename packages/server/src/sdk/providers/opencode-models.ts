@@ -57,15 +57,21 @@ const OPENCODE_EFFORT_LEVELS = new Set<EffortLevel>([
 
 /**
  * Parse `opencode models --verbose` output (header `provider/id` lines followed
- * by pretty-printed JSON model defs) into a map of model key -> the reasoning
- * effort levels that model's `variants` expose. OpenCode passes effort by
- * naming a variant in the message body; the variant keys
- * (low/medium/high/xhigh/max) coincide with YA's EffortLevel.
+ * by pretty-printed JSON model defs) into the advertised model keys in listing
+ * order plus, per key, the reasoning effort levels that model's `variants`
+ * expose. OpenCode passes effort by naming a variant in the message body; the
+ * variant keys (low/medium/high/xhigh/max) coincide with YA's EffortLevel.
+ *
+ * The header lines are exactly what plain `opencode models` prints, so this one
+ * invocation answers both the catalog and its effort metadata.
  */
-export function parseOpenCodeModelVariants(
-  stdout: string,
-): Map<string, EffortLevel[]> {
-  const map = new Map<string, EffortLevel[]>();
+export function parseOpenCodeVerboseModels(stdout: string): {
+  ids: string[];
+  variants: Map<string, EffortLevel[]>;
+} {
+  const variants = new Map<string, EffortLevel[]>();
+  const ids: string[] = [];
+  const seen = new Set<string>();
   let header: string | null = null;
   let block: string[] | null = null;
   for (const line of stdout.split("\n")) {
@@ -74,6 +80,10 @@ export function parseOpenCodeModelVariants(
         block = [line];
       } else if (line.trim() && line.includes("/") && !line.startsWith(" ")) {
         header = line.trim();
+        if (!seen.has(header)) {
+          seen.add(header);
+          ids.push(header);
+        }
       }
       continue;
     }
@@ -94,7 +104,7 @@ export function parseOpenCodeModelVariants(
           OPENCODE_EFFORT_LEVELS.has(v as EffortLevel),
         );
         if (levels.length > 0) {
-          map.set(key, levels);
+          variants.set(key, levels);
         }
       }
     } catch {
@@ -103,5 +113,12 @@ export function parseOpenCodeModelVariants(
     block = null;
     header = null;
   }
-  return map;
+  return { ids, variants };
+}
+
+/** Effort-variant view of {@link parseOpenCodeVerboseModels}. */
+export function parseOpenCodeModelVariants(
+  stdout: string,
+): Map<string, EffortLevel[]> {
+  return parseOpenCodeVerboseModels(stdout).variants;
 }
