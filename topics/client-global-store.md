@@ -204,7 +204,7 @@ since changed to `host:winnative`.
 
 ### Retained query invariants
 
-Four contracts hold the shared-fetch mechanics together. They are easy to
+Five contracts hold the shared-fetch mechanics together. They are easy to
 "simplify" into something that looks equivalent and is not.
 
 **Coverage is a partial order, not a total one.** A request answers a need when
@@ -232,6 +232,19 @@ request's generation to the current one, because joining declares the request
 sufficient for its own force — without that, N consumers reacting to one event
 strand the entry as permanently stale and `staleTimeMs` stops short-circuiting
 that query for the rest of the session.
+
+**A shared fetch needs a shared place to put the result.** `applySnapshot` runs
+in the retained owner's closure, so a hook that keeps the value in its own
+`useState` only ever sees the responses it happened to own — every other
+consumer stays empty and refetches to fill itself in, which is the duplication
+the retained query was meant to remove. Server-side facts therefore live in a
+module-level per-source snapshot that consumers read through
+`useSyncExternalStore`; the hook keeps only view state that genuinely differs
+per consumer. `lib/devReloadStatusStore.ts` is the worked example: reload mode,
+the persisted dirty flag, worker activity, and safe-restart state are shared,
+while which banners are pending and which the viewer dismissed stay in the hook.
+Moving a globally-mounted hook onto the controller without this step looks like
+it works and quietly fetches once per mount.
 
 **The app shell mounts each feed once.** Where a component both needs a feed and
 is unmounted by ordinary navigation, the feed belongs in a provider above it

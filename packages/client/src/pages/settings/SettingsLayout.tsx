@@ -17,7 +17,7 @@ import {
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
-import { useReloadNotifications } from "../../hooks/useReloadNotifications";
+import { useIsManualReloadMode } from "../../hooks/useReloadNotifications";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
@@ -184,7 +184,7 @@ export function SettingsLayout() {
   const useTwoColumnSettings = shouldUseSettingsTwoColumn(
     settingsContainerWidth,
   );
-  const { isManualReloadMode } = useReloadNotifications();
+  const isManualReloadMode = useIsManualReloadMode();
   const { version: versionInfo } = useVersion();
   const canBackUpBrowserSettings = serverHasCapability(
     versionInfo,

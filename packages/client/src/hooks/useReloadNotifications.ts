@@ -1,22 +1,31 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { SafeRestartState } from "@yep-anywhere/shared";
 import { fetchJSON } from "../api/client";
 import {
   type SourceChangeEvent,
-  type WorkerActivityEvent,
   activityBus,
   getInterruptibleSessionCount,
 } from "../lib/activityBus";
+import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
+import {
+  DEV_STATUS_QUERY_KEY,
+  RESTART_SAFETY_QUERY_KEY,
+  acceptSafeRestartState,
+  applyDevStatusSnapshot,
+  applyRestartSafetySnapshot,
+  devStatusFetcher,
+  getDevStatusSnapshot,
+  getRestartSafetySnapshot,
+  restartSafetyFetcher,
+  retainDevReloadStatusEvents,
+  subscribeDevStatus,
+  subscribeRestartSafety,
+} from "../lib/devReloadStatusStore";
 import {
   buildFrontendReloadUrl,
   getFrontendReloadCleanupUrl,
 } from "../lib/frontendReload";
+import { useRetainedClientQuery } from "./useRetainedClientQuery";
 
 export {
   FRONTEND_RELOAD_QUERY_PARAM,
@@ -35,20 +44,14 @@ export interface PendingReloads {
   frontend: boolean;
 }
 
-interface DevStatus {
-  noBackendReload: boolean;
-  noFrontendReload: boolean;
-  backendDirty?: boolean;
-}
-
-const IDLE_SAFE_RESTART_STATE: SafeRestartState = {
-  status: "idle",
-  blockers: [],
-  canRestartNow: true,
-  updatedAt: "",
-};
-const SAFETY_SYNC_RETRY_DELAY_MS = 1_000;
-const MAX_SAFETY_SYNC_RETRIES = 3;
+/**
+ * Both queries revalidate on the same signals the hook used to sync on. The
+ * debounce is zero so a reload notice stays as immediate as it was; the owner
+ * still collapses a burst — a reconnect and the visibility restore that follows
+ * it — into one request.
+ */
+const RELOAD_STATUS_REVALIDATE_EVENTS = ["reconnect", "refresh"] as const;
+const RELOAD_STATUS_DEBOUNCE_MS = 0;
 
 function subscribeActivityConnected(listener: () => void): () => void {
   return activityBus.subscribeConnected(listener);
@@ -76,10 +79,71 @@ export function getVisibleReloadBanners(
 }
 
 /**
+ * The reload mode and the persisted dirty flag, shared per source.
+ *
+ * Split out because a consumer that only shows or hides a control needs this
+ * and nothing else — subscribing it to the whole family would re-render it on
+ * every worker-activity change.
+ */
+function useDevStatusSnapshot() {
+  const sourceKey = useClientSummarySourceKey();
+  const readDevStatus = useCallback(
+    () => getDevStatusSnapshot(sourceKey),
+    [sourceKey],
+  );
+  const snapshot = useSyncExternalStore(
+    subscribeDevStatus,
+    readDevStatus,
+    readDevStatus,
+  );
+  // The login screen renders none of this and may not even be authenticated.
+  const offLoginRoute = window.location.pathname !== "/login";
+
+  useRetainedClientQuery({
+    sourceKey,
+    key: DEV_STATUS_QUERY_KEY,
+    ready: offLoginRoute,
+    hasData: snapshot.observedAt !== undefined,
+    debounceMs: RELOAD_STATUS_DEBOUNCE_MS,
+    revalidateOn: RELOAD_STATUS_REVALIDATE_EVENTS,
+    fetcher: devStatusFetcher,
+    applySnapshot: applyDevStatusSnapshot,
+  });
+
+  const devStatus = snapshot.devStatus;
+  return {
+    sourceKey,
+    offLoginRoute,
+    devStatus,
+    // Whether manual reload mode is active at all. Nothing about restart safety
+    // is displayed outside it, so it also gates the worker-activity and
+    // safe-restart requests.
+    isManualReloadMode:
+      devStatus?.noBackendReload || devStatus?.noFrontendReload,
+  };
+}
+
+/**
+ * Just the reload mode, for consumers that show or hide a control rather than
+ * render a banner. They share the same one-per-source dev-status acquisition
+ * without retaining the restart-safety family they never display.
+ */
+export function useIsManualReloadMode(): boolean | undefined {
+  return useDevStatusSnapshot().isManualReloadMode;
+}
+
+/**
  * Hook to manage reload notifications when running in manual reload mode.
- * Listens for source-change events via the global activityBus.
+ *
+ * The server-side facts — reload mode, the persisted dirty flag, worker
+ * activity, safe-restart state — are shared per source by
+ * `lib/devReloadStatusStore`, so mounting this hook a second or third time
+ * costs no request. What stays here is the per-consumer banner policy: which
+ * notices are pending and which the viewer dismissed.
  */
 export function useReloadNotifications() {
+  const { sourceKey, offLoginRoute, devStatus, isManualReloadMode } =
+    useDevStatusSnapshot();
   const [pendingReloads, setPendingReloads] = useState<PendingReloads>({
     backend: false,
     frontend: false,
@@ -88,145 +152,71 @@ export function useReloadNotifications() {
     backend: false,
     frontend: false,
   });
-  const [devStatus, setDevStatus] = useState<DevStatus | null>(null);
-  // Whether manual reload mode is active at all. Nothing this hook returns
-  // about restart safety is displayed outside it, so it also gates the
-  // worker-activity and safe-restart requests.
-  const isManualReloadMode =
-    devStatus?.noBackendReload || devStatus?.noFrontendReload;
-  const isManualReloadModeRef = useRef(false);
-  isManualReloadModeRef.current = isManualReloadMode === true;
+  const [safeRestartMutating, setSafeRestartMutating] = useState(false);
+
+  const readRestartSafety = useCallback(
+    () => getRestartSafetySnapshot(sourceKey),
+    [sourceKey],
+  );
+  const restartSafety = useSyncExternalStore(
+    subscribeRestartSafety,
+    readRestartSafety,
+    readRestartSafety,
+  );
   const connected = useSyncExternalStore(
     subscribeActivityConnected,
     getActivityConnected,
     getActivityConnected,
   );
-  const [safeRestartState, setSafeRestartState] = useState<SafeRestartState>(
-    IDLE_SAFE_RESTART_STATE,
-  );
-  const [safeRestartLoaded, setSafeRestartLoaded] = useState(false);
-  const [safeRestartMutating, setSafeRestartMutating] = useState(false);
-  const [workerActivityLoaded, setWorkerActivityLoaded] = useState(false);
-  const [workerActivity, setWorkerActivity] = useState<WorkerActivityEvent>({
-    type: "worker-activity-changed",
-    activeWorkers: 0,
-    interruptibleSessionCount: 0,
-    queueLength: 0,
-    queuedSessionMessageCount: 0,
-    hasActiveWork: false,
-    timestamp: "",
+
+  useRetainedClientQuery({
+    sourceKey,
+    key: RESTART_SAFETY_QUERY_KEY,
+    // A deployment in neither reload mode displays none of this, so it must not
+    // be requested merely because the hook is mounted globally.
+    enabled: isManualReloadMode === true,
+    ready: offLoginRoute,
+    hasData:
+      restartSafety.workerActivityLoaded && restartSafety.safeRestartLoaded,
+    debounceMs: RELOAD_STATUS_DEBOUNCE_MS,
+    revalidateOn: RELOAD_STATUS_REVALIDATE_EVENTS,
+    fetcher: restartSafetyFetcher,
+    applySnapshot: applyRestartSafetySnapshot,
   });
-  const safetySyncRetryTimerRef = useRef<number | null>(null);
-  const safetySyncRetryCountRef = useRef(0);
-  const syncRestartSafetyRef = useRef<(retrying?: boolean) => void>(() => {});
+
+  useEffect(() => retainDevReloadStatusEvents(sourceKey), [sourceKey]);
 
   const showReloadIfNotDismissed = useCallback(
     (target: "backend" | "frontend") => {
       setPendingReloads((prev) => {
-        if (dismissedReloads[target]) return prev;
+        if (dismissedReloads[target] || prev[target]) return prev;
         return { ...prev, [target]: true };
       });
     },
     [dismissedReloads],
   );
 
-  /**
-   * Read the reload mode and the persisted dirty flag. This is the hook's only
-   * `/dev/status` request: the mount used to read it to learn the mode, then
-   * immediately read it a second time as part of the safety sync it triggered.
-   */
-  const syncDevStatus = useCallback(() => {
-    if (window.location.pathname === "/login") {
-      return;
-    }
-
-    fetchJSON<DevStatus>("/dev/status")
-      .then((data) => {
-        setDevStatus(data ?? null);
-        if (data?.backendDirty) {
-          showReloadIfNotDismissed("backend");
-        } else if (data) {
-          setPendingReloads((prev) => ({ ...prev, backend: false }));
-        }
-      })
-      .catch(() => {
-        setDevStatus(null);
-      });
-  }, [showReloadIfNotDismissed]);
-
-  /**
-   * Worker activity and safe-restart state, which only the manual-reload
-   * banners and the Development pane display. A deployment in neither reload
-   * mode has nothing to show, so it must not request these merely because the
-   * hook is mounted globally.
-   */
-  const syncRestartSafety = useCallback(
-    (retrying = false) => {
-      if (window.location.pathname === "/login") {
-        return;
-      }
-      if (!retrying) {
-        safetySyncRetryCountRef.current = 0;
-      }
-
-      // Sync worker activity
-      const workerActivityRequest = fetchJSON<WorkerActivityEvent>(
-        "/status/workers",
-      ).then((data) => {
-        if (!data) throw new Error("Missing worker activity state");
-        setWorkerActivity(data);
-        setWorkerActivityLoaded(true);
-      });
-
-      const safeRestartRequest = fetchJSON<SafeRestartState>(
-        "/dev/safe-restart",
-      ).then((data) => {
-        if (!data) throw new Error("Missing safe restart state");
-        setSafeRestartState(data);
-        setSafeRestartLoaded(true);
-        if (data.status !== "idle") {
-          showReloadIfNotDismissed("backend");
-        }
-      });
-
-      void Promise.allSettled([workerActivityRequest, safeRestartRequest]).then(
-        (results) => {
-          const failed = results.some((result) => result.status === "rejected");
-          if (!failed) {
-            safetySyncRetryCountRef.current = 0;
-            return;
-          }
-          if (
-            safetySyncRetryTimerRef.current !== null ||
-            safetySyncRetryCountRef.current >= MAX_SAFETY_SYNC_RETRIES
-          ) {
-            return;
-          }
-          safetySyncRetryCountRef.current += 1;
-          safetySyncRetryTimerRef.current = window.setTimeout(() => {
-            safetySyncRetryTimerRef.current = null;
-            syncRestartSafetyRef.current(true);
-          }, SAFETY_SYNC_RETRY_DELAY_MS);
-        },
-      );
-    },
-    [showReloadIfNotDismissed],
-  );
-  syncRestartSafetyRef.current = syncRestartSafety;
-
-  useEffect(
-    () => () => {
-      if (safetySyncRetryTimerRef.current !== null) {
-        window.clearTimeout(safetySyncRetryTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  // Check if server is in dev mode and get persisted dirty state
+  // The persisted dirty flag and the safe-restart status are shared snapshot
+  // values, so the banner reacts to the snapshot rather than to whichever
+  // consumer's request happened to fetch it. That is what lets a later mount
+  // raise the same notice without a request of its own.
   useEffect(() => {
-    syncDevStatus();
-  }, [syncDevStatus]);
+    if (!devStatus) return;
+    if (devStatus.backendDirty) {
+      showReloadIfNotDismissed("backend");
+    } else {
+      setPendingReloads((prev) =>
+        prev.backend ? { ...prev, backend: false } : prev,
+      );
+    }
+  }, [devStatus, showReloadIfNotDismissed]);
+
+  const safeRestartStatus = restartSafety.safeRestart.status;
+  useEffect(() => {
+    if (safeRestartStatus !== "idle") {
+      showReloadIfNotDismissed("backend");
+    }
+  }, [safeRestartStatus, showReloadIfNotDismissed]);
 
   // Clean the cache-busting reload param back out after the fresh document loads
   // so copied/shared URLs do not retain reload-only query state.
@@ -238,76 +228,25 @@ export function useReloadNotifications() {
     window.history.replaceState(window.history.state, "", cleanupUrl);
   }, []);
 
-  // Subscribe to events from the bus
+  // What is left on the bus for this consumer is banner policy: the data these
+  // events also carry is applied once per source by the store.
   useEffect(() => {
-    const unsubscribers: (() => void)[] = [];
-
-    unsubscribers.push(
+    const unsubscribers = [
       activityBus.on("source-change", (data: SourceChangeEvent) => {
         showReloadIfNotDismissed(data.target);
       }),
-    );
-
-    unsubscribers.push(
       activityBus.on("backend-reloaded", () => {
         setPendingReloads((prev) => ({ ...prev, backend: false }));
         setDismissedReloads((prev) => ({ ...prev, backend: false }));
-        setSafeRestartState(IDLE_SAFE_RESTART_STATE);
-        setSafeRestartLoaded(true);
       }),
-    );
-
-    unsubscribers.push(
-      activityBus.on("worker-activity-changed", (data: WorkerActivityEvent) => {
-        setWorkerActivity(data);
-        setWorkerActivityLoaded(true);
-      }),
-    );
-
-    unsubscribers.push(
-      activityBus.on("safe-restart-changed", (data) => {
-        setSafeRestartState(data.state);
-        setSafeRestartLoaded(true);
-        if (data.state.status !== "idle") {
-          showReloadIfNotDismissed("backend");
-        }
-      }),
-    );
-
-    // On reconnect, re-read the mode: a server that came back may have
-    // restarted into a different one.
-    unsubscribers.push(
-      activityBus.on("reconnect", () => {
-        syncDevStatus();
-        if (isManualReloadModeRef.current) {
-          syncRestartSafety();
-        }
-      }),
-    );
-
-    // On visibility restore, refresh data
-    unsubscribers.push(
-      activityBus.on("refresh", () => {
-        syncDevStatus();
-        if (isManualReloadModeRef.current) {
-          syncRestartSafety();
-        }
-      }),
-    );
+    ];
 
     return () => {
       for (const unsub of unsubscribers) {
         unsub();
       }
     };
-  }, [showReloadIfNotDismissed, syncDevStatus, syncRestartSafety]);
-
-  // Initial safety sync once a reload mode is known to be active
-  useEffect(() => {
-    if (devStatus?.noBackendReload || devStatus?.noFrontendReload) {
-      syncRestartSafety();
-    }
-  }, [devStatus, syncRestartSafety]);
+  }, [showReloadIfNotDismissed]);
 
   // Reload the backend (triggers server restart)
   const reloadBackend = useCallback(async () => {
@@ -321,29 +260,32 @@ export function useReloadNotifications() {
     }
   }, []);
 
-  const scheduleSafeRestart = useCallback(async () => {
-    setSafeRestartMutating(true);
-    try {
-      const state = await fetchJSON<SafeRestartState>("/dev/safe-restart", {
-        method: "POST",
-      });
-      setSafeRestartState(state);
-    } finally {
-      setSafeRestartMutating(false);
-    }
-  }, []);
+  const mutateSafeRestart = useCallback(
+    async (method: "POST" | "DELETE") => {
+      setSafeRestartMutating(true);
+      try {
+        const state = await fetchJSON<SafeRestartState>("/dev/safe-restart", {
+          method,
+        });
+        if (state) {
+          acceptSafeRestartState(sourceKey, state);
+        }
+      } finally {
+        setSafeRestartMutating(false);
+      }
+    },
+    [sourceKey],
+  );
 
-  const cancelSafeRestart = useCallback(async () => {
-    setSafeRestartMutating(true);
-    try {
-      const state = await fetchJSON<SafeRestartState>("/dev/safe-restart", {
-        method: "DELETE",
-      });
-      setSafeRestartState(state);
-    } finally {
-      setSafeRestartMutating(false);
-    }
-  }, []);
+  const scheduleSafeRestart = useCallback(
+    () => mutateSafeRestart("POST"),
+    [mutateSafeRestart],
+  );
+
+  const cancelSafeRestart = useCallback(
+    () => mutateSafeRestart("DELETE"),
+    [mutateSafeRestart],
+  );
 
   // Reload the frontend (browser refresh)
   const reloadFrontend = useCallback(() => {
@@ -394,13 +336,15 @@ export function useReloadNotifications() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [reload]);
 
+  const workerActivity = restartSafety.workerActivity;
   const interruptibleSessionCount =
     getInterruptibleSessionCount(workerActivity);
   const queuedSessionMessageCount = Math.max(
     0,
     workerActivity.queuedSessionMessageCount ?? workerActivity.queueLength,
   );
-  const backendReloadSafetyKnown = workerActivityLoaded && safeRestartLoaded;
+  const backendReloadSafetyKnown =
+    restartSafety.workerActivityLoaded && restartSafety.safeRestartLoaded;
 
   return {
     isManualReloadMode,
@@ -416,7 +360,7 @@ export function useReloadNotifications() {
     workerActivity,
     interruptibleSessionCount,
     queuedSessionMessageCount,
-    safeRestartState,
+    safeRestartState: restartSafety.safeRestart,
     safeRestartMutating,
     backendReloadSafetyKnown,
     unsafeToRestart:

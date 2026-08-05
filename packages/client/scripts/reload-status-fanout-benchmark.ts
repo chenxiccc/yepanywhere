@@ -66,8 +66,9 @@ function measureRetained(mode: "development" | "production"): ArmResult {
   // subscription costs nothing at all where the interval charged every tick.
   for (const release of releases) release();
 
-  // Each consumer still reads on its own: the hook has not moved onto the
-  // retained query controller, so only the duplicate startup read is gone.
+  // Each consumer still reads on its own at this step: only the duplicate
+  // startup read is gone. Sharing the read across consumers came next, and
+  // `benchmark:reload-status-shared-snapshot` measures it.
   const startupSafetySyncs = mode === "development" ? 1 : 0;
 
   return {
@@ -115,10 +116,11 @@ function main(): void {
   report("development");
   report("production");
   console.log(
-    "Note: each consumer still reads `/api/dev/status` on its own for every " +
-      "reconnect and visibility restore — the hook has not moved onto the " +
-      "retained query controller, so only the duplicate startup read is gone. " +
-      "Collapsing that fan-out to one read per event is the rest of the step.",
+    "Note: this measures the poll/duplicate-read/gating step only, so each " +
+      "consumer here still reads `/api/dev/status` on its own for every " +
+      "reconnect and visibility restore. Collapsing that fan-out onto one " +
+      "shared per-source snapshot landed next; run " +
+      "`benchmark:reload-status-shared-snapshot` for it.",
   );
 
   const productionRetained = measureRetained("production");
