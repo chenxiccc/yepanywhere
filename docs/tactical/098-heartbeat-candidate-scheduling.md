@@ -5,10 +5,32 @@
 > state instead of searching every project and loading transcripts every 30
 > seconds.
 
-Status: Implementation handoff, not yet implemented. Tactical 089's follow-on
-timer audit located this independent read-amplification path. This plan assigns
-candidate identity, tail projection, scheduling, restart, and verification; it
-does not implement them.
+Status: Partially implemented. The retained candidate registry (steps 1, 2,
+and 4) has landed and is measured below: ownership decides before any storage
+work, an exactly located candidate no longer searches the project fleet, and a
+source-versioned pending-tool fact keeps an unchanged transcript from being
+reparsed on the interval. The deadline scheduler (step 5), catalog-supplied
+tail projections (step 3), and the adverse-state matrix (step 6) remain
+pending; the 30-second supervisor tick still drives the registry.
+
+## Implementation progress
+
+- **2026-08-05 — retained heartbeat candidate registry.**
+  `HeartbeatCandidateRegistry` owns eligibility, exact location, and a
+  source-versioned pending-tool fact behind the shared byte-bounded
+  single-flight owner. Ownership is checked before `listProjects()`, so a fully
+  owned fleet performs no storage work at all. A located candidate resolves
+  only its own project; a candidate whose transcript moved falls back to one
+  search and relocates; an unlocatable candidate enters exponential backoff
+  instead of re-searching the fleet every tick.
+  With 10,000 projects, one eligible unowned session, and 20 ticks, the fleet
+  search performed 120,020 project probes, 20 project listings, and 20 full
+  transcript reads in 57.02 ms, versus 6,020 probes, 1 listing, and 1
+  transcript read in 5.58 ms. Excluding the one-time location search, the
+  recurring cost fell from 114,019 probes and 53.00 ms to 19 probes and 1.59 ms
+  (99.98% of probes avoided, 33.36x). A fully owned fleet cost 0 project probes
+  and 0.05 ms across all 20 ticks. Run `pnpm --filter @yep-anywhere/server
+  benchmark:heartbeat-candidates` to repeat the measurement.
 
 Related contracts and plans:
 

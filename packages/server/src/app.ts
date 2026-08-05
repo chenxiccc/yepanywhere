@@ -158,6 +158,7 @@ import type { BrowserSettingsBackupService } from "./services/BrowserSettingsBac
 import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
 import type { DirtyFileEditorService } from "./services/DirtyFileEditorService.js";
+import { HeartbeatCandidateRegistry } from "./services/HeartbeatCandidateRegistry.js";
 import type { HostAwakeService } from "./services/host-awake/HostAwakeService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
@@ -955,82 +956,66 @@ export function createApp(options: AppOptions): AppResult {
     return resolved?.summary ?? null;
   };
   let supervisor: Supervisor;
+  const heartbeatProviderResolutionDeps = () => ({
+    readerFactory,
+    codexSessionsDir,
+    codexReaderFactory,
+    codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
+    geminiSessionsDir,
+    geminiReaderFactory,
+    geminiHashToCwd: geminiScanner.getHashToCwd(),
+    grokSessionsDir,
+    grokReaderFactory,
+    piSessionsDir,
+    piReaderFactory,
+    claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
+  });
+  const heartbeatCandidates = new HeartbeatCandidateRegistry<Project>({
+    listEligible: () =>
+      Object.entries(options.sessionMetadataService?.getAllMetadata() ?? {})
+        .filter(([, metadata]) => isUnownedHeartbeatResumeEligible(metadata))
+        .map(([sessionId, metadata]) => [sessionId, metadata] as const),
+    isOwned: (sessionId) => Boolean(supervisor.getProcessForSession(sessionId)),
+    listProjects: () => scanner.listProjects(),
+    // Indexed lookup, so an already-located candidate never materializes the
+    // whole project fleet just to find its own project.
+    getProject: async (projectId) =>
+      (await scanner.getProject(projectId)) ?? undefined,
+    resolve: async (project, sessionId, provider) => {
+      const resolved = await findSessionListSummaryAcrossProviders(
+        project,
+        sessionId,
+        project.id,
+        heartbeatProviderResolutionDeps(),
+        provider,
+      );
+      if (!resolved) return null;
+      const reader = resolved.source.reader;
+      return {
+        projectId: project.id,
+        projectPath: project.path,
+        provider: resolved.summary.provider,
+        updatedAt: resolved.summary.updatedAt,
+        // The provider's activity timestamp is what an append moves, so it is
+        // the identity a retained pending-tool fact stays valid for.
+        sourceVersion: `${resolved.summary.provider}\0${resolved.summary.updatedAt}`,
+        readPendingToolCall: async () => {
+          const loaded = await reader.getSession(sessionId, project.id);
+          if (!loaded) return false;
+          return hasPendingToolCall(normalizeSession(loaded).messages);
+        },
+      };
+    },
+  });
   const getHeartbeatTurnCandidates = async (): Promise<
     HeartbeatTurnCandidate[]
   > => {
-    const metadataBySession = options.sessionMetadataService?.getAllMetadata();
-    if (!metadataBySession) {
-      return [];
-    }
-
-    const heartbeatSessionIds = Object.entries(metadataBySession).filter(
-      ([, metadata]) => isUnownedHeartbeatResumeEligible(metadata),
-    );
-    if (heartbeatSessionIds.length === 0) {
-      return [];
-    }
-
-    const projects = await scanner.listProjects();
-    const candidates: HeartbeatTurnCandidate[] = [];
-    const providerResolutionDeps = {
-      readerFactory,
-      codexSessionsDir,
-      codexReaderFactory,
-      codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
-      geminiSessionsDir,
-      geminiReaderFactory,
-      geminiHashToCwd: geminiScanner.getHashToCwd(),
-      grokSessionsDir,
-      grokReaderFactory,
-      piSessionsDir,
-      piReaderFactory,
-      claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
-    };
-
-    for (const [sessionId, metadata] of heartbeatSessionIds) {
-      if (supervisor.getProcessForSession(sessionId)) {
-        continue;
-      }
-
-      for (const project of projects) {
-        const resolved = await findSessionListSummaryAcrossProviders(
-          project,
-          sessionId,
-          project.id,
-          providerResolutionDeps,
-          metadata.provider,
-        );
-        if (!resolved) {
-          continue;
-        }
-
-        const loaded = await resolved.source.reader.getSession(
-          sessionId,
-          project.id,
-        );
-        if (!loaded) {
-          break;
-        }
-        const session = normalizeSession(loaded);
-        if (!hasPendingToolCall(session.messages)) {
-          break;
-        }
-
-        candidates.push({
-          sessionId,
-          projectId: project.id,
-          projectPath: project.path,
-          provider: resolved.summary.provider,
-          model: metadata.requestedModel,
-          executor: metadata.executor,
-          updatedAt: resolved.summary.updatedAt,
-          hasPendingToolCall: true,
-        });
-        break;
-      }
-    }
-
-    return candidates;
+    if (!options.sessionMetadataService) return [];
+    const rows = await heartbeatCandidates.getCandidates();
+    return rows.map((row) => ({
+      ...row,
+      projectId: row.projectId as UrlProjectId,
+    }));
   };
 
   supervisor = new Supervisor({
