@@ -129,8 +129,30 @@ degrades to plain content rather than failing the view.
 ## Not yet covered
 
 Only the file viewer's highlighted source runs this. Other viewers showing
-project content — diff panes, tool-result bodies — would use the same
+project content — diff panes, tool-result bodies, turn text — would use the same
 `linkifyProjectPaths` seam.
+
+**Server annotation, not a client corpus.** Extending to streaming turn text
+raises the option of shipping the path set to the client and matching there, the
+way glossary tooltips ship a compiled automaton
+([glossary-tooltips](glossary-tooltips.md) § Compiled matcher contract). That
+was considered and rejected in 2026-08-05 design discussion. The path set is
+three to five orders of magnitude larger than a glossary's — 131,956 files here
+and 594,511 in a research repository — so the artifact is a different weight
+class on a mobile-first client, and it is open rather than closed: any write
+anywhere changes it, whereas glossary terms change only on an edit the
+subscription already streams. Against that, a path link is decided once per body
+the server is already rendering, so nothing needs re-deriving client-side.
+
+Server annotation also keeps the demand-driven cache sufficient. A shipped
+corpus would require enumeration — the `git ls-files` set this feature's own
+history rules out on correctness, since it omits the ignored run outputs that
+motivated the feature — while the server only ever answers about text it is
+currently rendering. So the mandate against a project-wide crawl stands
+unamended, and the open questions for a turn-text surface are annotation
+granularity (per completed block rather than per streamed delta, which would put
+a filesystem-backed pass on a token-rate path) and holding a path-cache claim
+for the viewed project rather than per request.
 
 ## Replacement evidence
 

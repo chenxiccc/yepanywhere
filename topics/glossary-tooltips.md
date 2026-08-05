@@ -241,6 +241,19 @@ the definition visible but must not report a successful copy.
 
 ## Compiled matcher contract
 
+**Why the matcher ships rather than the annotation.** Shipping a compiled
+automaton to the client is right *here* and deliberately not the pattern for
+every text annotation. It holds when the pattern set is small, closed, and
+slowly changing, and the client must re-match the same text repeatedly — a
+glossary is a few files' worth of terms, changes only on a glossary edit the
+subscription already streams, and is rescanned on every local re-render, so a
+round trip per render would be the wrong cost. Where the pattern set is instead
+large, open, and filesystem-derived, and the match can be baked once into
+content the server is already producing, the annotation ships and the matcher
+stays server-side; project path links
+([project-path-links](project-path-links.md)) are that case, and the two are
+not evidence for each other.
+
 Runtime matching uses one compiled multi-pattern phrase automaton per governing
 glossary include-graph version. The intended implementation explicitly expands
 the small set of finite literal surface forms, deduplicates them while
