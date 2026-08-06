@@ -18,6 +18,7 @@ import {
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../defaults.js";
+import { createLruMap, refreshLruMap } from "../lib/lruCollections.js";
 import { getLogger } from "../logging/logger.js";
 import type {
   EffectiveSessionLaunchSettingsValue,
@@ -625,10 +626,10 @@ export interface SupervisorOptions {
 export class Supervisor {
   private processes: Map<string, Process> = new Map();
   private sessionToProcess: Map<string, string> = new Map(); // sessionId -> processId
-  private terminalProviderStatuses: Map<
+  private terminalProviderStatuses = createLruMap<
     string,
     Extract<Exclude<ProviderRuntimeStatus, null>, { kind: "terminal" }>
-  > = new Map();
+  >();
   private sessionActivationInFlight: Map<string, Promise<Process>> = new Map();
   private observedProcessIds: Set<string> = new Set();
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
@@ -3184,8 +3185,7 @@ export class Supervisor {
     sessionId: string,
     status: Extract<Exclude<ProviderRuntimeStatus, null>, { kind: "terminal" }>,
   ): void {
-    this.terminalProviderStatuses.delete(sessionId);
-    this.terminalProviderStatuses.set(sessionId, status);
+    refreshLruMap(this.terminalProviderStatuses, sessionId, status);
     while (
       this.terminalProviderStatuses.size > MAX_TERMINAL_PROVIDER_STATUSES
     ) {

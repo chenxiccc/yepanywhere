@@ -2,6 +2,7 @@ import type { Dirent, FSWatcher } from "node:fs";
 import { watch } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { createLruMap, refreshLruMap } from "../lib/lruCollections.js";
 import { getLogger } from "../logging/logger.js";
 
 /**
@@ -237,7 +238,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
   private readonly onRetentionChanged: (() => void) | undefined;
   private readonly root = createNode("", "directory", true);
   /** Watched directory nodes, in least-recently-used order. */
-  private readonly hydrated = new Map<PathNode, string>();
+  private readonly hydrated = createLruMap<PathNode, string>();
   private readonly listings = new Map<
     string,
     Promise<DirectoryListing | null>
@@ -1078,8 +1079,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
   private touch(node: PathNode): void {
     const absolutePath = this.hydrated.get(node);
     if (absolutePath === undefined) return;
-    this.hydrated.delete(node);
-    this.hydrated.set(node, absolutePath);
+    refreshLruMap(this.hydrated, node, absolutePath);
   }
 
   private withRetentionMutation<T>(mutate: () => T): T {
