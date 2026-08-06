@@ -62,7 +62,10 @@ export function createHostAwakeBackend(
 
 function boundedReason(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
-  const scrubbed = raw.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  const scrubbed = raw
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return (scrubbed || "Host-awake operation failed").slice(
     0,
     MAX_REASON_LENGTH,
@@ -223,7 +226,10 @@ export class HostAwakeService {
       } catch (error) {
         if (error instanceof HostAwakeUnsupportedError) {
           this.effectiveSupport = { ...UNSUPPORTED_HOST_AWAKE_SUPPORT };
-          this.setStatus({ state: "unsupported", reason: boundedReason(error) });
+          this.setStatus({
+            state: "unsupported",
+            reason: boundedReason(error),
+          });
         } else {
           this.setStatus({ state: "error", reason: boundedReason(error) });
         }

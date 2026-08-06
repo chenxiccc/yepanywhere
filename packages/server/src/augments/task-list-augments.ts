@@ -101,7 +101,10 @@ function normalizeTaskStatus(value: unknown): TaskListStatus | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   switch (normalized) {
     case "todo":
     case "open":
@@ -187,7 +190,10 @@ function resultTaskId(result: unknown): string | undefined {
   );
 }
 
-function parseCreatedTaskId(result: unknown, content: unknown): string | undefined {
+function parseCreatedTaskId(
+  result: unknown,
+  content: unknown,
+): string | undefined {
   const structuredId = resultTaskId(result);
   if (structuredId) {
     return structuredId;
@@ -302,7 +308,8 @@ function collectSnapshotHolders(messages: Message[]): SnapshotHolder[] {
       ) {
         holders.push({
           toolUseId: block.id,
-          deleteSnapshot: () => deleteSnapshot(block.input as Record<string, unknown>),
+          deleteSnapshot: () =>
+            deleteSnapshot(block.input as Record<string, unknown>),
         });
       }
 
@@ -313,7 +320,8 @@ function collectSnapshotHolders(messages: Message[]): SnapshotHolder[] {
       ) {
         holders.push({
           toolUseId: block.tool_use_id,
-          deleteSnapshot: () => deleteSnapshot(block as Record<string, unknown>),
+          deleteSnapshot: () =>
+            deleteSnapshot(block as Record<string, unknown>),
         });
       }
     }
@@ -404,7 +412,9 @@ export function createTaskListAugmenter(): TaskListAugmenter {
 
     const fallbackSubject =
       parseSubjectFromCreateResult(block.content) ??
-      (typeof payload === "string" ? parseSubjectFromCreateResult(payload) : undefined);
+      (typeof payload === "string"
+        ? parseSubjectFromCreateResult(payload)
+        : undefined);
     const existing = tasks.get(taskId);
     tasks.set(taskId, {
       id: taskId,

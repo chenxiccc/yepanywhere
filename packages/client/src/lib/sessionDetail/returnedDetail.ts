@@ -54,7 +54,8 @@ export function createStoreBackedSessionDetailSelector(
         previousRevealed &&
         previousRevealed.messages === state.messages &&
         previousRevealed.agentContent === state.agentContent &&
-        previousRevealed.toolUseToAgentEntries === state.toolUseToAgentEntries &&
+        previousRevealed.toolUseToAgentEntries ===
+          state.toolUseToAgentEntries &&
         previousRevealed.activeWindowTrimRevision ===
           state.activeWindowTrimRevision
           ? previousRevealed

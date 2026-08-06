@@ -265,5 +265,10 @@ export async function uploadComposerAttachmentFile({
     }
   }
 
-  return sourceTransport.upload(projectId, sessionId, uploadFile, uploadOptions);
+  return sourceTransport.upload(
+    projectId,
+    sessionId,
+    uploadFile,
+    uploadOptions,
+  );
 }

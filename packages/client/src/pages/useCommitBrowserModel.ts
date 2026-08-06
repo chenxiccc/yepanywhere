@@ -48,8 +48,9 @@ export function useCommitBrowserModel({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [compareToHead, setCompareToHead] = useState(false);
-  const [comparison, setComparison] =
-    useState<GitRevisionComparison | null>(null);
+  const [comparison, setComparison] = useState<GitRevisionComparison | null>(
+    null,
+  );
   const [loadingComparison, setLoadingComparison] = useState(false);
   const [messageView, setMessageView] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -247,8 +248,7 @@ export function useCommitBrowserModel({
   ]);
 
   const selectedFiles = useMemo(
-    () =>
-      compareToHead ? (comparison?.files ?? []) : (detail?.files ?? []),
+    () => (compareToHead ? (comparison?.files ?? []) : (detail?.files ?? [])),
     [compareToHead, comparison?.files, detail?.files],
   );
 

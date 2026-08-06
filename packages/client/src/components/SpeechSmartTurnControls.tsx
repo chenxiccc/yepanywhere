@@ -134,9 +134,7 @@ export function SpeechSmartTurnControls({
         />
       </div>
       {clean.enabled && (
-        <p className={styles.caption}>
-          {t("speechSmartTurnCaption")}
-        </p>
+        <p className={styles.caption}>{t("speechSmartTurnCaption")}</p>
       )}
     </div>
   );
@@ -144,7 +142,10 @@ export function SpeechSmartTurnControls({
   if (compact) {
     return (
       <details className={`${styles.root} ${styles.compact}`}>
-        <summary className={styles.summary} title="Grok STT Smart Turn controls">
+        <summary
+          className={styles.summary}
+          title="Grok STT Smart Turn controls"
+        >
           Turn
         </summary>
         <div className={styles.popover}>{body}</div>

@@ -127,12 +127,12 @@ describe("Codex summary helpers", () => {
     ).toBeNull();
 
     const loadModels = vi.fn(async () => [{ id: "gpt-5.4-mini" }]);
-    await expect(resolveCodexRecapHelperModel(undefined, loadModels)).resolves.toBe(
-      null,
-    );
-    await expect(resolveCodexRecapHelperModel("gpt-5", loadModels)).resolves.toBe(
-      "gpt-5",
-    );
+    await expect(
+      resolveCodexRecapHelperModel(undefined, loadModels),
+    ).resolves.toBe(null);
+    await expect(
+      resolveCodexRecapHelperModel("gpt-5", loadModels),
+    ).resolves.toBe("gpt-5");
     expect(loadModels).not.toHaveBeenCalled();
     await expect(
       resolveCodexRecapHelperModel(HELPER_SIDE_MODEL_CHEAPEST, loadModels),

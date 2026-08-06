@@ -31,7 +31,10 @@ export function SettingsCategoryItem({
         </span>
         <span className="settings-category-description">
           {highlightQuery
-            ? renderSettingsSearchHighlight(category.description, highlightQuery)
+            ? renderSettingsSearchHighlight(
+                category.description,
+                highlightQuery,
+              )
             : category.description}
         </span>
       </div>

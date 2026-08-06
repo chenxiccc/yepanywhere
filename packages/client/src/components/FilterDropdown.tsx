@@ -294,7 +294,10 @@ export function FilterDropdown<T extends string>({
 
               {option.icon && (
                 <span
-                  className={cx(styles.optionIcon, isModelPanel && styles.model)}
+                  className={cx(
+                    styles.optionIcon,
+                    isModelPanel && styles.model,
+                  )}
                   aria-hidden="true"
                 >
                   {option.icon}
@@ -310,7 +313,9 @@ export function FilterDropdown<T extends string>({
                 )}
               </span>
 
-              {option.meta && <span className={styles.meta}>{option.meta}</span>}
+              {option.meta && (
+                <span className={styles.meta}>{option.meta}</span>
+              )}
 
               {option.count !== undefined && (
                 <span className={styles.count}>{option.count}</span>

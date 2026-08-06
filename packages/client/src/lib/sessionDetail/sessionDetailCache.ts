@@ -168,10 +168,10 @@ export class SessionDetailCache {
     const existing = this.entries.get(key);
     if (!existing?.hasRecord && !isEntryCreatingAction(action)) {
       if (import.meta.env.DEV) {
-        console.warn(
-          "[SessionDetailStore] dropped action for missing entry",
-          { key, actionType: action.type },
-        );
+        console.warn("[SessionDetailStore] dropped action for missing entry", {
+          key,
+          actionType: action.type,
+        });
       }
       return undefined;
     }
@@ -390,10 +390,7 @@ export class SessionDetailCache {
     return entry;
   }
 
-  private deleteIfExpired(
-    entry: SessionDetailEntry,
-    at: number,
-  ): boolean {
+  private deleteIfExpired(entry: SessionDetailEntry, at: number): boolean {
     const deleted = entry.deleteIfExpired(at);
     if (deleted) {
       this.deleteEntryIfIdle(entry);
@@ -458,7 +455,9 @@ export class SessionDetailCache {
     return total;
   }
 
-  private getOrCreateEntry(input: SessionDetailEntryKeyInput): SessionDetailEntry {
+  private getOrCreateEntry(
+    input: SessionDetailEntryKeyInput,
+  ): SessionDetailEntry {
     const key = getSessionDetailEntryKey(input);
     let entry = this.entries.get(key);
     if (!entry) {

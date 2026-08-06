@@ -237,7 +237,8 @@ export class GlossaryIndexService {
     string,
     Map<string, FileStatsIdentity | null>
   >();
-  private readonly observationListeners = new Set<GlossaryObservationListener>();
+  private readonly observationListeners =
+    new Set<GlossaryObservationListener>();
 
   constructor(options: GlossaryIndexServiceOptions = {}) {
     this.compile = options.compile ?? compileGlossaryArtifact;
@@ -313,7 +314,6 @@ export class GlossaryIndexService {
       this.observationListeners.delete(listener);
     };
   }
-
 
   invalidateProject(projectPath: string): void {
     const projectRoot = resolve(projectPath);

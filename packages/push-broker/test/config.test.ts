@@ -3,15 +3,11 @@ import { loadConfig } from "../src/config.js";
 
 describe("push broker config", () => {
   it("requires an explicit provider", () => {
-    expect(() => loadConfig({})).toThrow(
-      "PUSH_BROKER_PROVIDER must be set",
-    );
+    expect(() => loadConfig({})).toThrow("PUSH_BROKER_PROVIDER must be set");
   });
 
   it("allows the fake provider only outside production", () => {
-    expect(loadConfig({ PUSH_BROKER_PROVIDER: "fake" }).provider).toBe(
-      "fake",
-    );
+    expect(loadConfig({ PUSH_BROKER_PROVIDER: "fake" }).provider).toBe("fake");
     expect(() =>
       loadConfig({
         NODE_ENV: "production",

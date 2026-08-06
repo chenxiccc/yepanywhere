@@ -24,11 +24,8 @@ const mockActivityBus = vi.hoisted(() => {
     };
   });
   const onSource = vi.fn(
-    (
-      _sourceKey: string,
-      eventType: string,
-      callback: MockActivityCallback,
-    ) => on(eventType, callback),
+    (_sourceKey: string, eventType: string, callback: MockActivityCallback) =>
+      on(eventType, callback),
   );
   const retainSourceStream = vi.fn(() => () => {});
 
@@ -170,7 +167,9 @@ function fakeApiClient(): SourceApiClient {
 function runtimeWrapper(runtime: YaSourceRuntime) {
   return function RuntimeWrapper({ children }: { children: ReactNode }) {
     return (
-      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+      <SourceRuntimeProvider runtime={runtime}>
+        {children}
+      </SourceRuntimeProvider>
     );
   };
 }
@@ -895,9 +894,10 @@ describe("clientSummaryStore", () => {
       );
     });
 
-    const before = getClientSummarySnapshotForSource(
-      SOURCE_KEY,
-    ).sessions.entities.get("session-a");
+    const before =
+      getClientSummarySnapshotForSource(SOURCE_KEY).sessions.entities.get(
+        "session-a",
+      );
     expect(before).toBeDefined();
 
     act(() => {
@@ -1053,10 +1053,7 @@ describe("clientSummaryStore", () => {
       setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
     });
 
-    expect([...selected.result.current]).toEqual([
-      "session-a",
-      "session-b",
-    ]);
+    expect([...selected.result.current]).toEqual(["session-a", "session-b"]);
     expect(renders).toBeGreaterThan(afterMacbookRenders);
   });
 
@@ -1167,12 +1164,10 @@ describe("clientSummaryStore", () => {
       "draft-session-b",
       "draft-session-b-later",
     ]);
-    expect(
-      [
-        ...getClientSummarySnapshotForSource(sourceA).localDecorations
-          .draftSessionIds,
-      ],
-    ).toEqual(["draft-session-a"]);
+    expect([
+      ...getClientSummarySnapshotForSource(sourceA).localDecorations
+        .draftSessionIds,
+    ]).toEqual(["draft-session-a"]);
 
     selectedB.unmount();
 

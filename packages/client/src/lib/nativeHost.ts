@@ -18,11 +18,7 @@ export interface NativeNotificationStatus {
   firebase: "configured" | "unavailable";
   permission: "granted" | "not_requested" | "denied" | "not_required";
   channel: "enabled" | "disabled" | "not_supported";
-  installation:
-    | "ready"
-    | "update_pending"
-    | "not_registered"
-    | "unavailable";
+  installation: "ready" | "update_pending" | "not_registered" | "unavailable";
   notificationsEnabled: boolean;
 }
 
@@ -68,8 +64,7 @@ export class NativeHostClient {
   private descriptorPromise?: Promise<NativeHostDescriptor | null>;
 
   constructor(options: NativeHostClientOptions = {}) {
-    this.getChannel =
-      options.getChannel ?? (() => globalThis.window?.yaNative);
+    this.getChannel = options.getChannel ?? (() => globalThis.window?.yaNative);
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.permissionTimeoutMs =
       options.permissionTimeoutMs ?? DEFAULT_PERMISSION_TIMEOUT_MS;
@@ -133,7 +128,8 @@ export class NativeHostClient {
     timeoutMs = this.timeoutMs,
   ): Promise<unknown> {
     const channel = this.getChannel();
-    if (!channel) return Promise.reject(new Error("Native host is unavailable"));
+    if (!channel)
+      return Promise.reject(new Error("Native host is unavailable"));
     this.bindChannel(channel);
 
     const id = `web-${this.nextRequestId}`;
@@ -159,7 +155,11 @@ export class NativeHostClient {
       } catch (error) {
         clearTimeout(timeout);
         this.pending.delete(id);
-        reject(error instanceof Error ? error : new Error("Native host request failed"));
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Native host request failed"),
+        );
       }
     });
   }
@@ -182,7 +182,8 @@ export class NativeHostClient {
     } catch {
       return;
     }
-    if (!isRecord(response) || response.protocol !== NATIVE_HOST_PROTOCOL) return;
+    if (!isRecord(response) || response.protocol !== NATIVE_HOST_PROTOCOL)
+      return;
     if (typeof response.id !== "string") return;
 
     const pending = this.pending.get(response.id);
@@ -247,21 +248,15 @@ function parseNotificationStatus(value: unknown): NativeNotificationStatus {
   if (
     !isRecord(value) ||
     (value.firebase !== "configured" && value.firebase !== "unavailable") ||
-    ![
-      "granted",
-      "not_requested",
-      "denied",
-      "not_required",
-    ].includes(value.permission as string) ||
+    !["granted", "not_requested", "denied", "not_required"].includes(
+      value.permission as string,
+    ) ||
     !["enabled", "disabled", "not_supported"].includes(
       value.channel as string,
     ) ||
-    ![
-      "ready",
-      "update_pending",
-      "not_registered",
-      "unavailable",
-    ].includes(value.installation as string) ||
+    !["ready", "update_pending", "not_registered", "unavailable"].includes(
+      value.installation as string,
+    ) ||
     typeof value.notificationsEnabled !== "boolean"
   ) {
     throw new Error("Native notification status is invalid");

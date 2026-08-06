@@ -1,8 +1,4 @@
-import {
-  type ChildProcess,
-  execFile,
-  spawn,
-} from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import type { HostAwakeFeatureSupport } from "@yep-anywhere/shared";
 import type {
   HostAwakeBackend,

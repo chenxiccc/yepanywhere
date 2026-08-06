@@ -40,9 +40,9 @@ describe("getMarkdownForVisibleSelection", () => {
         "MCLONE_UI_V2_HIT_DEBUG=1",
       ),
     ).toBe("MCLONE_UI_V2_HIT_DEBUG=1");
-    expect(
-      getMarkdownForVisibleSelection("## Debug switches", "Debug"),
-    ).toBe("Debug");
+    expect(getMarkdownForVisibleSelection("## Debug switches", "Debug")).toBe(
+      "Debug",
+    );
   });
 
   it("preserves block markers for whole rendered line selections", () => {

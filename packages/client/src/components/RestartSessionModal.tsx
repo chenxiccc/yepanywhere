@@ -200,19 +200,13 @@ export function RestartSessionModal({
         });
       } catch (err) {
         targetWindow?.close();
-        setError(err instanceof Error ? err.message : t("sessionRestartFailed"));
+        setError(
+          err instanceof Error ? err.message : t("sessionRestartFailed"),
+        );
         throw err;
       }
     },
-    [
-      isFork,
-      onRestarted,
-      openInNewWindow,
-      projectId,
-      provider,
-      sessionId,
-      t,
-    ],
+    [isFork, onRestarted, openInNewWindow, projectId, provider, sessionId, t],
   );
 
   return (
@@ -269,7 +263,10 @@ export function RestartSessionModal({
 
         {/* Remounting on mode change re-seeds every control, which is how fork
             pins itself to the source session's provider and model. */}
-        <div onClickCapture={claimTargetWindow} onAuxClickCapture={claimTargetWindow}>
+        <div
+          onClickCapture={claimTargetWindow}
+          onAuxClickCapture={claimTargetWindow}
+        >
           <NewSessionForm
             key={isFork ? "fork" : "handoff"}
             projectId={projectId}

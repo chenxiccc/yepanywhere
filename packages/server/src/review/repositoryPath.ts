@@ -16,7 +16,11 @@ export function repositoryRelativePath(value: string): string {
     throw new HttpError(400, "Review paths must be repository-relative");
   }
   const segments = value.split("/");
-  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+  if (
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    )
+  ) {
     throw new HttpError(400, "Review paths must not traverse the repository");
   }
   return value;
@@ -49,7 +53,11 @@ export async function repositoryFilePathIfExists(
     throw error;
   }
   const fromRoot = path.relative(root, candidate);
-  if (fromRoot.startsWith(`..${path.sep}`) || fromRoot === ".." || path.isAbsolute(fromRoot)) {
+  if (
+    fromRoot.startsWith(`..${path.sep}`) ||
+    fromRoot === ".." ||
+    path.isAbsolute(fromRoot)
+  ) {
     throw new HttpError(400, "Review source escapes the project root");
   }
   const stat = await fs.stat(candidate);

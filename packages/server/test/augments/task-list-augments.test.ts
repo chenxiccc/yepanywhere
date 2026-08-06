@@ -134,7 +134,12 @@ describe("task-list augments", () => {
     ];
 
     augmentTaskListSnapshots(fullHistory);
-    const returnedSlice = [updateOne, updateOneResult, updateTwo, updateTwoResult];
+    const returnedSlice = [
+      updateOne,
+      updateOneResult,
+      updateTwo,
+      updateTwoResult,
+    ];
     pruneTaskListSnapshotsToLatest(returnedSlice);
 
     expect(snapshotFromInput(updateTwo)?.tasks).toMatchObject([

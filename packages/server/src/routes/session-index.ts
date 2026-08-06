@@ -5,9 +5,7 @@ export interface SessionIndexRoutesDeps {
   sessionIndexService: Pick<SessionIndexService, "getWarmupStatus">;
 }
 
-export function createSessionIndexRoutes(
-  deps: SessionIndexRoutesDeps,
-): Hono {
+export function createSessionIndexRoutes(deps: SessionIndexRoutesDeps): Hono {
   const routes = new Hono();
 
   routes.get("/status", (c) => {

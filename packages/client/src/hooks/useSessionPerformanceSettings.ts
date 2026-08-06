@@ -31,9 +31,7 @@ const DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS = 1;
 export const TRANSCRIPT_CACHE_BUDGET_MB_STOPS = [
   0, 8, 16, 24, 32, 48, 64, 96, 128, 192, 256,
 ] as const;
-export const TRANSCRIPT_CACHE_TTL_HOUR_STOPS = [
-  1, 4, 12, 24, 72, 168,
-] as const;
+export const TRANSCRIPT_CACHE_TTL_HOUR_STOPS = [1, 4, 12, 24, 72, 168] as const;
 
 /** Placeholder when no session size has been recorded yet; roughly a
  * typical recent transcript per the 2026-07 charge calibration
@@ -167,8 +165,7 @@ function parseSnapshot(snapshot: string) {
     sessionTranscriptCacheTtlHours: Number.isFinite(parsedTtl)
       ? parsedTtl
       : DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS,
-    sessionScrollBehaviorMode:
-      parseSessionScrollBehaviorMode(scrollBehavior),
+    sessionScrollBehaviorMode: parseSessionScrollBehaviorMode(scrollBehavior),
     sessionOffscreenTranscriptRenderingEnabled:
       offscreenTranscriptRendering !== "0",
     sessionActiveWindowTrimEnabled: activeWindowTrim !== "0",
@@ -236,9 +233,7 @@ export function setSessionOffscreenTranscriptRenderingPreference(
   sessionOffscreenTranscriptRenderingStore.set(enabled);
 }
 
-export function setSessionActiveWindowTrimPreference(
-  enabled: boolean,
-): void {
+export function setSessionActiveWindowTrimPreference(enabled: boolean): void {
   sessionActiveWindowTrimStore.set(enabled);
 }
 

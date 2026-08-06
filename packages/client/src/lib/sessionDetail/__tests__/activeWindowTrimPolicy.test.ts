@@ -309,9 +309,9 @@ describe("planActiveWindowTrim", () => {
         eligibleAfterMs: NOW_MS,
       },
     });
-    expect(
-      planActiveWindowTrim({ messages, nowMs: NOW_MS + 1 }),
-    ).toMatchObject({ kind: "ready" });
+    expect(planActiveWindowTrim({ messages, nowMs: NOW_MS + 1 })).toMatchObject(
+      { kind: "ready" },
+    );
   });
 
   it("refuses a missing or invalid boundary timestamp", () => {

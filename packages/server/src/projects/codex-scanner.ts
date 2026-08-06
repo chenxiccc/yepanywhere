@@ -235,8 +235,7 @@ export class CodexSessionScanner {
     return sessions
       .filter(
         (s) =>
-          !s.isSubagent &&
-          getProjectIdentityKey(s.cwd) === projectIdentityKey,
+          !s.isSubagent && getProjectIdentityKey(s.cwd) === projectIdentityKey,
       )
       .sort((a, b) => b.mtime - a.mtime);
   }

@@ -139,7 +139,9 @@ function auditTransitionalReviewDates(): void {
   const today = new Date();
   for (const capability of capabilities) {
     if (capability.lifecycle.kind !== "transitional") continue;
-    const reviewAfter = new Date(`${capability.lifecycle.reviewAfter}T00:00:00Z`);
+    const reviewAfter = new Date(
+      `${capability.lifecycle.reviewAfter}T00:00:00Z`,
+    );
     if (Number.isNaN(reviewAfter.getTime())) {
       findings.push({
         kind: "error",

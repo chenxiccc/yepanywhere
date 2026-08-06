@@ -29,11 +29,7 @@ function ServerGlyph({ icon }: { icon: string | null }) {
   );
 }
 
-function UnavailableRelationship({
-  description,
-}: {
-  description: string;
-}) {
+function UnavailableRelationship({ description }: { description: string }) {
   const { t } = useI18n();
 
   return (

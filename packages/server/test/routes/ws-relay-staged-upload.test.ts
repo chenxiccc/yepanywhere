@@ -96,9 +96,9 @@ describe("WS relay staged uploads", () => {
       size: 5,
       mimeType: "text/plain",
     });
-    await expect(stagingService.listDraftAttachments("batch-a")).resolves.toEqual(
-      [complete.stagedRef],
-    );
+    await expect(
+      stagingService.listDraftAttachments("batch-a"),
+    ).resolves.toEqual([complete.stagedRef]);
     expect(uploads.size).toBe(0);
   });
 
@@ -158,8 +158,8 @@ describe("WS relay staged uploads", () => {
     await cleanupUploads(uploads, uploadManager, stagingService);
 
     expect(uploads.size).toBe(0);
-    await expect(stagingService.listDraftAttachments("batch-a")).resolves.toEqual(
-      [],
-    );
+    await expect(
+      stagingService.listDraftAttachments("batch-a"),
+    ).resolves.toEqual([]);
   });
 });

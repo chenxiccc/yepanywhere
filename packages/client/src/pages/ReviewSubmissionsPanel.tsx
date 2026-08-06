@@ -588,9 +588,7 @@ function commentLocation(
   return `${anchor.path}:${line ?? "?"}${oldSide}`;
 }
 
-function commentLine(
-  anchor: ReviewSite["entries"][number]["anchor"],
-): string {
+function commentLine(anchor: ReviewSite["entries"][number]["anchor"]): string {
   const line = anchor.side === "old" ? anchor.oldLine : anchor.newLine;
   return String(line ?? "?");
 }

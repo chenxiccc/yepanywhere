@@ -76,10 +76,7 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
 
   useEffect(() => {
     return () => {
-      document.title = stripTabTitlePrefixes(
-        document.title,
-        hostIdentityIcon,
-      );
+      document.title = stripTabTitlePrefixes(document.title, hostIdentityIcon);
     };
   }, [hostIdentityIcon]);
 
@@ -98,10 +95,7 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
     const updateTitle = () => {
       isUpdating = true;
       // Strip existing indicator prefixes before composing the next title.
-      const baseTitle = stripTabTitlePrefixes(
-        document.title,
-        hostIdentityIcon,
-      );
+      const baseTitle = stripTabTitlePrefixes(document.title, hostIdentityIcon);
       const activityStartedAt = activityStartedAtRef.current;
       const activityFrame =
         showSessionActivity && activityStartedAt !== null
@@ -135,10 +129,7 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
 
       // Check if the indicators need to be (re)applied
       const currentTitle = document.title;
-      const baseTitle = stripTabTitlePrefixes(
-        currentTitle,
-        hostIdentityIcon,
-      );
+      const baseTitle = stripTabTitlePrefixes(currentTitle, hostIdentityIcon);
       const activityStartedAt = activityStartedAtRef.current;
       const activityFrame =
         showSessionActivity && activityStartedAt !== null

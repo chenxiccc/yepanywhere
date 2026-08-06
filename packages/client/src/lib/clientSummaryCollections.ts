@@ -10,10 +10,7 @@ import type {
   ProviderName,
   ProviderRuntimeStatus,
 } from "@yep-anywhere/shared";
-import type {
-  GlobalSessionItem,
-  InboxResponse,
-} from "../api/client";
+import type { GlobalSessionItem, InboxResponse } from "../api/client";
 import type { Project, SessionStatus } from "../types";
 import type { InboxTier } from "./inboxTiers";
 

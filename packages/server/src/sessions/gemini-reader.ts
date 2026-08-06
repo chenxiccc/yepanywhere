@@ -108,10 +108,7 @@ export class GeminiSessionReader implements ISessionReader {
         }
 
         const cwd = map?.get(session.projectHash);
-        if (
-          !cwd ||
-          getProjectIdentityKey(cwd) !== this.projectIdentityKey
-        ) {
+        if (!cwd || getProjectIdentityKey(cwd) !== this.projectIdentityKey) {
           continue;
         }
       }

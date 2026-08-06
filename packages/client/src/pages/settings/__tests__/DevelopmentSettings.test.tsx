@@ -192,13 +192,9 @@ describe("DevelopmentSettings", () => {
   it("reveals the server-scoped hosts route behind its toggle", () => {
     renderSettings();
 
-    expect(
-      screen.queryByRole("link", { name: "Open YA Hosts" }),
-    ).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open YA Hosts" })).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "YA Hosts Preview" }),
-    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "YA Hosts Preview" }));
 
     const previewRow = screen
       .getByText("YA Hosts Preview")

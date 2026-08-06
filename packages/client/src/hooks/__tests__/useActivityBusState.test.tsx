@@ -26,7 +26,9 @@ function createWrapper(runtime: YaSourceRuntime) {
     children: ReactNode;
   }) {
     return (
-      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+      <SourceRuntimeProvider runtime={runtime}>
+        {children}
+      </SourceRuntimeProvider>
     );
   };
 }

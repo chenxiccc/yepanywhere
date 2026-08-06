@@ -150,17 +150,13 @@ export function BangCommandDisplayObject({
           )}
           {exitLabel && (
             <span
-              className={
-                object.exitCode === 0 ? undefined : styles.exitNonzero
-              }
+              className={object.exitCode === 0 ? undefined : styles.exitNonzero}
             >
               {exitLabel}
             </span>
           )}
           {object.durationMs !== undefined && (
-            <span>
-              {formatDuration(object.durationMs)}
-            </span>
+            <span>{formatDuration(object.durationMs)}</span>
           )}
         </span>
       </div>

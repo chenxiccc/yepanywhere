@@ -62,11 +62,11 @@ export function describeProviderRuntimeStatus(
     status.kind === "terminal"
       ? t("toolbarProviderRuntimeStoppedReason", { label, reason })
       : retryAtMs !== null
-      ? t("toolbarProviderRuntimeRetryAt", {
-          label,
-          time: formatRetryClockTime(retryAtMs),
-        })
-      : label;
+        ? t("toolbarProviderRuntimeRetryAt", {
+            label,
+            time: formatRetryClockTime(retryAtMs),
+          })
+        : label;
   const title = [
     summary,
     status.kind === "terminal"

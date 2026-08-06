@@ -51,7 +51,9 @@ describe("server admin routes", () => {
     await vi.advanceTimersByTimeAsync(5);
     await restart;
 
-    expect(warn).toHaveBeenCalledWith("[ServerAdmin] Restart cleanup timed out");
+    expect(warn).toHaveBeenCalledWith(
+      "[ServerAdmin] Restart cleanup timed out",
+    );
     expect(exit).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(10);

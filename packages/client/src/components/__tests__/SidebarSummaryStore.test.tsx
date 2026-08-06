@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  cleanup,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { GlobalSessionItem } from "../../api/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -318,9 +312,9 @@ describe("Sidebar client summary source registry", () => {
     const { container } = renderSidebar();
 
     await waitFor(() => {
-      expect(
-        sectionRowIds(container, "sidebar-last-24-hours-list"),
-      ).toEqual(["star-later"]);
+      expect(sectionRowIds(container, "sidebar-last-24-hours-list")).toEqual([
+        "star-later",
+      ]);
     });
     expect(sectionRowIds(container, "sidebar-starred-list")).toEqual([]);
 

@@ -123,5 +123,4 @@ describe("session detail shadow diagnostics", () => {
       },
     });
   });
-
 });

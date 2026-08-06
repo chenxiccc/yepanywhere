@@ -45,7 +45,9 @@ describe("turn rail horizontal clearance CSS contract", () => {
     expect(css).toMatch(
       /\.user-prompt-container\.has-stacked-actions\s*\{[^}]*min-height:\s*calc\([^}]*--user-prompt-action-count/s,
     );
-    const userPromptActionsRule = css.match(/\.user-prompt-actions\s*\{[^}]*\}/s);
+    const userPromptActionsRule = css.match(
+      /\.user-prompt-actions\s*\{[^}]*\}/s,
+    );
     expect(userPromptActionsRule?.[0]).not.toContain("pointer-events: none");
     expect(css).toMatch(
       /\.session-messages\s*\{[^}]*scrollbar-gutter:\s*auto;[^}]*scrollbar-width:\s*none;/s,
@@ -58,8 +60,6 @@ describe("turn rail horizontal clearance CSS contract", () => {
     expect(renderersCss).toMatch(
       /\.assistant-turn \.text-block-actions\s*\{[^}]*margin-inline-end:\s*var\(--turn-rail-float-inset-inline-end\)\s*;/s,
     );
-    expect(css).not.toContain(
-      "padding-right: calc(1rem + min(30px, 2vw));",
-    );
+    expect(css).not.toContain("padding-right: calc(1rem + min(30px, 2vw));");
   });
 });

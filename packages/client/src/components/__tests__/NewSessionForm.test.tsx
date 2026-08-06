@@ -1120,9 +1120,7 @@ describe("NewSessionForm", () => {
       />,
     );
 
-    expect(
-      screen.getByText("newSessionGatewayCatalogLoading"),
-    ).toBeDefined();
+    expect(screen.getByText("newSessionGatewayCatalogLoading")).toBeDefined();
     expect(
       screen.getAllByRole("button", { name: "Saved Gateway" }).length,
     ).toBeGreaterThan(0);

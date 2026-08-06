@@ -783,56 +783,59 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(session?.data.session.entries).toHaveLength(2);
   });
 
-  itIfNoNativeZstd("skips zstd-compressed rollouts without native zstd", async () => {
-    const sessionId = "unsupported-zstd-rollout";
-    const now = new Date().toISOString();
-    const lines = [
-      JSON.stringify({
-        type: "session_meta",
-        timestamp: now,
-        payload: {
-          id: sessionId,
-          cwd: "/test/project",
+  itIfNoNativeZstd(
+    "skips zstd-compressed rollouts without native zstd",
+    async () => {
+      const sessionId = "unsupported-zstd-rollout";
+      const now = new Date().toISOString();
+      const lines = [
+        JSON.stringify({
+          type: "session_meta",
           timestamp: now,
-          model_provider: "openai",
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: now,
+          payload: {
+            type: "user_message",
+            message: "Hello compressed history",
+          },
+        }),
+      ];
+
+      await writeFile(
+        join(testDir, `${sessionId}.jsonl.zst`),
+        Buffer.from(`${lines.join("\n")}\n`),
+      );
+
+      await expect(
+        reader.listSessions("test-project" as UrlProjectId),
+      ).resolves.toEqual([]);
+
+      const metrics = reader.getLastScanMetrics();
+      expect(metrics).toMatchObject({
+        compressedRolloutFiles: 1,
+        sessionsParsed: 0,
+        failedFiles: 1,
+        sessionsReturned: 0,
+        discovery: {
+          zstdUnsupported: 1,
+          firstLineReadsZstd: 0,
+          metadataReadFailures: 0,
         },
-      }),
-      JSON.stringify({
-        type: "event_msg",
-        timestamp: now,
-        payload: {
-          type: "user_message",
-          message: "Hello compressed history",
-        },
-      }),
-    ];
+      });
 
-    await writeFile(
-      join(testDir, `${sessionId}.jsonl.zst`),
-      Buffer.from(`${lines.join("\n")}\n`),
-    );
-
-    await expect(
-      reader.listSessions("test-project" as UrlProjectId),
-    ).resolves.toEqual([]);
-
-    const metrics = reader.getLastScanMetrics();
-    expect(metrics).toMatchObject({
-      compressedRolloutFiles: 1,
-      sessionsParsed: 0,
-      failedFiles: 1,
-      sessionsReturned: 0,
-      discovery: {
-        zstdUnsupported: 1,
-        firstLineReadsZstd: 0,
-        metadataReadFailures: 0,
-      },
-    });
-
-    await expect(
-      reader.getSession(sessionId, "test-project" as UrlProjectId),
-    ).resolves.toBeNull();
-  });
+      await expect(
+        reader.getSession(sessionId, "test-project" as UrlProjectId),
+      ).resolves.toBeNull();
+    },
+  );
 
   it("records reader scan metrics and shared cache hits", async () => {
     const dataDir = join(tmpdir(), `codex-reader-data-${randomUUID()}`);

@@ -105,10 +105,7 @@ export function createCodexForkSummaryThreadResumeParams(
 }
 
 export function createCodexForkAfterSummaryPrompt(
-  request: Extract<
-    SummaryGenerationRequest,
-    { purpose: "fork-after-summary" }
-  >,
+  request: Extract<SummaryGenerationRequest, { purpose: "fork-after-summary" }>,
 ): string {
   const instructions = request.instructions?.trim();
   const boundaryContext = request.afterTurnContext?.trim();
@@ -185,7 +182,10 @@ export async function resolveCodexRecapHelperModel(
   if (!requestedModel || requestedModel !== HELPER_SIDE_MODEL_CHEAPEST) {
     return requestedModel ?? null;
   }
-  return selectCodexRecapHelperModel(requestedModel, await getAvailableModels());
+  return selectCodexRecapHelperModel(
+    requestedModel,
+    await getAvailableModels(),
+  );
 }
 
 export function cleanCodexRecapText(text: string): string {
@@ -252,7 +252,9 @@ export function captureCodexSummaryTextFromNotification(
   }
 }
 
-export function extractCodexRawResponseMessageText(item: unknown): string | null {
+export function extractCodexRawResponseMessageText(
+  item: unknown,
+): string | null {
   if (!item || typeof item !== "object") return null;
   const record = item as Record<string, unknown>;
   if (record.type !== "message" || record.role !== "assistant") {

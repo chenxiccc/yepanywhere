@@ -38,20 +38,12 @@
 }
 
 .selected {
-  background: color-mix(
-    in srgb,
-    var(--app-yep-green) 9%,
-    var(--bg-surface)
-  );
+  background: color-mix(in srgb, var(--app-yep-green) 9%, var(--bg-surface));
   box-shadow: inset 3px 0 var(--app-yep-green);
 }
 
 .selected:hover:not(:has(input:disabled)) {
-  background: color-mix(
-    in srgb,
-    var(--app-yep-green) 13%,
-    var(--bg-surface)
-  );
+  background: color-mix(in srgb, var(--app-yep-green) 13%, var(--bg-surface));
 }
 
 .choice:has(input:disabled) {

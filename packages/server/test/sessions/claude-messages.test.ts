@@ -37,8 +37,7 @@ describe("collectVisibleClaudeEntries", () => {
         parentUuid: "tail",
         isMeta: true,
         message: {
-          content:
-            "<local-command-caveat>Caveat</local-command-caveat>",
+          content: "<local-command-caveat>Caveat</local-command-caveat>",
         },
       },
       {

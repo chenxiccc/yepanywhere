@@ -186,7 +186,9 @@ export interface SourceRuntimeRegistry {
     sourceKey: ClientSummarySourceKey,
     registration: SourceTransportRegistration,
   ): SourceTransport;
-  getOrCreateSourceTransport(sourceKey: ClientSummarySourceKey): SourceTransport;
+  getOrCreateSourceTransport(
+    sourceKey: ClientSummarySourceKey,
+  ): SourceTransport;
   getOrCreateSourceRuntime(sourceKey: ClientSummarySourceKey): YaSourceRuntime;
   getCurrentSourceRuntime(): YaSourceRuntime;
   setCurrentSourceKey(sourceKey: ClientSummarySourceKey): void;
@@ -336,11 +338,7 @@ function createCurrentSourceSummaryRuntime(
       reportProjectCollectionSnapshot(sourceKey, input, requestStartedAt);
     },
     reportProjectQueueCollectionSnapshot: (input, requestStartedAt) => {
-      reportProjectQueueCollectionSnapshot(
-        sourceKey,
-        input,
-        requestStartedAt,
-      );
+      reportProjectQueueCollectionSnapshot(sourceKey, input, requestStartedAt);
     },
     reportProjectQueueGlobalCollectionSnapshot: (input, requestStartedAt) => {
       reportProjectQueueGlobalCollectionSnapshot(
@@ -362,8 +360,14 @@ function createCurrentSourceSummaryRuntime(
 }
 
 class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
-  private readonly runtimes = new Map<ClientSummarySourceKey, YaSourceRuntime>();
-  private readonly transports = new Map<ClientSummarySourceKey, SourceTransport>();
+  private readonly runtimes = new Map<
+    ClientSummarySourceKey,
+    YaSourceRuntime
+  >();
+  private readonly transports = new Map<
+    ClientSummarySourceKey,
+    SourceTransport
+  >();
   private readonly transportRegistrations = new Map<
     ClientSummarySourceKey,
     SourceTransportRegistration
@@ -428,9 +432,7 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
     );
   }
 
-  getOrCreateSourceRuntime(
-    sourceKey: ClientSummarySourceKey,
-  ): YaSourceRuntime {
+  getOrCreateSourceRuntime(sourceKey: ClientSummarySourceKey): YaSourceRuntime {
     let runtime = this.runtimes.get(sourceKey);
     if (!runtime) {
       const transport = this.getOrCreateSourceTransport(sourceKey);

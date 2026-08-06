@@ -84,9 +84,7 @@ describe("BangCommandDisplayObject", () => {
     for (const { status, modifier, error } of statuses) {
       rerender(
         <I18nProvider>
-          <BangCommandDisplayObject
-            object={{ ...object, status, error }}
-          />
+          <BangCommandDisplayObject object={{ ...object, status, error }} />
         </I18nProvider>,
       );
       const root = screen.getByRole("group", { name: "Local command run" });

@@ -110,15 +110,9 @@ describe("trimLoadedWindow reducer action", () => {
     state.agentContent = {
       "agent-old": agentContent("completed", [message("old-agent-row")]),
       "agent-kept": agentContent("completed", [agentKeptMessage]),
-      "agent-nested": agentContent("completed", [
-        message("nested-agent-row"),
-      ]),
-      "agent-direct": agentContent("completed", [
-        message("direct-agent-row"),
-      ]),
-      "agent-running": agentContent("running", [
-        message("running-agent-row"),
-      ]),
+      "agent-nested": agentContent("completed", [message("nested-agent-row")]),
+      "agent-direct": agentContent("completed", [message("direct-agent-row")]),
+      "agent-running": agentContent("running", [message("running-agent-row")]),
       "agent-pending": agentContent("pending"),
       "agent-failed": agentContent("failed", [message("failed-agent-row")]),
     };
@@ -164,9 +158,7 @@ describe("trimLoadedWindow reducer action", () => {
     expect(trimmed.session).toBe(session);
     expect(trimmed.deferredMessages).toBe(deferredMessages);
     expect(trimmed.lastMessageId).toBe("tail");
-    expect(trimmed.maxPersistedTimestampMs).toBe(
-      Date.parse(OLD_TIMESTAMP),
-    );
+    expect(trimmed.maxPersistedTimestampMs).toBe(Date.parse(OLD_TIMESTAMP));
     expect(trimmed.activeWindowTrimRevision).toBe(1);
   });
 
@@ -200,11 +192,7 @@ describe("trimLoadedWindow reducer action", () => {
   it.each([
     ["missing", "missing", OLD_TIMESTAMP],
     ["first", "prefix", OLD_TIMESTAMP],
-    [
-      "exactly 60 seconds old",
-      "keep",
-      new Date(NOW_MS - 60_000).toISOString(),
-    ],
+    ["exactly 60 seconds old", "keep", new Date(NOW_MS - 60_000).toISOString()],
     ["invalid timestamp", "keep", "not-a-time"],
   ])("is a referential no-op for a %s boundary", (_label, id, timestamp) => {
     const state = loadedState([

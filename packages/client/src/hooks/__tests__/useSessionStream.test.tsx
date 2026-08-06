@@ -32,7 +32,9 @@ function createWrapper(runtime: YaSourceRuntime) {
     children: ReactNode;
   }) {
     return (
-      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+      <SourceRuntimeProvider runtime={runtime}>
+        {children}
+      </SourceRuntimeProvider>
     );
   };
 }
@@ -121,20 +123,14 @@ describe("useSessionStream", () => {
   it("does not use heartbeat ids as resume cursors", () => {
     const transport = new FakeSourceTransport();
 
-    renderHook(
-      () => useSessionStream("session-1", { onMessage: vi.fn() }),
-      { wrapper: createWrapper(createRuntime(transport)) },
-    );
+    renderHook(() => useSessionStream("session-1", { onMessage: vi.fn() }), {
+      wrapper: createWrapper(createRuntime(transport)),
+    });
 
     const first = getOnlySessionSubscription(transport);
     act(() => {
       transport.openSubscription(first.id);
-      transport.emitSubscriptionEvent(
-        first.id,
-        "heartbeat",
-        {},
-        "heartbeat-1",
-      );
+      transport.emitSubscriptionEvent(first.id, "heartbeat", {}, "heartbeat-1");
       transport.setState("reconnecting");
       transport.setState("ready");
     });

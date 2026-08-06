@@ -1,8 +1,4 @@
-import {
-  createHash,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 const ID_BYTES = 16;
 const SECRET_BYTES = 32;

@@ -101,7 +101,9 @@ const describeOnLinux = process.platform === "linux" ? describe : describe.skip;
 
 describeOnLinux("CodexProvider reload-safe resume", () => {
   it("launches an enabled resumed session through the lifecycle host", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "codex-resume-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(tmpdir(), "codex-resume-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const logPath = join(runtimeRoot, "requests.jsonl");
@@ -144,7 +146,9 @@ describeOnLinux("CodexProvider reload-safe resume", () => {
       const requests = (await readFile(logPath, "utf8"))
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line) as { method?: string; params?: unknown });
+        .map(
+          (line) => JSON.parse(line) as { method?: string; params?: unknown },
+        );
       expect(requests).toContainEqual(
         expect.objectContaining({
           method: "thread/resume",

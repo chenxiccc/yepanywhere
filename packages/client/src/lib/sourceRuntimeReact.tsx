@@ -1,8 +1,4 @@
-import {
-  createContext,
-  type ReactNode,
-  useContext,
-} from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import type { YaSourceRuntime } from "./sourceRuntime";
 
 const SourceRuntimeContext = createContext<YaSourceRuntime | null>(null);

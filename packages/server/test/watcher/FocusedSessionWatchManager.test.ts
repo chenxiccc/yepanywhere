@@ -91,9 +91,8 @@ describe("FocusedSessionWatchManager", () => {
       });
 
       const events: FocusedSessionWatchEvent[] = [];
-      const unsubscribe = manager.subscribe(
-        { sessionId, projectId },
-        (event) => events.push(event),
+      const unsubscribe = manager.subscribe({ sessionId, projectId }, (event) =>
+        events.push(event),
       );
 
       await delay(250);

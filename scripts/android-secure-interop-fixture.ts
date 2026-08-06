@@ -232,7 +232,9 @@ async function main(): Promise<void> {
       `Android secure interop fixture is stale; run "pnpm android:interop:write"`,
     );
   }
-  console.log("Android secure interop fixture matches production TypeScript crypto");
+  console.log(
+    "Android secure interop fixture matches production TypeScript crypto",
+  );
 }
 
 await main();

@@ -268,10 +268,7 @@ export function grokToolResultMediaCandidate(
   update: GrokToolUpdate,
 ): GrokToolResultMediaCandidate | undefined {
   const rawOutput = asRecord(update.rawOutput);
-  if (
-    rawOutput?.type !== "ImageGen" &&
-    rawOutput?.type !== "ImageEdit"
-  ) {
+  if (rawOutput?.type !== "ImageGen" && rawOutput?.type !== "ImageEdit") {
     return undefined;
   }
   const originalPath = stringField(rawOutput, "path");
@@ -589,7 +586,11 @@ function readFilePath(
   return (
     stringField(asRecord(rawOutput.FileContent), "absolute_path") ??
     firstLocationPath(update) ??
-    firstString(asRecord(update.rawInput), ["target_file", "file_path", "path"]) ??
+    firstString(asRecord(update.rawInput), [
+      "target_file",
+      "file_path",
+      "path",
+    ]) ??
     stringField(toolInput, "file_path") ??
     ""
   );
@@ -600,9 +601,7 @@ function buildGrepResult(
   toolInput?: Record<string, unknown>,
 ) {
   const stdout =
-    decodeByteArray(rawOutput.stdout) ??
-    stringField(rawOutput, "stdout") ??
-    "";
+    decodeByteArray(rawOutput.stdout) ?? stringField(rawOutput, "stdout") ?? "";
   const mode = grepMode(stringField(toolInput, "output_mode"));
   const fileMatches = Array.isArray(rawOutput.file_matches)
     ? rawOutput.file_matches.flatMap((value) => {
@@ -636,9 +635,7 @@ function buildGrepResult(
   if (matches.length > 0) result.matches = matches;
   if (mode === "content") {
     result.content = stripWorkspaceResultEnvelope(stdout);
-    result.numLines = String(result.content)
-      .split("\n")
-      .filter(Boolean).length;
+    result.numLines = String(result.content).split("\n").filter(Boolean).length;
   }
   const appliedLimit = numberField(toolInput, "head_limit");
   if (appliedLimit !== undefined) result.appliedLimit = appliedLimit;
@@ -706,11 +703,7 @@ function buildEditResult(
     originalFile: "",
     replaceAll: toolInput?.replace_all === true,
     userModified: false,
-    structuredPatch: structuredPatchFromUpdate(
-      update,
-      oldString,
-      newString,
-    ),
+    structuredPatch: structuredPatchFromUpdate(update, oldString, newString),
   };
 }
 
@@ -741,8 +734,7 @@ function buildWebFetchResult(
     codeText: code === 200 ? "OK" : code ? `HTTP ${code}` : "",
     result: rawStringField(content, "content") ?? "",
     durationMs: 0,
-    url:
-      stringField(content, "url") ?? stringField(toolInput, "url") ?? "",
+    url: stringField(content, "url") ?? stringField(toolInput, "url") ?? "",
   };
 }
 
@@ -845,8 +837,7 @@ function normalizeQuestions(value: unknown): Record<string, unknown>[] {
       {
         question: text,
         header:
-          stringField(record, "header") ??
-          `Question ${String(index + 1)}`,
+          stringField(record, "header") ?? `Question ${String(index + 1)}`,
         options,
         multiSelect: record?.multiSelect === true,
       },
@@ -1031,9 +1022,7 @@ function stringArray(value: unknown): string[] {
 function decodeByteArray(value: unknown): string | undefined {
   if (
     !Array.isArray(value) ||
-    !value.every(
-      (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
-    )
+    !value.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)
   ) {
     return undefined;
   }

@@ -2,19 +2,13 @@ import { Writable } from "node:stream";
 import pino from "pino";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BrokerRateLimitOptions } from "../../src/app.js";
-import {
-  generateOpaqueId,
-  generateSecret,
-} from "../../src/credentials.js";
+import { generateOpaqueId, generateSecret } from "../../src/credentials.js";
 import { FakePushProvider } from "../../src/providers/fake.js";
 import {
   type PushBrokerServer,
   createPushBrokerServer,
 } from "../../src/server.js";
-import type {
-  PushDelivery,
-  PushProvider,
-} from "../../src/types.js";
+import type { PushDelivery, PushProvider } from "../../src/types.js";
 
 interface InstallationCredentials {
   installationId: string;
@@ -135,9 +129,7 @@ describe("push broker HTTP contract", () => {
         body: { intent: "session_completed" },
       },
     );
-    expect(provider.deliveries[0]?.target.value).toBe(
-      "replacement-target",
-    );
+    expect(provider.deliveries[0]?.target.value).toBe("replacement-target");
   });
 
   it("returns one failure shape for unknown, wrong, and revoked capabilities", async () => {
@@ -228,10 +220,7 @@ describe("push broker HTTP contract", () => {
   it("does not let one installation revoke another installation's subscription", async () => {
     const provider = new FakePushProvider();
     broker = await startBroker(provider);
-    const firstInstallation = await createInstallation(
-      broker,
-      "first-target",
-    );
+    const firstInstallation = await createInstallation(broker, "first-target");
     const secondInstallation = await createInstallation(
       broker,
       "second-target",
@@ -251,9 +240,9 @@ describe("push broker HTTP contract", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(
-      (await sendNotification(broker, secondSubscription)).status,
-    ).toBe(202);
+    expect((await sendNotification(broker, secondSubscription)).status).toBe(
+      202,
+    );
   });
 
   it("maps provider failure classes without exposing provider details", async () => {
@@ -328,24 +317,16 @@ describe("push broker HTTP contract", () => {
     });
     const installation = await createInstallation(broker, "target");
 
-    const secondRegistration = await brokerFetch(
-      broker,
-      "/v1/installations",
-      {
-        method: "POST",
-        body: installationBody("second-target"),
-      },
-    );
+    const secondRegistration = await brokerFetch(broker, "/v1/installations", {
+      method: "POST",
+      body: installationBody("second-target"),
+    });
     expect(secondRegistration.status).toBe(429);
     expect(secondRegistration.headers.get("retry-after")).not.toBeNull();
 
     const subscription = await createSubscription(broker, installation);
-    expect((await sendNotification(broker, subscription)).status).toBe(
-      202,
-    );
-    expect((await sendNotification(broker, subscription)).status).toBe(
-      429,
-    );
+    expect((await sendNotification(broker, subscription)).status).toBe(202);
+    expect((await sendNotification(broker, subscription)).status).toBe(429);
     expect(provider.deliveries).toHaveLength(1);
   });
 

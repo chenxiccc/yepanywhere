@@ -36,9 +36,7 @@ function relativeLuminance(hex: string): number {
     ?.map((channel) => Number.parseInt(channel, 16) / 255);
   const [red = 0, green = 0, blue = 0] = channels ?? [];
   const linearize = (channel: number) =>
-    channel <= 0.04045
-      ? channel / 12.92
-      : ((channel + 0.055) / 1.055) ** 2.4;
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 
   return (
     0.2126 * linearize(red) +
@@ -77,10 +75,7 @@ describe("Project Queue action CSS contract", () => {
     expect(variantDeclarations).toMatch(
       /--project-queue-button-bg:\s*var\(--project-queue-new-session-action-bg\)\s*;/,
     );
-    for (const declarations of [
-      toolbarDeclarations,
-      keyboardDeclarations,
-    ]) {
+    for (const declarations of [toolbarDeclarations, keyboardDeclarations]) {
       expect(declarations).toMatch(
         /background:\s*var\(\s*--project-queue-button-bg,\s*var\(--project-queue-action-bg\)\s*\)\s*;/,
       );

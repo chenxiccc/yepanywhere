@@ -43,7 +43,8 @@ export function getEarliestMessageTimestampMs(
     if (timestampMs === null) {
       continue;
     }
-    earliest = earliest === null ? timestampMs : Math.min(earliest, timestampMs);
+    earliest =
+      earliest === null ? timestampMs : Math.min(earliest, timestampMs);
   }
   return earliest;
 }

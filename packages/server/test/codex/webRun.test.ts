@@ -226,7 +226,10 @@ describe("web.run normalization", () => {
   it("normalizes the code-mode content-block output shape", () => {
     const normalized = normalizeCodexToolOutputWithContext(
       [
-        { type: "input_text", text: "Script completed\nWall time 1.2 seconds\nOutput:\n" },
+        {
+          type: "input_text",
+          text: "Script completed\nWall time 1.2 seconds\nOutput:\n",
+        },
         { type: "input_text", text: SEARCH_OUTPUT.split("Output:\n")[1] ?? "" },
       ],
       { toolName: "Web", input: {} },
@@ -236,10 +239,13 @@ describe("web.run normalization", () => {
   });
 
   it("leaves unrecognized Web output untouched", () => {
-    const normalized = normalizeCodexToolOutputWithContext("plain failure text", {
-      toolName: "Web",
-      input: {},
-    });
+    const normalized = normalizeCodexToolOutputWithContext(
+      "plain failure text",
+      {
+        toolName: "Web",
+        input: {},
+      },
+    );
     expect(normalized.structured).toBeUndefined();
     expect(normalized.content).toBe("plain failure text");
   });

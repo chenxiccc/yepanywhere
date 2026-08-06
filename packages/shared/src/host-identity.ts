@@ -13,10 +13,7 @@ export const MAX_HOST_IDENTITY_ICON_CODE_UNITS = 32;
 export function normalizeHostIdentityIcon(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const icon = value.trim();
-  if (
-    icon.length === 0 ||
-    icon.length > MAX_HOST_IDENTITY_ICON_CODE_UNITS
-  ) {
+  if (icon.length === 0 || icon.length > MAX_HOST_IDENTITY_ICON_CODE_UNITS) {
     return null;
   }
 

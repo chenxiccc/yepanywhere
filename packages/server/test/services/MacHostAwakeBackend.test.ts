@@ -37,13 +37,13 @@ describe("MacHostAwakeBackend", () => {
       batteryPercent: 9,
       powerObservedAt: 123,
     });
-    expect(
-      parseMacPowerSnapshot("Now drawing from 'AC Power'\n", 456),
-    ).toEqual({
-      hasInternalBattery: false,
-      powerSource: "external",
-      powerObservedAt: 456,
-    });
+    expect(parseMacPowerSnapshot("Now drawing from 'AC Power'\n", 456)).toEqual(
+      {
+        hasInternalBattery: false,
+        powerSource: "external",
+        powerObservedAt: 456,
+      },
+    );
   });
 
   it("uses fixed pmset and caffeinate commands without a shell", async () => {
@@ -69,11 +69,10 @@ describe("MacHostAwakeBackend", () => {
     );
 
     expect(runCommand).toHaveBeenCalledTimes(1);
-    expect(runCommand).toHaveBeenCalledWith(
-      "/usr/bin/pmset",
-      ["-g", "batt"],
-      { timeoutMs: 5_000, maxBufferBytes: 16 * 1024 },
-    );
+    expect(runCommand).toHaveBeenCalledWith("/usr/bin/pmset", ["-g", "batt"], {
+      timeoutMs: 5_000,
+      maxBufferBytes: 16 * 1024,
+    });
     expect(spawnProcess).toHaveBeenCalledWith(
       "/usr/bin/caffeinate",
       ["-i", "-w", "4321"],

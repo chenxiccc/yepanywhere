@@ -23,10 +23,7 @@ import { ClientLogRecordingBadge } from "./components/ClientLogRecordingBadge";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
-import {
-  ReloadBanner,
-  ReloadBannerStack,
-} from "./components/ReloadBanner";
+import { ReloadBanner, ReloadBannerStack } from "./components/ReloadBanner";
 import { RemoteCompatibilityNotices } from "./components/RemoteCompatibilityNotices";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
 import {

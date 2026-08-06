@@ -183,10 +183,7 @@ describe("NewSessionPage", () => {
   });
 
   it("uses the stored recent project when opened without a project", async () => {
-    window.localStorage.setItem(
-      BROWSER_LOCAL_KEYS.recentProject,
-      "project-2",
-    );
+    window.localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "project-2");
 
     renderPage("/new-session");
 
@@ -216,16 +213,13 @@ describe("NewSessionPage", () => {
     expect(screen.getByTestId("location").textContent).toBe(
       "/new-session?projectId=project-2",
     );
-    expect(
-      window.localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject),
-    ).toBe("project-2");
+    expect(window.localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject)).toBe(
+      "project-2",
+    );
   });
 
   it("keeps an explicit detached selection instead of restoring recents", async () => {
-    window.localStorage.setItem(
-      BROWSER_LOCAL_KEYS.recentProject,
-      "project-1",
-    );
+    window.localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "project-1");
     renderPage("/new-session?projectId=project-1");
 
     fireEvent.click(screen.getByRole("button", { name: "Select No Project" }));

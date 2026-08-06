@@ -548,9 +548,7 @@ export function useMessageListIsearch({
       }}
     >
       <div className={styles.main}>
-        <span className={styles.label}>
-          {searchPanelProjection.scopeLabel}
-        </span>
+        <span className={styles.label}>{searchPanelProjection.scopeLabel}</span>
         <input
           ref={searchInputRef}
           className={styles.input}
@@ -579,9 +577,7 @@ export function useMessageListIsearch({
         >
           Aa
         </button>
-        <span className={styles.count}>
-          {searchPanelProjection.countLabel}
-        </span>
+        <span className={styles.count}>{searchPanelProjection.countLabel}</span>
       </div>
       <div className={styles.help}>
         <span>

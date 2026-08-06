@@ -114,9 +114,7 @@ describe("useSessionPerformanceSettings", () => {
     expect(first.current.sessionActiveWindowTrimEnabled).toBe(false);
     expect(second.current.sessionActiveWindowTrimEnabled).toBe(false);
     expect(getSessionActiveWindowTrimEnabled()).toBe(false);
-    expect(localStorage.getItem(UI_KEYS.sessionActiveWindowTrim)).toBe(
-      "false",
-    );
+    expect(localStorage.getItem(UI_KEYS.sessionActiveWindowTrim)).toBe("false");
   });
 
   it("updates active-window trim from another tab's storage event", () => {
@@ -146,9 +144,7 @@ describe("useSessionPerformanceSettings", () => {
       first.current.setSessionOffscreenTranscriptRenderingEnabled(true);
     });
 
-    expect(first.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
-      true,
-    );
+    expect(first.current.sessionOffscreenTranscriptRenderingEnabled).toBe(true);
     expect(second.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
       true,
     );
@@ -192,12 +188,12 @@ describe("useSessionPerformanceSettings", () => {
     expect(first.current.sessionTranscriptCacheTtlHours).toBe(24);
     expect(second.current.sessionTranscriptCacheBudgetMb).toBe(48);
     expect(second.current.sessionTranscriptCacheTtlHours).toBe(24);
-    expect(
-      localStorage.getItem(UI_KEYS.sessionTranscriptCacheBudgetMb),
-    ).toBe("48");
-    expect(
-      localStorage.getItem(UI_KEYS.sessionTranscriptCacheTtlHours),
-    ).toBe("24");
+    expect(localStorage.getItem(UI_KEYS.sessionTranscriptCacheBudgetMb)).toBe(
+      "48",
+    );
+    expect(localStorage.getItem(UI_KEYS.sessionTranscriptCacheTtlHours)).toBe(
+      "24",
+    );
     // Legacy boolean stays coherent for older bundles.
     expect(localStorage.getItem(UI_KEYS.sessionTranscriptCache)).toBe("true");
   });
@@ -227,13 +223,17 @@ describe("useSessionPerformanceSettings", () => {
       result.current.setSessionTranscriptCacheBudgetMb(24);
     });
     defaultSessionDetailMemoryCache.writeRouteSnapshot(key, snapshot());
-    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(key)).toBeDefined();
+    expect(
+      defaultSessionDetailMemoryCache.readRouteSnapshot(key),
+    ).toBeDefined();
 
     act(() => {
       result.current.setSessionTranscriptCacheBudgetMb(0);
     });
 
-    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(key)).toBeUndefined();
+    expect(
+      defaultSessionDetailMemoryCache.readRouteSnapshot(key),
+    ).toBeUndefined();
     expect(localStorage.getItem(UI_KEYS.sessionTranscriptCache)).toBe("false");
   });
 
@@ -298,7 +298,9 @@ describe("useSessionPerformanceSettings", () => {
         updatedAtMs: 10,
       },
     });
-    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey)).toBeDefined();
+    expect(
+      defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey),
+    ).toBeDefined();
     expect(
       defaultSessionDetailMemoryCache.readScrollSnapshot(storeKey),
     ).toBeDefined();
@@ -308,9 +310,12 @@ describe("useSessionPerformanceSettings", () => {
     });
 
     expect(result.current.sessionScrollBehaviorMode).toBe("no-memory");
-    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey)).toBeDefined();
     expect(
-      defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey)?.scrollSnapshot,
+      defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey),
+    ).toBeDefined();
+    expect(
+      defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey)
+        ?.scrollSnapshot,
     ).toBeUndefined();
     expect(
       defaultSessionDetailMemoryCache.readScrollSnapshot(storeKey),

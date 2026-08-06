@@ -75,9 +75,7 @@ export function SourceShortcutHelp({ t }: { t: TranslationFn }) {
       </button>
       {open && (
         <span className={styles.popover} role="tooltip">
-          <span className={styles.popoverTitle}>
-            {t("sourceShortcutHelp")}
-          </span>
+          <span className={styles.popoverTitle}>{t("sourceShortcutHelp")}</span>
           {shortcuts.map(([keys, label]) => (
             <span key={keys} className={styles.row}>
               <kbd>{keys}</kbd>

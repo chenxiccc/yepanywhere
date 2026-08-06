@@ -1,19 +1,11 @@
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MessageQueue,
   Process,
   createMockIterator,
   waitFor,
 } from "./process.test-support.js";
-import type {
-  SDKMessage,
-  UrlProjectId,
-} from "./process.test-support.js";
+import type { SDKMessage, UrlProjectId } from "./process.test-support.js";
 
 describe("MessageQueue", () => {
   it("settles a pending iterator return without another queued message", async () => {
@@ -123,9 +115,7 @@ describe("Process", () => {
     it("replays steer echoes until the provider turn ends", async () => {
       vi.useFakeTimers();
       try {
-        let resolveIterator!: (
-          result: IteratorResult<SDKMessage>,
-        ) => void;
+        let resolveIterator!: (result: IteratorResult<SDKMessage>) => void;
         const iterator: AsyncIterator<SDKMessage> = {
           next: () =>
             new Promise((resolve) => {

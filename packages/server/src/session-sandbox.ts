@@ -539,9 +539,7 @@ function openProjectDirectoryAnchor(
   try {
     fd = openSync(
       projectPath,
-      fsConstants.O_RDONLY |
-        fsConstants.O_DIRECTORY |
-        fsConstants.O_NOFOLLOW,
+      fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
     );
     const info = fstatSync(fd, { bigint: true });
     if (!info.isDirectory()) {

@@ -153,7 +153,8 @@ function readSessionLoadCache(
   coordinator: SessionDetailCoordinator,
 ): SessionRouteSnapshot | undefined {
   return coordinator.readInitialRouteSnapshot({
-    enabled: getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
+    enabled:
+      getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
   });
 }
 
@@ -301,10 +302,7 @@ export function useSessionMessages(
 
   // Hold the store entry for the mounted session: retention protects it from
   // TTL/LRU eviction, so incremental dispatches always land on real state.
-  useEffect(
-    () => coordinator.retain(),
-    [coordinator],
-  );
+  useEffect(() => coordinator.retain(), [coordinator]);
 
   const reportStoreDivergence = useCallback(
     (
@@ -314,7 +312,9 @@ export function useSessionMessages(
       if (!isSessionDetailShadowDiagnosticsEnabled()) {
         return;
       }
-      const store = coordinator.readSelected(selectSessionDetailRuntimeSnapshot);
+      const store = coordinator.readSelected(
+        selectSessionDetailRuntimeSnapshot,
+      );
       if (!store) {
         return;
       }
@@ -348,7 +348,10 @@ export function useSessionMessages(
       if (next === previous) {
         return;
       }
-      dispatchSessionDetailAction({ type: "setSessionMetadata", session: next });
+      dispatchSessionDetailAction({
+        type: "setSessionMetadata",
+        session: next,
+      });
       reportStoreDivergence("session-metadata", {
         session: next,
       });
@@ -421,10 +424,7 @@ export function useSessionMessages(
       recordCurrentEntryBytes();
       cleanupCurrentStoreRouteSnapshot();
     };
-  }, [
-    cleanupCurrentStoreRouteSnapshot,
-    recordCurrentEntryBytes,
-  ]);
+  }, [cleanupCurrentStoreRouteSnapshot, recordCurrentEntryBytes]);
 
   // Process a stream message event.
   const processStreamMessage = useCallback(
@@ -467,9 +467,7 @@ export function useSessionMessages(
       warmSnapshot: warmLoad,
     });
 
-    const notifyLoadComplete = (
-      data: GetSessionResult,
-    ) => {
+    const notifyLoadComplete = (data: GetSessionResult) => {
       sourceSummary.reportProviderRuntimeStatusSnapshot(
         coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
@@ -570,9 +568,7 @@ export function useSessionMessages(
       return reveal;
     };
 
-    const applyWarmDataBeforeHydration = (
-      data: GetSessionResult,
-    ) => {
+    const applyWarmDataBeforeHydration = (data: GetSessionResult) => {
       if (!warmLoad) return;
       markReloadPerfPhase(
         "session_initial_load_data_ready",
@@ -598,9 +594,7 @@ export function useSessionMessages(
       notifyLoadComplete(data);
     };
 
-    const applyWarmDeltaAfterHydration = (
-      data: GetSessionResult,
-    ) => {
+    const applyWarmDeltaAfterHydration = (data: GetSessionResult) => {
       if (!warmLoad) return;
       markReloadPerfPhase(
         "session_initial_load_data_ready",
@@ -632,17 +626,14 @@ export function useSessionMessages(
       notifyLoadComplete(data);
     };
 
-    markReloadPerfPhase(
-      "session_initial_load_start",
-      {
-        projectId,
-        sessionId,
-        tailCompactions: 2,
-        tailTurns: effectiveTailTurns,
-        tailFrom,
-        restoredFromSnapshot: initialLoad.restoredFromSnapshot,
-      },
-    );
+    markReloadPerfPhase("session_initial_load_start", {
+      projectId,
+      sessionId,
+      tailCompactions: 2,
+      tailTurns: effectiveTailTurns,
+      tailFrom,
+      restoredFromSnapshot: initialLoad.restoredFromSnapshot,
+    });
     scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
     )
@@ -714,15 +705,12 @@ export function useSessionMessages(
         if (cancelled) return;
 
         const applied = coordinator.applyInitialLoad(data);
-        const reveal = readRevealSnapshotAfterStoreUpdate(
-          "initial-load",
-          {
-            session: data.session,
-            pagination: applied.pagination,
-            lastMessageId: readStoreLastMessageId(),
-            scrollSnapshot: scrollSnapshotRef.current,
-          },
-        );
+        const reveal = readRevealSnapshotAfterStoreUpdate("initial-load", {
+          session: data.session,
+          pagination: applied.pagination,
+          lastMessageId: readStoreLastMessageId(),
+          scrollSnapshot: scrollSnapshotRef.current,
+        });
         const { snapshot } = reveal;
         completeInitialReveal({
           snapshot,
@@ -945,19 +933,12 @@ export function useSessionMessages(
     } finally {
       setLoadingOlder(false);
     }
-  }, [
-    coordinator,
-    reportStoreDivergence,
-    sourceApi,
-    sourceSummary,
-  ]);
+  }, [coordinator, reportStoreDivergence, sourceApi, sourceSummary]);
 
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
       coordinator.setActiveWindowFollowingBottom(snapshot.atBottom);
-      if (
-        !shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
-      ) {
+      if (!shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())) {
         scrollSnapshotRef.current = undefined;
         return;
       }
@@ -1002,10 +983,11 @@ export function useSessionMessages(
     sourceSummary,
     updateSession,
   ]);
-  const selectedInitialScrollSnapshot =
-    shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
-      ? (coordinator.readScrollSnapshot() ?? cachedLoad?.scrollSnapshot ?? null)
-      : null;
+  const selectedInitialScrollSnapshot = shouldRetainSessionScrollMemory(
+    getSessionScrollBehaviorMode(),
+  )
+    ? (coordinator.readScrollSnapshot() ?? cachedLoad?.scrollSnapshot ?? null)
+    : null;
 
   return {
     messages: returnedMessages,

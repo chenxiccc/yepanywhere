@@ -150,8 +150,7 @@ export class SummaryParserClient {
   constructor(private readonly options: SummaryParserClientOptions = {}) {
     this.mode = options.mode ?? "off";
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.launchTimeoutMs =
-      options.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS;
+    this.launchTimeoutMs = options.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.recycleLimits = {
       recycleAfterBytes: normalizePositiveLimit(
@@ -180,7 +179,11 @@ export class SummaryParserClient {
     const entrypoint =
       this.options.entrypoint ?? resolveSummaryParserWorkerEntrypoint();
     if (!entrypoint.supported) {
-      return this.handleSetupFailure(request, entrypoint.reason, inProcessParser);
+      return this.handleSetupFailure(
+        request,
+        entrypoint.reason,
+        inProcessParser,
+      );
     }
 
     return this.withWorkerParseSlot(async () => {
@@ -431,7 +434,9 @@ export class SummaryParserClient {
     }, this.idleTimeoutMs);
   }
 
-  private async withWorkerParseSlot<T>(operation: () => Promise<T>): Promise<T> {
+  private async withWorkerParseSlot<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
     const previous = this.workerParseQueue;
     let release!: () => void;
     this.workerParseQueue = new Promise<void>((resolveQueue) => {
@@ -658,7 +663,11 @@ function normalizePositiveLimit(
   fallback?: number,
 ): number | undefined {
   const candidate = value ?? fallback;
-  if (candidate === undefined || !Number.isFinite(candidate) || candidate <= 0) {
+  if (
+    candidate === undefined ||
+    !Number.isFinite(candidate) ||
+    candidate <= 0
+  ) {
     return undefined;
   }
   return Math.floor(candidate);

@@ -66,7 +66,10 @@ function normalizeStatus(status: unknown): TaskListStatus {
   if (typeof status !== "string") {
     return "unknown";
   }
-  const normalized = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = status
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if (normalized === "completed" || normalized === "complete") {
     return "completed";
   }
@@ -158,7 +161,8 @@ function eventMessage(toolName: "TaskCreate" | "TaskUpdate", input: unknown) {
 
   const id = taskId(input);
   const status = normalizeStatus(stringField(input, "status"));
-  const statusText = status === "unknown" ? "updated" : status.replace("_", " ");
+  const statusText =
+    status === "unknown" ? "updated" : status.replace("_", " ");
   return id ? `Task #${id} ${statusText}` : `Task ${statusText}`;
 }
 
@@ -214,7 +218,9 @@ export const taskCreateRenderer: ToolRenderer<unknown, unknown> = {
   displayName: "Create task",
 
   renderToolUse(input) {
-    return <div className="todo-summary">{eventMessage("TaskCreate", input)}</div>;
+    return (
+      <div className="todo-summary">{eventMessage("TaskCreate", input)}</div>
+    );
   },
 
   renderToolResult(result, isError, _context, input) {
@@ -239,7 +245,9 @@ export const taskUpdateRenderer: ToolRenderer<unknown, unknown> = {
   displayName: "Update task",
 
   renderToolUse(input) {
-    return <div className="todo-summary">{eventMessage("TaskUpdate", input)}</div>;
+    return (
+      <div className="todo-summary">{eventMessage("TaskUpdate", input)}</div>
+    );
   },
 
   renderToolResult(result, isError, _context, input) {

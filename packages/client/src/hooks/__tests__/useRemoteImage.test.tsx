@@ -47,7 +47,9 @@ function createWrapper(runtime: YaSourceRuntime) {
     children: ReactNode;
   }) {
     return (
-      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+      <SourceRuntimeProvider runtime={runtime}>
+        {children}
+      </SourceRuntimeProvider>
     );
   };
 }
@@ -143,6 +145,8 @@ describe("useRemoteImage", () => {
       expect(result.current.url).toBe("blob:fetched-image");
       expect(result.current.blob).toBeInstanceOf(Blob);
     });
-    expect(fetchBlob).toHaveBeenCalledWith("/local-image?path=%2Ftmp%2Fplot.png");
+    expect(fetchBlob).toHaveBeenCalledWith(
+      "/local-image?path=%2Ftmp%2Fplot.png",
+    );
   });
 });

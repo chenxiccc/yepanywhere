@@ -17,9 +17,7 @@ describe("session public share prompt helpers", () => {
         {
           type: "user",
           message: {
-            content: [
-              { type: "text", text: " Build   the thing\ncarefully " },
-            ],
+            content: [{ type: "text", text: " Build   the thing\ncarefully " }],
           },
         },
       ]),

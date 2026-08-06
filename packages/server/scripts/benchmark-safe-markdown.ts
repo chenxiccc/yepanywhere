@@ -32,7 +32,10 @@ function markdownFixture(bytes: number): string {
   ).slice(0, bytes);
 }
 
-function percentile(sortedTimings: readonly number[], fraction: number): number {
+function percentile(
+  sortedTimings: readonly number[],
+  fraction: number,
+): number {
   return sortedTimings[Math.ceil(sortedTimings.length * fraction) - 1] ?? 0;
 }
 

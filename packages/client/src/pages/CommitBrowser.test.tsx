@@ -37,8 +37,7 @@ vi.mock("../api/client", () => ({
     getGitCommit: (...args: unknown[]) => getGitCommit(...args),
     getGitCommitDiff: (...args: unknown[]) => getGitCommitDiff(...args),
     getGitComparison: (...args: unknown[]) => getGitComparison(...args),
-    getGitComparisonDiff: (...args: unknown[]) =>
-      getGitComparisonDiff(...args),
+    getGitComparisonDiff: (...args: unknown[]) => getGitComparisonDiff(...args),
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
     getGitUntrackedFolder: (...args: unknown[]) =>
       getGitUntrackedFolder(...args),
@@ -253,7 +252,9 @@ describe("CommitBrowser", () => {
     );
 
     await screen.findByText("src/x.ts");
-    fireEvent.click(screen.getByRole("button", { name: "sourceCompareToHead" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceCompareToHead" }),
+    );
 
     expect(await screen.findByText("src/cumulative.ts")).toBeDefined();
     expect(getGitComparison).toHaveBeenCalledWith("p1", SHA);
@@ -290,7 +291,9 @@ describe("CommitBrowser", () => {
     );
 
     await screen.findByText("src/x.ts");
-    fireEvent.click(screen.getByRole("button", { name: "sourceCompareToHead" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceCompareToHead" }),
+    );
 
     expect(onProjectionUnavailable).toHaveBeenCalled();
     expect(getGitComparison).not.toHaveBeenCalled();
@@ -314,7 +317,9 @@ describe("CommitBrowser", () => {
     );
 
     await screen.findByText("src/x.ts");
-    fireEvent.click(screen.getByRole("button", { name: "sourceCompareToHead" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceCompareToHead" }),
+    );
 
     await waitFor(() => expect(onProjectionUnavailable).toHaveBeenCalled());
     expect(screen.getAllByText("src/x.ts").length).toBeGreaterThan(0);
@@ -389,16 +394,12 @@ describe("CommitBrowser", () => {
     await waitFor(() =>
       expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "sourceFilterFiles" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "sourceFilterFiles" }));
     fireEvent.change(screen.getByPlaceholderText("sourceFilterFiles"), {
       target: { value: "legacy" },
     });
 
-    expect(
-      screen.getByText("legacy/original.ts → src/keep.ts"),
-    ).toBeDefined();
+    expect(screen.getByText("legacy/original.ts → src/keep.ts")).toBeDefined();
     expect(screen.queryByText("test/drop.test.ts")).toBeNull();
     await waitFor(() =>
       expect(getGitCommitDiff).toHaveBeenCalledWith(
@@ -535,9 +536,7 @@ describe("CommitBrowser", () => {
     });
 
     expect(document.activeElement).toBe(second);
-    await waitFor(() =>
-      expect(getGitCommit).toHaveBeenCalledWith("p1", older),
-    );
+    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", older));
   });
 
   it("opens revision actions by context key or right-click", async () => {
@@ -621,9 +620,7 @@ describe("CommitBrowser", () => {
       expect(getGitCommitSearchManifest).toHaveBeenCalledWith("p1"),
     );
     await waitFor(() =>
-      expect(
-        document.querySelector(".source-search-index-status"),
-      ).toBeNull(),
+      expect(document.querySelector(".source-search-index-status")).toBeNull(),
     );
   });
 

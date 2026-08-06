@@ -39,9 +39,9 @@ describe("sessionDraftStorage", () => {
     expect([...scanSessionDraftIds(LOCAL_CLIENT_SUMMARY_SOURCE_KEY)]).toEqual([
       "session-a",
     ]);
-    expect(
-      localStorage.getItem("draft-presence-message:local:session-a"),
-    ).toBe("1");
+    expect(localStorage.getItem("draft-presence-message:local:session-a")).toBe(
+      "1",
+    );
   });
 
   it("discovers remote drafts from only the source index", () => {
@@ -67,9 +67,11 @@ describe("sessionDraftStorage", () => {
     saveSessionDraft(reference, "");
 
     expect([...scanSessionDraftIds(sourceKey)]).toEqual([]);
-    expect(localStorage.getItem("draft-index-message:direct%3Aws%3A%2F%2Fexample%2Fws")).toBe(
-      null,
-    );
+    expect(
+      localStorage.getItem(
+        "draft-index-message:direct%3Aws%3A%2F%2Fexample%2Fws",
+      ),
+    ).toBe(null);
   });
 
   it("writes the index and publishes only on presence transitions", () => {
@@ -134,14 +136,10 @@ describe("sessionDraftStorage", () => {
     saveSessionDraft({ sourceKey, sessionId: "session-b" }, "b");
 
     expect(
-      localStorage.getItem(
-        "draft-presence-message:host%3Amacbook:session-a",
-      ),
+      localStorage.getItem("draft-presence-message:host%3Amacbook:session-a"),
     ).toBe("1");
     expect(
-      localStorage.getItem(
-        "draft-presence-message:host%3Amacbook:session-b",
-      ),
+      localStorage.getItem("draft-presence-message:host%3Amacbook:session-b"),
     ).toBe("1");
     expect([...scanSessionDraftIds(sourceKey)].sort()).toEqual([
       "session-a",

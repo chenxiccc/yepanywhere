@@ -22,13 +22,9 @@ export function useChangesetFileFilter<T extends GitFileChange>(
     () => new FileSearchIndex(searchablePaths),
     [searchablePaths],
   );
-  const matches = useMemo(
-    () => new Set(index.search(query)),
-    [index, query],
-  );
+  const matches = useMemo(() => new Set(index.search(query)), [index, query]);
   return useMemo(
-    () =>
-      files.filter((file) => matches.has(sourceFileDisplayPath(file))),
+    () => files.filter((file) => matches.has(sourceFileDisplayPath(file))),
     [files, matches],
   );
 }

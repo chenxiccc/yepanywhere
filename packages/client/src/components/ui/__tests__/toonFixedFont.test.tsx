@@ -24,9 +24,7 @@ describe("fixed-font TOON rendering", () => {
   });
 
   it("leaves malformed TOON alone", () => {
-    const result = renderFixedFontRichContent(
-      "harnesses[3]{a,b}:\n1,2\n",
-    );
+    const result = renderFixedFontRichContent("harnesses[3]{a,b}:\n1,2\n");
     expect(result.html).not.toContain("<table");
   });
 });

@@ -58,9 +58,6 @@ export function parseLocalCommandStdout(text: string): string | null {
 }
 
 export function isCompactionLocalCommandOutput(text: string): boolean {
-  const normalized = text
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+  const normalized = text.replace(/\s+/g, " ").trim().toLowerCase();
   return normalized === "compacted" || normalized.startsWith("compacted (");
 }

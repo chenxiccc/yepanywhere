@@ -13,10 +13,7 @@ import {
 import type { Logger } from "pino";
 import type { RawData, WebSocket } from "ws";
 import type { RelayConfig } from "./config.js";
-import type {
-  ConnectionManager,
-  RelayClientEndpoint,
-} from "./connections.js";
+import type { ConnectionManager, RelayClientEndpoint } from "./connections.js";
 import type { RelayTelemetryRecorder } from "./telemetry.js";
 
 const POLICY_CLOSE_CODE = 1008;
@@ -111,7 +108,10 @@ class RelayMuxCoordinator {
     this.sessions.delete(session);
   }
 
-  canOpen(session: RelayMuxSession, username: string): RelayMuxErrorReason | null {
+  canOpen(
+    session: RelayMuxSession,
+    username: string,
+  ): RelayMuxErrorReason | null {
     const now = Date.now();
     this.pruneAttempts(now);
     if (session.circuitCount >= this.config.muxMaxCircuitsPerSocket) {
@@ -145,10 +145,7 @@ class RelayMuxCoordinator {
     }
 
     const targetKey = `${session.clientIp}\0${username}`;
-    const targetAttempts = this.getAttempts(
-      this.ipUsernameAttempts,
-      targetKey,
-    );
+    const targetAttempts = this.getAttempts(this.ipUsernameAttempts, targetKey);
     if (
       !this.recordBoundedAttempt(
         targetAttempts,
@@ -163,10 +160,7 @@ class RelayMuxCoordinator {
 
   circuitOpened(clientIp: string): void {
     this.openedTotal += 1;
-    this.circuitsByIp.set(
-      clientIp,
-      (this.circuitsByIp.get(clientIp) ?? 0) + 1,
-    );
+    this.circuitsByIp.set(clientIp, (this.circuitsByIp.get(clientIp) ?? 0) + 1);
   }
 
   circuitClosed(clientIp: string, reason: RelayMuxClosedReason): void {
@@ -196,10 +190,7 @@ class RelayMuxCoordinator {
     };
   }
 
-  private getAttempts(
-    map: Map<string, number[]>,
-    key: string,
-  ): number[] {
+  private getAttempts(map: Map<string, number[]>, key: string): number[] {
     let attempts = map.get(key);
     if (!attempts) {
       attempts = [];
@@ -228,9 +219,7 @@ class RelayMuxCoordinator {
       }
     }
     for (const session of this.sessions) {
-      while (
-        (session.openAttempts[0] ?? Number.POSITIVE_INFINITY) <= cutoff
-      ) {
+      while ((session.openAttempts[0] ?? Number.POSITIVE_INFINITY) <= cutoff) {
         session.openAttempts.shift();
       }
     }
@@ -349,8 +338,7 @@ class RelayMuxSession {
       key: endpointKey,
       send: (data, isBinary) =>
         this.queueServerFrame(circuitId, data, isBinary),
-      close: () =>
-        this.closeCircuit(circuitId, "server_closed", true, false),
+      close: () => this.closeCircuit(circuitId, "server_closed", true, false),
     };
     const result = this.connectionManager.connectClientEndpoint(
       endpoint,

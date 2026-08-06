@@ -16,10 +16,7 @@ function renderNavigation(
 ) {
   return render(
     <I18nProvider>
-      <EmulatorNavButtons
-        dataChannel={dataChannel}
-        deviceType={deviceType}
-      />
+      <EmulatorNavButtons dataChannel={dataChannel} deviceType={deviceType} />
     </I18nProvider>,
   );
 }

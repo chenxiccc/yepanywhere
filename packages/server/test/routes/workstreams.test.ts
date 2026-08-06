@@ -186,8 +186,9 @@ describe("Workstream Routes", () => {
 
     expect(response.status).toBe(200);
     const json = await response.json();
-    expect(json.workstreams.map((workstream: { id: string }) => workstream.id))
-      .toEqual([mainWorkstreamId(projectId), "ws-tools"]);
+    expect(
+      json.workstreams.map((workstream: { id: string }) => workstream.id),
+    ).toEqual([mainWorkstreamId(projectId), "ws-tools"]);
     expect(json.workstreams[1]).toMatchObject({
       id: "ws-tools",
       projectId,
@@ -251,10 +252,7 @@ describe("Workstream Routes", () => {
       fs.access(path.join(json.workstream.path, ".git")),
     ).resolves.toBeUndefined();
     await expect(
-      fs.readFile(
-        path.join(json.workstream.path, ".env.local"),
-        "utf-8",
-      ),
+      fs.readFile(path.join(json.workstream.path, ".env.local"), "utf-8"),
     ).resolves.toBe("local=true\n");
     expect(
       json.workstreams.map((workstream: { kind: string }) => workstream.kind),

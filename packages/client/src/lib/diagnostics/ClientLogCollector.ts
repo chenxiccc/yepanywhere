@@ -237,8 +237,8 @@ export class ClientLogCollector {
     this._unsubscribeStatus = null;
     if (!this._started) return;
 
-    const transport = getSourceRuntimeRegistry().getCurrentSourceRuntime()
-      .transport;
+    const transport =
+      getSourceRuntimeRegistry().getCurrentSourceRuntime().transport;
     this._unsubscribeStatus = transport.status.subscribe(() => {
       if (this._isCurrentTransportReady()) {
         this.flush();

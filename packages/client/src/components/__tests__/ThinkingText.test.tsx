@@ -50,16 +50,18 @@ describe("ThinkingText", () => {
 
     expect(screen.getByText("Planning full-corpus review")).toBeDefined();
     expect(screen.getByText("Evaluating chunking strategy")).toBeDefined();
-    expect(container.querySelectorAll(".thinking-outline-section")).toHaveLength(
-      2,
-    );
+    expect(
+      container.querySelectorAll(".thinking-outline-section"),
+    ).toHaveLength(2);
     expect(container.querySelector(".thinking-outline-body")).toBeNull();
     expect(container.textContent).not.toContain("<!-- -->");
   });
 
   it("omits comment-only placeholder lines from plain thinking text", () => {
     const { container } = render(
-      <ThinkingText text={["Checking policy", "<!-- -->", "Done"].join("\n")} />,
+      <ThinkingText
+        text={["Checking policy", "<!-- -->", "Done"].join("\n")}
+      />,
     );
 
     expect(container.textContent).toBe("Checking policy\nDone");

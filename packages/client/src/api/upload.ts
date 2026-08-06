@@ -56,10 +56,15 @@ function resolveUploadedFile(msg: UploadServerMessage): UploadedFile {
   if (msg.type === "complete" && "file" in msg) {
     return msg.file;
   }
-  throw new UploadError("Upload completed without file metadata", "UPLOAD_ERROR");
+  throw new UploadError(
+    "Upload completed without file metadata",
+    "UPLOAD_ERROR",
+  );
 }
 
-function resolveStagedAttachment(msg: UploadServerMessage): StagedAttachmentRef {
+function resolveStagedAttachment(
+  msg: UploadServerMessage,
+): StagedAttachmentRef {
   if (msg.type === "complete" && "stagedRef" in msg) {
     return msg.stagedRef;
   }
@@ -267,7 +272,9 @@ async function uploadChunksWithCompletion<T>(
         // Send start message
         const startMsg: UploadStartMessage = {
           type: "start",
-          ...(metadata.batchId !== undefined ? { batchId: metadata.batchId } : {}),
+          ...(metadata.batchId !== undefined
+            ? { batchId: metadata.batchId }
+            : {}),
           name: metadata.name,
           size: metadata.size,
           mimeType: metadata.mimeType,

@@ -20,16 +20,27 @@ import { EventBus } from "../src/watcher/index.js";
 
 const username = process.env.YA_NATIVE_PROBE_USERNAME;
 const password = process.env.YA_NATIVE_PROBE_PASSWORD;
-const requestedPort = Number.parseInt(process.env.YA_NATIVE_PROBE_PORT ?? "38901", 10);
+const requestedPort = Number.parseInt(
+  process.env.YA_NATIVE_PROBE_PORT ?? "38901",
+  10,
+);
 const relayUrl = process.env.YA_NATIVE_PROBE_RELAY_URL;
 
 if (!username || !/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(username)) {
-  throw new Error("YA_NATIVE_PROBE_USERNAME must be a valid 3-32 character SRP identity");
+  throw new Error(
+    "YA_NATIVE_PROBE_USERNAME must be a valid 3-32 character SRP identity",
+  );
 }
 if (!password || password.length < 8) {
-  throw new Error("YA_NATIVE_PROBE_PASSWORD must contain at least 8 characters");
+  throw new Error(
+    "YA_NATIVE_PROBE_PASSWORD must contain at least 8 characters",
+  );
 }
-if (!Number.isSafeInteger(requestedPort) || requestedPort < 1024 || requestedPort > 65535) {
+if (
+  !Number.isSafeInteger(requestedPort) ||
+  requestedPort < 1024 ||
+  requestedPort > 65535
+) {
   throw new Error("YA_NATIVE_PROBE_PORT must be an unprivileged TCP port");
 }
 
@@ -151,6 +162,8 @@ await new Promise<void>((resolveStop) => {
 await securityClientService.shutdown();
 remoteSessionService.shutdown();
 relayClientService?.stop();
-await new Promise<void>((resolveClosed) => server!.close(() => resolveClosed()));
+await new Promise<void>((resolveClosed) =>
+  server!.close(() => resolveClosed()),
+);
 wss.close();
 await rm(root, { recursive: true, force: true });

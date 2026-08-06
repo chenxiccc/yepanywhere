@@ -54,9 +54,7 @@ describe("tab title indicators", () => {
     expect(stripTabTitlePrefixes("(○) (3) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("(2) (*) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("( ) (3) Project")).toBe("Project");
-    expect(stripTabTitlePrefixes("(2) (●) 💻 Project", "💻")).toBe(
-      "Project",
-    );
+    expect(stripTabTitlePrefixes("(2) (●) 💻 Project", "💻")).toBe("Project");
   });
 
   it("derives activity frames from the configured cadence", () => {

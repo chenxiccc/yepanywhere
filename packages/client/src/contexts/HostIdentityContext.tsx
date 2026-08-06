@@ -2,12 +2,7 @@ import {
   HOST_IDENTITY_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import {
-  createContext,
-  type ReactNode,
-  useContext,
-  useMemo,
-} from "react";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useVersion } from "../hooks/useVersion";
 

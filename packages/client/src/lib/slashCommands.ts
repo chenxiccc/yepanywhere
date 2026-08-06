@@ -44,9 +44,7 @@ export function createClientSlashCommand(name: string): SlashCommand {
   };
 }
 
-export function getSlashCommandMenuParts(
-  command: string | SlashCommand,
-): {
+export function getSlashCommandMenuParts(command: string | SlashCommand): {
   shortcut: string;
   rest: string;
   label: string;

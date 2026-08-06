@@ -23,10 +23,7 @@ describe("jsonlTablesToMarkdown", () => {
   });
 
   it("groups by identical key set regardless of key order, and escapes pipes", () => {
-    const text = [
-      '{"a":"x|y","b":1}',
-      '{"b":2,"a":"z"}',
-    ].join("\n");
+    const text = ['{"a":"x|y","b":1}', '{"b":2,"a":"z"}'].join("\n");
     const { markdown, tableCount } = jsonlTablesToMarkdown(text);
     expect(tableCount).toBe(1);
     // Columns follow the first row's order; second row's values map by key.
@@ -60,10 +57,7 @@ describe("jsonlTablesToMarkdown", () => {
   });
 
   it("renders nested cell values as compact JSON and null as empty", () => {
-    const text = [
-      '{"k":"a","v":{"n":1}}',
-      '{"k":"b","v":null}',
-    ].join("\n");
+    const text = ['{"k":"a","v":{"n":1}}', '{"k":"b","v":null}'].join("\n");
     const { markdown } = jsonlTablesToMarkdown(text);
     expect(markdown).toContain('| a | {"n":1} |');
     expect(markdown).toContain("| b |  |");

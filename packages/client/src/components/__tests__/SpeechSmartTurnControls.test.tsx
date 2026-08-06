@@ -103,18 +103,12 @@ describe("SpeechSmartTurnControls", () => {
     );
 
     expect(screen.getByRole("checkbox")).toHaveProperty("disabled", true);
-    expect(screen.getByLabelText("Threshold")).toHaveProperty(
-      "disabled",
-      true,
-    );
+    expect(screen.getByLabelText("Threshold")).toHaveProperty("disabled", true);
     expect(screen.getByLabelText("Smart Turn threshold")).toHaveProperty(
       "disabled",
       true,
     );
-    expect(screen.getByLabelText("Timeout")).toHaveProperty(
-      "disabled",
-      true,
-    );
+    expect(screen.getByLabelText("Timeout")).toHaveProperty("disabled", true);
   });
 
   it("enables Smart Turn when the threshold slider is adjusted", () => {

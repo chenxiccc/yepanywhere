@@ -1,4 +1,10 @@
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import {
@@ -91,7 +97,11 @@ function InboxConsumer() {
       <span data-testid="recent">
         {recentActivity.map((item) => item.sessionTitle).join("|")}
       </span>
-      <button type="button" data-testid="refresh" onClick={() => void refresh()}>
+      <button
+        type="button"
+        data-testid="refresh"
+        onClick={() => void refresh()}
+      >
         refresh
       </button>
     </div>
@@ -256,9 +266,7 @@ describe("InboxProvider", () => {
       expect(mockGetInbox).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
-      expect(view.getByTestId("needs").textContent).toBe(
-        "Win new|Win shared",
-      );
+      expect(view.getByTestId("needs").textContent).toBe("Win new|Win shared");
     });
   });
 
@@ -393,21 +401,19 @@ describe("InboxProvider", () => {
     vi.useFakeTimers();
     try {
       remoteState.connection = { connection: {} };
-      mockGetInbox
-        .mockResolvedValueOnce(emptyInbox())
-        .mockResolvedValueOnce(
-          emptyInbox({
-            recentActivity: [
-              {
-                sessionId: "session-2",
-                projectId: "project-1",
-                projectName: "Project",
-                sessionTitle: "Discovered",
-                updatedAt: "2026-06-28T00:01:00.000Z",
-              },
-            ],
-          }),
-        );
+      mockGetInbox.mockResolvedValueOnce(emptyInbox()).mockResolvedValueOnce(
+        emptyInbox({
+          recentActivity: [
+            {
+              sessionId: "session-2",
+              projectId: "project-1",
+              projectName: "Project",
+              sessionTitle: "Discovered",
+              updatedAt: "2026-06-28T00:01:00.000Z",
+            },
+          ],
+        }),
+      );
 
       const view = render(
         <InboxProvider>

@@ -14,7 +14,9 @@ export function cloneScrollSnapshot(
   if (typeof structuredClone === "function") {
     return structuredClone(scrollSnapshot);
   }
-  return JSON.parse(JSON.stringify(scrollSnapshot)) as SessionRouteScrollSnapshot;
+  return JSON.parse(
+    JSON.stringify(scrollSnapshot),
+  ) as SessionRouteScrollSnapshot;
 }
 
 export function routeSnapshotToState(

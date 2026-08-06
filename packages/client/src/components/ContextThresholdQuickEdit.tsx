@@ -166,10 +166,7 @@ export function ContextThresholdQuickEdit({
       : t("compactThresholdQuickTitle");
 
   return (
-    <div
-      ref={wrapRef}
-      className="context-threshold-quickedit"
-    >
+    <div ref={wrapRef} className="context-threshold-quickedit">
       <span
         className="context-threshold-quickedit-trigger"
         role="button"
@@ -201,9 +198,7 @@ export function ContextThresholdQuickEdit({
         onContextMenu={(e) => {
           if (!canEdit) return;
           e.preventDefault();
-          setOpen((current) =>
-            current === "threshold" ? null : "threshold",
-          );
+          setOpen((current) => (current === "threshold" ? null : "threshold"));
         }}
         onTouchStart={() => {
           if (!canEdit) return;
@@ -259,8 +254,7 @@ export function ContextThresholdQuickEdit({
                 checked={forceYaOrchestratedCompaction}
                 onChange={(event) => {
                   void updateSetting("clientDefaults", {
-                    forceYaOrchestratedCompaction:
-                      event.currentTarget.checked,
+                    forceYaOrchestratedCompaction: event.currentTarget.checked,
                   }).catch(() => {
                     // surfaced via the hook's error state
                   });

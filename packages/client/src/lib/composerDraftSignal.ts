@@ -8,10 +8,7 @@ export interface ComposerDraftChange {
 
 export interface ComposerDraftSignal {
   getDraft(): string;
-  publishDraftChange(
-    text: string,
-    metadata: DraftTextChangeMetadata,
-  ): void;
+  publishDraftChange(text: string, metadata: DraftTextChangeMetadata): void;
   subscribeDraftChanges(
     listener: (change: ComposerDraftChange) => void,
   ): () => void;
@@ -21,10 +18,7 @@ export interface ComposerEditAvailabilityStore {
   getSnapshot(): boolean;
   getCurrent(): boolean;
   setDraftText(text: string): void;
-  setExternalBlockers(
-    hasAttachments: boolean,
-    hasActiveUploads: boolean,
-  ): void;
+  setExternalBlockers(hasAttachments: boolean, hasActiveUploads: boolean): void;
   subscribe(listener: () => void): () => void;
 }
 
@@ -77,10 +71,7 @@ export function createComposerEditAvailabilityStore(): ComposerEditAvailabilityS
       hasDraftText = text.trim().length > 0;
       updateSnapshot();
     },
-    setExternalBlockers: (
-      nextHasAttachments,
-      nextHasActiveUploads,
-    ) => {
+    setExternalBlockers: (nextHasAttachments, nextHasActiveUploads) => {
       hasAttachments = nextHasAttachments;
       hasActiveUploads = nextHasActiveUploads;
       updateSnapshot();

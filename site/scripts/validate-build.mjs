@@ -11,7 +11,9 @@ async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(
     entries.map((entry) =>
-      entry.isDirectory() ? walk(join(directory, entry.name)) : join(directory, entry.name),
+      entry.isDirectory()
+        ? walk(join(directory, entry.name))
+        : join(directory, entry.name),
     ),
   );
   return files.flat();
@@ -35,7 +37,8 @@ function publicPath(file) {
 async function resolvesToBuildFile(pathname) {
   const normalized = pathname.replace(/^\/+|\/+$/g, "");
   if (!normalized) return exists(join(distRoot, "index.html"));
-  if (pathname.endsWith("/")) return exists(join(distRoot, normalized, "index.html"));
+  if (pathname.endsWith("/"))
+    return exists(join(distRoot, normalized, "index.html"));
   return (
     (await exists(join(distRoot, normalized))) ||
     (await exists(join(distRoot, `${normalized}.html`))) ||
@@ -43,8 +46,12 @@ async function resolvesToBuildFile(pathname) {
   );
 }
 
-const htmlFiles = (await walk(distRoot)).filter((file) => file.endsWith(".html"));
-const astroPages = htmlFiles.filter((file) => !file.endsWith(`${sep}open${sep}index.html`));
+const htmlFiles = (await walk(distRoot)).filter((file) =>
+  file.endsWith(".html"),
+);
+const astroPages = htmlFiles.filter(
+  (file) => !file.endsWith(`${sep}open${sep}index.html`),
+);
 
 for (const file of astroPages) {
   const html = await readFile(file, "utf8");
@@ -57,11 +64,14 @@ for (const file of astroPages) {
     failures.push(`${route}: missing Cloudflare Web Analytics beacon`);
   }
 
-  const hrefs = [...html.matchAll(/\shref=["']([^"']+)["']/g)].map((match) => match[1]);
+  const hrefs = [...html.matchAll(/\shref=["']([^"']+)["']/g)].map(
+    (match) => match[1],
+  );
   for (const href of hrefs) {
     if (!href.startsWith("/") || href.startsWith("//")) continue;
     const url = new URL(href, "https://yepanywhere.com");
-    if (url.pathname === "/remote" || url.pathname.startsWith("/remote/")) continue;
+    if (url.pathname === "/remote" || url.pathname.startsWith("/remote/"))
+      continue;
     if (!(await resolvesToBuildFile(url.pathname))) {
       failures.push(`${route}: internal link ${href} has no built destination`);
     }
@@ -86,8 +96,13 @@ if (/cloudflareinsights|data-cf-beacon|beacon\.min\.js/i.test(remoteHtml)) {
 }
 
 const privacyHtml = await readFile(join(distRoot, "privacy.html"), "utf8");
-if (!privacyHtml.includes("Cloudflare Web Analytics") || !privacyHtml.includes("/remote/")) {
-  failures.push("/privacy: analytics inclusion and /remote/ exclusion must be disclosed");
+if (
+  !privacyHtml.includes("Cloudflare Web Analytics") ||
+  !privacyHtml.includes("/remote/")
+) {
+  failures.push(
+    "/privacy: analytics inclusion and /remote/ exclusion must be disclosed",
+  );
 }
 
 if (failures.length > 0) {
@@ -95,5 +110,7 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exitCode = 1;
 } else {
-  console.log(`Validated ${astroPages.length} public pages, internal links, metadata, and analytics boundaries.`);
+  console.log(
+    `Validated ${astroPages.length} public pages, internal links, metadata, and analytics boundaries.`,
+  );
 }

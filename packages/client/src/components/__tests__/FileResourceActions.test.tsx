@@ -9,9 +9,9 @@ const REMOVED_LEGACY_CLASSES = [
   "file-path-context-menu",
 ];
 
-function renderMenu(props: Partial<
-  Parameters<typeof FilePathContextMenu>[0]
-> = {}) {
+function renderMenu(
+  props: Partial<Parameters<typeof FilePathContextMenu>[0]> = {},
+) {
   const onClose = vi.fn();
   const handlers = {
     onCopyContents: vi.fn(),
@@ -53,9 +53,7 @@ describe("FilePathContextMenu", () => {
     renderMenu();
 
     expect(
-      screen
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent),
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
       "View",
       "New session",

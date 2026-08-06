@@ -71,37 +71,43 @@ describe("diff syntax contrast", () => {
     ["dark and auto-dark", '[data-theme="dark"],\n[data-theme="auto"]'],
     ["light", '[data-theme="light"]'],
     ["auto-light", '[data-theme="auto"]'],
-  ])("keeps every %s token readable on added and removed lines", async (_theme, selector) => {
-    const css = await readFile(indexStylesheetUrl, "utf8");
-    const declarations = getLastRuleDeclarations(css, selector);
-    const backgrounds = [
-      readHexVariable(declarations, "--bg-diff-added"),
-      readHexVariable(declarations, "--bg-diff-removed"),
-    ];
+  ])(
+    "keeps every %s token readable on added and removed lines",
+    async (_theme, selector) => {
+      const css = await readFile(indexStylesheetUrl, "utf8");
+      const declarations = getLastRuleDeclarations(css, selector);
+      const backgrounds = [
+        readHexVariable(declarations, "--bg-diff-added"),
+        readHexVariable(declarations, "--bg-diff-removed"),
+      ];
 
-    for (const tokenName of TOKEN_NAMES) {
-      const token = readHexVariable(declarations, `--diff-shiki-${tokenName}`);
-      for (const background of backgrounds) {
-        expect(
-          contrastRatio(token, background),
-          `${tokenName} ${token} on ${background}`,
-        ).toBeGreaterThanOrEqual(MINIMUM_SYNTAX_CONTRAST);
+      for (const tokenName of TOKEN_NAMES) {
+        const token = readHexVariable(
+          declarations,
+          `--diff-shiki-${tokenName}`,
+        );
+        for (const background of backgrounds) {
+          expect(
+            contrastRatio(token, background),
+            `${tokenName} ${token} on ${background}`,
+          ).toBeGreaterThanOrEqual(MINIMUM_SYNTAX_CONTRAST);
+        }
       }
-    }
 
-    expect(
-      contrastRatio(
-        readHexVariable(declarations, "--diff-gutter-added-foreground"),
-        readHexVariable(declarations, "--bg-diff-gutter-added"),
-      ),
-      "added gutter glyph",
-    ).toBeGreaterThanOrEqual(MINIMUM_SYNTAX_CONTRAST);
-    expect(
-      contrastRatio(
-        readHexVariable(declarations, "--diff-gutter-removed-foreground"),
-        readHexVariable(declarations, "--bg-diff-gutter-removed"),
-      ),
-      "removed gutter glyph",
-    ).toBeGreaterThanOrEqual(MINIMUM_SYNTAX_CONTRAST);
-  });
+      expect(
+        contrastRatio(
+          readHexVariable(declarations, "--diff-gutter-added-foreground"),
+          readHexVariable(declarations, "--bg-diff-gutter-added"),
+        ),
+        "added gutter glyph",
+      ).toBeGreaterThanOrEqual(MINIMUM_SYNTAX_CONTRAST);
+      expect(
+        contrastRatio(
+          readHexVariable(declarations, "--diff-gutter-removed-foreground"),
+          readHexVariable(declarations, "--bg-diff-gutter-removed"),
+        ),
+        "removed gutter glyph",
+      ).toBeGreaterThanOrEqual(MINIMUM_SYNTAX_CONTRAST);
+    },
+  );
 });

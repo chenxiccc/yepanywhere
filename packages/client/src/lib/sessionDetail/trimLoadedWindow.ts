@@ -194,8 +194,7 @@ function pruneToolUseToAgentEntries(
 ): Array<[string, string]> {
   const retained = entries.filter(
     ([toolUseId, agentId]) =>
-      references.toolUseIds.has(toolUseId) ||
-      references.agentIds.has(agentId),
+      references.toolUseIds.has(toolUseId) || references.agentIds.has(agentId),
   );
   return retained.length === entries.length ? entries : retained;
 }
@@ -267,8 +266,7 @@ export function trimSessionDetailLoadedWindow(
   const boundaryTimestampMs = parseTimestampMs(boundary.timestamp);
   if (
     boundaryTimestampMs === null ||
-    action.nowMs <=
-      boundaryTimestampMs + ACTIVE_WINDOW_MIN_BOUNDARY_AGE_MS
+    action.nowMs <= boundaryTimestampMs + ACTIVE_WINDOW_MIN_BOUNDARY_AGE_MS
   ) {
     return state;
   }

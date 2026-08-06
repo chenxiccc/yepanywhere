@@ -5,10 +5,7 @@ import {
 } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import type { SavedHost } from "../../hostStorage";
-import {
-  RelayMuxCircuitOpenError,
-  RelayMuxSocketPool,
-} from "../RelayMuxPool";
+import { RelayMuxCircuitOpenError, RelayMuxSocketPool } from "../RelayMuxPool";
 import type { SecureConnectionSocket } from "../SecureConnectionSocket";
 
 class FakePhysicalWebSocket {
@@ -58,11 +55,7 @@ class FakePhysicalWebSocket {
     );
   }
 
-  receiveData(
-    circuitId: number,
-    payload: Uint8Array,
-    isBinary: boolean,
-  ): void {
+  receiveData(circuitId: number, payload: Uint8Array, isBinary: boolean): void {
     const frame = encodeRelayMuxDataFrame(circuitId, payload, isBinary);
     this.onmessage?.(
       new MessageEvent("message", {
@@ -95,21 +88,24 @@ function savedHost(id: string): SavedHost {
 }
 
 function muxFetch(): typeof fetch {
-  return vi.fn(async () =>
-    new Response(
-      JSON.stringify({
-        status: "ok",
-        relayCapabilities: [RELAY_CLIENT_MUX_V1_CAPABILITY],
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      },
-    ),
+  return vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          status: "ok",
+          relayCapabilities: [RELAY_CLIENT_MUX_V1_CAPABILITY],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
   ) as typeof fetch;
 }
 
-function textControls(ws: FakePhysicalWebSocket): Array<Record<string, unknown>> {
+function textControls(
+  ws: FakePhysicalWebSocket,
+): Array<Record<string, unknown>> {
   return ws.sent.flatMap((data) =>
     typeof data === "string"
       ? [JSON.parse(data) as Record<string, unknown>]
@@ -178,9 +174,9 @@ describe("RelayMuxSocketPool", () => {
     alpha.send("hello alpha");
     beta.send(new Uint8Array([1, 2, 3]));
     await vi.waitFor(() =>
-      expect(physical.sent.filter((data) => data instanceof Uint8Array)).toHaveLength(
-        2,
-      ),
+      expect(
+        physical.sent.filter((data) => data instanceof Uint8Array),
+      ).toHaveLength(2),
     );
     const dataFrames = physical.sent
       .filter((data): data is Uint8Array => data instanceof Uint8Array)
@@ -224,8 +220,9 @@ describe("RelayMuxSocketPool", () => {
     const createWebSocket = vi.fn();
     const pool = new RelayMuxSocketPool(hosts, {
       createWebSocket,
-      fetch: vi.fn(async () =>
-        new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
       ) as typeof fetch,
       openLegacySocket,
     });

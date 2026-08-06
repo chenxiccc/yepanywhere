@@ -720,7 +720,9 @@ export class OpenCodeSessionReader implements ISessionReader {
     cachedMtime: number,
     cachedSize: number,
   ): Promise<
-    { summary: SessionSummary; mtime: number; size: number } | "unchanged" | null
+    | { summary: SessionSummary; mtime: number; size: number }
+    | "unchanged"
+    | null
   > {
     const projectIdHash = await this.dbReader.getProjectId(this.projectPath);
     if (!projectIdHash) return null;

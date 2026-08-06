@@ -9,8 +9,7 @@ export const QUOTE_REPLY_BUTTON_MODES = [
 ] as const;
 export type QuoteReplyButtonMode = (typeof QUOTE_REPLY_BUTTON_MODES)[number];
 
-const DEFAULT_QUOTE_REPLY_BUTTON_MODE: QuoteReplyButtonMode =
-  "paragraph-hover";
+const DEFAULT_QUOTE_REPLY_BUTTON_MODE: QuoteReplyButtonMode = "paragraph-hover";
 
 function parseQuoteReplyButtonMode(
   raw: string,

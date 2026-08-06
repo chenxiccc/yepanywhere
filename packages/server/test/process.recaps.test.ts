@@ -1,9 +1,4 @@
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   Process,
   createControllableIterator,
@@ -11,10 +6,7 @@ import {
   createRecapProvider,
   waitFor,
 } from "./process.test-support.js";
-import type {
-  SDKMessage,
-  UrlProjectId,
-} from "./process.test-support.js";
+import type { SDKMessage, UrlProjectId } from "./process.test-support.js";
 
 describe("Process", () => {
   describe("recaps", () => {

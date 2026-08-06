@@ -49,7 +49,7 @@ describe("highlightCode", () => {
     expect(__test__.cacheSize()).toBe(1);
     // Both raced past the read, so the second write replaced the first. The
     // retained-bytes total must count the survivor once, not both.
-    expect(__test__.cacheBytes()).toBe((a?.html.length ?? 0));
+    expect(__test__.cacheBytes()).toBe(a?.html.length ?? 0);
   });
 
   it("caps queued whole-file warms and drops the oldest, not the newest", async () => {

@@ -44,12 +44,9 @@ function createSessionSpec(
 ): ManagedStreamSpec {
   return {
     subscribe: ({ transport, handlers, lastEventId }) =>
-      transport.subscribeSession(
-        "session-1",
-        handlers,
-        lastEventId,
-        { wantsLiveDeltas: false },
-      ),
+      transport.subscribeSession("session-1", handlers, lastEventId, {
+        wantsLiveDeltas: false,
+      }),
     onEvent,
     onError,
   };
@@ -104,10 +101,7 @@ describe("createManagedStream", () => {
   it("resubscribes session streams with the captured lastEventId", () => {
     const transport = new FakeSourceTransport();
     const onEvent = vi.fn();
-    const stream = createManagedStream(
-      transport,
-      createSessionSpec(onEvent),
-    );
+    const stream = createManagedStream(transport, createSessionSpec(onEvent));
 
     const first = getOnlySubscription(transport, "session");
     transport.openSubscription(first.id);
@@ -202,17 +196,11 @@ describe("createManagedStream", () => {
 
   it("is safe across StrictMode-style close and remount", () => {
     const transport = new FakeSourceTransport();
-    const firstStream = createManagedStream(
-      transport,
-      createSessionSpec(),
-    );
+    const firstStream = createManagedStream(transport, createSessionSpec());
     const first = getOnlySubscription(transport, "session");
     firstStream.close();
 
-    const secondStream = createManagedStream(
-      transport,
-      createSessionSpec(),
-    );
+    const secondStream = createManagedStream(transport, createSessionSpec());
     const second = getLastSubscription(transport, "session");
     transport.openSubscription(second.id);
     transport.closeSubscription(first.id, undefined, { allowClosed: true });
@@ -238,11 +226,9 @@ describe("createManagedStream", () => {
         channels: [{ name: "secure-websocket", state: "disconnected" }],
       },
     });
-    const stream = createManagedStream(
-      transport,
-      createActivitySpec(),
-      { autoStart: false },
-    );
+    const stream = createManagedStream(transport, createActivitySpec(), {
+      autoStart: false,
+    });
 
     stream.start();
     stream.start();
@@ -297,14 +283,10 @@ describe("createManagedStream", () => {
     const timers = new MockTimers();
     const reconnect = vi.fn();
     const transport = new FakeSourceTransport({ reconnect });
-    const stream = createManagedStream(
-      transport,
-      createSessionSpec(),
-      {
-        scheduler: schedulerFromTimers(timers),
-        retry: { initialDelayMs: 25, maxDelayMs: 25 },
-      },
-    );
+    const stream = createManagedStream(transport, createSessionSpec(), {
+      scheduler: schedulerFromTimers(timers),
+      retry: { initialDelayMs: 25, maxDelayMs: 25 },
+    });
 
     const first = getOnlySubscription(transport, "session");
     transport.openSubscription(first.id);

@@ -7,12 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { Message } from "../../types";
 import {

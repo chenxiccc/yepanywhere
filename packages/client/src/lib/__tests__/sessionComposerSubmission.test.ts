@@ -37,14 +37,14 @@ const uploadedFile: UploadedFile = {
 
 describe("session composer submission helpers", () => {
   it("builds transfer and slash-command draft text without changing spacing rules", () => {
-    expect(getComposerTransferReplacement(" existing  ", "  addition ")).toEqual(
-      {
-        start: 9,
-        end: 11,
-        replacement: "\n\naddition",
-        nextDraft: " existing\n\naddition",
-      },
-    );
+    expect(
+      getComposerTransferReplacement(" existing  ", "  addition "),
+    ).toEqual({
+      start: 9,
+      end: 11,
+      replacement: "\n\naddition",
+      nextDraft: " existing\n\naddition",
+    });
 
     expect(appendComposerTransferDraft("", "  addition ")).toBe("addition");
     expect(appendSlashCommandDraft("/mo", "model")).toBe("/model ");
@@ -61,7 +61,9 @@ describe("session composer submission helpers", () => {
       refs: [stagedRef],
       updatedAt: "now",
     });
-    expect(createComposerDraftAttachmentState([uploadedFile], "now")).toBeNull();
+    expect(
+      createComposerDraftAttachmentState([uploadedFile], "now"),
+    ).toBeNull();
     expect(() =>
       splitComposerAttachmentsForSubmission([
         stagedRef,
@@ -148,10 +150,7 @@ describe("session composer submission helpers", () => {
     const sourceTransport = {
       upload,
       uploadStagedAttachment,
-    } as unknown as Pick<
-      SourceTransport,
-      "upload" | "uploadStagedAttachment"
-    >;
+    } as unknown as Pick<SourceTransport, "upload" | "uploadStagedAttachment">;
     const progress = vi.fn();
     const originalCreateObjectURL = URL.createObjectURL;
     const originalRevokeObjectURL = URL.revokeObjectURL;

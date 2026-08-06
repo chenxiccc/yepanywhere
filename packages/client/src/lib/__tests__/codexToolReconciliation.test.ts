@@ -144,8 +144,7 @@ function planMessage(options: {
           content: "Plan updated",
         };
   return {
-    uuid:
-      options.kind === "use" ? options.id : `${options.id}-result`,
+    uuid: options.kind === "use" ? options.id : `${options.id}-result`,
     type: options.kind === "use" ? "assistant" : "user",
     timestamp: options.timestamp,
     message: {

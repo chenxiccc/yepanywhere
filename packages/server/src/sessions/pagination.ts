@@ -401,11 +401,7 @@ export function sliceAtCompactAndUserTurnBoundaries(
   fromMessageId?: string,
 ): SliceResult {
   const compactSlice = sliceAtCompactBoundaries(messages, tailCompactions);
-  const turnSlice = sliceAtUserTurnBoundary(
-    messages,
-    tailTurns,
-    fromMessageId,
-  );
+  const turnSlice = sliceAtUserTurnBoundary(messages, tailTurns, fromMessageId);
   const turnSelectorMissing =
     fromMessageId !== undefined && turnSlice.messages.length === 0;
   const turnWins =

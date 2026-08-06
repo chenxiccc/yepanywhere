@@ -100,7 +100,8 @@ const GPT54_FALLBACK_CODEX_MODEL: ModelInfo = {
 const GPT54_MINI_FALLBACK_CODEX_MODEL: ModelInfo = {
   id: "gpt-5.4-mini",
   name: "GPT-5.4-Mini",
-  description: "Small, fast, and cost-efficient model for simpler coding tasks.",
+  description:
+    "Small, fast, and cost-efficient model for simpler coding tasks.",
   defaultReasoningEffort: "medium",
   supportedReasoningEfforts: [
     {

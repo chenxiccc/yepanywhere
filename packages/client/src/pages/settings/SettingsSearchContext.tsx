@@ -1,9 +1,4 @@
-import {
-  Fragment,
-  type ReactNode,
-  createContext,
-  useContext,
-} from "react";
+import { Fragment, type ReactNode, createContext, useContext } from "react";
 import { splitSettingsMatchSegments } from "./settingsSearchMatch";
 
 /**

@@ -1,10 +1,5 @@
 import type { CodexWebRunPage, CodexWebRunResult } from "@yep-anywhere/shared";
-import {
-  type CSSProperties,
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import { type CSSProperties, useCallback, useMemo, useState } from "react";
 import { useOutputToolPreviewLineCount } from "../../../hooks/useOutputAppearance";
 import {
   useTextTooltipAttributes,
@@ -127,11 +122,7 @@ function pageContentText(page: CodexWebRunPage): string {
 /** Content-only flatten backing the preview clamp, tail tooltip, and +N. */
 function contentOnlyText(result: CodexWebRunResult): string {
   if (result.pages.length === 0) return result.text ?? "";
-  return result.pages
-    .map(pageContentText)
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
+  return result.pages.map(pageContentText).filter(Boolean).join("\n\n").trim();
 }
 
 /** Self-describing flatten (titles and URLs included) for the copy button. */
@@ -297,12 +288,11 @@ function WebCollapsedPreview({
     contentText,
     outputToolPreviewLineCount,
   );
-  const outputTooltipAttributes =
-    useVisibilityAwareTextTooltip<HTMLDivElement>(
-      contentText,
-      outputTailTooltip,
-      ".webrun-preview-output-text",
-    );
+  const outputTooltipAttributes = useVisibilityAwareTextTooltip<HTMLDivElement>(
+    contentText,
+    outputTailTooltip,
+    ".webrun-preview-output-text",
+  );
 
   const visiblePages = result.pages.slice(0, MAX_PREVIEW_PAGES);
   const omittedPages = result.pages.slice(MAX_PREVIEW_PAGES);
@@ -363,10 +353,7 @@ function WebCollapsedPreview({
         )}
         {previewText && (
           <div className="webrun-preview-row webrun-preview-output-row">
-            <div
-              className="webrun-preview-output"
-              {...outputTooltipAttributes}
-            >
+            <div className="webrun-preview-output" {...outputTooltipAttributes}>
               <div
                 className="webrun-preview-output-text"
                 style={

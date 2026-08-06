@@ -165,8 +165,7 @@ describe("useProcesses", () => {
       mocks.activityBus.emit("file-change", {
         type: "file-change",
         provider: "claude",
-        relativePath:
-          "project/parent/subagents/agent-child.meta.json",
+        relativePath: "project/parent/subagents/agent-child.meta.json",
         path: "/tmp/agent-child.meta.json",
         fileType: "agent-session",
         changeType: "create",
@@ -199,9 +198,7 @@ describe("useProcesses", () => {
       });
     });
 
-    expect(hook.result.current.processes[0]?.sessionTitle).toBe(
-      "Custom title",
-    );
+    expect(hook.result.current.processes[0]?.sessionTitle).toBe("Custom title");
     expect(mocks.fetchJSON).toHaveBeenCalledTimes(1);
   });
 

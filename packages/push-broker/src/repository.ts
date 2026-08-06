@@ -209,10 +209,7 @@ export class PushRepository {
       .run(this.now(), subscriptionId);
   }
 
-  revokeSubscription(
-    installationId: string,
-    subscriptionId: string,
-  ): boolean {
+  revokeSubscription(installationId: string, subscriptionId: string): boolean {
     const result = this.db
       .prepare(
         `UPDATE subscriptions
@@ -265,8 +262,7 @@ function pushTargetFromRow(row: {
 }): PushTarget {
   if (
     row.provider !== "fcm" ||
-    (row.target_kind !== "fid" &&
-      row.target_kind !== "registration_token")
+    (row.target_kind !== "fid" && row.target_kind !== "registration_token")
   ) {
     throw new Error("Unsupported push target stored in database");
   }

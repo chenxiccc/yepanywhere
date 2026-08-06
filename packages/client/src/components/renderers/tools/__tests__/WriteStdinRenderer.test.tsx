@@ -164,9 +164,9 @@ describe("WriteStdinRenderer", () => {
 
     expect(screen.getByText(/hyp-tokens: first=85 min=42/)).toBeDefined();
     expect(screen.queryByText(/chunk_id/)).toBeNull();
-    expect(
-      container.querySelector(".command-result-meta")?.textContent,
-    ).toBe("22.4s");
+    expect(container.querySelector(".command-result-meta")?.textContent).toBe(
+      "22.4s",
+    );
   });
 
   it("summarizes a failed chunk record as rc=N with runtime", () => {

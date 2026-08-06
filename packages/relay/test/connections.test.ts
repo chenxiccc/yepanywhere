@@ -226,9 +226,9 @@ describe("ConnectionManager", () => {
       };
 
       manager.registerServer(serverWs, "alice", "install-1");
-      expect(
-        manager.connectClientEndpoint(endpoint, "alice").status,
-      ).toBe("connected");
+      expect(manager.connectClientEndpoint(endpoint, "alice").status).toBe(
+        "connected",
+      );
 
       manager.forward(serverWs, Buffer.from("from server"), false);
       expect(endpoint.send).toHaveBeenCalledWith(

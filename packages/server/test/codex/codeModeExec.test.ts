@@ -87,7 +87,7 @@ describe("extractCodexCodeModeCalls", () => {
 
   it("extracts mixed quoted and unquoted keys with spaces and trailing comma", () => {
     const calls = extractCodexCodeModeCalls(
-      'await tools.write_stdin({session_id: 95061, "chars": \'\', yield_time_ms: 60000, });',
+      "await tools.write_stdin({session_id: 95061, \"chars\": '', yield_time_ms: 60000, });",
     );
 
     expect(calls).toMatchObject([

@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  NativeHostClient,
-  type NativeHostRawChannel,
-} from "../nativeHost";
+import { NativeHostClient, type NativeHostRawChannel } from "../nativeHost";
 
 class FakeChannel implements NativeHostRawChannel {
   onmessage: NativeHostRawChannel["onmessage"] = null;
@@ -14,7 +11,9 @@ class FakeChannel implements NativeHostRawChannel {
     this.requests.push(request);
     const response = this.responder?.(request);
     if (response !== undefined) {
-      queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(response) }));
+      queueMicrotask(() =>
+        this.onmessage?.({ data: JSON.stringify(response) }),
+      );
     }
   }
 }

@@ -64,9 +64,7 @@ describe("SessionDetailMemoryCache", () => {
     expect(createSessionDetailMemoryCache()).toBeInstanceOf(
       SessionDetailMemoryCache,
     );
-    expect(createSessionDetailStore()).toBeInstanceOf(
-      SessionDetailMemoryCache,
-    );
+    expect(createSessionDetailStore()).toBeInstanceOf(SessionDetailMemoryCache);
     expect(defaultSessionDetailStore).toBe(defaultSessionDetailMemoryCache);
   });
 
@@ -109,14 +107,8 @@ describe("SessionDetailMemoryCache", () => {
     const warmKey = key("warm-session");
     const liveKey = key("live-session");
 
-    store.writeRouteSnapshot(
-      warmKey,
-      snapshot("warm-session", ["warm-msg"]),
-    );
-    store.writeRouteSnapshot(
-      liveKey,
-      snapshot("live-session", ["live-msg"]),
-    );
+    store.writeRouteSnapshot(warmKey, snapshot("warm-session", ["warm-msg"]));
+    store.writeRouteSnapshot(liveKey, snapshot("live-session", ["live-msg"]));
     const release = store.retain(liveKey);
 
     const stats = store.getStats();
@@ -176,11 +168,7 @@ describe("SessionDetailMemoryCache", () => {
   it("stores an atomically trimmed loaded window in route snapshots", () => {
     const store = createSessionDetailMemoryCache();
     const storeKey = key("trimmed-session");
-    const source = snapshot("trimmed-session", [
-      "msg-1",
-      "msg-2",
-      "msg-3",
-    ]);
+    const source = snapshot("trimmed-session", ["msg-1", "msg-2", "msg-3"]);
     source.pagination = {
       hasOlderMessages: false,
       totalMessageCount: 3,
@@ -498,9 +486,9 @@ describe("SessionDetailMemoryCache", () => {
       }),
     ).toBe(false);
     expect(
-      store.readRouteSnapshot(storeKey, { nowMs: 3 })?.messages.map(
-        (message) => message.uuid,
-      ),
+      store
+        .readRouteSnapshot(storeKey, { nowMs: 3 })
+        ?.messages.map((message) => message.uuid),
     ).toEqual(["msg-1"]);
     expect(store.getStats().entries[0]?.retainCount).toBe(1);
 
@@ -534,19 +522,15 @@ describe("SessionDetailMemoryCache", () => {
     const release = store.retain(storeKey, { nowMs: 1 });
 
     expect(
-      store.replaceRouteSnapshot(
-        storeKey,
-        snapshot("session-a", ["msg-2"]),
-        {
-          maxBytes: 1,
-          nowMs: 2,
-        },
-      ),
+      store.replaceRouteSnapshot(storeKey, snapshot("session-a", ["msg-2"]), {
+        maxBytes: 1,
+        nowMs: 2,
+      }),
     ).toBe(true);
     expect(
-      store.readRouteSnapshot(storeKey, { nowMs: 3 })?.messages.map(
-        (message) => message.uuid,
-      ),
+      store
+        .readRouteSnapshot(storeKey, { nowMs: 3 })
+        ?.messages.map((message) => message.uuid),
     ).toEqual(["msg-2"]);
 
     const stats = store.getStats();
@@ -568,9 +552,9 @@ describe("SessionDetailMemoryCache", () => {
     ).toBe(true);
 
     expect(
-      store.readRouteSnapshot(storeKey, { nowMs: 1 })?.messages.map(
-        (message) => message.uuid,
-      ),
+      store
+        .readRouteSnapshot(storeKey, { nowMs: 1 })
+        ?.messages.map((message) => message.uuid),
     ).toEqual(["msg-1"]);
   });
 
@@ -659,9 +643,7 @@ describe("SessionDetailMemoryCache", () => {
     expect(stats.entryCount).toBe(1);
     expect(stats.entries[0]?.retainCount).toBe(1);
     expect(stats.entries[0]?.messageCount).toBe(0);
-    expect(
-      store.readSelected(storeKey, (state) => state.session),
-    ).toBeNull();
+    expect(store.readSelected(storeKey, (state) => state.session)).toBeNull();
   });
 
   it("keeps retained entries out of LRU eviction candidates", () => {

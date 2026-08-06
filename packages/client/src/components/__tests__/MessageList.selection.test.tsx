@@ -1,17 +1,7 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import {
   installMessageListTestEnvironment,
@@ -163,7 +153,9 @@ describe("MessageList selection and copy", () => {
     const { container, unmount } = render(
       <div className="session-page">
         <MessageList
-          messages={[assistantMessage("assistant-1", "selected assistant text")]}
+          messages={[
+            assistantMessage("assistant-1", "selected assistant text"),
+          ]}
         />
       </div>,
     );

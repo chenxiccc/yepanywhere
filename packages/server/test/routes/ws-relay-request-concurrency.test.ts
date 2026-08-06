@@ -84,7 +84,10 @@ describe("WS relay request concurrency", () => {
       };
     });
     expect(responses().map((r) => r.id)).toEqual(["req-fast", "req-slow"]);
-    expect(responses()[1]).toMatchObject({ status: 200, body: { which: "slow" } });
+    expect(responses()[1]).toMatchObject({
+      status: 200,
+      body: { which: "slow" },
+    });
   });
 
   it("forwards Location so relay clients can follow API redirects", async () => {

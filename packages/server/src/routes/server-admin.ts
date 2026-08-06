@@ -32,7 +32,10 @@ async function runBeforeRestart(
   const cleanup = Promise.resolve().then(beforeRestart);
   cleanup.catch((error) => {
     if (timedOut) {
-      console.warn("[ServerAdmin] Restart cleanup failed after timeout:", error);
+      console.warn(
+        "[ServerAdmin] Restart cleanup failed after timeout:",
+        error,
+      );
     }
   });
 
@@ -40,11 +43,14 @@ async function runBeforeRestart(
     await Promise.race([
       cleanup,
       new Promise<void>((resolve) => {
-        timeout = setTimeout(() => {
-          timedOut = true;
-          console.warn("[ServerAdmin] Restart cleanup timed out");
-          resolve();
-        }, Math.max(0, timeoutMs));
+        timeout = setTimeout(
+          () => {
+            timedOut = true;
+            console.warn("[ServerAdmin] Restart cleanup timed out");
+            resolve();
+          },
+          Math.max(0, timeoutMs),
+        );
       }),
     ]);
   } catch (error) {

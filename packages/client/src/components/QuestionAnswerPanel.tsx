@@ -2,10 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuestionOtherDrafts } from "../hooks/useDrafts";
 import { useI18n } from "../i18n";
 import type { InputRequest, UserQuestionAnswers } from "../types";
-import type {
-  AskUserQuestionInput,
-  Question,
-} from "./renderers/tools/types";
+import type { AskUserQuestionInput, Question } from "./renderers/tools/types";
 import styles from "./QuestionAnswerPanel.module.css";
 
 const OTHER_ANSWER = "__other__";
@@ -26,10 +23,7 @@ function getQuestionKey(question: Question | undefined): string | undefined {
   return question?.id ?? question?.question;
 }
 
-function isQuestionAnswered(
-  selected: string[],
-  otherText: string,
-): boolean {
+function isQuestionAnswered(selected: string[], otherText: string): boolean {
   if (selected.length === 0) return false;
   const hasOther = selected.includes(OTHER_ANSWER);
   const hasRegularAnswer = selected.some((answer) => answer !== OTHER_ANSWER);
@@ -260,9 +254,7 @@ export function QuestionAnswerPanel({
     return (
       <div className={styles.wrapper}>
         <div className={styles.panel}>
-          <div className={styles.empty}>
-            {t("questionPanelNoQuestions")}
-          </div>
+          <div className={styles.empty}>{t("questionPanelNoQuestions")}</div>
         </div>
       </div>
     );
@@ -319,9 +311,7 @@ export function QuestionAnswerPanel({
                     )}
                     onClick={() => setCurrentTab(idx)}
                   >
-                    {isAnswered && (
-                      <span className={styles.tabCheck}>✓</span>
-                    )}
+                    {isAnswered && <span className={styles.tabCheck}>✓</span>}
                     {q.header}
                   </button>
                 );

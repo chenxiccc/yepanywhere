@@ -874,8 +874,7 @@ export function parseClientDefaults(
     } else if (typeof raw.forceYaOrchestratedCompaction !== "boolean") {
       return null;
     } else {
-      parsed.forceYaOrchestratedCompaction =
-        raw.forceYaOrchestratedCompaction;
+      parsed.forceYaOrchestratedCompaction = raw.forceYaOrchestratedCompaction;
     }
   }
 

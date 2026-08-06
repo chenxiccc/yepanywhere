@@ -36,7 +36,8 @@ const MARK_OPEN = "\uE200";
 const MARK_CLOSE = "\uE201";
 const MARK_SEP = "\uE202";
 
-const ENVELOPE_RE = /^Script completed\nWall time ([\d.]+) seconds?\n(?:Output:\n)?/;
+const ENVELOPE_RE =
+  /^Script completed\nWall time ([\d.]+) seconds?\n(?:Output:\n)?/;
 const PAGE_MARKER_RE = new RegExp(
   `^${MARK_OPEN}cite${MARK_SEP}([^${MARK_CLOSE}†]+)${MARK_CLOSE}` +
     `(?:\\s*\\[wordlim: (\\d+)\\])?\\s?`,
@@ -143,9 +144,7 @@ const TRAILING_PAGE_DIVIDER_RE = /(?:^|[ \n])-{80}$/;
 
 function stripTrailingDivider(text: string): string {
   const trimmed = text.replace(/[ \n]+$/, "");
-  return trimmed
-    .replace(TRAILING_PAGE_DIVIDER_RE, "")
-    .replace(/[ \n]+$/, "");
+  return trimmed.replace(TRAILING_PAGE_DIVIDER_RE, "").replace(/[ \n]+$/, "");
 }
 
 function splitPageBlocks(lines: string[]): RawPageBlock[] {

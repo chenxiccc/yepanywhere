@@ -105,9 +105,7 @@ describe("harness-check fixture tool", () => {
     expect(flagCandidates).toContain("--harnesses");
 
     const values = await runTool(["--acli-complete", "--harnesses", "co"]);
-    expect(values.stdout.trim()).toBe(
-      JSON.stringify({ completion: "codex" }),
-    );
+    expect(values.stdout.trim()).toBe(JSON.stringify({ completion: "codex" }));
   });
 
   it("fails loud on unknown flags", async () => {

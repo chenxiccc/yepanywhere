@@ -104,9 +104,7 @@ async function rotateApprovalAuditLogIfNeeded(
   return archivePath;
 }
 
-async function gzipRotatedApprovalAuditLog(
-  archivePath: string,
-): Promise<void> {
+async function gzipRotatedApprovalAuditLog(archivePath: string): Promise<void> {
   const gzipPath = `${archivePath}.gz`;
   try {
     await pipeline(

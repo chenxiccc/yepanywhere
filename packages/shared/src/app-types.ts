@@ -562,9 +562,7 @@ export interface SessionMetadataPayload
 
 export type SessionQueuedMessageKind = "deferred" | "patient";
 
-export type SessionQueuedMessageStatus =
-  | "queued"
-  | "paused-after-restart";
+export type SessionQueuedMessageStatus = "queued" | "paused-after-restart";
 
 /**
  * Server-owned queued-message summary for the session UI.

@@ -629,9 +629,10 @@ describe("SessionIndexService", () => {
     it("validates shared-container sessions via the reader, not file stats", async () => {
       // Models an OpenCode-style reader: every session anchors to one shared
       // database file, and change detection is a cheap row-level check.
-      const rows = new Map<string, { mtime: number; size: number; title: string }>([
-        ["ses-shared", { mtime: 1000, size: 2, title: "row v1" }],
-      ]);
+      const rows = new Map<
+        string,
+        { mtime: number; size: number; title: string }
+      >([["ses-shared", { mtime: 1000, size: 2, title: "row v1" }]]);
       const summaryFor = (
         id: string,
         row: { mtime: number; size: number; title: string },
@@ -659,7 +660,11 @@ describe("SessionIndexService", () => {
           if (row.mtime === cachedMtime && row.size === cachedSize) {
             return null;
           }
-          return { summary: summaryFor(id, row), mtime: row.mtime, size: row.size };
+          return {
+            summary: summaryFor(id, row),
+            mtime: row.mtime,
+            size: row.size,
+          };
         },
       );
       const sharedReader = {
@@ -773,7 +778,11 @@ describe("SessionIndexService", () => {
 
     it("serves stale summaries after the TTL and emits session-updated from the background walk", async () => {
       const eventBus = new EventBus();
-      const events: Array<{ type: string; sessionId?: string; title?: string | null }> = [];
+      const events: Array<{
+        type: string;
+        sessionId?: string;
+        title?: string | null;
+      }> = [];
       eventBus.subscribe((event) => {
         if (event.type === "session-updated") {
           events.push({
@@ -871,10 +880,7 @@ describe("SessionIndexService", () => {
         projectId,
         reader,
       );
-      expect(fresh.map((s) => s.id).sort()).toEqual([
-        "session-1",
-        "session-2",
-      ]);
+      expect(fresh.map((s) => s.id).sort()).toEqual(["session-1", "session-2"]);
     });
 
     it("does not emit for sessions the background walk found unchanged", async () => {

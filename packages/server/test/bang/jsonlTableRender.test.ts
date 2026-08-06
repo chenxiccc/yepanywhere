@@ -47,7 +47,9 @@ describe("JSONL bang output → table", () => {
   });
 
   it("leaves a single JSON document as a fenced json blob", () => {
-    const { markdown, mode } = buildBangOutputMarkdown('{"count":0,"of":"records"}');
+    const { markdown, mode } = buildBangOutputMarkdown(
+      '{"count":0,"of":"records"}',
+    );
     expect(mode).toBe("json");
     expect(markdown).toContain("```json");
   });

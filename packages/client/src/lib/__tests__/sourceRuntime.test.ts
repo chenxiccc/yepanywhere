@@ -203,7 +203,9 @@ describe("source runtime session detail API", () => {
         projectId: "proj-1",
         sessionId: "sess-1",
       } as never),
-    ).toThrow("Session detail request requires bounds or explicit fullHistory.");
+    ).toThrow(
+      "Session detail request requires bounds or explicit fullHistory.",
+    );
     expect(apiMocks.getSession).not.toHaveBeenCalled();
   });
 

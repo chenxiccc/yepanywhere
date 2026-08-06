@@ -1,20 +1,10 @@
-import {
-  mkdtempSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  createDatabase,
-  createTestDatabase,
-} from "../src/db.js";
-import {
-  PushRepository,
-  SubscriptionLimitError,
-} from "../src/repository.js";
+import { createDatabase, createTestDatabase } from "../src/db.js";
+import { PushRepository, SubscriptionLimitError } from "../src/repository.js";
 import type { PushTarget } from "../src/types.js";
 
 const TARGET: PushTarget = {
@@ -136,9 +126,7 @@ describe("PushRepository", () => {
       maxSubscriptionsPerInstallation: 1,
     });
     const installation = repository.createInstallation(TARGET);
-    const first = repository.createSubscription(
-      installation.installationId,
-    );
+    const first = repository.createSubscription(installation.installationId);
 
     expect(() =>
       repository.createSubscription(installation.installationId),
@@ -156,9 +144,7 @@ describe("PushRepository", () => {
   });
 
   it("persists subscriptions and revocation across reopen", () => {
-    temporaryDirectory = mkdtempSync(
-      join(tmpdir(), "ya-push-repository-"),
-    );
+    temporaryDirectory = mkdtempSync(join(tmpdir(), "ya-push-repository-"));
     const databasePath = join(temporaryDirectory, "broker.db");
     db = createTestDatabase(databasePath);
     let repository = new PushRepository(db);
@@ -195,9 +181,7 @@ describe("PushRepository", () => {
   });
 
   it("creates the persistent database with owner-only permissions", () => {
-    temporaryDirectory = mkdtempSync(
-      join(tmpdir(), "ya-push-database-"),
-    );
+    temporaryDirectory = mkdtempSync(join(tmpdir(), "ya-push-database-"));
     db = createDatabase(temporaryDirectory);
 
     expect(

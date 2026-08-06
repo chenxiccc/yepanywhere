@@ -214,9 +214,7 @@ describe("CodexUpdatePrompt", () => {
     expect(
       screen.queryByText("This Codex install was not installed with npm."),
     ).not.toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Update now" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Update now" })).toBeNull();
     expect(
       screen.queryByRole("checkbox", {
         name: /update next versions too/i,

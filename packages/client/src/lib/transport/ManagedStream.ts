@@ -1,11 +1,5 @@
-import {
-  isNonRetryableError as isConnectionNonRetryableError,
-} from "../connection/types";
-import type {
-  SourceTransport,
-  StreamHandlers,
-  Subscription,
-} from "./types";
+import { isNonRetryableError as isConnectionNonRetryableError } from "../connection/types";
+import type { SourceTransport, StreamHandlers, Subscription } from "./types";
 import { isSourceTransportError } from "./types";
 
 export type ManagedStreamState =
@@ -393,7 +387,8 @@ class DefaultManagedStream implements ManagedStream {
 
   private getRetryDelayMs(retryAttempt: number): number {
     const exponentialDelay =
-      this.retryInitialDelayMs * this.retryFactor ** Math.max(0, retryAttempt - 1);
+      this.retryInitialDelayMs *
+      this.retryFactor ** Math.max(0, retryAttempt - 1);
     return Math.min(this.retryMaxDelayMs, exponentialDelay);
   }
 
@@ -404,7 +399,8 @@ class DefaultManagedStream implements ManagedStream {
   }
 
   private setSnapshot(
-    updates: Partial<ManagedStreamSnapshot> & Pick<ManagedStreamSnapshot, "state">,
+    updates: Partial<ManagedStreamSnapshot> &
+      Pick<ManagedStreamSnapshot, "state">,
   ): void {
     this.snapshot = {
       ...this.snapshot,

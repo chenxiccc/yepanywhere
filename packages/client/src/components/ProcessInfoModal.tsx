@@ -433,9 +433,7 @@ export function ProcessInfoBody({
           />
           <InfoRow
             label={t("processInfoLabelRuntimeMessage")}
-            value={
-              providerRuntimeStatus.message ?? null
-            }
+            value={providerRuntimeStatus.message ?? null}
           />
           <InfoRow
             label={t("processInfoLabelRuntimeDetails")}

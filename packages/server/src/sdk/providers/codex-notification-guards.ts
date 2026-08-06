@@ -54,8 +54,7 @@ export function asCodexTurnPlanUpdatedNotification(
   if (
     typeof record.threadId !== "string" ||
     typeof record.turnId !== "string" ||
-    (record.explanation !== null &&
-      typeof record.explanation !== "string") ||
+    (record.explanation !== null && typeof record.explanation !== "string") ||
     !Array.isArray(record.plan)
   ) {
     return null;
@@ -68,9 +67,7 @@ export function asCodexTurnPlanUpdatedNotification(
         typeof entry === "object" &&
         typeof (entry as Record<string, unknown>).step === "string" &&
         typeof (entry as Record<string, unknown>).status === "string" &&
-        validStatuses.has(
-          (entry as Record<string, unknown>).status as string,
-        ),
+        validStatuses.has((entry as Record<string, unknown>).status as string),
     )
   ) {
     return null;

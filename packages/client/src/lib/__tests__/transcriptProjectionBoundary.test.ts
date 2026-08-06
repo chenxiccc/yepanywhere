@@ -86,7 +86,10 @@ describe("transcript projection module boundary", () => {
     expect(moduleFiles).toContain("messageProjection.ts");
 
     for (const fileName of moduleFiles) {
-      const source = readFileSync(resolve(projectionDirectory, fileName), "utf8");
+      const source = readFileSync(
+        resolve(projectionDirectory, fileName),
+        "utf8",
+      );
       for (const forbidden of forbiddenDependencies) {
         expect(
           source,
@@ -137,7 +140,9 @@ describe("transcript projection module boundary", () => {
     );
     for (const filePath of productionFiles) {
       const productionSource = readFileSync(filePath, "utf8");
-      expect(productionSource, filePath).not.toMatch(directCompilerOrCacheImport);
+      expect(productionSource, filePath).not.toMatch(
+        directCompilerOrCacheImport,
+      );
     }
   });
 
@@ -153,8 +158,9 @@ describe("transcript projection module boundary", () => {
   });
 
   it("classifies Windows and POSIX source paths consistently", () => {
-    expect(hasPathSegment("C:\\repo\\src\\__tests__\\cache.test.ts", "__tests__"))
-      .toBe(true);
+    expect(
+      hasPathSegment("C:\\repo\\src\\__tests__\\cache.test.ts", "__tests__"),
+    ).toBe(true);
     expect(
       isWithinDirectory(
         "C:\\repo\\src\\lib\\transcriptProjection",

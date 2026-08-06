@@ -331,14 +331,10 @@ export function GlobalSessionsPage() {
   // Keep the queue feed mounted for the visible result projects. Badge
   // rendering reads from the shared store selector below.
   useProjectQueues(
-    supportsProjectQueue
-      ? filteredProjectIds
-      : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
+    supportsProjectQueue ? filteredProjectIds : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
   );
   const rawProjectQueuedSessionIds = useProjectQueuedSessionIds(
-    supportsProjectQueue
-      ? filteredProjectIds
-      : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
+    supportsProjectQueue ? filteredProjectIds : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
   );
   const projectQueuedSessionIds = supportsProjectQueue
     ? rawProjectQueuedSessionIds

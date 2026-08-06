@@ -125,8 +125,12 @@ describe("WindowsHostAwakeBackend", () => {
       YEP_HOST_AWAKE_PARENT_PID: "9876",
       YEP_HOST_AWAKE_FLOOR_PERCENT: "10",
     });
-    expect(WINDOWS_HOST_AWAKE_HELPER_SOURCE).toContain("PowerRequestSystemRequired");
-    expect(WINDOWS_HOST_AWAKE_HELPER_SOURCE).not.toContain("PowerRequestDisplayRequired");
+    expect(WINDOWS_HOST_AWAKE_HELPER_SOURCE).toContain(
+      "PowerRequestSystemRequired",
+    );
+    expect(WINDOWS_HOST_AWAKE_HELPER_SOURCE).not.toContain(
+      "PowerRequestDisplayRequired",
+    );
 
     await lease.release();
     expect(child?.kill).toHaveBeenCalled();

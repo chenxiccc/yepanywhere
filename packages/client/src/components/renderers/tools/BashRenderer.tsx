@@ -664,8 +664,9 @@ export const bashRenderer: ToolRenderer<BashInput, BashResult> = {
     if (status !== "complete") {
       return undefined;
     }
-    const backgroundStatus = (input as unknown as Record<string, unknown> | null)
-      ?._backgroundTaskStatus;
+    const backgroundStatus = (
+      input as unknown as Record<string, unknown> | null
+    )?._backgroundTaskStatus;
     return backgroundStatus === "running" ? "Running" : undefined;
   },
 

@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import type { DeviceServerMessage, RemoteClientMessage } from "@yep-anywhere/shared";
+import type {
+  DeviceServerMessage,
+  RemoteClientMessage,
+} from "@yep-anywhere/shared";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,7 +51,9 @@ function createWrapper(runtime: YaSourceRuntime) {
     children: ReactNode;
   }) {
     return (
-      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+      <SourceRuntimeProvider runtime={runtime}>
+        {children}
+      </SourceRuntimeProvider>
     );
   };
 }

@@ -44,7 +44,9 @@ describe("splitSettingsMatchSegments", () => {
   });
 
   it("marks every occurrence of every token", () => {
-    expect(splitSettingsMatchSegments("tab size and font size", "size")).toEqual([
+    expect(
+      splitSettingsMatchSegments("tab size and font size", "size"),
+    ).toEqual([
       { text: "tab ", match: false },
       { text: "size", match: true },
       { text: " and font ", match: false },
@@ -67,6 +69,8 @@ describe("splitSettingsMatchSegments", () => {
 
 describe("settingsItemSlug", () => {
   it("slugs labels to kebab-case", () => {
-    expect(settingsItemSlug("Output Font Size (px)")).toBe("output-font-size-px");
+    expect(settingsItemSlug("Output Font Size (px)")).toBe(
+      "output-font-size-px",
+    );
   });
 });

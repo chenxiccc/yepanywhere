@@ -742,12 +742,7 @@ export class ProjectQueueService {
           updated.message.stagedAttachments,
         );
       }
-      this.emitItemActionChange(
-        projectId,
-        "updated",
-        itemId,
-        resumedDispatch,
-      );
+      this.emitItemActionChange(projectId, "updated", itemId, resumedDispatch);
       return summarizeItem(updated);
     });
   }
@@ -767,12 +762,7 @@ export class ProjectQueueService {
       this.clearDispatchPauseIfEmpty();
       await this.save();
       await this.cleanupQueueAttachments(deleted);
-      this.emitItemActionChange(
-        projectId,
-        "deleted",
-        itemId,
-        resumedDispatch,
-      );
+      this.emitItemActionChange(projectId, "deleted", itemId, resumedDispatch);
       return true;
     });
   }

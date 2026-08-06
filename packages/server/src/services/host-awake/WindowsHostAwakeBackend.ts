@@ -1,7 +1,4 @@
-import {
-  type ChildProcessWithoutNullStreams,
-  spawn,
-} from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import * as path from "node:path";
 import type {
   HostAwakeFeatureSupport,
@@ -243,7 +240,8 @@ interface WindowsHelperPayload {
 }
 
 function defaultPowerShellPath(): string {
-  const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows";
+  const systemRoot =
+    process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows";
   return path.win32.join(
     systemRoot,
     "System32",
@@ -309,7 +307,9 @@ function payloadToSnapshot(payload: WindowsHelperPayload): HostPowerSnapshot {
   };
 }
 
-function payloadToStatus(payload: WindowsHelperPayload): HostAwakeBackendStatus {
+function payloadToStatus(
+  payload: WindowsHelperPayload,
+): HostAwakeBackendStatus {
   const snapshot = payloadToSnapshot(payload);
   const state =
     payload.state === "active" ||
@@ -395,7 +395,10 @@ export class WindowsHostAwakeBackend implements HostAwakeBackend {
   }
 
   async probe(): Promise<HostPowerSnapshot> {
-    const child = this.startHelper({ probeOnly: true, batteryFloorPercent: 10 });
+    const child = this.startHelper({
+      probeOnly: true,
+      batteryFloorPercent: 10,
+    });
     try {
       return await new Promise<HostPowerSnapshot>((resolve, reject) => {
         let stdout = "";
@@ -403,7 +406,9 @@ export class WindowsHostAwakeBackend implements HostAwakeBackend {
         let settled = false;
         const timer = setTimeout(() => {
           child.kill();
-          reject(new HostAwakeUnsupportedError("Windows power probe timed out"));
+          reject(
+            new HostAwakeUnsupportedError("Windows power probe timed out"),
+          );
         }, WINDOWS_HELPER_START_TIMEOUT_MS);
         timer.unref?.();
 
@@ -521,9 +526,7 @@ export class WindowsHostAwakeBackend implements HostAwakeBackend {
           settled = true;
           clearTimeout(timer);
           reject(
-            new HostAwakeUnsupportedError(
-              "Windows PowerShell is unavailable",
-            ),
+            new HostAwakeUnsupportedError("Windows PowerShell is unavailable"),
           );
           return;
         }

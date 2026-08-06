@@ -51,11 +51,9 @@ export async function buildGitDiffResult(
     old_string: input.oldContent,
     new_string: input.newContent,
   };
-  const hunks = computeEditPatch(
-    editInput,
-    input.fullContext ? 999999 : 3,
-    { ignoreWhitespace: input.ignoreWhitespace },
-  );
+  const hunks = computeEditPatch(editInput, input.fullContext ? 999999 : 3, {
+    ignoreWhitespace: input.ignoreWhitespace,
+  });
   if (hunks === null) {
     return skippedGitDiffResult(
       abortedDiffPreviewSkip(input.oldContent, input.newContent),

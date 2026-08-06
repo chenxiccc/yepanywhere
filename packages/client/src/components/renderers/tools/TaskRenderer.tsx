@@ -15,9 +15,7 @@ import {
 } from "../../../contexts/SessionMetadataContext";
 import { classifyToolError } from "../../../lib/classifyToolError";
 import { validateToolResult } from "../../../lib/validateToolResult";
-import {
-  getCachedWebTranscriptProjection,
-} from "../../../lib/webTranscriptProjection";
+import { getCachedWebTranscriptProjection } from "../../../lib/webTranscriptProjection";
 import type { Message } from "../../../types";
 import type { ToolCallItem } from "../../../types/renderItems";
 import { RenderItemComponent } from "../../RenderItemComponent";

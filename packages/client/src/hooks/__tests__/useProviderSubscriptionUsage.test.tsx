@@ -43,9 +43,7 @@ describe("useProviderSubscriptionUsage", () => {
   });
 
   it("makes no request until the server advertises the capability", async () => {
-    const { result } = renderHook(() =>
-      useProviderSubscriptionUsage("claude"),
-    );
+    const { result } = renderHook(() => useProviderSubscriptionUsage("claude"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(mockGetUsage).not.toHaveBeenCalled();
@@ -94,9 +92,7 @@ describe("useProviderSubscriptionUsage", () => {
       },
     });
 
-    const { result } = renderHook(() =>
-      useProviderSubscriptionUsage("claude"),
-    );
+    const { result } = renderHook(() => useProviderSubscriptionUsage("claude"));
     await waitFor(() =>
       expect(result.current.usage?.windows[0]?.usedPercent).toBe(72),
     );

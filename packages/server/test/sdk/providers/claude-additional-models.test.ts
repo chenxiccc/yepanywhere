@@ -48,10 +48,7 @@ describe("Claude additional model catalog", () => {
     ];
 
     expect(
-      projectClaudeAdditionalModels(
-        [{ id: "opus", name: "Opus" }],
-        selections,
-      ),
+      projectClaudeAdditionalModels([{ id: "opus", name: "Opus" }], selections),
     ).toEqual([
       { id: "opus", name: "Opus" },
       expect.objectContaining({

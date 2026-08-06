@@ -141,13 +141,7 @@ export function CommitRevisionPane({
         },
       ];
     },
-    [
-      displayedKeys,
-      onMarkReadTo,
-      onMarkUnreadSince,
-      onOpenRevision,
-      t,
-    ],
+    [displayedKeys, onMarkReadTo, onMarkUnreadSince, onOpenRevision, t],
   );
 
   const noVisibleRevisions =
@@ -243,7 +237,8 @@ export function CommitRevisionPane({
                       <span>
                         {t("sourceChangedFileCount", {
                           count: status
-                            ? new Set(status.files.map((file) => file.path)).size
+                            ? new Set(status.files.map((file) => file.path))
+                                .size
                             : 0,
                         })}
                       </span>
@@ -261,9 +256,9 @@ export function CommitRevisionPane({
                 const menuActions = revisionMenuActions(commit.hash, commit);
                 return (
                   <li
-                  key={commit.hash}
-                  className={`commit-list-row ${sourceRowMenuSurface}`}
-                >
+                    key={commit.hash}
+                    className={`commit-list-row ${sourceRowMenuSurface}`}
+                  >
                     <button
                       type="button"
                       className={`commit-list-item ${
@@ -278,10 +273,7 @@ export function CommitRevisionPane({
                       )}
                     >
                       <span className="commit-subject-row">
-                        <span
-                          className="commit-subject"
-                          title={commit.subject}
-                        >
+                        <span className="commit-subject" title={commit.subject}>
                           {commit.subject}
                         </span>
                         {commentCount > 0 && (

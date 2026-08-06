@@ -212,7 +212,9 @@ function SpawnAgentInline({
             {spawnAgentType(input)}
           </span>
           <span className="task-inline-title">{title}</span>
-          {input.model && <span className="badge task-model">{input.model}</span>}
+          {input.model && (
+            <span className="badge task-model">{input.model}</span>
+          )}
           <span className={`badge ${badge.className}`}>{badge.text}</span>
         </div>
       ) : (
@@ -226,7 +228,9 @@ function SpawnAgentInline({
             {spawnAgentType(input)}
           </span>
           <span className="task-inline-title">{title}</span>
-          {input.model && <span className="badge task-model">{input.model}</span>}
+          {input.model && (
+            <span className="badge task-model">{input.model}</span>
+          )}
           {badge.isRunning ? (
             <span className="task-spinner" role="status" aria-label="Running">
               <Spinner />

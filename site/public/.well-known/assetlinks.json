@@ -1,8 +1,6 @@
 [
   {
-    "relation": [
-      "delegate_permission/common.get_login_creds"
-    ],
+    "relation": ["delegate_permission/common.get_login_creds"],
     "target": {
       "namespace": "web",
       "site": "https://yepanywhere.com"

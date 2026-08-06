@@ -128,9 +128,7 @@ let getCodexReloadSafeSessions = () => false;
 let getProviderRuntimeSnapshot = (): ProviderRuntimeSnapshot => ({});
 const hostedProviderProxies = new Map<ProviderName, AgentProvider>();
 
-export type CodexRuntimeBackend =
-  | "codex-native-host"
-  | "shared-provider-host";
+export type CodexRuntimeBackend = "codex-native-host" | "shared-provider-host";
 
 /**
  * Keep an existing Codex session on its launch backend. For an unowned new or
@@ -202,12 +200,10 @@ function hostedProvider(rawProvider: AgentProvider): AgentProvider {
             const backend = selectCodexRuntimeBackend({
               resumeSessionId,
               hasCodexNativeRuntime: Boolean(
-                resumeSessionId &&
-                  hasReloadSafeCodexRuntime(resumeSessionId),
+                resumeSessionId && hasReloadSafeCodexRuntime(resumeSessionId),
               ),
               hasSharedProviderRuntime: Boolean(
-                resumeSessionId &&
-                  hasHostedProviderRuntime(resumeSessionId),
+                resumeSessionId && hasHostedProviderRuntime(resumeSessionId),
               ),
               codexNativeHostEnabled: getCodexReloadSafeSessions(),
             });

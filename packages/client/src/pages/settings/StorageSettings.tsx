@@ -171,9 +171,7 @@ export function StorageSettings() {
               value="project"
               label={t("projectDataLocationProject")}
               description={t("projectDataLocationProjectDescription")}
-              checked={
-                supportsProjectLocation && projectLocation === "project"
-              }
+              checked={supportsProjectLocation && projectLocation === "project"}
               disabled={!supportsProjectLocation}
               onChange={() => {
                 void updateSettings({

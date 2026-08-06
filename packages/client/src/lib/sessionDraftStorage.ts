@@ -62,9 +62,7 @@ export function isSessionDraftStorageKey(
   );
 }
 
-function readLegacyDraftIndex(
-  sourceKey: ClientSummarySourceKey,
-): Set<string> {
+function readLegacyDraftIndex(sourceKey: ClientSummarySourceKey): Set<string> {
   try {
     const raw = localStorage.getItem(createSessionDraftIndexKey(sourceKey));
     if (!raw) {

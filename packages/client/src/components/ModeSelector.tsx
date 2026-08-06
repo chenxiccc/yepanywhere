@@ -179,9 +179,7 @@ export function ModeSelector({
         <span className={`mode-dot ${displayDotClass}`} />
         <span className="mode-button-label">
           {displayLabel}
-          {modeChangePending
-            ? ` ${t("modePendingSuffix" as never)}`
-            : null}
+          {modeChangePending ? ` ${t("modePendingSuffix" as never)}` : null}
         </span>
       </button>
       {dropdown}

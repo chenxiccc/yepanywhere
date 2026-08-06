@@ -85,7 +85,9 @@ describe("WorkstreamService", () => {
     };
   }
 
-  async function createService(eventBus?: EventBus): Promise<WorkstreamService> {
+  async function createService(
+    eventBus?: EventBus,
+  ): Promise<WorkstreamService> {
     const service = new WorkstreamService({
       dataDir: testDir,
       eventBus,
@@ -215,9 +217,7 @@ describe("WorkstreamService", () => {
       createdAt: NOW,
       updatedAt: NOW,
     });
-    expect(created.id).toMatch(
-      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/,
-    );
+    expect(created.id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
   });
 
   it("previews checkout destinations under the data directory", async () => {
@@ -284,7 +284,7 @@ describe("WorkstreamService", () => {
     await fs.mkdir(path.join(projectPath, "cache"), { recursive: true });
     await fs.writeFile(
       path.join(projectPath, "cache/config.json"),
-      "{\"ok\":true}\n",
+      '{"ok":true}\n',
     );
     const service = await createService();
 
@@ -299,14 +299,17 @@ describe("WorkstreamService", () => {
       fs.access(path.join(destination.checkoutRootPath, ".git")),
     ).resolves.toBeUndefined();
     await expect(
-      fs.readFile(path.join(destination.checkoutRootPath, ".env.local"), "utf-8"),
+      fs.readFile(
+        path.join(destination.checkoutRootPath, ".env.local"),
+        "utf-8",
+      ),
     ).resolves.toBe("TOKEN=local\n");
     await expect(
       fs.readFile(
         path.join(destination.checkoutRootPath, "cache/config.json"),
         "utf-8",
       ),
-    ).resolves.toBe("{\"ok\":true}\n");
+    ).resolves.toBe('{"ok":true}\n');
     expect(workstream).toMatchObject({
       projectId,
       label: "Feature Lane",
@@ -397,9 +400,9 @@ describe("WorkstreamService", () => {
 
     await expect(fs.access(filePath)).resolves.toBeUndefined();
 
-    await expect(service.deleteWorkstream("ws-tools" as WorkstreamId)).resolves.toBe(
-      true,
-    );
+    await expect(
+      service.deleteWorkstream("ws-tools" as WorkstreamId),
+    ).resolves.toBe(true);
     expect(service.listStored()).toEqual([]);
     await expect(fs.access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -451,7 +454,9 @@ describe("WorkstreamService", () => {
     await service.upsertWorkstream(makeWorkstream());
 
     await expect(
-      service.upsertWorkstream(makeWorkstream({ id: mainWorkstreamId(projectId) })),
+      service.upsertWorkstream(
+        makeWorkstream({ id: mainWorkstreamId(projectId) }),
+      ),
     ).rejects.toBeInstanceOf(WorkstreamValidationError);
 
     await expect(

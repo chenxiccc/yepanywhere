@@ -34,7 +34,11 @@ export function SettingsSection({
   const scope = useSettingsSearchScope();
   const sectionMatched = scope
     ? scope.sectionMatched ||
-      settingsTextMatches(scope.query, [title, description, ...(keywords ?? [])])
+      settingsTextMatches(scope.query, [
+        title,
+        description,
+        ...(keywords ?? []),
+      ])
     : false;
 
   const childScope = useMemo(
@@ -60,7 +64,9 @@ export function SettingsSection({
   const body = (
     <section className={sectionClassName}>
       {title && (
-        <h2>{scope ? renderSettingsSearchHighlight(title, scope.query) : title}</h2>
+        <h2>
+          {scope ? renderSettingsSearchHighlight(title, scope.query) : title}
+        </h2>
       )}
       {description && (
         <p className="settings-section-description">

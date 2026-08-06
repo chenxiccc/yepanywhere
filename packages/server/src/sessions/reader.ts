@@ -9,7 +9,11 @@ import {
   type UrlProjectId,
   getModelContextWindow,
 } from "@yep-anywhere/shared";
-import type { ContentBlock, Message, SessionSummary } from "../supervisor/types.js";
+import type {
+  ContentBlock,
+  Message,
+  SessionSummary,
+} from "../supervisor/types.js";
 import type {
   GetSessionOptions,
   ISessionReader,

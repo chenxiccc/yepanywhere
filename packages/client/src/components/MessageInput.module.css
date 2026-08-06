@@ -15,8 +15,7 @@
 }
 
 @container keyboard-primary-with-waveform (max-width: 4rem) {
-  .keyboardPrimaryWithWaveform
-    :global(.message-input-keyboard-primary-label) {
+  .keyboardPrimaryWithWaveform :global(.message-input-keyboard-primary-label) {
     display: none;
   }
 }

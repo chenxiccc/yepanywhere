@@ -94,13 +94,13 @@ describe("parseSessionMetadataPatch", () => {
       status: 400,
       error: "parentSessionId must be a string or null",
     });
-    expect(parseSessionMetadataPatch({ promptSuggestionMode: "helper" })).toEqual(
-      {
-        ok: false,
-        status: 400,
-        error: "promptSuggestionMode must be one of: off, native",
-      },
-    );
+    expect(
+      parseSessionMetadataPatch({ promptSuggestionMode: "helper" }),
+    ).toEqual({
+      ok: false,
+      status: 400,
+      error: "promptSuggestionMode must be one of: off, native",
+    });
     expect(parseSessionMetadataPatch({ recapAfterSeconds: "soon" })).toEqual({
       ok: false,
       status: 400,

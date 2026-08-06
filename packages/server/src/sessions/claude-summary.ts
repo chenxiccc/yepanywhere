@@ -85,8 +85,7 @@ export interface ReadClaudeSessionSummaryOptions {
   ) => number;
 }
 
-const LOG_CLAUDE_SUMMARY_PARSE =
-  process.env.CLAUDE_READER_LOG_PARSE === "true";
+const LOG_CLAUDE_SUMMARY_PARSE = process.env.CLAUDE_READER_LOG_PARSE === "true";
 
 const COMMAND_NAME_RE = /<command-name>([\s\S]*?)<\/command-name>/;
 const COMMAND_MESSAGE_RE = /<command-message>[\s\S]*?<\/command-message>/g;
@@ -200,9 +199,7 @@ function getCompactionPreTokens(entry: ClaudeSessionEntry): number | undefined {
     return undefined;
   }
   const preTokens = (compactMetadata as { preTokens?: unknown }).preTokens;
-  return typeof preTokens === "number" && preTokens > 0
-    ? preTokens
-    : undefined;
+  return typeof preTokens === "number" && preTokens > 0 ? preTokens : undefined;
 }
 
 function createParseState(): ClaudeSummaryParseState {
@@ -370,11 +367,7 @@ function selectActiveTip(
     if (!children || children.length === 0) {
       tipsWithLength.push({
         node,
-        length: walkBranchLength(
-          node.uuid,
-          state.nodeMap,
-          state.progressUuids,
-        ),
+        length: walkBranchLength(node.uuid, state.nodeMap, state.progressUuids),
       });
     }
   }
@@ -500,7 +493,10 @@ function extractContextUsage(
       contextWindow: contextWindowSize,
     };
 
-    if (node.usage.output_tokens !== undefined && node.usage.output_tokens > 0) {
+    if (
+      node.usage.output_tokens !== undefined &&
+      node.usage.output_tokens > 0
+    ) {
       result.outputTokens = node.usage.output_tokens;
     }
     if (

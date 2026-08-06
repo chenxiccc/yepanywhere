@@ -3094,22 +3094,18 @@ describe("CodexProvider Event Normalization", () => {
     };
 
     expect(
-      [
-        "default",
-        "acceptEdits",
-        "plan",
-        "bypassPermissions",
-        "auto",
-      ].map((mode) => {
-        const effectiveMode = provider.normalizePermissionMode(mode);
-        return {
-          mode,
-          effectiveMode,
-          params: provider.buildTurnPermissionParams(
-            provider.mapPermissionModeToThreadPolicy(effectiveMode),
-          ),
-        };
-      }),
+      ["default", "acceptEdits", "plan", "bypassPermissions", "auto"].map(
+        (mode) => {
+          const effectiveMode = provider.normalizePermissionMode(mode);
+          return {
+            mode,
+            effectiveMode,
+            params: provider.buildTurnPermissionParams(
+              provider.mapPermissionModeToThreadPolicy(effectiveMode),
+            ),
+          };
+        },
+      ),
     ).toEqual([
       {
         mode: "default",
@@ -3534,9 +3530,7 @@ describe("CodexProvider Event Normalization", () => {
       model_auto_compact_token_limit: 204_000,
       model_auto_compact_token_limit_scope: "total",
     });
-    expect(omitted.config).not.toHaveProperty(
-      "model_auto_compact_token_limit",
-    );
+    expect(omitted.config).not.toHaveProperty("model_auto_compact_token_limit");
     expect(omitted.config).not.toHaveProperty(
       "model_auto_compact_token_limit_scope",
     );
@@ -3821,10 +3815,9 @@ describe("CodexProvider Event Normalization", () => {
     expect(first).toHaveLength(2);
     expect(second).toHaveLength(2);
     expect(
-      compileTranscriptProjection([
-        ...first,
-        ...second,
-      ] as Parameters<typeof compileTranscriptProjection>[0]),
+      compileTranscriptProjection([...first, ...second] as Parameters<
+        typeof compileTranscriptProjection
+      >[0]),
     ).toMatchObject([
       {
         type: "tool_call",

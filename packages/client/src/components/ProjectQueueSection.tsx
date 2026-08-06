@@ -422,10 +422,7 @@ export function ProjectQueueSection({
   if (!hasContent && !error) return null;
 
   return (
-    <section
-      className={styles.section}
-      aria-labelledby="project-queue-title"
-    >
+    <section className={styles.section} aria-labelledby="project-queue-title">
       <div className={styles.header}>
         <div>
           <h2 id="project-queue-title">{t("projectQueueTitle")}</h2>
@@ -499,10 +496,7 @@ export function ProjectQueueSection({
                   </div>
                   <ul className={styles.recoveredMessages}>
                     {group.items.map((item) => (
-                      <li
-                        className={styles.recoveredMessage}
-                        key={item.id}
-                      >
+                      <li className={styles.recoveredMessage} key={item.id}>
                         <span className={styles.recoveredPreview}>
                           {item.content || t("projectQueueAttachmentOnly")}
                         </span>
@@ -526,9 +520,7 @@ export function ProjectQueueSection({
         <ul className={styles.groups}>
           {itemGroups.map((group) => (
             <li className={styles.group} key={group.projectId}>
-              <h3 className={styles.groupTitle}>
-                {group.projectName}
-              </h3>
+              <h3 className={styles.groupTitle}>{group.projectName}</h3>
               <ul className={styles.list}>
                 {group.items.map((item) => {
                   const isMutating = mutatingItemId === item.id;

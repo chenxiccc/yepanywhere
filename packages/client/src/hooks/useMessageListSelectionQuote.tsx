@@ -86,9 +86,9 @@ export function useMessageListSelectionQuote({
   const commentAnchorsRef = useRef<readonly CommentAnchor[]>([]);
   const draftSubscriptionRef = useRef<(() => void) | null>(null);
   const composerDraftSignalRef = useRef(composerDraftSignal);
-  const reconcileDraftChangeRef = useRef<
-    (change: ComposerDraftChange) => void
-  >(() => {});
+  const reconcileDraftChangeRef = useRef<(change: ComposerDraftChange) => void>(
+    () => {},
+  );
   const [selectionQuoteButton, setSelectionQuoteButton] =
     useState<SelectionQuoteButtonState | null>(null);
   const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
@@ -153,11 +153,7 @@ export function useMessageListSelectionQuote({
         releaseDraftSubscription();
       }
     },
-    [
-      applyCommentHighlight,
-      refreshDraftSubscription,
-      releaseDraftSubscription,
-    ],
+    [applyCommentHighlight, refreshDraftSubscription, releaseDraftSubscription],
   );
 
   reconcileDraftChangeRef.current = (change) => {
@@ -188,11 +184,7 @@ export function useMessageListSelectionQuote({
     composerDraftSignalRef.current = composerDraftSignal;
     refreshDraftSubscription();
     return releaseDraftSubscription;
-  }, [
-    composerDraftSignal,
-    refreshDraftSubscription,
-    releaseDraftSubscription,
-  ]);
+  }, [composerDraftSignal, refreshDraftSubscription, releaseDraftSubscription]);
 
   useEffect(
     () => () => {

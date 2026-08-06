@@ -56,8 +56,9 @@ function summarizeRecoveredSessionQueue(
     (item.message.images?.length ?? 0) +
     (item.message.documents?.length ?? 0);
   const tempId = item.message.tempId ?? item.source?.tempId;
-  const sessionTitle =
-    sessionMetadataService?.getMetadata(item.sessionId)?.customTitle;
+  const sessionTitle = sessionMetadataService?.getMetadata(
+    item.sessionId,
+  )?.customTitle;
 
   return {
     id: item.id,
@@ -100,7 +101,8 @@ function listRecoveredSessionQueues(
 
 function hasTitleResolutionDeps(
   deps: ProjectQueueTitleDeps,
-): deps is ProjectQueueTitleDeps & Pick<ProviderResolutionDeps, "readerFactory"> {
+): deps is ProjectQueueTitleDeps &
+  Pick<ProviderResolutionDeps, "readerFactory"> {
   return typeof deps.readerFactory === "function";
 }
 
@@ -169,7 +171,10 @@ async function enrichProjectQueueItem(
   item: ProjectQueueItemSummary,
   deps: ProjectQueueTitleDeps,
 ): Promise<ProjectQueueItemSummary> {
-  if (item.target.type !== "existing-session" || !hasDisplayMetadataDeps(deps)) {
+  if (
+    item.target.type !== "existing-session" ||
+    !hasDisplayMetadataDeps(deps)
+  ) {
     return item;
   }
 

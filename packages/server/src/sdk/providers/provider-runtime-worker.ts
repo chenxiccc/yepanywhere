@@ -218,7 +218,9 @@ class ProviderRuntimeWorker {
     });
   }
 
-  private async configureRuntime(config: ProviderRuntimeSnapshot): Promise<void> {
+  private async configureRuntime(
+    config: ProviderRuntimeSnapshot,
+  ): Promise<void> {
     configureProviderRuntime({
       codexCliPath: config.codexCliPath,
       getClaudeAdditionalModels: () => config.claudeAdditionalModels ?? [],
@@ -326,7 +328,9 @@ class ProviderRuntimeWorker {
       return;
     }
     if (sequence > this.sequence) {
-      throw new Error("Provider worker received an invalid event acknowledgement");
+      throw new Error(
+        "Provider worker received an invalid event acknowledgement",
+      );
     }
     this.acknowledgedSequence = sequence;
     let removeCount = 0;
@@ -372,7 +376,12 @@ class ProviderRuntimeWorker {
         }
         void this.handleAttachedRequest(socket, request).catch((error) => {
           const id = typeof request.id === "number" ? request.id : undefined;
-          write(socket, { type: "rpcResult", id, ok: false, error: errorMessage(error) });
+          write(socket, {
+            type: "rpcResult",
+            id,
+            ok: false,
+            error: errorMessage(error),
+          });
         });
       }
     });
@@ -476,7 +485,9 @@ class ProviderRuntimeWorker {
       case "probeLiveness":
         return await session.probeLiveness?.();
       case "refreshPromptCache":
-        return await session.refreshPromptCache?.(args[0] as { sessionId: string });
+        return await session.refreshPromptCache?.(
+          args[0] as { sessionId: string },
+        );
       case "publishAgentctlSessionId": {
         const sessionId = String(args[0]);
         await session.publishAgentctlSessionId?.(sessionId);
@@ -489,7 +500,9 @@ class ProviderRuntimeWorker {
         return await session.setMaxThinkingTokens?.(args[0] as number | null);
       case "setEffort":
         return await session.setEffort?.(
-          (args[0] ?? undefined) as Parameters<NonNullable<AgentSession["setEffort"]>>[0],
+          (args[0] ?? undefined) as Parameters<
+            NonNullable<AgentSession["setEffort"]>
+          >[0],
         );
       case "interrupt":
         return await session.interrupt?.();
@@ -498,7 +511,9 @@ class ProviderRuntimeWorker {
       case "supportedCommands":
         return await session.supportedCommands?.();
       case "setModel":
-        return await session.setModel?.((args[0] ?? undefined) as string | undefined);
+        return await session.setModel?.(
+          (args[0] ?? undefined) as string | undefined,
+        );
       case "runProviderCommand":
         return await session.runProviderCommand?.(
           String(args[0]),
@@ -611,7 +626,9 @@ class ProviderRuntimeWorker {
       this.connections.clear();
       this.attachedSocket = null;
       if (this.server) {
-        await new Promise<void>((resolve) => this.server!.close(() => resolve()));
+        await new Promise<void>((resolve) =>
+          this.server!.close(() => resolve()),
+        );
         this.server = null;
       }
       await rm(this.socketPath, { force: true });

@@ -10,13 +10,12 @@ describe("host-awake contract", () => {
     expect(DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT).toBe(10);
   });
 
-  it.each([
-    "off",
-    "idle",
-    "idle-and-closed-lid-on-external-power",
-  ])("accepts mode %s", (mode) => {
-    expect(isHostAwakeMode(mode)).toBe(true);
-  });
+  it.each(["off", "idle", "idle-and-closed-lid-on-external-power"])(
+    "accepts mode %s",
+    (mode) => {
+      expect(isHostAwakeMode(mode)).toBe(true);
+    },
+  );
 
   it.each(["always", "", null, 1])("rejects mode %j", (mode) => {
     expect(isHostAwakeMode(mode)).toBe(false);

@@ -927,9 +927,9 @@ describe("reconcileCodexSteerEchoes", () => {
     });
     const row = durableRow({ timestamp: "2026-07-23T03:19:08.210Z" });
 
-    expect(
-      reconcileCodexSteerEchoes([direct, providerCopy, row]),
-    ).toHaveLength(3);
+    expect(reconcileCodexSteerEchoes([direct, providerCopy, row])).toHaveLength(
+      3,
+    );
   });
 
   it("does not pair a steer composed after an older identical row", () => {

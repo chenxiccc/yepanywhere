@@ -81,7 +81,9 @@ export async function getProjectWorkIdleStatus(
   if (options.externalTracker) {
     for (const sessionId of options.externalTracker.getExternalSessions()) {
       const info =
-        await options.externalTracker.getExternalSessionInfoWithUrlId(sessionId);
+        await options.externalTracker.getExternalSessionInfoWithUrlId(
+          sessionId,
+        );
       if (info?.projectId === projectId) {
         blockers.push(`${sessionId}:external`);
       }

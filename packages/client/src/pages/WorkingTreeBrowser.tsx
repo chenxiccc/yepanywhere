@@ -85,9 +85,7 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
   commentCount: number;
   reviewStates: ReviewSiteStateSummary[];
   isWideScreen: boolean;
-  menuActionsForFile: (
-    file: WorktreeFileChange,
-  ) => SourceContextMenuAction[];
+  menuActionsForFile: (file: WorktreeFileChange) => SourceContextMenuAction[];
   menuTargetProps: SourceContextMenuController["targetProps"];
   onOpenMenu: SourceContextMenuController["openFromButton"];
   onActivateFile: (file: WorktreeFileChange, selected: boolean) => void;
@@ -251,7 +249,8 @@ export function WorkingTreeBrowser({
       setExpandedUntrackedFolders((current) => ({ ...current, ...batch }));
     };
     const scheduleFlush = () => {
-      if (flushHandle === null) flushHandle = setTimeout(flush, FOLDER_FLUSH_MS);
+      if (flushHandle === null)
+        flushHandle = setTimeout(flush, FOLDER_FLUSH_MS);
     };
 
     const runNext = async (): Promise<void> => {

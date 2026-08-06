@@ -1,8 +1,5 @@
 import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
-import {
-  getLatestMessageTimestampMs,
-  parseTimestampMs,
-} from "../messageAge";
+import { getLatestMessageTimestampMs, parseTimestampMs } from "../messageAge";
 import type { RenderItem } from "../../types/renderItems";
 import { stabilizeRenderItems } from "../stableRenderItems";
 import { insertTranscriptDisplayObjects } from "../transcriptDisplayObjects";

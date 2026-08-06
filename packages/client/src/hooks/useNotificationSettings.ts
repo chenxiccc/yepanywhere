@@ -51,8 +51,7 @@ export function useNotificationSettings() {
   useBackgroundRevalidation({
     fetcher: () => api.getNotificationSettings().then((r) => r.settings),
     current: state.settings,
-    apply: (settings) =>
-      setState((s) => ({ ...s, settings, error: null })),
+    apply: (settings) => setState((s) => ({ ...s, settings, error: null })),
   });
 
   const updateSetting = useCallback(

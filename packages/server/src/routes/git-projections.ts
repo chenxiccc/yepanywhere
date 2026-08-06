@@ -8,11 +8,7 @@ import { gitDiffReportsBinary } from "../git/binaryDiff.js";
 import { skippedBinaryGitDiffResult } from "../git/diffPreviewGuards.js";
 import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
 import { buildGitFileChanges } from "../git/fileChanges.js";
-import {
-  GIT_DECODE_PATHS_ARGS,
-  runGit,
-  runGitBytes,
-} from "../git/gitExec.js";
+import { GIT_DECODE_PATHS_ARGS, runGit, runGitBytes } from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { resolveProjectPath } from "./projectParam.js";
 
@@ -85,10 +81,7 @@ export function createGitProjectionRoutes(deps: GitProjectionDeps): Hono {
     if (typeof body.path !== "string" || typeof body.status !== "string") {
       return c.json({ error: "Missing required fields: path, status" }, 400);
     }
-    if (
-      body.origPath !== undefined &&
-      typeof body.origPath !== "string"
-    ) {
+    if (body.origPath !== undefined && typeof body.origPath !== "string") {
       return c.json({ error: "Invalid origPath" }, 400);
     }
     if (
@@ -127,12 +120,12 @@ export function createGitProjectionRoutes(deps: GitProjectionDeps): Hono {
         body.origPath,
       );
       const result = await buildGitDiffResultFromBytes({
-          path: body.path,
-          oldContent,
-          newContent,
-          fullContext: body.fullContext,
-          ignoreWhitespace: body.ignoreWhitespace,
-        });
+        path: body.path,
+        oldContent,
+        newContent,
+        fullContext: body.fullContext,
+        ignoreWhitespace: body.ignoreWhitespace,
+      });
       result.reviewProjections = {
         old: revisionProjection(
           baseSha,
@@ -167,11 +160,7 @@ function revisionProjection(
   return { kind: "revision", revision, path, side };
 }
 
-async function compareFiles(
-  cwd: string,
-  baseSha: string,
-  headSha: string,
-) {
+async function compareFiles(cwd: string, baseSha: string, headSha: string) {
   const [nameStatus, numstat] = await Promise.all([
     runGit(
       cwd,
@@ -249,10 +238,7 @@ async function showAt(
   path: string,
 ): Promise<Uint8Array> {
   try {
-    const { stdout } = await runGitBytes(cwd, [
-      "show",
-      `${revision}:${path}`,
-    ], {
+    const { stdout } = await runGitBytes(cwd, ["show", `${revision}:${path}`], {
       maxBuffer: PROJECTION_MAX_BUFFER,
     });
     return stdout;

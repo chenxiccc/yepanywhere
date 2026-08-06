@@ -242,9 +242,9 @@ describe("review response ingestion", () => {
       ],
     });
 
-    expect(
-      await svc.refreshSubmissionResponse(dir, "submission-queued"),
-    ).toBe("ingested");
+    expect(await svc.refreshSubmissionResponse(dir, "submission-queued")).toBe(
+      "ingested",
+    );
     expect((await svc.getStoreFile(dir)).sites[0]?.outcomes[0]?.sessionId).toBe(
       undefined,
     );

@@ -156,10 +156,7 @@ describe("MessageList reverse search", () => {
     const retained = userMessage("user-2", "retained searchable request");
     const rendered = render(
       <MessageList
-        messages={[
-          userMessage("user-1", "unique removed needle"),
-          retained,
-        ]}
+        messages={[userMessage("user-1", "unique removed needle"), retained]}
         activeWindowTrimRevision={0}
       />,
     );
@@ -172,10 +169,7 @@ describe("MessageList reverse search", () => {
     expect(await screen.findByText("1/1")).toBeTruthy();
 
     rendered.rerender(
-      <MessageList
-        messages={[retained]}
-        activeWindowTrimRevision={1}
-      />,
+      <MessageList messages={[retained]} activeWindowTrimRevision={1} />,
     );
 
     expect(await screen.findByText("0/0")).toBeTruthy();

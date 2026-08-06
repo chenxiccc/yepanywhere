@@ -119,9 +119,7 @@ export function skippedGitDiffResult(
   };
 }
 
-export function skippedBinaryGitDiffResult(
-  totalBytes?: number,
-): GitDiffResult {
+export function skippedBinaryGitDiffResult(totalBytes?: number): GitDiffResult {
   return skippedGitDiffResult({
     reason: "binary",
     ...(totalBytes === undefined ? {} : { totalBytes }),

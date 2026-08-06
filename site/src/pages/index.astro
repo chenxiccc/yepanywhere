@@ -6,19 +6,25 @@ import type { PublicDistribution } from "../data/distributions";
 import type { PublicFeature } from "../data/features";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
-const featuredFeatures = (features as readonly PublicFeature[]).filter((feature) => feature.featured);
-const desktopDistributions = (distributions as readonly PublicDistribution[]).filter((distribution) =>
-  distribution.id.startsWith("desktop-"),
+const featuredFeatures = (features as readonly PublicFeature[]).filter(
+  (feature) => feature.featured,
 );
+const desktopDistributions = (
+  distributions as readonly PublicDistribution[]
+).filter((distribution) => distribution.id.startsWith("desktop-"));
 const formatProviderNames = (names: readonly string[]) => {
   if (names.length < 3) return names.join(" and ");
   return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 };
 const stableProviderNames = formatProviderNames(
-  providers.filter((provider) => provider.status === "stable").map((provider) => provider.name),
+  providers
+    .filter((provider) => provider.status === "stable")
+    .map((provider) => provider.name),
 );
 const experimentalProviderNames = formatProviderNames(
-  providers.filter((provider) => provider.status === "experimental").map((provider) => provider.name),
+  providers
+    .filter((provider) => provider.status === "experimental")
+    .map((provider) => provider.name),
 );
 ---
 

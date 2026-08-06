@@ -119,11 +119,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     );
   const getGitStatusSnapshot = async (projectPath: string) => {
     const snapshot = await readGitStatusSnapshot(projectPath);
-    return enrichStatus(
-      projectPath,
-      snapshot.status,
-      snapshot.authoritative,
-    );
+    return enrichStatus(projectPath, snapshot.status, snapshot.authoritative);
   };
 
   routes.get("/:projectId/git", async (c) => {

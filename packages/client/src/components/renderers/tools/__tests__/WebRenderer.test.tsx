@@ -221,9 +221,7 @@ describe("WebRenderer", () => {
 
     fireEvent.pointerEnter(preview as HTMLElement);
 
-    expect(preview?.getAttribute("data-tooltip")).toContain(
-      "Short page body.",
-    );
+    expect(preview?.getAttribute("data-tooltip")).toContain("Short page body.");
     expect(preview?.getAttribute("title")).toBeNull();
   });
 

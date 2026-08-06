@@ -343,7 +343,11 @@ describe("sliceAtCompactBoundaries", () => {
     expect(third.messages.length).toBe(1);
 
     // Together they cover all messages
-    const allLoaded = [...third.messages, ...second.messages, ...first.messages];
+    const allLoaded = [
+      ...third.messages,
+      ...second.messages,
+      ...first.messages,
+    ];
     expect(allLoaded.length).toBe(messages.length);
   });
 
@@ -612,12 +616,7 @@ describe("sliceAtCompactAndUserTurnBoundaries", () => {
       msg("user", "u4"),
     ];
 
-    const result = sliceAtCompactAndUserTurnBoundaries(
-      messages,
-      2,
-      20,
-      "u1",
-    );
+    const result = sliceAtCompactAndUserTurnBoundaries(messages, 2, 20, "u1");
 
     expect(result.messages.map((message) => message.uuid)).toEqual([
       "cb2",

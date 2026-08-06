@@ -27,7 +27,9 @@ export type PendingFile =
   | PendingUploadingFile
   | PendingStagedFile;
 
-export function isPendingLocalFile(file: PendingFile): file is PendingLocalFile {
+export function isPendingLocalFile(
+  file: PendingFile,
+): file is PendingLocalFile {
   return file.kind === "local";
 }
 

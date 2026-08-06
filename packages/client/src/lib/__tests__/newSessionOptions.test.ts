@@ -65,8 +65,9 @@ describe("new session option defaults", () => {
   });
 
   it("resolves prompt suggestion modes from provider support", () => {
-    expect(getPreferredPromptSuggestionMode({ promptSuggestionMode: "native" }))
-      .toBe("native");
+    expect(
+      getPreferredPromptSuggestionMode({ promptSuggestionMode: "native" }),
+    ).toBe("native");
     expect(providerSupportsPromptSuggestionMode(null, "off")).toBe(true);
     expect(providerSupportsPromptSuggestionMode(null, "native")).toBe(false);
     expect(
@@ -84,9 +85,11 @@ describe("new session option defaults", () => {
         helperSideModel: HELPER_SIDE_MODEL_SAME_AS_MAIN,
       }),
     ).toBe(HELPER_SIDE_MODEL_SAME_AS_MAIN);
-    expect(getDefaultHelperSideModel(models, { helperSideModel: "model-b" }))
-      .toBe("model-b");
-    expect(getDefaultHelperSideModel(models, { helperSideModel: "missing" }))
-      .toBe(HELPER_SIDE_MODEL_CHEAPEST);
+    expect(
+      getDefaultHelperSideModel(models, { helperSideModel: "model-b" }),
+    ).toBe("model-b");
+    expect(
+      getDefaultHelperSideModel(models, { helperSideModel: "missing" }),
+    ).toBe(HELPER_SIDE_MODEL_CHEAPEST);
   });
 });

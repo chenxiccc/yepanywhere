@@ -7,9 +7,7 @@ export const DEFAULT_ACTIVE_WINDOW_TURN_TRIGGER = 30;
 export const ACTIVE_WINDOW_COMPACT_TARGET = 2;
 export const ACTIVE_WINDOW_MIN_BOUNDARY_AGE_MS = 60_000;
 
-export type ActiveWindowStructuralKind =
-  | "compact_boundary"
-  | "user_turn";
+export type ActiveWindowStructuralKind = "compact_boundary" | "user_turn";
 
 export interface ActiveWindowTrimCheckInput {
   enabled: boolean;
@@ -322,8 +320,7 @@ export function planActiveWindowTrim({
     startMessageId,
     reason,
     boundaryTimestampMs,
-    eligibleAfterMs:
-      boundaryTimestampMs + ACTIVE_WINDOW_MIN_BOUNDARY_AGE_MS,
+    eligibleAfterMs: boundaryTimestampMs + ACTIVE_WINDOW_MIN_BOUNDARY_AGE_MS,
     turnTarget,
     turnTrigger,
   };

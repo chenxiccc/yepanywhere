@@ -188,7 +188,9 @@ function buildReport(): BenchmarkReport {
   const cachePreservesArrayIdentity =
     getCachedProjection(messages) === cachedItems;
 
-  const changedItems = compileTranscriptProjection(compileChangedTail(messages));
+  const changedItems = compileTranscriptProjection(
+    compileChangedTail(messages),
+  );
   const stabilized = stabilizeRenderItems(cachedItems, changedItems);
   const reusablePrefixIndexes = cachedItems
     .slice(0, -1)

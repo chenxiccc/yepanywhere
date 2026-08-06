@@ -8,9 +8,7 @@ const MODES = ["block", "paragraph-hover", "paragraph-always"] as const;
 type Mode = (typeof MODES)[number];
 
 function parseMode(raw: string): Mode | undefined {
-  return (MODES as readonly string[]).includes(raw)
-    ? (raw as Mode)
-    : undefined;
+  return (MODES as readonly string[]).includes(raw) ? (raw as Mode) : undefined;
 }
 
 function createModeStore(key = "test-mode-key") {
@@ -33,11 +31,9 @@ describe("createLocalStorageValue", () => {
   });
 
   it("reads the default when storage access throws", () => {
-    const getItem = vi
-      .spyOn(localStorage, "getItem")
-      .mockImplementation(() => {
-        throw new Error("denied");
-      });
+    const getItem = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
     const store = createModeStore();
 
     expect(store.read()).toBe("paragraph-hover");

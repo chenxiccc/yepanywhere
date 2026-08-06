@@ -29,12 +29,12 @@ function nonEmptyString(value: unknown): string | null {
 }
 
 function optionalFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
-function normalizeAttachmentRef(
-  value: unknown,
-): StagedAttachmentRef | null {
+function normalizeAttachmentRef(value: unknown): StagedAttachmentRef | null {
   if (!isRecord(value)) return null;
 
   const id = nonEmptyString(value.id);
@@ -151,9 +151,7 @@ export function hasDraftEnvelopeContent(
   );
 }
 
-export function hasDraftContentValue(
-  raw: string | null | undefined,
-): boolean {
+export function hasDraftContentValue(raw: string | null | undefined): boolean {
   return hasDraftEnvelopeContent(readDraftEnvelopeValue(raw).envelope);
 }
 

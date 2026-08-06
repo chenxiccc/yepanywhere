@@ -2,19 +2,10 @@ import { type Server, createServer } from "node:http";
 import { getRequestListener } from "@hono/node-server";
 import type Database from "better-sqlite3";
 import pino, { type Logger } from "pino";
-import {
-  type BrokerRateLimitOptions,
-  createBrokerApp,
-} from "./app.js";
+import { type BrokerRateLimitOptions, createBrokerApp } from "./app.js";
 import type { TrustedProxy } from "./client-ip.js";
-import {
-  createDatabase,
-  createTestDatabase,
-} from "./db.js";
-import {
-  PushRepository,
-  type PushRepositoryOptions,
-} from "./repository.js";
+import { createDatabase, createTestDatabase } from "./db.js";
+import { PushRepository, type PushRepositoryOptions } from "./repository.js";
 import type { PushProvider } from "./types.js";
 
 export interface PushBrokerServerOptions {
@@ -78,7 +69,7 @@ export async function createPushBrokerServer(
 
   const address = server.address();
   const port =
-    typeof address === "object" && address ? address.port : options.port ?? 0;
+    typeof address === "object" && address ? address.port : (options.port ?? 0);
   let closed = false;
 
   return {

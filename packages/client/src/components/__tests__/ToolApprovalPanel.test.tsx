@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InputRequest } from "../../types";
@@ -138,9 +144,9 @@ describe("ToolApprovalPanel", () => {
     const toggle = screen.getByRole("button", { name: "Expand approval" });
     expect(root?.querySelector(`.${styles.panel}`)).toBeNull();
     expect(toggle.classList.contains(styles.hasPending!)).toBe(true);
-    expect(toggle.querySelector("svg")?.classList.contains(styles.chevronUp!)).toBe(
-      true,
-    );
+    expect(
+      toggle.querySelector("svg")?.classList.contains(styles.chevronUp!),
+    ).toBe(true);
     fireEvent.click(toggle);
     expect(onCollapsedChange).toHaveBeenLastCalledWith(false);
   });

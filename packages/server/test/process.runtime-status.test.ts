@@ -1,18 +1,10 @@
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   Process,
   createControllableIterator,
   waitFor,
 } from "./process.test-support.js";
-import type {
-  ProcessEvent,
-  UrlProjectId,
-} from "./process.test-support.js";
+import type { ProcessEvent, UrlProjectId } from "./process.test-support.js";
 
 describe("Process", () => {
   describe("provider runtime status", () => {
@@ -230,8 +222,7 @@ describe("Process", () => {
         kind: "terminal",
         provider: "codex",
         reason: "overloaded",
-        message:
-          "Selected model is at capacity. Please try a different model.",
+        message: "Selected model is at capacity. Please try a different model.",
         turnId: "turn-1",
         source: "codex.error",
       });

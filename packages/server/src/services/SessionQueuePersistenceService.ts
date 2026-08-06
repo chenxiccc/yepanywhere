@@ -123,10 +123,7 @@ function normalizeStatus(
   ) {
     throw new SessionQueuePersistenceValidationError("status is invalid");
   }
-  if (
-    options.loadedFromDisk &&
-    (value === "queued" || value === "claimed")
-  ) {
+  if (options.loadedFromDisk && (value === "queued" || value === "claimed")) {
     return "paused-after-restart";
   }
   return value;
@@ -233,10 +230,7 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function itemsEqual(
-  a: PersistedSessionQueuedMessage[],
-  b: unknown[],
-): boolean {
+function itemsEqual(a: PersistedSessionQueuedMessage[], b: unknown[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 

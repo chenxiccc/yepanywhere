@@ -173,9 +173,9 @@ describe("summary parser worker harness", () => {
     if (!entrypoint.supported) return;
     expect(entrypoint.runtime).toBe("built");
     expect(entrypoint.execArgv).toEqual([]);
-    expect(entrypoint.modulePath.endsWith("summary-parser-worker-entry.js")).toBe(
-      true,
-    );
+    expect(
+      entrypoint.modulePath.endsWith("summary-parser-worker-entry.js"),
+    ).toBe(true);
   });
 
   itIfSourceWorker("reuses one child for ordinary parses", async () => {
@@ -362,56 +362,59 @@ describe("summary parser worker harness", () => {
     expect(second.response?.metrics.recycleRecommended).toBeUndefined();
   });
 
-  itIfSourceWorker("recycles the child after a cumulative byte budget", async () => {
-    const firstSessionId = "byte-budget-worker-session-a";
-    const secondSessionId = "byte-budget-worker-session-b";
-    const firstPath = join(testDir, `${firstSessionId}.jsonl`);
-    const secondPath = join(testDir, `${secondSessionId}.jsonl`);
-    await writeClaudeSummaryFixture({
-      filePath: firstPath,
-      message: "Byte budget parse",
-    });
-    await writeClaudeSummaryFixture({
-      filePath: secondPath,
-      message: "After byte budget recycle",
-    });
-    client = new SummaryParserClient({
-      mode: "required",
-      cwd: packageRoot,
-      entrypoint: sourceEntrypoint(),
-      recycleAfterBytes: 1,
-      recycleAfterLineBytes: 1024 * 1024,
-      timeoutMs: 15_000,
-      launchTimeoutMs: 10_000,
-    });
+  itIfSourceWorker(
+    "recycles the child after a cumulative byte budget",
+    async () => {
+      const firstSessionId = "byte-budget-worker-session-a";
+      const secondSessionId = "byte-budget-worker-session-b";
+      const firstPath = join(testDir, `${firstSessionId}.jsonl`);
+      const secondPath = join(testDir, `${secondSessionId}.jsonl`);
+      await writeClaudeSummaryFixture({
+        filePath: firstPath,
+        message: "Byte budget parse",
+      });
+      await writeClaudeSummaryFixture({
+        filePath: secondPath,
+        message: "After byte budget recycle",
+      });
+      client = new SummaryParserClient({
+        mode: "required",
+        cwd: packageRoot,
+        entrypoint: sourceEntrypoint(),
+        recycleAfterBytes: 1,
+        recycleAfterLineBytes: 1024 * 1024,
+        timeoutMs: 15_000,
+        launchTimeoutMs: 10_000,
+      });
 
-    const first = await client.parse({
-      type: "parse",
-      requestId: randomUUID(),
-      provider: "claude",
-      filePath: firstPath,
-      sessionId: firstSessionId,
-      projectId: "worker-project" as UrlProjectId,
-      stats: await fileStats(firstPath),
-    });
-    const second = await client.parse({
-      type: "parse",
-      requestId: randomUUID(),
-      provider: "claude",
-      filePath: secondPath,
-      sessionId: secondSessionId,
-      projectId: "worker-project" as UrlProjectId,
-      stats: await fileStats(secondPath),
-    });
+      const first = await client.parse({
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "claude",
+        filePath: firstPath,
+        sessionId: firstSessionId,
+        projectId: "worker-project" as UrlProjectId,
+        stats: await fileStats(firstPath),
+      });
+      const second = await client.parse({
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "claude",
+        filePath: secondPath,
+        sessionId: secondSessionId,
+        projectId: "worker-project" as UrlProjectId,
+        stats: await fileStats(secondPath),
+      });
 
-    expect(first.status).toBe("ok");
-    expect(first.response?.metrics.recycleRecommended).toBe(true);
-    expect(first.response?.metrics.recycleReason).toBe("byte_budget");
-    expect(second.status).toBe("ok");
-    expect(second.response?.metrics.workerPid).not.toBe(
-      first.response?.metrics.workerPid,
-    );
-  });
+      expect(first.status).toBe("ok");
+      expect(first.response?.metrics.recycleRecommended).toBe(true);
+      expect(first.response?.metrics.recycleReason).toBe("byte_budget");
+      expect(second.status).toBe("ok");
+      expect(second.response?.metrics.workerPid).not.toBe(
+        first.response?.metrics.workerPid,
+      );
+    },
+  );
 
   it("returns a timeout response when the worker hangs", async () => {
     const workerPath = join(testDir, "hanging-worker.js");
@@ -576,108 +579,114 @@ describe("summary parser worker harness", () => {
     expect(fallbackCalled).toBe(false);
   });
 
-  itIfSourceWorker("parses a Claude fixture through a source worker", async () => {
-    const sessionId = "claude-worker-session";
-    const filePath = join(testDir, `${sessionId}.jsonl`);
-    const now = "2026-06-30T00:00:00.000Z";
-    const later = "2026-06-30T00:00:01.000Z";
-    await writeFile(
-      filePath,
-      `${[
-        JSON.stringify({
-          type: "user",
-          uuid: "user-1",
-          timestamp: now,
-          message: {
-            content: "Explain the worker harness",
-          },
-        }),
-        JSON.stringify({
-          type: "assistant",
-          uuid: "assistant-1",
-          parentUuid: "user-1",
-          timestamp: later,
-          message: {
-            model: "claude-sonnet-4-5",
-            content: [{ type: "text", text: "It isolates parsing." }],
-            usage: {
-              input_tokens: 10,
-              output_tokens: 5,
+  itIfSourceWorker(
+    "parses a Claude fixture through a source worker",
+    async () => {
+      const sessionId = "claude-worker-session";
+      const filePath = join(testDir, `${sessionId}.jsonl`);
+      const now = "2026-06-30T00:00:00.000Z";
+      const later = "2026-06-30T00:00:01.000Z";
+      await writeFile(
+        filePath,
+        `${[
+          JSON.stringify({
+            type: "user",
+            uuid: "user-1",
+            timestamp: now,
+            message: {
+              content: "Explain the worker harness",
             },
+          }),
+          JSON.stringify({
+            type: "assistant",
+            uuid: "assistant-1",
+            parentUuid: "user-1",
+            timestamp: later,
+            message: {
+              model: "claude-sonnet-4-5",
+              content: [{ type: "text", text: "It isolates parsing." }],
+              usage: {
+                input_tokens: 10,
+                output_tokens: 5,
+              },
+            },
+          }),
+        ].join("\n")}\n`,
+      );
+
+      client = new SummaryParserClient({
+        mode: "required",
+        cwd: packageRoot,
+        entrypoint: sourceEntrypoint(),
+        timeoutMs: 15_000,
+        launchTimeoutMs: 10_000,
+      });
+
+      const request: SummaryParserWorkerRequest = {
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "claude",
+        filePath,
+        sessionId,
+        projectId: "worker-project" as UrlProjectId,
+        stats: await fileStats(filePath),
+      };
+      const result = await client.parse(request);
+
+      expect(result.source).toBe("worker");
+      expect(result.status).toBe("ok");
+      expect(result.summary?.title).toBe("Explain the worker harness");
+      expect(result.summary?.messageCount).toBe(2);
+      expect(result.response?.metrics.workerPid).not.toBe(process.pid);
+    },
+  );
+
+  itIfSourceWorker(
+    "parses a Codex fixture through a source worker",
+    async () => {
+      const sessionId = "codex-worker-session";
+      const projectPath = "/test/project";
+      const filePath = join(testDir, `${sessionId}.jsonl`);
+      await writeCodexSummaryFixture({
+        filePath,
+        sessionId,
+        projectPath,
+        message: "Hello from Codex",
+      });
+
+      client = new SummaryParserClient({
+        mode: "required",
+        cwd: packageRoot,
+        entrypoint: sourceEntrypoint(),
+        timeoutMs: 15_000,
+        launchTimeoutMs: 10_000,
+      });
+
+      const request: SummaryParserWorkerRequest = {
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "codex",
+        filePath,
+        sessionId,
+        projectId: "worker-project" as UrlProjectId,
+        stats: await fileStats(filePath),
+        sourceHints: {
+          codex: {
+            sessionsDir: testDir,
+            projectPath,
+            dataDir,
           },
-        }),
-      ].join("\n")}\n`,
-    );
-
-    client = new SummaryParserClient({
-      mode: "required",
-      cwd: packageRoot,
-      entrypoint: sourceEntrypoint(),
-      timeoutMs: 15_000,
-      launchTimeoutMs: 10_000,
-    });
-
-    const request: SummaryParserWorkerRequest = {
-      type: "parse",
-      requestId: randomUUID(),
-      provider: "claude",
-      filePath,
-      sessionId,
-      projectId: "worker-project" as UrlProjectId,
-      stats: await fileStats(filePath),
-    };
-    const result = await client.parse(request);
-
-    expect(result.source).toBe("worker");
-    expect(result.status).toBe("ok");
-    expect(result.summary?.title).toBe("Explain the worker harness");
-    expect(result.summary?.messageCount).toBe(2);
-    expect(result.response?.metrics.workerPid).not.toBe(process.pid);
-  });
-
-  itIfSourceWorker("parses a Codex fixture through a source worker", async () => {
-    const sessionId = "codex-worker-session";
-    const projectPath = "/test/project";
-    const filePath = join(testDir, `${sessionId}.jsonl`);
-    await writeCodexSummaryFixture({
-      filePath,
-      sessionId,
-      projectPath,
-      message: "Hello from Codex",
-    });
-
-    client = new SummaryParserClient({
-      mode: "required",
-      cwd: packageRoot,
-      entrypoint: sourceEntrypoint(),
-      timeoutMs: 15_000,
-      launchTimeoutMs: 10_000,
-    });
-
-    const request: SummaryParserWorkerRequest = {
-      type: "parse",
-      requestId: randomUUID(),
-      provider: "codex",
-      filePath,
-      sessionId,
-      projectId: "worker-project" as UrlProjectId,
-      stats: await fileStats(filePath),
-      sourceHints: {
-        codex: {
-          sessionsDir: testDir,
-          projectPath,
-          dataDir,
         },
-      },
-    };
-    const result = await client.parse(request);
+      };
+      const result = await client.parse(request);
 
-    expect(result.source).toBe("worker");
-    expect(result.status).toBe("ok");
-    expect(result.summary?.title).toBe("Hello from Codex");
-    expect(result.summary?.provider).toBe("codex");
-    expect(result.response?.metrics.lineCount).toBe(3);
-  });
+      expect(result.source).toBe("worker");
+      expect(result.status).toBe("ok");
+      expect(result.summary?.title).toBe("Hello from Codex");
+      expect(result.summary?.provider).toBe("codex");
+      expect(result.response?.metrics.lineCount).toBe(3);
+    },
+  );
 
   it("falls back in on mode when the worker is unsupported", async () => {
     const events: SummaryParserClientEvent[] = [];
@@ -734,8 +743,9 @@ describe("summary parser worker harness", () => {
       stats: { size: 0, mtimeMs: 0 },
     };
 
-    await expect(client.parse(request, async () => fakeSummary(request))).rejects
-      .toThrow("source worker requires Node >=20.6");
+    await expect(
+      client.parse(request, async () => fakeSummary(request)),
+    ).rejects.toThrow("source worker requires Node >=20.6");
   });
 
   it("can run the same parser in-process for explicit fallback", async () => {
@@ -796,46 +806,49 @@ describe("summary parser worker harness", () => {
     expect(codexClose).toHaveBeenCalledTimes(1);
   });
 
-  itIfSourceWorker("routes ClaudeSessionReader summaries through the worker", async () => {
-    const sessionId = "reader-worker-session";
-    const filePath = join(testDir, `${sessionId}.jsonl`);
-    await writeFile(
-      filePath,
-      `${JSON.stringify({
-        type: "user",
-        uuid: "user-1",
-        timestamp: "2026-06-30T00:00:00.000Z",
-        message: { content: "Reader worker parse" },
-      })}\n`,
-    );
-    const events: SummaryParserClientEvent[] = [];
-    client = new SummaryParserClient({
-      mode: "required",
-      cwd: packageRoot,
-      entrypoint: sourceEntrypoint(),
-      onEvent: (event) => events.push(event),
-      timeoutMs: 15_000,
-      launchTimeoutMs: 10_000,
-    });
-    const reader = new ClaudeSessionReader({
-      sessionDir: testDir,
-      summaryParserWorkerMode: "required",
-      summaryParserClient: client,
-    });
+  itIfSourceWorker(
+    "routes ClaudeSessionReader summaries through the worker",
+    async () => {
+      const sessionId = "reader-worker-session";
+      const filePath = join(testDir, `${sessionId}.jsonl`);
+      await writeFile(
+        filePath,
+        `${JSON.stringify({
+          type: "user",
+          uuid: "user-1",
+          timestamp: "2026-06-30T00:00:00.000Z",
+          message: { content: "Reader worker parse" },
+        })}\n`,
+      );
+      const events: SummaryParserClientEvent[] = [];
+      client = new SummaryParserClient({
+        mode: "required",
+        cwd: packageRoot,
+        entrypoint: sourceEntrypoint(),
+        onEvent: (event) => events.push(event),
+        timeoutMs: 15_000,
+        launchTimeoutMs: 10_000,
+      });
+      const reader = new ClaudeSessionReader({
+        sessionDir: testDir,
+        summaryParserWorkerMode: "required",
+        summaryParserClient: client,
+      });
 
-    const summary = await reader.getSessionSummary(
-      sessionId,
-      "worker-project" as UrlProjectId,
-    );
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "worker-project" as UrlProjectId,
+      );
 
-    expect(summary?.title).toBe("Reader worker parse");
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        event: "summary_parser_worker_result",
-        status: "ok",
-      }),
-    );
-  });
+      expect(summary?.title).toBe("Reader worker parse");
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          event: "summary_parser_worker_result",
+          status: "ok",
+        }),
+      );
+    },
+  );
 
   it("falls back from ClaudeSessionReader on worker setup failure in on mode", async () => {
     const sessionId = "reader-fallback-session";
@@ -879,48 +892,51 @@ describe("summary parser worker harness", () => {
     );
   });
 
-  itIfSourceWorker("routes CodexSessionReader summaries through the worker", async () => {
-    const sessionId = "codex-reader-worker-session";
-    const projectPath = "/test/project";
-    const filePath = join(testDir, `${sessionId}.jsonl`);
-    await writeCodexSummaryFixture({
-      filePath,
-      sessionId,
-      projectPath,
-      message: "Codex reader worker parse",
-    });
-    const events: SummaryParserClientEvent[] = [];
-    client = new SummaryParserClient({
-      mode: "required",
-      cwd: packageRoot,
-      entrypoint: sourceEntrypoint(),
-      onEvent: (event) => events.push(event),
-      timeoutMs: 15_000,
-      launchTimeoutMs: 10_000,
-    });
-    const reader = new CodexSessionReader({
-      sessionsDir: testDir,
-      projectPath,
-      dataDir,
-      summaryParserWorkerMode: "required",
-      summaryParserClient: client,
-    });
+  itIfSourceWorker(
+    "routes CodexSessionReader summaries through the worker",
+    async () => {
+      const sessionId = "codex-reader-worker-session";
+      const projectPath = "/test/project";
+      const filePath = join(testDir, `${sessionId}.jsonl`);
+      await writeCodexSummaryFixture({
+        filePath,
+        sessionId,
+        projectPath,
+        message: "Codex reader worker parse",
+      });
+      const events: SummaryParserClientEvent[] = [];
+      client = new SummaryParserClient({
+        mode: "required",
+        cwd: packageRoot,
+        entrypoint: sourceEntrypoint(),
+        onEvent: (event) => events.push(event),
+        timeoutMs: 15_000,
+        launchTimeoutMs: 10_000,
+      });
+      const reader = new CodexSessionReader({
+        sessionsDir: testDir,
+        projectPath,
+        dataDir,
+        summaryParserWorkerMode: "required",
+        summaryParserClient: client,
+      });
 
-    const summary = await reader.getSessionSummary(
-      sessionId,
-      "worker-project" as UrlProjectId,
-    );
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "worker-project" as UrlProjectId,
+      );
 
-    expect(summary?.title).toBe("Codex reader worker parse");
-    expect(summary?.provider).toBe("codex");
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        event: "summary_parser_worker_result",
-        provider: "codex",
-        status: "ok",
-      }),
-    );
-  });
+      expect(summary?.title).toBe("Codex reader worker parse");
+      expect(summary?.provider).toBe("codex");
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          event: "summary_parser_worker_result",
+          provider: "codex",
+          status: "ok",
+        }),
+      );
+    },
+  );
 
   it("falls back from CodexSessionReader on worker setup failure in on mode", async () => {
     const sessionId = "codex-reader-fallback-session";

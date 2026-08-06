@@ -52,7 +52,10 @@ export function useConnectedDevices() {
     }
   }, []);
 
-  const refetch = useCallback(() => fetchConnections(false), [fetchConnections]);
+  const refetch = useCallback(
+    () => fetchConnections(false),
+    [fetchConnections],
+  );
 
   // Fetch on mount
   useEffect(() => {

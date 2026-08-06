@@ -71,7 +71,12 @@ function normalizeGoalStatus(value: string | undefined): string {
   if (!value) {
     return "active";
   }
-  switch (value.trim().toLowerCase().replace(/[\s_-]+/g, "")) {
+  switch (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "")
+  ) {
     case "active":
       return "active";
     case "paused":
@@ -104,11 +109,7 @@ function parseGoalSnapshot(value: unknown): GoalSnapshot | undefined {
     status: normalizeGoalStatus(readString(parsed, "status")),
     tokenBudget: readNumber(parsed, "tokenBudget", "token_budget"),
     tokensUsed: readNumber(parsed, "tokensUsed", "tokens_used"),
-    timeUsedSeconds: readNumber(
-      parsed,
-      "timeUsedSeconds",
-      "time_used_seconds",
-    ),
+    timeUsedSeconds: readNumber(parsed, "timeUsedSeconds", "time_used_seconds"),
   };
 }
 
@@ -122,11 +123,7 @@ function parseGoalResponse(value: unknown): ParsedGoalResponse {
   const rawGoal = hasGoalEnvelope ? parsed.goal : parsed;
   return {
     goal: rawGoal === null ? null : parseGoalSnapshot(rawGoal),
-    remainingTokens: readNumber(
-      parsed,
-      "remainingTokens",
-      "remaining_tokens",
-    ),
+    remainingTokens: readNumber(parsed, "remainingTokens", "remaining_tokens"),
   };
 }
 
@@ -357,9 +354,7 @@ function GoalPreview({
         <span className={styles.objectiveLabel}>
           {t("goalRendererObjectiveLabel")}
         </span>
-        <span className={styles.statusBadge}>
-          {statusLabel(goal.status)}
-        </span>
+        <span className={styles.statusBadge}>{statusLabel(goal.status)}</span>
       </div>
       <p className={styles.objective}>{goal.objective}</p>
 

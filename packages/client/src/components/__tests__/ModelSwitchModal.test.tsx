@@ -82,9 +82,7 @@ describe("ModelSwitchModal", () => {
     const scrollTo = vi.fn();
     Object.defineProperty(modalContent, "scrollTo", { value: scrollTo });
 
-    fireEvent.click(
-      screen.getByRole("tab", { name: "newSessionModelTitle" }),
-    );
+    fireEvent.click(screen.getByRole("tab", { name: "newSessionModelTitle" }));
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
     expect(screen.queryByText("Session details")).toBeNull();

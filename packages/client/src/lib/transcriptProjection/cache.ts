@@ -12,9 +12,9 @@ const AUGMENT_CACHE_KEY_FIELDS = {
   markdown: true,
 } as const satisfies Record<keyof TranscriptProjectionAugments, true>;
 
-const augmentCacheKeys = Object.keys(
-  AUGMENT_CACHE_KEY_FIELDS,
-) as Array<keyof TranscriptProjectionAugments>;
+const augmentCacheKeys = Object.keys(AUGMENT_CACHE_KEY_FIELDS) as Array<
+  keyof TranscriptProjectionAugments
+>;
 
 interface TranscriptProjectionCacheEntry {
   activeToolApproval: boolean | undefined;

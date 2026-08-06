@@ -14,7 +14,9 @@ async function createTestDir(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(
-    testDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+    testDirs
+      .splice(0)
+      .map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 

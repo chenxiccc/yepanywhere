@@ -242,5 +242,7 @@ export function commandMatchesInvocationQuery(
   ) {
     return false;
   }
-  return getInvocationNames(command).some((name) => name.startsWith(query.query));
+  return getInvocationNames(command).some((name) =>
+    name.startsWith(query.query),
+  );
 }

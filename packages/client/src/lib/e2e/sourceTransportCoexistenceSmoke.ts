@@ -38,7 +38,10 @@ export interface SourceTransportCoexistenceSmokeResult {
     activity: Record<SourceLabel, string | undefined>;
     sessionWatch: Record<SourceLabel, string | undefined>;
   };
-  sessionFailures: Record<SourceLabel, { status: number | null; message: string }>;
+  sessionFailures: Record<
+    SourceLabel,
+    { status: number | null; message: string }
+  >;
   statusBeforeStreams: Record<SourceLabel, SourceTransportStatusSnapshot>;
   statusWithStreams: Record<SourceLabel, SourceTransportStatusSnapshot>;
   statusAfterSecondaryDispose: {
@@ -154,7 +157,9 @@ function createTrackedWebSocket(
       return socket.onerror as ((event: Event) => void) | null;
     },
     set onerror(handler: ((event: Event) => void) | null) {
-      socket.onerror = handler as ((this: WebSocket, event: Event) => void) | null;
+      socket.onerror = handler as
+        | ((this: WebSocket, event: Event) => void)
+        | null;
     },
     get onclose() {
       return socket.onclose as ((event: CloseEvent) => void) | null;
@@ -176,7 +181,9 @@ function createTrackedWebSocket(
       return socket.onopen as ((event: Event) => void) | null;
     },
     set onopen(handler: ((event: Event) => void) | null) {
-      socket.onopen = handler as ((this: WebSocket, event: Event) => void) | null;
+      socket.onopen = handler as
+        | ((this: WebSocket, event: Event) => void)
+        | null;
     },
     send(data: string | ArrayBuffer | Uint8Array) {
       const message = decodeOutboundMessage(data);
@@ -453,11 +460,7 @@ async function runSourceTransportCoexistenceSmoke(
       secondary: secondaryTransport.status.getSnapshot(),
     };
     assertStreamStatus(statusWithStreams.local, "stream-websocket", 2);
-    assertStreamStatus(
-      statusWithStreams.secondary,
-      "multiplex-websocket",
-      2,
-    );
+    assertStreamStatus(statusWithStreams.secondary, "multiplex-websocket", 2);
 
     const localWake = trackVisibilityRestored(localTransport);
     const secondaryWake = trackVisibilityRestored(secondaryTransport);
@@ -491,7 +494,8 @@ async function runSourceTransportCoexistenceSmoke(
     await delay(0);
     visibility.setVisible(true);
     await waitFor(
-      () => localWake.count() >= 2 && pingCounts.local > localPingsBeforeDispose,
+      () =>
+        localWake.count() >= 2 && pingCounts.local > localPingsBeforeDispose,
       "Local transport did not stay live after secondary dispose",
     );
     if (pingCounts.secondary !== secondaryPingsBeforeDispose) {

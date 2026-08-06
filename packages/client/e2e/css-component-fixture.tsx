@@ -1,8 +1,4 @@
-import {
-  type ComponentType,
-  type ReactNode,
-  createElement,
-} from "react";
+import { type ComponentType, type ReactNode, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "../src/i18n";
 import "../src/styles/index.css";
@@ -36,7 +32,7 @@ function parseProps(raw: string | null): FixtureProps {
 function fixtureError(error: unknown): ReactNode {
   return (
     <pre data-css-fixture-error="true">
-      {error instanceof Error ? error.stack ?? error.message : String(error)}
+      {error instanceof Error ? (error.stack ?? error.message) : String(error)}
     </pre>
   );
 }

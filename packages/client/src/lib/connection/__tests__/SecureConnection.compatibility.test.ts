@@ -764,9 +764,7 @@ describe("SecureConnection protocol compatibility", () => {
       };
       connectionState: string;
       sessionKey: Uint8Array | null;
-      startFullSrpHandshake: (
-        reject: (err: Error) => void,
-      ) => Promise<void>;
+      startFullSrpHandshake: (reject: (err: Error) => void) => Promise<void>;
       handleSrpResumeResponse: (
         data: string,
         resolve: () => void,

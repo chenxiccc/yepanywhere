@@ -121,19 +121,19 @@ describe("Codex notification guards", () => {
       null,
     );
     expect(asCodexItemCompletedNotification(itemCompleted)).toBe(itemCompleted);
-    expect(asCodexItemCompletedNotification({ ...itemCompleted, item: "" })).toBe(
-      null,
-    );
+    expect(
+      asCodexItemCompletedNotification({ ...itemCompleted, item: "" }),
+    ).toBe(null);
     expect(asCodexAgentMessageDeltaNotification(delta)).toBe(delta);
     expect(asCodexPlanDeltaNotification(delta)).toBe(delta);
     expect(asCodexCommandExecutionOutputDeltaNotification(delta)).toBe(delta);
     expect(asCodexFileChangeOutputDeltaNotification(delta)).toBe(delta);
-    expect(asCodexAgentMessageDeltaNotification({ ...delta, delta: null })).toBe(
-      null,
-    );
     expect(
-      asCodexReasoningSummaryTextDeltaNotification(reasoningDelta),
-    ).toBe(reasoningDelta);
+      asCodexAgentMessageDeltaNotification({ ...delta, delta: null }),
+    ).toBe(null);
+    expect(asCodexReasoningSummaryTextDeltaNotification(reasoningDelta)).toBe(
+      reasoningDelta,
+    );
     expect(
       asCodexReasoningSummaryTextDeltaNotification({
         ...reasoningDelta,

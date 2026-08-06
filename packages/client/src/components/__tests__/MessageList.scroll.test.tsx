@@ -84,10 +84,7 @@ describe("MessageList scroll and follow", () => {
             this.querySelector(".conversation-activity-summary")?.getAttribute(
               "aria-expanded",
             ) === "true";
-          return rectFor(
-            (expanded ? 750 : 450) - container.scrollTop,
-            40,
-          );
+          return rectFor((expanded ? 750 : 450) - container.scrollTop, 40);
         }
         return rectFor(900 - container.scrollTop, 40);
       });

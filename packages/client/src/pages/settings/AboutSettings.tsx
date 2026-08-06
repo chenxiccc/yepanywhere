@@ -74,8 +74,7 @@ export function AboutSettings() {
 
   // Server restart state
   const [restarting, setRestarting] = useState(false);
-  const [interruptibleSessionCount, setInterruptibleSessionCount] =
-    useState(0);
+  const [interruptibleSessionCount, setInterruptibleSessionCount] = useState(0);
 
   // Fetch worker activity on mount
   useEffect(() => {
@@ -159,9 +158,7 @@ export function AboutSettings() {
                   <>
                     <p>
                       {t("aboutDesktopVersion")}{" "}
-                      {formatDesktopBuildVersion(
-                        desktopRuntime.desktopVersion,
-                      )}
+                      {formatDesktopBuildVersion(desktopRuntime.desktopVersion)}
                     </p>
                     <p>
                       {t("aboutBundledYaVersion")}{" "}

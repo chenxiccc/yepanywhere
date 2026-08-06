@@ -4,10 +4,7 @@ import {
   useClientSummarySourceKey,
   useDraftSessionIds,
 } from "../lib/clientSummaryStore";
-import {
-  hasDraftContentValue,
-  readDraftTextValue,
-} from "../lib/draftEnvelope";
+import { hasDraftContentValue, readDraftTextValue } from "../lib/draftEnvelope";
 import { subscribeDraftPresenceChanges } from "../lib/draftPresenceEvents";
 
 const NEW_SESSION_DRAFT_KEY_PREFIX = "draft-new-session:";

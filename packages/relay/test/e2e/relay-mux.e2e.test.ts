@@ -221,9 +221,7 @@ describe("Relay client mux E2E", () => {
         resolve({ data: Buffer.from(data as Buffer), isBinary }),
       );
     });
-    mux.send(
-      encodeRelayMuxDataFrame(2, new Uint8Array([0, 1, 2, 255]), true),
-    );
+    mux.send(encodeRelayMuxDataFrame(2, new Uint8Array([0, 1, 2, 255]), true));
     await expect(serverBinary).resolves.toEqual({
       data: Buffer.from([0, 1, 2, 255]),
       isBinary: true,
@@ -243,9 +241,7 @@ describe("Relay client mux E2E", () => {
       payload: Buffer.from([9, 8, 7]),
     });
 
-    const statusResponse = await fetch(
-      `http://localhost:${relay.port}/status`,
-    );
+    const statusResponse = await fetch(`http://localhost:${relay.port}/status`);
     expect(await statusResponse.json()).toMatchObject({
       mux: {
         physicalSockets: 1,
@@ -320,9 +316,7 @@ describe("Relay client mux E2E", () => {
     );
     mux.close();
     await Promise.all(closed);
-    await expect
-      .poll(() => relay.connectionManager.getPairCount())
-      .toBe(0);
+    await expect.poll(() => relay.connectionManager.getPairCount()).toBe(0);
   });
 
   it("enforces the per-socket circuit limit without closing healthy circuits", async () => {
@@ -357,11 +351,7 @@ describe("Relay client mux E2E", () => {
       sockets[0]?.once("message", (data) => resolve(data.toString())),
     );
     mux.send(
-      encodeRelayMuxDataFrame(
-        1,
-        new TextEncoder().encode("still open"),
-        false,
-      ),
+      encodeRelayMuxDataFrame(1, new TextEncoder().encode("still open"), false),
     );
     await expect(healthyMessage).resolves.toBe("still open");
   });
@@ -414,10 +404,7 @@ describe("Relay client mux E2E", () => {
       await openCircuit(firstMux, 1, usernames[0]!);
       await openCircuit(secondMux, 1, usernames[1]!);
 
-      const limited = waitForControl<RelayMuxError>(
-        secondMux,
-        isRelayMuxError,
-      );
+      const limited = waitForControl<RelayMuxError>(secondMux, isRelayMuxError);
       secondMux.send(
         JSON.stringify({
           type: "mux_open",

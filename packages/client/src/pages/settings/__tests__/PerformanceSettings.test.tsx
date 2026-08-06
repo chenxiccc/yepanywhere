@@ -86,9 +86,9 @@ describe("PerformanceSettings", () => {
     fireEvent.click(toggle);
 
     expect(toggle.checked).toBe(false);
-    expect(
-      window.localStorage.getItem(UI_KEYS.sessionActiveWindowTrim),
-    ).toBe("false");
+    expect(window.localStorage.getItem(UI_KEYS.sessionActiveWindowTrim)).toBe(
+      "false",
+    );
   });
 
   it("includes active-window trimming in the pane undo baseline", () => {
@@ -102,9 +102,9 @@ describe("PerformanceSettings", () => {
         name: "performanceActiveWindowTrimTitle",
       }),
     );
-    expect(
-      window.localStorage.getItem(UI_KEYS.sessionActiveWindowTrim),
-    ).toBe("false");
+    expect(window.localStorage.getItem(UI_KEYS.sessionActiveWindowTrim)).toBe(
+      "false",
+    );
 
     const latestCall = undoMocks.useSettingsUndoBaseline.mock.calls.at(-1);
     const restore = latestCall?.[1];
@@ -112,9 +112,9 @@ describe("PerformanceSettings", () => {
       restore?.(initialState);
     });
 
-    expect(
-      window.localStorage.getItem(UI_KEYS.sessionActiveWindowTrim),
-    ).toBe("true");
+    expect(window.localStorage.getItem(UI_KEYS.sessionActiveWindowTrim)).toBe(
+      "true",
+    );
     expect(
       (
         screen.getByRole("checkbox", {

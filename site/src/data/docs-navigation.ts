@@ -16,7 +16,8 @@ export const docsNavigation: DocsNavSection[] = [
       {
         path: "/docs/getting-started",
         title: "Getting started",
-        description: "Choose an install, launch Yep Anywhere, and open your first session.",
+        description:
+          "Choose an install, launch Yep Anywhere, and open your first session.",
       },
       {
         path: "/docs/desktop-apps",
@@ -41,12 +42,14 @@ export const docsNavigation: DocsNavSection[] = [
       {
         path: "/docs/remote-access",
         title: "Remote access",
-        description: "Control any host from anything with a modern web browser.",
+        description:
+          "Control any host from anything with a modern web browser.",
       },
       {
         path: "/docs/security-and-privacy",
         title: "Security and privacy",
-        description: "Understand local data, relay encryption, shares, and analytics.",
+        description:
+          "Understand local data, relay encryption, shares, and analytics.",
       },
     ],
   },
@@ -61,12 +64,14 @@ export const docsNavigation: DocsNavSection[] = [
       {
         path: "/docs/sessions-and-approvals",
         title: "Sessions and approvals",
-        description: "Start, resume, steer, queue, and supervise agent sessions.",
+        description:
+          "Start, resume, steer, queue, and supervise agent sessions.",
       },
       {
         path: "/docs/project-queue",
         title: "Project Queue",
-        description: "Schedule durable follow-up work after an entire project is quiet.",
+        description:
+          "Schedule durable follow-up work after an entire project is quiet.",
       },
       {
         path: "/docs/notifications-and-voice",
@@ -86,7 +91,8 @@ export const docsNavigation: DocsNavSection[] = [
       {
         path: "/docs/troubleshooting",
         title: "Troubleshooting",
-        description: "Diagnose startup, provider, connection, and notification problems.",
+        description:
+          "Diagnose startup, provider, connection, and notification problems.",
       },
     ],
   },

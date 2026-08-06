@@ -36,8 +36,7 @@ export interface SessionDetailMemoryCacheEntryStats {
   hasScrollSnapshot: boolean;
 }
 
-export type SessionDetailStoreEntryStats =
-  SessionDetailMemoryCacheEntryStats;
+export type SessionDetailStoreEntryStats = SessionDetailMemoryCacheEntryStats;
 
 interface SessionDetailEntryMetadata {
   retainCount: number;

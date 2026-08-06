@@ -22,7 +22,9 @@ export type {
   UrlProjectId,
 };
 
-export function createMockIterator(messages: SDKMessage[]): AsyncIterator<SDKMessage> {
+export function createMockIterator(
+  messages: SDKMessage[],
+): AsyncIterator<SDKMessage> {
   let index = 0;
   return {
     async next() {

@@ -1,8 +1,5 @@
 import { useI18n } from "../i18n";
-import {
-  BtwAsideTranscript,
-  type BtwAsidePaneItem,
-} from "./BtwAsidePane";
+import { BtwAsideTranscript, type BtwAsidePaneItem } from "./BtwAsidePane";
 
 export interface BtwAsideStickyCardItem extends BtwAsidePaneItem {
   preview?: string;

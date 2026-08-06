@@ -9,8 +9,7 @@ const environment =
 
 describe("legacy Codex setup compatibility", () => {
   it("recognizes exact provider setup block sequences", () => {
-    const plugins =
-      "<recommended_plugins>\n- GitHub\n</recommended_plugins>";
+    const plugins = "<recommended_plugins>\n- GitHub\n</recommended_plugins>";
     const agents = [
       "# AGENTS.md instructions for /repo",
       "<INSTRUCTIONS>",
@@ -19,9 +18,9 @@ describe("legacy Codex setup compatibility", () => {
     ].join("\n");
 
     expect(isLegacyCodexSetupText(`${plugins}${environment}`)).toBe(true);
-    expect(isLegacyCodexSetupText(`${plugins}\n${agents}\n${environment}`)).toBe(
-      true,
-    );
+    expect(
+      isLegacyCodexSetupText(`${plugins}\n${agents}\n${environment}`),
+    ).toBe(true);
     expect(isLegacyCodexEnvironmentContextText(environment)).toBe(true);
   });
 

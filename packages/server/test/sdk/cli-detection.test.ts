@@ -29,11 +29,7 @@ function makeTempDir(prefix: string): string {
 function createFakeCodex(dir: string, version: string): string {
   if (process.platform === "win32") {
     const path = join(dir, "codex.cmd");
-    writeFileSync(
-      path,
-      `@echo off\r\necho codex-cli ${version}\r\n`,
-      "utf-8",
-    );
+    writeFileSync(path, `@echo off\r\necho codex-cli ${version}\r\n`, "utf-8");
     return path;
   }
 
@@ -52,9 +48,7 @@ function prependPath(...dirs: string[]): void {
 describe("Codex CLI detection", () => {
   it("normalizes and compares Codex CLI semver output", () => {
     expect(normalizeCodexCliVersion("codex-cli 0.144.1")).toBe("0.144.1");
-    expect(normalizeCodexCliVersion("v0.144.1-beta.1")).toBe(
-      "0.144.1-beta.1",
-    );
+    expect(normalizeCodexCliVersion("v0.144.1-beta.1")).toBe("0.144.1-beta.1");
     expect(normalizeCodexCliVersion("no version")).toBeNull();
 
     expect(compareCodexCliVersions("0.144.1", "0.142.0")).toBeGreaterThan(0);

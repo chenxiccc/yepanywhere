@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ProviderInfo } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RestartSessionModal } from "../RestartSessionModal";
@@ -154,7 +160,9 @@ describe("RestartSessionModal", () => {
       expect(screen.getByTestId("seeded-message").textContent).toBeTruthy(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "sessionRestartStart" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "sessionRestartStart" }),
+    );
 
     await waitFor(() => {
       expect(mockRestartSession).toHaveBeenCalledWith(
@@ -257,9 +265,7 @@ describe("RestartSessionModal", () => {
     expect(
       screen.queryByRole("button", { name: "sessionRestartModeFork" }),
     ).toBeNull();
-    expect(
-      screen.getByText(/sessionRestartForkRateLimitedUntil/),
-    ).toBeTruthy();
+    expect(screen.getByText(/sessionRestartForkRateLimitedUntil/)).toBeTruthy();
     // Handoff remains available: its bounded summary is the way out.
     expect(screen.getByTestId("composer-mode").textContent).toBe("editable");
   });
@@ -277,7 +283,9 @@ describe("RestartSessionModal", () => {
     renderModal({ onRestarted });
     await screen.findByText("sessionRestartStart");
 
-    fireEvent.click(screen.getByRole("button", { name: "sessionRestartStart" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "sessionRestartStart" }),
+    );
 
     expect(await screen.findByText("supervisor is busy")).toBeTruthy();
     expect(onRestarted).not.toHaveBeenCalled();

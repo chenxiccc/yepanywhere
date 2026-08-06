@@ -42,9 +42,9 @@ describe("push broker request validation", () => {
   });
 
   it("accepts only exact generic notification intents", () => {
-    expect(
-      parseNotificationBody({ intent: "approval_required" }),
-    ).toEqual({ intent: "approval_required" });
+    expect(parseNotificationBody({ intent: "approval_required" })).toEqual({
+      intent: "approval_required",
+    });
     expect(
       parseNotificationBody({
         intent: "approval_required",

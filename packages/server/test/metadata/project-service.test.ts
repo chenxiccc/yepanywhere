@@ -131,14 +131,10 @@ describe("ProjectMetadataService", () => {
       const projects = service.getAllProjects();
       expect(Object.keys(projects)).toHaveLength(1);
       expect(
-        service.getMetadata(
-          encodeProjectId("C:/Users/kyle/Documents/webvam"),
-        ),
+        service.getMetadata(encodeProjectId("C:/Users/kyle/Documents/webvam")),
       ).toBeUndefined();
       expect(
-        service.getMetadata(
-          encodeProjectId("C:/Users/kyle/documents/webvam"),
-        ),
+        service.getMetadata(encodeProjectId("C:/Users/kyle/documents/webvam")),
       ).toEqual(
         expect.objectContaining({
           path: "C:/Users/kyle/documents/webvam",

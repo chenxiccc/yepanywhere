@@ -67,8 +67,8 @@ describe("draftEnvelope", () => {
 
   it("preserves existing text when writing draft attachments", () => {
     const withText = draftStorageValueForText("draft text");
-    const attachments = readDraftEnvelopeValue(attachmentEnvelope).envelope
-      ?.attachments;
+    const attachments =
+      readDraftEnvelopeValue(attachmentEnvelope).envelope?.attachments;
     const nextRaw = draftStorageValueForAttachments(attachments, withText);
     const next = readDraftEnvelopeValue(nextRaw).envelope;
 

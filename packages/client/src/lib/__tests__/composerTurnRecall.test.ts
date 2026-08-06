@@ -90,15 +90,24 @@ describe("getComposerTurnRecallEntries", () => {
 
   it("carries the message id, preferring uuid over id", () => {
     const entries = getComposerTurnRecallEntries([
-      { uuid: "uuid-1", id: "id-1", type: "user", message: { role: "user", content: "with uuid" } },
-      { id: "id-2", type: "user", message: { role: "user", content: "id only" } },
+      {
+        uuid: "uuid-1",
+        id: "id-1",
+        type: "user",
+        message: { role: "user", content: "with uuid" },
+      },
+      {
+        id: "id-2",
+        type: "user",
+        message: { role: "user", content: "id only" },
+      },
     ]);
-    expect(entries.map((entry) => ({ id: entry.id, text: entry.text }))).toEqual(
-      [
-        { id: "id-2", text: "id only" },
-        { id: "uuid-1", text: "with uuid" },
-      ],
-    );
+    expect(
+      entries.map((entry) => ({ id: entry.id, text: entry.text })),
+    ).toEqual([
+      { id: "id-2", text: "id only" },
+      { id: "uuid-1", text: "with uuid" },
+    ]);
   });
 
   // The go-to-turn control scrolls via scrollToRenderId/findRenderRow, which
@@ -108,9 +117,21 @@ describe("getComposerTurnRecallEntries", () => {
   // entry is exactly the id the scroll path resolves.
   it("stores an id equal to the transcript render row id (getUserTurnNavAnchors)", () => {
     const messages: Message[] = [
-      { uuid: "u1", type: "user", message: { role: "user", content: "deploy the app" } },
-      { uuid: "a1", type: "assistant", message: { role: "assistant", content: "on it" } },
-      { uuid: "u2", type: "user", message: { role: "user", content: "run the tests" } },
+      {
+        uuid: "u1",
+        type: "user",
+        message: { role: "user", content: "deploy the app" },
+      },
+      {
+        uuid: "a1",
+        type: "assistant",
+        message: { role: "assistant", content: "on it" },
+      },
+      {
+        uuid: "u2",
+        type: "user",
+        message: { role: "user", content: "run the tests" },
+      },
     ];
 
     const entryIds = getComposerTurnRecallEntries(messages).map(
@@ -275,7 +296,13 @@ describe("createComposerTurnRecallCache", () => {
       const cache = createComposerTurnRecallCache();
       let messages: Message[] = [];
       for (let step = 0; step < 60; step += 1) {
-        const mutation = pick(["append", "appendMany", "replaceTail", "truncate", "prepend"]);
+        const mutation = pick([
+          "append",
+          "appendMany",
+          "replaceTail",
+          "truncate",
+          "prepend",
+        ]);
         if (mutation === "append") {
           messages = [...messages, someMessage()];
         } else if (mutation === "appendMany") {
@@ -287,10 +314,7 @@ describe("createComposerTurnRecallCache", () => {
             someMessage(),
           ];
         } else if (mutation === "truncate" && messages.length > 0) {
-          messages = messages.slice(
-            0,
-            Math.floor(random() * messages.length),
-          );
+          messages = messages.slice(0, Math.floor(random() * messages.length));
         } else if (mutation === "prepend") {
           messages = [someMessage(), ...messages];
         }

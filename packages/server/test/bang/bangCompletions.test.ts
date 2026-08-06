@@ -127,9 +127,7 @@ describe("classifyBangOutput", () => {
     expect(classifyBangOutput('{"a":1}\n{"a":2}\n')).toBe("json");
     expect(classifyBangOutput('{"a":1,"b":[1,2]}')).toBe("json");
     expect(classifyBangOutput("\u001b[31mred\u001b[0m\n")).toBe("ansi");
-    expect(
-      classifyBangOutput("items[2]{a,b}:\n1,2\n3,4\n"),
-    ).toBe("toon");
+    expect(classifyBangOutput("items[2]{a,b}:\n1,2\n3,4\n")).toBe("toon");
     expect(classifyBangOutput("# Report\n\nAll good.\n")).toBe("markdown");
     expect(classifyBangOutput("   \n")).toBe("raw");
     // A TOON-looking header with malformed rows falls back to raw fencing.

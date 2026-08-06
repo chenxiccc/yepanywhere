@@ -83,9 +83,11 @@ function checkoutMatches(dest, ref) {
 }
 
 function describeCheckout(dest) {
-  return gitOutput(dest, ["describe", "--tags", "--exact-match", "HEAD"])
-    ?? gitOutput(dest, ["rev-parse", "--short", "HEAD"])
-    ?? "unknown revision";
+  return (
+    gitOutput(dest, ["describe", "--tags", "--exact-match", "HEAD"]) ??
+    gitOutput(dest, ["rev-parse", "--short", "HEAD"]) ??
+    "unknown revision"
+  );
 }
 
 function clone({ name, url, ref, note }) {

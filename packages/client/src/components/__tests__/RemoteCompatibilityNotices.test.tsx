@@ -94,25 +94,28 @@ describe("RemoteCompatibilityNotices", () => {
     ["inline", "blocking", "alert", styles.inline!, styles.critical!],
     ["inline", "recommended", "status", styles.inline!, undefined],
     ["inline", "info", "status", styles.inline!, undefined],
-  ] as const)("maps %s %s notices to the expected module classes and %s role", (placement, severity, role, placementClass, severityClass) => {
-    const { container } = render(
-      <RemoteCompatibilityNoticeCard
-        notice={notice({ severity })}
-        placement={placement}
-      />,
-    );
+  ] as const)(
+    "maps %s %s notices to the expected module classes and %s role",
+    (placement, severity, role, placementClass, severityClass) => {
+      const { container } = render(
+        <RemoteCompatibilityNoticeCard
+          notice={notice({ severity })}
+          placement={placement}
+        />,
+      );
 
-    const root = screen.getByTestId("remote-compatibility-notice");
-    expect(root.getAttribute("role")).toBe(role);
-    expect(root.classList.contains(styles.root!)).toBe(true);
-    expect(root.classList.contains(placementClass)).toBe(true);
-    expect(severityClass ? root.classList.contains(severityClass) : true).toBe(
-      true,
-    );
-    expect(root.querySelector(`.${styles.content!}`)).toBeTruthy();
-    expect(root.querySelector(`.${styles.actions!}`)).toBeTruthy();
-    expectNoLegacyNoticeClasses(container);
-  });
+      const root = screen.getByTestId("remote-compatibility-notice");
+      expect(root.getAttribute("role")).toBe(role);
+      expect(root.classList.contains(styles.root!)).toBe(true);
+      expect(root.classList.contains(placementClass)).toBe(true);
+      expect(
+        severityClass ? root.classList.contains(severityClass) : true,
+      ).toBe(true);
+      expect(root.querySelector(`.${styles.content!}`)).toBeTruthy();
+      expect(root.querySelector(`.${styles.actions!}`)).toBeTruthy();
+      expectNoLegacyNoticeClasses(container);
+    },
+  );
 
   it("preserves the multiline command, copied state, structure, and callbacks", async () => {
     const onDismiss = vi.fn();
@@ -266,12 +269,8 @@ describe("RemoteCompatibilityNotices", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy npm command" }));
 
-    expect(
-      await screen.findByRole("button", { name: "Copied" }),
-    ).toBeTruthy();
-    expect(writeText).toHaveBeenCalledWith(
-      "npm update -g yepanywhere",
-    );
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith("npm update -g yepanywhere");
   });
 
   it("exposes source checkout steps for git-describe versions", async () => {

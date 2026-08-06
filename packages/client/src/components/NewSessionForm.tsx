@@ -903,11 +903,7 @@ export function NewSessionForm({
       selectedProviderQuery.error === null);
   const hasSelectedProviderModel =
     selectedProviderCatalogCurrent &&
-    hasRequiredProviderModel(
-      selectedProvider,
-      availableModels,
-      selectedModel,
-    );
+    hasRequiredProviderModel(selectedProvider, availableModels, selectedModel);
   const helperSelectableModels = useMemo(
     () => [...visibleModels],
     [visibleModels],

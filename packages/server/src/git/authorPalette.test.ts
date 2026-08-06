@@ -89,7 +89,9 @@ describe("Git author palette", () => {
       getMode: () => "app-data",
     });
 
-    await expect(getGitAuthorPalette(repo, storagePolicy)).resolves.toBeTruthy();
+    await expect(
+      getGitAuthorPalette(repo, storagePolicy),
+    ).resolves.toBeTruthy();
     await expect(readFile(join(repo, ".yep"), "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });

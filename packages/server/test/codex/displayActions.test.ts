@@ -193,9 +193,12 @@ describe("analyzeCodexCommand", () => {
     "(cat README.md)",
     "cat README.md || cat FALLBACK.md",
     "cat README.md & cat OTHER.md",
-  ])("fails closed for mixed or structurally ambiguous command: %s", (command) => {
-    expect(analyzeCodexCommand(command)).toBeNull();
-  });
+  ])(
+    "fails closed for mixed or structurally ambiguous command: %s",
+    (command) => {
+      expect(analyzeCodexCommand(command)).toBeNull();
+    },
+  );
 });
 
 describe("parseCodexCommandActionsOracle", () => {

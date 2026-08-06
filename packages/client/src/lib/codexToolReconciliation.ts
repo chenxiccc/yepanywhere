@@ -174,8 +174,8 @@ export function reconcileCodexToolMessages(messages: Message[]): Message[] {
   const liveCandidates = candidates.filter(
     (candidate) => !isDurableOrigin(candidate.metadata.origin),
   );
-  const durableCandidates = candidates.filter(
-    (candidate) => isDurableOrigin(candidate.metadata.origin),
+  const durableCandidates = candidates.filter((candidate) =>
+    isDurableOrigin(candidate.metadata.origin),
   );
 
   const liveToDurable = new Map<string, string>();

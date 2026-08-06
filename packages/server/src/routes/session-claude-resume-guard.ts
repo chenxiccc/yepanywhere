@@ -1,7 +1,4 @@
-import type {
-  ClaudeSessionEntry,
-  UrlProjectId,
-} from "@yep-anywhere/shared";
+import type { ClaudeSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
 import { buildDag } from "../sessions/dag.js";
 import type { ISessionReader } from "../sessions/types.js";
 

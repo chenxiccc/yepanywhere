@@ -1,13 +1,5 @@
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import {
-  Process,
-  createMockIterator,
-} from "./process.test-support.js";
+import { describe, expect, it, vi } from "vitest";
+import { Process, createMockIterator } from "./process.test-support.js";
 import type {
   ProcessEvent,
   SDKMessage,

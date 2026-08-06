@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  FakeSourceTransport,
-  SourceTransportNotReadyError,
-} from "../index";
+import { FakeSourceTransport, SourceTransportNotReadyError } from "../index";
 
 async function flushPromises() {
   await Promise.resolve();
@@ -89,11 +86,9 @@ describe("FakeSourceTransport", () => {
 
     expect(handlers.onOpen).toHaveBeenCalledTimes(1);
     expect(handlers.onEvent).toHaveBeenCalledTimes(1);
-    expect(handlers.onEvent).toHaveBeenCalledWith(
-      "message",
-      "event-3",
-      { ok: true },
-    );
+    expect(handlers.onEvent).toHaveBeenCalledWith("message", "event-3", {
+      ok: true,
+    });
     expect(handlers.onClose).toHaveBeenCalledTimes(1);
     expect(transport.getSubscriptions("session")[0]).toMatchObject({
       closed: true,

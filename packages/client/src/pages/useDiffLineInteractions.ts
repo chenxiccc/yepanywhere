@@ -7,11 +7,7 @@ import {
   type ReviewCommentSide,
   anchorFromPatch,
 } from "@yep-anywhere/shared";
-import {
-  useCallback,
-  useLayoutEffect,
-  useState,
-} from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import type { TranslationFn } from "../i18n";
 
 export type DiffCommentRevisions = Partial<
@@ -101,7 +97,8 @@ export function useDiffLineInteractions({
     );
     const node =
       Array.from(nodes).find(
-        (candidate) => diffNodeContextSide(candidate) === activeLine.contextSide,
+        (candidate) =>
+          diffNodeContextSide(candidate) === activeLine.contextSide,
       ) ?? nodes[0];
     return node
       ? resolveDiffLineTarget(container, node, structuredPatch)
@@ -212,8 +209,7 @@ export function useDiffLineInteractions({
       pending.map((comment) => anchorTintKey(comment.anchor)),
     );
     const decorate = () => {
-      const nodes =
-        container.querySelectorAll<HTMLElement>("[data-diff-line]");
+      const nodes = container.querySelectorAll<HTMLElement>("[data-diff-line]");
       for (const node of nodes) {
         const resolved = resolveDiffLineTarget(
           container,
@@ -275,19 +271,12 @@ function diffNodeContextSide(node: HTMLElement): ReviewCommentSide {
     : "new";
 }
 
-function revisionTintKey(
-  revision: ReviewCommentRevision | undefined,
-): string {
-  return revision?.kind === "sha"
-    ? `sha:${revision.sha}`
-    : "uncommitted";
+function revisionTintKey(revision: ReviewCommentRevision | undefined): string {
+  return revision?.kind === "sha" ? `sha:${revision.sha}` : "uncommitted";
 }
 
 function locationTintKey(
-  location: Pick<
-    ReviewCommentAnchor,
-    "side" | "oldLine" | "newLine"
-  >,
+  location: Pick<ReviewCommentAnchor, "side" | "oldLine" | "newLine">,
   revision: ReviewCommentRevision | undefined,
 ): string {
   return `${revisionTintKey(revision)}:${location.side}:${location.oldLine}:${location.newLine}`;

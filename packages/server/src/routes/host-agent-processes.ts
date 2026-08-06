@@ -43,8 +43,7 @@ export function createHostAgentProcessesRoutes(
     // rejected-sample race would leak a 503 instead of the off-state contract.
     const respondIfDisabledDuringSample = () => {
       if (
-        deps.serverSettingsService.getSettings()
-          .hostProcessObservabilityEnabled
+        deps.serverSettingsService.getSettings().hostProcessObservabilityEnabled
       ) {
         return undefined;
       }

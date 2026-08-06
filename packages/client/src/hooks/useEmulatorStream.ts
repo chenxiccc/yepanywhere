@@ -410,10 +410,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
           await sendStart();
         })
         .catch((err: unknown) => {
-          console.error(
-            `${LOG_PREFIX} [${sid}] device signaling failed:`,
-            err,
-          );
+          console.error(`${LOG_PREFIX} [${sid}] device signaling failed:`, err);
           setConnectionState("failed");
           setError(
             `Connection failed: ${err instanceof Error ? err.message : String(err)}`,

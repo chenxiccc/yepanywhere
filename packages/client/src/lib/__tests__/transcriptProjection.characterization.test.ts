@@ -292,7 +292,9 @@ describe("transcript projection characterization", () => {
       },
     ];
 
-    expect(getCachedWebTranscriptProjection(messages).map(characterize)).toEqual([
+    expect(
+      getCachedWebTranscriptProjection(messages).map(characterize),
+    ).toEqual([
       {
         type: "tool_call",
         id: "poll-1",

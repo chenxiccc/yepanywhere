@@ -69,10 +69,7 @@ const server = createServer((socket) => {
           }, 20);
         }
       } else if (request.type === "ack") {
-        acknowledgedSequence = Math.max(
-          acknowledgedSequence,
-          request.sequence,
-        );
+        acknowledgedSequence = Math.max(acknowledgedSequence, request.sequence);
       } else if (request.type === "rpc") {
         socket.write(
           `${JSON.stringify({

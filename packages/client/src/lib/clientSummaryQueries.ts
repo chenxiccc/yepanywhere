@@ -55,9 +55,7 @@ export function createGlobalSessionsQueryKey(
   return JSON.stringify(normalized);
 }
 
-export function isActiveActivity(
-  activity: AgentActivity | undefined,
-): boolean {
+export function isActiveActivity(activity: AgentActivity | undefined): boolean {
   return activity === "in-turn" || activity === "waiting-input";
 }
 

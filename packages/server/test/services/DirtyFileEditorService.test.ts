@@ -12,11 +12,7 @@ import {
   isPotentiallyMutatingShell,
 } from "../../src/services/DirtyFileEditorService.js";
 
-function toolUse(
-  id: string,
-  name: string,
-  input: unknown,
-): SDKMessage {
+function toolUse(id: string, name: string, input: unknown): SDKMessage {
   return {
     type: "assistant",
     message: {
@@ -75,9 +71,11 @@ describe("DirtyFileEditorService", () => {
   let projectPath: string;
   let services: DirtyFileEditorService[];
 
-  function createService(options: {
-    captureDirtyFiles?: (projectPath: string) => Promise<DirtyFileSnapshot>;
-  } = {}): DirtyFileEditorService {
+  function createService(
+    options: {
+      captureDirtyFiles?: (projectPath: string) => Promise<DirtyFileSnapshot>;
+    } = {},
+  ): DirtyFileEditorService {
     const service = new DirtyFileEditorService({ dataDir, ...options });
     services.push(service);
     return service;
@@ -135,8 +133,8 @@ describe("DirtyFileEditorService", () => {
     const reloaded = createService();
     await reloaded.initialize();
     expect(
-      reloaded.reconcileGitStatus(projectPath, dirtyStatus("src/b.ts"))
-        .files[0]?.lastEditor,
+      reloaded.reconcileGitStatus(projectPath, dirtyStatus("src/b.ts")).files[0]
+        ?.lastEditor,
     ).toEqual({
       sessionId: "session-1",
       observedAt: "2026-08-02T10:00:00.000Z",
@@ -227,8 +225,8 @@ describe("DirtyFileEditorService", () => {
     const reloaded = createService();
     await reloaded.initialize();
     expect(
-      reloaded.reconcileGitStatus(projectPath, dirtyStatus("src/a.ts"))
-        .files[0]?.lastEditor,
+      reloaded.reconcileGitStatus(projectPath, dirtyStatus("src/a.ts")).files[0]
+        ?.lastEditor,
     ).toBeUndefined();
   });
 
@@ -262,8 +260,8 @@ describe("DirtyFileEditorService", () => {
     const reloaded = createService();
     await reloaded.initialize();
     expect(
-      reloaded.reconcileGitStatus(projectPath, dirtyStatus("src/a.ts"))
-        .files[0]?.lastEditor,
+      reloaded.reconcileGitStatus(projectPath, dirtyStatus("src/a.ts")).files[0]
+        ?.lastEditor,
     ).toEqual({
       sessionId: "session-1",
       observedAt: "2026-08-02T10:00:00.000Z",
@@ -296,9 +294,7 @@ describe("DirtyFileEditorService", () => {
       service.reconcileGitStatus(projectPath, dirtyStatus("generated/a.ts"))
         .files[0]?.lastEditor?.sessionId,
     ).toBe("session-1");
-    expect(
-      service.editorsForPaths(projectPath, ["generated/a.ts"]),
-    ).toEqual({
+    expect(service.editorsForPaths(projectPath, ["generated/a.ts"])).toEqual({
       "generated/a.ts": {
         sessionId: "session-1",
         observedAt: "2026-08-02T10:00:00.000Z",
@@ -338,10 +334,7 @@ describe("DirtyFileEditorService", () => {
     expect(captureDirtyFiles).toHaveBeenCalledTimes(2);
     expect(
       service
-        .reconcileGitStatus(
-          projectPath,
-          dirtyStatus("src/a.ts", "src/b.ts"),
-        )
+        .reconcileGitStatus(projectPath, dirtyStatus("src/a.ts", "src/b.ts"))
         .files.map((file) => file.lastEditor?.sessionId),
     ).toEqual(["session-script", "session-script"]);
   });
@@ -356,12 +349,7 @@ describe("dirty-file mutation extraction", () => {
         rawPatch:
           "diff --git a/src/old.ts b/src/new.ts\n--- a/src/old.ts\n+++ b/src/new.ts\n@@ -1 +1 @@\n-a\n+b",
       }),
-    ).toEqual([
-      "src/direct.ts",
-      "src/change.ts",
-      "src/new.ts",
-      "src/old.ts",
-    ]);
+    ).toEqual(["src/direct.ts", "src/change.ts", "src/new.ts", "src/old.ts"]);
   });
 
   it("only snapshots shell commands with recognizable write behavior", () => {

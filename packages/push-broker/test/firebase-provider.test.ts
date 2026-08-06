@@ -6,9 +6,7 @@ import {
 } from "../src/providers/firebase.js";
 import type { PushDelivery } from "../src/types.js";
 
-function makeDelivery(
-  kind: "fid" | "registration_token",
-): PushDelivery {
+function makeDelivery(kind: "fid" | "registration_token"): PushDelivery {
   return {
     target: {
       provider: "fcm",

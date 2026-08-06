@@ -50,9 +50,7 @@ describe("ToolbarControlPreview", () => {
   it("renders the Conversation view specimen as active", () => {
     const { container } = renderControl("conversationView");
 
-    const button = container.querySelector(
-      ".conversation-view-toolbar-button",
-    );
+    const button = container.querySelector(".conversation-view-toolbar-button");
     expect(button).toBeTruthy();
     expect(button?.classList.contains("active")).toBe(true);
   });

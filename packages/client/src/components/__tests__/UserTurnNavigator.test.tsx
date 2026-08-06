@@ -205,7 +205,9 @@ describe("UserTurnNavigator", () => {
       });
     });
     expect(
-      document.querySelector(`.${cls(styles.motionCue)}.${cls(styles.motionDown)}`),
+      document.querySelector(
+        `.${cls(styles.motionCue)}.${cls(styles.motionDown)}`,
+      ),
     ).toBeTruthy();
   });
 
@@ -557,9 +559,9 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
-        3,
-      );
+      expect(
+        container.querySelectorAll(`.${cls(styles.preview)}`),
+      ).toHaveLength(3);
     });
     const previews = Array.from(
       container.querySelectorAll(`.${cls(styles.preview)}`),
@@ -573,10 +575,14 @@ describe("UserTurnNavigator", () => {
       container.querySelectorAll(`.${cls(styles.previewMatch)}`),
     ).toHaveLength(3);
     expect(
-      previews.every((preview) => preview?.classList.contains(cls(styles.compact))),
+      previews.every((preview) =>
+        preview?.classList.contains(cls(styles.compact)),
+      ),
     ).toBe(true);
     expect(
-      previews.some((preview) => preview.classList.contains(cls(styles.expanded))),
+      previews.some((preview) =>
+        preview.classList.contains(cls(styles.expanded)),
+      ),
     ).toBe(false);
   });
 
@@ -622,7 +628,9 @@ describe("UserTurnNavigator", () => {
       expect(container.querySelector(`.${cls(styles.preview)}`)).toBeTruthy();
     });
     const preview = container.querySelector(`.${cls(styles.preview)}`);
-    expect(preview?.classList.contains(cls(styles.singleSearchMatch))).toBe(true);
+    expect(preview?.classList.contains(cls(styles.singleSearchMatch))).toBe(
+      true,
+    );
     expect(preview?.classList.contains(cls(styles.expanded))).toBe(false);
     expect(preview?.textContent).toBe("Only matching request");
   });
@@ -759,7 +767,9 @@ describe("UserTurnNavigator", () => {
     await waitFor(() => {
       expect(userPreview.classList.contains(cls(styles.expanded))).toBe(true);
     });
-    expect(userPreview.classList.contains(cls(styles.pinnedExpanded))).toBe(true);
+    expect(userPreview.classList.contains(cls(styles.pinnedExpanded))).toBe(
+      true,
+    );
     expect(getPreviewTops()).toEqual(initialTops);
 
     const assistantPreview = container.querySelector<HTMLElement>(
@@ -769,7 +779,9 @@ describe("UserTurnNavigator", () => {
     fireEvent.pointerEnter(assistantPreview!);
 
     await waitFor(() => {
-      expect(assistantPreview?.classList.contains(cls(styles.expanded))).toBe(true);
+      expect(assistantPreview?.classList.contains(cls(styles.expanded))).toBe(
+        true,
+      );
     });
     expect(getPreviewTops()).toEqual(initialTops);
 
@@ -842,9 +854,9 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
-        2,
-      );
+      expect(
+        container.querySelectorAll(`.${cls(styles.preview)}`),
+      ).toHaveLength(2);
     });
     const collapsed = container.querySelector<HTMLElement>(
       '[aria-label^="leading context"]',
@@ -915,9 +927,9 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
-        3,
-      );
+      expect(
+        container.querySelectorAll(`.${cls(styles.preview)}`),
+      ).toHaveLength(3);
     });
     const initialTopValues = Array.from(
       container.querySelectorAll<HTMLElement>(`.${cls(styles.preview)}`),
@@ -1022,8 +1034,7 @@ describe("UserTurnNavigator", () => {
       ),
     ).toEqual(["Explored", "Grep"]);
     expect(
-      container.querySelector(`.${cls(styles.facsimileLine)}`)
-        ?.textContent,
+      container.querySelector(`.${cls(styles.facsimileLine)}`)?.textContent,
     ).toBe("pattern: searchNeedle");
     expect(
       container.querySelector(`.${cls(styles.preview)}`)?.textContent,
@@ -1117,8 +1128,9 @@ describe("UserTurnNavigator", () => {
       "packages/client/src/components/UserTurnNavigator.tsx",
     ]);
     expect(
-      container.querySelector(`.${cls(styles.facsimileLine)}.${cls(styles.mono)}`)
-        ?.textContent,
+      container.querySelector(
+        `.${cls(styles.facsimileLine)}.${cls(styles.mono)}`,
+      )?.textContent,
     ).toBe("grep searchNeedle");
     expect(preview?.textContent).not.toContain("\\n");
   });
@@ -1178,21 +1190,25 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
-        3,
-      );
+      expect(
+        container.querySelectorAll(`.${cls(styles.preview)}`),
+      ).toHaveLength(3);
     });
     const previews = Array.from(
       container.querySelectorAll(`.${cls(styles.preview)}`),
     );
     expect(
-      previews.some((preview) => preview.classList.contains(cls(styles.compact))),
+      previews.some((preview) =>
+        preview.classList.contains(cls(styles.compact)),
+      ),
     ).toBe(false);
     expect(
       previews.some((preview) => preview.classList.contains(cls(styles.short))),
     ).toBe(false);
     expect(
-      previews.some((preview) => preview.classList.contains(cls(styles.expanded))),
+      previews.some((preview) =>
+        preview.classList.contains(cls(styles.expanded)),
+      ),
     ).toBe(false);
 
     const activePreview = container.querySelector<HTMLElement>(
@@ -1200,11 +1216,12 @@ describe("UserTurnNavigator", () => {
     );
     fireEvent.pointerEnter(activePreview!);
     await waitFor(() => {
-      expect(activePreview?.classList.contains(cls(styles.expanded))).toBe(true);
+      expect(activePreview?.classList.contains(cls(styles.expanded))).toBe(
+        true,
+      );
     });
     expect(
-      container.querySelector(`.${cls(styles.facsimileLine)}`)
-        ?.textContent,
+      container.querySelector(`.${cls(styles.facsimileLine)}`)?.textContent,
     ).toBe("assistant match snippet with enough surrounding detail");
   });
 

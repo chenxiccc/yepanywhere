@@ -81,7 +81,9 @@ export function jsonlTablesToMarkdown(
       const table: ToonTable = {
         name: "",
         columns,
-        rows: run.map((object) => columns.map((column) => cellText(object[column]))),
+        rows: run.map((object) =>
+          columns.map((column) => cellText(object[column])),
+        ),
       };
       if (parts.length > 0 && parts[parts.length - 1] !== "") {
         parts.push("");
@@ -96,6 +98,9 @@ export function jsonlTablesToMarkdown(
     }
   }
 
-  const markdown = parts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const markdown = parts
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
   return { markdown, tableCount };
 }

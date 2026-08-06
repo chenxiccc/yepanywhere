@@ -53,16 +53,16 @@ describe("RepoStatusBar", () => {
   it("marks a dirty or out-of-sync repository with the warn variant", () => {
     const { rerender } = render(<RepoStatusBar status={gitStatus()} t={t} />);
     expect(
-      screen.getByTestId("repo-status-bar").classList.contains(
-        repoStyles.warn as string,
-      ),
+      screen
+        .getByTestId("repo-status-bar")
+        .classList.contains(repoStyles.warn as string),
     ).toBe(false);
 
     rerender(<RepoStatusBar status={gitStatus({ ahead: 2 })} t={t} />);
     expect(
-      screen.getByTestId("repo-status-bar").classList.contains(
-        repoStyles.warn as string,
-      ),
+      screen
+        .getByTestId("repo-status-bar")
+        .classList.contains(repoStyles.warn as string),
     ).toBe(true);
   });
 
@@ -101,9 +101,11 @@ describe("SourceModeTabs", () => {
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(3);
-    expect(
-      tabs.map((tab) => tab.getAttribute("aria-selected")),
-    ).toEqual(["false", "true", "false"]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual([
+      "false",
+      "true",
+      "false",
+    ]);
 
     fireEvent.click(tabs[0] as HTMLElement);
     expect(onSelect).toHaveBeenCalledWith("changes");
@@ -160,9 +162,9 @@ describe("SourceModeTabs", () => {
       />,
     );
     expect(
-      screen.getByRole("tablist").classList.contains(
-        tabStyles.stacked as string,
-      ),
+      screen
+        .getByRole("tablist")
+        .classList.contains(tabStyles.stacked as string),
     ).toBe(true);
   });
 });
@@ -175,7 +177,11 @@ describe("SourceRowMenuTrigger", () => {
     const onOpen = vi.fn();
     render(
       <li className={`commit-file-row ${sourceRowMenuSurface}`}>
-        <SourceRowMenuTrigger actions={[]} label="sourceRowActions" onOpen={onOpen} />
+        <SourceRowMenuTrigger
+          actions={[]}
+          label="sourceRowActions"
+          onOpen={onOpen}
+        />
       </li>,
     );
 

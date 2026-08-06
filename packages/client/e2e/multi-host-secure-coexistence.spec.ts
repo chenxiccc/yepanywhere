@@ -37,11 +37,12 @@ type MonitorTransportMode = "legacy" | "mux";
 
 function relaySiblingUrl(relayUrl: string, leaf: "health" | "mux"): string {
   const url = new URL(relayUrl);
-  url.protocol = leaf === "health"
-    ? url.protocol === "wss:"
-      ? "https:"
-      : "http:"
-    : url.protocol;
+  url.protocol =
+    leaf === "health"
+      ? url.protocol === "wss:"
+        ? "https:"
+        : "http:"
+      : url.protocol;
   url.pathname = url.pathname.replace(/\/ws$/, `/${leaf}`);
   return url.toString();
 }
@@ -296,285 +297,288 @@ async function runSingleSourceDisposal(
 }
 
 for (const transportMode of ["legacy", "mux"] as const) {
-test.describe(`Secure multi-host coexistence (${transportMode})`, () => {
-  test.describe.configure({ mode: "serial", timeout: 60_000 });
-  let harness: MultiHostRelayHarness | null = null;
+  test.describe(`Secure multi-host coexistence (${transportMode})`, () => {
+    test.describe.configure({ mode: "serial", timeout: 60_000 });
+    let harness: MultiHostRelayHarness | null = null;
 
-  test.beforeAll(async ({ relayWsURL }) => {
-    harness = await startMultiHostRelayHarness({
-      relayUrl: relayWsURL,
-      testRoot: e2ePaths.tempDir,
-    });
-  });
-
-  test.afterAll(() => {
-    harness?.stop();
-  });
-
-  test("keeps three relay-backed source runtimes independent", async ({
-    page,
-    remoteClientURL,
-  }, testInfo) => {
-    if (!harness) throw new Error("Multi-host harness did not start");
-    await provisionHarnessHosts(page, remoteClientURL, harness);
-    await configureMonitorTransport(page, harness.relayUrl, transportMode);
-    if (transportMode === "mux") {
-      const capabilities = await page.evaluate(async (healthUrl) => {
-        const response = await fetch(healthUrl);
-        const body = (await response.json()) as {
-          relayCapabilities?: string[];
-        };
-        return body.relayCapabilities ?? [];
-      }, relaySiblingUrl(harness.relayUrl, "health"));
-      expect(capabilities).toContain("client-mux-v1");
-    }
-
-    const relaySockets = observeMonitorRelaySockets(page, harness.relayUrl);
-
-    const result = await runMonitorController(page);
-    if (result.connectedCount !== 3) {
-      await testInfo.attach("multi-host-server-output", {
-        body: harness.formatOutput(),
-        contentType: "text/plain",
+    test.beforeAll(async ({ relayWsURL }) => {
+      harness = await startMultiHostRelayHarness({
+        relayUrl: relayWsURL,
+        testRoot: e2ePaths.tempDir,
       });
-    }
-
-    expect(result).toMatchObject({
-      connectedCount: 3,
-      selectedCount: 3,
     });
-    expect(relaySockets.map((socket) => socket.url())).toEqual(
-      transportMode === "mux"
-        ? [relaySiblingUrl(harness.relayUrl, "mux")]
-        : Array.from({ length: 3 }, () => harness.relayUrl),
-    );
-    expect(relaySockets).toHaveLength(transportMode === "mux" ? 1 : 3);
-    expect(result.hosts.map((host) => host.state)).toEqual([
-      "connected",
-      "connected",
-      "connected",
-    ]);
-    expect(result.hosts.map((host) => host.summary?.sessions[0]?.id)).toEqual([
-      harness.sessionId,
-      harness.sessionId,
-      harness.sessionId,
-    ]);
-    expect(
-      result.hosts.map((host) => host.summary?.sessions[0]?.title),
-    ).toEqual(harness.hosts.map((host) => host.expectedFixtureText));
-  });
 
-  test("enrolls three saved hosts through the visible login flow", async ({
-    page,
-    remoteClientURL,
-  }) => {
-    if (!harness) throw new Error("Multi-host harness did not start");
-    await page.goto(remoteClientURL);
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
+    test.afterAll(() => {
+      harness?.stop();
     });
-    await page.reload();
 
-    for (const host of harness.hosts) {
-      await enrollRelayHostThroughUi(page, host, harness.relayUrl);
-      await page.locator(".sidebar-switch-host").click();
-      await expect(page.getByTestId("saved-hosts-list")).toBeVisible();
-      await harness.waitForWaitingHosts();
-    }
+    test("keeps three relay-backed source runtimes independent", async ({
+      page,
+      remoteClientURL,
+    }, testInfo) => {
+      if (!harness) throw new Error("Multi-host harness did not start");
+      await provisionHarnessHosts(page, remoteClientURL, harness);
+      await configureMonitorTransport(page, harness.relayUrl, transportMode);
+      if (transportMode === "mux") {
+        const capabilities = await page.evaluate(
+          async (healthUrl) => {
+            const response = await fetch(healthUrl);
+            const body = (await response.json()) as {
+              relayCapabilities?: string[];
+            };
+            return body.relayCapabilities ?? [];
+          },
+          relaySiblingUrl(harness.relayUrl, "health"),
+        );
+        expect(capabilities).toContain("client-mux-v1");
+      }
 
-    await expect(page.locator(".host-picker-item")).toHaveCount(3);
-    await configureMonitorTransport(page, harness.relayUrl, transportMode);
-    await page.goto(`${remoteClientURL}/-/monitor`);
-    await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
-      "Connected 3 of 3",
-      { timeout: 30_000 },
-    );
-    for (const host of harness.hosts) {
-      await expect(page.getByTestId("multi-host-monitor")).toContainText(
-        host.expectedFixtureText,
+      const relaySockets = observeMonitorRelaySockets(page, harness.relayUrl);
+
+      const result = await runMonitorController(page);
+      if (result.connectedCount !== 3) {
+        await testInfo.attach("multi-host-server-output", {
+          body: harness.formatOutput(),
+          contentType: "text/plain",
+        });
+      }
+
+      expect(result).toMatchObject({
+        connectedCount: 3,
+        selectedCount: 3,
+      });
+      expect(relaySockets.map((socket) => socket.url())).toEqual(
+        transportMode === "mux"
+          ? [relaySiblingUrl(harness.relayUrl, "mux")]
+          : Array.from({ length: 3 }, () => harness.relayUrl),
       );
-    }
-  });
+      expect(relaySockets).toHaveLength(transportMode === "mux" ? 1 : 3);
+      expect(result.hosts.map((host) => host.state)).toEqual([
+        "connected",
+        "connected",
+        "connected",
+      ]);
+      expect(result.hosts.map((host) => host.summary?.sessions[0]?.id)).toEqual(
+        [harness.sessionId, harness.sessionId, harness.sessionId],
+      );
+      expect(
+        result.hosts.map((host) => host.summary?.sessions[0]?.title),
+      ).toEqual(harness.hosts.map((host) => host.expectedFixtureText));
+    });
 
-  test("renders three hosts and closes every stream on navigation", async ({
-    page,
-    remoteClientURL,
-  }, testInfo) => {
-    if (!harness) throw new Error("Multi-host harness did not start");
-    await provisionHarnessHosts(page, remoteClientURL, harness);
-    await configureMonitorTransport(page, harness.relayUrl, transportMode);
+    test("enrolls three saved hosts through the visible login flow", async ({
+      page,
+      remoteClientURL,
+    }) => {
+      if (!harness) throw new Error("Multi-host harness did not start");
+      await page.goto(remoteClientURL);
+      await page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      });
+      await page.reload();
 
-    const relaySockets = observeMonitorRelaySockets(page, harness.relayUrl);
+      for (const host of harness.hosts) {
+        await enrollRelayHostThroughUi(page, host, harness.relayUrl);
+        await page.locator(".sidebar-switch-host").click();
+        await expect(page.getByTestId("saved-hosts-list")).toBeVisible();
+        await harness.waitForWaitingHosts();
+      }
 
-    await page.goto(`${remoteClientURL}/-/monitor`);
-    try {
+      await expect(page.locator(".host-picker-item")).toHaveCount(3);
+      await configureMonitorTransport(page, harness.relayUrl, transportMode);
+      await page.goto(`${remoteClientURL}/-/monitor`);
       await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
         "Connected 3 of 3",
         { timeout: 30_000 },
       );
-    } catch (error) {
-      await testInfo.attach("multi-host-server-output", {
-        body: harness.formatOutput(),
-        contentType: "text/plain",
-      });
-      throw error;
-    }
+      for (const host of harness.hosts) {
+        await expect(page.getByTestId("multi-host-monitor")).toContainText(
+          host.expectedFixtureText,
+        );
+      }
+    });
 
-    await expect
-      .poll(() => relaySockets.length, { timeout: 10_000 })
-      .toBe(transportMode === "mux" ? 1 : 3);
-    for (const host of harness.hosts) {
-      const card = page.locator(
-        `.multi-host-card[data-host-name="${host.displayName}"]`,
+    test("renders three hosts and closes every stream on navigation", async ({
+      page,
+      remoteClientURL,
+    }, testInfo) => {
+      if (!harness) throw new Error("Multi-host harness did not start");
+      await provisionHarnessHosts(page, remoteClientURL, harness);
+      await configureMonitorTransport(page, harness.relayUrl, transportMode);
+
+      const relaySockets = observeMonitorRelaySockets(page, harness.relayUrl);
+
+      await page.goto(`${remoteClientURL}/-/monitor`);
+      try {
+        await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
+          "Connected 3 of 3",
+          { timeout: 30_000 },
+        );
+      } catch (error) {
+        await testInfo.attach("multi-host-server-output", {
+          body: harness.formatOutput(),
+          contentType: "text/plain",
+        });
+        throw error;
+      }
+
+      await expect
+        .poll(() => relaySockets.length, { timeout: 10_000 })
+        .toBe(transportMode === "mux" ? 1 : 3);
+      for (const host of harness.hosts) {
+        const card = page.locator(
+          `.multi-host-card[data-host-name="${host.displayName}"]`,
+        );
+        await expect(card).toHaveAttribute("data-host-state", "connected");
+        await expect(card).toContainText(host.expectedFixtureText);
+      }
+
+      const captureDir = process.env.YEP_E2E_UI_CAPTURE_DIR;
+      if (captureDir && transportMode === "mux") {
+        mkdirSync(captureDir, { recursive: true });
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        await page.screenshot({
+          animations: "disabled",
+          path: join(captureDir, "multi-host-monitor-desktop.png"),
+        });
+        await page.setViewportSize({ width: 375, height: 812 });
+        await page.screenshot({
+          animations: "disabled",
+          path: join(captureDir, "multi-host-monitor-phone.png"),
+        });
+      }
+
+      const closedSockets = relaySockets.map(
+        (socket) =>
+          new Promise<void>((resolve) => {
+            socket.on("close", () => resolve());
+          }),
       );
-      await expect(card).toHaveAttribute("data-host-state", "connected");
-      await expect(card).toContainText(host.expectedFixtureText);
-    }
+      await page.goto(`${remoteClientURL}/login`);
+      await Promise.all(closedSockets);
+      await harness.waitForWaitingHosts();
+    });
 
-    const captureDir = process.env.YEP_E2E_UI_CAPTURE_DIR;
-    if (captureDir && transportMode === "mux") {
-      mkdirSync(captureDir, { recursive: true });
-      await page.setViewportSize({ width: 1920, height: 1080 });
-      await page.screenshot({
-        animations: "disabled",
-        path: join(captureDir, "multi-host-monitor-desktop.png"),
-      });
-      await page.setViewportSize({ width: 375, height: 812 });
-      await page.screenshot({
-        animations: "disabled",
-        path: join(captureDir, "multi-host-monitor-phone.png"),
-      });
-    }
+    test("keeps healthy hosts visible when one relay target is offline", async ({
+      page,
+      remoteClientURL,
+    }) => {
+      if (!harness) throw new Error("Multi-host harness did not start");
+      await provisionHarnessHosts(page, remoteClientURL, harness);
+      await makeLastHostOffline(page);
+      await configureMonitorTransport(page, harness.relayUrl, transportMode);
 
-    const closedSockets = relaySockets.map(
-      (socket) =>
-        new Promise<void>((resolve) => {
-          socket.on("close", () => resolve());
-        }),
-    );
-    await page.goto(`${remoteClientURL}/login`);
-    await Promise.all(closedSockets);
-    await harness.waitForWaitingHosts();
-  });
-
-  test("keeps healthy hosts visible when one relay target is offline", async ({
-    page,
-    remoteClientURL,
-  }) => {
-    if (!harness) throw new Error("Multi-host harness did not start");
-    await provisionHarnessHosts(page, remoteClientURL, harness);
-    await makeLastHostOffline(page);
-    await configureMonitorTransport(page, harness.relayUrl, transportMode);
-
-    await page.goto(`${remoteClientURL}/-/monitor`);
-    await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
-      "Connected 2 of 3",
-      { timeout: 30_000 },
-    );
-
-    const offlineCard = page.locator(
-      `.multi-host-card[data-host-name="${
-        harness.hosts.at(-1)?.displayName ?? ""
-      }"]`,
-    );
-    await expect(offlineCard).toHaveAttribute("data-host-state", "offline");
-    await expect(
-      offlineCard.getByRole("button", { name: "Retry" }),
-    ).toBeVisible();
-    for (const host of harness.hosts.slice(0, 2)) {
-      const card = page.locator(
-        `.multi-host-card[data-host-name="${host.displayName}"]`,
+      await page.goto(`${remoteClientURL}/-/monitor`);
+      await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
+        "Connected 2 of 3",
+        { timeout: 30_000 },
       );
-      await expect(card).toHaveAttribute("data-host-state", "connected");
-      await expect(card).toContainText(host.expectedFixtureText);
-    }
-  });
 
-  test("disposes one runtime while the others keep serving requests", async ({
-    page,
-    remoteClientURL,
-  }) => {
-    if (!harness) throw new Error("Multi-host harness did not start");
-    await provisionHarnessHosts(page, remoteClientURL, harness);
-    await configureMonitorTransport(page, harness.relayUrl, transportMode);
+      const offlineCard = page.locator(
+        `.multi-host-card[data-host-name="${
+          harness.hosts.at(-1)?.displayName ?? ""
+        }"]`,
+      );
+      await expect(offlineCard).toHaveAttribute("data-host-state", "offline");
+      await expect(
+        offlineCard.getByRole("button", { name: "Retry" }),
+      ).toBeVisible();
+      for (const host of harness.hosts.slice(0, 2)) {
+        const card = page.locator(
+          `.multi-host-card[data-host-name="${host.displayName}"]`,
+        );
+        await expect(card).toHaveAttribute("data-host-state", "connected");
+        await expect(card).toContainText(host.expectedFixtureText);
+      }
+    });
 
-    const result = await runSingleSourceDisposal(page);
+    test("disposes one runtime while the others keep serving requests", async ({
+      page,
+      remoteClientURL,
+    }) => {
+      if (!harness) throw new Error("Multi-host harness did not start");
+      await provisionHarnessHosts(page, remoteClientURL, harness);
+      await configureMonitorTransport(page, harness.relayUrl, transportMode);
 
-    expect(result).toEqual({
-      connectedCount: 2,
-      selectedCount: 2,
-      titles: harness.hosts.slice(1).map((host) => host.expectedFixtureText),
+      const result = await runSingleSourceDisposal(page);
+
+      expect(result).toEqual({
+        connectedCount: 2,
+        selectedCount: 2,
+        titles: harness.hosts.slice(1).map((host) => host.expectedFixtureText),
+      });
+    });
+
+    test("isolates a stale resume session as sign-in required", async ({
+      page,
+      remoteClientURL,
+    }) => {
+      if (!harness) throw new Error("Multi-host harness did not start");
+      await provisionHarnessHosts(page, remoteClientURL, harness);
+      await makeLastHostSessionStale(page);
+      await configureMonitorTransport(page, harness.relayUrl, transportMode);
+
+      await page.goto(`${remoteClientURL}/-/monitor`);
+      await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
+        "Connected 2 of 3",
+        { timeout: 30_000 },
+      );
+
+      const staleCard = page.locator(
+        `.multi-host-card[data-host-name="${
+          harness.hosts.at(-1)?.displayName ?? ""
+        }"]`,
+      );
+      await expect(staleCard).toHaveAttribute(
+        "data-host-state",
+        "sign-in-required",
+      );
+      await expect(
+        staleCard.getByRole("link", { name: "Sign in" }),
+      ).toBeVisible();
+      for (const host of harness.hosts.slice(0, 2)) {
+        await expect(
+          page.locator(
+            `.multi-host-card[data-host-name="${host.displayName}"]`,
+          ),
+        ).toHaveAttribute("data-host-state", "connected");
+      }
+    });
+
+    test("keeps healthy rows live when a connected server disconnects", async ({
+      page,
+      remoteClientURL,
+    }) => {
+      if (!harness) throw new Error("Multi-host harness did not start");
+      await provisionHarnessHosts(page, remoteClientURL, harness);
+      await configureMonitorTransport(page, harness.relayUrl, transportMode);
+      await page.goto(`${remoteClientURL}/-/monitor`);
+      await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
+        "Connected 3 of 3",
+        { timeout: 30_000 },
+      );
+
+      const disconnectedHost = harness.hosts.at(-1);
+      if (!disconnectedHost) throw new Error("No host available to disconnect");
+      stopYaServerProcess(disconnectedHost.server);
+
+      await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
+        "Connected 2 of 3",
+        { timeout: 30_000 },
+      );
+      await expect(
+        page.locator(
+          `.multi-host-card[data-host-name="${disconnectedHost.displayName}"]`,
+        ),
+      ).toHaveAttribute("data-host-state", /^(connecting|offline)$/);
+      for (const host of harness.hosts.slice(0, 2)) {
+        const card = page.locator(
+          `.multi-host-card[data-host-name="${host.displayName}"]`,
+        );
+        await expect(card).toHaveAttribute("data-host-state", "connected");
+        await expect(card).toContainText(host.expectedFixtureText);
+      }
     });
   });
-
-  test("isolates a stale resume session as sign-in required", async ({
-    page,
-    remoteClientURL,
-  }) => {
-    if (!harness) throw new Error("Multi-host harness did not start");
-    await provisionHarnessHosts(page, remoteClientURL, harness);
-    await makeLastHostSessionStale(page);
-    await configureMonitorTransport(page, harness.relayUrl, transportMode);
-
-    await page.goto(`${remoteClientURL}/-/monitor`);
-    await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
-      "Connected 2 of 3",
-      { timeout: 30_000 },
-    );
-
-    const staleCard = page.locator(
-      `.multi-host-card[data-host-name="${
-        harness.hosts.at(-1)?.displayName ?? ""
-      }"]`,
-    );
-    await expect(staleCard).toHaveAttribute(
-      "data-host-state",
-      "sign-in-required",
-    );
-    await expect(
-      staleCard.getByRole("link", { name: "Sign in" }),
-    ).toBeVisible();
-    for (const host of harness.hosts.slice(0, 2)) {
-      await expect(
-        page.locator(`.multi-host-card[data-host-name="${host.displayName}"]`),
-      ).toHaveAttribute("data-host-state", "connected");
-    }
-  });
-
-  test("keeps healthy rows live when a connected server disconnects", async ({
-    page,
-    remoteClientURL,
-  }) => {
-    if (!harness) throw new Error("Multi-host harness did not start");
-    await provisionHarnessHosts(page, remoteClientURL, harness);
-    await configureMonitorTransport(page, harness.relayUrl, transportMode);
-    await page.goto(`${remoteClientURL}/-/monitor`);
-    await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
-      "Connected 3 of 3",
-      { timeout: 30_000 },
-    );
-
-    const disconnectedHost = harness.hosts.at(-1);
-    if (!disconnectedHost) throw new Error("No host available to disconnect");
-    stopYaServerProcess(disconnectedHost.server);
-
-    await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
-      "Connected 2 of 3",
-      { timeout: 30_000 },
-    );
-    await expect(
-      page.locator(
-        `.multi-host-card[data-host-name="${disconnectedHost.displayName}"]`,
-      ),
-    ).toHaveAttribute("data-host-state", /^(connecting|offline)$/);
-    for (const host of harness.hosts.slice(0, 2)) {
-      const card = page.locator(
-        `.multi-host-card[data-host-name="${host.displayName}"]`,
-      );
-      await expect(card).toHaveAttribute("data-host-state", "connected");
-      await expect(card).toContainText(host.expectedFixtureText);
-    }
-  });
-});
 }

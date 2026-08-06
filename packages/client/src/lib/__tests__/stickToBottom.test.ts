@@ -110,7 +110,11 @@ describe("useStickToBottom", () => {
   });
 
   it("starts following when a new logical stream replaces scrolled-up content", () => {
-    const el = makeEl({ scrollHeight: 1000, clientHeight: 200, scrollTop: 100 });
+    const el = makeEl({
+      scrollHeight: 1000,
+      clientHeight: 200,
+      scrollTop: 100,
+    });
     const ref = refTo(el);
     const { result, rerender } = renderHook(
       ({ dep, enabled, identity }) =>

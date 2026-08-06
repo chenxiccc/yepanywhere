@@ -17,11 +17,7 @@ import { gitDiffReportsBinary } from "../git/binaryDiff.js";
 import { skippedBinaryGitDiffResult } from "../git/diffPreviewGuards.js";
 import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
 import { buildGitFileChanges } from "../git/fileChanges.js";
-import {
-  GIT_DECODE_PATHS_ARGS,
-  runGit,
-  runGitBytes,
-} from "../git/gitExec.js";
+import { GIT_DECODE_PATHS_ARGS, runGit, runGitBytes } from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import { resolveProjectPath } from "./projectParam.js";
@@ -228,14 +224,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
       if (
         await gitDiffReportsBinary(
           projectPath,
-          [
-            "diff-tree",
-            "--root",
-            "--no-commit-id",
-            "-r",
-            "-M",
-            resolvedSha,
-          ],
+          ["diff-tree", "--root", "--no-commit-id", "-r", "-M", resolvedSha],
           path,
         )
       ) {
@@ -251,12 +240,12 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
       );
 
       const result = await buildGitDiffResultFromBytes({
-          path,
-          oldContent,
-          newContent,
-          fullContext,
-          ignoreWhitespace,
-        });
+        path,
+        oldContent,
+        newContent,
+        fullContext,
+        ignoreWhitespace,
+      });
       result.reviewProjections = await commitReviewProjections(
         projectPath,
         resolvedSha,

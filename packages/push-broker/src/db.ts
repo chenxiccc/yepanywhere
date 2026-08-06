@@ -1,9 +1,4 @@
-import {
-  chmodSync,
-  closeSync,
-  mkdirSync,
-  openSync,
-} from "node:fs";
+import { chmodSync, closeSync, mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
@@ -28,10 +23,7 @@ export function createTestDatabase(
   return db;
 }
 
-function initializeDatabase(
-  db: Database.Database,
-  persistent: boolean,
-): void {
+function initializeDatabase(db: Database.Database, persistent: boolean): void {
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
   if (persistent) {

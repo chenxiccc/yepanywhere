@@ -3,11 +3,7 @@ import type {
   SafeRestartPreservedWork,
   SafeRestartState,
 } from "@yep-anywhere/shared";
-import {
-  type ReactNode,
-  useLayoutEffect,
-  useRef,
-} from "react";
+import { type ReactNode, useLayoutEffect, useRef } from "react";
 import { useI18n } from "../i18n";
 import styles from "./ReloadBanner.module.css";
 
@@ -72,11 +68,7 @@ export function ReloadBannerStack({
           return (
             controlRect.width > 0 &&
             controlRect.height > 0 &&
-            rectsOverlap(
-              stackRect,
-              controlRect,
-              RELOAD_BANNER_CONTROL_GAP,
-            )
+            rectsOverlap(stackRect, controlRect, RELOAD_BANNER_CONTROL_GAP)
           );
         });
         if (overlapsAControl) {
@@ -135,8 +127,7 @@ export function ReloadBannerStack({
     const composer = avoidSessionComposer
       ? document.querySelector<HTMLElement>(".session-input")
       : null;
-    const fixedOccupant =
-      document.querySelector<HTMLElement>(".fab-container");
+    const fixedOccupant = document.querySelector<HTMLElement>(".fab-container");
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
@@ -145,9 +136,10 @@ export function ReloadBannerStack({
     if (composer) resizeObserver?.observe(composer);
     if (fixedOccupant) resizeObserver?.observe(fixedOccupant);
 
-    const mutationObserver = composer || fixedOccupant
-      ? new MutationObserver(schedulePlacement)
-      : null;
+    const mutationObserver =
+      composer || fixedOccupant
+        ? new MutationObserver(schedulePlacement)
+        : null;
     if (composer && mutationObserver) {
       mutationObserver.observe(composer, {
         attributes: true,
@@ -231,10 +223,7 @@ export function ReloadBanner({
     ? blockerCount(safeRestartState.blockers, "session-queue")
     : 0;
   const recoveredQueuePreserved = safeRestartState
-    ? preservedCount(
-        safeRestartState.preserved,
-        "recovered-session-queue",
-      )
+    ? preservedCount(safeRestartState.preserved, "recovered-session-queue")
     : 0;
   const safeRestartStatus =
     safeRestartState?.status === "restarting"

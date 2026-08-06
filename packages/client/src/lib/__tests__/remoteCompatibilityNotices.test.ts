@@ -264,9 +264,7 @@ describe("remoteCompatibilityNotices", () => {
     expect(notices[0]?.versionSummary).toBe(
       "Compatibility level 0; recommended 10",
     );
-    expect(notices[0]?.dismissKey).toContain(
-      "remote-compat-level-10:0-to-10",
-    );
+    expect(notices[0]?.dismissKey).toContain("remote-compat-level-10:0-to-10");
   });
 
   it("does not warn when the server reports the recommended remote compatibility level", () => {

@@ -185,8 +185,8 @@ export function useFetchedImage(
 export async function preloadRemoteImage(
   apiPath: string,
 ): Promise<string | null> {
-  const transport = getSourceRuntimeRegistry().getCurrentSourceRuntime()
-    .transport;
+  const transport =
+    getSourceRuntimeRegistry().getCurrentSourceRuntime().transport;
   if (transport.capabilities.sameOriginUrls) {
     return apiPath;
   }

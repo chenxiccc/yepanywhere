@@ -13,8 +13,7 @@ const SW_PATH = `${import.meta.env.BASE_URL}sw.js`;
 
 /** Whether the browser supports Service Worker */
 const hasBrowserSupport =
-  typeof window !== "undefined" &&
-  "serviceWorker" in navigator;
+  typeof window !== "undefined" && "serviceWorker" in navigator;
 
 /** Packaged app assets use a local trusted origin, not a browser PWA origin. */
 export function isPackagedAppOrigin(location: {

@@ -1,10 +1,4 @@
-import {
-  memo,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
 import { SettingsCategoryItem } from "./SettingsCategoryItem";
 import { SettingsPaneTitleProvider } from "./SettingsPaneTitleContext";
@@ -85,8 +79,7 @@ export function SettingsSearchResults({
     const container = containerRef.current;
     if (!container) return;
     setMatchCount(
-      container.querySelectorAll(".settings-item.settings-search-match")
-        .length,
+      container.querySelectorAll(".settings-item.settings-search-match").length,
     );
   }, [query, matchValues]);
 

@@ -105,9 +105,7 @@ describe("StorageSettings", () => {
       expect((radio as HTMLInputElement).disabled).toBe(true);
       expect((radio as HTMLInputElement).checked).toBe(false);
     }
-    expect(
-      screen.getByText("projectDataLocationUpdateRequired"),
-    ).toBeTruthy();
+    expect(screen.getByText("projectDataLocationUpdateRequired")).toBeTruthy();
     expect(screen.getByText("toolResultImagesUpdateRequired")).toBeTruthy();
     expect(updateSettings).not.toHaveBeenCalled();
   });

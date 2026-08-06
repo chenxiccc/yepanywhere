@@ -275,9 +275,9 @@ describe("Project Path Utilities", () => {
     });
 
     it("preserves POSIX case sensitivity", () => {
-      expect(getProjectIdentityKey("/Users/sox/Documents/code/mclone")).not.toBe(
-        getProjectIdentityKey("/Users/sox/documents/code/mclone"),
-      );
+      expect(
+        getProjectIdentityKey("/Users/sox/Documents/code/mclone"),
+      ).not.toBe(getProjectIdentityKey("/Users/sox/documents/code/mclone"));
     });
   });
 

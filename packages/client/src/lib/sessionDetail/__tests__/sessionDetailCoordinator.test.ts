@@ -136,7 +136,9 @@ function sessionResponse(
   };
 }
 
-function summaryRuntime(sourceKey: ClientSummarySourceKey): SourceSummaryRuntime {
+function summaryRuntime(
+  sourceKey: ClientSummarySourceKey,
+): SourceSummaryRuntime {
   return {
     sourceKey,
     getStore: vi.fn(() => undefined as never),
@@ -172,9 +174,7 @@ function runtime(): YaSourceRuntime {
   };
 }
 
-function coordinator(
-  activeWindowTrim?: SessionDetailActiveWindowTrimRuntime,
-) {
+function coordinator(activeWindowTrim?: SessionDetailActiveWindowTrimRuntime) {
   const sourceRuntime = runtime();
   return createSessionDetailCoordinator({
     runtime: sourceRuntime,
@@ -216,11 +216,7 @@ describe("SessionDetailCoordinator", () => {
 
     detail.handleStreamMessage(message("main-2"), processors.processMessage);
 
-    expect(processed).toEqual([
-      "main-1:true",
-      "agent-1:sub-1",
-      "main-2:false",
-    ]);
+    expect(processed).toEqual(["main-1:true", "agent-1:sub-1", "main-2:false"]);
   });
 
   it("beginInitialLoad clears buffered messages and closes the stream gate", () => {
@@ -565,9 +561,7 @@ describe("SessionDetailCoordinator", () => {
       messages: 2,
       restoredFromSnapshot: true,
     });
-    expect(
-      detail.buildInitialLoadErrorPerfDetail(new Error("boom")),
-    ).toEqual({
+    expect(detail.buildInitialLoadErrorPerfDetail(new Error("boom"))).toEqual({
       message: "boom",
     });
   });
@@ -656,9 +650,7 @@ describe("SessionDetailCoordinator", () => {
     detail.replaceRouteSnapshot(routeSnapshot("warm"));
 
     const applied = detail.applyWarmRefresh(
-      sessionResponse([
-        message("catchup", "2026-07-04T00:00:01.000Z"),
-      ]),
+      sessionResponse([message("catchup", "2026-07-04T00:00:01.000Z")]),
       {
         warmSnapshot: routeSnapshot("warm"),
         initialAfterMessageId: "warm",
@@ -731,9 +723,7 @@ describe("SessionDetailCoordinator", () => {
 
     expect(
       detail.applyIncrementalRefresh(
-        sessionResponse([
-          message("catchup", "2026-07-04T00:00:01.000Z"),
-        ]),
+        sessionResponse([message("catchup", "2026-07-04T00:00:01.000Z")]),
         {
           afterMessageId: "current",
         },
@@ -826,9 +816,7 @@ describe("SessionDetailCoordinator", () => {
     detail.applyStreamMessage(userMessage("user-31"));
 
     expect(planner).not.toHaveBeenCalled();
-    expect(
-      detail.readSelected(selectSessionDetailMessages)?.length,
-    ).toBe(32);
+    expect(detail.readSelected(selectSessionDetailMessages)?.length).toBe(32);
   });
 
   it("trims an old prefix after following the bottom", () => {
@@ -850,16 +838,12 @@ describe("SessionDetailCoordinator", () => {
       updatedAtMs: 1,
     });
 
-    expect(
-      detail.readSelected(selectSessionDetailMessages)?.length,
-    ).toBe(31);
+    expect(detail.readSelected(selectSessionDetailMessages)?.length).toBe(31);
 
     detail.setActiveWindowFollowingBottom(true);
 
     expect(
-      detail
-        .readSelected(selectSessionDetailMessages)
-        ?.map(({ uuid }) => uuid),
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
     ).toEqual(Array.from({ length: 20 }, (_, index) => `user-${index + 11}`));
     expect(
       detail.readSelected(selectSessionDetailRuntimeSnapshot)?.pagination,
@@ -894,9 +878,7 @@ describe("SessionDetailCoordinator", () => {
     detail.setActiveWindowFollowingBottom(true);
 
     expect(planner).toHaveBeenCalledTimes(1);
-    expect(
-      detail.readSelected(selectSessionDetailMessages)?.length,
-    ).toBe(31);
+    expect(detail.readSelected(selectSessionDetailMessages)?.length).toBe(31);
 
     nowMs += 1;
     detail.applyStreamMessage(
@@ -905,9 +887,7 @@ describe("SessionDetailCoordinator", () => {
 
     expect(planner).toHaveBeenCalledTimes(1);
     expect(
-      detail
-        .readSelected(selectSessionDetailMessages)
-        ?.map(({ uuid }) => uuid),
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
     ).toEqual([
       ...Array.from({ length: 20 }, (_, index) => `user-${index + 11}`),
       "assistant-growth",
@@ -931,9 +911,7 @@ describe("SessionDetailCoordinator", () => {
     detail.applyStreamMessage(userMessage("user-31"));
 
     expect(planner).not.toHaveBeenCalled();
-    expect(
-      detail.readSelected(selectSessionDetailMessages)?.length,
-    ).toBe(32);
+    expect(detail.readSelected(selectSessionDetailMessages)?.length).toBe(32);
   });
 
   it("builds reveal snapshots from store-backed runtime state", () => {

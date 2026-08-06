@@ -428,11 +428,7 @@ async function listSessionListSummariesForSource(
           if (cached) {
             return toSessionListSummary(cached);
           }
-          return listReader.call(
-            source.reader,
-            entry.sessionId,
-            project.id,
-          );
+          return listReader.call(source.reader, entry.sessionId, project.id);
         }),
     );
     for (const summary of batch) {
@@ -444,8 +440,7 @@ async function listSessionListSummariesForSource(
 
   const activeSummaries = filterActiveSessionListSummaries(summaries, options);
   activeSummaries.sort(
-    (a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
   return activeSummaries;
 }

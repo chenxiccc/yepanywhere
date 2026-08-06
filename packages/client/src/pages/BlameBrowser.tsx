@@ -175,7 +175,10 @@ export function BlameBrowser({
                 const count = pathCommentCount.get(file) ?? 0;
                 const menuActions = fileMenuActions(file);
                 return (
-                  <li key={file} className={`commit-file-row ${sourceRowMenuSurface}`}>
+                  <li
+                    key={file}
+                    className={`commit-file-row ${sourceRowMenuSurface}`}
+                  >
                     <SourceFileRowButton
                       path={file}
                       type="button"

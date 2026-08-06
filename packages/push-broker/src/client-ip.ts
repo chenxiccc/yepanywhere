@@ -97,9 +97,7 @@ function parseCidr(spec: string): TrustedProxy | null {
 
   const hostBits = totalBits - maskBits;
   const mask =
-    maskBits === 0
-      ? 0n
-      : ((1n << BigInt(maskBits)) - 1n) << BigInt(hostBits);
+    maskBits === 0 ? 0n : ((1n << BigInt(maskBits)) - 1n) << BigInt(hostBits);
   return { v6: ip.v6, netBig: ip.big & mask, maskBits };
 }
 

@@ -16,9 +16,7 @@ import {
   openRelayClientSocket,
   type OpenRelayClientSocketOptions,
 } from "./RelayClientSocket";
-import type {
-  RelaySocketFactory,
-} from "./SecureConnection";
+import type { RelaySocketFactory } from "./SecureConnection";
 import type { SecureConnectionSocket } from "./SecureConnectionSocket";
 
 const DISCOVERY_TIMEOUT_MS = 2000;
@@ -102,9 +100,10 @@ function relayMuxEndpoints(rawRelayUrl: string): RelayMuxEndpoints | null {
   };
 }
 
-function socketPayloadBytes(
-  data: string | ArrayBuffer | ArrayBufferView,
-): { bytes: Uint8Array; isBinary: boolean } {
+function socketPayloadBytes(data: string | ArrayBuffer | ArrayBufferView): {
+  bytes: Uint8Array;
+  isBinary: boolean;
+} {
   if (typeof data === "string") {
     return { bytes: new TextEncoder().encode(data), isBinary: false };
   }
@@ -330,7 +329,10 @@ class RelayMuxPhysicalConnection {
     }
     if (payload.byteLength > this.maxFrameBytes) {
       circuit.fail("Relay mux frame is too large");
-      throw new DOMException("Relay mux frame is too large", "QuotaExceededError");
+      throw new DOMException(
+        "Relay mux frame is too large",
+        "QuotaExceededError",
+      );
     }
 
     const bytes = encodeRelayMuxDataFrame(circuitId, payload, isBinary);
@@ -349,19 +351,12 @@ class RelayMuxPhysicalConnection {
       this.circuitOrder.push(circuitId);
     }
     queue.push({ bytes, circuitId });
-    this.queuedBytesByCircuit.set(
-      circuitId,
-      circuitBytes + bytes.byteLength,
-    );
+    this.queuedBytesByCircuit.set(circuitId, circuitBytes + bytes.byteLength);
     this.queuedBytes += bytes.byteLength;
     this.scheduleDrain(false);
   }
 
-  requestCircuitClose(
-    circuitId: number,
-    _code: number,
-    _reason: string,
-  ): void {
+  requestCircuitClose(circuitId: number, _code: number, _reason: string): void {
     if (!this.circuits.has(circuitId)) return;
     if (!this.isOpen) {
       this.removeCircuit(circuitId, 1006, "Relay mux disconnected");

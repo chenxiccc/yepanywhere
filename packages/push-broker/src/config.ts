@@ -1,9 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  type TrustedProxy,
-  parseTrustedProxies,
-} from "./client-ip.js";
+import { type TrustedProxy, parseTrustedProxies } from "./client-ip.js";
 import { hasAsciiControlCharacter } from "./ascii.js";
 
 export type PushProviderMode = "fake" | "fcm";
@@ -42,8 +39,7 @@ export function loadConfig(
   return {
     host: parseHost(env.PUSH_BROKER_HOST),
     port: parsePort(env.PUSH_BROKER_PORT),
-    dataDir:
-      env.PUSH_BROKER_DATA_DIR ?? join(homedir(), ".yep-push-broker"),
+    dataDir: env.PUSH_BROKER_DATA_DIR ?? join(homedir(), ".yep-push-broker"),
     provider,
     fcmProjectId,
     providerTimeoutMs: parsePositiveInteger(
@@ -59,11 +55,10 @@ export function loadConfig(
 
 function parseHost(value: string | undefined): string {
   if (value === undefined || value === "") return "127.0.0.1";
-  if (
-    value.trim() !== value ||
-    hasAsciiControlCharacter(value, true)
-  ) {
-    throw new Error("PUSH_BROKER_HOST must be a non-empty host name or address");
+  if (value.trim() !== value || hasAsciiControlCharacter(value, true)) {
+    throw new Error(
+      "PUSH_BROKER_HOST must be a non-empty host name or address",
+    );
   }
   return value;
 }

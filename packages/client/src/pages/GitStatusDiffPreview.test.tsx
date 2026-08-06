@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 
-import type {
-  GitDiffResult,
-  GitFileChange,
-} from "@yep-anywhere/shared";
+import type { GitDiffResult, GitFileChange } from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -68,8 +65,7 @@ describe("GitDiffBody", () => {
         value: originalScrollIntoView,
       });
     } else {
-      delete (Element.prototype as { scrollIntoView?: unknown })
-        .scrollIntoView;
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
     cleanup();
     vi.clearAllMocks();
@@ -86,9 +82,7 @@ describe("GitDiffBody", () => {
         },
       ) =>
         Promise.resolve(
-          options.fullContext
-            ? fullResults.shift()
-            : normalResults.shift(),
+          options.fullContext ? fullResults.shift() : normalResults.shift(),
         ),
     );
     listReviewComments.mockResolvedValue({

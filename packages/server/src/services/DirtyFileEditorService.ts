@@ -80,12 +80,8 @@ export function isPotentiallyMutatingShell(input: unknown): boolean {
       command,
     ) ||
     /\bgit\s+(?:apply|checkout|restore|mv|rm)\b/i.test(command) ||
-    /\b(?:sed\b[^\n]*\s-i(?:\s|$)|perl\b[^\n]*\s-pi(?:\s|$))/i.test(
-      command,
-    ) ||
-    /\b(?:prettier|biome|eslint)\b[^\n]*(?:--write|--fix)\b/i.test(
-      command,
-    ) ||
+    /\b(?:sed\b[^\n]*\s-i(?:\s|$)|perl\b[^\n]*\s-pi(?:\s|$))/i.test(command) ||
+    /\b(?:prettier|biome|eslint)\b[^\n]*(?:--write|--fix)\b/i.test(command) ||
     /\b(?:cargo\s+fmt|gofmt\s+-w|rustfmt\b|clang-format\b[^\n]*\s-i)\b/i.test(
       command,
     ) ||
@@ -172,7 +168,10 @@ function validEditor(value: unknown): value is GitFileEditor {
 }
 
 function normalizeState(value: unknown): DirtyFileEditorState {
-  const state: DirtyFileEditorState = { version: CURRENT_VERSION, projects: {} };
+  const state: DirtyFileEditorState = {
+    version: CURRENT_VERSION,
+    projects: {},
+  };
   if (!isRecord(value) || !isRecord(value.projects)) return state;
 
   for (const [projectPath, rawFiles] of Object.entries(value.projects)) {
@@ -501,10 +500,7 @@ export class DirtyFileEditorService {
     let changed = false;
     for (const filePath of normalizedPaths) {
       const current = records[filePath];
-      if (
-        current &&
-        Date.parse(current.observedAt) > Date.parse(timestamp)
-      ) {
+      if (current && Date.parse(current.observedAt) > Date.parse(timestamp)) {
         continue;
       }
       records[filePath] = { sessionId, observedAt: timestamp };

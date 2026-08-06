@@ -119,9 +119,7 @@ export interface PiProviderConfig {
   sessionsDir?: string;
 }
 
-export function piVersionUsesAgentSettled(
-  rawVersion: string,
-): boolean | null {
+export function piVersionUsesAgentSettled(rawVersion: string): boolean | null {
   const match = rawVersion.match(/(\d+)\.(\d+)\.(\d+)/);
   if (!match) return null;
   const version = match.slice(1, 4).map((part) => Number.parseInt(part, 10));

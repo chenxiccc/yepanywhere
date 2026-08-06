@@ -95,15 +95,15 @@ describe("session navigation state", () => {
   });
 
   it("parses each bang-history action field independently and defensively", () => {
-    expect(
-      parseSessionNavigationState({ composerPrefill: "!!ls" }),
-    ).toEqual({ composerPrefill: "!!ls" });
+    expect(parseSessionNavigationState({ composerPrefill: "!!ls" })).toEqual({
+      composerPrefill: "!!ls",
+    });
     expect(parseSessionNavigationState({ focusComposer: true })).toEqual({
       focusComposer: true,
     });
-    expect(
-      parseSessionNavigationState({ scrollToRenderId: "row-9" }),
-    ).toEqual({ scrollToRenderId: "row-9" });
+    expect(parseSessionNavigationState({ scrollToRenderId: "row-9" })).toEqual({
+      scrollToRenderId: "row-9",
+    });
 
     // Wrong types are dropped, not coerced.
     expect(

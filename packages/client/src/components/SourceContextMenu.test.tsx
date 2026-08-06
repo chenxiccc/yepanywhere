@@ -83,10 +83,7 @@ function MenuHarness({ onActivate }: { onActivate: () => void }) {
   const actions = [{ label: "Copy", onSelect: vi.fn() }];
   return (
     <>
-      <button
-        type="button"
-        {...controller.targetProps(actions, onActivate)}
-      >
+      <button type="button" {...controller.targetProps(actions, onActivate)}>
         Target
       </button>
       {controller.menu}

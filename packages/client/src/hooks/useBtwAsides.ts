@@ -2,10 +2,7 @@ import type { AppContentBlock, ProviderName } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { BtwAsideTranscriptTurn } from "../components/BtwAsidePane";
-import {
-  getBtwSplitRouting,
-  getBtwToolbarMode,
-} from "../lib/btwAsideRouting";
+import { getBtwSplitRouting, getBtwToolbarMode } from "../lib/btwAsideRouting";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,

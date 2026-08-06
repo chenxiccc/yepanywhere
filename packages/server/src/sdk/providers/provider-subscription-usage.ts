@@ -37,14 +37,18 @@ function isoTimestamp(value: unknown): string | undefined {
   const text = nonEmptyString(value);
   if (!text) return undefined;
   const timestamp = Date.parse(text);
-  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString()
+    : undefined;
 }
 
 function unixTimestamp(value: unknown): string | undefined {
   const seconds = finiteNumber(value);
   if (seconds === null || seconds <= 0) return undefined;
   const timestamp = seconds * 1000;
-  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString()
+    : undefined;
 }
 
 function normalizedModelLabel(value: string): string {
@@ -240,8 +244,7 @@ export function normalizeCodexSubscriptionUsage(
   if (fallback) {
     const fallbackId = nonEmptyString(fallback.limitId) ?? "codex";
     const alreadyPresent = [...snapshots.values()].some(
-      ({ snapshot }) =>
-        (nonEmptyString(snapshot.limitId) ?? "") === fallbackId,
+      ({ snapshot }) => (nonEmptyString(snapshot.limitId) ?? "") === fallbackId,
     );
     if (!alreadyPresent) {
       snapshots.set(fallbackId, { snapshot: fallback, fallback: true });

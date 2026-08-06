@@ -7,7 +7,8 @@ import type { PublicDistribution } from "./distributions";
 function requireUniqueIds(label: string, entries: readonly { id: string }[]) {
   const seen = new Set<string>();
   for (const entry of entries) {
-    if (seen.has(entry.id)) throw new Error(`Duplicate ${label} id: ${entry.id}`);
+    if (seen.has(entry.id))
+      throw new Error(`Duplicate ${label} id: ${entry.id}`);
     seen.add(entry.id);
   }
 }
@@ -40,7 +41,9 @@ export function validateCatalog() {
 
   for (const feature of features as readonly PublicFeature[]) {
     if (!categoryIds.has(feature.category)) {
-      throw new Error(`Feature ${feature.id} has unknown category ${feature.category}`);
+      throw new Error(
+        `Feature ${feature.id} has unknown category ${feature.category}`,
+      );
     }
     if (!publishedDocPaths.has(feature.docsPath)) {
       throw new Error(
@@ -52,7 +55,9 @@ export function validateCatalog() {
     }
     for (const providerId of feature.providers ?? []) {
       if (!providerIds.has(providerId)) {
-        throw new Error(`Feature ${feature.id} has unknown provider ${providerId}`);
+        throw new Error(
+          `Feature ${feature.id} has unknown provider ${providerId}`,
+        );
       }
     }
   }

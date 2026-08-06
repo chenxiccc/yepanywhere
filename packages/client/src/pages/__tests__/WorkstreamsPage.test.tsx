@@ -189,7 +189,9 @@ describe("WorkstreamsPage", () => {
   });
 
   it("previews and creates a checkout lane", async () => {
-    state.getProjectWorkstreams.mockResolvedValue(makeResponse([mainWorkstream()]));
+    state.getProjectWorkstreams.mockResolvedValue(
+      makeResponse([mainWorkstream()]),
+    );
     state.getProjectWorkstreamCheckoutPreview.mockResolvedValue({
       projectId: "project-1",
       label: "Feature checkout",
@@ -205,7 +207,9 @@ describe("WorkstreamsPage", () => {
 
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "New workstream" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New workstream" }),
+    );
     fireEvent.change(screen.getByLabelText("Label"), {
       target: { value: "Feature checkout" },
     });
@@ -224,7 +228,9 @@ describe("WorkstreamsPage", () => {
   });
 
   it("shows a busy error when another create is running", async () => {
-    state.getProjectWorkstreams.mockResolvedValue(makeResponse([mainWorkstream()]));
+    state.getProjectWorkstreams.mockResolvedValue(
+      makeResponse([mainWorkstream()]),
+    );
     state.getProjectWorkstreamCheckoutPreview.mockResolvedValue({
       projectId: "project-1",
       label: "Feature checkout",
@@ -238,7 +244,9 @@ describe("WorkstreamsPage", () => {
 
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "New workstream" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New workstream" }),
+    );
     fireEvent.change(screen.getByLabelText("Label"), {
       target: { value: "Feature checkout" },
     });

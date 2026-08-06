@@ -23,7 +23,9 @@ export function normalizePublicShareInitialPrompt(
     : normalized;
 }
 
-export function getPublicShareInitialPrompt(messages: unknown[]): string | null {
+export function getPublicShareInitialPrompt(
+  messages: unknown[],
+): string | null {
   for (const message of messages) {
     if (!message || typeof message !== "object") {
       continue;

@@ -136,8 +136,9 @@ describe("SessionQueuePersistenceService", () => {
     };
     expect(saved.version).toBe(1);
     expect(saved.items).toHaveLength(3);
-    expect(saved.items.every((item) => item.status === "paused-after-restart"))
-      .toBe(true);
+    expect(
+      saved.items.every((item) => item.status === "paused-after-restart"),
+    ).toBe(true);
   });
 
   it("serializes concurrent upserts and preserves queue order", async () => {

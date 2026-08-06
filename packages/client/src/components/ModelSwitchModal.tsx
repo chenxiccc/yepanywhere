@@ -112,8 +112,7 @@ export function ModelSwitchModal({
   const { setThinkingMode, setEffortLevel } = useModelSettings();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [provider, setProvider] = useState<ProviderName | null>(null);
-  const { usage: subscriptionUsage } =
-    useProviderSubscriptionUsage(provider);
+  const { usage: subscriptionUsage } = useProviderSubscriptionUsage(provider);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);

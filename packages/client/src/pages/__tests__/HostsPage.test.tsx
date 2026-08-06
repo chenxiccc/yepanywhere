@@ -33,13 +33,7 @@ vi.mock("../../layouts", () => ({
 }));
 
 vi.mock("../../components/PageHeader", () => ({
-  PageHeader: ({
-    title,
-    actions,
-  }: {
-    title: string;
-    actions?: ReactNode;
-  }) => (
+  PageHeader: ({ title, actions }: { title: string; actions?: ReactNode }) => (
     <header>
       {title}
       {actions}
@@ -70,9 +64,9 @@ describe("HostsPage", () => {
     expect(screen.getByText("One server, multiple access paths")).toBeTruthy();
     expect(screen.getByText("This server can delegate to")).toBeTruthy();
     expect(screen.getByText("May delegate to this server")).toBeTruthy();
-    expect(
-      screen.getAllByText("Not available in this preview"),
-    ).toHaveLength(2);
+    expect(screen.getAllByText("Not available in this preview")).toHaveLength(
+      2,
+    );
   });
 
   it.each([

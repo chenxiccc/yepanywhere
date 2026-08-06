@@ -152,11 +152,7 @@ export function useTooltipTrigger({
       const position = lastPointerPositionRef.current;
       if (
         openRef.current &&
-        !exceedsTooltipPointerJitter(
-          position,
-          event.clientX,
-          event.clientY,
-        )
+        !exceedsTooltipPointerJitter(position, event.clientX, event.clientY)
       ) {
         return;
       }
@@ -199,11 +195,7 @@ export function useTooltipTrigger({
     const handleDocumentPointerMove = (event: globalThis.PointerEvent) => {
       if (focusWithinRef.current) return;
       const root = pointerRootRef.current;
-      if (
-        root &&
-        event.target instanceof Node &&
-        root.contains(event.target)
-      ) {
+      if (root && event.target instanceof Node && root.contains(event.target)) {
         return;
       }
       if (

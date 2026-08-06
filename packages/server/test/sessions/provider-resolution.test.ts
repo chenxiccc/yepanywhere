@@ -211,10 +211,9 @@ describe("provider resolution", () => {
       provider: "codex",
     }));
     const sessionIndexService = makeSessionIndexService(null);
-    vi.mocked(
-      sessionIndexService.getCachedSessionSummary,
-    ).mockImplementation(async (_dir, _projectId, sessionId) =>
-      sessionId === cachedSummary.id ? cachedSummary : null,
+    vi.mocked(sessionIndexService.getCachedSessionSummary).mockImplementation(
+      async (_dir, _projectId, sessionId) =>
+        sessionId === cachedSummary.id ? cachedSummary : null,
     );
 
     const sessions = await listSessionListSummariesAcrossProviders(
@@ -255,9 +254,12 @@ describe("provider resolution", () => {
     ]);
     expect(reader.getSessionListSummary).toHaveBeenCalledTimes(1);
     expect(reader.getSessionSummary).not.toHaveBeenCalled();
-    expect(
-      sessionIndexService.getSessionsWithCache,
-    ).not.toHaveBeenCalledWith("/tmp/list", projectId, reader, undefined);
+    expect(sessionIndexService.getSessionsWithCache).not.toHaveBeenCalledWith(
+      "/tmp/list",
+      projectId,
+      reader,
+      undefined,
+    );
     expect(sessions[1]).not.toHaveProperty("messageCount");
     expect(sessions[1]).not.toHaveProperty("model");
     expect(sessions[1]).not.toHaveProperty("lastAgentText");

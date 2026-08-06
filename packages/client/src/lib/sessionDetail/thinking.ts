@@ -1,7 +1,4 @@
-import {
-  getLatestMessageTimestampMs,
-  parseTimestampMs,
-} from "../messageAge";
+import { getLatestMessageTimestampMs, parseTimestampMs } from "../messageAge";
 import type { Message } from "../../types";
 import type { RenderItem } from "../../types/renderItems";
 

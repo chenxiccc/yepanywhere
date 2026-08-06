@@ -91,9 +91,7 @@ describe("SafeRestartService", () => {
         queueLength: 0,
         hasActiveWork: false,
       }),
-      getPreservedWork: () => [
-        { type: "recovered-session-queue", count: 2 },
-      ],
+      getPreservedWork: () => [{ type: "recovered-session-queue", count: 2 }],
       restart,
     });
 

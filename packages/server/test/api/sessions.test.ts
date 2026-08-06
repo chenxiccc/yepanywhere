@@ -390,11 +390,7 @@ describe("Sessions API", () => {
           timestamp: timestamp(second),
           message: { role: "user", content: uuid },
         }) satisfies Record<string, unknown>;
-      const assistant = (
-        uuid: string,
-        parentUuid: string,
-        second: number,
-      ) =>
+      const assistant = (uuid: string, parentUuid: string, second: number) =>
         ({
           type: "assistant",
           cwd: projectPath,
@@ -452,8 +448,9 @@ describe("Sessions API", () => {
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
-        .toEqual(["cb2", "u3", "a3", "cb3", "u4"]);
+      expect(
+        json.messages.map((message: { uuid?: string }) => message.uuid),
+      ).toEqual(["cb2", "u3", "a3", "cb3", "u4"]);
       expect(json.pagination).toMatchObject({
         hasOlderMessages: true,
         returnedMessageCount: 5,
@@ -473,8 +470,20 @@ describe("Sessions API", () => {
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
-        .toEqual(["u1", "a1", "cb1", "u2", "a2", "cb2", "u3", "a3", "cb3", "u4"]);
+      expect(
+        json.messages.map((message: { uuid?: string }) => message.uuid),
+      ).toEqual([
+        "u1",
+        "a1",
+        "cb1",
+        "u2",
+        "a2",
+        "cb2",
+        "u3",
+        "a3",
+        "cb3",
+        "u4",
+      ]);
       expect(json.pagination).toBeUndefined();
     });
 
@@ -489,8 +498,9 @@ describe("Sessions API", () => {
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
-        .toEqual(["cb3", "u4"]);
+      expect(
+        json.messages.map((message: { uuid?: string }) => message.uuid),
+      ).toEqual(["cb3", "u4"]);
       expect(json.pagination).toMatchObject({
         hasOlderMessages: true,
         returnedMessageCount: 2,
@@ -510,8 +520,9 @@ describe("Sessions API", () => {
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
-        .toEqual(["cb2", "u3", "a3", "cb3", "u4"]);
+      expect(
+        json.messages.map((message: { uuid?: string }) => message.uuid),
+      ).toEqual(["cb2", "u3", "a3", "cb3", "u4"]);
       expect(json.pagination).toMatchObject({
         hasOlderMessages: true,
         returnedMessageCount: 5,
@@ -533,8 +544,9 @@ describe("Sessions API", () => {
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
-        .toEqual(["u3", "a3", "cb3", "u4"]);
+      expect(
+        json.messages.map((message: { uuid?: string }) => message.uuid),
+      ).toEqual(["u3", "a3", "cb3", "u4"]);
       expect(json.pagination).toMatchObject({
         hasOlderMessages: true,
         returnedMessageCount: 4,
@@ -1069,7 +1081,9 @@ describe("Sessions API", () => {
       const encodedPath = projectPath.replace(/[/\\:]/g, "-");
       const sessionDir = join(testDir, "localhost", encodedPath);
       // Comfortably exceeds the 1KB compress threshold so encoding kicks in.
-      const bigText = "the quick brown fox jumps over the lazy dog ".repeat(400);
+      const bigText = "the quick brown fox jumps over the lazy dog ".repeat(
+        400,
+      );
       const line = JSON.stringify({
         type: "user",
         cwd: projectPath,

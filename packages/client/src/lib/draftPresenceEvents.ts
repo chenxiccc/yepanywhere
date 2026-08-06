@@ -11,9 +11,7 @@ export interface DraftPresenceChange {
 
 const listeners = new Set<(change: DraftPresenceChange) => void>();
 
-export function publishDraftPresenceChange(
-  change: DraftPresenceChange,
-): void {
+export function publishDraftPresenceChange(change: DraftPresenceChange): void {
   for (const listener of listeners) {
     listener(change);
   }

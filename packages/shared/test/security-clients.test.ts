@@ -199,9 +199,9 @@ describe("P-256 WebCrypto signature conversion", () => {
     signature[31] = 0x01;
     signature[63] = 0x7f;
 
-    expect(Buffer.from(p256P1363SignatureToDer(signature)).toString("hex")).toBe(
-      "300602010102017f",
-    );
+    expect(
+      Buffer.from(p256P1363SignatureToDer(signature)).toString("hex"),
+    ).toBe("300602010102017f");
   });
 
   it("adds DER sign padding when a coordinate starts with a high bit", () => {

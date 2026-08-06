@@ -321,9 +321,9 @@ describe("GitStatusPage source header", () => {
       ".source-control-action-row",
     ) as HTMLElement;
     expect(actionRow).not.toBeNull();
-    expect(actionRow.querySelector(".review-tray-button")?.textContent).toContain(
-      "sourceReviewStart",
-    );
+    expect(
+      actionRow.querySelector(".review-tray-button")?.textContent,
+    ).toContain("sourceReviewStart");
     expect(
       document.querySelector('.git-status > [data-testid="repo-status-bar"]'),
     ).toBeNull();
@@ -359,7 +359,9 @@ describe("GitStatusPage source header", () => {
       screen.getByRole("button", { name: "gitStatusIgnoreWhitespace" }),
     );
 
-    expect(await screen.findByText("sourceProjectionUpgradeNotice")).toBeDefined();
+    expect(
+      await screen.findByText("sourceProjectionUpgradeNotice"),
+    ).toBeDefined();
     expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
       expect.objectContaining({ ignoreWhitespace: false }),
     );
@@ -423,9 +425,7 @@ describe("GitStatusPage source header", () => {
         .getByRole("tab", { name: /sourceTabChanges/ })
         .getAttribute("aria-selected"),
     ).toBe("true");
-    expect(
-      screen.queryByRole("tab", { name: "sourceTabCommits" }),
-    ).toBeNull();
+    expect(screen.queryByRole("tab", { name: "sourceTabCommits" })).toBeNull();
   });
 
   it("maps legacy commit URLs to history inside Changes", async () => {
@@ -443,9 +443,7 @@ describe("GitStatusPage source header", () => {
     renderPage("/git-status?projectId=project-a&tab=reviews");
 
     expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
-    expect(
-      screen.queryByRole("tab", { name: "sourceTabReviews" }),
-    ).toBeNull();
+    expect(screen.queryByRole("tab", { name: "sourceTabReviews" })).toBeNull();
   });
 
   it("shows Reviews only when capability and persisted opt-in are both present", async () => {
@@ -542,10 +540,7 @@ describe("GitStatusPage source header", () => {
 
   it("shows remote-check feedback without changing the visible button label", async () => {
     let resolveCheck:
-      | ((value: {
-          status: "checked";
-          checkedRemoteAt: string;
-        }) => void)
+      | ((value: { status: "checked"; checkedRemoteAt: string }) => void)
       | undefined;
     mocks.checkGitRemote.mockReturnValue(
       new Promise((resolve) => {
@@ -604,9 +599,7 @@ describe("GitStatusPage source header", () => {
     expect(header.querySelector('[role="tablist"]')).not.toBeNull();
     expect(document.querySelectorAll('[role="tablist"]')).toHaveLength(1);
     expect(document.querySelector(".source-control-mobile-tabs")).toBeNull();
-    expect(
-      document.querySelector(".source-control-action-row"),
-    ).not.toBeNull();
+    expect(document.querySelector(".source-control-action-row")).not.toBeNull();
   });
 
   it("keeps the source-header hooks on a modular project selector", async () => {
@@ -654,56 +647,64 @@ describe("GitStatusPage source header", () => {
 });
 
 describe("GitStatusPage released-server compatibility", () => {
-  it.each(
-    CORE_GIT_COMPATIBILITY_RELEASES,
-  )("keeps basic Source Control for $version ($releasedAt)", async () => {
-    mocks.useVersion.mockReturnValue({
-      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
-      loading: false,
-      error: null,
-    });
+  it.each(CORE_GIT_COMPATIBILITY_RELEASES)(
+    "keeps basic Source Control for $version ($releasedAt)",
+    async () => {
+      mocks.useVersion.mockReturnValue({
+        version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+        loading: false,
+        error: null,
+      });
 
-    renderPage();
+      renderPage();
 
-    expect(
-      await screen.findByText("gitStatusCompatibilityTitle"),
-    ).toBeDefined();
-    expect(screen.getByText("gitStatusCompatibilityDescription")).toBeDefined();
-    expect(screen.getByRole("button", { name: "gitStatusPull" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "gitStatusPush" })).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "gitStatusCheckRemote" }),
-    ).toBeDefined();
-    expect(screen.queryByTestId("commit-browser")).toBeNull();
-    expect(document.querySelector('[role="tablist"]')).toBeNull();
-    expect(document.querySelector(".review-tray-button")).toBeNull();
-    expect(mocks.listReviewComments).not.toHaveBeenCalled();
-  });
+      expect(
+        await screen.findByText("gitStatusCompatibilityTitle"),
+      ).toBeDefined();
+      expect(
+        screen.getByText("gitStatusCompatibilityDescription"),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "gitStatusPull" }),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "gitStatusPush" }),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "gitStatusCheckRemote" }),
+      ).toBeDefined();
+      expect(screen.queryByTestId("commit-browser")).toBeNull();
+      expect(document.querySelector('[role="tablist"]')).toBeNull();
+      expect(document.querySelector(".review-tray-button")).toBeNull();
+      expect(mocks.listReviewComments).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each(
-    CORE_GIT_COMPATIBILITY_RELEASES,
-  )("keeps generic action feedback for $version ($releasedAt)", async () => {
-    mocks.useVersion.mockReturnValue({
-      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
-      loading: false,
-      error: null,
-    });
+  it.each(CORE_GIT_COMPATIBILITY_RELEASES)(
+    "keeps generic action feedback for $version ($releasedAt)",
+    async () => {
+      mocks.useVersion.mockReturnValue({
+        version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+        loading: false,
+        error: null,
+      });
 
-    renderPage();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "gitStatusPull" }),
-    );
-    expect((await screen.findByRole("status")).textContent).toContain(
-      "gitStatusPullSuccess",
-    );
+      renderPage();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "gitStatusPull" }),
+      );
+      expect((await screen.findByRole("status")).textContent).toContain(
+        "gitStatusPullSuccess",
+      );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "gitStatusPush" }),
-    );
-    expect((await screen.findByRole("status")).textContent).toContain(
-      "gitStatusPushSuccess",
-    );
-  });
+      fireEvent.click(
+        await screen.findByRole("button", { name: "gitStatusPush" }),
+      );
+      expect((await screen.findByRole("status")).textContent).toContain(
+        "gitStatusPushSuccess",
+      );
+    },
+  );
 
   it("shows commit counts supplied by a current server", async () => {
     mocks.useVersion.mockReturnValue({

@@ -188,7 +188,9 @@ export function AssistantTurnImageGallery({
   );
   const candidatesById = useMemo(
     () =>
-      new Map(candidates.map((candidate) => [candidate.id, candidate] as const)),
+      new Map(
+        candidates.map((candidate) => [candidate.id, candidate] as const),
+      ),
     [candidates],
   );
   const candidateLabels = useMemo(
@@ -663,9 +665,7 @@ export function AssistantTurnImageGallery({
                           });
                         }}
                         onFeature={setFeaturedId}
-                        onOpen={(candidate) =>
-                          openViewer(candidate, "gallery")
-                        }
+                        onOpen={(candidate) => openViewer(candidate, "gallery")}
                         registerElement={(id, element) => {
                           if (element) {
                             thumbnailElementsRef.current.set(id, element);

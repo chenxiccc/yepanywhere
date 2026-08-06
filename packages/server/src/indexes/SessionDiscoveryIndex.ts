@@ -100,8 +100,7 @@ function isValidSourceFingerprint(value: unknown): boolean {
   return (
     (value.dev === undefined || typeof value.dev === "number") &&
     (value.ino === undefined || typeof value.ino === "number") &&
-    (value.birthtimeMs === undefined ||
-      typeof value.birthtimeMs === "number")
+    (value.birthtimeMs === undefined || typeof value.birthtimeMs === "number")
   );
 }
 
@@ -154,9 +153,7 @@ export class SessionDiscoveryIndex {
   ): Promise<SessionDiscoveryRecord<TMetadata> | null> {
     const shard = await this.loadShard(shardKey);
     const record = shard.records[key];
-    return record
-      ? (record as SessionDiscoveryRecord<TMetadata>)
-      : null;
+    return record ? (record as SessionDiscoveryRecord<TMetadata>) : null;
   }
 
   async upsertRecord<TMetadata>(
@@ -183,8 +180,7 @@ export class SessionDiscoveryIndex {
       lastValidatedAtMs: nowMs,
     };
 
-    shard.records[input.key] =
-      record as SessionDiscoveryRecord<unknown>;
+    shard.records[input.key] = record as SessionDiscoveryRecord<unknown>;
     shard.updatedAtMs = nowMs;
     this.dirtyShardKeys.add(shardKey);
   }

@@ -190,10 +190,7 @@ export function encodeRelayMuxDataFrame(
 export function decodeRelayMuxDataFrame(
   input: ArrayBuffer | Uint8Array,
 ): RelayMuxDataFrame {
-  const bytes =
-    input instanceof Uint8Array
-      ? input
-      : new Uint8Array(input);
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   if (bytes.byteLength < RELAY_MUX_HEADER_BYTES) {
     throw new RelayMuxFrameError("Relay mux data frame is too short");
   }

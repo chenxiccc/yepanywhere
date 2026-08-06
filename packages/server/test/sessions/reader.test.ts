@@ -950,7 +950,9 @@ describe("SessionReader", () => {
         "test-project" as UrlProjectId,
       );
       const session = loadedSession ? normalizeSession(loadedSession) : null;
-      const renderItems = session ? compileTranscriptProjection(session.messages) : [];
+      const renderItems = session
+        ? compileTranscriptProjection(session.messages)
+        : [];
 
       expect(session?.messages.map((message) => message.uuid)).toEqual([
         "u1",
@@ -1365,16 +1367,8 @@ describe("SessionReader", () => {
   describe("getAgentMappings — SDK 0.2.76+ (subagents/ dir)", () => {
     it("finds current SDK children under their parent session", async () => {
       const parentSessionId = "parent-session";
-      const subagentsDir = join(
-        testDir,
-        parentSessionId,
-        "subagents",
-      );
-      const otherSubagentsDir = join(
-        testDir,
-        "other-parent",
-        "subagents",
-      );
+      const subagentsDir = join(testDir, parentSessionId, "subagents");
+      const otherSubagentsDir = join(testDir, "other-parent", "subagents");
       await mkdir(subagentsDir, { recursive: true });
       await mkdir(otherSubagentsDir, { recursive: true });
 
@@ -1529,11 +1523,7 @@ describe("SessionReader", () => {
   describe("getAgentSession — SDK 0.2.76+ (subagents/ dir)", () => {
     it("loads a current SDK child from its parent session directory", async () => {
       const parentSessionId = "parent-session";
-      const subagentsDir = join(
-        testDir,
-        parentSessionId,
-        "subagents",
-      );
+      const subagentsDir = join(testDir, parentSessionId, "subagents");
       await mkdir(subagentsDir, { recursive: true });
       await writeFile(
         join(subagentsDir, "agent-current1.jsonl"),
@@ -1554,10 +1544,7 @@ describe("SessionReader", () => {
         ].join("\n"),
       );
 
-      const session = await reader.getAgentSession(
-        "current1",
-        parentSessionId,
-      );
+      const session = await reader.getAgentSession("current1", parentSessionId);
       expect(session.messages).toHaveLength(2);
       expect(session.status).toBe("completed");
     });

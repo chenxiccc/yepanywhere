@@ -109,7 +109,10 @@ describe("Markdown preview rich-text copy", () => {
     page = await context.newPage();
     await page.goto(`http://127.0.0.1:${port}`);
     await page.waitForFunction(() =>
-      Boolean((window as typeof window & { semanticCopyReady?: boolean }).semanticCopyReady),
+      Boolean(
+        (window as typeof window & { semanticCopyReady?: boolean })
+          .semanticCopyReady,
+      ),
     );
   }, 30_000);
 

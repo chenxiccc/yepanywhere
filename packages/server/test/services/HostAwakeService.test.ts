@@ -145,7 +145,10 @@ describe("HostAwakeService", () => {
       "idle-and-closed-lid-on-external-power",
     );
 
-    expect(check).toMatchObject({ ok: false, status: { state: "unsupported" } });
+    expect(check).toMatchObject({
+      ok: false,
+      status: { state: "unsupported" },
+    });
     expect(service.status().state).toBe("active");
     expect(backend.probe).not.toHaveBeenCalled();
     expect(backend.leases[0]?.release).not.toHaveBeenCalled();

@@ -80,8 +80,7 @@ function serializeWorkstreamError(error: unknown): {
 
   if (error instanceof WorkstreamCheckoutError) {
     return {
-      status:
-        error.status === 400 || error.status === 409 ? error.status : 500,
+      status: error.status === 400 || error.status === 409 ? error.status : 500,
       body: {
         error: error.message,
         code: error.code,
@@ -145,14 +144,13 @@ export function createWorkstreamRoutes(deps: WorkstreamRoutesDeps): Hono {
 
     try {
       const { project } = resolved;
-      const destination = await deps.workstreamService.previewCheckoutWorkstream(
-        {
+      const destination =
+        await deps.workstreamService.previewCheckoutWorkstream({
           projectId: project.id as UrlProjectId,
           projectPath: project.path,
           projectName: project.name,
           label: c.req.query("label") ?? "",
-        },
-      );
+        });
       const response: WorkstreamCheckoutPreviewResponse = {
         projectId: project.id as UrlProjectId,
         ...destination,

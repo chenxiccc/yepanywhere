@@ -351,56 +351,62 @@ describe("session sandbox", () => {
     expect(codex?.projectPath).toBe(projectPath);
   });
 
-  t("refuses to follow a replaced project directory before launch", async () => {
-    const root = await fixtureRoot();
-    const projectPath = join(root, "project");
-    const originalPath = join(root, "project-original");
-    await mkdir(projectPath);
-    const runtime = await prepareSessionSandbox({
-      level: "project-write",
-      provider: "codex",
-      projectPath,
-      stateRoot: join(root, "state"),
-    });
-    if (!runtime) throw new Error("sandbox runtime was not prepared");
+  t(
+    "refuses to follow a replaced project directory before launch",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      const originalPath = join(root, "project-original");
+      await mkdir(projectPath);
+      const runtime = await prepareSessionSandbox({
+        level: "project-write",
+        provider: "codex",
+        projectPath,
+        stateRoot: join(root, "state"),
+      });
+      if (!runtime) throw new Error("sandbox runtime was not prepared");
 
-    await rename(projectPath, originalPath);
-    await mkdir(projectPath);
+      await rename(projectPath, originalPath);
+      await mkdir(projectPath);
 
-    expect(() =>
-      runtime.wrapSpawn("/bin/true", [], process.env),
-    ).toThrow(/project boundary changed.*refusing to follow/i);
-  });
+      expect(() => runtime.wrapSpawn("/bin/true", [], process.env)).toThrow(
+        /project boundary changed.*refusing to follow/i,
+      );
+    },
+  );
 
-  t("keeps the anchored project when its path changes before spawn", async () => {
-    const root = await fixtureRoot();
-    const projectPath = join(root, "project");
-    const originalPath = join(root, "project-original");
-    await mkdir(projectPath);
-    const runtime = await prepareSessionSandbox({
-      level: "project-write",
-      provider: "codex",
-      projectPath,
-      stateRoot: join(root, "state"),
-    });
-    if (!runtime) throw new Error("sandbox runtime was not prepared");
-    const spawnOptions = runtime.wrapSpawn(
-      "/bin/sh",
-      ["-c", "printf anchored > anchored.txt"],
-      process.env,
-    );
+  t(
+    "keeps the anchored project when its path changes before spawn",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      const originalPath = join(root, "project-original");
+      await mkdir(projectPath);
+      const runtime = await prepareSessionSandbox({
+        level: "project-write",
+        provider: "codex",
+        projectPath,
+        stateRoot: join(root, "state"),
+      });
+      if (!runtime) throw new Error("sandbox runtime was not prepared");
+      const spawnOptions = runtime.wrapSpawn(
+        "/bin/sh",
+        ["-c", "printf anchored > anchored.txt"],
+        process.env,
+      );
 
-    await rename(projectPath, originalPath);
-    await mkdir(projectPath);
-    await runSandboxed(spawnOptions);
+      await rename(projectPath, originalPath);
+      await mkdir(projectPath);
+      await runSandboxed(spawnOptions);
 
-    await expect(
-      readFile(join(originalPath, "anchored.txt"), "utf8"),
-    ).resolves.toBe("anchored");
-    await expect(
-      readFile(join(projectPath, "anchored.txt"), "utf8"),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-  });
+      await expect(
+        readFile(join(originalPath, "anchored.txt"), "utf8"),
+      ).resolves.toBe("anchored");
+      await expect(
+        readFile(join(projectPath, "anchored.txt"), "utf8"),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
 
   t("forks Claude transcripts inside the inherited private state", async () => {
     const root = await fixtureRoot();

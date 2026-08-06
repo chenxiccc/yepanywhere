@@ -284,11 +284,7 @@ export function SessionMenu({
     : undefined;
 
   const dropdownContent = (
-    <div
-      ref={dropdownRef}
-      className={styles.dropdown}
-      style={dropdownStyle}
-    >
+    <div ref={dropdownRef} className={styles.dropdown} style={dropdownStyle}>
       <button type="button" onClick={() => handleAction(onToggleStar)}>
         <svg
           width="14"

@@ -60,8 +60,7 @@ function parseNumstatCounts(
     const record = tokens[index++];
     if (!record) continue;
     const firstTab = record.indexOf("\t");
-    const secondTab =
-      firstTab < 0 ? -1 : record.indexOf("\t", firstTab + 1);
+    const secondTab = firstTab < 0 ? -1 : record.indexOf("\t", firstTab + 1);
     if (firstTab < 0 || secondTab < 0) continue;
     const added = record.slice(0, firstTab);
     const deleted = record.slice(firstTab + 1, secondTab);

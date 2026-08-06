@@ -41,9 +41,7 @@ test.describe("Session streams", () => {
       });
     });
 
-    await page.goto(
-      `${baseURL}/projects/${projectId}/sessions/${sessionId}`,
-    );
+    await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
     await dismissOnboardingIfVisible(page);
 
     await expect(
@@ -54,7 +52,9 @@ test.describe("Session streams", () => {
       .poll(
         () =>
           sentMessages.find(
-            (message): message is {
+            (
+              message,
+            ): message is {
               type: string;
               channel: string;
               sessionId: string;
@@ -63,8 +63,7 @@ test.describe("Session streams", () => {
               Boolean(message) &&
               typeof message === "object" &&
               (message as { type?: unknown }).type === "subscribe" &&
-              (message as { channel?: unknown }).channel ===
-                "session-watch" &&
+              (message as { channel?: unknown }).channel === "session-watch" &&
               (message as { sessionId?: unknown }).sessionId === sessionId,
           ),
         { timeout: 5000 },

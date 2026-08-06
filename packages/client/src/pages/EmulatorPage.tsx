@@ -189,8 +189,7 @@ function DeviceList({
 function firstStreamableDevice(devices: DeviceInfo[]): DeviceInfo | undefined {
   for (const type of DEVICE_TYPE_ORDER) {
     const device = devices.find(
-      (candidate) =>
-        candidate.type === type && hasAction(candidate, "stream"),
+      (candidate) => candidate.type === type && hasAction(candidate, "stream"),
     );
     if (device) return device;
   }

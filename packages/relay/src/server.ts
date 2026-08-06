@@ -148,8 +148,7 @@ export async function createRelayServer(
     muxMaxCircuitsPerIp: options.muxMaxCircuitsPerIp ?? 20,
     muxOpenAttemptsPerMinutePerSocket:
       options.muxOpenAttemptsPerMinutePerSocket ?? 20,
-    muxOpenAttemptsPerMinutePerIp:
-      options.muxOpenAttemptsPerMinutePerIp ?? 60,
+    muxOpenAttemptsPerMinutePerIp: options.muxOpenAttemptsPerMinutePerIp ?? 60,
     muxOpenAttemptsPerMinutePerIpUsername:
       options.muxOpenAttemptsPerMinutePerIpUsername ?? 6,
     muxMaxFrameBytes: options.muxMaxFrameBytes ?? 2 * 1024 * 1024,

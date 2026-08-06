@@ -2,28 +2,12 @@ import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Logger } from "pino";
-import {
-  type TrustedProxy,
-  getClientIp,
-} from "./client-ip.js";
-import {
-  isGeneratedSecret,
-  isOpaqueId,
-} from "./credentials.js";
+import { type TrustedProxy, getClientIp } from "./client-ip.js";
+import { isGeneratedSecret, isOpaqueId } from "./credentials.js";
 import { FixedWindowRateLimiter } from "./rate-limiter.js";
-import {
-  type PushRepository,
-  SubscriptionLimitError,
-} from "./repository.js";
-import type {
-  PushDeliveryResult,
-  PushIntent,
-  PushProvider,
-} from "./types.js";
-import {
-  parseInstallationBody,
-  parseNotificationBody,
-} from "./validation.js";
+import { type PushRepository, SubscriptionLimitError } from "./repository.js";
+import type { PushDeliveryResult, PushIntent, PushProvider } from "./types.js";
+import { parseInstallationBody, parseNotificationBody } from "./validation.js";
 
 const MAX_JSON_BODY_BYTES = 8 * 1024;
 const GENERIC_TITLE = "Yep Anywhere";
@@ -67,7 +51,9 @@ export interface CreateBrokerAppOptions {
   now?: () => number;
 }
 
-export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv> {
+export function createBrokerApp(
+  options: CreateBrokerAppOptions,
+): Hono<BrokerEnv> {
   const trustedProxies = options.trustedProxies ?? [];
   const providerTimeoutMs =
     options.providerTimeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
@@ -180,41 +166,32 @@ export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv
     return c.body(null, 204);
   });
 
-  app.post(
-    "/v1/installations/:installationId/subscriptions",
-    (c) => {
-      const authenticated = authenticateInstallation(
-        c,
-        options.repository,
-      );
-      if (!authenticated) return capabilityNotFound(c);
+  app.post("/v1/installations/:installationId/subscriptions", (c) => {
+    const authenticated = authenticateInstallation(c, options.repository);
+    if (!authenticated) return capabilityNotFound(c);
 
-      try {
-        const credentials = options.repository.createSubscription(
-          authenticated.installation.id,
+    try {
+      const credentials = options.repository.createSubscription(
+        authenticated.installation.id,
+      );
+      return c.json(credentials, 201);
+    } catch (error) {
+      if (error instanceof SubscriptionLimitError) {
+        return jsonError(
+          c,
+          409,
+          "subscription_limit_reached",
+          "Installation subscription limit reached",
         );
-        return c.json(credentials, 201);
-      } catch (error) {
-        if (error instanceof SubscriptionLimitError) {
-          return jsonError(
-            c,
-            409,
-            "subscription_limit_reached",
-            "Installation subscription limit reached",
-          );
-        }
-        throw error;
       }
-    },
-  );
+      throw error;
+    }
+  });
 
   app.delete(
     "/v1/installations/:installationId/subscriptions/:subscriptionId",
     (c) => {
-      const authenticated = authenticateInstallation(
-        c,
-        options.repository,
-      );
+      const authenticated = authenticateInstallation(c, options.repository);
       const subscriptionId = c.req.param("subscriptionId");
       if (
         !authenticated ||
@@ -231,101 +208,92 @@ export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv
     },
   );
 
-  app.post(
-    "/v1/subscriptions/:subscriptionId/notifications",
-    async (c) => {
-      const subscriptionId = c.req.param("subscriptionId");
-      const sendSecret = readBearerSecret(c);
-      if (!isOpaqueId(subscriptionId) || !sendSecret) {
-        return capabilityNotFound(c);
-      }
+  app.post("/v1/subscriptions/:subscriptionId/notifications", async (c) => {
+    const subscriptionId = c.req.param("subscriptionId");
+    const sendSecret = readBearerSecret(c);
+    if (!isOpaqueId(subscriptionId) || !sendSecret) {
+      return capabilityNotFound(c);
+    }
 
-      const subscription = options.repository.authenticateSubscription(
-        subscriptionId,
-        sendSecret,
-      );
-      if (!subscription) return capabilityNotFound(c);
+    const subscription = options.repository.authenticateSubscription(
+      subscriptionId,
+      sendSecret,
+    );
+    if (!subscription) return capabilityNotFound(c);
 
-      const subscriptionLimited = rateLimitResponse(
-        c,
-        rateLimits.sendBySubscription.consume(subscription.id),
-      );
-      if (subscriptionLimited) return subscriptionLimited;
+    const subscriptionLimited = rateLimitResponse(
+      c,
+      rateLimits.sendBySubscription.consume(subscription.id),
+    );
+    if (subscriptionLimited) return subscriptionLimited;
 
-      const installationLimited = rateLimitResponse(
-        c,
-        rateLimits.sendByInstallation.consume(subscription.installationId),
-      );
-      if (installationLimited) return installationLimited;
+    const installationLimited = rateLimitResponse(
+      c,
+      rateLimits.sendByInstallation.consume(subscription.installationId),
+    );
+    if (installationLimited) return installationLimited;
 
-      const body = await readJsonBody(c);
-      if (!body.ok) return body.response;
-      const parsed = parseNotificationBody(body.value);
-      if (!parsed) {
-        return jsonError(
-          c,
-          400,
-          "invalid_notification",
-          "Notification request is invalid",
-        );
-      }
-
-      // The first authentication supplies stable rate-limit keys. Recheck
-      // after reading the body so a concurrently revoked send capability
-      // cannot reach the provider.
-      const currentSubscription =
-        options.repository.authenticateSubscription(
-          subscriptionId,
-          sendSecret,
-        );
-      if (!currentSubscription) return capabilityNotFound(c);
-
-      let result: PushDeliveryResult;
-      try {
-        result = await sendWithTimeout(
-          options.provider,
-          {
-            target: currentSubscription.target,
-            message: buildGenericMessage(
-              currentSubscription.id,
-              parsed.intent,
-            ),
-          },
-          providerTimeoutMs,
-        );
-      } catch {
-        options.logger.error(
-          { provider: options.provider.name },
-          "Push provider threw unexpectedly",
-        );
-        result = { status: "rejected" };
-      }
-
-      if (result.status === "accepted") {
-        options.repository.touchSubscription(subscription.id);
-        return c.json({ accepted: true }, 202);
-      }
-      if (result.status === "retryable_failure") {
-        c.header("Retry-After", "30");
-        return jsonError(
-          c,
-          503,
-          "provider_unavailable",
-          "Push provider is temporarily unavailable",
-        );
-      }
+    const body = await readJsonBody(c);
+    if (!body.ok) return body.response;
+    const parsed = parseNotificationBody(body.value);
+    if (!parsed) {
       return jsonError(
         c,
-        502,
-        "delivery_rejected",
-        "Push provider rejected the notification",
+        400,
+        "invalid_notification",
+        "Notification request is invalid",
       );
-    },
-  );
+    }
 
-  app.notFound((c) =>
-    jsonError(c, 404, "not_found", "Resource was not found"),
-  );
+    // The first authentication supplies stable rate-limit keys. Recheck
+    // after reading the body so a concurrently revoked send capability
+    // cannot reach the provider.
+    const currentSubscription = options.repository.authenticateSubscription(
+      subscriptionId,
+      sendSecret,
+    );
+    if (!currentSubscription) return capabilityNotFound(c);
+
+    let result: PushDeliveryResult;
+    try {
+      result = await sendWithTimeout(
+        options.provider,
+        {
+          target: currentSubscription.target,
+          message: buildGenericMessage(currentSubscription.id, parsed.intent),
+        },
+        providerTimeoutMs,
+      );
+    } catch {
+      options.logger.error(
+        { provider: options.provider.name },
+        "Push provider threw unexpectedly",
+      );
+      result = { status: "rejected" };
+    }
+
+    if (result.status === "accepted") {
+      options.repository.touchSubscription(subscription.id);
+      return c.json({ accepted: true }, 202);
+    }
+    if (result.status === "retryable_failure") {
+      c.header("Retry-After", "30");
+      return jsonError(
+        c,
+        503,
+        "provider_unavailable",
+        "Push provider is temporarily unavailable",
+      );
+    }
+    return jsonError(
+      c,
+      502,
+      "delivery_rejected",
+      "Push provider rejected the notification",
+    );
+  });
+
+  app.notFound((c) => jsonError(c, 404, "not_found", "Resource was not found"));
 
   app.onError((error, c) => {
     options.logger.error(
@@ -347,9 +315,7 @@ class BrokerRateLimits {
   readonly sendBySubscription: FixedWindowRateLimiter;
   readonly sendByInstallation: FixedWindowRateLimiter;
 
-  constructor(
-    options: BrokerRateLimitOptions & { now?: () => number },
-  ) {
+  constructor(options: BrokerRateLimitOptions & { now?: () => number }) {
     const shared = {
       maxEntries: options.maxEntries,
       now: options.now,
@@ -408,9 +374,7 @@ function readBearerSecret(c: Context<BrokerEnv>): string | undefined {
 
 async function readJsonBody(
   c: Context<BrokerEnv>,
-): Promise<
-  { ok: true; value: unknown } | { ok: false; response: Response }
-> {
+): Promise<{ ok: true; value: unknown } | { ok: false; response: Response }> {
   const contentType = c.req.header("content-type")?.toLowerCase() ?? "";
   if (!/^application\/json(?:\s*;|$)/.test(contentType)) {
     return {
@@ -439,10 +403,7 @@ async function readJsonBody(
   }
 }
 
-function buildGenericMessage(
-  subscriptionId: string,
-  intent: PushIntent,
-) {
+function buildGenericMessage(subscriptionId: string, intent: PushIntent) {
   return {
     title: GENERIC_TITLE,
     body: GENERIC_BODY,

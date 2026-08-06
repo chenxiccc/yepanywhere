@@ -340,9 +340,7 @@ export function CommitBrowser({
             selectedSha={selectedSha}
             selectedCommit={selectedCommit}
             detail={detail}
-            loading={
-              loadingDetail || (compareToHead && loadingComparison)
-            }
+            loading={loadingDetail || (compareToHead && loadingComparison)}
             detailError={detailError}
             compareToHead={compareToHead}
             isWideScreen={isWideScreen}

@@ -7,12 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   installMessageListTestEnvironment,
   assistantMessage,
@@ -51,8 +46,7 @@ describe("MessageList queue rows", () => {
 
   it("offers take-to-composer editing only while the composer is blank", () => {
     const onEditDeferred = vi.fn();
-    const composerEditAvailabilityStore =
-      createComposerEditAvailabilityStore();
+    const composerEditAvailabilityStore = createComposerEditAvailabilityStore();
     composerEditAvailabilityStore.setDraftText("   ");
     const deferredMessages = [
       {

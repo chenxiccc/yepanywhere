@@ -323,8 +323,7 @@ describe("clientSummaryState", () => {
       selectSessionCollectionRecord(state, "child-session")?.parentSessionId,
     ).toBe(canonicalId);
     expect(
-      selectSessionCollectionRecord(state, "fork-session")
-        ?.forkedFromSessionId,
+      selectSessionCollectionRecord(state, "fork-session")?.forkedFromSessionId,
     ).toBe(canonicalId);
 
     state = applyGlobalSessionsCollectionSnapshot(

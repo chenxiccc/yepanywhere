@@ -440,9 +440,7 @@ function scanDraftSessionIdsIntoStore(sourceKey: ClientSummarySourceKey): void {
   reportDraftSessionIdsSnapshot(sourceKey, scanSessionDraftIds(sourceKey));
 }
 
-function applyDraftPresenceChangeIntoStore(
-  change: DraftPresenceChange,
-): void {
+function applyDraftPresenceChangeIntoStore(change: DraftPresenceChange): void {
   const sessionDraft = change.sessionDraft;
   if (!sessionDraft) {
     return;

@@ -25,9 +25,7 @@ function rect(
   };
 }
 
-function renderBanner(
-  props: Partial<Parameters<typeof ReloadBanner>[0]> = {},
-) {
+function renderBanner(props: Partial<Parameters<typeof ReloadBanner>[0]> = {}) {
   return render(
     <I18nProvider>
       <ReloadBanner
@@ -71,9 +69,7 @@ describe("ReloadBanner", () => {
       onDismiss,
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reload When Safe" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload When Safe" }));
 
     expect(onRestartWhenSafe).toHaveBeenCalledTimes(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -89,9 +85,7 @@ describe("ReloadBanner", () => {
       onDismiss,
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reload When Safe" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload When Safe" }));
 
     expect(onRestartWhenSafe).toHaveBeenCalledTimes(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -261,12 +255,10 @@ describe("ReloadBanner", () => {
       </>,
     );
 
-    const stack = document.querySelector<HTMLElement>(
-      ".reload-banner-stack",
+    const stack = document.querySelector<HTMLElement>(".reload-banner-stack");
+    expect(stack?.style.getPropertyValue("--reload-banner-stack-lift")).toBe(
+      "158px",
     );
-    expect(
-      stack?.style.getPropertyValue("--reload-banner-stack-lift"),
-    ).toBe("158px");
 
     unmount();
     geometry.mockRestore();
@@ -297,12 +289,10 @@ describe("ReloadBanner", () => {
       </>,
     );
 
-    const stack = document.querySelector<HTMLElement>(
-      ".reload-banner-stack",
+    const stack = document.querySelector<HTMLElement>(".reload-banner-stack");
+    expect(stack?.style.getPropertyValue("--reload-banner-stack-lift")).toBe(
+      "124px",
     );
-    expect(
-      stack?.style.getPropertyValue("--reload-banner-stack-lift"),
-    ).toBe("124px");
 
     unmount();
     geometry.mockRestore();

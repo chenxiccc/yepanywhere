@@ -102,12 +102,7 @@ export function CommitFilesPane({
     if ((nextFile?.path ?? null) !== selectedPath) {
       onFilteredSelectionChange(nextFile);
     }
-  }, [
-    filteredFiles,
-    isWideScreen,
-    onFilteredSelectionChange,
-    selectedPath,
-  ]);
+  }, [filteredFiles, isWideScreen, onFilteredSelectionChange, selectedPath]);
 
   const fileMenuActions = (file: GitFileChange): SourceContextMenuAction[] => [
     {

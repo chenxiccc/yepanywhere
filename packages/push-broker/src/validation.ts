@@ -63,11 +63,7 @@ function isExactRecord(
   value: unknown,
   expectedKeys: readonly string[],
 ): value is Record<string, unknown> {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
 

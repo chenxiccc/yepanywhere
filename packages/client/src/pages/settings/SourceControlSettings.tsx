@@ -44,8 +44,7 @@ export function SourceControlSettings() {
     (snapshot: NonNullable<typeof undoState>) => {
       setTurnsDraft(null);
       void updateSettings({
-        sourceReviewSubmissionsEnabled:
-          snapshot.sourceReviewSubmissionsEnabled,
+        sourceReviewSubmissionsEnabled: snapshot.sourceReviewSubmissionsEnabled,
         sourceReviewResponseTurns: snapshot.responseTurns,
       }).catch(() => {
         // The hook keeps the actionable error visible in this pane.

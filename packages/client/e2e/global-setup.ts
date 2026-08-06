@@ -222,11 +222,11 @@ export default async function globalSetup() {
   ];
   writeFileSync(
     transcriptSpecimenFile,
-    transcriptSpecimenMessages.map((message) => JSON.stringify(message)).join("\n"),
+    transcriptSpecimenMessages
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
   );
-  console.log(
-    `[E2E] Created transcript specimen at ${transcriptSpecimenFile}`,
-  );
+  console.log(`[E2E] Created transcript specimen at ${transcriptSpecimenFile}`);
 
   const repoRoot = join(__dirname, "..", "..", "..");
   const serverRoot = join(repoRoot, "packages", "server");

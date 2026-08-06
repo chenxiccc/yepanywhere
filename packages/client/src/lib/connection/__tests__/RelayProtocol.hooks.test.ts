@@ -4,10 +4,7 @@ import type {
   UploadedFile,
 } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  RelayProtocol,
-  type RelayTransport,
-} from "../RelayProtocol";
+import { RelayProtocol, type RelayTransport } from "../RelayProtocol";
 
 function testFile(name: string, body: string, type: string): File {
   const bytes = new TextEncoder().encode(body);
@@ -120,7 +117,7 @@ describe("RelayProtocol hooks", () => {
     expect(endCriticalOperation).toHaveBeenCalledTimes(1);
     expect(transport.sendUploadChunk).toHaveBeenCalledTimes(1);
     expect(
-      (sent.find((msg) => msg.type === "request") as RelayRequest | undefined),
+      sent.find((msg) => msg.type === "request") as RelayRequest | undefined,
     ).toBeUndefined();
   });
 

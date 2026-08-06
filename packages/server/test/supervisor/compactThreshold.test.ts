@@ -64,17 +64,17 @@ describe("native compact-threshold routing", () => {
         forceYaOrchestratedCompaction: true,
       }),
     ).toBeUndefined();
-    expect(
-      shouldYaOrchestrateCompactThreshold(nativeProvider, true),
-    ).toBe(true);
+    expect(shouldYaOrchestrateCompactThreshold(nativeProvider, true)).toBe(
+      true,
+    );
   });
 
   it("uses YA orchestration only when native support is absent or bypassed", () => {
-    expect(
-      shouldYaOrchestrateCompactThreshold(nativeProvider, false),
-    ).toBe(false);
-    expect(
-      shouldYaOrchestrateCompactThreshold(emulatedProvider, false),
-    ).toBe(true);
+    expect(shouldYaOrchestrateCompactThreshold(nativeProvider, false)).toBe(
+      false,
+    );
+    expect(shouldYaOrchestrateCompactThreshold(emulatedProvider, false)).toBe(
+      true,
+    );
   });
 });

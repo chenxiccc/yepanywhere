@@ -128,7 +128,9 @@ export function createSessionNavigationState(
     ...(state.initialProvider
       ? { initialProvider: state.initialProvider }
       : {}),
-    ...(state.composerPrefill ? { composerPrefill: state.composerPrefill } : {}),
+    ...(state.composerPrefill
+      ? { composerPrefill: state.composerPrefill }
+      : {}),
     ...(state.focusComposer ? { focusComposer: true } : {}),
     ...(state.scrollToRenderId
       ? { scrollToRenderId: state.scrollToRenderId }

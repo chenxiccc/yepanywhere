@@ -21,7 +21,9 @@ const { title, description, currentPath, headings = [] } = Astro.props;
 const currentIndex = docsItems.findIndex((item) => item.path === currentPath);
 const previous = currentIndex > 0 ? docsItems[currentIndex - 1] : undefined;
 const next = currentIndex >= 0 ? docsItems[currentIndex + 1] : undefined;
-const tableOfContents = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
+const tableOfContents = headings.filter(
+  (heading) => heading.depth === 2 || heading.depth === 3,
+);
 ---
 
 <BaseLayout title={`${title} - Yep Anywhere Docs`} description={description}>

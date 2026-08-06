@@ -140,7 +140,10 @@ export class GeminiSessionScanner {
           const variant = existing.pathVariants.get(cwd);
           if (variant) {
             variant.count += 1;
-            variant.lastActivity = Math.max(variant.lastActivity, session.mtime);
+            variant.lastActivity = Math.max(
+              variant.lastActivity,
+              session.mtime,
+            );
           } else {
             existing.pathVariants.set(cwd, {
               count: 1,

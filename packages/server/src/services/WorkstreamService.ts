@@ -233,7 +233,10 @@ function isErrno(error: unknown, code: string): boolean {
 
 function isPathInside(parent: string, candidate: string): boolean {
   const relative = path.relative(parent, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 function slugifyPathSegment(
@@ -328,7 +331,14 @@ async function gitRefExists(
   refName: string,
 ): Promise<boolean> {
   try {
-    await runGit(["-C", projectPath, "show-ref", "--verify", "--quiet", refName]);
+    await runGit([
+      "-C",
+      projectPath,
+      "show-ref",
+      "--verify",
+      "--quiet",
+      refName,
+    ]);
     return true;
   } catch {
     return false;
@@ -337,7 +347,12 @@ async function gitRefExists(
 
 async function getCurrentBranch(projectPath: string): Promise<string | null> {
   try {
-    const branch = await runGit(["-C", projectPath, "branch", "--show-current"]);
+    const branch = await runGit([
+      "-C",
+      projectPath,
+      "branch",
+      "--show-current",
+    ]);
     return branch || null;
   } catch {
     return null;
@@ -575,7 +590,10 @@ export class WorkstreamService {
             originUrl,
           ]);
         }
-        await this.copyWorktreeInclude(sourceRoot, destination.checkoutRootPath);
+        await this.copyWorktreeInclude(
+          sourceRoot,
+          destination.checkoutRootPath,
+        );
 
         const branch =
           (await getCurrentBranch(destination.checkoutPath)) ??
@@ -732,7 +750,11 @@ export class WorkstreamService {
     const checkoutBasePath = path.join(
       this.dataDir,
       CHECKOUTS_DIR_NAME,
-      getProjectCheckoutSegment(input.projectId, input.projectName, projectPath),
+      getProjectCheckoutSegment(
+        input.projectId,
+        input.projectName,
+        projectPath,
+      ),
     );
     const baseSlug = slugifyPathSegment(
       label,
