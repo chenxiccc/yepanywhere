@@ -417,6 +417,22 @@ interface RestartSessionBody extends CreateSessionBody {
   handoffText?: string;
 }
 
+function parseOptionalRestartSessionBody(
+  rawBody: string,
+): { body: RestartSessionBody } | { error: string } {
+  if (rawBody.trim().length === 0) return { body: {} };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return { error: "Invalid JSON body" };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { error: "Invalid JSON body" };
+  }
+  return { body: parsed as RestartSessionBody };
+}
+
 const RESTART_HANDOFF_MAX_CHARS = 40_000;
 const RESTART_HANDOFF_JSON_MAX_CHARS = 2_000;
 const RESTART_HANDOFF_COMPACT_MAX_CHARS = 10_000;
@@ -4344,16 +4360,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
+    const parsedBody = parseOptionalRestartSessionBody(await c.req.text());
+    if ("error" in parsedBody) {
+      return c.json({ error: parsedBody.error }, 400);
+    }
+    const { body } = parsedBody;
+
     const project = await deps.scanner.getOrCreateProject(projectId);
     if (!project) {
       return c.json({ error: "Project not found or path does not exist" }, 404);
-    }
-
-    let body: RestartSessionBody = {};
-    try {
-      body = await c.req.json<RestartSessionBody>();
-    } catch {
-      // Body is optional for this endpoint.
     }
 
     const modeError = permissionModeError(body.mode);

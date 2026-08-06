@@ -2384,6 +2384,151 @@ describe("Sessions metadata route", () => {
     );
   });
 
+  it.each([
+    { label: "absent", body: undefined },
+    { label: "whitespace-only", body: " \n\t " },
+  ])("accepts an $label restart body as defaults", async ({ body }) => {
+    const project = createProject();
+    const getOrCreateProject = vi.fn(async () => null);
+    const routes = createSessionsRoutes({
+      supervisor: {} as SessionsDeps["supervisor"],
+      scanner: { getOrCreateProject } as unknown as SessionsDeps["scanner"],
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        ...(body === undefined
+          ? {}
+          : {
+              headers: { "Content-Type": "application/json" },
+              body,
+            }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    expect(getOrCreateProject).toHaveBeenCalledWith(project.id);
+  });
+
+  it.each([
+    { label: "malformed JSON", body: "{" },
+    { label: "array", body: "[]" },
+    { label: "null", body: "null" },
+    { label: "string", body: '"restart"' },
+    { label: "number", body: "42" },
+    { label: "boolean", body: "true" },
+  ])(
+    "rejects a $label restart body before any side effect",
+    async ({ body }) => {
+      const project = createProject();
+      const getOrCreateProject = vi.fn(async () => project);
+      const queueMessage = vi.fn(() => ({ success: true, position: 1 }));
+      const interruptProcess = vi.fn(async () => ({
+        success: true,
+        supported: true,
+      }));
+      const abortProcess = vi.fn(async () => true);
+      const startSession = vi.fn(async () => ({
+        id: "proc-new",
+        sessionId: "sess-new",
+        projectId: project.id,
+        provider: "claude",
+        model: "sonnet",
+        permissionMode: "default",
+        modeVersion: 0,
+        subscribe: vi.fn(() => vi.fn()),
+      }));
+      const updateMetadata = vi.fn(async () => undefined);
+      const setProvider = vi.fn(async () => undefined);
+      const setRequestedModel = vi.fn(async () => undefined);
+      const setSessionSandbox = vi.fn(async () => undefined);
+      const emit = vi.fn();
+      const getProcessForSession = vi.fn(() => ({
+        id: "proc-old",
+        provider: "claude",
+        model: "sonnet",
+        permissionMode: "default",
+        modeVersion: 0,
+        state: { type: "idle", since: new Date() },
+        supportsDynamicCommands: true,
+        supportedCommands: vi.fn(async () => [
+          { name: "compact", description: "Compact conversation" },
+        ]),
+        subscribe: vi.fn(
+          (listener: (event: { type: string; message: unknown }) => void) => {
+            queueMicrotask(() =>
+              listener({
+                type: "message",
+                message: {
+                  type: "system",
+                  subtype: "compact_boundary",
+                  message: { content: "summary" },
+                },
+              }),
+            );
+            return vi.fn();
+          },
+        ),
+        queueMessage,
+        getMessageHistory: vi.fn(() => []),
+        getDeferredQueueSummary: vi.fn(() => []),
+      }));
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession,
+          interruptProcess,
+          abortProcess,
+          startSession,
+        } as unknown as SessionsDeps["supervisor"],
+        scanner: { getOrCreateProject } as unknown as SessionsDeps["scanner"],
+        readerFactory: vi.fn(
+          () =>
+            ({
+              getSessionSummary: vi.fn(async () => null),
+            }) as unknown as ISessionReader,
+        ),
+        sessionMetadataService: {
+          getProvider: vi.fn(() => "claude"),
+          getRequestedModel: vi.fn(() => undefined),
+          getExecutor: vi.fn(() => undefined),
+          getMetadata: vi.fn(() => undefined),
+          updateMetadata,
+          setProvider,
+          setRequestedModel,
+          setSessionSandbox,
+        } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+        eventBus: { emit } as unknown as SessionsDeps["eventBus"],
+      });
+
+      const response = await routes.request(
+        `/projects/${project.id}/sessions/sess-1/restart`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Invalid JSON body",
+      });
+      expect(getOrCreateProject).not.toHaveBeenCalled();
+      expect(getProcessForSession).not.toHaveBeenCalled();
+      expect(queueMessage).not.toHaveBeenCalled();
+      expect(interruptProcess).not.toHaveBeenCalled();
+      expect(abortProcess).not.toHaveBeenCalled();
+      expect(startSession).not.toHaveBeenCalled();
+      expect(updateMetadata).not.toHaveBeenCalled();
+      expect(setProvider).not.toHaveBeenCalled();
+      expect(setRequestedModel).not.toHaveBeenCalled();
+      expect(setSessionSandbox).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalled();
+    },
+  );
+
   it("starts a fresh handoff session before aborting the old process", async () => {
     const project = createProject();
     let replacementListener:
