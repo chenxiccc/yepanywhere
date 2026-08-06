@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,6 +11,11 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { I18nProvider } from "../../i18n";
+import {
+  asClientSummarySourceKey,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+} from "../../lib/clientSummaryStore";
 import { SessionShareModal } from "../SessionShareModal";
 
 function deferred<T>() {
@@ -42,6 +48,7 @@ describe("SessionShareModal", () => {
   const writeText = vi.fn();
 
   beforeEach(() => {
+    resetClientSummaryStoreForTests();
     vi.spyOn(api, "getPublicSessionShareStatus").mockResolvedValue({
       activeCount: 0,
       frozenCount: 0,
@@ -132,6 +139,7 @@ describe("SessionShareModal", () => {
 
   afterEach(() => {
     cleanup();
+    resetClientSummaryStoreForTests();
     vi.restoreAllMocks();
     delete (globalThis as { ClipboardItem?: unknown }).ClipboardItem;
   });
@@ -533,6 +541,48 @@ describe("SessionShareModal", () => {
         name: "Review all Read-only share links in All projects for revocation",
       }),
     ).toBeTruthy();
+  });
+
+  it("replaces manager ownership when the backend source changes", async () => {
+    const sourceAInventory =
+      deferred<Awaited<ReturnType<typeof api.getPublicShares>>>();
+    vi.mocked(api.getPublicShares)
+      .mockReturnValueOnce(sourceAInventory.promise)
+      .mockResolvedValue({
+        items: [managedItem("source-b", "Source B inventory")],
+        nextCursor: null,
+        totalCount: 1,
+      });
+    setCurrentClientSummarySourceKey(asClientSummarySourceKey("host:source-a"));
+
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(api.getPublicShares).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      setCurrentClientSummarySourceKey(
+        asClientSummarySourceKey("host:source-b"),
+      );
+    });
+    expect(await screen.findByText("Source B inventory")).toBeTruthy();
+
+    sourceAInventory.resolve({
+      items: [managedItem("source-a", "Stale source A inventory")],
+      nextCursor: null,
+      totalCount: 1,
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Stale source A inventory")).toBeNull();
+      expect(screen.getByText("Source B inventory")).toBeTruthy();
+    });
+    expect(api.getPublicShares).toHaveBeenCalledTimes(2);
   });
 
   it("creates, copies, and highlights a managed link from the type rail", async () => {

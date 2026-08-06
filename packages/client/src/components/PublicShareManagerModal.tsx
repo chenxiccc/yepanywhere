@@ -6,6 +6,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
+import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { writeClipboardTextLater } from "../lib/clipboard";
 import { Modal, type ModalAnchorRect } from "./ui/Modal";
 import styles from "./SessionShareModal.module.css";
@@ -62,7 +63,12 @@ function formatShareBytes(bytes: number | undefined): string | null {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-export function PublicShareManagerModal({
+export function PublicShareManagerModal(props: PublicShareManagerModalProps) {
+  const sourceKey = useClientSummarySourceKey();
+  return <SourcePublicShareManagerModal key={sourceKey} {...props} />;
+}
+
+function SourcePublicShareManagerModal({
   anchorRect,
   creationIdentity,
   creationReady,
@@ -94,6 +100,17 @@ export function PublicShareManagerModal({
     useState<PendingCategoryRevoke | null>(null);
   const [highlightedShareId, setHighlightedShareId] = useState<string | null>(
     null,
+  );
+
+  useEffect(
+    () => () => {
+      inventoryGenerationRef.current += 1;
+      inventoryRequestOwnerRef.current += 1;
+      operationGenerationRef.current += 1;
+      nonAbortableOperationGenerationRef.current = null;
+      preparedInventoryRequestRef.current = null;
+    },
+    [],
   );
 
   const mode =

@@ -360,6 +360,11 @@ export function RemoteAccessSettings() {
   );
   const [showPublicShareManagement, setShowPublicShareManagement] =
     useState(false);
+  useEffect(() => {
+    if (!publicShareManagementSupported) {
+      setShowPublicShareManagement(false);
+    }
+  }, [publicShareManagementSupported]);
   const {
     status: hostAwakeStatus,
     isLoading: hostAwakeStatusLoading,
@@ -554,7 +559,7 @@ export function RemoteAccessSettings() {
           </div>
         </div>
       </HideInSettingsSearch>
-      {showPublicShareManagement && (
+      {showPublicShareManagement && publicShareManagementSupported && (
         <PublicShareManagerModal
           creationReady={false}
           onClose={() => setShowPublicShareManagement(false)}

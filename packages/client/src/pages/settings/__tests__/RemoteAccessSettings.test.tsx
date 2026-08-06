@@ -386,6 +386,14 @@ describe("RemoteAccessSettings host identity", () => {
       screen.getByRole("button", { name: "advancedPublicShareManageButton" }),
     );
     expect(screen.getByText("publicShareManager")).toBeTruthy();
+
+    publicShareState.managementSupported = false;
+    view.rerender(<RemoteAccessSettings />);
+    expect(screen.queryByText("publicShareManager")).toBeNull();
+
+    publicShareState.managementSupported = true;
+    view.rerender(<RemoteAccessSettings />);
+    expect(screen.queryByText("publicShareManager")).toBeNull();
   });
 
   it("confirms destructive disable with the valid-link count", async () => {
