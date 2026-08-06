@@ -8,7 +8,7 @@
  * text keeps them (topics/compose-time-context-anchors.md).
  */
 export const QUEUED_TURN_TIME_MARKER =
-  /^(?:-{2,}\s*)?\(\d+\w* (?:ago|later)(?:, had seen: "[^"\n]*")?\)\s*/;
+  /^(?:-{2,}\s*)?\((?:\d+\w* (?:ago|later)(?:, had seen: "[^"\n]*")?|had seen: "[^"\n]*")\)\s*/;
 
 const TURN_TIMESTAMP_LEADING = /^\[sent [^\]\n]+\]\s*/;
 const TURN_TIMESTAMP_TRAILING = /\s*\[sent [^\]\n]+\]\s*$/;

@@ -109,7 +109,7 @@ set legacy value supplies it, and every listed legacy key is deleted.
 | `YEP_VOICE_BACKENDS` | Explicit local/test speech backends (`ya-whisper`, `ya-parakeet`, `ya-nemo`, `ya-dummy`). Cloud backends auto-enable on key presence instead. |
 | `YEP_DEFERRED_JOIN_WINDOW_S` | Max seconds between consecutive compose times for queued-while-busy turns to join into one `--------`-joined provider turn at a delivery boundary. Default 0: never join — one verbatim turn per boundary. Server setting `deferredJoinWindowSeconds` overrides ([compose-time-context-anchors](compose-time-context-anchors.md)). |
 | `YEP_COMPOSE_ANCHORS` | `1` prepends `(Ns ago)` / `(Ms later)` staleness anchors to delivered queued turns; the first anchor quotes the assistant output the composer had last seen (`had seen: "…"`). Default off: queued text reaches the provider verbatim. Server setting `composeAnchorsEnabled` overrides. |
-| `YEP_TURN_TIMESTAMPS` | `before` or `after` adds an absolute `[sent <ISO-8601>]` compose-time marker to provider-bound user turns, in the provider session-jsonl timestamp format; the client hides it in presentation. Experimental, default off, env-only ([compose-time-context-anchors](compose-time-context-anchors.md)). |
+| `YEP_TURN_TIMESTAMPS` | `before` or `after` adds an absolute `[sent <ISO-8601>]` compose-time marker to provider-bound user turns, in the provider session-jsonl timestamp format; the client hides it in presentation. Experimental, default off. Server setting `turnTimestamps` (Message Delivery pane) overrides ([compose-time-context-anchors](compose-time-context-anchors.md)). |
 
 ### Speech credentials & engine (the `stt` module)
 | Var | Meaning |

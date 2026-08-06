@@ -4507,10 +4507,15 @@ export class Process {
     if (!this.resolveDeferredDelivery().composeAnchors) {
       return entries.map(() => null);
     }
+    // With absolute [sent …] stamps on every chunk, relative elapsed text
+    // is derivable and suppressed; only the had-seen needle survives.
+    const elapsedVisible =
+      this.resolveDeferredDelivery().turnTimestamps === "off";
     return composeTimeAnchors(
       entries.map((entry) => this.composedAtMsForEntry(entry)),
       Date.now(),
       entries.map((entry) => entry.lastSeenHead ?? null),
+      elapsedVisible,
     );
   }
 

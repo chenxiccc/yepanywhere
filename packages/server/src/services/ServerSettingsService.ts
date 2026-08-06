@@ -196,6 +196,12 @@ export interface ServerSettings {
    */
   composeAnchorsEnabled?: boolean;
   /**
+   * Absolute `[sent <ISO>]` compose-time markers on provider-bound user
+   * turns, before or after the text. Unset falls back to env
+   * `YEP_TURN_TIMESTAMPS` (topics/compose-time-context-anchors.md).
+   */
+  turnTimestamps?: "off" | "before" | "after";
+  /**
    * Seconds the whole-project idle predicate must remain clear before Project
    * Queue promotes one item. Range 0-300, default 30.
    */
@@ -505,6 +511,7 @@ export class ServerSettingsService {
     publishDeferredDeliverySettings({
       deferredJoinWindowSeconds: this.state.settings.deferredJoinWindowSeconds,
       composeAnchorsEnabled: this.state.settings.composeAnchorsEnabled,
+      turnTimestamps: this.state.settings.turnTimestamps,
     });
   }
 

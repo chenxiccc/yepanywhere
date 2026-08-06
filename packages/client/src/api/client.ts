@@ -1857,6 +1857,8 @@ export interface ServerSettings {
   deferredJoinWindowSeconds?: number;
   /** Whether delivered queued turns receive compose-time staleness anchors. */
   composeAnchorsEnabled?: boolean;
+  /** Absolute [sent <ISO>] compose-time markers on delivered user turns. */
+  turnTimestamps?: "off" | "before" | "after";
   /** Seconds Project Queue waits after whole-project idle before promotion. */
   projectQueueQuietSeconds?: number;
 }

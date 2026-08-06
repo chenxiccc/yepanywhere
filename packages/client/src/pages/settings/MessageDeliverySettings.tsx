@@ -22,6 +22,14 @@ const BUSY_COMPOSER_DEFAULT_ACTIONS: BusyComposerDefaultAction[] = [
   "queue",
 ];
 
+type TurnTimestampsPlacement = "off" | "before" | "after";
+
+const TURN_TIMESTAMPS_PLACEMENTS: TurnTimestampsPlacement[] = [
+  "off",
+  "before",
+  "after",
+];
+
 const JOIN_WINDOW_SLIDER_MAX_SECONDS = 120;
 const JOIN_WINDOW_MAX_SECONDS = 86400;
 const SECONDS_SLIDER_SAVE_DEBOUNCE_MS = 400;
@@ -43,6 +51,7 @@ interface MessageDeliveryBaseline {
   joinWindowSeconds: number;
   projectQueueQuietSeconds: number;
   composeAnchorsEnabled: boolean;
+  turnTimestamps: TurnTimestampsPlacement;
   bangCommandsEnabled: boolean;
   busyComposerDefaultAction: BusyComposerDefaultAction;
   steerNowDefault: boolean;
@@ -70,6 +79,8 @@ export function MessageDeliverySettings() {
     string | null
   >(null);
   const [draftAnchors, setDraftAnchors] = useState<boolean | null>(null);
+  const [draftTurnTimestamps, setDraftTurnTimestamps] =
+    useState<TurnTimestampsPlacement | null>(null);
   const [draftBangCommands, setDraftBangCommands] = useState<boolean | null>(
     null,
   );
@@ -89,6 +100,7 @@ export function MessageDeliverySettings() {
     clampProjectQueueQuietSeconds(settings?.projectQueueQuietSeconds) ??
     DEFAULT_PROJECT_QUEUE_QUIET_SECONDS;
   const serverComposeAnchorsEnabled = settings?.composeAnchorsEnabled ?? false;
+  const serverTurnTimestamps = settings?.turnTimestamps ?? "off";
   const serverBangCommandsEnabled =
     settings?.clientDefaults?.bangCommandsEnabled ?? false;
   const serverBusyDefaultAction =
@@ -109,6 +121,7 @@ export function MessageDeliverySettings() {
           clampProjectQueueQuietSeconds(settings.projectQueueQuietSeconds) ??
           DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
         composeAnchorsEnabled: settings.composeAnchorsEnabled ?? false,
+        turnTimestamps: settings.turnTimestamps ?? "off",
         bangCommandsEnabled:
           settings.clientDefaults?.bangCommandsEnabled ?? false,
         busyComposerDefaultAction:
@@ -132,6 +145,7 @@ export function MessageDeliverySettings() {
     shownProjectQueueQuietText,
   );
   const shownAnchors = draftAnchors ?? serverComposeAnchorsEnabled;
+  const shownTurnTimestamps = draftTurnTimestamps ?? serverTurnTimestamps;
   const shownBangCommands = draftBangCommands ?? serverBangCommandsEnabled;
   const shownBusyDefaultAction =
     draftBusyDefaultAction ?? serverBusyDefaultAction;
@@ -197,6 +211,14 @@ export function MessageDeliverySettings() {
   }, [draftAnchors, serverComposeAnchorsEnabled]);
   useEffect(() => {
     if (
+      draftTurnTimestamps !== null &&
+      draftTurnTimestamps === serverTurnTimestamps
+    ) {
+      setDraftTurnTimestamps(null);
+    }
+  }, [draftTurnTimestamps, serverTurnTimestamps]);
+  useEffect(() => {
+    if (
       draftBangCommands !== null &&
       draftBangCommands === serverBangCommandsEnabled
     ) {
@@ -240,6 +262,7 @@ export function MessageDeliverySettings() {
       (supportsProjectQueue &&
         shownProjectQueueQuietSeconds !== baseline.projectQueueQuietSeconds) ||
       shownAnchors !== baseline.composeAnchorsEnabled ||
+      shownTurnTimestamps !== baseline.turnTimestamps ||
       (supportsBangCommands &&
         shownBangCommands !== baseline.bangCommandsEnabled) ||
       shownBusyDefaultAction !== baseline.busyComposerDefaultAction ||
@@ -254,6 +277,7 @@ export function MessageDeliverySettings() {
     setDraftJoinWindow(null);
     setDraftProjectQueueQuiet(null);
     setDraftAnchors(null);
+    setDraftTurnTimestamps(null);
     setDraftBangCommands(null);
     setDraftBusyDefaultAction(null);
     setDraftSteerNow(null);
@@ -265,6 +289,7 @@ export function MessageDeliverySettings() {
         ? { projectQueueQuietSeconds: snapshot.projectQueueQuietSeconds }
         : {}),
       composeAnchorsEnabled: snapshot.composeAnchorsEnabled,
+      turnTimestamps: snapshot.turnTimestamps,
       clientDefaults: {
         ...(supportsBangCommands
           ? { bangCommandsEnabled: snapshot.bangCommandsEnabled }
@@ -391,6 +416,35 @@ export function MessageDeliverySettings() {
             }}
             aria-label={t("messageDeliveryComposeAnchorsTitle")}
           />
+        </SettingsItem>
+
+        <SettingsItem
+          label={t("messageDeliveryTurnTimestampsTitle")}
+          description={t("messageDeliveryTurnTimestampsDescription")}
+        >
+          <select
+            className="settings-select"
+            value={shownTurnTimestamps}
+            onChange={(event) => {
+              const next = event.target.value as TurnTimestampsPlacement;
+              if (!TURN_TIMESTAMPS_PLACEMENTS.includes(next)) return;
+              setDraftTurnTimestamps(next);
+              void updateSettings({ turnTimestamps: next }).catch(() => {
+                // surfaced via the hook's error state
+              });
+            }}
+            aria-label={t("messageDeliveryTurnTimestampsTitle")}
+          >
+            <option value="off">
+              {t("messageDeliveryTurnTimestampsOff")}
+            </option>
+            <option value="before">
+              {t("messageDeliveryTurnTimestampsBefore")}
+            </option>
+            <option value="after">
+              {t("messageDeliveryTurnTimestampsAfter")}
+            </option>
+          </select>
         </SettingsItem>
 
         {supportsBangCommands && (

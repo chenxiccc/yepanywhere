@@ -34,7 +34,7 @@ set, else env var, else off.
 |---|---|---|---|
 | join window (seconds) | `deferredJoinWindowSeconds` | `YEP_DEFERRED_JOIN_WINDOW_S` | `0` = never join |
 | compose anchors | `composeAnchorsEnabled` | `YEP_COMPOSE_ANCHORS=1` | off |
-| turn timestamps | — (env-only v1) | `YEP_TURN_TIMESTAMPS=before\|after` | off |
+| turn timestamps | `turnTimestamps` | `YEP_TURN_TIMESTAMPS=before\|after` | off |
 
 The server settings are stored by `ServerSettingsService` (PUT
 `/api/settings`), which publishes them to a live bridge
@@ -116,13 +116,21 @@ user meant. Anchors mark that staleness:
   intentionally **not** anchored; it is a user-driven immediate flush with
   its own framing.
 
-## Opt-in: turn timestamps (`YEP_TURN_TIMESTAMPS=before|after`)
+## Opt-in: turn timestamps (`turnTimestamps` / `YEP_TURN_TIMESTAMPS`)
 
-Experimental, env-only in v1. Every provider-bound user turn (not just
-deferred ones) gains an absolute compose-time marker `[sent <ISO-8601>]`
-before or after the message text, in the same timestamp format as the
-provider session jsonl so transcript and context agree. Compose time is
+Experimental. Every provider-bound user turn (not just deferred ones)
+gains an absolute compose-time marker `[sent <ISO-8601>]` before or
+after the message text, in the same timestamp format as the provider
+session jsonl so transcript and context agree. Compose time is
 `metadata.serverReceivedAt`, falling back to send-time `Date.now()`.
+The server setting (Message Delivery pane, Off / Before text / After
+text) wins over the env var, like the sibling knobs.
+
+Interaction with compose anchors: when stamps are on, every joined
+chunk carries its own absolute `[sent …]`, so the relative `(Ns ago)` /
+`(Ms later)` text is derivable and suppressed — the first chunk's
+anchor degrades to the content-only `(had seen: "…")` form (or nothing
+when there is no needle). The noise threshold still applies.
 
 Rationale and risk, both explicit: rendered prompts otherwise carry no
 wall-clock signal at all, so elapsed time between turns is invisible to
@@ -177,8 +185,9 @@ opt-in experiments.
   `ServerSettingsService` on load and update) and
   `resolveDeferredDeliverySettings` (published settings, then env).
 - `packages/server/src/services/ServerSettingsService.ts` +
-  `packages/server/src/routes/settings.ts` — `deferredJoinWindowSeconds`
-  and `composeAnchorsEnabled` server settings with PUT validation.
+  `packages/server/src/routes/settings.ts` — `deferredJoinWindowSeconds`,
+  `composeAnchorsEnabled`, and `turnTimestamps` server settings with PUT
+  validation.
 - `packages/server/src/supervisor/Process.ts` — `resolveDeferredDelivery`
   (constructor override for tests, then the bridge), `leadingJoinGroup`
   (sliding window; 0 never joins), `promoteEligibleDeferredAfterTurn`

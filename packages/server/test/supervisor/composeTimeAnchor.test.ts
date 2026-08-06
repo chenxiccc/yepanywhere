@@ -60,6 +60,21 @@ describe("composeTimeAnchor", () => {
   it("still omits a below-threshold anchor when a needle is present", () => {
     expect(composeTimeAnchor(T0, T0 + 3_000, null, "tail")).toBeNull();
   });
+
+  it("suppresses elapsed text when absolute turn stamps are on", () => {
+    // Needle survives as a content-only anchor; pure time text drops.
+    expect(composeTimeAnchor(T0, T0 + 45_000, null, "tail", false)).toBe(
+      '(had seen: "tail")',
+    );
+    expect(composeTimeAnchor(T0, T0 + 45_000, null, null, false)).toBeNull();
+    expect(
+      composeTimeAnchor(T0 + 30_000, T0 + 999_000, T0, null, false),
+    ).toBeNull();
+  });
+
+  it("keeps the noise threshold in needle-only mode", () => {
+    expect(composeTimeAnchor(T0, T0 + 3_000, null, "tail", false)).toBeNull();
+  });
 });
 
 describe("composeSeenNeedle", () => {

@@ -37,6 +37,14 @@ describe("stripQueuedTurnMarkers", () => {
     ).toBe("message");
   });
 
+  it("strips the needle-only anchor form used alongside turn stamps", () => {
+    expect(
+      stripQueuedTurnMarkers(
+        '(had seen: "tail text")\n\n[sent 2026-08-06T06:40:12.123Z]\n\nmessage',
+      ),
+    ).toBe("message");
+  });
+
   it("leaves plain text alone", () => {
     expect(stripQueuedTurnMarkers("just a (normal) message")).toBe(
       "just a (normal) message",

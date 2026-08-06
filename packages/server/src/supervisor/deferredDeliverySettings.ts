@@ -21,8 +21,8 @@ export interface DeferredDeliverySettings {
   composeAnchors: boolean;
   /**
    * Absolute `[sent <ISO>]` compose-time markers on provider-bound user
-   * turns. Env-only in v1 (YEP_TURN_TIMESTAMPS=before|after); no server
-   * setting publishes it yet.
+   * turns. Server setting `turnTimestamps` when set, else env
+   * `YEP_TURN_TIMESTAMPS=before|after`.
    */
   turnTimestamps: "off" | "before" | "after";
 }
@@ -44,6 +44,7 @@ export function sanitizeJoinWindowSeconds(value: unknown): number | undefined {
 export function publishDeferredDeliverySettings(settings: {
   deferredJoinWindowSeconds?: number;
   composeAnchorsEnabled?: boolean;
+  turnTimestamps?: "off" | "before" | "after";
 }): void {
   published = {
     joinWindowSeconds: sanitizeJoinWindowSeconds(
@@ -52,6 +53,12 @@ export function publishDeferredDeliverySettings(settings: {
     composeAnchors:
       typeof settings.composeAnchorsEnabled === "boolean"
         ? settings.composeAnchorsEnabled
+        : undefined,
+    turnTimestamps:
+      settings.turnTimestamps === "off" ||
+      settings.turnTimestamps === "before" ||
+      settings.turnTimestamps === "after"
+        ? settings.turnTimestamps
         : undefined,
   };
 }
@@ -63,6 +70,6 @@ export function resolveDeferredDeliverySettings(): DeferredDeliverySettings {
     joinWindowSeconds:
       published.joinWindowSeconds ?? config.deferredJoinWindowSeconds,
     composeAnchors: published.composeAnchors ?? config.composeAnchors,
-    turnTimestamps: config.turnTimestamps,
+    turnTimestamps: published.turnTimestamps ?? config.turnTimestamps,
   };
 }

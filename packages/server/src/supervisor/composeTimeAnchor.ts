@@ -46,21 +46,29 @@ export function composeSeenNeedle(raw: string): string | null {
  * @param previousComposedAtMs prior chunk's compose time, or null for the first
  * @param lastSeenNeedle sanitized tail of the assistant output the composer
  *   had seen (first chunk only); quoted as `had seen: "…"`
+ * @param elapsedVisible false when absolute `[sent …]` turn timestamps are
+ *   on: every chunk is stamped, so relative elapsed text is derivable and
+ *   suppressed — only the content needle survives, as `(had seen: "…")`
  */
 export function composeTimeAnchor(
   composedAtMs: number,
   deliveredAtMs: number,
   previousComposedAtMs: number | null,
   lastSeenNeedle: string | null = null,
+  elapsedVisible = true,
 ): string | null {
   if (previousComposedAtMs === null) {
     const seconds = Math.round((deliveredAtMs - composedAtMs) / 1000);
     if (!Number.isFinite(seconds) || seconds < MIN_COMPOSE_ANCHOR_SECONDS) {
       return null;
     }
+    if (!elapsedVisible) {
+      return lastSeenNeedle ? `(had seen: "${lastSeenNeedle}")` : null;
+    }
     const seen = lastSeenNeedle ? `, had seen: "${lastSeenNeedle}"` : "";
     return `(${seconds}s ago${seen})`;
   }
+  if (!elapsedVisible) return null;
   const seconds = Math.round((composedAtMs - previousComposedAtMs) / 1000);
   if (!Number.isFinite(seconds) || seconds < MIN_COMPOSE_ANCHOR_SECONDS) {
     return null;
@@ -78,6 +86,7 @@ export function composeTimeAnchors(
   composedAtMsList: number[],
   deliveredAtMs: number,
   lastSeenNeedles?: (string | null)[],
+  elapsedVisible = true,
 ): (string | null)[] {
   return composedAtMsList.map((composedAtMs, index) =>
     composeTimeAnchor(
@@ -85,6 +94,7 @@ export function composeTimeAnchors(
       deliveredAtMs,
       index === 0 ? null : composedAtMsList[index - 1]!,
       index === 0 ? (lastSeenNeedles?.[0] ?? null) : null,
+      elapsedVisible,
     ),
   );
 }

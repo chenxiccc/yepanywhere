@@ -1247,6 +1247,61 @@ describe("Process", () => {
       await process.abort();
     });
 
+    it("replaces elapsed anchors with needle-only form when stamps are on", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: {
+          joinWindowSeconds: 3600,
+          composeAnchors: true,
+          turnTimestamps: "before",
+        },
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      process.accumulateStreamingText("m1", "Working on the fix now");
+      const composedAt = new Date(Date.now() - 45_000).toISOString();
+      process.deferMessage({
+        text: "queued reply",
+        tempId: "temp-1",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: composedAt,
+        },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+
+      const userContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message?.content as string]
+          : [],
+      );
+      expect(userContents).toHaveLength(1);
+      // Every chunk carries its own [sent …], so relative "(Ns ago" is
+      // redundant; only the content needle remains, outermost.
+      expect(userContents[0]).toBe(
+        `(had seen: "Working on the fix now")\n\n[sent ${composedAt}]\n\nqueued reply`,
+      );
+
+      controller.finish();
+      await process.abort();
+    });
+
     it("stamps provider-bound turns with [sent …] when opted in", async () => {
       const controller = createControllableIterator();
       const queue = new MessageQueue();
