@@ -470,7 +470,7 @@ describe("GitStatusPage source header", () => {
     expect(
       await screen.findByRole("tab", { name: "sourceTabReviews" }),
     ).toBeDefined();
-    expect(screen.getByText("sourceReviewNoSubmissions")).toBeDefined();
+    expect(await screen.findByText("sourceReviewNoSubmissions")).toBeDefined();
   });
 
   it("opens an asynchronously populated Files hash in commit history", async () => {
