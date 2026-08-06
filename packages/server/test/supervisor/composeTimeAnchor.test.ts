@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  composeSeenNeedle,
   composeTimeAnchor,
   composeTimeAnchors,
+  MAX_SEEN_NEEDLE_CHARS,
   MIN_COMPOSE_ANCHOR_SECONDS,
 } from "../../src/supervisor/composeTimeAnchor.js";
 
@@ -48,6 +50,38 @@ describe("composeTimeAnchor", () => {
     expect(composeTimeAnchor(T0, T0 + 10_000, null)).toBe("(10s ago)");
     expect(composeTimeAnchor(T0, T0 + 600_000, null)).toBe("(600s ago)");
   });
+
+  it("quotes the last-seen needle on the first chunk", () => {
+    expect(composeTimeAnchor(T0, T0 + 45_000, null, "tail of output")).toBe(
+      '(45s ago, had seen: "tail of output")',
+    );
+  });
+
+  it("still omits a below-threshold anchor when a needle is present", () => {
+    expect(composeTimeAnchor(T0, T0 + 3_000, null, "tail")).toBeNull();
+  });
+});
+
+describe("composeSeenNeedle", () => {
+  it("collapses whitespace and swaps double quotes for single", () => {
+    expect(composeSeenNeedle('line one\n  "quoted"\ttail')).toBe(
+      "line one 'quoted' tail",
+    );
+  });
+
+  it("keeps short text verbatim", () => {
+    expect(composeSeenNeedle("short tail")).toBe("short tail");
+  });
+
+  it("tail-truncates long text with a leading ellipsis", () => {
+    const raw = "x".repeat(10) + "y".repeat(MAX_SEEN_NEEDLE_CHARS);
+    const needle = composeSeenNeedle(raw);
+    expect(needle).toBe(`…${"y".repeat(MAX_SEEN_NEEDLE_CHARS)}`);
+  });
+
+  it("returns null for blank input", () => {
+    expect(composeSeenNeedle("  \n\t ")).toBeNull();
+  });
 });
 
 describe("composeTimeAnchors", () => {
@@ -69,5 +103,14 @@ describe("composeTimeAnchors", () => {
       null,
       null,
     ]);
+  });
+
+  it("quotes the needle on the first chunk only", () => {
+    expect(
+      composeTimeAnchors([T0, T0 + 15_000], T0 + 45_000, [
+        "first tail",
+        "second tail",
+      ]),
+    ).toEqual(['(45s ago, had seen: "first tail")', "(15s later)"]);
   });
 });

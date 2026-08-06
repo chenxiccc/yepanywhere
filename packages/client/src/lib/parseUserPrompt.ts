@@ -3,6 +3,7 @@ import {
   getFilename as sharedGetFilename,
   stripIdeMetadata,
 } from "@yep-anywhere/shared";
+import { stripQueuedTurnMarkers } from "./queuedTurnMarkers";
 
 /**
  * Uploaded file attachment metadata
@@ -134,8 +135,13 @@ function parseUploadedFiles(content: string): {
  * Also handles <ide_selection> tags by stripping them from the text.
  */
 export function parseUserPrompt(content: string): ParsedUserPrompt {
+  // Server-injected queued-turn markers (compose anchors, turn timestamps)
+  // are provider-facing, not part of the typed prompt; hide them from
+  // display and search.
+  const withoutMarkers = stripQueuedTurnMarkers(content);
   // First extract uploaded files section
-  const { textWithoutUploads, uploadedFiles } = parseUploadedFiles(content);
+  const { textWithoutUploads, uploadedFiles } =
+    parseUploadedFiles(withoutMarkers);
 
   // Then process IDE metadata on the remaining text
   return {

@@ -141,6 +141,14 @@ export interface Config {
    * (topics/compose-time-context-anchors.md).
    */
   composeAnchors: boolean;
+  /**
+   * Absolute compose-time `[sent <ISO-8601>]` markers on provider-bound
+   * user turns, placed before or after the message text
+   * (YEP_TURN_TIMESTAMPS=before|after). Experimental, default off; the
+   * timestamp format matches provider session jsonl so transcript and
+   * context agree (topics/compose-time-context-anchors.md).
+   */
+  turnTimestamps: "off" | "before" | "after";
   /** Whether voice input is enabled. Default: true */
   voiceInputEnabled: boolean;
   /** Explicitly enabled server-routed voice backend ids. Empty = none. */
@@ -379,6 +387,11 @@ export function loadConfig(): Config {
       Number(process.env.YEP_DEFERRED_JOIN_WINDOW_S) || 0,
     ),
     composeAnchors: process.env.YEP_COMPOSE_ANCHORS === "1",
+    turnTimestamps:
+      process.env.YEP_TURN_TIMESTAMPS === "before" ||
+      process.env.YEP_TURN_TIMESTAMPS === "after"
+        ? process.env.YEP_TURN_TIMESTAMPS
+        : "off",
     // Voice input (default: true, set VOICE_INPUT=false to disable)
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
     // Explicit local/test voice backends (cloud backends auto-enable on key

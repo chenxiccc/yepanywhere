@@ -19,6 +19,12 @@ export interface DeferredDeliverySettings {
   joinWindowSeconds: number;
   /** Prepend `(Ns ago)` / `(Ms later)` compose-time staleness anchors. */
   composeAnchors: boolean;
+  /**
+   * Absolute `[sent <ISO>]` compose-time markers on provider-bound user
+   * turns. Env-only in v1 (YEP_TURN_TIMESTAMPS=before|after); no server
+   * setting publishes it yet.
+   */
+  turnTimestamps: "off" | "before" | "after";
 }
 
 let published: Partial<DeferredDeliverySettings> = {};
@@ -57,5 +63,6 @@ export function resolveDeferredDeliverySettings(): DeferredDeliverySettings {
     joinWindowSeconds:
       published.joinWindowSeconds ?? config.deferredJoinWindowSeconds,
     composeAnchors: published.composeAnchors ?? config.composeAnchors,
+    turnTimestamps: config.turnTimestamps,
   };
 }

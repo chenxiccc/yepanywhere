@@ -34,6 +34,7 @@ set, else env var, else off.
 |---|---|---|---|
 | join window (seconds) | `deferredJoinWindowSeconds` | `YEP_DEFERRED_JOIN_WINDOW_S` | `0` = never join |
 | compose anchors | `composeAnchorsEnabled` | `YEP_COMPOSE_ANCHORS=1` | off |
+| turn timestamps | — (env-only v1) | `YEP_TURN_TIMESTAMPS=before\|after` | off |
 
 The server settings are stored by `ServerSettingsService` (PUT
 `/api/settings`), which publishes them to a live bridge
@@ -97,9 +98,42 @@ user meant. Anchors mark that staleness:
   slash-command expansion, never before, so a queued `/command` is still
   detected as a leading slash. Provider input and client echo carry the same
   anchored text (preserving JSONL/echo dedup).
+- **Last-seen needle.** The first chunk's anchor quotes the assistant
+  output the composer had last seen:
+  `(525s ago, had seen: "…tail of the streamed text")`. The needle is
+  captured at **enqueue** (composition context is a queue-time fact,
+  unlike elapsed staleness, which only exists at delivery): the in-flight
+  `_streamingText` when a turn is underway, else the tail of the last
+  completed turn in the recap buffer. A verbatim quote lets the model
+  attend directly to the anchored span in its context, where an ordinal
+  like "3 turns back" would demand turn counting models do poorly — and
+  the quote survives context compaction detectably (no match) rather
+  than silently, as a count would. Visible text only, never thinking:
+  providers strip prior-turn thinking from real context (and Claude 4+ /
+  OpenAI reasoning shown to users is a summary anyway), so a thinking
+  quote could anchor nothing.
 - The interrupt drain path (`Process.interrupt`, `INTERRUPT_PREAMBLE`) is
   intentionally **not** anchored; it is a user-driven immediate flush with
   its own framing.
+
+## Opt-in: turn timestamps (`YEP_TURN_TIMESTAMPS=before|after`)
+
+Experimental, env-only in v1. Every provider-bound user turn (not just
+deferred ones) gains an absolute compose-time marker `[sent <ISO-8601>]`
+before or after the message text, in the same timestamp format as the
+provider session jsonl so transcript and context agree. Compose time is
+`metadata.serverReceivedAt`, falling back to send-time `Date.now()`.
+
+Rationale and risk, both explicit: rendered prompts otherwise carry no
+wall-clock signal at all, so elapsed time between turns is invisible to
+the model; but timestamps on every turn deviate from the chat training
+distribution, so this may help or hurt — there is no way to know besides
+trying, which is exactly why it is default-off and placement-flagged
+(`before` vs `after` to probe position effects). The client hides the
+marker in presentation (`lib/queuedTurnMarkers.ts`); it is applied after
+slash-command expansion like the compose anchor, and with `before`
+placement it sits inside (after) any leading `(Ns ago)` anchor so the
+queued-send separator convention still opens the delivered text.
 
 ## Can models use the anchors at all?
 
@@ -124,14 +158,19 @@ an option and not a default.
 
 Older transcripts and local pending-chip state can still contain anchored
 queued turns. Client-side reconciliation continues stripping leading
-`(Ns ago)` / `(Ms later)` markers when matching an old delivered turn
-against a persisted queued chip (`useSession.ts`), and must also tolerate
-turns produced with the opt-ins enabled.
+`(Ns ago)` / `(Ms later)` markers (including the `had seen: "…"` needle
+form) and `[sent …]` turn timestamps when matching a delivered turn
+against a persisted queued chip, via the shared
+`lib/queuedTurnMarkers.ts`; `parseUserPrompt` applies the same strip so
+markers stay out of display and search. Old clients rendering
+new-marker turns show the markers as plain text — tolerable for
+opt-in experiments.
 
 ## Implementation
 
 - `packages/server/src/config.ts` — `deferredJoinWindowSeconds` /
-  `composeAnchors` from `YEP_DEFERRED_JOIN_WINDOW_S` / `YEP_COMPOSE_ANCHORS`
+  `composeAnchors` / `turnTimestamps` from `YEP_DEFERRED_JOIN_WINDOW_S` /
+  `YEP_COMPOSE_ANCHORS` / `YEP_TURN_TIMESTAMPS`
   (see [ya-env-vars](ya-env-vars.md)).
 - `packages/server/src/supervisor/deferredDeliverySettings.ts` — live
   bridge: `publishDeferredDeliverySettings` (called by
@@ -145,12 +184,20 @@ turns produced with the opt-ins enabled.
   (sliding window; 0 never joins), `promoteEligibleDeferredAfterTurn`
   (one join group per boundary), `promoteEligiblePatientDeferredMessages`
   (all join groups queued in one pass; scheduling unchanged),
-  `deferredComposeAnchors`, `queueMessage`'s `composeAnchor` option.
+  `deferredComposeAnchors`, `queueMessage`'s `composeAnchor` option,
+  `lastSeenAssistantHead` (needle capture at enqueue),
+  `applyTurnTimestamp` (in `prepareProviderMessage`).
+- `packages/server/src/supervisor/composeTimeAnchor.ts` —
+  `composeSeenNeedle` sanitizer plus the needle-aware anchor builders.
+- `packages/client/src/lib/queuedTurnMarkers.ts` — shared marker
+  stripping for reconciliation (`useSession.ts`) and display/search
+  (`parseUserPrompt.ts`).
 - Tests: `packages/server/test/supervisor/composeTimeAnchor.test.ts` (pure)
   and the "one verbatim deferred turn per delivery boundary" /
   "within the join window" / "splits queued turns at compose-time gaps" /
-  "compose-time anchors when opted in" cases in
-  `packages/server/test/process.test.ts`.
+  "compose-time anchors when opted in" / needle and `[sent …]` cases in
+  `packages/server/test/process.deferred-queue.test.ts`;
+  `packages/client/src/lib/__tests__/queuedTurnMarkers.test.ts`.
 
 ## Observed UI Edge Case
 

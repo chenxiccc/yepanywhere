@@ -18,6 +18,24 @@
 /** Below this many seconds, a compose-time anchor is omitted as noise. */
 export const MIN_COMPOSE_ANCHOR_SECONDS = 10;
 
+/** Max chars of last-seen assistant text quoted in a first-chunk anchor. */
+export const MAX_SEEN_NEEDLE_CHARS = 60;
+
+/**
+ * Sanitize raw assistant output into a single-line quotable needle: the
+ * verbatim tail (what the composer was looking at), whitespace collapsed,
+ * double quotes swapped for single so the anchor's own quoting survives.
+ * A verbatim substring lets the model attend directly to the anchored
+ * span in its context; an ordinal like "3 turns back" would demand turn
+ * counting models do poorly.
+ */
+export function composeSeenNeedle(raw: string): string | null {
+  const collapsed = raw.replace(/\s+/g, " ").replaceAll('"', "'").trim();
+  if (!collapsed) return null;
+  if (collapsed.length <= MAX_SEEN_NEEDLE_CHARS) return collapsed;
+  return `…${collapsed.slice(-MAX_SEEN_NEEDLE_CHARS)}`;
+}
+
 /**
  * Anchor text for one delivered chunk, or null when below threshold or when a
  * timestamp is unusable (NaN). The first chunk anchors against delivery time;
@@ -26,18 +44,22 @@ export const MIN_COMPOSE_ANCHOR_SECONDS = 10;
  * @param composedAtMs server-clock epoch ms this chunk was composed/queued
  * @param deliveredAtMs server-clock epoch ms of delivery (computed at send time)
  * @param previousComposedAtMs prior chunk's compose time, or null for the first
+ * @param lastSeenNeedle sanitized tail of the assistant output the composer
+ *   had seen (first chunk only); quoted as `had seen: "…"`
  */
 export function composeTimeAnchor(
   composedAtMs: number,
   deliveredAtMs: number,
   previousComposedAtMs: number | null,
+  lastSeenNeedle: string | null = null,
 ): string | null {
   if (previousComposedAtMs === null) {
     const seconds = Math.round((deliveredAtMs - composedAtMs) / 1000);
     if (!Number.isFinite(seconds) || seconds < MIN_COMPOSE_ANCHOR_SECONDS) {
       return null;
     }
-    return `(${seconds}s ago)`;
+    const seen = lastSeenNeedle ? `, had seen: "${lastSeenNeedle}"` : "";
+    return `(${seconds}s ago${seen})`;
   }
   const seconds = Math.round((composedAtMs - previousComposedAtMs) / 1000);
   if (!Number.isFinite(seconds) || seconds < MIN_COMPOSE_ANCHOR_SECONDS) {
@@ -49,18 +71,20 @@ export function composeTimeAnchor(
 /**
  * Anchors for an ordered batch of chunks delivered together at `deliveredAtMs`.
  * Returns one entry per chunk (string or null), preserving order. The first
- * chunk anchors against delivery time; each later chunk against the previous
- * chunk's compose time.
+ * chunk anchors against delivery time and may carry the group's last-seen
+ * needle; each later chunk anchors against the previous chunk's compose time.
  */
 export function composeTimeAnchors(
   composedAtMsList: number[],
   deliveredAtMs: number,
+  lastSeenNeedles?: (string | null)[],
 ): (string | null)[] {
   return composedAtMsList.map((composedAtMs, index) =>
     composeTimeAnchor(
       composedAtMs,
       deliveredAtMs,
       index === 0 ? null : composedAtMsList[index - 1]!,
+      index === 0 ? (lastSeenNeedles?.[0] ?? null) : null,
     ),
   );
 }

@@ -39,7 +39,7 @@ import type {
   PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
 } from "../services/SessionQueuePersistenceService.js";
-import { composeTimeAnchors } from "./composeTimeAnchor.js";
+import { composeSeenNeedle, composeTimeAnchors } from "./composeTimeAnchor.js";
 import {
   type DeferredDeliverySettings,
   resolveDeferredDeliverySettings,
@@ -88,6 +88,13 @@ type ClaudeSessionState = "idle" | "running" | "requires_action";
 type DeferredQueueEntry = {
   message: UserMessage;
   timestamp: string;
+  /**
+   * Needle of the assistant output the composer had last seen, captured
+   * at enqueue (composition context is a queue-time fact, unlike elapsed
+   * staleness which only exists at delivery). Quoted in the delivered
+   * `(Ns ago, had seen: "…")` anchor when compose anchors are on.
+   */
+  lastSeenHead?: string;
   persistedQueueId?: string;
 };
 type RecentAssistantRecapEntry = {
@@ -668,6 +675,8 @@ export interface DeferredDeliveryOptions {
   joinWindowSeconds?: number;
   /** Prepend `(Ns ago)` / `(Ms later)` compose-time staleness anchors. */
   composeAnchors?: boolean;
+  /** Absolute `[sent <ISO>]` markers on provider-bound user turns. */
+  turnTimestamps?: "off" | "before" | "after";
 }
 
 export interface ProcessConstructorOptions extends ProcessOptions {
@@ -2376,6 +2385,24 @@ export class Process {
       .map((entry) => entry.text);
   }
 
+  /**
+   * Needle of the latest assistant output a watching client had seen:
+   * the in-flight streaming text when a turn is underway, else the tail
+   * of the last completed assistant turn. Visible text only — providers
+   * strip prior-turn thinking from real context, so a thinking quote
+   * could anchor nothing (topics/compose-time-context-anchors.md).
+   */
+  private lastSeenAssistantHead(): string | undefined {
+    if (this._streamingText.trim()) {
+      return composeSeenNeedle(this._streamingText) ?? undefined;
+    }
+    const lastCompleted = this.recentAssistantRecapEntries
+      .at(-1)
+      ?.text.replace(/ …\[truncated\]$/, "");
+    if (!lastCompleted) return undefined;
+    return composeSeenNeedle(lastCompleted) ?? undefined;
+  }
+
   private recordNativeRecap(message: SDKMessage, receivedAt: Date): void {
     if (!isAwaySummaryMessage(message) || message.isSynthetic === true) {
       return;
@@ -2792,13 +2819,37 @@ export class Process {
     return { ...message, text: `${anchor}\n\n${message.text}` };
   }
 
+  /**
+   * Absolute compose-time marker on provider-bound user turns
+   * (YEP_TURN_TIMESTAMPS=before|after; default off). Experimental: the
+   * model gets a wall-clock anchor in the same ISO-8601 format as the
+   * provider session jsonl; the client hides `[sent …]` in presentation.
+   * Applied after slash-command expansion (same placement invariant as
+   * applyComposeAnchor); "before" placement stays inside the compose
+   * anchor so a leading `(Ns ago)` still opens the delivered text.
+   */
+  private applyTurnTimestamp(message: UserMessage): UserMessage {
+    const placement = this.resolveDeferredDelivery().turnTimestamps;
+    if (placement === "off") return message;
+    const composedAt =
+      message.metadata?.serverReceivedAt ?? new Date().toISOString();
+    const marker = `[sent ${composedAt}]`;
+    return {
+      ...message,
+      text:
+        placement === "before"
+          ? `${marker}\n\n${message.text}`
+          : `${message.text}\n\n${marker}`,
+    };
+  }
+
   private prepareProviderMessage(
     message: UserMessage,
     composeAnchor?: string | null,
   ): UserMessage {
     const prepared = this.withProviderDeliveryPriority(
       this.applyComposeAnchor(
-        this.expandEmulatedSlashCommand(message),
+        this.applyTurnTimestamp(this.expandEmulatedSlashCommand(message)),
         composeAnchor,
       ),
     );
@@ -3220,9 +3271,11 @@ export class Process {
       };
     }
 
+    const lastSeenHead = this.lastSeenAssistantHead();
     const entry: DeferredQueueEntry = {
       message,
       timestamp: options?.timestamp ?? new Date().toISOString(),
+      ...(lastSeenHead ? { lastSeenHead } : {}),
       ...(options?.persistedQueueId
         ? { persistedQueueId: options.persistedQueueId }
         : {}),
@@ -4384,11 +4437,13 @@ export class Process {
     const overrides = this.deferredDeliveryOverrides;
     if (
       overrides?.joinWindowSeconds !== undefined &&
-      overrides?.composeAnchors !== undefined
+      overrides?.composeAnchors !== undefined &&
+      overrides?.turnTimestamps !== undefined
     ) {
       return {
         joinWindowSeconds: overrides.joinWindowSeconds,
         composeAnchors: overrides.composeAnchors,
+        turnTimestamps: overrides.turnTimestamps,
       };
     }
     const resolved = resolveDeferredDeliverySettings();
@@ -4396,6 +4451,7 @@ export class Process {
       joinWindowSeconds:
         overrides?.joinWindowSeconds ?? resolved.joinWindowSeconds,
       composeAnchors: overrides?.composeAnchors ?? resolved.composeAnchors,
+      turnTimestamps: overrides?.turnTimestamps ?? resolved.turnTimestamps,
     };
   }
 
@@ -4454,6 +4510,7 @@ export class Process {
     return composeTimeAnchors(
       entries.map((entry) => this.composedAtMsForEntry(entry)),
       Date.now(),
+      entries.map((entry) => entry.lastSeenHead ?? null),
     );
   }
 

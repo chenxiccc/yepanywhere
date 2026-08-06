@@ -46,6 +46,7 @@ import {
   useSessionMessages,
 } from "./useSessionMessages";
 import { useSessionStream } from "./useSessionStream";
+import { stripQueuedTurnMarkers } from "../lib/queuedTurnMarkers";
 import { useSessionWatchStream } from "./useSessionWatchStream";
 import {
   type StreamingMarkdownCallbacks,
@@ -305,15 +306,11 @@ export type DeferredMessage = SessionQueuedMessageSummary;
 const CONCATENATED_USER_TURN_SEPARATOR = "\n\n--------\n\n";
 const USER_ECHO_CLOCK_SKEW_MS = 60_000;
 
-// Older transcripts can contain a leading relative-time marker on queued turns,
-// e.g. "(343s ago)" or "(13s later)" (optionally preceded by a "---" rule).
-// That prefix was never part of the user's typed text, so strip it before
-// matching a delivered turn against a persisted queued message.
-const QUEUED_TURN_TIME_MARKER = /^(?:-{2,}\s*)?\(\d+\w* (?:ago|later)\)\s*/;
-
-function stripQueuedTurnTimeMarker(text: string): string {
-  return text.replace(QUEUED_TURN_TIME_MARKER, "");
-}
+// Delivered turns can carry server-injected markers that were never part of
+// the user's typed text: compose-time anchors (optionally with a
+// `had seen: "…"` needle) and experimental `[sent <ISO>]` turn timestamps.
+// Strip them before matching a delivered turn against a persisted queued
+// message (lib/queuedTurnMarkers.ts).
 
 function parseMessageTimestampMs(value: unknown): number | null {
   if (typeof value !== "string") {
@@ -366,7 +363,7 @@ function userTextContainsDeferredContent(
   // equals the queued text or begins with it (a queued message may itself be
   // multi-paragraph, hence the trailing "\n\n" prefix form).
   const partMatches = (part: string): boolean => {
-    const normalizedPart = stripQueuedTurnTimeMarker(part.trim());
+    const normalizedPart = stripQueuedTurnMarkers(part.trim());
     return (
       normalizedPart === normalizedDeferredContent ||
       normalizedPart.startsWith(`${normalizedDeferredContent}\n\n`)
