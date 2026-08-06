@@ -62,6 +62,9 @@ interface ProjectStore {
   mutationTail: Promise<void>;
   /** Mutations and saves in flight; a store is releasable only at zero. */
   activeOperations: number;
+  /** A rejected write makes the in-memory state unsafe to reuse. */
+  writeFailed: boolean;
+  writeFailure: unknown;
   lastAccessMs: number;
   estimatedBytes: number;
 }
@@ -942,6 +945,11 @@ export class ReviewCommentService {
   ): Promise<ProjectStore> {
     const storeKey = this.filePathFor(projectPath);
     let store = this.stores.get(storeKey);
+    if (store?.writeFailed) {
+      if (store.activeOperations > 0) throw store.writeFailure;
+      this.releaseStore(storeKey, store);
+      store = undefined;
+    }
     if (!store) {
       if (this.releasedKeys.has(storeKey)) this.reloadsAfterRelease += 1;
       const created: ProjectStore = {
@@ -952,6 +960,8 @@ export class ReviewCommentService {
         save: () => Promise.resolve(),
         mutationTail: Promise.resolve(),
         activeOperations: 0,
+        writeFailed: false,
+        writeFailure: undefined,
         lastAccessMs: this.monotonicNowMs(),
         estimatedBytes: 0,
       };
@@ -966,10 +976,18 @@ export class ReviewCommentService {
         // getStoreFile reads that state, so retained projections go stale here
         // rather than when the write lands.
         this.stateRevision += 1;
-        return saver.save().finally(() => {
-          created.activeOperations -= 1;
-          this.measureStore(created);
-        });
+        return saver
+          .save()
+          .catch((error) => {
+            created.writeFailed = true;
+            created.writeFailure = error;
+            throw error;
+          })
+          .finally(() => {
+            created.activeOperations -= 1;
+            this.measureStore(created);
+            this.releaseFailedStore(storeKey, created);
+          });
       };
       this.stores.set(storeKey, created);
       store = created;
@@ -987,6 +1005,7 @@ export class ReviewCommentService {
       return store;
     } catch (error) {
       if (pinOperation) store.activeOperations -= 1;
+      this.releaseFailedStore(storeKey, store);
       throw error;
     }
   }
@@ -997,18 +1016,23 @@ export class ReviewCommentService {
   ): Promise<T> {
     // Pin synchronously with store acquisition, before loading or another
     // project's budget enforcement can release this operation's owner.
+    const storeKey = this.filePathFor(projectPath);
     const store = await this.getStore(projectPath, true);
-    const run = store.mutationTail.then(
-      () => mutate(store),
-      () => mutate(store),
-    );
+    const runMutation = (): Promise<T> => {
+      if (store.writeFailed) return Promise.reject(store.writeFailure);
+      return mutate(store);
+    };
+    const run = store.mutationTail.then(runMutation, runMutation);
     store.mutationTail = run.then(
       () => undefined,
       () => undefined,
     );
     return run.finally(() => {
       store.activeOperations -= 1;
-      this.measureStore(store);
+      if (this.stores.get(storeKey) === store) {
+        this.measureStore(store);
+        this.releaseFailedStore(storeKey, store);
+      }
     });
   }
 
@@ -1046,7 +1070,7 @@ export class ReviewCommentService {
   private releaseIdleStores(keepKey: string): void {
     const now = this.monotonicNowMs();
     if (this.maxRetainedStoreAgeMs > 0) {
-      for (const [key, store] of [...this.stores]) {
+      for (const [key, store] of this.stores) {
         if (key === keepKey) continue;
         if (now - store.lastAccessMs < this.maxRetainedStoreAgeMs) continue;
         if (!this.isReleasable(store)) {
@@ -1073,6 +1097,17 @@ export class ReviewCommentService {
     this.stores.delete(key);
     this.releasedKeys.add(key);
     this.releases += 1;
+  }
+
+  private releaseFailedStore(key: string, store: ProjectStore): void {
+    if (
+      !store.writeFailed ||
+      store.activeOperations !== 0 ||
+      this.stores.get(key) !== store
+    ) {
+      return;
+    }
+    this.releaseStore(key, store);
   }
 
   private async load(projectPath: string, store: ProjectStore): Promise<void> {

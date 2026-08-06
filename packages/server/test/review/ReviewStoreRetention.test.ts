@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ReviewCommentAnchor } from "@yep-anywhere/shared";
@@ -184,6 +184,50 @@ describe("review store retention", () => {
     expect(
       (await restarted.listComments(first)).map((comment) => comment.text),
     ).toEqual(["capturing", "queued behind capture"]);
+  });
+
+  it("reloads filesystem state after a mutation save fails", async () => {
+    const dataDir = join(root, "app-data");
+    const displacedDataDir = join(root, "app-data-before-failure");
+    await mkdir(dataDir);
+    const service = makeService({
+      storagePolicy: new ProjectStoragePolicy({
+        dataDir,
+        getMode: () => "app-data",
+      }),
+    });
+    const [first] = projects as [string];
+
+    await service.addComment(first, {
+      anchor: anchor("src/durable.ts"),
+      text: "durable",
+    });
+    await rename(dataDir, displacedDataDir);
+    await writeFile(dataDir, "not a directory", "utf-8");
+
+    const failedMutations = await Promise.allSettled([
+      service.addComment(first, {
+        anchor: anchor("src/failed.ts"),
+        text: "must not remain in memory",
+      }),
+      service.addComment(first, {
+        anchor: anchor("src/queued.ts"),
+        text: "must not run on the failed owner",
+      }),
+    ]);
+    expect(failedMutations.map((result) => result.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+
+    await rm(dataDir);
+    await rename(displacedDataDir, dataDir);
+    expect(
+      (await service.listComments(first)).map((comment) => comment.text),
+    ).toEqual(["durable"]);
+    expect(service.getRetentionMetrics().reloadsAfterRelease).toBeGreaterThan(
+      0,
+    );
   });
 
   it("bumps the state revision only on accepted mutations", async () => {
