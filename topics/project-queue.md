@@ -19,7 +19,15 @@ instead of waiting for the whole project.
 - Project Queue items are persisted on the server. Clients must not mirror the
   queue in localStorage or hold invisible scheduled sends.
 - Queue targets are either an existing YA session id or a future new session in
-  a project.
+  a project. A provider with an authoritative catalog is revalidated at actual
+  new-session process creation; enqueue-time UI validation cannot remain launch
+  authority across an arbitrary queue delay. If promotion hands a new session
+  to the internal worker queue, the durable item stays `dispatching` until that
+  worker launch settles. Successful start removes it; validation or launch
+  failure moves it to `failed` with the reason, preserving the prompt for retry.
+  A direct Gateway caller without this durable settlement channel receives the
+  existing `queue_full` response at worker capacity instead of an acceptance
+  whose deferred validation failure it cannot observe.
 - Delivery never rewrites user text with hidden prompt framing, elapsed-time
   markers, or automatic anchors.
 - A normal session queue is lower-level than Project Queue. Existing in-turn

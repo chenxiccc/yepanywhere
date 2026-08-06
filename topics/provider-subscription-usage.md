@@ -31,6 +31,12 @@ Related topics: [provider refresh](provider-refresh.md),
 - Usage is demand-fetched, cached briefly per source and provider on both sides
   of the client/server boundary, and explicitly refreshable from the detail
   view.
+- Direct-demand surfaces acquire usage immediately. New Session classifies only
+  its first acquisition as supplementary startup work, after earlier route
+  tiers such as selected-provider readiness. Explicit Refresh bypasses that
+  startup gate, including while the initial acquisition is still waiting; the
+  shared cache prevents a later duplicate when Refresh already supplied the
+  value.
 
 ## Client surfaces
 

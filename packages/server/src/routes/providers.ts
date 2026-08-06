@@ -16,7 +16,7 @@ const PROVIDER_INFO_CACHE_BYTES = 4 * 1024 * 1024;
 const PROVIDER_USAGE_CACHE_TTL_MS = 60_000;
 
 interface ProviderRouteDeps {
-  modelInfoService?: ModelInfoService;
+  modelInfoService?: Pick<ModelInfoService, "ingestModels">;
   /** If non-empty, only these provider names are exposed. */
   enabledProviders?: string[];
   /** Provider instances, injectable for route tests. */
@@ -122,7 +122,6 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
       provider.getAuthStatus(),
       provider.getAvailableModels(),
     ]);
-    deps.modelInfoService?.ingestModels(providerName, models);
     return {
       expiresAt: Date.now() + cacheTtlMs,
       catalogCacheKey: provider.getModelCatalogCacheKey?.(),
@@ -155,8 +154,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         supportsNativeRecaps: provider.supportsNativeRecaps,
         supportsNativePromptSuggestions:
           provider.supportsNativePromptSuggestions,
-        supportsNativeCompactThreshold:
-          provider.supportsNativeCompactThreshold,
+        supportsNativeCompactThreshold: provider.supportsNativeCompactThreshold,
         supportsLaunchCompactPercentOverride:
           provider.supportsLaunchCompactPercentOverride,
         promptCacheKeepalive: provider.promptCacheKeepalive,
@@ -209,7 +207,9 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         admission.current = generation;
       }
       if (!generation) {
-        throw new Error(`Failed to admit provider info work for ${providerName}`);
+        throw new Error(
+          `Failed to admit provider info work for ${providerName}`,
+        );
       }
 
       const sourceVersion = generation.sourceVersion;
@@ -226,6 +226,12 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
           admission.current.inFlight = false;
         }
         if (result.status !== "stale") {
+          if (result.status === "computed") {
+            deps.modelInfoService?.ingestModels(
+              providerName,
+              result.value.info.models ?? [],
+            );
+          }
           return result.value.info;
         }
       } catch (error) {

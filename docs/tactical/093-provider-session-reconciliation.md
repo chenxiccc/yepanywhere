@@ -86,8 +86,9 @@ Related contracts:
   now has one byte-bounded owner that joins exact-version computations, retains
   only accepted values, passes the prior accepted version to incremental work,
   clears failures for retry, and discards late completions after newer source
-  evidence. This is server-only infrastructure; no collection route uses it
-  yet. A synthetic 100-caller, 512 KiB CPU projection performed 100 baseline
+  evidence. No native-session collection route uses it yet; the separate
+  provider/model routes now reuse the owner for generation-safe forced refresh.
+  A synthetic 100-caller, 512 KiB CPU projection performed 100 baseline
   computations versus one coordinated computation (99.00% repeated work
   avoided); across five samples, median wall time was 519.70 ms versus 5.10 ms
   (101.94x). Run `pnpm --filter @yep-anywhere/server
@@ -518,18 +519,37 @@ Approval prompt to settle at implementation time:
   watcher activation, and all other pre-timer work; the old 42 ms internal
   timer is not presented as full cold boot.
 
-### Suggested measurement: time to witness every provider's model catalog
+### Measured adjacent concern: provider/model catalog readiness
 
-While the catalog coordinator is being built, record the wall time from a cold
-server to a complete `GET /api/providers` answer, plus the per-provider split.
-The 2026-08-05 baseline is 6.211 s aggregate, of which OpenCode was 4.407 s,
-Claude 0.747 s, and Codex 0.239 s
-([`094-new-session-provider-catalog-readiness.md`](094-new-session-provider-catalog-readiness.md)
-criterion 4, which the OpenCode single-invocation change has since improved by
-an unmeasured amount).
+This measurement concerns New Session's provider installation, authentication,
+and model rows. It does not measure or share persisted state with this
+tactical's provider-native **session-store catalog**.
 
-This number decides the deferred half of 094. New Session no longer waits on the
-aggregate — it resolves the selected provider alone and renders the rest from a
-client snapshot — so a gradual/async provider-status protocol is only worth its
-new capability if the aggregate stays slow enough to be felt after this
-tactical's retained catalogs land. Measure before proposing that capability.
+Run the privacy-safe benchmark:
+
+`pnpm --filter @yep-anywhere/server benchmark:provider-model-route`
+
+It reads persisted provider settings and the provider marker needed for
+production visibility without running settings migration or metadata restart
+recovery, then drives the real aggregate and named provider routes. Missing
+files mean defaults/no marker; malformed or unreadable files fail the
+measurement. Configured Gateway autostart is disabled; an already-running
+Gateway may be probed, but the benchmark cannot start the operator command or
+inherit its output. Provider logs are suppressed; output contains only provider
+names, timings, model/probe counts, and the number of suppressed diagnostics. A
+post-fix smoke confirmed both persisted files remained byte-for-byte unchanged.
+Five samples on 2026-08-05
+measured the aggregate at 2.180 s median and 2.485 s p90 for nine providers
+(236 models in the final sample), down from the earlier 6.211 s one-off result.
+OpenCode remained the owner at 2.093 s median / 2.148 s p90, down from 4.407 s.
+The other named medians were Claude 321 ms, Gateway 2 ms, Codex 148 ms, Codex
+OSS 155 ms, Gemini 6 ms, Gemini ACP 6 ms, Grok 2 ms, and Pi 6 ms.
+
+The result crosses tactical 094's 2 s median stop condition for reconsidering a
+descriptor/refresh protocol split, but it does not by itself authorize a new
+wire contract. New Session now resolves the selected provider independently,
+uses a versioned stale browser snapshot for opening display, and keeps the
+aggregate for the full provider-card view. Tactical 094 must therefore pair any
+protocol proposal with clean-browser paint measurements and its required stable
+release compatibility review rather than infer pressure from this tactical's
+native-session catalog.

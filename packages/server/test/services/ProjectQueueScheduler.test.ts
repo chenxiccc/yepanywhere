@@ -1,4 +1,5 @@
 import {
+  type PermissionMode,
   type StagedAttachmentRef,
   toUrlProjectId,
   type UrlProjectId,
@@ -10,6 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLogger } from "../../src/logging/logger.js";
 import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 import type { UserMessage } from "../../src/sdk/types.js";
+import type {
+  ModelSettings,
+  SessionLaunchOptions,
+} from "../../src/supervisor/Supervisor.js";
 import {
   ProjectQueueScheduler,
   type ProjectQueueDispatchResult,
@@ -101,6 +106,8 @@ class FakeSupervisor implements ProjectQueueSupervisor {
   startError: Error | null = null;
   createError: Error | null = null;
   resumeBlocker: Promise<void> | null = null;
+  queueNextStart = false;
+  startLaunchOptions: SessionLaunchOptions | undefined;
 
   constructor(private projectId: UrlProjectId) {}
 
@@ -115,9 +122,16 @@ class FakeSupervisor implements ProjectQueueSupervisor {
   async startSession(
     projectPath: string,
     message: UserMessage,
+    _permissionMode?: PermissionMode,
+    _modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<ProjectQueueDispatchResult> {
     this.startCalls.push({ projectPath, message });
+    this.startLaunchOptions = launchOptions;
     if (this.startError) throw this.startError;
+    if (this.queueNextStart) {
+      return { queued: true, queueId: "worker-queue-1", position: 1 };
+    }
     const process = createProcess(this.projectId, {
       id: `started-${this.startCalls.length}`,
       sessionId: `new-session-${this.startCalls.length}`,
@@ -305,6 +319,37 @@ describe("ProjectQueueScheduler", () => {
     expect(supervisor.resumeCalls).toHaveLength(0);
 
     await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1), 400);
+  });
+
+  it("keeps a deferred new-session item until worker launch settles", async () => {
+    supervisor.queueNextStart = true;
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "new-session", provider: "claude-gateway" },
+        message: { text: "start when a worker is free" },
+      },
+    });
+
+    await waitFor(() => expect(supervisor.startCalls).toHaveLength(1));
+    expect(service.listProject(projectId).items).toEqual([
+      expect.objectContaining({ status: "dispatching" }),
+    ]);
+    expect(supervisor.startLaunchOptions?.onFailed).toBeTypeOf("function");
+
+    await supervisor.startLaunchOptions?.onFailed?.(
+      'Claude Gateway no longer advertises model "old-model"',
+    );
+
+    await waitFor(() =>
+      expect(service.listProject(projectId).items).toEqual([
+        expect.objectContaining({
+          status: "failed",
+          lastError: 'Claude Gateway no longer advertises model "old-model"',
+        }),
+      ]),
+    );
   });
 
   it("materializes staged attachments before promoting a queued new session", async () => {

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { UrlProjectId, WorkstreamId } from "@yep-anywhere/shared";
+import { getLogger } from "../logging/logger.js";
 import type { PermissionMode, UserMessage } from "../sdk/types.js";
 import type { EventBus } from "../watcher/EventBus.js";
 import type { ModelSettings } from "./Supervisor.js";
@@ -26,6 +27,8 @@ export interface QueuedRequest {
   queuedAt: Date;
   /** One-shot association hook after a queued launch receives its YA id. */
   onStarted?: (sessionId: string) => void | Promise<void>;
+  /** One-shot failure hook when deferred launch work cannot start. */
+  onFailed?: (reason: string) => void | Promise<void>;
   /** Resolver to call when request is processed or cancelled */
   resolve: (result: QueuedRequestResult) => void;
 }
@@ -98,6 +101,7 @@ export class WorkerQueue {
     permissionMode?: PermissionMode;
     modelSettings?: ModelSettings;
     onStarted?: (sessionId: string) => void | Promise<void>;
+    onFailed?: (reason: string) => void | Promise<void>;
   }): EnqueueResult {
     // Check queue size limit
     if (this.maxQueueSize > 0 && this.queue.length >= this.maxQueueSize) {
@@ -123,6 +127,7 @@ export class WorkerQueue {
       permissionMode: params.permissionMode,
       modelSettings: params.modelSettings,
       onStarted: params.onStarted,
+      onFailed: params.onFailed,
       queuedAt: new Date(),
       resolve: resolvePromise,
     };
@@ -160,7 +165,21 @@ export class WorkerQueue {
     const removed = this.queue.splice(index, 1)[0];
     if (!removed) return false;
 
-    removed.resolve({ status: "cancelled", reason: "User cancelled" });
+    const reason = "User cancelled";
+    removed.resolve({ status: "cancelled", reason });
+    void Promise.resolve()
+      .then(() => removed.onFailed?.(reason))
+      .catch((error) => {
+        getLogger().warn(
+          {
+            event: "queued_session_failed_callback_failed",
+            queueId: removed.id,
+            projectId: removed.projectId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Cancelled queued session but its failure callback failed",
+        );
+      });
 
     this.emitQueueRemoved(removed, "cancelled");
     this.emitPositionUpdates();

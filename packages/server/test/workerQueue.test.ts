@@ -218,6 +218,46 @@ describe("WorkerQueue", () => {
       );
     });
 
+    it("should finish cancellation when the failure callback throws", async () => {
+      const onFailed = vi.fn(() => {
+        throw new Error("callback failed");
+      });
+      const first = queue.enqueue({
+        type: "new-session",
+        projectPath: "/test/project",
+        projectId: TEST_PROJECT_ID,
+        message: { text: "First" },
+        onFailed,
+      });
+      const second = queue.enqueue({
+        type: "new-session",
+        projectPath: "/test/project",
+        projectId: TEST_PROJECT_ID,
+        message: { text: "Second" },
+      });
+      if ("error" in first || "error" in second) {
+        throw new Error("expected queue admission");
+      }
+      vi.mocked(mockEventBus.emit).mockClear();
+
+      expect(queue.cancel(first.queueId)).toBe(true);
+      expect(queue.length).toBe(1);
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "queue-request-removed",
+          queueId: first.queueId,
+        }),
+      );
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "queue-position-changed",
+          queueId: second.queueId,
+          position: 1,
+        }),
+      );
+      await vi.waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1));
+    });
+
     it("should update positions for remaining items", () => {
       const first = queue.enqueue({
         type: "new-session",

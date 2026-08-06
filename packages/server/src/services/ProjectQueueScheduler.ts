@@ -12,7 +12,10 @@ import {
 import { getLogger } from "../logging/logger.js";
 import type { UserMessage } from "../sdk/types.js";
 import type { BusEvent, EventBus } from "../watcher/EventBus.js";
-import type { ModelSettings } from "../supervisor/Supervisor.js";
+import type {
+  ModelSettings,
+  SessionLaunchOptions,
+} from "../supervisor/Supervisor.js";
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { ProjectQueueService } from "./ProjectQueueService.js";
 import type {
@@ -62,6 +65,7 @@ export interface ProjectQueueSupervisor extends ProjectWorkSupervisor {
     message: UserMessage,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<ProjectQueueDispatchResult>;
   createSession(
     projectPath: string,
@@ -517,7 +521,9 @@ export class ProjectQueueScheduler {
       }
 
       const result = await this.dispatchItem(item, options);
-      await this.projectQueueService.completeDispatch(projectId, item.id);
+      if (!isQueuedResult(result) || item.target.type === "existing-session") {
+        await this.projectQueueService.completeDispatch(projectId, item.id);
+      }
       const sessionId =
         item.target.type === "existing-session"
           ? item.target.sessionId
@@ -615,12 +621,29 @@ export class ProjectQueueScheduler {
     modelSettings: ModelSettings,
   ): Promise<ProjectQueueDispatchResult> {
     if (!item.message.stagedAttachments) {
-      return this.supervisor.startSession(
+      let deferred = false;
+      const result = await this.supervisor.startSession(
         item.projectPath,
         this.toUserMessage(item),
         permissionMode,
         modelSettings,
+        {
+          onStarted: async (sessionId) => {
+            if (!deferred) return;
+            await this.completeDeferredNewSessionDispatch(item, sessionId);
+          },
+          onFailed: async (reason) => {
+            if (!deferred) return;
+            await this.projectQueueService.failDispatch(
+              item.projectId,
+              item.id,
+              reason,
+            );
+          },
+        },
       );
+      deferred = isQueuedResult(result);
+      return result;
     }
 
     const created = await this.supervisor.createSession(
@@ -648,6 +671,42 @@ export class ProjectQueueScheduler {
       permissionMode,
       modelSettings,
     );
+  }
+
+  private async completeDeferredNewSessionDispatch(
+    item: ProjectQueueItem,
+    sessionId: string,
+  ): Promise<void> {
+    const process = this.supervisor
+      .getAllProcesses()
+      .find((candidate) => candidate.sessionId === sessionId);
+    if (process) {
+      try {
+        await this.options.onSessionStarted?.({ item, process });
+      } catch (error) {
+        getLogger().warn(
+          {
+            event: "project_queue_deferred_session_callback_failed",
+            projectId: item.projectId,
+            itemId: item.id,
+            sessionId,
+            error: errorMessage(error),
+          },
+          "Deferred Project Queue session started but its association callback failed",
+        );
+      }
+    } else {
+      getLogger().warn(
+        {
+          event: "project_queue_deferred_session_missing",
+          projectId: item.projectId,
+          itemId: item.id,
+          sessionId,
+        },
+        "Deferred Project Queue session started without a registered process",
+      );
+    }
+    await this.projectQueueService.completeDispatch(item.projectId, item.id);
   }
 
   private async materializeStagedAttachments(

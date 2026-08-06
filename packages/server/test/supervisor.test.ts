@@ -105,6 +105,74 @@ describe("Supervisor", () => {
       expect(supervisor.getAllProcesses()).toHaveLength(1);
     });
 
+    it("revalidates Gateway models at the actual new-session launch", async () => {
+      let advertisedModels = [{ id: "gateway-model", name: "Gateway Model" }];
+      let sessionNumber = 0;
+      const getAvailableModels = vi.fn(async () => advertisedModels);
+      const startSession = vi.fn(
+        async (_options: Parameters<AgentProvider["startSession"]>[0]) => {
+          sessionNumber += 1;
+          const sessionId = `gateway-session-${sessionNumber}`;
+          const queue = new MessageQueue();
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: sessionId,
+            };
+            for await (const message of queue) {
+              void message;
+              yield { type: "result" as const, session_id: sessionId };
+              return;
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {},
+          };
+        },
+      );
+      const provider = {
+        ...testProvider(startSession),
+        name: "claude-gateway" as const,
+        displayName: "Claude Gateway",
+        getAvailableModels,
+      };
+      const gatewaySupervisor = new Supervisor({ provider });
+
+      await expect(
+        gatewaySupervisor.startSession(
+          "/tmp/test",
+          { text: "start after validation" },
+          undefined,
+          { model: "gateway-model", providerName: "claude-gateway" },
+        ),
+      ).resolves.toMatchObject({ provider: "claude-gateway" });
+
+      advertisedModels = [];
+      await expect(
+        gatewaySupervisor.startSession(
+          "/tmp/test",
+          { text: "start after catalog changed" },
+          undefined,
+          { model: "gateway-model", providerName: "claude-gateway" },
+        ),
+      ).rejects.toThrow(
+        'Claude Gateway no longer advertises model "gateway-model"',
+      );
+      await expect(
+        gatewaySupervisor.createSession("/tmp/test", undefined, {
+          model: "gateway-model",
+          providerName: "claude-gateway",
+        }),
+      ).rejects.toThrow(
+        'Claude Gateway no longer advertises model "gateway-model"',
+      );
+      expect(getAvailableModels).toHaveBeenCalledTimes(3);
+      expect(startSession).toHaveBeenCalledTimes(1);
+    });
+
     it("encodes projectId correctly", async () => {
       mockSdk.addScenario(createMockScenario("sess-123", "Hello!"));
 
@@ -3126,6 +3194,86 @@ describe("Supervisor", () => {
       expect(startSession.mock.calls[1]?.[0].initialMessage).toBeUndefined();
       const secondMessage = await queues[1]?.[Symbol.asyncIterator]().next();
       expect(secondMessage?.value?.message.content).toBe("second");
+    });
+
+    it("revalidates a queued Gateway model before starting its process", async () => {
+      let advertisedModels = [{ id: "gateway-model", name: "Gateway Model" }];
+      let aborted = false;
+      const getAvailableModels = vi.fn(async () => advertisedModels);
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "gateway-occupier",
+            };
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+            },
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        ...testProvider(startSession),
+        name: "claude-gateway",
+        displayName: "Claude Gateway",
+        getAvailableModels,
+      };
+      const gatewaySupervisor = new Supervisor({
+        provider,
+        maxWorkers: 1,
+        idlePreemptThresholdMs: 60_000,
+      });
+
+      const occupying = await gatewaySupervisor.startSession(
+        "/tmp/test",
+        { text: "occupy the worker" },
+        undefined,
+        { model: "gateway-model", providerName: "claude-gateway" },
+      );
+      if (!("id" in occupying)) {
+        throw new Error("expected occupying process");
+      }
+      const direct = await gatewaySupervisor.startSession(
+        "/tmp/test",
+        { text: "direct launch cannot observe a deferred failure" },
+        undefined,
+        { model: "gateway-model", providerName: "claude-gateway" },
+      );
+      expect(direct).toEqual({ error: "queue_full", maxQueueSize: 1 });
+      expect(gatewaySupervisor.getQueueInfo()).toEqual([]);
+
+      const onFailed = vi.fn();
+      const queued = await gatewaySupervisor.startSession(
+        "/tmp/test",
+        { text: "start after the worker is free" },
+        undefined,
+        { model: "gateway-model", providerName: "claude-gateway" },
+        { onFailed },
+      );
+      expect("queued" in queued && queued.queued).toBe(true);
+      expect(getAvailableModels).toHaveBeenCalledTimes(1);
+
+      advertisedModels = [];
+      await gatewaySupervisor.abortProcess(occupying.id);
+
+      await vi.waitFor(() => {
+        expect(getAvailableModels).toHaveBeenCalledTimes(2);
+        expect(onFailed).toHaveBeenCalledWith(
+          'Claude Gateway no longer advertises model "gateway-model"',
+        );
+      });
+      expect(startSession).toHaveBeenCalledTimes(1);
+      expect(gatewaySupervisor.getAllProcesses()).toEqual([]);
     });
 
     it("inherits durable settings when a cold resume waits in the worker queue", async () => {

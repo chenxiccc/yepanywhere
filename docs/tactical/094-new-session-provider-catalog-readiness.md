@@ -4,70 +4,131 @@
 > refresh only the provider facts the user needs without making an unrelated
 > provider's CLI discovery part of the New Session critical path.
 
-Status: Partly implemented (2026-08-05). The immediacy fix landed using routes
-that every supported release already serves, so it needed no capability gate and
-no compatibility review; see *What landed* below. The retained server-side
-catalog service, the descriptor/refresh route split, and the deferred
-subscription telemetry remain unimplemented, and the transitional capability
-they would need is deferred pending tactical 093's measurement. Tactical 089
-reproduced the delay; the ownership assignment below still stands for the
-remainder.
+Status: Current-route readiness is implemented (2026-08-05); three acceptance
+criteria remain partial. Forced refreshes are generation safe, Gateway launch
+requires a successful current named probe, browser snapshots are versioned and
+allowlisted, and New Session usage telemetry waits behind selected-provider
+route work. Clean first-visit provider-card paint, server-persisted
+provider/model rows, and aggregate failure isolation remain open. The measured
+aggregate crosses the stop condition for a compatibility-reviewed
+descriptor/refresh split; that result does not silently change the current
+complete-response protocol.
 
 ## What landed (2026-08-05)
 
-The user's constraint was to fix the perceived delay now with existing routes,
-and to defer anything that would require a new server capability.
+The implemented slice uses `GET /api/providers` and
+`GET /api/providers/:name`, including their existing `refresh=1` behavior. It
+adds no route, response field, event, capability, or partial aggregate semantic.
 
-- **Selected provider resolves on its own.** `GET /api/providers/:name` has
-  existed since the original multi-provider commit and is present in every
-  supported release, so no gate is needed. `useProviderRow()`
-  (`packages/client/src/hooks/useProviders.ts`) asks only for the selected
-  provider; `routes/providers.ts` already coalesces that request with an
-  in-flight aggregate and shares its five-minute entry, so it costs no extra
-  probe. Measured on this host, that is Codex at 0.239 s or Claude at 0.747 s
-  instead of the aggregate's 6.211 s.
-- **Provider cards survive a reload.** `ENABLED_PROVIDERS` is server-only and no
-  fast route lists exposed providers, so the *card grid* still needs the
-  aggregate. `useProviders()` now keeps a source-scoped `localStorage` snapshot
-  of the last successful probe (`ya:providers:<sourceKey>`, seven-day lifetime)
-  and hydrates it pre-expired, so it renders immediately but never satisfies a
-  request: `loading` stays true, the new `stale` flag is true, and the grid
-  carries `aria-busy` until the probe answers. The user accepted showing a
-  briefly-wrong card (up to ~10 s) for a provider the server no longer exposes,
-  since clicking it reveals the truth.
-- **Saved choice paints before the catalog.** `NewSessionForm` splits its
-  one-shot initialization into a seed pass that runs as soon as
-  `useServerSettings()` resolves and a reconcile pass once the probed catalog
-  and version capabilities land. Both go through one `applyInitialDefaults()`,
-  and both are gated by the existing `hasUserCustomizedDefaultsRef`, so the
-  reconcile cannot stomp a pick the user made in the new window. With no rows at
-  all, the seed uses an unprobed placeholder row for the saved provider name.
-  Claude Gateway is unchanged: `providerRequiresAdvertisedModel()` still refuses
-  a model absent from an authoritative catalog.
-- **OpenCode costs one CLI process.** `getAvailableModels()` ran `opencode
-  models` and `opencode models --verbose` in series (2.24 s + 2.18 s) for one
-  catalog; 094's measurement showed both expose the same 87 headers.
-  `parseOpenCodeVerboseModels()` now returns ids and variants from the verbose
-  output, with the plain listing kept as a fallback for a CLI whose verbose
-  output is unusable. This is the aggregate's slowest member, so it also
-  shortens `/api/providers` itself — item 4's OpenCode clause, done without the
-  provider-owned cache.
+- **Selected provider resolves on its own.** `useProviderRow()` asks only for the
+  selected provider. New Session does not wait for the aggregate before it can
+  reconcile the selected model, while the aggregate continues to populate the
+  full provider-card grid. Aggregate and named cache entries carry one shared
+  request-admission sequence and notify every mounted source consumer, so a
+  later settings reload replaces an older named row without letting a late
+  older aggregate completion or failure displace newer facts.
+- **Refresh generations have one bounded owner.** `routes/providers.ts` now uses
+  `SourceVersionedSingleFlight` under a 4 MiB retained-value budget. Ordinary
+  callers join current work, concurrent forced callers coalesce, forced work
+  supersedes older ordinary work, and a late old success or failure follows the
+  newer generation instead of publishing or deleting stale facts. Context-window
+  metadata is ingested only after that generation is accepted. Aggregate failure
+  semantics remain unchanged.
+- **Gateway display and launch authority are separate.** Selecting Claude
+  Gateway starts a forced named probe after that selection becomes current. A
+  stale saved model remains visible while the probe runs or after it fails, but
+  neither Start nor Project Queue launch is authorized until a successful
+  current named response advertises the required model. The supervisor repeats
+  that Gateway-only advertised-model check at actual new-session process
+  creation, so a delayed Project Queue or worker-queue launch cannot reuse
+  enqueue-time authority. A Project Queue item deferred into the worker queue
+  remains durable until that launch settles; validation failure marks the item
+  failed with the current catalog error instead of deleting its prompt. At
+  worker capacity, direct Gateway callers without that durable failure callback
+  receive the existing `queue_full` response instead of an unsafe queued
+  acceptance. Retry calls only the named route, reducing one observed retry from
+  nine auth/model provider pairs to one (88.9% fewer unrelated probes).
+- **Provider cards survive a reload without retaining account data.** The
+  source-scoped seven-day `localStorage` snapshot is now versioned and built
+  from explicit provider/model display and capability allowlists. It excludes
+  identity, expiry, login commands, credentials, authorization material, raw
+  provider output, and unknown configuration. Hydration remains pre-expired:
+  the snapshot paints an opening guess but never satisfies the current probe.
+- **Saved choice paints before the catalog.** `NewSessionForm` seeds from saved
+  provider-scoped defaults as soon as settings resolve, then reconciles against
+  current provider rows without overwriting a choice made in the new window.
+  With no row at all, the seed uses an unprobed placeholder for the saved
+  provider name.
+- **New Session usage is supplementary.** Only its first subscription-usage
+  acquisition waits behind earlier startup route work. Direct-demand consumers
+  and every explicit Refresh remain immediate; the source/provider cache still
+  coalesces compatible reads.
+- **OpenCode costs one CLI process.** `getAvailableModels()` formerly ran plain
+  and verbose model listings in series. The verbose parser now supplies ids and
+  variants, with the plain listing only as a fallback when verbose output is
+  unusable.
 
-Evidence: `.artifacts/ui-testing/094-revisit-desktop.png` and
-`094-revisit-phone.png` capture a second visit with `/api/providers` blocked for
-8 s — the saved Claude Gateway card is selected and `MODEL` reads
-`Claude Opus 5` at 3.5 s, versus a form with neither control before the change.
-Tests: `useProviders.test.ts` covers the snapshot-then-probe order and the
-single-provider path (including that a fresh aggregate row suppresses the extra
-request); `opencode-model-variants.test.ts` covers verbose ids in listing order.
+The privacy-safe benchmark is reproducible with:
 
-Deliberately not done, still deferred: the persisted server-side catalog
-snapshot, per-provider failure isolation replacing `Promise.all`, suppressing
-generic Gateway auto-start, the descriptor/refresh route split, and moving
-subscription telemetry off the mount path. Every one of those needs either a new
-capability or work whose value 093's measurement should size first.
+`pnpm --filter @yep-anywhere/server benchmark:provider-model-route`
 
-Needs restart: the OpenCode change is server-side.
+The benchmark reads persisted provider settings and the provider marker needed
+for production visibility without running settings migration or metadata
+restart recovery. Missing files mean defaults/no marker; malformed or unreadable
+files fail the measurement. It may probe an already-running Gateway but
+deliberately omits the configured Gateway start command, so a benchmark cannot
+start an operator process or inherit its output. Provider diagnostics are
+suppressed, and output contains only provider names, timings, model/probe counts,
+and the number suppressed. A post-fix smoke confirmed both persisted files
+remained byte-for-byte unchanged. Five samples measured the aggregate at 2.180
+s median / 2.485 s p90 for nine
+providers, down
+from the previous 6.211 s one-off result. OpenCode remained the owner at 2.093 s
+median / 2.148 s p90, down from 4.407 s. Named medians for every other provider
+were 321 ms or less. The result exceeds the agreed 2 s aggregate-median
+condition for reconsidering descriptor/refresh separation.
+
+`packages/client/e2e/provider-readiness.spec.ts` drives the production client
+against an isolated real YA server. Its two passing scenarios hold aggregate,
+named Gateway, and usage responses independently; prove stale display,
+checking, failure, named-only Retry, current success, fresh-empty blocking, and
+route-before-usage order; and keep service workers blocked. Final captures:
+
+- `.artifacts/ui-testing/094-provider-readiness/gateway-checking-desktop-1920x1080.png`
+- `.artifacts/ui-testing/094-provider-readiness/gateway-checking-mobile-375x812.png`
+- `.artifacts/ui-testing/094-provider-readiness/gateway-ready-desktop-1920x1080.png`
+- `.artifacts/ui-testing/094-provider-readiness/gateway-ready-mobile-375x812.png`
+
+Existing `.artifacts/ui-testing/094-revisit-desktop.png` and
+`094-revisit-phone.png` show the earlier stale-snapshot behavior with the
+aggregate held for 8 s. Unit coverage additionally pins forced-refresh and
+aggregate/named cache ordering, accepted-generation metadata publication,
+Gateway launch-time revalidation, durable deferred-launch failure, snapshot
+exclusions, strict read-only benchmark inputs, and supplementary usage
+scheduling.
+
+Still open, with separate evidence gates rather than one blanket capability
+deferral:
+
+- Measure ten isolated clean-browser/fresh-server provider-card paints. Revisit
+  a persisted server snapshot only if median remains over 1.5 s or p90 over
+  3 s.
+- Prepare the required stable-release compatibility review before splitting
+  descriptors from model refresh or returning partial aggregate rows.
+- Keep aggregate failure isolation unchanged until each row has an explicit
+  stale/error wire contract.
+- Make generic Gateway discovery side-effect free only with provider-runtime
+  evidence that the replacement preserves installation/auth/model semantics;
+  this provider-internal correction does not inherently require a capability.
+  The isolated browser spec intercepts provider responses, so it verifies the UI
+  state machine but does not exercise those runtime side effects.
+- Add production timing metrics only if p90 exceeds 2x median without an
+  identified owner, or browser/network time exceeds route time by 500 ms or
+  25%. The current route variance has an identified OpenCode owner; browser
+  overhead is not yet measured.
+
+Needs restart: the OpenCode, provider-route ownership, and actual-launch
+Gateway validation changes are server-side.
 
 Related contracts:
 
@@ -80,65 +141,66 @@ Related contracts:
 - [`093-provider-session-reconciliation.md`](093-provider-session-reconciliation.md)
 - [`095-new-session-recent-project-readiness.md`](095-new-session-recent-project-readiness.md)
 
-## Current fault and live cost
+## Original fault and remaining live cost
 
-`NewSessionForm` initializes its provider and model only after three independent
-queries settle: `useProviders()`, `useServerSettings()`, and `useVersion()`.
-Settings already persist the exact provider-scoped default and were effectively
-instant in the live probe, but the UI does not project that answer while the
-provider catalog is unresolved. The model control is absent until
-`selectedProvider` is initialized and that provider's model rows arrive.
+Before this tactical, `NewSessionForm` withheld the saved provider/model choice
+until `useProviders()`, `useServerSettings()`, and `useVersion()` had all
+settled. The form now projects the retained settings choice first and validates
+the selected provider independently. A second visit can also paint provider
+cards from the stale browser snapshot. A first-ever visit still has no retained
+provider-card rows, and a fresh server still computes the aggregate on demand.
 
-The app shell does eagerly call `primeProviderCache()`. That avoids a duplicate
-client request, but it does not make the request cheap. On a fresh tab the
-primer and New Session join the same `/api/providers` request; after a full
-browser reload the client has no retained catalog, and after a server restart
-the route has no retained catalog either. Both caches are memory-only with
-five-minute lifetimes.
+The app shell's `primeProviderCache()` and New Session continue to join one
+aggregate request. That avoids duplicate client requests but does not make the
+aggregate cheap. The server retains successful provider rows for five minutes;
+there is no durable server provider/model snapshot across restart.
 
-New Session concurrently requests enriched recent sessions to choose a project.
-That separate route took 6.496 seconds at the page's 30-row limit and may
-contend with catalog discovery, but it is not a provider-catalog prerequisite.
-Tactical 095 removes that transcript/index work from project defaulting.
+New Session concurrently requests recent project choices. That route is not a
+provider-catalog prerequisite, and tactical 095 owns its transcript/index work.
+Subscription usage is now admitted only as supplementary startup work in New
+Session, after earlier route tiers settle.
 
-The live localhost measurements on 2026-08-05 were:
+The reproducible five-sample route measurements on 2026-08-05 were:
 
-| Request or command | Wall time | Relevant result |
-|---|---:|---|
-| `GET /api/providers` after route-cache expiry | 6.211 s | New Session awaited one aggregate response |
-| repeated warm `/api/providers` | 4-33 ms | The symptom disappears temporarily after the five-minute cache fills |
-| forced OpenCode provider detail | 4.407 s | Slowest member of the aggregate barrier |
-| forced Claude provider detail | 0.747 s | Second material provider in this sample |
-| forced Codex provider detail | 0.239 s | The user's saved/default provider was not the barrier owner |
-| `opencode models` | 2.24 s, about 437 MB max RSS | First OpenCode child |
-| `opencode models --verbose` | 2.18 s, about 436 MB max RSS | Second sequential OpenCode child |
-| forced Codex subscription usage | 3.589 s | Optional request starts after selection; it does not block the picker |
-| forced Claude subscription usage | 2.656 s | Same optional-work issue |
+| Request | Median | p90 | Relevant result |
+|---|---:|---:|---|
+| aggregate `GET /api/providers?refresh=1` | 2.180 s | 2.485 s | Nine configured/visible providers; Gateway already running, 236 models in the final sample |
+| forced OpenCode detail | 2.093 s | 2.148 s | Slowest member and identified aggregate owner |
+| forced Claude detail | 0.321 s | 0.325 s | Second material provider in this sample |
+| forced Gateway detail | 0.002 s | 0.003 s | Persisted Gateway configuration included |
+| forced Codex detail | 0.148 s | 0.158 s | Saved/default provider need not await OpenCode |
+| forced Codex OSS detail | 0.155 s | 0.155 s | Independent named row |
+| forced Gemini detail | 0.006 s | 0.007 s | Independent named row |
+| forced Gemini ACP detail | 0.006 s | 0.006 s | Independent named row |
+| forced Grok detail | 0.002 s | 0.002 s | Independent named row |
+| forced Pi detail | 0.006 s | 0.007 s | Independent named row |
 
-The OpenCode normal and verbose commands exposed the same 87 model headers in
-this installation. `getAvailableModels()` nevertheless launches both
-sequentially: the first supplies ids and the second supplies effort variants.
-The provider has no catalog cache of its own, so the route's five-minute cache
-is its only protection.
+Run `pnpm --filter @yep-anywhere/server benchmark:provider-model-route` to
+repeat the measurement. The previous one-off
+baseline was 6.211 s aggregate and 4.407 s OpenCode. Parsing ids and variants
+from one verbose OpenCode invocation removed the sequential plain listing, but
+OpenCode still determines aggregate latency. The current aggregate median
+therefore crosses the 2 s descriptor/refresh reconsideration threshold.
 
 The aggregate route calls every exposed provider through `Promise.all` and,
 within each row, calls authentication and model discovery concurrently. This
-has four undesirable consequences:
+still has four undesirable consequences:
 
-- an unselected OpenCode catalog delays a saved Codex choice;
+- an unselected OpenCode catalog delays first-visit provider cards and the
+  aggregate correction, though it no longer delays selected Codex controls;
 - providers such as Claude may repeat authentication work because their model
   method checks authentication again internally;
 - Codex OSS may run `ollama list` independently for auth and models; and
 - one uncaught provider failure rejects the complete provider response rather
   than leaving other providers usable from their last successful rows.
 
-The configured Claude Gateway path has an additional side effect.
+The configured Claude Gateway path still has an additional side effect.
 `getAvailableModels()` calls `gatewayLauncher.ensureReady()`, so server startup
 warming and an ordinary all-provider primer may start and retain a gateway
-process even when Gateway is not selected. `ModelInfoService.warmProvider()`
-does not populate the provider route cache, so startup warm, tab primer, and
-the New Session Gateway-specific forced refresh can repeat catalog work under
-different owners.
+process even when Gateway is not selected. Gateway selection and Retry now use
+the named route's generation-safe owner, but `ModelInfoService.warmProvider()`
+does not populate that route cache. Generic discovery is therefore not yet
+side-effect free, and startup warm remains a separate catalog-work owner.
 
 ## Required product behavior
 
@@ -167,63 +229,54 @@ during explicitly low-priority idle work. The successful-use gate in tactical
 the New Session chooser. These are separate catalogs with separate privacy and
 product purposes.
 
-## Retained catalog model
+## Current owner and server-persistence follow-up
 
-Introduce one install-scoped `ProviderCatalogService` (name is provisional)
-that owns each provider independently:
+The existing provider route now owns each provider row independently through
+`SourceVersionedSingleFlight`. Its source version includes the provider's model
+catalog key and a monotonic acquisition generation. Accepted rows have a
+five-minute TTL and a shared 4 MiB byte budget. This is enough to order current
+process work and prevent stale completion; it is not a durable server snapshot
+and adds no freshness/error fields to the wire response.
 
-- static descriptor and capability projection;
-- last successful model rows and observation time;
-- last-known availability status without credential material;
-- provider configuration/catalog key;
-- current in-flight auth/model requests; and
-- bounded error and freshness state.
+A persisted install-scoped provider/model snapshot remains conditional on the
+clean-browser/fresh-server paint threshold. If that threshold is crossed, keep
+only compact last-successful display rows in YA app data using atomic
+replacement. Do not persist access tokens, raw auth files, command output, user
+email, gateway authorization headers, arbitrary environment/config text, or
+other unknown fields. Configuration identity must invalidate launch authority
+without destroying the older display snapshot.
 
-Persist only the compact, non-secret last-successful model snapshot in YA app
-data using atomic replacement. Do not persist access tokens, raw auth files,
-command output, user email, gateway authorization headers, or arbitrary
-environment/config text. Configuration identity must invalidate authority
-without destroying the older display snapshot. The client receives explicit
-`fresh`, `stale`, `refreshing`, or `error-with-stale-data` state rather than
-inferring validity from a nonempty array.
+Provider adapters remain responsible for faithful discovery and the catalog key
+that makes generations comparable. Process-specific model lists may still
+prefer a live runtime's `supportedModels()` result; sharing those rows with the
+provider route is separate follow-up work rather than a reason to add another
+unbounded cache.
 
-Provider adapters remain responsible for faithful discovery and the key that
-makes a catalog generation comparable. The coordinator owns TTL, in-flight
-coalescing, persistence, priority, and metrics. A process-specific models route
-may still prefer a live runtime's `supportedModels()` result, then fall back to
-the shared provider catalog rather than launching a parallel discovery path.
-
-OpenCode should parse ids and variants from one `models --verbose` invocation;
-the observed verbose output already contains every ordinary header. Cover the
-supported output with a fixture before deleting the normal invocation. Keep
-one provider-owned TTL/in-flight entry so route, process-model, recap/helper,
-and settings consumers cannot independently launch the same expensive command.
-
-Catalog inspection must not create a persistent provider runtime for an
-unselected provider. In particular, the configured Gateway start command runs
-only for explicit Gateway selection/refresh or launch, not generic all-provider
-enumeration or context-window warming.
+OpenCode now parses ids and variants from one `models --verbose` invocation,
+with the plain listing retained only as a fallback for unusable verbose output.
+Generic catalog inspection can still start a configured Gateway runtime; making
+that discovery side-effect free remains a provider-runtime correction.
 
 ## Client presentation and scheduling
 
-Seed `selectedProvider` and `selectedModel` from the source-scoped retained
-settings snapshot before dynamic provider rows settle. Use known provider
-display metadata and the exact saved model token for the initial badge/control;
-do not invent a temporary different default. When a fresh catalog arrives,
-reconcile once against the same `newSessionDefaults.providers[provider]`
-rules already used by Settings and the floating composer.
+`NewSessionForm` seeds `selectedProvider` and `selectedModel` from source-scoped
+retained settings before dynamic provider rows settle. It uses known provider
+display metadata and the exact saved model token rather than inventing a
+temporary default. Current rows reconcile through the same
+`newSessionDefaults.providers[provider]` rules used by Settings and the floating
+composer, without overwriting a choice made in the new window.
 
-Provider/model layout is stable from its first render. Revalidation fills
-status, alternatives, and capability-driven controls below/in place; it must
-not flash away the saved selection or move the opening composer/project region.
-Errors remain provider-local and retain the last successful rows with a retry.
+Provider/model revalidation fills status, alternatives, and capability-driven
+controls in place. Provider-local errors retain the last display row and expose
+a named Retry. Gateway is stricter: only a successful named probe started after
+the current selection makes the displayed model authoritative for launch.
 
-Subscription usage is supplementary account telemetry. Keep its in-place
-update, but schedule it after the selected provider/model controls paint and
-prefer selection/dropdown demand or browser-idle work over immediate mount.
-Retain one source/provider query owner; a one-minute TTL in two independent
-layers does not justify starting a multi-second app-server/control probe on
-every later New Session visit.
+Subscription usage remains supplementary account telemetry. New Session admits
+its first usage read in the `supplementary` bootstrap tier; selected-provider
+route work is admitted earlier. A direct-demand surface with no tier remains
+immediate, and explicit Refresh bypasses the startup gate even while initial
+supplementary work is waiting. The source/provider request owner and one-minute
+cache still coalesce compatible reads.
 
 `useVersion()` readiness is a separate shared-query fault. It should not remain
 an initialization dependency for facts that settings already establish. The
@@ -231,56 +284,55 @@ retained version/capability correction stays in tactical 031.
 
 ## Source map
 
-| Concern | Current owner | Change |
+| Concern | Current owner | Current state / follow-up |
 |---|---|---|
-| Saved initial provider/model | `NewSessionForm`, `newSessionDefaults.ts` | Project the retained settings choice before catalog/version completion; reconcile dynamic validity later |
-| Client provider cache | `useProviders.ts`, `App.tsx`, `RemoteApp.tsx` | Consume a source-scoped retained snapshot with provider-local refresh; remove one aggregate all-provider readiness flag |
-| Server provider route | `routes/providers.ts` | Separate fast retained descriptors/snapshots from provider-local refresh; preserve legacy response behavior during compatibility support |
-| Catalog ownership | new server service plus `ModelInfoService` integration | Persist bounded non-secret model rows, coalesce work, expose freshness/error metrics, and avoid duplicate warm owners |
-| Provider adapters | `sdk/providers/*.ts` | Supply faithful catalog keys and side-effect-free discovery; coalesce duplicated auth/model prerequisites |
-| OpenCode | `sdk/providers/opencode.ts`, `opencode-models.ts` | Use one authoritative verbose invocation and a provider-owned cache |
-| Claude Gateway | `sdk/providers/claude-gateway.ts`, `index.ts` | Do not auto-start a gateway during generic warm/primer work; scope authoritative validation to Gateway demand |
-| Process model list | `routes/processes.ts` and runtime `supportedModels()` | Reuse live runtime or shared provider catalog rather than bypassing its owner |
-| Usage telemetry | `useProviderSubscriptionUsage.ts`, provider usage routes | Retain one source/provider snapshot and defer optional probes until after interactive readiness |
-| Tests | provider route/hook/form/provider tests | Add latency-independence, stale snapshot, scoped failure, side-effect, and coalescing contracts |
+| Saved initial provider/model | `NewSessionForm`, `newSessionDefaults.ts` | Retained settings paint first; current provider rows reconcile validity later |
+| Client provider cache | `useProviders.ts`, `App.tsx`, `RemoteApp.tsx` | Versioned, source-scoped, allowlisted stale snapshot plus named provider refresh |
+| Server provider route | `routes/providers.ts` | Byte-bounded generation-safe row owner; descriptor/refresh split remains compatibility-gated |
+| Durable model rows | no server persistence | Measure clean first-visit paint before proposing an app-data snapshot and freshness fields |
+| Provider adapters | `sdk/providers/*.ts` | Catalog keys participate in generation identity; duplicated prerequisites remain provider-specific follow-up |
+| OpenCode | `sdk/providers/opencode.ts`, `opencode-models.ts` | One verbose invocation normally supplies ids and variants; plain listing is fallback only |
+| Claude Gateway | `NewSessionForm`, `useProviderRow`, `Supervisor`, Gateway provider | Current named probe gates submission; actual new-session process creation rechecks the advertised model; generic discovery may still start the runtime |
+| Process model list | `routes/processes.ts` and runtime `supportedModels()` | Live runtime path remains separate from provider-route retained rows |
+| Usage telemetry | `useProviderSubscriptionUsage.ts`, provider usage routes | New Session first read is supplementary; direct demand and explicit Refresh are immediate |
+| Tests and benchmark | provider route/hook/form/supervisor/Project Queue tests; `provider-readiness.spec.ts`; `benchmark-provider-model-route.ts` | Ordering, authority, privacy, durable deferred failure, scheduling, isolated-browser behavior, and production-settings route latency are reproducible without Gateway autostart |
 
 ## Recommended implementation order
 
-### 1 — freeze immediate saved-choice rendering
+### 1 — freeze immediate saved-choice rendering (complete)
 
-Add client tests in which settings resolve first and `/providers` remains
-pending for several seconds. The exact saved provider/model must render in its
-final region without enabling an invalid authoritative Gateway launch. Cover
-fresh browser reload, source switch, no saved choice, stale saved provider,
-and explicit URL provider/model preferences.
+Client coverage holds the aggregate pending while the exact saved
+provider/model remains visible. Gateway launch stays blocked until its current
+named probe succeeds, including after a stale row was hydrated from the
+aggregate or browser snapshot.
 
-### 2 — add provider-local retained server snapshots
+### 2 — decide whether server snapshots are warranted (measurement pending)
 
-Build the coordinator, atomic app-data snapshot, per-provider in-flight
-coalescing, freshness state, and metrics. Keep auth identity/credentials out of
-the persisted file. Seed no fake model rows when a provider has never succeeded.
-One provider error must not delete or delay another provider's snapshot.
+Measure ten isolated clean-browser/fresh-server provider-card paints first. If
+the 1.5 s median or 3 s p90 condition is crossed, propose an atomic app-data
+snapshot and explicit freshness state. Keep auth identity/credentials out of
+that file, seed no fake rows, and preserve independent provider generations.
 
-### 3 — split descriptor, selected-catalog, and refresh requests
+### 3 — split descriptor, selected-catalog, and refresh requests (partial)
 
-Return static/last-known provider descriptors promptly, request the selected
-provider's current catalog independently, and make retry/explicit refresh name
-one provider. Preserve the old aggregate `/api/providers` route for older
-clients until the compatibility plan below is approved and its horizon ends.
+The selected catalog and Retry already use the existing named route. A distinct
+fast descriptor/snapshot route remains open because the aggregate median crossed
+2 s; preserve `/api/providers` for older clients until the compatibility plan
+below is approved and its horizon ends.
 
-### 4 — remove duplicate and side-effecting discovery
+### 4 — remove duplicate and side-effecting discovery (partial)
 
-Make auth/model prerequisite work share one provider generation. Collapse
-OpenCode discovery to one verbose command and prove its 87-header fixture.
-Stop generic Gateway warming/priming from starting a process. Route context
-window ingestion and process model fallback through the same completed catalog.
+Route auth/model requests now share one provider generation, and OpenCode
+normally uses one verbose command. Generic Gateway warming/priming can still
+start a process, while context-window ingestion and process model fallback can
+still bypass the provider-route owner.
 
-### 5 — defer subscription telemetry
+### 5 — schedule subscription telemetry (complete for startup ownership)
 
-Move usage probes out of immediate New Session mount priority, share their
-source/provider snapshot, and preserve manual refresh. Measure first picker,
-first model control, first input-ready, usage update, and child-process work
-with telemetry on and off.
+New Session's initial usage read is supplementary and explicit Refresh is
+immediate. The isolated browser spec holds route work, verifies zero usage
+requests before it settles, and confirms the later usage read without delaying
+the saved model control.
 
 ### 6 — measure cold, stale, and failure modes
 
@@ -291,10 +343,12 @@ count, first-provider/model paint, and time until Start is valid.
 
 ## Compatibility review checkpoint
 
-Provider/model selection is core functionality. Before a new client depends on
-a new snapshot route, freshness field, or provider-local refresh semantic,
-inspect the latest two stable releases and every stable release in the preceding
-60 days as required by `topics/server-capabilities.md`.
+The current slice depends only on existing aggregate, named-provider, and
+`refresh=1` routes, so it requires no new capability. Provider/model selection
+is core functionality: before a later client depends on a new descriptor or
+snapshot route, freshness/error field, or partial aggregate semantic, inspect
+the latest two stable releases and every stable release in the preceding 60
+days as required by `topics/server-capabilities.md`.
 
 A likely plan is a new transitional `incremental-provider-catalog` capability
 (final name chosen during implementation) covering the new snapshot/refresh
@@ -315,32 +369,34 @@ Approval prompt to settle at implementation time:
 
 ## Acceptance
 
-Each criterion names how it is measured. "Met" marks what the 2026-08-05 change
-established; the rest await the deferred work above.
+Each criterion names how it is measured. Eight are met by the current-route
+slice; three remain partial and have explicit evidence gates.
 
 | # | Criterion | Measurement | State |
 |---|---|---|---|
-| 1 | A saved Codex/Claude/Pi/OpenCode provider and exact model identity occupies its final New Session region without waiting for dynamic catalog discovery | Client test with settings resolved and `/api/providers` pending; browser capture with the aggregate blocked 8 s | Met |
-| 2 | A 10-second unselected-provider probe cannot delay or clear the selected provider/model controls | Time from navigation to the model control showing the saved token, with the aggregate artificially delayed 10 s; target under 1.5 s | Met for the control's appearance; not yet for a first-ever visit with no snapshot |
-| 3 | Time to witness the *selected* provider's model catalog, cold server | Wall time of `GET /api/providers/:name` after route-cache expiry; baseline 0.239 s (Codex) / 0.747 s (Claude) versus the 6.211 s aggregate | Met |
-| 4 | Time to witness *every* provider's model catalog, cold server | Wall time of `GET /api/providers` after route-cache expiry; baseline 6.211 s, of which OpenCode was 4.407 s | Partly — one OpenCode CLI process instead of two; re-measure and record here |
-| 5 | Browser and server restart retain a bounded, non-secret last-successful model snapshot | Reload with the aggregate blocked: cards present, `stale` true, no credential material in the stored value | Browser side met (`localStorage`); server side deferred |
-| 6 | Current auth and authoritative Gateway validity are never inferred from a stale snapshot | Gateway test: saved model absent from a fresh authoritative catalog is neither displayed nor submitted | Met (unchanged behavior) |
-| 7 | Refreshing or selecting one provider launches no model/auth subprocess for another provider | Child-process count around a single-provider refresh | Deferred |
-| 8 | Concurrent route/settings/process consumers share one provider catalog generation; failures stay provider-local | One failing provider still leaves other rows usable | Deferred (`Promise.all` still rejects the aggregate) |
-| 9 | OpenCode catalog discovery launches at most one CLI process per generation, and generic discovery never starts a persistent Gateway process | Process count during one cold aggregate | OpenCode met; Gateway auto-start deferred |
-| 10 | Subscription usage work begins after interactive readiness and cannot block the provider/model controls | Order of first model-control paint versus the usage request | Deferred |
-| 11 | Metrics name provider, cache state, duration, child count/max RSS where available, and outcome, retaining no credentials or raw command output | Server log/metric inspection | Deferred |
+| 1 | Provider cards and the saved provider/model controls paint from retained state without awaiting dynamic discovery | Revisit capture with aggregate held; ten clean-browser/fresh-server paint samples against 1.5 s median / 3 s p90 | **Partial** — revisit is immediate; first-ever provider-card paint is not measured and has no server snapshot |
+| 2 | A 10-second unselected-provider probe cannot delay or clear selected provider/model controls | Hold aggregate while settings and named selected-provider request resolve | **Met** — saved controls remain visible and reconcile independently |
+| 3 | Provider/model route work precedes supplementary account usage in New Session | Hold a `route` bootstrap slot and count usage requests before settlement; explicit Refresh must still run | **Met** — initial count is 0; explicit Refresh is immediate |
+| 4 | Time to witness every provider's model catalog is reproducible and below the protocol stop condition, or triggers review | Five production-settings real-route samples, with configured Gateway autostart disabled, aggregate and per-provider median/p90 | **Met** — 2.180 s median / 2.485 s p90; exceeds the 2 s review condition, with OpenCode at 2.093 s median |
+| 5 | Refreshing/retrying one provider probes no unrelated provider | Auth/model probe counts around Gateway Retry | **Met** — one provider pair instead of nine, 88.9% fewer unrelated pairs |
+| 6 | A stale Gateway row never authorizes Start or Project Queue launch | Browser pending/failure/success/empty cases plus server process creation after the catalog changes | **Met** — submission requires current named success; actual creation rechecks after any queue delay; deferred Project Queue failure preserves the item and error |
+| 7 | Cached rows and requests remain isolated by client source and provider | Source-switch tests plus distinct source/provider cache keys | **Met** |
+| 8 | Browser snapshots retain only versioned display/capability fields | Inspect serialized fixture containing identity, expiry, login command, and unknown authorization | **Met** — all four excluded fields become zero; unknown/unversioned snapshots are removed |
+| 9 | Browser and server restart retain a bounded, non-secret last-successful model snapshot | Reload with aggregate held, then restart with a clean browser | **Partial** — browser snapshot is bounded by its allowlist and storage quota; server persistence is absent |
+| 10 | Server route retention and refresh work have one byte-bounded generation owner | Inspect owner budget and test ordinary/forced overlap, coalescing, late success, and late failure | **Met** — one `SourceVersionedSingleFlight` owner with a 4 MiB accepted-value budget |
+| 11 | One provider failure does not erase another provider's usable row | Fail named and aggregate provider probes independently | **Partial** — named failure retains stale display data; aggregate `Promise.all` still rejects |
 
-Criteria 3 and 4 are the two numbers worth carrying forward; tactical 093 is
-asked to record 4 as part of its own measurement.
+Criterion 4's route measurement is also recorded in tactical 093, without
+conflating this provider/model catalog with its native-session catalog.
 
 ### Partial-completion-usable UI
 
-The rule the landed change follows, and that the deferred work should keep: a
-provider row may be shown before it is confirmed, but it must never be shown as
-*confirmed* before it is. Concretely — cards from a snapshot render immediately
-and stay marked busy; the selected provider's own request overrides them the
-moment it answers; a card the server no longer exposes may persist for up to the
-probe's duration and reveals itself on click; and nothing in this path relaxes a
-launch-time check.
+The rule the landed change follows, and that follow-up work must keep: a
+provider row may be shown before it is confirmed, but it must never authorize
+behavior that requires confirmation. Cards from a snapshot render immediately
+and stay marked busy; the selected provider's own request overrides them when it
+answers; a card the server no longer exposes may persist for the probe's
+duration and reveal itself on selection. Gateway is explicit: stale display
+survives checking or failure, while Start and Project Queue submission stay
+blocked until the current named catalog advertises the required model; actual
+new-session process creation repeats that check after any queue delay.

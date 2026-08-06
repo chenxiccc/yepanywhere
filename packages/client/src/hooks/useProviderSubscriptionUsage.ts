@@ -188,7 +188,13 @@ export function useProviderSubscriptionUsage(
       sequenceRef.current += 1;
       slot.settle();
     };
-  }, [fetchUsage, options.bootstrapTier, sourceKey]);
+  }, [
+    fetchUsage,
+    normalizedProvider,
+    options.bootstrapTier,
+    sourceKey,
+    supported,
+  ]);
 
   const visible =
     state.sourceKey === sourceKey && state.provider === normalizedProvider

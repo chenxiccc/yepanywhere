@@ -116,16 +116,54 @@ function snapshotProvider(provider: ProviderInfo): ProviderInfo {
 interface ProviderCacheEntry {
   providers: ProviderInfo[];
   expiresAt: number;
+  requestSequence: number;
   /** Rows from a previous visit; they never satisfy a request on their own. */
   stale?: boolean;
 }
 
+let providerRequestSequence = 0;
 const providerCaches = new Map<ClientSummarySourceKey, ProviderCacheEntry>();
 const providerFetchPromises = new Map<
   ClientSummarySourceKey,
   Promise<ProviderInfo[]>
 >();
 const hydratedSnapshotSources = new Set<ClientSummarySourceKey>();
+type ProviderCatalogListener = (entry: ProviderCacheEntry) => void;
+const providerCatalogListeners = new Map<
+  ClientSummarySourceKey,
+  Set<ProviderCatalogListener>
+>();
+type ProviderRowListener = (
+  row: ProviderInfo | null,
+  requestSequence: number,
+) => void;
+const providerRowListeners = new Map<
+  ClientSummarySourceKey,
+  Map<ProviderName, Set<ProviderRowListener>>
+>();
+
+function notifyProviderCatalogListeners(
+  sourceKey: ClientSummarySourceKey,
+  entry: ProviderCacheEntry,
+): void {
+  const listeners = providerCatalogListeners.get(sourceKey);
+  if (!listeners) return;
+  for (const listener of listeners) listener(entry);
+}
+
+function notifyProviderRowListeners(
+  sourceKey: ClientSummarySourceKey,
+  providers: readonly ProviderInfo[],
+  requestSequence: number,
+): void {
+  const sourceListeners = providerRowListeners.get(sourceKey);
+  if (!sourceListeners) return;
+  for (const [providerName, listeners] of sourceListeners) {
+    const row =
+      providers.find((provider) => provider.name === providerName) ?? null;
+    for (const listener of listeners) listener(row, requestSequence);
+  }
+}
 
 function snapshotStorage(): Storage | null {
   try {
@@ -163,6 +201,8 @@ function hydrateProviderSnapshot(sourceKey: ClientSummarySourceKey): void {
     }
     providerCaches.set(sourceKey, {
       providers: parsed.providers,
+      // A browser snapshot predates every request in this module lifetime.
+      requestSequence: 0,
       // Expired on arrival: a snapshot is an opening guess, never an answer.
       expiresAt: 0,
       stale: true,
@@ -213,6 +253,7 @@ async function loadProviders(
     return providerFetchPromise;
   }
 
+  const requestSequence = ++providerRequestSequence;
   const request = api
     .getProviders({ refresh: forceRefresh })
     .then((data) => data.providers);
@@ -221,13 +262,27 @@ async function loadProviders(
   try {
     const providers = await request;
     if (providerFetchPromises.get(sourceKey) === request) {
-      providerCaches.set(sourceKey, {
+      const entry = {
         providers,
         expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
-      });
+        requestSequence,
+      };
+      providerCaches.set(sourceKey, entry);
       writeProviderSnapshot(sourceKey, providers);
+      notifyProviderCatalogListeners(sourceKey, entry);
+      notifyProviderRowListeners(sourceKey, providers, requestSequence);
+      return providers;
     }
-    return providers;
+    const current = providerCaches.get(sourceKey);
+    return current && current.requestSequence > requestSequence
+      ? current.providers
+      : providers;
+  } catch (error) {
+    const current = providerCaches.get(sourceKey);
+    if (current && current.requestSequence > requestSequence) {
+      return current.providers;
+    }
+    throw error;
   } finally {
     if (providerFetchPromises.get(sourceKey) === request) {
       providerFetchPromises.delete(sourceKey);
@@ -346,6 +401,27 @@ export function useProviders() {
     [sourceKey],
   );
 
+  useEffect(() => {
+    const listener: ProviderCatalogListener = (entry) => {
+      setState({
+        sourceKey,
+        providers: entry.providers,
+        loading: false,
+        stale: false,
+        error: null,
+      });
+    };
+    const listeners =
+      providerCatalogListeners.get(sourceKey) ??
+      new Set<ProviderCatalogListener>();
+    listeners.add(listener);
+    providerCatalogListeners.set(sourceKey, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) providerCatalogListeners.delete(sourceKey);
+    };
+  }, [sourceKey]);
+
   // Fetch once per source transition (the cache handles remounts and expiry).
   useEffect(() => {
     if (lastFetchedSourceRef.current === sourceKey) return;
@@ -364,12 +440,14 @@ export function useProviders() {
 interface ProviderRowCacheEntry {
   row: ProviderInfo;
   expiresAt: number;
+  requestSequence: number;
 }
 
 interface ProviderRowRequest {
   forced: boolean;
-  promise: Promise<ProviderInfo>;
-  supersededBy?: Promise<ProviderInfo>;
+  requestSequence: number;
+  promise: Promise<ProviderRowCacheEntry>;
+  supersededBy?: Promise<ProviderRowCacheEntry>;
 }
 
 const providerRowCaches = new Map<string, ProviderRowCacheEntry>();
@@ -383,36 +461,69 @@ function providerRowKey(
 }
 
 /** A current row good enough to skip an ordinary single-provider request. */
+function readCachedProviderRowEntry(
+  sourceKey: ClientSummarySourceKey,
+  providerName: ProviderName,
+): ProviderRowCacheEntry | null {
+  const now = Date.now();
+  const cachedRow = providerRowCaches.get(
+    providerRowKey(sourceKey, providerName),
+  );
+  const rowEntry =
+    cachedRow && cachedRow.expiresAt > now ? cachedRow : undefined;
+  const cachedProviders = providerCaches.get(sourceKey);
+  const providerCache =
+    cachedProviders && !cachedProviders.stale && cachedProviders.expiresAt > now
+      ? cachedProviders
+      : undefined;
+  if (
+    rowEntry &&
+    (!providerCache ||
+      rowEntry.requestSequence >= providerCache.requestSequence)
+  ) {
+    return rowEntry;
+  }
+  const aggregateRow = providerCache?.providers.find(
+    (provider) => provider.name === providerName,
+  );
+  return aggregateRow && providerCache
+    ? {
+        row: aggregateRow,
+        expiresAt: providerCache.expiresAt,
+        requestSequence: providerCache.requestSequence,
+      }
+    : null;
+}
+
 function readCachedProviderRow(
   sourceKey: ClientSummarySourceKey,
   providerName: ProviderName,
 ): ProviderInfo | null {
-  const now = Date.now();
-  const rowEntry = providerRowCaches.get(
-    providerRowKey(sourceKey, providerName),
-  );
-  if (rowEntry && rowEntry.expiresAt > now) return rowEntry.row;
-  const providerCache = providerCaches.get(sourceKey);
-  if (!providerCache || providerCache.stale || providerCache.expiresAt <= now) {
-    return null;
-  }
-  return providerCache.providers.find((p) => p.name === providerName) ?? null;
+  return readCachedProviderRowEntry(sourceKey, providerName)?.row ?? null;
 }
 
 async function loadProviderRow(
   sourceKey: ClientSummarySourceKey,
   providerName: ProviderName,
   forceRefresh: boolean,
-): Promise<ProviderInfo> {
+  supersedeBeforeSequence = 0,
+): Promise<ProviderRowCacheEntry> {
   const key = providerRowKey(sourceKey, providerName);
   if (!forceRefresh) {
-    const cached = readCachedProviderRow(sourceKey, providerName);
+    const cached = readCachedProviderRowEntry(sourceKey, providerName);
     if (cached) return cached;
   }
 
   const pending = providerRowRequests.get(key);
-  if (pending && (!forceRefresh || pending.forced)) return pending.promise;
+  if (
+    pending &&
+    (!forceRefresh ||
+      (pending.forced && pending.requestSequence > supersedeBeforeSequence))
+  ) {
+    return pending.promise;
+  }
 
+  const requestSequence = ++providerRequestSequence;
   const rawRequest = api
     .getProvider(providerName, { refresh: forceRefresh })
     .then((data) => data.provider);
@@ -421,13 +532,22 @@ async function loadProviderRow(
     .then(
       (row) => {
         if (request.supersededBy) return request.supersededBy;
-        if (providerRowRequests.get(key) === request) {
-          providerRowCaches.set(key, {
-            row,
-            expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
-          });
+        const entry = {
+          row,
+          expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
+          requestSequence,
+        };
+        const newerCached = readCachedProviderRowEntry(sourceKey, providerName);
+        if (
+          newerCached &&
+          newerCached.requestSequence > entry.requestSequence
+        ) {
+          return newerCached;
         }
-        return row;
+        if (providerRowRequests.get(key) === request) {
+          providerRowCaches.set(key, entry);
+        }
+        return entry;
       },
       (error: unknown) => {
         if (request.supersededBy) return request.supersededBy;
@@ -439,7 +559,7 @@ async function loadProviderRow(
         providerRowRequests.delete(key);
       }
     });
-  request = { forced: forceRefresh, promise };
+  request = { forced: forceRefresh, requestSequence, promise };
   if (pending) pending.supersededBy = promise;
   providerRowRequests.set(key, request);
   return promise;
@@ -501,9 +621,15 @@ export function useProviderRow(
     ),
   );
   const requestSequenceRef = useRef(0);
+  const acceptedRequestSequenceRef = useRef(
+    normalizedProvider
+      ? (readCachedProviderRowEntry(sourceKey, normalizedProvider)
+          ?.requestSequence ?? 0)
+      : 0,
+  );
 
   const fetch = useCallback(
-    async (forceRefresh: boolean) => {
+    async (forceRefresh: boolean, supersedeBeforeSequence = 0) => {
       if (!normalizedProvider) return;
       const requestSequence = ++requestSequenceRef.current;
       setState((current) => {
@@ -524,16 +650,21 @@ export function useProviderRow(
         };
       });
       try {
-        const row = await loadProviderRow(
+        const entry = await loadProviderRow(
           sourceKey,
           normalizedProvider,
           forceRefresh,
+          supersedeBeforeSequence,
         );
         if (requestSequence !== requestSequenceRef.current) return;
+        acceptedRequestSequenceRef.current = Math.max(
+          acceptedRequestSequenceRef.current,
+          entry.requestSequence,
+        );
         setState({
           sourceKey,
           providerName: normalizedProvider,
-          row,
+          row: entry.row,
           refreshing: false,
           fresh: true,
           error: null,
@@ -559,7 +690,43 @@ export function useProviderRow(
   );
 
   useEffect(() => {
+    if (!normalizedProvider) return undefined;
+    const listener: ProviderRowListener = (row, requestSequence) => {
+      if (requestSequence <= acceptedRequestSequenceRef.current) return;
+      acceptedRequestSequenceRef.current = requestSequence;
+      setState({
+        sourceKey,
+        providerName: normalizedProvider,
+        row,
+        refreshing: forceRefreshOnMount,
+        fresh: !forceRefreshOnMount,
+        error: null,
+      });
+      if (forceRefreshOnMount) {
+        void fetch(true, requestSequence);
+      }
+    };
+    const sourceListeners =
+      providerRowListeners.get(sourceKey) ??
+      new Map<ProviderName, Set<ProviderRowListener>>();
+    const listeners =
+      sourceListeners.get(normalizedProvider) ?? new Set<ProviderRowListener>();
+    listeners.add(listener);
+    sourceListeners.set(normalizedProvider, listeners);
+    providerRowListeners.set(sourceKey, sourceListeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) sourceListeners.delete(normalizedProvider);
+      if (sourceListeners.size === 0) providerRowListeners.delete(sourceKey);
+    };
+  }, [fetch, forceRefreshOnMount, normalizedProvider, sourceKey]);
+
+  useEffect(() => {
     requestSequenceRef.current += 1;
+    acceptedRequestSequenceRef.current = normalizedProvider
+      ? (readCachedProviderRowEntry(sourceKey, normalizedProvider)
+          ?.requestSequence ?? 0)
+      : 0;
     const initial = getInitialProviderRowState(
       sourceKey,
       normalizedProvider,
@@ -569,13 +736,17 @@ export function useProviderRow(
     if (!normalizedProvider || initial.fresh) return undefined;
 
     let cancelled = false;
+    const selectionSequence = providerRequestSequence;
     const slot = acquireClientQueryBootstrapSlot(sourceKey, "route");
     void slot.ready().then(() => {
       if (cancelled) {
         slot.settle();
         return;
       }
-      void fetch(forceRefreshOnMount).finally(() => slot.settle());
+      void fetch(
+        forceRefreshOnMount,
+        forceRefreshOnMount ? selectionSequence : 0,
+      ).finally(() => slot.settle());
     });
     return () => {
       cancelled = true;
@@ -585,8 +756,7 @@ export function useProviderRow(
   }, [fetch, forceRefreshOnMount, normalizedProvider, sourceKey]);
 
   const visible =
-    state.sourceKey === sourceKey &&
-    state.providerName === normalizedProvider
+    state.sourceKey === sourceKey && state.providerName === normalizedProvider
       ? state
       : getInitialProviderRowState(
           sourceKey,

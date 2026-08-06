@@ -161,6 +161,42 @@ describe("useProviders", () => {
     expect(result.current.providers[0]?.models?.[0]?.id).toBe("fresh");
   });
 
+  it("publishes an aggregate refresh to every mounted consumer", async () => {
+    const initial = {
+      name: "claude" as const,
+      displayName: "Claude",
+      installed: true,
+      authenticated: true,
+      enabled: true,
+      models: [{ id: "initial", name: "Initial" }],
+    };
+    mockGetProviders
+      .mockResolvedValueOnce({ providers: [initial] })
+      .mockResolvedValueOnce({
+        providers: [
+          {
+            ...initial,
+            models: [{ id: "updated", name: "Updated" }],
+          },
+        ],
+      });
+
+    const first = renderHook(() => providersModule.useProviders());
+    const second = renderHook(() => providersModule.useProviders());
+    await waitFor(() => {
+      expect(first.result.current.loading).toBe(false);
+      expect(second.result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await first.result.current.refetch();
+    });
+
+    expect(first.result.current.providers[0]?.models?.[0]?.id).toBe("updated");
+    expect(second.result.current.providers[0]?.models?.[0]?.id).toBe("updated");
+    expect(mockGetProviders).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps cached provider catalogs isolated by source", async () => {
     mockGetProviders
       .mockResolvedValueOnce({ providers: [] })
@@ -436,6 +472,61 @@ describe("useProviders", () => {
     expect(result.current.row?.models?.[0]?.id).toBe("current");
   });
 
+  it("starts Gateway authority after an older forced request", async () => {
+    const aggregateRow = {
+      name: "claude-gateway" as const,
+      displayName: "Claude Gateway",
+      installed: true,
+      authenticated: true,
+      enabled: true,
+      models: [{ id: "aggregate", name: "Aggregate" }],
+    };
+    mockGetProviders.mockResolvedValueOnce({ providers: [aggregateRow] });
+    const aggregate = renderHook(() => providersModule.useProviders());
+    await waitFor(() => expect(aggregate.result.current.loading).toBe(false));
+
+    const older = deferred<{ provider: typeof aggregateRow }>();
+    const current = deferred<{ provider: typeof aggregateRow }>();
+    mockGetProvider
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(current.promise);
+    const ordinary = renderHook(() =>
+      providersModule.useProviderRow("claude-gateway"),
+    );
+    let olderRefresh: Promise<void> | undefined;
+    act(() => {
+      olderRefresh = ordinary.result.current.refresh();
+    });
+    await waitFor(() => expect(mockGetProvider).toHaveBeenCalledTimes(1));
+
+    const authoritative = renderHook(() =>
+      providersModule.useProviderRow("claude-gateway", {
+        forceRefreshOnMount: true,
+      }),
+    );
+    await waitFor(() => expect(mockGetProvider).toHaveBeenCalledTimes(2));
+
+    current.resolve({
+      provider: {
+        ...aggregateRow,
+        models: [{ id: "current", name: "Current" }],
+      },
+    });
+    await waitFor(() => expect(authoritative.result.current.fresh).toBe(true));
+    expect(authoritative.result.current.row?.models?.[0]?.id).toBe("current");
+
+    older.resolve({
+      provider: {
+        ...aggregateRow,
+        models: [{ id: "older", name: "Older" }],
+      },
+    });
+    await act(async () => {
+      await olderRefresh;
+    });
+    expect(authoritative.result.current.row?.models?.[0]?.id).toBe("current");
+  });
+
   it("retains a Gateway display row across a failed probe and retries by name", async () => {
     const aggregateRow = {
       name: "claude-gateway" as const,
@@ -479,6 +570,151 @@ describe("useProviders", () => {
     });
   });
 
+  it("uses a newer aggregate row instead of an older named row", async () => {
+    const initialRow = {
+      name: "claude" as const,
+      displayName: "Claude",
+      installed: true,
+      authenticated: true,
+      enabled: true,
+      models: [{ id: "initial", name: "Initial" }],
+    };
+    mockGetProviders
+      .mockResolvedValueOnce({ providers: [initialRow] })
+      .mockResolvedValueOnce({
+        providers: [
+          {
+            ...initialRow,
+            models: [{ id: "aggregate-new", name: "Aggregate New" }],
+          },
+        ],
+      });
+    mockGetProvider.mockResolvedValueOnce({
+      provider: {
+        ...initialRow,
+        models: [{ id: "named-old", name: "Named Old" }],
+      },
+    });
+
+    const aggregate = renderHook(() => providersModule.useProviders());
+    await waitFor(() => expect(aggregate.result.current.loading).toBe(false));
+    const selected = renderHook(() => providersModule.useProviderRow("claude"));
+    await act(async () => {
+      await selected.result.current.refresh();
+    });
+    expect(selected.result.current.row?.models?.[0]?.id).toBe("named-old");
+
+    await act(async () => {
+      await aggregate.result.current.reload();
+    });
+
+    expect(selected.result.current.row?.models?.[0]?.id).toBe("aggregate-new");
+    expect(selected.result.current.fresh).toBe(true);
+    expect(mockGetProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it("revalidates mounted Gateway authority after a newer aggregate row", async () => {
+    const initialRow = {
+      name: "claude-gateway" as const,
+      displayName: "Claude Gateway",
+      installed: true,
+      authenticated: true,
+      enabled: true,
+      models: [{ id: "initial", name: "Initial" }],
+    };
+    const revalidated = deferred<{ provider: typeof initialRow }>();
+    mockGetProviders
+      .mockResolvedValueOnce({ providers: [initialRow] })
+      .mockResolvedValueOnce({
+        providers: [
+          {
+            ...initialRow,
+            models: [{ id: "aggregate-new", name: "Aggregate New" }],
+          },
+        ],
+      });
+    mockGetProvider
+      .mockResolvedValueOnce({
+        provider: {
+          ...initialRow,
+          models: [{ id: "named-current", name: "Named Current" }],
+        },
+      })
+      .mockReturnValueOnce(revalidated.promise);
+
+    const aggregate = renderHook(() => providersModule.useProviders());
+    await waitFor(() => expect(aggregate.result.current.loading).toBe(false));
+    const selected = renderHook(() =>
+      providersModule.useProviderRow("claude-gateway", {
+        forceRefreshOnMount: true,
+      }),
+    );
+    await waitFor(() => expect(selected.result.current.fresh).toBe(true));
+
+    await act(async () => {
+      await aggregate.result.current.reload();
+    });
+    await waitFor(() => expect(mockGetProvider).toHaveBeenCalledTimes(2));
+    expect(selected.result.current.row?.models?.[0]?.id).toBe("aggregate-new");
+    expect(selected.result.current.fresh).toBe(false);
+    expect(selected.result.current.refreshing).toBe(true);
+
+    revalidated.resolve({
+      provider: {
+        ...initialRow,
+        models: [{ id: "named-new", name: "Named New" }],
+      },
+    });
+    await waitFor(() => expect(selected.result.current.fresh).toBe(true));
+    expect(selected.result.current.row?.models?.[0]?.id).toBe("named-new");
+  });
+
+  it("keeps a newer named row when an older aggregate finishes late", async () => {
+    const initialRow = {
+      name: "claude" as const,
+      displayName: "Claude",
+      installed: true,
+      authenticated: true,
+      enabled: true,
+      models: [{ id: "initial", name: "Initial" }],
+    };
+    const lateAggregate = deferred<{ providers: Array<typeof initialRow> }>();
+    mockGetProviders
+      .mockResolvedValueOnce({ providers: [initialRow] })
+      .mockReturnValueOnce(lateAggregate.promise);
+    mockGetProvider.mockResolvedValueOnce({
+      provider: {
+        ...initialRow,
+        models: [{ id: "named-new", name: "Named New" }],
+      },
+    });
+
+    const aggregate = renderHook(() => providersModule.useProviders());
+    await waitFor(() => expect(aggregate.result.current.loading).toBe(false));
+    let aggregateReload: Promise<void> | undefined;
+    act(() => {
+      aggregateReload = aggregate.result.current.reload();
+    });
+    const selected = renderHook(() => providersModule.useProviderRow("claude"));
+    await act(async () => {
+      await selected.result.current.refresh();
+    });
+    lateAggregate.resolve({
+      providers: [
+        {
+          ...initialRow,
+          models: [{ id: "aggregate-old", name: "Aggregate Old" }],
+        },
+      ],
+    });
+    await act(async () => {
+      await aggregateReload;
+    });
+
+    expect(selected.result.current.row?.models?.[0]?.id).toBe("named-new");
+    expect(selected.result.current.fresh).toBe(true);
+  });
+
   it("keeps a forced named response newer than an older ordinary response", async () => {
     mockGetProviders.mockReturnValueOnce(new Promise(() => {}));
     const ordinary = deferred<{
@@ -505,9 +741,7 @@ describe("useProviders", () => {
       .mockReturnValueOnce(ordinary.promise)
       .mockReturnValueOnce(forced.promise);
     renderHook(() => providersModule.useProviders());
-    const selected = renderHook(() =>
-      providersModule.useProviderRow("codex"),
-    );
+    const selected = renderHook(() => providersModule.useProviderRow("codex"));
     await waitFor(() => expect(mockGetProvider).toHaveBeenCalledTimes(1));
 
     let refreshing: Promise<void> | undefined;
@@ -561,9 +795,7 @@ describe("useProviders", () => {
 
     const refreshed = deferred<{ provider: typeof aggregateRow }>();
     mockGetProvider.mockReturnValueOnce(refreshed.promise);
-    const selected = renderHook(() =>
-      providersModule.useProviderRow("claude"),
-    );
+    const selected = renderHook(() => providersModule.useProviderRow("claude"));
     let first: Promise<void> | undefined;
     let second: Promise<void> | undefined;
     act(() => {

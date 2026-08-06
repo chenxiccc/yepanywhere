@@ -149,6 +149,7 @@ describe("Providers Routes", () => {
   it("lets a forced refresh supersede older ordinary work", async () => {
     const ordinaryModels = deferred<ModelInfo[]>();
     const refreshedModels = deferred<ModelInfo[]>();
+    const ingestModels = vi.fn();
     const provider = createProvider({
       getAvailableModels: vi
         .fn()
@@ -158,6 +159,7 @@ describe("Providers Routes", () => {
     const routes = createProvidersRoutes({
       providers: [provider],
       cacheTtlMs: 60_000,
+      modelInfoService: { ingestModels },
     });
 
     const ordinary = routes.request("/claude");
@@ -186,6 +188,10 @@ describe("Providers Routes", () => {
       provider: ProviderInfo;
     };
     expect(cachedJson.provider.models).toEqual([{ id: "opus", name: "Opus" }]);
+    expect(ingestModels).toHaveBeenCalledTimes(1);
+    expect(ingestModels).toHaveBeenCalledWith("claude", [
+      { id: "opus", name: "Opus" },
+    ]);
   });
 
   it("keeps newer provider state when superseded work fails late", async () => {

@@ -505,6 +505,8 @@ export interface SessionLaunchOptions {
   workstreamId?: WorkstreamId;
   /** One-shot callback once an immediate or queued launch has a canonical YA id. */
   onStarted?: (sessionId: string) => void | Promise<void>;
+  /** One-shot callback when a deferred launch cannot start. */
+  onFailed?: (reason: string) => void | Promise<void>;
 }
 
 /** Error response when queue is full */
@@ -766,6 +768,26 @@ export class Supervisor {
     return getProvider(providerName);
   }
 
+  private async assertAuthoritativeNewSessionModel(
+    provider: AgentProvider,
+    modelSettings?: ModelSettings,
+  ): Promise<void> {
+    if (provider.name !== "claude-gateway") return;
+
+    const requestedModel = modelSettings?.model;
+    if (!requestedModel || requestedModel === "default") {
+      throw new Error(
+        "Claude Gateway requires a model from its current catalog",
+      );
+    }
+    const models = await provider.getAvailableModels();
+    if (!models.some((model) => model.id === requestedModel)) {
+      throw new Error(
+        `Claude Gateway no longer advertises model ${JSON.stringify(requestedModel)}`,
+      );
+    }
+  }
+
   private resolvePromptSuggestionMode(
     requestedMode: PromptSuggestionMode | undefined,
     provider: Pick<AgentProvider, "supportsNativePromptSuggestions">,
@@ -921,6 +943,7 @@ export class Supervisor {
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
     this.assertSessionSandboxSettings(modelSettings);
     const projectId = launchOptions?.projectId ?? encodeProjectId(projectPath);
+    const provider = this.resolveProvider(modelSettings);
 
     // Check if at capacity
     if (this.isAtCapacity()) {
@@ -930,6 +953,12 @@ export class Supervisor {
         await this.preemptWorker(preemptable);
         // Fall through to start session normally
       } else {
+        // A direct Gateway caller cannot observe a deferred validation failure.
+        // Fail as busy rather than accept and later discard its prompt. Durable
+        // dispatchers provide onFailed and keep their own retryable item.
+        if (provider?.name === "claude-gateway" && !launchOptions?.onFailed) {
+          return { error: "queue_full", maxQueueSize: this.maxWorkers };
+        }
         // Queue the request
         const result = this.workerQueue.enqueue({
           type: "new-session",
@@ -940,6 +969,7 @@ export class Supervisor {
           permissionMode,
           modelSettings,
           onStarted: launchOptions?.onStarted,
+          onFailed: launchOptions?.onFailed,
         });
         if (isQueueFullError(result)) {
           return result;
@@ -951,8 +981,6 @@ export class Supervisor {
         };
       }
     }
-
-    const provider = this.resolveProvider(modelSettings);
 
     // Use provider if available (preferred)
     let process: Process;
@@ -1016,6 +1044,7 @@ export class Supervisor {
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
     this.assertSessionSandboxSettings(modelSettings);
     const projectId = launchOptions?.projectId ?? encodeProjectId(projectPath);
+    const provider = this.resolveProvider(modelSettings);
 
     // Check if at capacity
     if (this.isAtCapacity()) {
@@ -1025,6 +1054,9 @@ export class Supervisor {
         await this.preemptWorker(preemptable);
         // Fall through to create session normally
       } else {
+        if (provider?.name === "claude-gateway" && !launchOptions?.onFailed) {
+          return { error: "queue_full", maxQueueSize: this.maxWorkers };
+        }
         // Queue the request - use empty message placeholder
         const result = this.workerQueue.enqueue({
           type: "new-session",
@@ -1034,6 +1066,8 @@ export class Supervisor {
           message: { text: "" }, // Placeholder, will be replaced when first message sent
           permissionMode,
           modelSettings,
+          onStarted: launchOptions?.onStarted,
+          onFailed: launchOptions?.onFailed,
         });
         if (isQueueFullError(result)) {
           return result;
@@ -1045,8 +1079,6 @@ export class Supervisor {
         };
       }
     }
-
-    const provider = this.resolveProvider(modelSettings);
 
     // Use provider if available (preferred)
     if (provider) {
@@ -1900,6 +1932,12 @@ export class Supervisor {
     if (!activeProvider) {
       throw new Error("provider is not available");
     }
+    if (!resumeSessionId) {
+      await this.assertAuthoritativeNewSessionModel(
+        activeProvider,
+        modelSettings,
+      );
+    }
 
     const processHolder: { process: Process | null } = { process: null };
     const effectiveMode = permissionMode ?? this.defaultPermissionMode;
@@ -2089,6 +2127,12 @@ export class Supervisor {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
       throw new Error("provider is not available");
+    }
+    if (!resumeSessionId) {
+      await this.assertAuthoritativeNewSessionModel(
+        activeProvider,
+        modelSettings,
+      );
     }
 
     // We need to reference process in the callback before it's assigned
@@ -5288,11 +5332,31 @@ export class Supervisor {
           );
         }
       } catch (error) {
-        // On error, resolve with cancelled status
-        request.resolve({
-          status: "cancelled",
-          reason: error instanceof Error ? error.message : String(error),
+        const reason = error instanceof Error ? error.message : String(error);
+        this.eventBus?.emit({
+          type: "queue-request-removed",
+          queueId: request.id,
+          sessionId: request.sessionId,
+          reason: "cancelled",
+          timestamp: new Date().toISOString(),
         });
+        request.resolve({ status: "cancelled", reason });
+        try {
+          await request.onFailed?.(reason);
+        } catch (callbackError) {
+          getLogger().warn(
+            {
+              event: "queued_session_failed_callback_failed",
+              projectId: request.projectId,
+              queueId: request.id,
+              error:
+                callbackError instanceof Error
+                  ? callbackError.message
+                  : String(callbackError),
+            },
+            "Queued session failed and its failure callback also failed",
+          );
+        }
       }
     }
   }

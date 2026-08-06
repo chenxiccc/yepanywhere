@@ -76,68 +76,68 @@ The first authenticated or remotely connected YA visit in a browser tab primes
 provider status and model catalogs through the same source-scoped request/cache
 used by New Session, settings, and restart surfaces. A consumer mounted during
 that primer joins its in-flight request rather than repeating provider probes.
-Catalogs and in-flight work from one local or remote host must never satisfy a
+Catalogs and in-flight work from one local or remote host never satisfy a
 consumer viewing another host. Primer failure remains advisory: the first
 consumer retries through its normal loading/error path.
 
 Readiness is client-presence-driven. YA does not periodically probe provider
-catalogs while no browser is visiting it; the existing bounded client and server
-cache lifetimes govern freshness during active use, and explicit refresh actions
-retain their stronger semantics. When a primer overlaps a later explicit
-refresh or reload for the same source, only the later request may update the
-shared cache or mounted consumer state, regardless of response order.
+catalogs while no browser is visiting it. The standing provider/model choice is
+durable settings state, not a dynamic catalog answer: New Session renders the
+exact saved provider and provider-local model in its final control region, then
+revalidates installation, authentication, alternatives, and capabilities in
+place. An unselected provider's discovery does not delay or clear that choice.
 
-The standing provider/model choice is durable settings state, not a dynamic
-catalog answer. New Session must render the exact saved provider and
-provider-local model identity in its final control region from the retained
-settings snapshot, then revalidate installation, authentication, alternatives,
-and model capabilities in place. An unselected provider's discovery must not
-delay, clear, or replace that choice. The opening composer/project region stays
-stable while catalog rows activate.
+The dynamic catalog keeps the existing two request shapes:
 
-Two mechanisms carry that requirement today. The selected provider's status and
-models come from its own single-provider request rather than the aggregate, so
-the aggregate's slowest member cannot gate the selection; the server coalesces
-that request with any aggregate already probing the provider, so it costs no
-extra probe. And a client may render the previous visit's provider rows from a
-retained per-source snapshot, which is an opening guess and never a probe
-result: it arrives already expired, consumers still report loading, the rendered
-group is marked busy, and the probe's answer replaces it. A row shown this way
-may name a provider the server no longer exposes until the probe corrects it;
-selecting it is still checked at launch.
+- `GET /api/providers` returns the exposed provider-card collection and remains
+  the complete-response compatibility path.
+- `GET /api/providers/:name` resolves and refreshes one selected provider without
+  probing unrelated providers.
 
-The server retains a bounded, non-secret last-successful model snapshot per
-provider across restarts. A stale snapshot may render choices but does not
-prove current authentication or launch validity. Do not persist credentials,
-raw provider command output, user identity, or arbitrary configuration text in
-that snapshot. Provider configuration changes make the snapshot stale and
-schedule provider-local revalidation; errors retain the stale rows with an
-explicit retry rather than making every provider unavailable.
+The server retains provider rows through one byte-bounded,
+source-versioned owner. Ordinary callers join current work, concurrent forced
+callers coalesce, forced work supersedes older ordinary work, and late old
+success or failure cannot replace or delete the newer row. The provider's model
+catalog key participates in generation identity. Aggregate `Promise.all`
+failure behavior is unchanged.
 
-Generic catalog discovery is side-effect-free with respect to provider
-runtimes. It must not start or retain a configured Gateway or other provider
-service merely because a tab opened. Selected-provider refresh and launch may
-perform the provider-specific readiness work their contracts require.
+The client persists a versioned, source-scoped browser snapshot for seven days.
+An explicit allowlist retains provider/model display metadata and capabilities;
+identity, expiry, login commands, credentials, authorization material, raw
+provider output, and unknown configuration are excluded. Hydration marks the
+snapshot expired immediately: it is an opening guess, never a probe result.
+Consumers still report loading, the rendered group stays busy, and current
+server rows replace the snapshot in place. Aggregate and named rows share one
+request-admission sequence and publish accepted responses to every mounted
+source consumer: a later aggregate settings reload supersedes an older named
+cache entry, while a late older aggregate cannot displace newer named facts or
+reintroduce an old error.
 
-Selecting a configured provider whose model list is authoritative but dynamic
-triggers a background explicit refresh, even when a cached empty catalog made
-the provider eligible to select. The current provider list remains visible
-while that refresh runs. When Claude Gateway still advertises no models, New
-Session shows a retryable unavailable state and blocks fresh launch instead of
-submitting without a model. When models arrive, the selection reconciles to a
-provider-scoped saved model or the first advertised row and capability-driven
-controls appear. An exact saved model that is absent from an authoritative
-Gateway catalog is neither displayed nor submitted; this applies equally to
-the New Session picker and its informational floating-composer badge. Providers
-whose contracts permit exact unlisted ids retain their existing behavior.
+Display validity and launch authority are separate. A stale selected row may
+remain visible while a named probe is pending or failed. Claude Gateway starts
+a forced named probe after the selection becomes current; Start and Project
+Queue launch remain blocked until that successful response advertises the
+required model. Actual new-session process creation repeats the Gateway-only
+advertised-model check, so deferred Project Queue and internal worker-queue
+launches cannot reuse enqueue-time authority. A Project Queue item held by the
+worker queue remains in durable `dispatching` state until launch starts; a
+validation failure moves it to `failed` with the catalog error rather than
+removing its prompt. At worker capacity, a direct Gateway caller without that
+durable failure channel receives the existing `queue_full` response instead of
+a queued acceptance whose later failure would discard its prompt. Retry
+refreshes Gateway alone. Other providers retain ordinary five-minute row reuse
+and exact unlisted model-id behavior.
 
-Refresh is provider-local. Selecting or retrying Gateway must not force model
-and authentication probes for Codex, OpenCode, Pi, or any other unrelated
-provider. Supplementary subscription/usage telemetry activates after the
-selected controls are interactive or on direct demand and updates in place; it
-is not part of provider/model readiness.
+New Session's initial subscription-usage read is admitted as supplementary
+startup work after earlier route tiers. Direct-demand usage consumers and every
+explicit Refresh remain immediate.
 
-The implementation handoff is
+There is no persisted server provider/model snapshot, so a clean browser on a
+fresh server still awaits the aggregate for provider cards. Generic Gateway
+model discovery can still start its configured runtime, and aggregate failure
+is not isolated by row. The measured aggregate median crosses the threshold for
+reconsidering descriptor/model-refresh separation; those wire changes still
+require the compatibility review in
 [`docs/tactical/094-new-session-provider-catalog-readiness.md`](../docs/tactical/094-new-session-provider-catalog-readiness.md).
 
 ## Recap fallback semantics
