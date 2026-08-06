@@ -50,6 +50,10 @@ interface GatewayModelWindows {
   promptWindow: number;
 }
 
+interface GatewayModelLaunchMetadata {
+  windows?: GatewayModelWindows;
+}
+
 /**
  * Claude Code resolves a gateway model's effective context window separately
  * from its automatic-compaction window. The total catalog window becomes the
@@ -86,10 +90,14 @@ function gatewayMaxContextTokens(
 function gatewayEnvironment(
   baseUrl: string,
   model?: string,
-  windows?: GatewayModelWindows,
+  metadata?: GatewayModelLaunchMetadata,
 ): Record<string, string> {
-  const maxContextTokens = gatewayMaxContextTokens(windows?.contextWindow);
-  const autoCompactWindow = gatewayAutoCompactWindow(windows?.promptWindow);
+  const maxContextTokens = gatewayMaxContextTokens(
+    metadata?.windows?.contextWindow,
+  );
+  const autoCompactWindow = gatewayAutoCompactWindow(
+    metadata?.windows?.promptWindow,
+  );
   return {
     YEP_CLAUDE_GATEWAY: "1",
     ANTHROPIC_BASE_URL: baseUrl,
@@ -125,6 +133,9 @@ function gatewayEnvironment(
       : {}),
     ...(autoCompactWindow !== undefined
       ? { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(autoCompactWindow) }
+      : {}),
+    ...(metadata && !metadata.windows
+      ? { CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1" }
       : {}),
   };
 }
@@ -192,16 +203,18 @@ function modelWindows(item: GatewayModel): GatewayModelWindows | undefined {
 
 interface ParsedGatewayCatalog {
   models: ModelInfo[];
-  windows: Map<string, GatewayModelWindows>;
+  launchMetadata: Map<string, GatewayModelLaunchMetadata>;
 }
 
 function parseClaudeGatewayCatalog(value: unknown): ParsedGatewayCatalog {
   const data = (value as GatewayModelsResponse | null)?.data;
-  if (!Array.isArray(data)) return { models: [], windows: new Map() };
+  if (!Array.isArray(data)) {
+    return { models: [], launchMetadata: new Map() };
+  }
 
   const seen = new Set<string>();
   const models: ModelInfo[] = [];
-  const windows = new Map<string, GatewayModelWindows>();
+  const launchMetadata = new Map<string, GatewayModelLaunchMetadata>();
   for (const item of data) {
     const id = typeof item.id === "string" ? item.id.trim() : "";
     if (!id || seen.has(id) || !isGatewayModelVisible(item, id)) continue;
@@ -214,7 +227,10 @@ function parseClaudeGatewayCatalog(value: unknown): ParsedGatewayCatalog {
           : "";
     const supportedEffortLevels = modelEffortLevels(item);
     const advertisedWindows = modelWindows(item);
-    if (advertisedWindows) windows.set(id, advertisedWindows);
+    launchMetadata.set(
+      id,
+      advertisedWindows ? { windows: advertisedWindows } : {},
+    );
     models.push({
       id,
       name: displayName || id,
@@ -233,7 +249,7 @@ function parseClaudeGatewayCatalog(value: unknown): ParsedGatewayCatalog {
       supportsAdaptiveThinking: supportedEffortLevels.length > 0,
     });
   }
-  return { models, windows };
+  return { models, launchMetadata };
 }
 
 export function parseClaudeGatewayModels(value: unknown): ModelInfo[] {
@@ -253,11 +269,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   private static gatewayUrl: string | undefined;
   private static gatewayStartCommand: string | undefined;
   /**
-   * Total and prompt windows from the last catalog read. A launch before any
-   * successful read omits both overrides and keeps Claude Code's gateway
-   * defaults rather than asserting limits YA has not seen.
+   * Launch metadata from the last successful catalog read. Undefined means no
+   * catalog has established whether a model is present or merely lacks limits.
    */
-  private static modelWindows = new Map<string, GatewayModelWindows>();
+  private static modelLaunchMetadata:
+    | Map<string, GatewayModelLaunchMetadata>
+    | undefined;
 
   constructor(
     private readonly gatewayLauncher: Pick<
@@ -269,10 +286,16 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   }
 
   static setGatewayUrl(url: string | undefined): void {
+    if (ClaudeGatewayProvider.gatewayUrl !== url) {
+      ClaudeGatewayProvider.forgetGatewayCatalog();
+    }
     ClaudeGatewayProvider.gatewayUrl = url;
   }
 
   static setGatewayStartCommand(command: string | undefined): void {
+    if (ClaudeGatewayProvider.gatewayStartCommand !== command) {
+      ClaudeGatewayProvider.forgetGatewayCatalog();
+    }
     ClaudeGatewayProvider.gatewayStartCommand = command;
   }
 
@@ -280,6 +303,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     url?: string;
     startCommand?: string;
   }): Promise<void> {
+    if (
+      ClaudeGatewayProvider.gatewayUrl !== options.url ||
+      ClaudeGatewayProvider.gatewayStartCommand !== options.startCommand
+    ) {
+      ClaudeGatewayProvider.forgetGatewayCatalog();
+    }
     ClaudeGatewayProvider.gatewayUrl = options.url;
     ClaudeGatewayProvider.gatewayStartCommand = options.startCommand;
     await claudeGatewayLauncher.configure(options);
@@ -301,14 +330,14 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     return ClaudeGatewayProvider.gatewayUrl;
   }
 
-  private static rememberModelWindows(
-    windows: Map<string, GatewayModelWindows>,
+  private static rememberGatewayCatalog(
+    launchMetadata: Map<string, GatewayModelLaunchMetadata>,
   ): void {
-    ClaudeGatewayProvider.modelWindows = windows;
+    ClaudeGatewayProvider.modelLaunchMetadata = launchMetadata;
   }
 
-  static forgetContextWindows(): void {
-    ClaudeGatewayProvider.modelWindows = new Map();
+  static forgetGatewayCatalog(): void {
+    ClaudeGatewayProvider.modelLaunchMetadata = undefined;
   }
 
   static isConfigured(): boolean {
@@ -360,7 +389,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
       });
       if (!response.ok) return [];
       const catalog = parseClaudeGatewayCatalog(await response.json());
-      ClaudeGatewayProvider.rememberModelWindows(catalog.windows);
+      ClaudeGatewayProvider.rememberGatewayCatalog(catalog.launchMetadata);
       return catalog.models;
     } catch (error) {
       getLogger().debug(
@@ -375,8 +404,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     return this.getAvailableModels();
   }
 
-  private static windowsFor(model?: string): GatewayModelWindows | undefined {
-    return model ? ClaudeGatewayProvider.modelWindows.get(model) : undefined;
+  private static launchMetadataFor(
+    model?: string,
+  ): GatewayModelLaunchMetadata | undefined {
+    return model
+      ? ClaudeGatewayProvider.modelLaunchMetadata?.get(model)
+      : undefined;
   }
 
   protected override getSettings(model?: string): Settings | undefined {
@@ -386,7 +419,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
       env: gatewayEnvironment(
         gatewayUrl,
         model,
-        ClaudeGatewayProvider.windowsFor(model),
+        ClaudeGatewayProvider.launchMetadataFor(model),
       ),
     };
   }
@@ -401,7 +434,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
           ...gatewayEnvironment(
             gatewayUrl,
             model,
-            ClaudeGatewayProvider.windowsFor(model),
+            ClaudeGatewayProvider.launchMetadataFor(model),
           ),
         }
       : super.getEnv(model);

@@ -272,29 +272,46 @@ the authority, but it describes two different limits:
 - `max_prompt_tokens`, when present, is the prompt-only ceiling inside that
   envelope.
 
-Claude Code 2.1.220 also resolves two independent launch controls. For a
-non-`claude-*` gateway model, `CLAUDE_CODE_MAX_CONTEXT_TOKENS` sets the
-effective model envelope used by local request-size checks and context status.
+Claude Code 2.1.223 resolves two independent launch controls. For a gateway
+model whose normalized ID does not begin `claude-`,
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` sets the effective model envelope used by
+local request-size checks, usage reporting, and context status.
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` only bounds Claude Code's automatic
 compaction operating window; setting it alone does not enlarge the effective
-model envelope. Claude Code then reserves output capacity inside that automatic
-window before deciding when to compact.
+model envelope. The environment value has precedence over the corresponding
+settings/client/experiment/default sources and is still capped to the
+separately resolved maximum. Claude Code then reserves output capacity inside
+that automatic window before deciding when to compact.
 
-`ClaudeGatewayProvider` caches the catalog pair per model and passes both
-controls on each create/resume launch:
+`ClaudeGatewayProvider` retains catalog membership independently of optional
+window metadata and derives each create/resume launch from the last successful
+catalog read:
 
-- A launch before any successful catalog read omits both variables and keeps
-  Claude Code's gateway defaults rather than asserting limits YA has not seen.
-- The total window is rounded to a positive integer without a 1M cap; a catalog
-  total of 1,050,000 remains 1,050,000.
-- The automatic window uses the prompt ceiling, falling back to the total when
-  the catalog omits it, and never exceeds the total. Claude Code accepts only
-  100,000 through 1,000,000 for this control. YA caps larger values at 1M and
-  omits values below 100K rather than rounding above the advertised hard limit.
+- A launch before any successful catalog read, without a selected model, or for
+  a model absent from that catalog sets no context-policy variables. It does not
+  infer limits from an earlier gateway or from Claude Code defaults.
+- A catalog-known model with a usable total limit receives
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS`; its prompt ceiling becomes
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW` when Claude Code can express it. The total
+  is rounded to a positive integer without a 1M cap. The automatic window never
+  exceeds the total, is capped at 1M, and is omitted below Claude Code's 100K
+  minimum rather than rounded above an advertised hard limit.
+- A catalog-known model without a usable total limit receives only
+  `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1`. YA does not invent
+  a fallback capacity. For models Claude Code considers unknown, the opt-out
+  changes the automatic-window source from `unknown-model` to `auto`, restoring
+  reactive wait-for-the-API handling where the runtime supports it. It does not
+  change the numeric maximum or `modelUsage.contextWindow`.
 - The default Copilot catalog for `gpt-5.6-sol` therefore launches with a
   400,000-token effective envelope and a 272,000-token prompt/automatic window.
   If that catalog later advertises the 1,050,000/922,000 long tier, the same
   mapping preserves those distinct limits.
+
+A gateway ID is not unknown merely because it came through a custom base URL.
+Claude Code first canonicalizes the ID against its built-in registry and model
+overrides. YA deliberately does not duplicate that private recognition logic:
+the metadata-less opt-out affects only models Claude Code itself classifies as
+unknown and is inert for recognized rows.
 
 The distinction was diagnosed 2026-08-05 from a wedged `gpt-5.6-sol` session:
 context climbed to 200,935 tokens with no compaction in its transcript, and the
@@ -303,17 +320,37 @@ gateway. The earlier automatic-window-only mapping still left Claude Code's
 effective gateway envelope at 200K. YA's optional early-compaction threshold
 could not have covered that turn because it fires only at an idle boundary.
 
-A remaining Claude Code limitation applies to gateway model IDs beginning
-`claude-`: the ordinary resolver ignores `CLAUDE_CODE_MAX_CONTEXT_TOKENS` for
-those IDs behind a custom base URL and normally falls back to 200K unless a
-separate recognized extended-context mechanism applies. Do not claim that a
-Copilot `claude-opus-5` long tier is effective in Claude Code merely because the
-gateway catalog advertises it; that path still needs its own verified mapping.
+Runtime acceptance on 2026-08-06 used the SDK-bundled Claude Code 2.1.223 and
+the live gateway. The init and assistant records both selected `gpt-5.6-sol`,
+the result reported a 400,000-token `modelUsage.contextWindow`, and one request
+succeeded with 205,104 active input/cache tokens without a local synthetic
+prompt-too-long failure or compaction event. This crosses the former 200K
+runtime boundary while remaining below the catalog's 272K prompt ceiling. An
+earlier 2.1.220 session had also carried a 231,052-token input/cache prefix;
+the 2.1.223 result confirms the package/runtime refresh did not regress the
+corrected two-window mapping.
 
-Anthropic documents manual `/compact`, but no interactive SDK/command setter
-for these launch-scoped controls. A gateway catalog change takes effect on a
-new or restarted/resumed process; active steering never interrupts a turn to
-change the current process environment.
+The metadata-less opt-out is source- and launch-policy-verified rather than a
+claim about a guessed numeric capacity. A disposable opaque-model adapter could
+not isolate its enforcement branch because the compatible endpoint revealed a
+400,000-token runtime window after the request, with or without the opt-out.
+YA therefore continues to emit no numeric limit for that state; the next real
+metadata-less endpoint remains a useful runtime recheck.
+
+A remaining Claude Code limitation applies when a gateway model ID normalizes
+to `claude-*`: the ordinary resolver ignores
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` behind a custom base URL and normally uses its
+built-in maximum unless a recognized extended-context mechanism applies. Do
+not claim that a Copilot `claude-opus-5` long tier is effective merely because
+the gateway catalog advertises it or YA supplied the generic override; that
+path still needs its own verified mapping.
+
+YA uses the SDK-bundled executable before a standalone `claude` on `PATH`, so
+the 2.1.223 behavior requires Agent SDK 0.3.223 in ordinary launches. Anthropic
+documents manual `/compact`, but no interactive SDK/command setter for these
+launch-scoped controls. A gateway catalog change takes effect on a new or
+restarted/resumed process; active steering never interrupts a turn to change
+the current process environment.
 
 Anthropic documents that the environment override applies to main
 conversations and subagents. Its applicability is provider behavior, not a YA

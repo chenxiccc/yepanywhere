@@ -447,6 +447,38 @@ Previous-model registry review:
 6. Use read-only catalog and lifecycle checks routinely. Do not spend tokens
    on live model turns without explicit approval.
 
+Current source refresh, 2026-08-06:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.220` to `0.3.223`;
+  its SDK-bundled executable reports Claude Code `2.1.223`. YA resolves that
+  bundled executable before the independently installed `claude`, so updating
+  only the standalone installation would not update ordinary YA sessions.
+- SDK type drift remains additive on YA-consumed surfaces. New fields include a
+  resume dropped-turn identifier and unclassified resource metadata; schema
+  internals also accept a wider set of raw inputs before producing the same
+  typed file/environment results. YA's model/command discovery, query control,
+  thinking updates, interruption, MCP status, and message unions compile
+  unchanged.
+- Claude Code 2.1.223 adds assumed-window enforcement for models absent from its
+  built-in recognition registry. Its
+  `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT` opt-out restores the
+  reactive `auto` source but does not enlarge the numeric context maximum or
+  change `modelUsage.contextWindow`. Claude Gateway uses that opt-out only for
+  a catalog-known row without usable window metadata; metadata-rich rows retain
+  their catalog-derived total and automatic-compaction controls.
+- Gateway model IDs are not inherently unknown: Claude Code canonicalization,
+  built-in models, and model overrides decide recognition. Numeric maximum
+  overrides remain ineffective for IDs normalized to `claude-*`; that separate
+  long-context path is not claimed as compatible by the generic gateway
+  mapping.
+
+Status: Claude Code 2.1.223 / SDK 0.3.223 package, type, and gateway launch
+compatibility is refreshed. A live `gpt-5.6-sol` request crossed the former
+200K local boundary with 205,104 active input/cache tokens and reported the
+catalog-derived 400K runtime window; details and the metadata-less runtime
+recheck boundary are in
+[resume-compaction](resume-compaction.md#claude-gateway-runtime-context-and-compaction-windows).
+
 Current source refresh, 2026-07-25:
 
 - `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.218` to `0.3.220`;
@@ -804,7 +836,7 @@ The server package currently pins provider-adjacent packages as follows:
 
 | package | current/wanted | latest observed | role |
 |---|---:|---:|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.3.220` | `0.3.220` | Active Claude provider dependency |
+| `@anthropic-ai/claude-agent-sdk` | `0.3.223` | `0.3.223` | Active Claude provider dependency |
 | `@agentclientprotocol/sdk` | `0.12.0` | `0.24.0` | Active ACP client dependency for Grok/Gemini |
 
 Treat both rows as provider-refresh inputs.

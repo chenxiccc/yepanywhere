@@ -24,7 +24,7 @@ describe("ClaudeGatewayProvider", () => {
   afterEach(() => {
     ClaudeGatewayProvider.setGatewayUrl(undefined);
     ClaudeGatewayProvider.setGatewayStartCommand(undefined);
-    ClaudeGatewayProvider.forgetContextWindows();
+    ClaudeGatewayProvider.forgetGatewayCatalog();
     ClaudeOllamaProvider.setOllamaUrl(undefined);
     configureProviderRuntime({ isClaudeOllamaVisible: () => false });
     vi.unstubAllGlobals();
@@ -259,7 +259,18 @@ describe("ClaudeGatewayProvider", () => {
                   },
                 },
               },
+              {
+                id: "prompt-over-total",
+                capabilities: {
+                  type: "chat",
+                  limits: {
+                    max_context_window_tokens: 400_000,
+                    max_prompt_tokens: 500_000,
+                  },
+                },
+              },
               { id: "windowless-model" },
+              { id: "claude-opus-5" },
             ],
           }),
           { status: 200 },
@@ -279,6 +290,9 @@ describe("ClaudeGatewayProvider", () => {
     expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
       "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
     );
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT",
+    );
 
     await provider.getAvailableModels();
 
@@ -292,6 +306,9 @@ describe("ClaudeGatewayProvider", () => {
     expect(provider.getLaunchEnvironment("gpt-5.6-sol")).toMatchObject(
       solEnvironment,
     );
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT",
+    );
     // Never round a compaction window above an advertised hard limit. The
     // effective model window still narrows through MAX_CONTEXT_TOKENS.
     expect(provider.getLaunchSettings("gpt-4")?.env).toMatchObject({
@@ -304,17 +321,147 @@ describe("ClaudeGatewayProvider", () => {
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1050000",
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: "922000",
     });
+    expect(provider.getLaunchSettings("prompt-over-total")?.env).toMatchObject({
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "400000",
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "400000",
+    });
+    const windowlessEnvironment = {
+      CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+    };
+    expect(provider.getLaunchSettings("windowless-model")?.env).toMatchObject(
+      windowlessEnvironment,
+    );
+    expect(provider.getLaunchEnvironment("windowless-model")).toMatchObject(
+      windowlessEnvironment,
+    );
+    expect(provider.getLaunchSettings("claude-opus-5")?.env).toMatchObject(
+      windowlessEnvironment,
+    );
     expect(
       provider.getLaunchSettings("windowless-model")?.env,
     ).not.toHaveProperty("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
     expect(
       provider.getLaunchSettings("windowless-model")?.env,
     ).not.toHaveProperty("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+    expect(provider.getLaunchSettings("absent-model")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT",
+    );
     expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
       "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
     );
     expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
       "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+    );
+    expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
+      "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT",
+    );
+  });
+
+  it("atomically replaces catalog launch metadata after successful refreshes", async () => {
+    const responses = [
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: "changing-model",
+              capabilities: {
+                limits: {
+                  max_context_window_tokens: 400_000,
+                  max_prompt_tokens: 272_000,
+                },
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+      new Response(JSON.stringify({ data: [{ id: "changing-model" }] }), {
+        status: 200,
+      }),
+      new Response("unavailable", { status: 503 }),
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    ];
+    const fetchMock = vi.fn(async () => {
+      const response = responses.shift();
+      if (!response) throw new Error("Unexpected catalog request");
+      return response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+    const provider = new ExposedClaudeGatewayProvider({
+      ensureReady: async () => null,
+    });
+
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings("changing-model")?.env).toMatchObject({
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "400000",
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "272000",
+    });
+
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings("changing-model")?.env).toMatchObject({
+      CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+    });
+    expect(
+      provider.getLaunchSettings("changing-model")?.env,
+    ).not.toHaveProperty("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+
+    await expect(provider.getAvailableModels()).resolves.toEqual([]);
+    expect(provider.getLaunchSettings("changing-model")?.env).toMatchObject({
+      CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+    });
+
+    await provider.getAvailableModels();
+    expect(
+      provider.getLaunchSettings("changing-model")?.env,
+    ).not.toHaveProperty(
+      "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT",
+    );
+  });
+
+  it("invalidates catalog launch metadata when gateway identity changes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: "gpt-5.6-sol",
+                  capabilities: {
+                    limits: { max_context_window_tokens: 400_000 },
+                  },
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+    const provider = new ExposedClaudeGatewayProvider({
+      ensureReady: async () => null,
+    });
+
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).toMatchObject({
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "400000",
+    });
+
+    ClaudeGatewayProvider.setGatewayStartCommand("start replacement gateway");
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+    );
+
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).toMatchObject({
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "400000",
+    });
+
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4242");
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
     );
   });
 
