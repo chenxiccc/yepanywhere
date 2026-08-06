@@ -97,8 +97,11 @@ Claude is never rerouted:
   metadata.
 - Claude Code still owns its transcript compaction and tool-definition
   compaction on this route. Anthropic first-party prompt caching and YA's
-  prompt-cache keepalive are not advertised because the Copilot backend does
-  not implement Anthropic's cache contract.
+  prompt-cache keepalive are not advertised on this provider. The stated
+  reason — that the Copilot backend does not implement Anthropic's cache
+  contract — was measured false on 2026-08-06; see *Prompt caching through the
+  gateway* below. Whether to advertise the capability is a separate, still-open
+  decision.
 - The older `claude-ollama` provider is retained only for compatibility. It is
   hidden when it has never been configured or recorded in session metadata,
   and there is no automatic migration during the deprecation grace period.
@@ -129,6 +132,50 @@ to pick it up. Distinct transient failure with a different signature:
 Copilot occasionally 503s Opus requests with "upstream model provider is
 currently experiencing high demand", which surfaces as an HTTP error, not a
 mid-stream cut.
+
+## Prompt caching through the gateway
+
+Measured 2026-08-06 against `~/copilot-api` on `127.0.0.1:4141` (a ~8.4k-token
+system prefix, two calls, reading the returned `usage`). **All three routes
+cache; none of them needs the gateway to track anything.**
+
+| model / route | first call | second call |
+|---|---|---|
+| `claude-sonnet-4.6` → `/v1/messages` | `cache_creation_input_tokens` 8412 | `cache_read_input_tokens` 8412 |
+| `gpt-5.6-sol` → `/responses` | `cache_creation_input_tokens` 7617 | `cache_read_input_tokens` 7610 |
+| `gemini-3.1-pro-preview` → `/chat/completions` | 9683 fresh input | 4079 cached read |
+
+The mechanism is prefix matching upstream, not state in the gateway:
+
+- `copilot-api` is a stateless translator. It holds no conversation store, no
+  parent-turn or response id, and no cache key. `/responses` requests are sent
+  with `store: false` and never carry `previous_response_id`; nothing sets
+  OpenAI's `prompt_cache_key`.
+- On `/v1/messages` the Anthropic payload is forwarded byte-for-byte
+  (`src/services/copilot/create-anthropic-messages.ts`), so Claude Code's
+  `cache_control` breakpoints survive, and the handler forwards every
+  `anthropic-*` request header — including the 1-hour-TTL beta header behind
+  `ENABLE_PROMPT_CACHING_1H`.
+- On the OpenAI-shaped routes the Anthropic→OpenAI translation has nowhere to
+  put `cache_control` and drops it. Caching there is the provider's automatic
+  prefix cache, which needs no marker.
+
+**Consequence for forked subagents** (`CLAUDE_CODE_FORK_SUBAGENT=1`, which
+gives the child the parent's message history rather than a fresh context): the
+fork's request shares a byte-identical prefix with the parent's, so it is
+served from the parent's cache instead of being reprocessed. Verified that the
+cache is *not* partitioned by caller identity — repeating the probe with a
+different `metadata.user_id` (the field Claude Code varies per session, and the
+only per-caller value copilot-api forwards: as `user` on `/chat/completions`,
+as `metadata.user_id` on `/responses`) still read 8412 cached tokens. A new
+session id therefore does not cost a re-prefill.
+
+What remains unmeasured: whether Copilot's Anthropic passthrough honors the
+1-hour TTL beta as opposed to silently serving 5-minute entries (the probe's
+`cache_creation` showed `ephemeral_5m_input_tokens` because the probe did not
+request 1h), and whether a fork *interleaved* with continued parent turns still
+matches, since Claude Code moves its `cache_control` breakpoints as the
+conversation grows.
 
 ## Why you'd choose B over A/C
 
