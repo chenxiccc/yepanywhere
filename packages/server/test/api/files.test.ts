@@ -19,7 +19,7 @@ describe("Files API", () => {
     mockSdk = new MockClaudeSDK();
 
     // Create temp directory structure with a valid project
-    testDir = join(tmpdir(), `claude-test-${randomUUID()}`);
+    testDir = join(await realpath(tmpdir()), `claude-test-${randomUUID()}`);
     projectPath = canonicalizeProjectPath(join(testDir, "myproject"));
     projectId = encodeProjectId(projectPath);
     const encodedPath = projectPath.replace(/[/\\:]/g, "-");

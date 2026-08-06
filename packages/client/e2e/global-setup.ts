@@ -228,6 +228,42 @@ export default async function globalSetup() {
   );
   console.log(`[E2E] Created transcript specimen at ${transcriptSpecimenFile}`);
 
+  // Create the file-browser fixture before the server starts so its initial
+  // project snapshot sees it even when no installed provider activates a
+  // filesystem watcher (as on a clean CI runner).
+  const fileBrowserProjectPath = join(E2E_TEMP_DIR, "file-browser-project");
+  mkdirSync(join(fileBrowserProjectPath, "src"), { recursive: true });
+  writeFileSync(
+    join(fileBrowserProjectPath, "test.txt"),
+    "Hello from test file!",
+  );
+  writeFileSync(
+    join(fileBrowserProjectPath, "README.md"),
+    "# Test Project\n\nThis is a **test** markdown file.",
+  );
+  writeFileSync(
+    join(fileBrowserProjectPath, "src", "index.ts"),
+    'export const hello = "world";\nconsole.log(hello);',
+  );
+  writeFileSync(join(fileBrowserProjectPath, "data.json"), '{"key": "value"}');
+  const fileBrowserSessionDir = join(
+    E2E_CLAUDE_SESSIONS_DIR,
+    hostname(),
+    fileBrowserProjectPath.replace(/[/\\:]/g, "-"),
+  );
+  mkdirSync(fileBrowserSessionDir, { recursive: true });
+  writeFileSync(
+    join(fileBrowserSessionDir, "e2e-file-test.jsonl"),
+    JSON.stringify({
+      type: "user",
+      cwd: fileBrowserProjectPath,
+      message: { role: "user", content: "test" },
+    }),
+  );
+  console.log(
+    `[E2E] Created file-browser fixture at ${fileBrowserProjectPath}`,
+  );
+
   const repoRoot = join(__dirname, "..", "..", "..");
   const serverRoot = join(repoRoot, "packages", "server");
   const clientDist = join(repoRoot, "packages", "client", "dist");

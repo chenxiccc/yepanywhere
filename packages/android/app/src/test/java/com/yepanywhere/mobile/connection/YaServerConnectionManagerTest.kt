@@ -11,6 +11,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -114,10 +115,12 @@ class YaServerConnectionManagerTest {
     fun exposesRevocationAsADistinctTerminalConnectionState() = runBlocking {
         val fixture = Fixture()
         val transport = FakeTransport(fixture.credential)
+        val emitRevocation = CompletableDeferred<Unit>()
         fixture.connector.results.send(Result.success(transport))
         val manager = fixture.manager(
             securityClients = YaSecurityClientLifecycle { _, activeTransport ->
                 assertTrue(activeTransport === transport)
+                emitRevocation.await()
                 throw YaSecurityClientRevokedException(
                     "44444444-4444-4444-8444-444444444444",
                 )
@@ -125,7 +128,11 @@ class YaServerConnectionManagerTest {
         )
         val lease = manager.acquire()
 
-        val error = runCatching { lease.request("GET", "/sessions") }.exceptionOrNull()
+        val request = async(start = CoroutineStart.UNDISPATCHED) {
+            runCatching { lease.request("GET", "/sessions") }
+        }
+        emitRevocation.complete(Unit)
+        val error = request.await().exceptionOrNull()
 
         assertNotNull(error)
         assertEquals(YaConnectionPhase.REVOKED, manager.state.value.phase)

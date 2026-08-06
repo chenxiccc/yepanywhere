@@ -48,6 +48,9 @@ describe("FileWatcher", () => {
       watchDir,
       provider: "codex",
       eventBus,
+      // Keep a delayed platform watcher event from racing this baseline-only
+      // assertion; direct emissions below exercise the post-baseline path.
+      debounceMs: 60_000,
       rescanSlowLogThresholdMs: 60_000,
     });
 
@@ -60,12 +63,25 @@ describe("FileWatcher", () => {
         provider: "codex",
         watchDir,
         filesScanned: 1,
-        filesIndexed: 1,
         directoryReadErrors: 0,
         statFailures: 0,
       });
+      expect(
+        (metrics?.filesIndexed ?? 0) + (metrics?.touchedPathsPreserved ?? 0),
+      ).toBe(1);
       expect(metrics?.directoriesVisited).toBeGreaterThanOrEqual(4);
       expect(watcher.getInitialBaselineState()).toBe("complete");
+
+      // macOS may deliver the fixture write after the watcher attaches. In
+      // that valid case the baseline deliberately leaves the touched file for
+      // the event path to reconcile instead of installing a stale mtime.
+      if (metrics?.touchedPathsPreserved) {
+        (watcher as unknown as FileWatcherTestAccess).emitEvent(
+          filePath,
+          "change",
+        );
+        events.length = 0;
+      }
       expect(events).toEqual([]);
 
       await new Promise((resolve) => setTimeout(resolve, 10));

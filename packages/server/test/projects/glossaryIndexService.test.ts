@@ -2,6 +2,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   rm,
   stat,
   symlink,
@@ -21,7 +22,9 @@ import { invalidateProjectPathIndex } from "../../src/projects/projectPathIndex.
 const projects: string[] = [];
 
 async function createProject(): Promise<string> {
-  const project = await mkdtemp(join(tmpdir(), "ya-glossary-index-"));
+  const project = await realpath(
+    await mkdtemp(join(tmpdir(), "ya-glossary-index-")),
+  );
   projects.push(project);
   return project;
 }

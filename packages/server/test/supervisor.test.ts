@@ -3830,6 +3830,10 @@ describe("Supervisor", () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
       let aborted = false;
+      let resolveAbort!: () => void;
+      const abortSignal = new Promise<void>((resolve) => {
+        resolveAbort = resolve;
+      });
 
       try {
         const realSdk: RealClaudeSDKInterface = {
@@ -3847,9 +3851,7 @@ describe("Supervisor", () => {
                 session_id: "heartbeat-deadline-session",
               };
 
-              while (!aborted) {
-                await new Promise((resolve) => setTimeout(resolve, 10));
-              }
+              await abortSignal;
             }
 
             return {
@@ -3857,6 +3859,7 @@ describe("Supervisor", () => {
               queue,
               abort: () => {
                 aborted = true;
+                resolveAbort();
               },
               isProcessAlive: () => !aborted,
             };
@@ -3963,6 +3966,10 @@ describe("Supervisor", () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
       let aborted = false;
+      let resolveAbort!: () => void;
+      const abortSignal = new Promise<void>((resolve) => {
+        resolveAbort = resolve;
+      });
 
       try {
         const realSdk: RealClaudeSDKInterface = {
@@ -3977,9 +3984,7 @@ describe("Supervisor", () => {
               await queue[Symbol.asyncIterator]().next();
               yield { type: "result", session_id: "heartbeat-session-2" };
 
-              while (!aborted) {
-                await new Promise((resolve) => setTimeout(resolve, 10));
-              }
+              await abortSignal;
             }
 
             return {
@@ -3987,6 +3992,7 @@ describe("Supervisor", () => {
               queue,
               abort: () => {
                 aborted = true;
+                resolveAbort();
               },
               isProcessAlive: () => !aborted,
             };
