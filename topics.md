@@ -272,3 +272,5 @@
 - session-catalog-observation - Durable compact session catalog, continuous
   server observation, interest-prioritized freshness, coherent generations,
   and multi-client single-flight refresh.
+- biome-format-baseline - Repository-wide Biome formatting invariant, CI
+  enforcement, and blame preservation for verified mechanical rewrites.
