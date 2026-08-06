@@ -122,12 +122,21 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   the Claude SDK's per-launch flag-settings layer and in that child process's
   environment only. The YA marker identifies the Gateway provider route, not
   the implementation behind its generic Anthropic-compatible endpoint.
-- Gateway launches also narrow two Claude Code defaults that cost more on a
-  shared Copilot allowance than on a first-party subscription: non-essential
-  traffic and side-model calls are disabled, and
+- Gateway launches narrow several Claude Code defaults.
   `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` defaults to `1` (one level of
-  subagents, no nesting; the CLI default is 3). Each of these defers to an
-  explicit operator value in YA's own environment.
+  subagents, no nesting; the CLI default is 3), deferring to an explicit
+  operator value in YA's own environment.
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is retained deliberately, but
+  it is a privacy/traffic choice and not a token or quota saver, and it has a
+  cost worth knowing: it puts the CLI in essential-traffic mode, which
+  disables GrowthBook, so `getFeatureValue` returns each flag's compiled
+  default and the session loses every flag-gated feature — the Monitor tool
+  (`tengu_amber_sentinel`) and hosted push (`tengu_kairos_push_notifications`)
+  among them. The visible signature: a native Claude session blocks foreground
+  `sleep` loops and points at Monitor, while a gateway session does neither.
+  `DISABLE_NON_ESSENTIAL_MODEL_CALLS=1` is inert on current Claude Code —
+  absent from 2.1.220's env registry, with no replacement knob for spinner
+  flavor text or automatic title generation — and is kept only for older CLIs.
 - A Claude Gateway's `/v1/models` response is the authoritative selection
   catalog. YA must not merge Claude Code's first-party `supportedModels()`
   result or static Claude fallbacks into it, because those can advertise

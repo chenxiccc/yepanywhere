@@ -160,22 +160,52 @@ The mechanism is prefix matching upstream, not state in the gateway:
   put `cache_control` and drops it. Caching there is the provider's automatic
   prefix cache, which needs no marker.
 
-**Consequence for forked subagents** (`CLAUDE_CODE_FORK_SUBAGENT=1`, which
-gives the child the parent's message history rather than a fresh context): the
-fork's request shares a byte-identical prefix with the parent's, so it is
-served from the parent's cache instead of being reprocessed. Verified that the
-cache is *not* partitioned by caller identity — repeating the probe with a
-different `metadata.user_id` (the field Claude Code varies per session, and the
-only per-caller value copilot-api forwards: as `user` on `/chat/completions`,
-as `metadata.user_id` on `/responses`) still read 8412 cached tokens. A new
-session id therefore does not cost a re-prefill.
+**Session prefix caching and forks both work.** Measured with a four-call
+sequence that mimics Claude Code — a cached system prefix, a breakpoint on each
+turn's last user block, then a fork branching off turn 2 under a *different*
+`metadata.user_id` (the field Claude Code varies per session, and the only
+per-caller value copilot-api forwards: as `user` on `/chat/completions`, as
+`metadata.user_id` on `/responses`):
 
-What remains unmeasured: whether Copilot's Anthropic passthrough honors the
-1-hour TTL beta as opposed to silently serving 5-minute entries (the probe's
-`cache_creation` showed `ephemeral_5m_input_tokens` because the probe did not
-request 1h), and whether a fork *interleaved* with continued parent turns still
-matches, since Claude Code moves its `cache_control` breakpoints as the
-conversation grows.
+| call | `claude-sonnet-4.6` → `/v1/messages` | `gpt-5.6-sol` → `/responses` |
+|---|---|---|
+| turn 1, cold | write 15219, read 0 | write 12417, read 0 |
+| turn 2, extends turn 1 | write 15216, **read 15219** | write 12816, **read 12417** |
+| fork off turn 2, new session id | write 7623, **read 30435** | write 6421, **read 25233** |
+| parent turn 3, after the fork | write 7618, **read 30435** | write 6419, **read 25233** |
+
+Three facts fall out. A growing session re-reads its whole prior prefix and
+writes only the new turn, so cost per turn tracks the increment rather than the
+transcript. A fork reads the *entire* parent prefix — 30435 = 15219 + 15216,
+every token the parent had cached through turn 2 — and pays only for its own
+diverging tail; the new session id costs nothing. And the parent's next turn
+still reads the same 30435, so the fork neither evicts nor displaces the
+branch it came from: both live in the cache at once.
+
+Use a Sonnet-class model for this probe. Haiku's minimum cacheable prefix and
+subagent structure differ enough from the Opus-class models these sessions
+actually run that a Haiku result would not transfer.
+
+**The 1-hour tier works too.** A fresh prefix sent with
+`cache_control: {"type":"ephemeral","ttl":"1h"}` came back as
+`ephemeral_1h_input_tokens: 9009, ephemeral_5m_input_tokens: 0` — with or
+without the `anthropic-beta: extended-cache-ttl-2025-04-11` header; the same
+prefix with a default `cache_control` landed in the 5-minute bucket instead.
+The tier follows the request, so `ENABLE_PROMPT_CACHING_1H=1` reaches Copilot
+intact.
+
+This also disposes of a worry imported from Claude Code issue #45381, where
+turning telemetry off reportedly demoted sessions from the 1-hour tier to the
+5-minute one. Gateway sessions here run with
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` set by YA, and their transcripts
+show 1-hour cache creation and **zero** 5-minute creation (e.g. 572,847 and
+252,798 `ephemeral_1h_input_tokens` against 0 `ephemeral_5m_input_tokens`).
+Whatever that issue described is not reproducible on 2.1.220 through this
+route.
+
+What remains unmeasured: whether a fork *interleaved* with continued parent
+turns still matches once Claude Code has moved its `cache_control` breakpoints
+several turns further along. The measured fork branched from a settled prefix.
 
 ## Why you'd choose B over A/C
 

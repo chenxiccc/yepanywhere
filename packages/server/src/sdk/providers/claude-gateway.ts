@@ -95,7 +95,14 @@ function gatewayEnvironment(
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: "dummy",
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
+    // DISABLE_NON_ESSENTIAL_MODEL_CALLS is no longer read by Claude Code
+    // (absent from 2.1.220's env registry); it is kept for older CLIs.
     DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
+    // This one is a privacy/traffic choice, not a token or quota saver, and it
+    // is not free: it puts the CLI in essential-traffic mode, which disables
+    // GrowthBook, so every feature flag falls back to its compiled default and
+    // the session loses flag-gated features — the Monitor tool and hosted push
+    // among them. Retained deliberately; see topics/claude.md.
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     // Gateway models pay for nesting twice: every extra level multiplies
     // quota burn against a shared Copilot allowance, and the deeper agents
