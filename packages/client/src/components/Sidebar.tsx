@@ -2,6 +2,7 @@ import {
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   type ProjectQueueItemSummary,
   serverHasCapability,
 } from "@yep-anywhere/shared";
@@ -374,7 +375,7 @@ export function Sidebar({
   const { status: publicShareStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
   });
-  const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
+  const publicShareCreationReady = publicShareStatus?.canCreate ?? false;
   const { processes, terminatedProcesses } = useProcesses();
   const providerChildrenBySessionId = useMemo(
     () =>
@@ -418,6 +419,10 @@ export function Sidebar({
   const supportsSourceControl = serverHasCapability(
     versionInfo,
     GIT_STATUS_ENHANCED_CAPABILITY,
+  );
+  const publicShareManagementAvailable = serverHasCapability(
+    versionInfo,
+    PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   );
   const supportsDeviceBridgeNav =
     serverHasCapability(versionInfo, DEVICE_BRIDGE_CAPABILITY) ||
@@ -915,7 +920,8 @@ export function Sidebar({
         messageCount={session.messageCount}
         hasDraft={drafts.has(session.id)}
         hasProjectQueue={hasProjectQueue}
-        publicShareControlsVisible={publicShareControlsVisible}
+        publicShareCreationReady={publicShareCreationReady}
+        publicShareManagementAvailable={publicShareManagementAvailable}
       />
     );
   };

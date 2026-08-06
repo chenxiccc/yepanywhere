@@ -803,6 +803,111 @@ describe("SessionListItem links", () => {
     refreshSpy.mockRestore();
   });
 
+  it("opens the capable session-filtered share manager from the menu", async () => {
+    const getPublicShares = vi.spyOn(api, "getPublicShares").mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      totalCount: 0,
+    });
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Managed session"
+              provider="claude"
+              mode="compact"
+              publicShareManagementAvailable
+              publicShareCreationReady={false}
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Session options"));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    expect(screen.getByText("Manage Public Shares")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Create and copy/ }),
+    ).toBeNull();
+    await waitFor(() => {
+      expect(getPublicShares).toHaveBeenCalledWith({
+        projectId: "project-1",
+        sessionId: "session-1",
+        mode: undefined,
+      });
+    });
+    getPublicShares.mockRestore();
+  });
+
+  it("preserves the legacy share popup without management capability", async () => {
+    const getStatus = vi
+      .spyOn(api, "getPublicSessionShareStatus")
+      .mockResolvedValue({
+        activeCount: 0,
+        frozenCount: 0,
+        liveCount: 0,
+        activeViewerCount: 0,
+        viewers: [],
+      });
+    const getPublicShares = vi.spyOn(api, "getPublicShares");
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Legacy session"
+              provider="claude"
+              mode="compact"
+              publicShareCreationReady
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Session options"));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    expect(screen.getByText("Public Read-Only Share")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Copy Read-Only Snapshot Link/ }),
+    ).toBeTruthy();
+    await waitFor(() => expect(getStatus).toHaveBeenCalled());
+    expect(getPublicShares).not.toHaveBeenCalled();
+    getStatus.mockRestore();
+    getPublicShares.mockRestore();
+  });
+
+  it("hides the share menu action when neither path is available", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="No sharing"
+              provider="claude"
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Session options"));
+    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+  });
+
   it("shows provider child work inside its parent session row", () => {
     render(
       <I18nProvider>

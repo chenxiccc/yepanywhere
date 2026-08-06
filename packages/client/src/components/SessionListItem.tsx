@@ -23,8 +23,9 @@ import type {
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ProviderBadge } from "./ProviderBadge";
 import { SessionHoverCard } from "./SessionHoverCard";
+import { PublicShareManagerModal } from "./PublicShareManagerModal";
 import { SessionMenu } from "./SessionMenu";
-import { SessionShareModal } from "./SessionShareModal";
+import { LegacySessionShareModal } from "./SessionShareModal";
 import { SessionStatusBadge } from "./StatusBadge";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
@@ -101,7 +102,11 @@ interface SessionListItemProps {
   /** Cached user vs system/assistant turn counts (for heavier list views) */
   userTurnCount?: number;
   systemTurnCount?: number;
-  /** Whether public share creation controls should be exposed from list menus */
+  /** Whether legacy public-share creation is currently ready. */
+  publicShareCreationReady?: boolean;
+  /** Whether the permanent public-share management capability is available. */
+  publicShareManagementAvailable?: boolean;
+  /** @deprecated Use publicShareCreationReady. */
   publicShareControlsVisible?: boolean;
 }
 
@@ -190,6 +195,8 @@ export function SessionListItem({
   createdAt,
   userTurnCount,
   systemTurnCount,
+  publicShareCreationReady,
+  publicShareManagementAvailable = false,
   publicShareControlsVisible = false,
 }: SessionListItemProps) {
   const { t } = useI18n();
@@ -247,6 +254,10 @@ export function SessionListItem({
     ? getBtwAsideSessionDisplayTitle(displayTitle)
     : displayTitle;
   const copyPromptText = (initialPrompt ?? fullTitle ?? "").trim();
+  const publicShareCreationAvailable =
+    publicShareCreationReady ?? publicShareControlsVisible;
+  const publicShareMenuVisible =
+    publicShareManagementAvailable || publicShareCreationAvailable;
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -887,9 +898,7 @@ export function SessionListItem({
           onCopyPrompt={copyPromptText ? handleCopyPrompt : undefined}
           onOpenNewTab={handleOpenNewTab}
           onShare={
-            publicShareControlsVisible
-              ? () => setShowShareModal(true)
-              : undefined
+            publicShareMenuVisible ? () => setShowShareModal(true) : undefined
           }
           useEllipsisIcon
           useFixedPositioning
@@ -898,15 +907,28 @@ export function SessionListItem({
         />
       )}
 
-      {showShareModal && (
-        <SessionShareModal
-          projectId={projectId}
-          sessionId={sessionId}
-          title={displayTitle}
-          canCreateShares={publicShareControlsVisible}
-          onClose={() => setShowShareModal(false)}
-        />
-      )}
+      {showShareModal &&
+        (publicShareManagementAvailable ? (
+          <PublicShareManagerModal
+            creationIdentity={{
+              projectId,
+              sessionId,
+              title: displayTitle,
+              initialPrompt,
+            }}
+            creationReady={publicShareCreationAvailable}
+            onClose={() => setShowShareModal(false)}
+          />
+        ) : (
+          <LegacySessionShareModal
+            projectId={projectId}
+            sessionId={sessionId}
+            title={displayTitle}
+            initialPrompt={initialPrompt}
+            canCreateShares={publicShareCreationAvailable}
+            onClose={() => setShowShareModal(false)}
+          />
+        ))}
 
       {showHoverCard && provider && previewPos && (
         <SessionHoverCard

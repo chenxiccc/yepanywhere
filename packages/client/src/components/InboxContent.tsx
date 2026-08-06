@@ -1,9 +1,11 @@
-import type {
-  ProjectQueueItemStatus,
-  ProjectQueueItemSummary,
-  ReviewInboxItem,
+import {
+  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+  PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
+  type ProjectQueueItemStatus,
+  type ProjectQueueItemSummary,
+  type ReviewInboxItem,
+  serverHasCapability,
 } from "@yep-anywhere/shared";
-import { GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
@@ -159,8 +161,10 @@ interface InboxSectionProps {
   drafts: ReadonlySet<string>;
   /** Set of session IDs targeted by Project Queue items */
   projectQueuedSessionIds: ReadonlySet<string>;
-  /** Whether public share creation controls should be exposed */
-  publicShareControlsVisible: boolean;
+  /** Whether public share creation controls should be exposed. */
+  publicShareCreationReady: boolean;
+  /** Whether direct public-share management is supported. */
+  publicShareManagementAvailable: boolean;
 }
 
 interface InboxProjectQueueItemProps {
@@ -238,7 +242,8 @@ function InboxSection({
   basePath = "",
   drafts,
   projectQueuedSessionIds,
-  publicShareControlsVisible,
+  publicShareCreationReady,
+  publicShareManagementAvailable,
 }: InboxSectionProps) {
   const { t } = useI18n();
   const sectionCount = items.length + projectQueueItems.length;
@@ -299,7 +304,8 @@ function InboxSection({
                 basePath={basePath}
                 hasDraft={drafts.has(item.sessionId)}
                 hasProjectQueue={projectQueuedSessionIds.has(item.sessionId)}
-                publicShareControlsVisible={publicShareControlsVisible}
+                publicShareCreationReady={publicShareCreationReady}
+                publicShareManagementAvailable={publicShareManagementAvailable}
               />
             );
           })}
@@ -412,6 +418,10 @@ export function InboxContent({
   const { settings: serverSettings } = useServerSettings();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const publicShareManagementAvailable = serverHasCapability(
+    version,
+    PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
+  );
   const supportsSourceReviewInbox =
     (version?.capabilities?.includes(
       GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -424,7 +434,7 @@ export function InboxContent({
   const { status: publicShareStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
   });
-  const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
+  const publicShareCreationReady = publicShareStatus?.canCreate ?? false;
   const {
     needsAttention: allNeedsAttention,
     active: allActive,
@@ -697,7 +707,8 @@ export function InboxContent({
                 basePath={basePath}
                 drafts={drafts}
                 projectQueuedSessionIds={projectQueuedSessionIds}
-                publicShareControlsVisible={publicShareControlsVisible}
+                publicShareCreationReady={publicShareCreationReady}
+                publicShareManagementAvailable={publicShareManagementAvailable}
               />
             ))}
           </div>

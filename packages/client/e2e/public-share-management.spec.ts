@@ -63,6 +63,11 @@ test("left and right click open the same share manager", async ({
       title: mode === "frozen" ? "Release snapshot" : "Live review",
     });
   }
+  await page.route("**/api/public-shares/status", async (route) => {
+    const response = await route.fetch();
+    const status = await response.json();
+    await route.fulfill({ response, json: { ...status, canCreate: false } });
+  });
 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
@@ -76,12 +81,23 @@ test("left and right click open the same share manager", async ({
   expect(version.capabilities).toContain("public-share-management");
   await page.waitForTimeout(500);
 
+  await page
+    .locator("header.session-header")
+    .getByLabel("Session options")
+    .click();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Manage Public Shares")).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: /Create and copy/ }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
   const indicator = page.locator("button.session-header-viewer-count");
   await expect(indicator).toBeVisible();
   const indicatorBox = await indicator.boundingBox();
   expect(indicatorBox).not.toBeNull();
   await indicator.click({ button: "right" });
-  const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("Manage Public Shares")).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: "This session", exact: true }),
@@ -213,4 +229,28 @@ test("left and right click open the same share manager", async ({
     );
   }
   await expect(dialog).not.toBeVisible();
+
+  await page.goto(`${baseURL}/sessions`);
+  const sessionRow = page
+    .getByRole("main")
+    .locator("li.session-list-item")
+    .filter({ hasText: "Previous message" })
+    .first();
+  await expect(sessionRow).toBeVisible();
+  await sessionRow.getByLabel("Session options").click();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(dialog.getByText("Manage Public Shares")).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "This session", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByText("Public Read-Only Share")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.goto(`${baseURL}/settings/remote`);
+  await page.getByRole("button", { name: "Manage Links" }).click();
+  await expect(dialog.getByText("Manage Public Shares")).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: /Create and copy/ }),
+  ).toHaveCount(0);
+  await expect(dialog.getByRole("group", { name: "Show" })).toHaveCount(0);
 });

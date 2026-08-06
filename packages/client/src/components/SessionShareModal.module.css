@@ -68,6 +68,10 @@
   grid-template-columns: minmax(0, 1fr) 30px 30px;
 }
 
+.filterRowNoCreate {
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+
 .scopeRow {
   grid-template-columns: minmax(0, 1fr) 30px;
 }

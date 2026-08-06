@@ -1,4 +1,9 @@
-import { ALL_PROVIDERS, type ProviderName } from "@yep-anywhere/shared";
+import {
+  ALL_PROVIDERS,
+  PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
+  type ProviderName,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -136,11 +141,15 @@ export function GlobalSessionsPage() {
   const { settings: serverSettings } = useServerSettings();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const publicShareManagementAvailable = serverHasCapability(
+    version,
+    PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
+  );
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
   });
-  const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
+  const publicShareCreationReady = publicShareStatus?.canCreate ?? false;
   const { processes, terminatedProcesses } = useProcesses();
   const providerChildrenBySessionId = useMemo(
     () =>
@@ -1059,7 +1068,10 @@ export function GlobalSessionsPage() {
                       // the index summaries cache them (see SessionIndexService)
                       hasDraft={drafts.has(session.id)}
                       hasProjectQueue={projectQueuedSessionIds.has(session.id)}
-                      publicShareControlsVisible={publicShareControlsVisible}
+                      publicShareCreationReady={publicShareCreationReady}
+                      publicShareManagementAvailable={
+                        publicShareManagementAvailable
+                      }
                     />
                   </div>
                 ))}
@@ -1102,8 +1114,11 @@ export function GlobalSessionsPage() {
                             updatedAt={session.updatedAt}
                             createdAt={session.createdAt}
                             hasUnread={session.hasUnread}
-                            publicShareControlsVisible={
-                              publicShareControlsVisible
+                            publicShareCreationReady={
+                              publicShareCreationReady
+                            }
+                            publicShareManagementAvailable={
+                              publicShareManagementAvailable
                             }
                             activity={session.activity}
                             pendingInputType={session.pendingInputType}

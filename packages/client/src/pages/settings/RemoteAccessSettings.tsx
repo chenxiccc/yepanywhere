@@ -14,8 +14,8 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PublicShareStatusResponse } from "../../api/client";
+import { PublicShareManagerModal } from "../../components/PublicShareManagerModal";
 import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
-import { SessionShareModal } from "../../components/SessionShareModal";
 import { useHostIdentity } from "../../contexts/HostIdentityContext";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
@@ -555,9 +555,8 @@ export function RemoteAccessSettings() {
         </div>
       </HideInSettingsSearch>
       {showPublicShareManagement && (
-        <SessionShareModal
-          initialView="manage"
-          managementAvailable
+        <PublicShareManagerModal
+          creationReady={false}
           onClose={() => setShowPublicShareManagement(false)}
         />
       )}

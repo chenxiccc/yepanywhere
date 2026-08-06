@@ -67,8 +67,8 @@ vi.mock("../../../components/RemoteAccessSetup", () => ({
   RemoteAccessSetup: () => <div>remoteAccessSetup</div>,
 }));
 
-vi.mock("../../../components/SessionShareModal", () => ({
-  SessionShareModal: () => <div>publicShareManager</div>,
+vi.mock("../../../components/PublicShareManagerModal", () => ({
+  PublicShareManagerModal: () => <div>publicShareManager</div>,
 }));
 
 vi.mock("../../../contexts/HostIdentityContext", () => ({

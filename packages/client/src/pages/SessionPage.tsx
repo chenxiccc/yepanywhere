@@ -1887,6 +1887,8 @@ function SessionPageContent({
     versionInfo,
     PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   );
+  const publicShareActionAvailable =
+    publicShareManagementAvailable || canCreatePublicShares;
   const showPublicShareIndicator =
     canCreatePublicShares ||
     (publicShareStatus?.activeCount ?? 0) > 0 ||
@@ -4794,7 +4796,7 @@ function SessionPageContent({
                   }
                   onTerminate={handleTerminate}
                   onReload={() => window.location.reload()}
-                  onShare={canCreatePublicShares ? handleShare : undefined}
+                  onShare={publicShareActionAvailable ? handleShare : undefined}
                   useFixedPositioning
                   useEllipsisIcon
                   onOpenChange={(open) => {
