@@ -35,6 +35,16 @@ interface GlossarySubscriber {
   ready: boolean;
 }
 
+export interface ProjectGlossarySubscription {
+  ready: Promise<void>;
+  release(): void;
+}
+
+interface PendingGlossarySubscription {
+  cancelled: boolean;
+  detach: (() => void) | null;
+}
+
 /** One observed directory's non-recursive watch and the names it answers for. */
 interface WatchedDirectory {
   /** Observed candidate basenames in this directory. */
@@ -53,12 +63,20 @@ interface ProjectGlossaryState {
   paths: Map<string, GlossaryPathIdentity>;
   subscribers: Map<number, GlossarySubscriber>;
   directories: Map<string, WatchedDirectory>;
+  /** One serialized activation driver shared before claim acquisition begins. */
+  activationPromise: Promise<void> | null;
+  /** Invalidates resources and refresh results owned by an older activation. */
+  activationEpoch: number;
   /** Held while subscribed, so this project's cached paths survive pressure. */
   pathIndex: ProjectPathIndex | null;
   pollTimer: NodeJS.Timeout | null;
   debounceTimer: NodeJS.Timeout | null;
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
+  /** One active-project barrier shared by subscribers joining the same snapshot. */
+  snapshotReadinessPromise: Promise<void> | null;
+  /** Observation work owned by the snapshot-readiness barrier. */
+  snapshotRefreshQueued: boolean;
   lastUsedAt: number;
 }
 
@@ -73,6 +91,10 @@ export interface ProjectGlossarySubscriptionManagerOptions {
   maxRetainedProjects?: number;
   /** Claim the shared path cache; defaults to the process-wide registry. */
   getPathIndex?: (projectPath: string) => Promise<ProjectPathIndex>;
+  /** Read candidate identity; injectable for deterministic activation tests. */
+  statPath?: (path: string) => Promise<fs.Stats>;
+  /** Test seam for an observation arriving at activation settlement. */
+  onActivationSettling?: (projectPath: string) => void;
 }
 
 function isContained(root: string, candidate: string): boolean {
@@ -123,8 +145,13 @@ export class ProjectGlossarySubscriptionManager {
   private readonly getPathIndex: (
     projectPath: string,
   ) => Promise<ProjectPathIndex>;
+  private readonly statPath: (path: string) => Promise<fs.Stats>;
+  private readonly onActivationSettling:
+    | ((projectPath: string) => void)
+    | undefined;
   private readonly projects = new Map<string, ProjectGlossaryState>();
   private readonly releaseObservationListener: () => void;
+  private disposed = false;
   private nextSubscriberId = 1;
 
   constructor(options: ProjectGlossarySubscriptionManagerOptions) {
@@ -137,46 +164,58 @@ export class ProjectGlossarySubscriptionManager {
       options.maxRetainedProjects ?? DEFAULT_MAX_RETAINED_PROJECTS,
     );
     this.getPathIndex = options.getPathIndex ?? getProjectPathIndex;
+    this.statPath = options.statPath ?? ((path) => stat(path));
+    this.onActivationSettling = options.onActivationSettling;
     this.releaseObservationListener =
       this.glossaryIndexService.onObservationsChanged((projectRoot) => {
         this.observationsChanged(projectRoot);
       });
   }
 
-  async subscribe(
+  subscribe(
     projectId: UrlProjectId,
     listener: (event: GlossarySubscriptionEvent) => void,
-  ): Promise<() => void> {
+  ): ProjectGlossarySubscription {
+    const pending: PendingGlossarySubscription = {
+      cancelled: false,
+      detach: null,
+    };
+    const release = () => {
+      if (pending.cancelled) return;
+      pending.cancelled = true;
+      pending.detach?.();
+    };
+    const ready = this.startSubscription(projectId, listener, pending);
+    return { ready, release };
+  }
+
+  private async startSubscription(
+    projectId: UrlProjectId,
+    listener: (event: GlossarySubscriptionEvent) => void,
+    pending: PendingGlossarySubscription,
+  ): Promise<void> {
+    if (this.disposed)
+      throw new Error("Glossary subscription manager disposed");
     const project = await this.scanner.getProject(projectId, {
       allowStaleSnapshot: true,
     });
-    if (!project) {
-      throw new Error("Project not found");
-    }
+    if (pending.cancelled) return;
+    if (!project) throw new Error("Project not found");
+
     const projectPath = await realpath(project.path);
+    if (pending.cancelled) return;
+    if (this.disposed)
+      throw new Error("Glossary subscription manager disposed");
     const state = this.getOrCreateState(projectId, projectPath);
     const subscriberId = this.nextSubscriberId++;
     const subscriber: GlossarySubscriber = { listener, ready: false };
     state.subscribers.set(subscriberId, subscriber);
     state.lastUsedAt = Date.now();
 
-    try {
-      await this.ensureActive(state);
-    } catch (error) {
-      state.subscribers.delete(subscriberId);
-      if (state.subscribers.size === 0) this.deactivate(state);
-      throw error;
-    }
-
-    if (state.subscribers.get(subscriberId) === subscriber) {
-      subscriber.ready = true;
-      listener(this.createSnapshot(state));
-    }
-
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
+    let detached = false;
+    const detach = () => {
+      if (detached) return;
+      detached = true;
       const current = this.projects.get(projectId);
       if (current !== state) return;
       current.subscribers.delete(subscriberId);
@@ -186,9 +225,31 @@ export class ProjectGlossarySubscriptionManager {
         this.evictInactiveProjects();
       }
     };
+    pending.detach = detach;
+    if (pending.cancelled) {
+      detach();
+      return;
+    }
+
+    try {
+      await this.ensureActive(state);
+      if (
+        !pending.cancelled &&
+        this.projects.get(projectId) === state &&
+        state.subscribers.get(subscriberId) === subscriber
+      ) {
+        subscriber.ready = true;
+        listener(this.createSnapshot(state));
+      }
+    } catch (error) {
+      detach();
+      throw error;
+    }
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.releaseObservationListener();
     for (const state of this.projects.values()) {
       this.deactivate(state);
@@ -243,33 +304,193 @@ export class ProjectGlossarySubscriptionManager {
       paths: new Map(),
       subscribers: new Map(),
       directories: new Map(),
+      activationPromise: null,
+      activationEpoch: 0,
       pathIndex: null,
       pollTimer: null,
       debounceTimer: null,
       refreshPromise: null,
       refreshQueued: false,
+      snapshotReadinessPromise: null,
+      snapshotRefreshQueued: false,
       lastUsedAt: Date.now(),
     };
     this.projects.set(projectId, state);
     return state;
   }
 
-  private async ensureActive(state: ProjectGlossaryState): Promise<void> {
-    if (state.pollTimer) {
-      if (state.refreshPromise) await state.refreshPromise;
-      return;
+  private ensureActive(state: ProjectGlossaryState): Promise<void> {
+    if (state.activationPromise) return state.activationPromise;
+    if (state.pollTimer) return this.ensureSnapshotReady(state);
+
+    let activation!: Promise<void>;
+    activation = Promise.resolve().then(() =>
+      this.runActivationDriver(state, activation),
+    );
+    state.activationPromise = activation;
+    return activation;
+  }
+
+  private ensureSnapshotReady(state: ProjectGlossaryState): Promise<void> {
+    if (state.snapshotReadinessPromise) {
+      return state.snapshotReadinessPromise;
     }
-    // Resolution probes this project's candidate paths through the shared path
-    // cache, so a claim held for the subscription's life keeps the directories
-    // it hydrated from being evicted between two artifact requests. The claim
-    // exempts the project from the process byte budget, not from its own
-    // per-project ceiling, so a subscribed project stays bounded.
-    state.pathIndex = await this.getPathIndex(state.projectPath);
-    state.pollTimer = setInterval(() => {
-      void this.refresh(state, true);
-    }, this.pollMs);
-    state.pollTimer.unref();
-    await this.refresh(state, false);
+
+    const activationEpoch = state.activationEpoch;
+    let readiness!: Promise<void>;
+    readiness = Promise.resolve().then(() =>
+      this.runSnapshotReadiness(state, activationEpoch, readiness),
+    );
+    // Publish ownership before inspecting pending work. A concurrent joiner and
+    // every observation scheduled from this point share this same barrier.
+    state.snapshotReadinessPromise = readiness;
+    if (state.debounceTimer) {
+      clearTimeout(state.debounceTimer);
+      state.debounceTimer = null;
+      state.snapshotRefreshQueued = true;
+    }
+    return readiness;
+  }
+
+  private async runSnapshotReadiness(
+    state: ProjectGlossaryState,
+    activationEpoch: number,
+    readiness: Promise<void>,
+  ): Promise<void> {
+    try {
+      while (this.activationWanted(state, activationEpoch)) {
+        // An older scan may have captured observations before this barrier took
+        // ownership. Let it settle, then perform the barrier's required scan.
+        if (state.refreshPromise) await state.refreshPromise;
+        if (!this.activationWanted(state, activationEpoch)) return;
+
+        if (state.snapshotRefreshQueued) {
+          state.snapshotRefreshQueued = false;
+          await this.refresh(state, true, activationEpoch);
+          continue;
+        }
+
+        // The no-work check and ownership release are one synchronous step.
+        // An observation before it sets snapshotRefreshQueued; one after it is a
+        // later event handled by the normal debounce path.
+        if (state.snapshotReadinessPromise === readiness) {
+          state.snapshotReadinessPromise = null;
+        }
+        return;
+      }
+    } finally {
+      if (state.snapshotReadinessPromise === readiness) {
+        state.snapshotReadinessPromise = null;
+      }
+    }
+  }
+
+  private async runActivationDriver(
+    state: ProjectGlossaryState,
+    activation: Promise<void>,
+  ): Promise<void> {
+    try {
+      await this.runActivationLoop(state);
+      while (true) {
+        // The last check and release of activation ownership are one synchronous
+        // transition. Work queued before it is drained inside this driver, so
+        // readiness cannot publish a snapshot that omits a settlement-window
+        // observation; work arriving after it follows normal debounce handling.
+        this.onActivationSettling?.(state.projectPath);
+        if (!this.activationWanted(state)) return;
+        if (!state.pollTimer || !state.pathIndex) {
+          // A replacement may attach after an invalidated attempt decides no
+          // subscriber remains but before this driver settles. It joined this
+          // promise, so loop it through a fresh resource acquisition.
+          await this.runActivationLoop(state);
+          continue;
+        }
+        if (state.refreshQueued) {
+          const activationEpoch = state.activationEpoch;
+          await this.refresh(state, false, activationEpoch);
+          if (
+            state.activationEpoch !== activationEpoch ||
+            !state.pollTimer ||
+            !state.pathIndex
+          ) {
+            await this.runActivationLoop(state);
+          }
+          continue;
+        }
+        if (state.activationPromise === activation) {
+          state.activationPromise = null;
+        }
+        return;
+      }
+    } finally {
+      if (state.activationPromise === activation) {
+        state.activationPromise = null;
+      }
+    }
+  }
+
+  private async runActivationLoop(state: ProjectGlossaryState): Promise<void> {
+    while (this.activationWanted(state)) {
+      const activationEpoch = state.activationEpoch;
+      await this.activate(state, activationEpoch);
+      if (!this.activationWanted(state)) return;
+      if (
+        state.activationEpoch === activationEpoch &&
+        state.pollTimer &&
+        state.pathIndex
+      ) {
+        return;
+      }
+      // The last subscriber invalidated the attempt while it was awaiting I/O,
+      // then a replacement arrived before it settled. Reacquire every resource
+      // in this same serialized driver instead of joining the released attempt.
+    }
+  }
+
+  private activationWanted(
+    state: ProjectGlossaryState,
+    activationEpoch?: number,
+  ): boolean {
+    return (
+      !this.disposed &&
+      this.projects.get(state.projectId) === state &&
+      state.subscribers.size > 0 &&
+      (activationEpoch === undefined ||
+        state.activationEpoch === activationEpoch)
+    );
+  }
+
+  private async activate(
+    state: ProjectGlossaryState,
+    activationEpoch: number,
+  ): Promise<void> {
+    let lateClaim: ProjectPathIndex | null = null;
+    try {
+      // Resolution probes this project's candidate paths through the shared path
+      // cache, so a claim held for the subscription's life keeps the directories
+      // it hydrated from being evicted between two artifact requests. The claim
+      // exempts the project from the process byte budget, not from its own
+      // per-project ceiling, so a subscribed project stays bounded.
+      lateClaim = await this.getPathIndex(state.projectPath);
+      if (!this.activationWanted(state, activationEpoch)) {
+        lateClaim.release();
+        lateClaim = null;
+        return;
+      }
+
+      state.pathIndex = lateClaim;
+      lateClaim = null;
+      state.pollTimer = setInterval(() => {
+        void this.refresh(state, true);
+      }, this.pollMs);
+      state.pollTimer.unref();
+      await this.refresh(state, false, activationEpoch);
+    } catch (error) {
+      lateClaim?.release();
+      if (state.activationEpoch !== activationEpoch) return;
+      this.deactivate(state);
+      throw error;
+    }
   }
 
   /**
@@ -375,6 +596,14 @@ export class ProjectGlossarySubscriptionManager {
 
   private scheduleRefresh(state: ProjectGlossaryState): void {
     if (state.subscribers.size === 0) return;
+    if (state.activationPromise) {
+      state.refreshQueued = true;
+      return;
+    }
+    if (state.snapshotReadinessPromise) {
+      state.snapshotRefreshQueued = true;
+      return;
+    }
     if (state.debounceTimer) clearTimeout(state.debounceTimer);
     state.debounceTimer = setTimeout(() => {
       state.debounceTimer = null;
@@ -385,6 +614,7 @@ export class ProjectGlossarySubscriptionManager {
   private async refresh(
     state: ProjectGlossaryState,
     emitChanges: boolean,
+    activationEpoch?: number,
   ): Promise<void> {
     if (state.refreshPromise) {
       state.refreshQueued = true;
@@ -392,17 +622,20 @@ export class ProjectGlossarySubscriptionManager {
       return;
     }
 
-    state.refreshPromise = this.runRefreshLoop(state, emitChanges).finally(
-      () => {
-        state.refreshPromise = null;
-      },
-    );
+    state.refreshPromise = this.runRefreshLoop(
+      state,
+      emitChanges,
+      activationEpoch,
+    ).finally(() => {
+      state.refreshPromise = null;
+    });
     await state.refreshPromise;
   }
 
   private async runRefreshLoop(
     state: ProjectGlossaryState,
     emitChanges: boolean,
+    activationEpoch?: number,
   ): Promise<void> {
     do {
       state.refreshQueued = false;
@@ -415,10 +648,28 @@ export class ProjectGlossarySubscriptionManager {
         state.projectPath,
         observedPaths,
       );
+      if (
+        state.subscribers.size === 0 ||
+        (activationEpoch !== undefined &&
+          state.activationEpoch !== activationEpoch)
+      ) {
+        return;
+      }
       if (!state.initialized) {
+        // Resolution's identities are the baseline, not the first scan itself.
+        // In particular, a null observation is a proven absence whose creation
+        // must invalidate an artifact that may already have chosen an ancestor.
+        const observedIdentities = new Map<string, GlossaryPathIdentity>();
+        for (const observation of observations) {
+          if (observation.identity) {
+            observedIdentities.set(observation.path, observation.identity);
+          }
+        }
+        const changes = this.diffPaths(observedIdentities, nextPaths);
         state.paths = nextPaths;
         state.observedPaths = new Set(observedPaths);
         state.initialized = true;
+        this.applyChanges(state, changes, emitChanges);
         continue;
       }
 
@@ -436,22 +687,29 @@ export class ProjectGlossarySubscriptionManager {
       const changes = this.diffPaths(previousPaths, nextPaths);
       state.paths = nextPaths;
       state.observedPaths = new Set(observedPaths);
-      if (changes.length === 0) continue;
-
-      this.glossaryIndexService.invalidateProject(state.projectPath);
-      for (const change of changes) {
-        state.generation += 1;
-        if (emitChanges) {
-          this.emit(state, {
-            type: "glossary-path-changed",
-            changeType: change.changeType,
-            generation: this.generation(state),
-            path: change.path,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
+      this.applyChanges(state, changes, emitChanges);
     } while (state.refreshQueued && state.subscribers.size > 0);
+  }
+
+  private applyChanges(
+    state: ProjectGlossaryState,
+    changes: readonly { changeType: GlossaryPathChangeType; path: string }[],
+    emitChanges: boolean,
+  ): void {
+    if (changes.length === 0) return;
+    this.glossaryIndexService.invalidateProject(state.projectPath);
+    for (const change of changes) {
+      state.generation += 1;
+      if (emitChanges) {
+        this.emit(state, {
+          type: "glossary-path-changed",
+          changeType: change.changeType,
+          generation: this.generation(state),
+          path: change.path,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
   }
 
   private diffPaths(
@@ -487,7 +745,7 @@ export class ProjectGlossarySubscriptionManager {
         try {
           const [canonicalPath, fileStats] = await Promise.all([
             realpath(fullPath),
-            stat(fullPath),
+            this.statPath(fullPath),
           ]);
           if (!fileStats.isFile() || !isContained(projectPath, canonicalPath)) {
             return;
@@ -540,6 +798,7 @@ export class ProjectGlossarySubscriptionManager {
   }
 
   private deactivate(state: ProjectGlossaryState): void {
+    state.activationEpoch += 1;
     for (const watched of state.directories.values()) watched.watcher?.close();
     state.directories.clear();
     if (state.pollTimer) clearInterval(state.pollTimer);
@@ -547,6 +806,8 @@ export class ProjectGlossarySubscriptionManager {
     if (state.debounceTimer) clearTimeout(state.debounceTimer);
     state.debounceTimer = null;
     state.refreshQueued = false;
+    state.snapshotReadinessPromise = null;
+    state.snapshotRefreshQueued = false;
     state.pathIndex?.release();
     state.pathIndex = null;
   }

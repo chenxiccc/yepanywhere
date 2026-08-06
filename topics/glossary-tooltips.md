@@ -351,10 +351,16 @@ directory's observed basenames, resynced on every refresh so a directory
 learned since the last one becomes watched and a directory that could not be
 watched is retried rather than abandoned. A candidate whose directory does not
 exist yet gets no watch and no error; the poll covers it until a later sync's
-attach succeeds. A candidate observed after subscription is seeded from its
-current identity, so merely learning about an existing file reports no
-`create` — which would make the client discard every artifact it holds. The
-recursive project-root watch this replaced blocked the Node event loop for
+attach succeeds. First activation treats the resolver's exact observed
+identities as its baseline, including explicit absence. If an absent nearer
+candidate appears, a present candidate disappears, or a present identity changes
+between resolution and the initial scan, activation invalidates the project's
+compiled artifacts and advances the snapshot generation before readiness. The
+initial snapshot therefore cannot bless a parent-governed artifact after a nearer
+`GLOSSARY.md` appeared in that handoff window. A candidate observed after
+subscription is seeded from its current identity, so merely learning about an
+existing file reports no `create` — which would make the client discard every
+artifact it holds. The recursive project-root watch this replaced blocked the Node event loop for
 about 2.5 seconds on the motivating project while the artifact itself completed
 in 75 ms, and installed watches across an entire unrelated tree — roughly
 50,000 mostly irrelevant paths there — to notice a handful of `GLOSSARY.md`
@@ -378,6 +384,44 @@ the paths resolution just proved and still stays bounded. The claim is
 retention only: the subscription never reads answers through the index, because
 its poll is the missed-event backstop and must do real I/O rather than trust
 watcher-backed cache.
+
+First-subscriber activation is one project-scoped single-flight installed before
+claim acquisition can yield. Concurrent first subscribers share that one path-
+index claim, poll timer, and initial refresh. Subscription creation returns its
+release operation synchronously and exposes readiness separately, so socket
+cleanup cancels a pending activation without waiting for its claim or refresh.
+A late claim is released without starting a timer or publishing a snapshot;
+cancellation during initial refresh immediately releases the transferred claim,
+timer, and watchers, and invalidates the late refresh result so it publishes
+nothing. If a replacement subscriber arrives before that attempt settles, the
+same serialized activation driver waits out the invalid attempt, then reacquires
+a fresh claim, timer, watch set, and initial refresh; the replacement never
+becomes ready on resources the cancelled attempt released. Failed and cancelled
+states are inactive and remain subject to the retained-project bound.
+
+Observation growth while claim acquisition or initial refresh is pending sets
+one refresh-needed flag instead of starting a debounce timer or independent
+refresh. The initial refresh reads the latest observation set; growth during
+that read is coalesced into its bounded queued pass. Activation settlement is
+also part of that serialized driver: it drains a refresh queued after the last
+scan before atomically clearing activation ownership, so readiness cannot
+publish an initial snapshot that omits a settlement-window observation. An
+observation after ownership clears follows the ordinary active-subscription
+debounce.
+
+Subscribers joining an already active project share one project-level snapshot-
+readiness barrier installed before any await. The first joiner transfers a
+pending observation debounce into that barrier; concurrent joiners await the
+same promise rather than splitting around the cleared timer. The barrier first
+waits for any older scan, then runs one required fresh scan. Observations arriving
+while it owns settlement queue onto the barrier, which drains them before its
+no-work check and ownership release occur in one synchronous transition. Every
+joining subscriber therefore publishes from the same post-observation snapshot,
+and discovery cannot silently seed a path only after one joiner's snapshot.
+Last-subscriber deactivation advances the activation epoch and clears barrier
+ownership, so a replacement subscriber cannot join stale readiness work. No
+cancelled or failed activation retains a timer, watcher, path-index claim, or
+snapshot barrier.
 
 The client uses the glossary-path stream for invalidation, not governing-file
 selection. One tab-local project store owns the active project's subscription

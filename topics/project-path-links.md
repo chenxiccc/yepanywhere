@@ -47,7 +47,7 @@ displayed turn mentions `src/server.ts`, and that lookup performs no I/O under
 `runs/`, `.git/`, or `node_modules/`. Those directories need no exclusion list
 because nothing enumerates them.
 
-**Each component edge records only what was proven** — `unknown`, `directory`,
+**Each retained component edge records only what was proven** — `directory`,
 `file`, or `absent` — and each directory node separately records whether its
 listing is *complete*. The two facts have different strength. Only a complete
 directory answers arbitrary child absence without I/O. An exact failed probe
@@ -59,12 +59,65 @@ directory carries a non-recursive `fs.watch`, and facts under a directory with
 no watcher are never read from cache. So a cache hit costs zero `stat`, and
 losing — or never obtaining — a watch makes an answer re-probe rather than go
 wrong: a directory that cannot be watched still answers correctly, just from
-the filesystem every time. A named event clears that one edge back to
-`unknown`, including inserting an edge a complete listing had called absent. An
-event that names no entry, a watch error, or overflow instead makes the whole
-generation uncertain: the directory's cached facts are discarded rather than
-trusted, and one bounded re-listing re-establishes them. Watch ambiguity
-therefore cannot leave a negative answer trusted indefinitely.
+the filesystem every time. A named event invalidates and removes an already-
+retained edge; if the parent was complete, it also invalidates completeness.
+Previously absent names likewise invalidate completeness without materializing
+an `unknown` edge. Every named-event branch then closes the parent watcher when
+no observation or cacheable fact remains. Event churn therefore retains no name
+nobody queried, and a later answer is exact-probed. An event that names no entry,
+a watch error, or overflow
+instead makes the whole generation uncertain: the directory's cached facts are
+discarded rather than trusted, and one bounded re-listing re-establishes them.
+Invalidated names retain no edge; once no proven edge, complete listing, or wide-
+listing fact remains, releasing the last current observation also releases the
+watcher. Claims are exact watcher-identity and generation
+tokens: an in-flight claim from a failed older watcher or generation cannot pin
+its factless replacement. Every trie node also carries an attachment generation:
+its object reference is usable only while root traversal still reaches that exact
+node at its canonical path with the same generation. One subtree-invalidation
+operation advances that identity and releases the node's own watcher and
+reconciliation timer plus every descendant. A parent event naming a directory
+uses that operation before removing the named edge, so a replacement inode
+cannot inherit the old directory's watcher or timer. Removing an edge also marks
+the old node detached. A deferred reconciliation is
+therefore cancelled when its node is replaced or removed with an evicted
+subtree, and can neither retain nor mutate an unreachable cache node.
+Reconciliation that does publish on a still-reachable node performs the ordinary
+byte-budget enforcement before settling. Watch ambiguity therefore cannot leave
+a negative answer trusted indefinitely.
+
+An exact probe attaches or claims the parent-directory watcher and captures its
+live generation before `lstat`. The lookup also captures the registry activity
+generation belonging to its owning project claim. It publishes the result only
+if the project is still in that same activity and the same watcher generation
+remains live and unchanged after the read. A watcher-generation change earns
+one retry under the new observation; a last release or later reclaim instead
+turns the completed read into an uncached answer and never attaches a watcher
+for the obsolete activity. If two watcher generations change, one final direct
+`lstat` answers the caller without caching. The probe never loops. Each attempt
+releases its temporary watcher claim on every exit,
+including permission-denied and thrown reads; a successful positive cache entry
+or exact negative cache entry then retains the watcher as the fact's owner, while
+an uncached answer leaves no otherwise-empty watcher behind. An unwatchable
+parent returns the direct answer without caching, and a missing directory
+component terminates the walk after observing only its nearest existing parent.
+Before every retry, the probe reacquires the currently attached parent by
+canonical path from the root. If ancestor invalidation detached the node, the
+retry returns a direct uncached answer; it never reattaches or publishes through
+the stale object.
+
+A directory listing uses the same ownership, attachment, and generation fence.
+It reacquires the canonical directory node, claims its watcher before `readdir`,
+holds that exact watcher alive through the read, and publishes a complete or
+wide-directory fact only while root reachability, attachment generation,
+watcher, watcher generation, and registry activity generation all remain
+current. A coalesced waiter rechecks that observation before using or retaining
+the listing. If any identity changed, the requested names are exact-probed under
+the lookup's original activity; an obsolete activity therefore gets correct
+direct answers but cannot publish the stale listing or its fallback probes into
+a replacement claim. Reconciliation timers carry the same canonical path,
+attachment generation, and activity generation and recheck all three before
+they read or publish.
 
 **Probe or list, whichever is cheaper for the batch.** One lookup batch groups
 candidates by parent directory. A sparse set is probed exactly with `lstat` —
@@ -88,17 +141,37 @@ be *claimed complete*, not what may be known. Discarding the directory's
 generation forgets the width too, so a directory that has since shrunk is
 listed again rather than probed forever.
 
-**Retention is byte-bounded at two levels.** Within a project, least-recently-used
-hydrated directories are dropped once retained bytes exceed 4 MiB. Across the
-process, `getProjectPathIndex()` hands each caller a refcounted claim, and
-unclaimed projects are dropped least-recently-used past 32 MiB; a claimed
-project is never evicted out from under its holder. Ten thousand dormant
-projects therefore do not mean ten thousand live tries or watchers, and a
-discarded project still answers — it rebuilds only the components it needs.
-Eviction runs only between batches, so a probe in flight keeps its ancestors.
+**Retention is bounded at both owners.** Within a project, least-recently-used
+hydrated directories are dropped once retained bytes exceed 4 MiB. One index
+also has a hard ceiling of 1,024 watchers even while actively claimed. Before a
+new attachment at that ceiling, it evicts least-recently-used directory
+subtrees that own neither the current traversal nor any in-flight observation;
+if all candidates are protected, the new read stays uncached rather than
+closing a claimed watcher or crossing the ceiling.
 
-`projectPathCacheDiagnostics()` reports project count, retained bytes, and
-evicted projects; per-index counters cover cached answers, exact probes,
+Across the process, `getProjectPathIndex()` hands each caller a refcounted claim.
+Inactive projects are dropped least-recently-used when the registry exceeds 128
+projects, 1,024 live watchers, or 32 MiB; a triggered bound evicts toward its 75%
+low-water mark. Bytes remain a separate bound rather than a proxy for tiny
+watched indexes. Every self-consistent retained-byte or watcher mutation notifies
+the registry, so growth in an active project immediately evicts eligible
+inactive victims rather than waiting for a later claim or release. Active
+claims themselves stay pinned under process pressure, and releasing the claim
+makes the complete index — including every watcher — evictable.
+
+The active-to-inactive transition advances one activity generation and cancels
+pending reconciliation timers. Exact probes, ordinary listings, their watcher
+observations, and reconciliation already awaiting I/O all carry that generation,
+so neither a last release nor a release-and-reclaim lets prior work publish or
+regrow facts and watchers into the inactive or replacement activity. A later
+claim rebuilds state on demand. Ten thousand dormant projects therefore cannot
+mean ten thousand live tries or watchers, and a discarded project still answers
+by rebuilding only the components it needs. Byte eviction runs only between
+batches, so a probe in flight keeps its ancestors; watcher-slot eviction applies
+during attachment but protects that traversal and all current observations.
+
+`projectPathCacheDiagnostics()` reports project count, retained bytes, live
+watchers, and evicted projects; per-index counters cover cached answers, exact probes,
 directory listings, oversized listings, watcher invalidations, uncertain
 generations, and evicted directories. Reading either scans no tree.
 
@@ -226,8 +299,10 @@ The replacement test suite covers ignored membership, sparse component-chain
 I/O, listing-vs-probe batch choice, cumulative promotion across small batches,
 absolute and parent-traversal rejection before I/O, concurrent-probe coalescing,
 watcher invalidation, a forced watcher-uncertain generation and its
-reconciliation, unwatchable directories, oversized listings, per-project and
-process-wide eviction, HTML safety, anchor nesting, the shape gate's lookup
+reconciliation, release/reclaim fencing around pending exact probes and ordinary
+listings, unwatchable directories, oversized listings, per-project byte and
+watcher ceilings, publication-triggered process eviction, process-wide
+count/watcher/byte eviction, HTML safety, anchor nesting, the shape gate's lookup
 budget, the extensionless name a listed directory still links, the inline-code
 reference decided by the trie and the one that falls back to the filesystem,
 self-link suppression, and batch I/O cost.

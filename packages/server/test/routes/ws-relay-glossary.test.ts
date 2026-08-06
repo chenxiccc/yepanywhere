@@ -15,11 +15,11 @@ function deferred<T>() {
 }
 
 describe("WebSocket glossary subscriptions", () => {
-  it("releases a subscription that finishes after its socket closes", async () => {
-    const pending = deferred<() => void>();
+  it("cancels a pending subscription as soon as its socket closes", async () => {
+    const pending = deferred<void>();
     const release = vi.fn();
     const manager = {
-      subscribe: vi.fn(() => pending.promise),
+      subscribe: vi.fn(() => ({ ready: pending.promise, release })),
     } as unknown as ProjectGlossarySubscriptionManager;
     const subscriptions = new Map<string, () => void>();
     const send = vi.fn();
@@ -38,7 +38,8 @@ describe("WebSocket glossary subscriptions", () => {
     expect(subscriptions.has("glossary-1")).toBe(true);
 
     cleanupSubscriptions(subscriptions);
-    pending.resolve(release);
+    expect(release).toHaveBeenCalledOnce();
+    pending.resolve(undefined);
     await subscribing;
 
     expect(release).toHaveBeenCalledOnce();

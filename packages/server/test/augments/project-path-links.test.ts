@@ -25,6 +25,14 @@ import {
 const execFileAsync = promisify(execFile);
 const repos: string[] = [];
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 async function createRepo(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "ya-path-index-"));
   repos.push(dir);
@@ -46,6 +54,7 @@ interface RecordedIo extends PathIndexIo {
   failWatch(path: string): void;
   emitError(path: string): void;
   emitEvent(path: string, filename: string): void;
+  liveWatchers(): number;
 }
 
 /**
@@ -77,6 +86,11 @@ function recordingIo(root: string): RecordedIo {
       for (const watcher of watchers.get(path) ?? []) {
         watcher.emit("test:change", filename);
       }
+    },
+    liveWatchers() {
+      let count = 0;
+      for (const entries of watchers.values()) count += entries.length;
+      return count;
     },
     lstat(path) {
       probed.push(relativeToRoot(path));
@@ -346,6 +360,368 @@ describe("project path index", () => {
     index.dispose();
   });
 
+  it.each(["EACCES", "EPERM"])(
+    "releases an uncached watcher after %s",
+    async (code) => {
+      const repo = await createRepo();
+      const io = recordingIo(repo);
+      io.lstat = async (path) => {
+        io.probed.push(relative(repo, path) || ".");
+        throw Object.assign(new Error(code), { code });
+      };
+      const index = __test__.createIndex(repo, { io, maxIndexBytes: 0 });
+
+      expect(await index.has("denied.txt")).toBe(false);
+      expect(index.knownFile("denied.txt")).toBeUndefined();
+      expect(io.liveWatchers()).toBe(0);
+      expect(__test__.diagnostics(index)).toMatchObject({
+        retainedBytes: 0,
+        watchers: 0,
+      });
+
+      expect(await index.has("denied.txt")).toBe(false);
+      expect(io.liveWatchers()).toBe(0);
+      index.dispose();
+    },
+  );
+
+  it("does not retain a watcher after invalidating its only child", async () => {
+    const repo = await createRepo();
+    const io = recordingIo(repo);
+    const originalLstat = io.lstat;
+    io.lstat = async (path) => {
+      if (path.endsWith("denied.txt")) {
+        io.probed.push(relative(repo, path) || ".");
+        throw Object.assign(new Error("denied"), { code: "EACCES" });
+      }
+      return originalLstat(path);
+    };
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("changed.txt")).toBe(false);
+    io.emitEvent(".", "changed.txt");
+    expect(index.knownFile("changed.txt")).toBeUndefined();
+    expect(io.liveWatchers()).toBe(0);
+
+    expect(await index.has("denied.txt")).toBe(false);
+    expect(io.liveWatchers()).toBe(0);
+    expect(__test__.diagnostics(index)).toMatchObject({
+      retainedBytes: 0,
+      watchers: 0,
+    });
+    index.dispose();
+  });
+
+  it("prunes the only sparse child and closes its factless watcher", async () => {
+    const repo = await createRepo();
+    await writeFile(join(repo, "only.txt"), "only");
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("only.txt")).toBe(true);
+    expect(__test__.rootChildCount(index)).toBe(1);
+    expect(__test__.diagnostics(index)).toMatchObject({ watchers: 1 });
+
+    await rm(join(repo, "only.txt"));
+    io.emitEvent(".", "only.txt");
+
+    expect(__test__.rootChildCount(index)).toBe(0);
+    expect(index.knownFile("only.txt")).toBeUndefined();
+    expect(__test__.diagnostics(index)).toMatchObject({
+      retainedBytes: 0,
+      watchers: 0,
+    });
+    expect(io.liveWatchers()).toBe(0);
+
+    expect(await index.has("only.txt")).toBe(false);
+    expect(index.knownFile("only.txt")).toBe(false);
+    expect(__test__.rootChildCount(index)).toBe(1);
+    expect(io.liveWatchers()).toBe(1);
+
+    index.dispose();
+    expect(io.liveWatchers()).toBe(0);
+  });
+
+  it("does not let a stale W1 claim pin a factless replacement W2", async () => {
+    const repo = await createRepo();
+    const io = recordingIo(repo);
+    const firstStarted = deferred<void>();
+    const releaseFirst = deferred<void>();
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      if (path.endsWith("first.txt")) {
+        firstStarted.resolve(undefined);
+        await releaseFirst.promise;
+      }
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    };
+    const index = __test__.createIndex(repo, { io });
+
+    const first = index.has("first.txt");
+    await firstStarted.promise;
+    expect(io.liveWatchers()).toBe(1);
+
+    // W1 fails while its probe still owns a stale observation. The second probe
+    // installs W2, then releases its uncached result before the W1 probe exits.
+    io.emitError(".");
+    expect(io.liveWatchers()).toBe(0);
+    expect(await index.has("second.txt")).toBe(false);
+    expect(io.watched).toEqual([".", "."]);
+    expect(io.liveWatchers()).toBe(0);
+    expect(__test__.diagnostics(index).watchers).toBe(0);
+
+    releaseFirst.resolve(undefined);
+    expect(await first).toBe(false);
+    expect(io.liveWatchers()).toBe(0);
+    expect(__test__.diagnostics(index).watchers).toBe(0);
+
+    index.dispose();
+  });
+
+  it("releases an exact-probe watcher when lstat throws", async () => {
+    const repo = await createRepo();
+    const io = recordingIo(repo);
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      throw new Error("lstat failed");
+    };
+    const index = __test__.createIndex(repo, { io, maxIndexBytes: 0 });
+
+    await expect(index.has("broken.txt")).rejects.toThrow("lstat failed");
+    expect(index.knownFile("broken.txt")).toBeUndefined();
+    expect(io.liveWatchers()).toBe(0);
+    expect(__test__.diagnostics(index)).toMatchObject({
+      retainedBytes: 0,
+      watchers: 0,
+    });
+    index.dispose();
+  });
+
+  it("does not accumulate uncached watchers across distinct projects", async () => {
+    const indexes: ReturnType<typeof __test__.createIndex>[] = [];
+    const adapters: RecordedIo[] = [];
+    for (let project = 0; project < 18; project += 1) {
+      const repo = await createRepo();
+      const io = recordingIo(repo);
+      const mode = project % 3;
+      io.lstat = async () => {
+        if (mode === 2) throw new Error("lstat failed");
+        const code = mode === 0 ? "EACCES" : "EPERM";
+        throw Object.assign(new Error(code), { code });
+      };
+      const index = __test__.createIndex(repo, { io, maxIndexBytes: 0 });
+      indexes.push(index);
+      adapters.push(io);
+
+      if (mode === 2) {
+        await expect(index.has("denied.txt")).rejects.toThrow("lstat failed");
+      } else {
+        expect(await index.has("denied.txt")).toBe(false);
+      }
+      expect(io.liveWatchers()).toBe(0);
+    }
+
+    expect(adapters.reduce((total, io) => total + io.liveWatchers(), 0)).toBe(
+      0,
+    );
+    expect(
+      indexes.reduce(
+        (total, index) => total + __test__.diagnostics(index).watchers,
+        0,
+      ),
+    ).toBe(0);
+    for (const index of indexes) index.dispose();
+  });
+
+  it("retries a probe whose watcher generation changes during lstat", async () => {
+    const repo = await createRepo();
+    await writeFile(join(repo, "one.json"), "{}\n");
+    const io = recordingIo(repo);
+    const originalLstat = io.lstat;
+    let calls = 0;
+    io.lstat = async (path) => {
+      calls += 1;
+      expect(io.liveWatchers()).toBe(1);
+      if (calls === 1) {
+        const stale = await originalLstat(path);
+        io.emitEvent(".", "one.json");
+        return stale;
+      }
+      return originalLstat(path);
+    };
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("one.json")).toBe(true);
+    expect(calls).toBe(2);
+    expect(index.knownFile("one.json")).toBe(true);
+
+    expect(await index.has("one.json")).toBe(true);
+    expect(calls).toBe(2);
+    index.dispose();
+    expect(io.liveWatchers()).toBe(0);
+  });
+
+  it("returns a final uncached probe after two generation changes", async () => {
+    const repo = await createRepo();
+    const io = recordingIo(repo);
+    let calls = 0;
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      calls += 1;
+      if (calls === 1) {
+        io.emitEvent(".", "one.json");
+        return { isDirectory: () => false };
+      }
+      if (calls === 2) {
+        io.emitEvent(".", "one.json");
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      }
+      return { isDirectory: () => false };
+    };
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("one.json")).toBe(true);
+    expect(calls).toBe(3);
+    expect(index.knownFile("one.json")).toBeUndefined();
+    expect(io.liveWatchers()).toBe(0);
+    expect(__test__.diagnostics(index).watchers).toBe(0);
+
+    index.dispose();
+    expect(io.liveWatchers()).toBe(0);
+  });
+
+  it("holds and generation-fences a watcher while readdir is pending", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "runs"));
+    for (const name of ["a.txt", "b.txt", "c.txt", "stale.txt"]) {
+      await writeFile(join(repo, "runs", name), "x");
+    }
+    const io = recordingIo(repo);
+    const originalLstat = io.lstat;
+    const originalReaddir = io.readdir;
+    const deniedStarted = deferred<void>();
+    const releaseDenied = deferred<void>();
+    const listingStarted = deferred<void>();
+    const releaseListing = deferred<void>();
+    io.lstat = async (path) => {
+      if (path.endsWith("denied.txt")) {
+        io.probed.push(relative(repo, path) || ".");
+        deniedStarted.resolve(undefined);
+        await releaseDenied.promise;
+        throw Object.assign(new Error("denied"), { code: "EACCES" });
+      }
+      return originalLstat(path);
+    };
+    io.readdir = async (path) => {
+      const staleEntries = await originalReaddir(path);
+      listingStarted.resolve(undefined);
+      await releaseListing.promise;
+      return staleEntries;
+    };
+    const index = __test__.createIndex(repo, { io });
+
+    // Cache only the root's `runs` edge, then make the exact probe install W1
+    // for the otherwise-factless child directory.
+    expect(await index.has("runs")).toBe(false);
+    const denied = index.has("runs/denied.txt");
+    await deniedStarted.promise;
+    const listing = index.findExisting([
+      "runs/a.txt",
+      "runs/b.txt",
+      "runs/c.txt",
+      "runs/stale.txt",
+    ]);
+    await listingStarted.promise;
+
+    releaseDenied.resolve(undefined);
+    expect(await denied).toBe(false);
+    // Root plus W1: releasing the exact probe cannot close the listing's claim.
+    expect(io.liveWatchers()).toBe(2);
+    expect(io.watched.filter((path) => path === "runs")).toHaveLength(1);
+
+    await rm(join(repo, "runs", "stale.txt"));
+    io.emitEvent("runs", "stale.txt");
+    releaseListing.resolve(undefined);
+
+    expect(await listing).toEqual(
+      new Set(["runs/a.txt", "runs/b.txt", "runs/c.txt"]),
+    );
+    // The stale listing was not published. Exact fallback probes attach W2 and
+    // cache the current negative fact instead.
+    expect(index.knownFile("runs/stale.txt")).toBe(false);
+    expect(io.watched.filter((path) => path === "runs")).toHaveLength(2);
+    expect(io.liveWatchers()).toBe(2);
+
+    index.dispose();
+    expect(io.liveWatchers()).toBe(0);
+  });
+
+  it("does not reattach a detached parent while an exact probe is pending", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "outer/runs"), { recursive: true });
+    await writeFile(join(repo, "outer/runs/seed.txt"), "seed");
+    await writeFile(join(repo, "outer/runs/pending.txt"), "current");
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("outer/runs/seed.txt")).toBe(true);
+    const originalLstat = io.lstat;
+    const firstProbeStarted = deferred<void>();
+    const releaseFirstProbe = deferred<void>();
+    let pendingCalls = 0;
+    io.lstat = async (path) => {
+      if (!path.endsWith("pending.txt")) return originalLstat(path);
+      io.probed.push(relative(repo, path) || ".");
+      pendingCalls += 1;
+      if (pendingCalls === 1) {
+        firstProbeStarted.resolve(undefined);
+        await releaseFirstProbe.promise;
+        return { isDirectory: () => false };
+      }
+      return lstat(path);
+    };
+
+    const pending = index.has("outer/runs/pending.txt");
+    await firstProbeStarted.promise;
+    expect(io.liveWatchers()).toBe(3);
+
+    // Invalidating `outer` removes `runs` from the trie while its child probe is
+    // awaiting I/O. The retry must reacquire from the root, see no attached
+    // parent, and fall back to an uncached read rather than rewatching `runs`.
+    io.emitEvent(".", "outer");
+    expect(io.liveWatchers()).toBe(0);
+    releaseFirstProbe.resolve(undefined);
+
+    expect(await pending).toBe(true);
+    expect(pendingCalls).toBe(2);
+    expect(
+      io.watched.filter((path) => path === join("outer", "runs")),
+    ).toHaveLength(1);
+    expect(index.knownFile("outer/runs/pending.txt")).toBeUndefined();
+    expect(io.liveWatchers()).toBe(0);
+
+    index.dispose();
+    expect(io.liveWatchers()).toBe(0);
+  });
+
+  it("observes only the existing parent of a missing component", async () => {
+    const repo = await createRepo();
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("missing/child.txt")).toBe(false);
+    expect(io.probed).toEqual(["missing"]);
+    expect(io.watched).toEqual(["."]);
+    expect(io.liveWatchers()).toBe(1);
+
+    io.probed.length = 0;
+    expect(await index.has("missing/child.txt")).toBe(false);
+    expect(io.probed).toEqual([]);
+
+    index.dispose();
+    expect(io.liveWatchers()).toBe(0);
+  });
+
   it("rejects absolute and parent-traversal paths before filesystem I/O", async () => {
     const repo = await createRepo();
     const io = recordingIo(repo);
@@ -385,6 +761,49 @@ describe("project path index", () => {
     index.dispose();
   });
 
+  it("does not materialize edges for absent-name event churn", async () => {
+    const repo = await createRepo();
+    await writeFile(join(repo, "kept.json"), "{}\n");
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    await index.findExisting([
+      "kept.json",
+      "missing-a.json",
+      "missing-b.json",
+      "missing-c.json",
+    ]);
+    const baselineBytes = __test__.diagnostics(index).retainedBytes;
+    expect(__test__.rootChildCount(index)).toBe(1);
+    expect(__test__.diagnostics(index).completeDirectories).toBe(1);
+
+    for (let event = 0; event < 2_000; event += 1) {
+      io.emitEvent(".", `untracked-${event}.json`);
+    }
+
+    // The first event invalidates completeness; later unqueried names retain no
+    // edge, so both the child map and its byte estimate stay at the one fact the
+    // listing actually observed.
+    expect(__test__.rootChildCount(index)).toBe(1);
+    expect(__test__.diagnostics(index)).toMatchObject({
+      completeDirectories: 0,
+      retainedBytes: baselineBytes,
+      watchers: 1,
+    });
+    expect(index.knownFile("kept.json")).toBe(true);
+    expect(index.knownFile("untracked-1999.json")).toBeUndefined();
+
+    await writeFile(join(repo, "late.json"), "{}\n");
+    io.emitEvent(".", "late.json");
+    io.probed.length = 0;
+    expect(await index.has("late.json")).toBe(true);
+    expect(io.probed).toEqual(["late.json"]);
+    expect(index.knownFile("late.json")).toBe(true);
+    expect(__test__.rootChildCount(index)).toBe(2);
+
+    index.dispose();
+  });
+
   it("invalidates a complete listing entry by entry", async () => {
     const repo = await createRepo();
     await mkdir(join(repo, "runs"), { recursive: true });
@@ -412,8 +831,9 @@ describe("project path index", () => {
         "runs/b.json",
       ]),
     ).toEqual(new Set(["runs/kept.json", "runs/a.json"]));
-    // Only the named entry lost its cached answer.
-    expect(io.probed).toEqual([join("runs", "a.json")]);
+    // The named entry and arbitrary prior absences are re-probed: the event
+    // invalidated listing completeness without retaining an unknown edge.
+    expect(io.probed).toEqual([join("runs", "a.json"), join("runs", "b.json")]);
     expect(io.listed).toEqual([]);
     index.dispose();
   });
@@ -439,6 +859,110 @@ describe("project path index", () => {
     // The scheduled reconciliation re-establishes the directory on its own.
     await vi.waitFor(() => expect(io.listed).toContain("runs"));
     index.dispose();
+  });
+
+  it("invalidates a replaced directory's own watcher and reconciliation", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "runs"));
+    for (const name of ["old-a.txt", "old-b.txt", "old-c.txt"]) {
+      await writeFile(join(repo, "runs", name), "old");
+    }
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+    expect(await index.has("runs/old-a.txt")).toBe(true);
+
+    const originalReaddir = io.readdir;
+    const listingStarted = deferred<void>();
+    const releaseListing = deferred<void>();
+    io.readdir = async (path) => {
+      const staleEntries = await originalReaddir(path);
+      listingStarted.resolve(undefined);
+      await releaseListing.promise;
+      return staleEntries;
+    };
+
+    vi.useFakeTimers();
+    try {
+      // Losing W1 schedules reconciliation. The wide lookup attaches W2 while
+      // retaining that timer, then pauses with an old-inode listing in flight.
+      io.emitError("runs");
+      const listing = index.findExisting([
+        "runs/old-a.txt",
+        "runs/old-b.txt",
+        "runs/old-c.txt",
+        "runs/replacement.txt",
+      ]);
+      await listingStarted.promise;
+      expect(io.watched.filter((path) => path === "runs")).toHaveLength(2);
+      expect(io.liveWatchers()).toBe(2);
+
+      await rm(join(repo, "runs"), { recursive: true });
+      await mkdir(join(repo, "runs"));
+      await writeFile(join(repo, "runs/replacement.txt"), "replacement");
+      io.emitEvent(".", "runs");
+
+      // The parent event invalidates the child node itself, not only its cached
+      // descendants: W2 closes and its old-inode reconciliation is cancelled.
+      expect(io.liveWatchers()).toBe(0);
+      releaseListing.resolve(undefined);
+      expect(await listing).toEqual(new Set(["runs/replacement.txt"]));
+      expect(index.knownFile("runs/replacement.txt")).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(__test__.RECONCILE_DELAY_MS * 2);
+      expect(io.listed).toEqual(["runs"]);
+      expect(io.liveWatchers()).toBe(0);
+
+      // A later traversal reacquires the replacement from the root and installs
+      // its own watcher before publishing the new fact.
+      expect(await index.has("runs/replacement.txt")).toBe(true);
+      expect(index.knownFile("runs/replacement.txt")).toBe(true);
+      expect(io.watched.filter((path) => path === "runs")).toHaveLength(3);
+      expect(io.liveWatchers()).toBe(2);
+    } finally {
+      index.dispose();
+      vi.useRealTimers();
+    }
+    expect(io.liveWatchers()).toBe(0);
+  });
+
+  it("cancels reconciliation when budget eviction removes its ancestor", async () => {
+    const repo = await createRepo();
+    for (let cycle = 0; cycle < 4; cycle += 1) {
+      await mkdir(join(repo, `runs-${cycle}`));
+      await mkdir(join(repo, `other-${cycle}`));
+    }
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io, maxIndexBytes: 300 });
+    vi.useFakeTimers();
+    try {
+      for (let cycle = 0; cycle < 4; cycle += 1) {
+        const watchedDirectory = `runs-${cycle}`;
+        expect(await index.has(`${watchedDirectory}/missing.txt`)).toBe(false);
+        io.emitError(watchedDirectory);
+
+        // This second subtree pushes the root over budget. Evicting the root also
+        // removes the watched child that owns the pending reconciliation.
+        expect(await index.has(`other-${cycle}/missing.txt`)).toBe(false);
+        expect(__test__.diagnostics(index)).toMatchObject({
+          retainedBytes: 0,
+          watchers: 0,
+        });
+        expect(
+          index.knownFile(`${watchedDirectory}/missing.txt`),
+        ).toBeUndefined();
+      }
+
+      await vi.advanceTimersByTimeAsync(__test__.RECONCILE_DELAY_MS * 2);
+      expect(io.listed).toEqual([]);
+      expect(io.liveWatchers()).toBe(0);
+      expect(__test__.diagnostics(index)).toMatchObject({
+        retainedBytes: 0,
+        watchers: 0,
+      });
+    } finally {
+      index.dispose();
+      vi.useRealTimers();
+    }
   });
 
   it("answers correctly when a directory cannot be watched", async () => {
@@ -493,6 +1017,46 @@ describe("project path index", () => {
     index.dispose();
   });
 
+  it("keeps claimed watchers while enforcing a per-index watcher ceiling", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "a"));
+    await mkdir(join(repo, "b"));
+    await writeFile(join(repo, "a/seed.txt"), "seed");
+    await writeFile(join(repo, "a/pending.txt"), "pending");
+    const io = recordingIo(repo);
+    const originalLstat = io.lstat;
+    const probeStarted = deferred<void>();
+    const releaseProbe = deferred<void>();
+    io.lstat = async (path) => {
+      if (!path.endsWith("pending.txt")) return originalLstat(path);
+      io.probed.push(relative(repo, path) || ".");
+      probeStarted.resolve(undefined);
+      await releaseProbe.promise;
+      return originalLstat(path);
+    };
+    const index = __test__.createIndex(repo, { io, maxIndexWatchers: 2 });
+
+    expect(await index.has("a/seed.txt")).toBe(true);
+    const pending = index.has("a/pending.txt");
+    await probeStarted.promise;
+    expect(io.liveWatchers()).toBe(2);
+
+    // Watching `b` would exceed the ceiling. The LRU candidate under `a` owns
+    // the pending observation and the root is this traversal's ancestor, so the
+    // lookup remains correct but uncached instead of closing either watcher.
+    expect(await index.has("b/missing.txt")).toBe(false);
+    expect(__test__.diagnostics(index).watchers).toBe(2);
+    expect(io.liveWatchers()).toBe(2);
+
+    releaseProbe.resolve(undefined);
+    expect(await pending).toBe(true);
+    expect(index.knownFile("a/pending.txt")).toBe(true);
+    expect(__test__.diagnostics(index).watchers).toBe(2);
+
+    index.dispose();
+    expect(io.liveWatchers()).toBe(0);
+  });
+
   it("drops least-recently-used subtrees over the project byte ceiling", async () => {
     const repo = await createRepo();
     for (const directory of ["one", "two", "three"]) {
@@ -541,6 +1105,248 @@ describe("project path cache ownership", () => {
     expect(__test__.registryEntry(repo)?.refs).toBe(0);
   });
 
+  it("fences an exact probe across last release and reclaim", async () => {
+    const repo = await createRepo();
+    const projectPath = join(repo, "exact-activity");
+    const io = recordingIo(repo);
+    const probeStarted = deferred<void>();
+    const releaseProbe = deferred<void>();
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      probeStarted.resolve(undefined);
+      await releaseProbe.promise;
+      return { isDirectory: () => false };
+    };
+    const oldClaim = __test__.claimIndex(projectPath, { io });
+
+    const pending = oldClaim.has("pending.txt");
+    await probeStarted.promise;
+    oldClaim.release();
+    const reclaimed = __test__.claimIndex(projectPath, { io });
+    releaseProbe.resolve(undefined);
+
+    expect(await pending).toBe(true);
+    expect(io.probed).toEqual([join("exact-activity", "pending.txt")]);
+    expect(reclaimed.knownFile("pending.txt")).toBeUndefined();
+    expect(projectPathCacheDiagnostics().watchers).toBe(0);
+    expect(io.liveWatchers()).toBe(0);
+
+    reclaimed.release();
+  });
+
+  it("fences an ordinary listing across last release and reclaim", async () => {
+    const repo = await createRepo();
+    const projectPath = join(repo, "listing-activity");
+    await mkdir(projectPath);
+    for (const name of ["a", "b", "c", "d"]) {
+      await writeFile(join(projectPath, name), name);
+    }
+    const io = recordingIo(repo);
+    const originalReaddir = io.readdir;
+    const listingStarted = deferred<void>();
+    const releaseListing = deferred<void>();
+    io.readdir = async (path) => {
+      const entries = await originalReaddir(path);
+      listingStarted.resolve(undefined);
+      await releaseListing.promise;
+      return entries;
+    };
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      return { isDirectory: () => false };
+    };
+    const oldClaim = __test__.claimIndex(projectPath, { io });
+
+    const pending = oldClaim.findExisting(["a", "b", "c", "d"]);
+    await listingStarted.promise;
+    oldClaim.release();
+    const reclaimed = __test__.claimIndex(projectPath, { io });
+    releaseListing.resolve(undefined);
+
+    expect(await pending).toEqual(new Set(["a", "b", "c", "d"]));
+    for (const name of ["a", "b", "c", "d"]) {
+      expect(reclaimed.knownFile(name)).toBeUndefined();
+    }
+    expect(io.watched).toEqual(["listing-activity"]);
+    expect(projectPathCacheDiagnostics().watchers).toBe(0);
+    expect(io.liveWatchers()).toBe(0);
+
+    reclaimed.release();
+  });
+
+  it("bounds thousands of released small-project indexes by inactive LRU count", async () => {
+    const repo = await createRepo();
+    const io = recordingIo(repo);
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    };
+
+    for (let project = 0; project < 2_000; project += 1) {
+      const handle = __test__.claimIndex(join(repo, `project-${project}`), {
+        io,
+      });
+      expect(await handle.has("missing.txt")).toBe(false);
+      handle.release();
+    }
+
+    const diagnostics = projectPathCacheDiagnostics();
+    expect(diagnostics.projects).toBeLessThanOrEqual(
+      __test__.MAX_PROCESS_PROJECTS,
+    );
+    expect(diagnostics.watchers).toBeLessThanOrEqual(
+      __test__.MAX_PROCESS_PROJECTS,
+    );
+    expect(diagnostics.watchers).toBe(io.liveWatchers());
+    expect(diagnostics.retainedBytes).toBeLessThan(__test__.MAX_PROCESS_BYTES);
+    expect(diagnostics.evictedProjects).toBeGreaterThan(1_000);
+  });
+
+  it("cancels reconciliation before released indexes can regrow", async () => {
+    const repo = await createRepo();
+    const io = recordingIo(repo);
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    };
+
+    vi.useFakeTimers();
+    try {
+      for (let project = 0; project < 1_500; project += 1) {
+        const projectPath = join(repo, `reconcile-${project}`);
+        const handle = __test__.claimIndex(projectPath, { io });
+        expect(await handle.has("missing.txt")).toBe(false);
+        io.emitError(relative(repo, projectPath));
+        handle.release();
+      }
+
+      await vi.advanceTimersByTimeAsync(__test__.RECONCILE_DELAY_MS * 2);
+      const diagnostics = projectPathCacheDiagnostics();
+      expect(diagnostics).toMatchObject({ retainedBytes: 0, watchers: 0 });
+      expect(diagnostics.projects).toBeLessThanOrEqual(
+        __test__.MAX_PROCESS_PROJECTS,
+      );
+      expect(io.listed).toEqual([]);
+      expect(io.liveWatchers()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fences reconciliation already reading when its last claim releases", async () => {
+    const repo = await createRepo();
+    const projectPath = join(repo, "in-flight-reconcile");
+    const io = recordingIo(repo);
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    };
+    const listingStarted = deferred<void>();
+    const releaseListing = deferred<void>();
+    io.readdir = async (path) => {
+      io.listed.push(relative(repo, path) || ".");
+      listingStarted.resolve(undefined);
+      await releaseListing.promise;
+      return [];
+    };
+
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const handle = __test__.claimIndex(projectPath, { io });
+      expect(await handle.has("missing.txt")).toBe(false);
+      io.emitError(relative(repo, projectPath));
+      await vi.advanceTimersByTimeAsync(__test__.RECONCILE_DELAY_MS);
+      await listingStarted.promise;
+      expect(io.liveWatchers()).toBe(1);
+
+      handle.release();
+      releaseListing.resolve(undefined);
+      for (let attempts = 0; io.liveWatchers() > 0; attempts += 1) {
+        if (attempts >= 1_000) throw new Error("Reconciliation did not settle");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+
+      expect(__test__.registryEntry(projectPath)?.refs).toBe(0);
+      expect(projectPathCacheDiagnostics()).toMatchObject({
+        retainedBytes: 0,
+        watchers: 0,
+      });
+      expect(io.listed).toEqual(["in-flight-reconcile"]);
+    } finally {
+      releaseListing.resolve(undefined);
+      vi.useRealTimers();
+    }
+  });
+
+  it("evicts inactive projects as an active index publishes watchers", async () => {
+    const repo = await createRepo();
+    const inactivePath = join(repo, "inactive-victim");
+    const activePath = join(repo, "active-growth");
+    const io = recordingIo(repo);
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      if (path.endsWith("missing.txt")) {
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      }
+      return { isDirectory: () => true };
+    };
+    const inactive = __test__.claimIndex(inactivePath, { io });
+    expect(await inactive.has("missing.txt")).toBe(false);
+    inactive.release();
+    expect(__test__.registryEntry(inactivePath)?.refs).toBe(0);
+
+    const active = __test__.claimIndex(activePath, { io });
+    const candidate = `${"d/".repeat(__test__.MAX_INDEX_WATCHERS - 1)}missing.txt`;
+    expect(await active.has(candidate)).toBe(false);
+
+    // The final active watcher crosses the process ceiling. Its publication,
+    // rather than a later claim/release, immediately evicts the inactive victim.
+    expect(__test__.registryEntry(inactivePath)).toBeUndefined();
+    expect(__test__.registryEntry(activePath)?.refs).toBe(1);
+    expect(projectPathCacheDiagnostics().watchers).toBe(
+      __test__.MAX_INDEX_WATCHERS,
+    );
+    expect(io.liveWatchers()).toBe(__test__.MAX_INDEX_WATCHERS);
+
+    active.release();
+    __test__.enforceProcessLimits({ maxWatchers: 0 });
+    expect(io.liveWatchers()).toBe(0);
+  });
+
+  it("caps one active watcher-heavy index at its own ceiling", async () => {
+    const repo = await createRepo();
+    const projectPath = join(repo, "watcher-heavy");
+    const io = recordingIo(repo);
+    io.lstat = async (path) => {
+      io.probed.push(relative(repo, path) || ".");
+      if (path.endsWith("missing.txt")) {
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      }
+      return { isDirectory: () => true };
+    };
+    const held = __test__.claimIndex(projectPath, { io });
+    const candidate = `${"d/".repeat(__test__.MAX_INDEX_WATCHERS)}missing.txt`;
+
+    expect(await held.has(candidate)).toBe(false);
+    expect(projectPathCacheDiagnostics().watchers).toBe(
+      __test__.MAX_INDEX_WATCHERS,
+    );
+    __test__.enforceProcessLimits();
+    expect(__test__.registryEntry(projectPath)?.refs).toBe(1);
+    expect(io.liveWatchers()).toBe(__test__.MAX_INDEX_WATCHERS);
+
+    held.release();
+    expect(__test__.registryEntry(projectPath)?.refs).toBe(0);
+    __test__.enforceProcessLimits({ maxWatchers: 0 });
+    expect(__test__.registryEntry(projectPath)).toBeUndefined();
+    expect(projectPathCacheDiagnostics()).toMatchObject({
+      projects: 0,
+      retainedBytes: 0,
+      watchers: 0,
+    });
+    expect(io.liveWatchers()).toBe(0);
+  });
+
   it("evicts unclaimed projects under process pressure and rebuilds on demand", async () => {
     const repo = await createRepo();
     await writeFile(join(repo, "one.json"), "{}\n");
@@ -554,7 +1360,7 @@ describe("project path cache ownership", () => {
     expect(await held.has("two.json")).toBe(true);
 
     // Force the pressure decision rather than retaining 32 MiB of names.
-    __test__.enforceProcessBudget(0);
+    __test__.enforceProcessLimits({ maxBytes: 0 });
 
     expect(projectPathCacheDiagnostics().projects).toBe(1);
     expect(__test__.registryEntry(repo)).toBeUndefined();
