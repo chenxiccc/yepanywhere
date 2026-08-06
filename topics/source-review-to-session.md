@@ -738,14 +738,21 @@ The projection's source version is a monotonic review state revision that every
 accepted mutation bumps, because canonical state changes in memory before its
 save reaches disk. A project appearing with review state already on disk
 publishes no review event today, so a coarse time bucket bounds that staleness
-until exact per-row deltas exist.
+until exact per-row deltas exist. A projection build is accepted only while its
+observed revision and project-set bucket remain current. If they move during the
+build, neither a success nor a failure from that obsolete read is returned; the
+caller follows the newest build instead. A failure from the still-current source
+is returned, and bounded retargeting fails explicitly if the source never
+stabilizes.
 
 Retained project stores are a byte- and age-bounded cache, not process-lifetime
 state. A clean, inactive store may be released after its canonical state is
-durable and reloaded on exact project demand. A store with a mutation, a
-coalesced save, or a load in flight is pinned: releasing it would strand the
-only copy of state the writer has not yet written. Budgets are enforced on
-access, so the newest store may briefly exceed them.
+durable and reloaded on exact project demand. Every mutation of one project is
+one serialized operation on one pinned store owner, from any source capture or
+manifest read through state mutation, durable save, and revision publication.
+A store with such a mutation, a save, or a load in flight is pinned: releasing
+it would strand the only copy of state the writer has not yet written. Budgets
+are enforced on access, so the newest store may briefly exceed them.
 
 ## Design decisions
 

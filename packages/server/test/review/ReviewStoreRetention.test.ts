@@ -25,6 +25,14 @@ function anchor(path: string): ReviewCommentAnchor {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 describe("review store retention", () => {
   let root: string;
   let clock: { value: number };
@@ -116,20 +124,66 @@ describe("review store retention", () => {
     );
   });
 
-  it("never releases a store while a mutation is in flight", async () => {
-    const service = makeService({ maxRetainedStoreBytes: 1 });
-    const [first, second] = projects as [string, string];
-
-    const pending = service.addComment(first, {
-      anchor: anchor("src/a.ts"),
-      text: "in flight",
+  it("pins deferred capture and its competing mutation under eviction pressure", async () => {
+    const captureStarted = deferred<void>();
+    const captureFinished = deferred<{
+      status: "captured";
+      captureBlobId: string;
+      projection: { kind: "worktree"; path: string; side: "new" };
+    }>();
+    const service = makeService({
+      maxRetainedStoreBytes: 1,
+      captureWriter: {
+        async capture() {
+          captureStarted.resolve();
+          return captureFinished.promise;
+        },
+      },
     });
-    // A concurrent read of another project triggers release consideration.
-    await service.getStoreFile(second);
-    await pending;
+    const [first, second] = projects as [string, string];
+    const projectedAnchor = {
+      ...anchor("src/a.ts"),
+      projection: {
+        kind: "worktree" as const,
+        path: "src/a.ts",
+        side: "new" as const,
+      },
+    };
 
-    const comments = await service.listComments(first);
-    expect(comments).toHaveLength(1);
+    const deferredMutation = service.addComment(first, {
+      anchor: projectedAnchor,
+      text: "capturing",
+    });
+    await captureStarted.promise;
+
+    // Loading another project enforces the one-byte budget while the first
+    // store is awaiting its capture. A second mutation must queue on that same
+    // pinned owner rather than reloading a competing copy from disk.
+    await service.getStoreFile(second);
+    expect(service.getRetentionMetrics().retainedStores).toBe(2);
+    let competingSettled = false;
+    const competingMutation = service
+      .addComment(first, {
+        anchor: anchor("src/b.ts"),
+        text: "queued behind capture",
+      })
+      .finally(() => {
+        competingSettled = true;
+      });
+    await Promise.resolve();
+    expect(competingSettled).toBe(false);
+
+    captureFinished.resolve({
+      status: "captured",
+      captureBlobId: "a".repeat(40),
+      projection: projectedAnchor.projection,
+    });
+    await Promise.all([deferredMutation, competingMutation]);
+
+    const restarted = makeService({ maxRetainedStoreBytes: 1 });
+    expect(
+      (await restarted.listComments(first)).map((comment) => comment.text),
+    ).toEqual(["capturing", "queued behind capture"]);
   });
 
   it("bumps the state revision only on accepted mutations", async () => {

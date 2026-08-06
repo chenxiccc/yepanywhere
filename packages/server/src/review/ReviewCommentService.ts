@@ -214,33 +214,34 @@ export class ReviewCommentService {
     projectPath: string,
     input: AddReviewCommentInput,
   ): Promise<ReviewComment> {
-    const store = await this.getStore(projectPath);
-    if (store.state.drafts.length >= MAX_REVIEW_COMMENTS) {
-      throw new HttpError(
-        413,
-        `Review comment limit reached (${MAX_REVIEW_COMMENTS}); submit or delete drafts first.`,
-      );
-    }
-    const entryId = this.newId();
-    const siteId = `site-${entryId}`;
-    const createdAt = this.now();
-    const entry: ReviewReviewerEntry = {
-      id: entryId,
-      anchor: cloneAnchor(input.anchor),
-      text: input.text,
-      capture: await this.capture(projectPath, input.anchor),
-      createdAt,
-    };
-    store.state.sites.push({
-      id: siteId,
-      path: input.anchor.path,
-      createdAt,
-      entries: [entry],
-      outcomes: [],
+    return this.withMutation(projectPath, async (store) => {
+      if (store.state.drafts.length >= MAX_REVIEW_COMMENTS) {
+        throw new HttpError(
+          413,
+          `Review comment limit reached (${MAX_REVIEW_COMMENTS}); submit or delete drafts first.`,
+        );
+      }
+      const entryId = this.newId();
+      const siteId = `site-${entryId}`;
+      const createdAt = this.now();
+      const entry: ReviewReviewerEntry = {
+        id: entryId,
+        anchor: cloneAnchor(input.anchor),
+        text: input.text,
+        capture: await this.capture(projectPath, input.anchor),
+        createdAt,
+      };
+      store.state.sites.push({
+        id: siteId,
+        path: input.anchor.path,
+        createdAt,
+        entries: [entry],
+        outcomes: [],
+      });
+      store.state.drafts.push({ siteId, entryId });
+      await store.save();
+      return canonicalEntryToComment(entry, true);
     });
-    store.state.drafts.push({ siteId, entryId });
-    await store.save();
-    return canonicalEntryToComment(entry, true);
   }
 
   /** Edit an active draft. Submitted reviewer entries are immutable. */
@@ -249,41 +250,43 @@ export class ReviewCommentService {
     id: string,
     patch: UpdateReviewCommentInput,
   ): Promise<ReviewComment | null> {
-    const store = await this.getStore(projectPath);
-    const found = findDraftEntry(store.state, id);
-    if (!found) return null;
-    const nextCapture = patch.anchor
-      ? await this.capture(projectPath, patch.anchor)
-      : undefined;
-    if (patch.text !== undefined) found.entry.text = patch.text;
-    if (patch.anchor !== undefined && nextCapture) {
-      found.entry.anchor = cloneAnchor(patch.anchor);
-      found.entry.capture = nextCapture;
-      found.site.path = patch.anchor.path;
-    }
-    await store.save();
-    return canonicalEntryToComment(found.entry, true);
+    return this.withMutation(projectPath, async (store) => {
+      const found = findDraftEntry(store.state, id);
+      if (!found) return null;
+      const nextCapture = patch.anchor
+        ? await this.capture(projectPath, patch.anchor)
+        : undefined;
+      if (patch.text !== undefined) found.entry.text = patch.text;
+      if (patch.anchor !== undefined && nextCapture) {
+        found.entry.anchor = cloneAnchor(patch.anchor);
+        found.entry.capture = nextCapture;
+        found.site.path = patch.anchor.path;
+      }
+      await store.save();
+      return canonicalEntryToComment(found.entry, true);
+    });
   }
 
   /** Discard an active draft. Historical submitted entries are retained. */
   async deleteComment(projectPath: string, id: string): Promise<boolean> {
-    const store = await this.getStore(projectPath);
-    const draftIndex = store.state.drafts.findIndex(
-      (ref) => ref.entryId === id,
-    );
-    if (draftIndex === -1) return false;
-    const [draft] = store.state.drafts.splice(draftIndex, 1);
-    const site = store.state.sites.find((item) => item.id === draft?.siteId);
-    if (site) {
-      site.entries = site.entries.filter((entry) => entry.id !== id);
-      if (site.entries.length === 0 && site.outcomes.length === 0) {
-        store.state.sites = store.state.sites.filter(
-          (item) => item.id !== site.id,
-        );
+    return this.withMutation(projectPath, async (store) => {
+      const draftIndex = store.state.drafts.findIndex(
+        (ref) => ref.entryId === id,
+      );
+      if (draftIndex === -1) return false;
+      const [draft] = store.state.drafts.splice(draftIndex, 1);
+      const site = store.state.sites.find((item) => item.id === draft?.siteId);
+      if (site) {
+        site.entries = site.entries.filter((entry) => entry.id !== id);
+        if (site.entries.length === 0 && site.outcomes.length === 0) {
+          store.state.sites = store.state.sites.filter(
+            (item) => item.id !== site.id,
+          );
+        }
       }
-    }
-    await store.save();
-    return true;
+      await store.save();
+      return true;
+    });
   }
 
   /**
@@ -294,43 +297,44 @@ export class ReviewCommentService {
     projectPath: string,
     input: ArchiveReviewCommentsInput,
   ): Promise<ReviewBatch> {
-    const store = await this.getStore(projectPath);
-    const submittedAt = input.submittedAt ?? this.now();
-    const batchId = this.newId();
-    const requested = new Set(input.commentIds);
-    const consumed: string[] = [];
-    const entryRefs: ReviewEntryRef[] = [];
+    return this.withMutation(projectPath, async (store) => {
+      const submittedAt = input.submittedAt ?? this.now();
+      const batchId = this.newId();
+      const requested = new Set(input.commentIds);
+      const consumed: string[] = [];
+      const entryRefs: ReviewEntryRef[] = [];
 
-    for (let index = store.state.drafts.length - 1; index >= 0; index--) {
-      const ref = store.state.drafts[index];
-      if (!ref || !requested.has(ref.entryId)) continue;
-      const found = findEntry(store.state, ref);
-      if (!found) continue;
-      found.entry.submittedAt = submittedAt;
-      found.entry.submissionId = batchId;
-      consumed.unshift(ref.entryId);
-      entryRefs.unshift({ ...ref });
-      store.state.drafts.splice(index, 1);
-    }
+      for (let index = store.state.drafts.length - 1; index >= 0; index--) {
+        const ref = store.state.drafts[index];
+        if (!ref || !requested.has(ref.entryId)) continue;
+        const found = findEntry(store.state, ref);
+        if (!found) continue;
+        found.entry.submittedAt = submittedAt;
+        found.entry.submissionId = batchId;
+        consumed.unshift(ref.entryId);
+        entryRefs.unshift({ ...ref });
+        store.state.drafts.splice(index, 1);
+      }
 
-    const summary: ReviewSubmissionSummary = {
-      id: batchId,
-      submittedAt,
-      requestedTarget: input.targetSessionId,
-      targetSessionId: input.targetSessionId,
-      entryRefs,
-      status: "legacy",
-      responseRevision: 0,
-      acknowledgedRevision: 0,
-    };
-    store.state.submissions.push(summary);
-    await store.save();
-    return {
-      id: batchId,
-      submittedAt,
-      targetSessionId: input.targetSessionId,
-      commentIds: consumed,
-    };
+      const summary: ReviewSubmissionSummary = {
+        id: batchId,
+        submittedAt,
+        requestedTarget: input.targetSessionId,
+        targetSessionId: input.targetSessionId,
+        entryRefs,
+        status: "legacy",
+        responseRevision: 0,
+        acknowledgedRevision: 0,
+      };
+      store.state.submissions.push(summary);
+      await store.save();
+      return {
+        id: batchId,
+        submittedAt,
+        targetSessionId: input.targetSessionId,
+        commentIds: consumed,
+      };
+    });
   }
 
   /**
@@ -630,61 +634,67 @@ export class ReviewCommentService {
     siteId: string,
     input: AddReviewFollowUpInput,
   ): Promise<ReviewReviewerEntry | null> {
-    const store = await this.getStore(projectPath);
-    if (store.state.drafts.length >= MAX_REVIEW_COMMENTS) {
-      throw new HttpError(
-        413,
-        `Review comment limit reached (${MAX_REVIEW_COMMENTS}); submit or delete drafts first.`,
-      );
-    }
-    const site = store.state.sites.find((item) => item.id === siteId);
-    if (!site) return null;
-    if (store.state.drafts.some((draft) => draft.siteId === siteId)) {
-      throw new HttpError(409, "This review site already has an active draft");
-    }
-    const entryId = this.newId();
-    const entry: ReviewReviewerEntry = {
-      id: entryId,
-      anchor: cloneAnchor(input.anchor),
-      text: input.text,
-      capture: await this.capture(projectPath, input.anchor),
-      createdAt: this.now(),
-    };
-    site.entries.push(entry);
-    site.path = input.anchor.path;
-    delete site.resolvedAt;
-    store.state.drafts.push({ siteId, entryId });
-    await store.save();
-    return cloneReviewerEntry(entry);
+    return this.withMutation(projectPath, async (store) => {
+      if (store.state.drafts.length >= MAX_REVIEW_COMMENTS) {
+        throw new HttpError(
+          413,
+          `Review comment limit reached (${MAX_REVIEW_COMMENTS}); submit or delete drafts first.`,
+        );
+      }
+      const site = store.state.sites.find((item) => item.id === siteId);
+      if (!site) return null;
+      if (store.state.drafts.some((draft) => draft.siteId === siteId)) {
+        throw new HttpError(
+          409,
+          "This review site already has an active draft",
+        );
+      }
+      const entryId = this.newId();
+      const entry: ReviewReviewerEntry = {
+        id: entryId,
+        anchor: cloneAnchor(input.anchor),
+        text: input.text,
+        capture: await this.capture(projectPath, input.anchor),
+        createdAt: this.now(),
+      };
+      site.entries.push(entry);
+      site.path = input.anchor.path;
+      delete site.resolvedAt;
+      store.state.drafts.push({ siteId, entryId });
+      await store.save();
+      return cloneReviewerEntry(entry);
+    });
   }
 
   async resolveSite(projectPath: string, siteId: string): Promise<boolean> {
-    const store = await this.getStore(projectPath);
-    const site = store.state.sites.find((item) => item.id === siteId);
-    if (!site) return false;
-    if (store.state.drafts.some((draft) => draft.siteId === siteId)) {
-      throw new HttpError(
-        409,
-        "Submit or discard the pending follow-up before resolving this site",
-      );
-    }
-    site.resolvedAt = this.now();
-    await store.save();
-    return true;
+    return this.withMutation(projectPath, async (store) => {
+      const site = store.state.sites.find((item) => item.id === siteId);
+      if (!site) return false;
+      if (store.state.drafts.some((draft) => draft.siteId === siteId)) {
+        throw new HttpError(
+          409,
+          "Submit or discard the pending follow-up before resolving this site",
+        );
+      }
+      site.resolvedAt = this.now();
+      await store.save();
+      return true;
+    });
   }
 
   async acknowledgeSubmission(
     projectPath: string,
     submissionId: string,
   ): Promise<ReviewSubmissionSummary | null> {
-    const store = await this.getStore(projectPath);
-    const submission = store.state.submissions.find(
-      (item) => item.id === submissionId,
-    );
-    if (!submission) return null;
-    submission.acknowledgedRevision = submission.responseRevision;
-    await store.save();
-    return cloneSubmission(submission);
+    return this.withMutation(projectPath, async (store) => {
+      const submission = store.state.submissions.find(
+        (item) => item.id === submissionId,
+      );
+      if (!submission) return null;
+      submission.acknowledgedRevision = submission.responseRevision;
+      await store.save();
+      return cloneSubmission(submission);
+    });
   }
 
   filePathFor(projectPath: string): string {
@@ -926,7 +936,10 @@ export class ReviewCommentService {
     }
   }
 
-  private async getStore(projectPath: string): Promise<ProjectStore> {
+  private async getStore(
+    projectPath: string,
+    pinOperation = false,
+  ): Promise<ProjectStore> {
     const storeKey = this.filePathFor(projectPath);
     let store = this.stores.get(storeKey);
     if (!store) {
@@ -962,21 +975,29 @@ export class ReviewCommentService {
       store = created;
     }
     store.lastAccessMs = this.monotonicNowMs();
-    if (!store.loaded) {
-      if (!store.loadPromise) store.loadPromise = this.load(projectPath, store);
-      await store.loadPromise;
-      this.measureStore(store);
+    if (pinOperation) store.activeOperations += 1;
+    try {
+      if (!store.loaded) {
+        if (!store.loadPromise)
+          store.loadPromise = this.load(projectPath, store);
+        await store.loadPromise;
+        this.measureStore(store);
+      }
+      this.releaseIdleStores(storeKey);
+      return store;
+    } catch (error) {
+      if (pinOperation) store.activeOperations -= 1;
+      throw error;
     }
-    this.releaseIdleStores(storeKey);
-    return store;
   }
 
   private async withMutation<T>(
     projectPath: string,
     mutate: (store: ProjectStore) => Promise<T>,
   ): Promise<T> {
-    const store = await this.getStore(projectPath);
-    store.activeOperations += 1;
+    // Pin synchronously with store acquisition, before loading or another
+    // project's budget enforcement can release this operation's owner.
+    const store = await this.getStore(projectPath, true);
     const run = store.mutationTail.then(
       () => mutate(store),
       () => mutate(store),

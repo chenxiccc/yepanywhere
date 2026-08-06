@@ -49,6 +49,16 @@ function emptyStore(): StoreShape {
   return { submissions: [], sites: [] };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function harness(options: { projects?: number } = {}) {
   const projectCount = options.projects ?? 200;
   const projects = Array.from({ length: projectCount }, (_, index) => ({
@@ -125,6 +135,202 @@ describe("review inbox retention", () => {
     expect(responses.every((body) => body.items.length === 1)).toBe(true);
     expect(test.counts.listProjects).toBe(1);
     expect(test.counts.storeLoads).toBe(50);
+  });
+
+  it.each(["older-first", "newer-first"] as const)(
+    "returns the newest projection when $completionOrder completes",
+    async (completionOrder) => {
+      const firstStarted = deferred<void>();
+      const secondStarted = deferred<void>();
+      const firstProjects = deferred<ScannerProjects>();
+      const secondProjects = deferred<ScannerProjects>();
+      let revision = 0;
+      let listCalls = 0;
+      const app = new Hono();
+      app.route(
+        "/api",
+        createReviewInboxRoutes({
+          scanner: {
+            listProjects: async () => {
+              listCalls += 1;
+              if (listCalls === 1) {
+                firstStarted.resolve();
+                return firstProjects.promise;
+              }
+              secondStarted.resolve();
+              return secondProjects.promise;
+            },
+          },
+          service: {
+            getStoreFile: async (projectPath: string) =>
+              unreadStore(
+                projectPath.includes("new") ? "new" : "old",
+              ) as unknown as StoreFile,
+            getStateRevision: () => revision,
+          },
+          isEnabled: () => true,
+          projectSetTtlMs: 5_000,
+          now: () => 1_000_000,
+        }),
+      );
+      const get = () =>
+        app
+          .request("/api/review/inbox")
+          .then((response) => response.json()) as Promise<{
+          items: Array<{ projectId: string }>;
+        }>;
+      const oldProjects = [
+        { id: "old", name: "Old", path: "/projects/old" },
+      ] as unknown as ScannerProjects;
+      const newProjects = [
+        { id: "new", name: "New", path: "/projects/new" },
+      ] as unknown as ScannerProjects;
+
+      const oldRequest = get();
+      await firstStarted.promise;
+      revision = 1;
+      const newRequest = get();
+      await secondStarted.promise;
+
+      if (completionOrder === "older-first") {
+        let oldSettled = false;
+        void oldRequest.then(() => {
+          oldSettled = true;
+        });
+        firstProjects.resolve(oldProjects);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(oldSettled).toBe(false);
+        expect(listCalls).toBe(2);
+        secondProjects.resolve(newProjects);
+      } else {
+        secondProjects.resolve(newProjects);
+        await expect(newRequest).resolves.toEqual({
+          items: [expect.objectContaining({ projectId: "new" })],
+        });
+        firstProjects.resolve(oldProjects);
+      }
+
+      await expect(oldRequest).resolves.toEqual({
+        items: [expect.objectContaining({ projectId: "new" })],
+      });
+      await expect(newRequest).resolves.toEqual({
+        items: [expect.objectContaining({ projectId: "new" })],
+      });
+      expect(listCalls).toBe(2);
+    },
+  );
+
+  it("follows the retained newer projection after an obsolete build fails", async () => {
+    const oldStarted = deferred<void>();
+    const oldProjects = deferred<ScannerProjects>();
+    let revision = 0;
+    let listCalls = 0;
+    const app = new Hono();
+    app.route(
+      "/api",
+      createReviewInboxRoutes({
+        scanner: {
+          listProjects: async () => {
+            listCalls += 1;
+            if (listCalls === 1) {
+              oldStarted.resolve();
+              return oldProjects.promise;
+            }
+            return [
+              { id: "new", name: "New", path: "/projects/new" },
+            ] as unknown as ScannerProjects;
+          },
+        },
+        service: {
+          getStoreFile: async () => unreadStore("new") as unknown as StoreFile,
+          getStateRevision: () => revision,
+        },
+        isEnabled: () => true,
+        projectSetTtlMs: 5_000,
+        now: () => 1_000_000,
+      }),
+    );
+
+    const oldRequest = app.request("/api/review/inbox");
+    await oldStarted.promise;
+    revision = 1;
+    const newResponse = await app.request("/api/review/inbox");
+    expect(newResponse.status).toBe(200);
+    await expect(newResponse.json()).resolves.toEqual({
+      items: [expect.objectContaining({ projectId: "new" })],
+    });
+
+    oldProjects.reject(new Error("obsolete project read failed"));
+    const oldResponse = await oldRequest;
+    expect(oldResponse.status).toBe(200);
+    await expect(oldResponse.json()).resolves.toEqual({
+      items: [expect.objectContaining({ projectId: "new" })],
+    });
+    expect(listCalls).toBe(2);
+  });
+
+  it("propagates a failure from the current source version", async () => {
+    let listCalls = 0;
+    const app = new Hono();
+    app.onError((error, c) => c.json({ error: error.message }, 500));
+    app.route(
+      "/api",
+      createReviewInboxRoutes({
+        scanner: {
+          listProjects: async () => {
+            listCalls += 1;
+            throw new Error("current project read failed");
+          },
+        },
+        service: {
+          getStoreFile: async () => emptyStore() as unknown as StoreFile,
+          getStateRevision: () => 0,
+        },
+        isEnabled: () => true,
+      }),
+    );
+
+    const response = await app.request("/api/review/inbox");
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "current project read failed",
+    });
+    expect(listCalls).toBe(1);
+  });
+
+  it("bounds retargeting when the source version never stabilizes", async () => {
+    let revision = 0;
+    let listCalls = 0;
+    const app = new Hono();
+    app.onError((error, c) => c.json({ error: error.message }, 500));
+    app.route(
+      "/api",
+      createReviewInboxRoutes({
+        scanner: {
+          listProjects: async () => {
+            listCalls += 1;
+            revision += 1;
+            return [];
+          },
+        },
+        service: {
+          getStoreFile: async () => emptyStore() as unknown as StoreFile,
+          getStateRevision: () => revision,
+        },
+        isEnabled: () => true,
+        projectSetTtlMs: 5_000,
+        now: () => 1_000_000,
+      }),
+    );
+
+    const response = await app.request("/api/review/inbox");
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Review Inbox source version kept changing",
+    });
+    expect(listCalls).toBe(4);
   });
 
   it("rebuilds once after an accepted review mutation", async () => {

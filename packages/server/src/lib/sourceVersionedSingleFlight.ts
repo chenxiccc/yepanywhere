@@ -65,9 +65,10 @@ interface WorkEntry<Value> {
 /**
  * Retains one accepted projection per logical key and coalesces work only when
  * callers observed the same source version. A changed source starts a distinct
- * generation, while a late completion is discarded instead of publishing over
- * newer evidence. Callers must freshly observe `sourceVersion`; `isCurrent`
- * closes the race between that observation and asynchronous completion.
+ * generation, while a late success or failure is classified as stale instead of
+ * publishing over or failing newer evidence. Callers must freshly observe
+ * `sourceVersion`; `isCurrent` closes the race between that observation and
+ * asynchronous completion. A failure from the current generation still rejects.
  */
 export class SourceVersionedSingleFlight<Key, Value> {
   private readonly entries = new Map<Key, WorkEntry<Value>>();
@@ -138,28 +139,32 @@ export class SourceVersionedSingleFlight<Key, Value> {
       : undefined;
     this.workStarts += 1;
 
+    const isStale = async (): Promise<boolean> =>
+      entry.invalidationGeneration !== invalidationGeneration ||
+      !(await options.isCurrent(options.sourceVersion)) ||
+      entry.invalidationGeneration !== invalidationGeneration;
+    const staleResult = (): SourceVersionedWorkResult<Value> => ({
+      status: "stale",
+      sourceVersion: options.sourceVersion,
+      ...(entry.retained
+        ? {
+            previous: {
+              sourceVersion: entry.retained.sourceVersion,
+              value: entry.retained.value,
+            },
+          }
+        : {}),
+    });
+
+    let computeSucceeded = false;
     let inFlight!: InFlight<Value>;
     const promise = Promise.resolve()
       .then(() => options.compute(previous))
       .then(async (value): Promise<SourceVersionedWorkResult<Value>> => {
-        if (
-          entry.invalidationGeneration !== invalidationGeneration ||
-          !(await options.isCurrent(options.sourceVersion)) ||
-          entry.invalidationGeneration !== invalidationGeneration
-        ) {
+        computeSucceeded = true;
+        if (await isStale()) {
           this.staleCompletions += 1;
-          return {
-            status: "stale",
-            sourceVersion: options.sourceVersion,
-            ...(entry.retained
-              ? {
-                  previous: {
-                    sourceVersion: entry.retained.sourceVersion,
-                    value: entry.retained.value,
-                  },
-                }
-              : {}),
-          };
+          return staleResult();
         }
 
         const bytes = this.measureValue(value);
@@ -181,8 +186,15 @@ export class SourceVersionedSingleFlight<Key, Value> {
           retained: entry.retained === retained,
         };
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         this.failures += 1;
+        // A failed read from an obsolete source says nothing about the current
+        // source. Classify it exactly like a stale successful completion so a
+        // follow-latest caller can join or reuse the current generation.
+        if (!computeSucceeded && (await isStale())) {
+          this.staleCompletions += 1;
+          return staleResult();
+        }
         throw error;
       })
       .finally(() => {
