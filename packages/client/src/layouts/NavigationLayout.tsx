@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Outlet, useLocation, useOutletContext } from "react-router-dom";
+import { Link, Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { Sidebar, SidebarToggleIcon } from "../components/Sidebar";
 import { GlossaryProjectProvider } from "../contexts/GlossaryContext";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -380,15 +380,39 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
       {isWideScreen &&
         !isContentFrameRoute &&
         (isMinimized ? (
-          <button
-            type="button"
+          <Link
+            to={{
+              pathname: location.pathname,
+              search: location.search,
+              hash: location.hash,
+            }}
             className="sidebar-toggle sidebar-floating-restore"
-            onClick={restoreCollapsedSidebar}
+            role="button"
+            onClick={(event) => {
+              if (
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              ) {
+                return;
+              }
+              event.preventDefault();
+              restoreCollapsedSidebar();
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== " ") {
+                return;
+              }
+              event.preventDefault();
+              restoreCollapsedSidebar();
+            }}
             title={t("actionRestoreSidebar")}
             aria-label={t("actionRestoreSidebar")}
           >
             <SidebarToggleIcon />
-          </button>
+          </Link>
         ) : (
           <aside
             className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}

@@ -220,6 +220,50 @@ describe("NavigationLayout", () => {
     expect(window.localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("false");
   });
 
+  it("leaves the minimized restore link's auxiliary activation to the browser", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+    });
+    window.localStorage.setItem(UI_KEYS.sidebarExpanded, "false");
+    window.localStorage.setItem(UI_KEYS.sidebarMinimized, "true");
+    renderNavigationLayout("/agents?view=active#recent");
+
+    const restoreLink = screen.getByRole("button", {
+      name: "Restore sidebar",
+    });
+    expect(restoreLink.tagName).toBe("A");
+    expect(restoreLink.getAttribute("href")).toBe("/agents?view=active#recent");
+
+    const auxiliaryClick = new MouseEvent("auxclick", {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+    });
+    fireEvent(restoreLink, auxiliaryClick);
+
+    expect(auxiliaryClick.defaultPrevented).toBe(false);
+    expect(window.localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("true");
+    expect(screen.queryByTestId("desktop-sidebar")).toBeNull();
+  });
+
+  it("restores the minimized sidebar with Space", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+    });
+    window.localStorage.setItem(UI_KEYS.sidebarExpanded, "false");
+    window.localStorage.setItem(UI_KEYS.sidebarMinimized, "true");
+    renderNavigationLayout();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Restore sidebar" }), {
+      key: " ",
+    });
+
+    expect(screen.getByTestId("desktop-sidebar")).toBeTruthy();
+    expect(window.localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("false");
+  });
+
   it("parks one session DOM layer under a non-session route and reveals it", () => {
     enableSessionDomLinger();
     renderNavigationLayoutWithSessionLinger();
