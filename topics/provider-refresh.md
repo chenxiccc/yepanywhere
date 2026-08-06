@@ -471,6 +471,12 @@ Current source refresh, 2026-08-06:
   overrides remain ineffective for IDs normalized to `claude-*`; that separate
   long-context path is not claimed as compatible by the generic gateway
   mapping.
+- A successful Gateway catalog read publishes its model metadata together with
+  the exact loopback address that answered readiness. Session launch uses that
+  same endpoint until a later successful catalog replaces it; failed refreshes
+  retain the prior snapshot, while a configuration change invalidates the whole
+  generation. This prevents dual-stack `localhost` from validating one gateway
+  and launching against another.
 
 Status: Claude Code 2.1.223 / SDK 0.3.223 package, type, and gateway launch
 compatibility is refreshed. A live `gpt-5.6-sol` request crossed the former

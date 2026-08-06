@@ -4526,21 +4526,27 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const sourceProvider = sourceSession.provider ?? preferredSourceProvider;
     const providerName = body.provider ?? sourceProvider;
+    const inheritsSourceProviderSettings = providerName === sourceProvider;
 
     const sourceLaunchSettings = originalMetadata?.effectiveLaunchSettings;
+    const sourceProviderLaunchSettings = inheritsSourceProviderSettings
+      ? sourceLaunchSettings
+      : undefined;
     const requestedModel =
       body.model ??
-      sourceLaunchSettings?.requestedModel ??
-      deps.sessionMetadataService?.getRequestedModel(sessionId);
+      sourceProviderLaunchSettings?.requestedModel ??
+      (inheritsSourceProviderSettings
+        ? deps.sessionMetadataService?.getRequestedModel(sessionId)
+        : undefined);
     const parsedThinking = buildThinkingOptions(body);
     const thinking =
       body.thinking !== undefined
         ? parsedThinking.thinking
-        : (sourceLaunchSettings?.thinking ?? undefined);
+        : (sourceProviderLaunchSettings?.thinking ?? undefined);
     const effort =
       body.thinking !== undefined
         ? parsedThinking.effort
-        : (sourceLaunchSettings?.effort ?? undefined);
+        : (sourceProviderLaunchSettings?.effort ?? undefined);
     const model =
       requestedModel && requestedModel !== "default"
         ? requestedModel
@@ -4548,7 +4554,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const serviceTier =
       body.serviceTier !== undefined
         ? normalizeOptionalServiceTier(body.serviceTier)
-        : (sourceLaunchSettings?.serviceTier ?? undefined);
+        : (sourceProviderLaunchSettings?.serviceTier ?? undefined);
     const restartPermissionMode =
       body.mode ?? sourceLaunchSettings?.permissionMode;
 
@@ -4755,12 +4761,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ...resolveCompactModelSettings(deps, {
           provider: providerName,
           yaModelId: requestedModel ?? undefined,
-          modelCandidates: [
-            body.model,
-            model,
-            oldProcess?.resolvedModel,
-            sourceSession.model,
-          ],
+          modelCandidates: inheritsSourceProviderSettings
+            ? [
+                body.model,
+                model,
+                oldProcess?.resolvedModel,
+                sourceSession.model,
+              ]
+            : [body.model, model],
         }),
       },
     );

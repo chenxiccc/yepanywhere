@@ -117,7 +117,7 @@ describe("ClaudeGatewayProvider", () => {
     ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
     ClaudeGatewayProvider.setGatewayStartCommand("gateway start");
 
-    const provider = new ClaudeGatewayProvider({ ensureReady });
+    const provider = new ExposedClaudeGatewayProvider({ ensureReady });
     await provider.getAvailableModels();
 
     expect(ensureReady).toHaveBeenCalledWith({
@@ -129,6 +129,101 @@ describe("ClaudeGatewayProvider", () => {
       "http://[::1]:4141/v1/models",
       expect.anything(),
     );
+    expect(provider.getLaunchSettings("gateway-model")?.env).toMatchObject({
+      ANTHROPIC_BASE_URL: "http://[::1]:4141",
+    });
+    expect(provider.getLaunchEnvironment("gateway-model")).toMatchObject({
+      ANTHROPIC_BASE_URL: "http://[::1]:4141",
+    });
+  });
+
+  it("rejects a catalog that finishes after its gateway configuration", async () => {
+    let releaseCatalog!: (response: Response) => void;
+    let markCatalogRequested!: () => void;
+    const catalogRequested = new Promise<void>((resolve) => {
+      markCatalogRequested = resolve;
+    });
+    const fetchMock = vi.fn(() => {
+      markCatalogRequested();
+      return new Promise<Response>((resolve) => {
+        releaseCatalog = resolve;
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+    const provider = new ExposedClaudeGatewayProvider({
+      ensureReady: async () => "http://[::1]:4141",
+    });
+
+    const staleCatalog = provider.getAvailableModels();
+    await catalogRequested;
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4242");
+    releaseCatalog(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: "stale-model",
+              capabilities: {
+                limits: { max_context_window_tokens: 400_000 },
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(staleCatalog).resolves.toEqual([]);
+    expect(provider.getLaunchSettings("stale-model")?.env).toMatchObject({
+      ANTHROPIC_BASE_URL: "http://localhost:4242",
+    });
+    expect(provider.getLaunchSettings("stale-model")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+    );
+  });
+
+  it("publishes endpoint changes only with a successful catalog", async () => {
+    const endpoints = [
+      "http://[::1]:4141",
+      "http://127.0.0.1:4141",
+      "http://127.0.0.1:4141",
+    ];
+    const responses = [
+      new Response(JSON.stringify({ data: [{ id: "gateway-model" }] }), {
+        status: 200,
+      }),
+      new Response("unavailable", { status: 503 }),
+      new Response(JSON.stringify({ data: [{ id: "gateway-model" }] }), {
+        status: 200,
+      }),
+    ];
+    const ensureReady = vi.fn(async () => endpoints.shift() ?? null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const response = responses.shift();
+        if (!response) throw new Error("Unexpected catalog request");
+        return response;
+      }),
+    );
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+    const provider = new ExposedClaudeGatewayProvider({ ensureReady });
+
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings("gateway-model")?.env).toMatchObject({
+      ANTHROPIC_BASE_URL: "http://[::1]:4141",
+    });
+
+    await expect(provider.getAvailableModels()).resolves.toEqual([]);
+    expect(provider.getLaunchSettings("gateway-model")?.env).toMatchObject({
+      ANTHROPIC_BASE_URL: "http://[::1]:4141",
+    });
+
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings("gateway-model")?.env).toMatchObject({
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:4141",
+    });
   });
 
   it("retains metadata-less rows but filters known unsupported rows", () => {

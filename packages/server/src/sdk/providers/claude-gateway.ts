@@ -54,6 +54,12 @@ interface GatewayModelLaunchMetadata {
   windows?: GatewayModelWindows;
 }
 
+interface GatewayCatalogSnapshot {
+  configurationGeneration: number;
+  baseUrl: string;
+  launchMetadata: Map<string, GatewayModelLaunchMetadata>;
+}
+
 /**
  * Claude Code resolves a gateway model's effective context window separately
  * from its automatic-compaction window. The total catalog window becomes the
@@ -268,13 +274,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
 
   private static gatewayUrl: string | undefined;
   private static gatewayStartCommand: string | undefined;
+  private static configurationGeneration = 0;
   /**
-   * Launch metadata from the last successful catalog read. Undefined means no
-   * catalog has established whether a model is present or merely lacks limits.
+   * The last successful catalog and the exact endpoint that supplied it.
+   * Configuration changes invalidate both facts as one generation.
    */
-  private static modelLaunchMetadata:
-    | Map<string, GatewayModelLaunchMetadata>
-    | undefined;
+  private static catalogSnapshot: GatewayCatalogSnapshot | undefined;
 
   constructor(
     private readonly gatewayLauncher: Pick<
@@ -331,13 +336,26 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   }
 
   private static rememberGatewayCatalog(
+    configurationGeneration: number,
+    baseUrl: string,
     launchMetadata: Map<string, GatewayModelLaunchMetadata>,
-  ): void {
-    ClaudeGatewayProvider.modelLaunchMetadata = launchMetadata;
+  ): boolean {
+    if (
+      configurationGeneration !== ClaudeGatewayProvider.configurationGeneration
+    ) {
+      return false;
+    }
+    ClaudeGatewayProvider.catalogSnapshot = {
+      configurationGeneration,
+      baseUrl,
+      launchMetadata,
+    };
+    return true;
   }
 
   static forgetGatewayCatalog(): void {
-    ClaudeGatewayProvider.modelLaunchMetadata = undefined;
+    ClaudeGatewayProvider.configurationGeneration += 1;
+    ClaudeGatewayProvider.catalogSnapshot = undefined;
   }
 
   static isConfigured(): boolean {
@@ -374,6 +392,9 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   override async getAvailableModels(): Promise<ModelInfo[]> {
     const gatewayUrl = ClaudeGatewayProvider.gatewayUrl;
     if (!gatewayUrl) return [];
+    const gatewayStartCommand = ClaudeGatewayProvider.gatewayStartCommand;
+    const configurationGeneration =
+      ClaudeGatewayProvider.configurationGeneration;
 
     try {
       // Read the catalog from the address readiness was proven against, not
@@ -381,15 +402,30 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
       // front one gateway on 127.0.0.1 and another on ::1.
       const listeningUrl = await this.gatewayLauncher.ensureReady({
         url: gatewayUrl,
-        startCommand: ClaudeGatewayProvider.gatewayStartCommand,
+        startCommand: gatewayStartCommand,
       });
-      const response = await fetch(`${listeningUrl ?? gatewayUrl}/v1/models`, {
+      if (
+        configurationGeneration !==
+        ClaudeGatewayProvider.configurationGeneration
+      ) {
+        return [];
+      }
+      const baseUrl = listeningUrl ?? gatewayUrl;
+      const response = await fetch(`${baseUrl}/v1/models`, {
         headers: { Authorization: "Bearer dummy" },
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) return [];
       const catalog = parseClaudeGatewayCatalog(await response.json());
-      ClaudeGatewayProvider.rememberGatewayCatalog(catalog.launchMetadata);
+      if (
+        !ClaudeGatewayProvider.rememberGatewayCatalog(
+          configurationGeneration,
+          baseUrl,
+          catalog.launchMetadata,
+        )
+      ) {
+        return [];
+      }
       return catalog.models;
     } catch (error) {
       getLogger().debug(
@@ -404,38 +440,42 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     return this.getAvailableModels();
   }
 
-  private static launchMetadataFor(
-    model?: string,
-  ): GatewayModelLaunchMetadata | undefined {
-    return model
-      ? ClaudeGatewayProvider.modelLaunchMetadata?.get(model)
-      : undefined;
+  private static launchContext(model?: string):
+    | {
+        baseUrl: string;
+        metadata: GatewayModelLaunchMetadata | undefined;
+      }
+    | undefined {
+    const gatewayUrl = ClaudeGatewayProvider.gatewayUrl;
+    if (!gatewayUrl) return undefined;
+    const snapshot = ClaudeGatewayProvider.catalogSnapshot;
+    const currentSnapshot =
+      snapshot?.configurationGeneration ===
+      ClaudeGatewayProvider.configurationGeneration
+        ? snapshot
+        : undefined;
+    return {
+      baseUrl: currentSnapshot?.baseUrl ?? gatewayUrl,
+      metadata: model ? currentSnapshot?.launchMetadata.get(model) : undefined,
+    };
   }
 
   protected override getSettings(model?: string): Settings | undefined {
-    const gatewayUrl = ClaudeGatewayProvider.gatewayUrl;
-    if (!gatewayUrl) return undefined;
+    const launch = ClaudeGatewayProvider.launchContext(model);
+    if (!launch) return undefined;
     return {
-      env: gatewayEnvironment(
-        gatewayUrl,
-        model,
-        ClaudeGatewayProvider.launchMetadataFor(model),
-      ),
+      env: gatewayEnvironment(launch.baseUrl, model, launch.metadata),
     };
   }
 
   protected override getEnv(
     model?: string,
   ): Record<string, string | undefined> {
-    const gatewayUrl = ClaudeGatewayProvider.gatewayUrl;
-    return gatewayUrl
+    const launch = ClaudeGatewayProvider.launchContext(model);
+    return launch
       ? {
           ...super.getEnv(model),
-          ...gatewayEnvironment(
-            gatewayUrl,
-            model,
-            ClaudeGatewayProvider.launchMetadataFor(model),
-          ),
+          ...gatewayEnvironment(launch.baseUrl, model, launch.metadata),
         }
       : super.getEnv(model);
   }

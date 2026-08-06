@@ -19,6 +19,20 @@ Related: [`compact-and-handoff`](compact-and-handoff.md),
 [`session-context-actions`](session-context-actions.md),
 [`session-reactivation`](session-reactivation.md).
 
+## Launch-settings inheritance
+
+A same-provider restart may inherit the source session's durable model, service
+tier, thinking, and effort settings. A cross-provider handoff does not: those
+fields describe the source provider's catalog and controls, so omitted values
+use the destination provider's defaults. Explicit destination values still
+apply. Provider-neutral policy—including permission mode, executor, and sandbox
+ownership—continues across the handoff unless the request supplies a valid
+override.
+
+Compact-window inference follows the same boundary. A cross-provider handoff
+uses only explicit destination-model candidates; it never treats the source
+provider's reported model as a destination model when resolving context policy.
+
 ## Why lean matters here
 
 At handoff time the user often **cannot compact** (over provider quota), so no

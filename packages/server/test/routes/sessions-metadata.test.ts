@@ -4500,6 +4500,9 @@ describe("Sessions metadata route", () => {
       subscribe: vi.fn(() => vi.fn()),
     }));
     const setProvider = vi.fn(async () => undefined);
+    const getContextWindow = vi.fn((model: string | undefined) =>
+      model === "sonnet" ? 200_000 : 0,
+    );
 
     const routes = createSessionsRoutes({
       supervisor: {
@@ -4512,13 +4515,33 @@ describe("Sessions metadata route", () => {
       readerFactory: vi.fn(() => reader),
       sessionMetadataService: {
         getProvider: vi.fn(() => undefined),
-        getRequestedModel: vi.fn(() => undefined),
+        getRequestedModel: vi.fn(() => "opus"),
         setRequestedModel: vi.fn(async () => undefined),
         getExecutor: vi.fn(() => undefined),
-        getMetadata: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({
+          effectiveLaunchSettings: {
+            schemaVersion: 1,
+            revision: 3,
+            permissionMode: "bypassPermissions",
+            requestedModel: "opus",
+            serviceTier: "priority",
+            thinking: { type: "adaptive" },
+            effort: "high",
+          },
+        })),
         setProvider,
         updateMetadata: vi.fn(async () => undefined),
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      serverSettingsService: {
+        getSetting: vi.fn((key: string) =>
+          key === "clientDefaults"
+            ? { compactAtContextPercent: { "gpt-5.5": 50 } }
+            : undefined,
+        ),
+      } as unknown as SessionsDeps["serverSettingsService"],
+      modelInfoService: {
+        getContextWindow,
+      } as unknown as SessionsDeps["modelInfoService"],
     });
 
     const response = await routes.request(
@@ -4526,7 +4549,7 @@ describe("Sessions metadata route", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "codex", model: "gpt-5.5" }),
+        body: JSON.stringify({ provider: "codex" }),
       },
     );
 
@@ -4536,14 +4559,52 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({
         text: expect.stringContaining("- Provider: claude"),
       }),
-      undefined,
+      "bypassPermissions",
       expect.objectContaining({
-        model: "gpt-5.5",
+        model: undefined,
+        requestedModel: undefined,
+        serviceTier: undefined,
+        thinking: undefined,
+        effort: undefined,
         providerName: "codex",
       }),
     );
     expect(startSession.mock.calls[0]?.[1].text).toContain("- Model: sonnet");
     expect(setProvider).toHaveBeenCalledWith("sess-new", "codex");
+
+    startSession.mockClear();
+    const explicitResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "codex",
+          mode: "plan",
+          model: "gpt-5.5",
+          serviceTier: "priority",
+          thinking: "max",
+        }),
+      },
+    );
+
+    expect(explicitResponse.status).toBe(200);
+    expect(startSession).toHaveBeenCalledWith(
+      project.path,
+      expect.anything(),
+      "plan",
+      expect.objectContaining({
+        model: "gpt-5.5",
+        requestedModel: "gpt-5.5",
+        serviceTier: "priority",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "max",
+        providerName: "codex",
+        compactAtContextPercent: 50,
+        compactAtContextWindow: undefined,
+      }),
+    );
+    expect(getContextWindow).not.toHaveBeenCalledWith("sonnet", "codex");
   });
 
   it("does not reuse generated handoff boilerplate as the next handoff title", async () => {
