@@ -2197,7 +2197,7 @@
   "messageDeliveryProjectQueueQuietOffHint": "0 = start as soon as the project is idle",
   "messageDeliveryProjectQueueQuietOnHint": "Wait for {seconds}s of project quiet",
   "messageDeliveryComposeAnchorsTitle": "Compose-Time Anchors",
-  "messageDeliveryComposeAnchorsDescription": "Prefix delivered queued messages with how long ago they were written, e.g. (93s ago).",
+  "messageDeliveryComposeAnchorsDescription": "Prefix delivered queued messages with how long ago they were written and what output the sender had last seen, e.g. (93s ago, had seen: \"…\"). Related experimental env: YEP_TURN_TIMESTAMPS=before|after stamps every delivered turn with an absolute [sent …] time.",
   "messageDeliveryBangCommandsTitle": "Show !! Commands history",
   "messageDeliveryBangCommandsDescription": "Show the cross-session !! command history view and its sidebar entry. Typing !! in a composer always runs the rest of the draft as a local shell command in the session project directory, outside the provider conversation.",
   "messageDeliverySteerNowDefaultTitle": "Start with \"now\" steering on",
