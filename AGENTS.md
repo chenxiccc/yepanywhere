@@ -55,36 +55,31 @@ runtime-safety benefit. Run the project lint wrapper for diagnostics, but do not
 turn a one-line import or export addition into a broad reorder solely to satisfy
 organize-imports advice.
 
-## Repo-Wide Reformatting Is A Scheduled Chore
+## Biome Formatting Is A Repository Invariant
 
-Nothing in this repo requires a file to be Biome-formatted. `pnpm lint` is
-`biome lint .` — lint rules only — and CI (`.github/workflows/ci.yml`) runs
-`pnpm lint`, never `biome format --check` or `biome ci`. An unformatted file is
-therefore not a defect to fix in passing, and no check will fail because you
-left one alone.
+`pnpm lint` remains a lint-only diagnostic command. `pnpm format:check` is the
+separate non-writing formatter check, and CI requires both to pass. `pnpm
+format` is the intentional repository-wide writer: the wrapper expands `.` to
+the current tracked files and runs `biome format --write` over them.
 
-`biome check` and `biome format` both *write* formatting. During feature work,
-pass them the exact files you edited — never a directory, never `.`. A
-directory argument reformats every file under it: commit `1dcbdf92` carries 84
-such files, and a later `check --write packages/server/src packages/server/test`
-produced 102. That churn is authored by nobody, hides the real diff, and
-conflicts with every branch touching those files.
+During feature work in a shared or dirty worktree, format only the exact files
+you edited:
 
-A whole-tree reformat is a **periodic maintenance chore**, not a step inside a
-feature change. When one is warranted:
+```bash
+node scripts/biome.cjs format --write path/to/file.ts path/to/other.tsx
+```
 
-- Give it its own commit with nothing else in it.
-- Time it courteously to work in flight. Check open PRs and known in-progress
-  feature work first, and in a shared worktree check `.agentctl/active` peers —
-  a repo-wide reformat rebases badly against everything unmerged, and the cost
-  lands on whoever rebases, not on whoever ran the formatter.
-- Prefer the narrowest scope that achieves the intent (a package, files touched
-  since a named commit) over the whole tree.
+Do not pass a directory or `.` for routine feature work, and do not use
+`biome check --write` as a substitute: `check` combines additional concerns
+that are intentionally separate here. A clean whole-repository `pnpm format`
+is appropriate only for deliberately establishing a baseline or applying a
+formatter-version migration.
 
-If you have already reformatted files you did not edit, restore them rather
-than commit them. Confirm the restore loses nothing first: a file is safe to
-`git checkout --` when its worktree bytes equal `biome format` applied to its
-`HEAD` version, which proves it holds formatting and nothing else.
+Keep a broad mechanical rewrite in its own commit, time it against open PRs and
+known in-progress work, and add its full hash to `.git-blame-ignore-revs` in a
+follow-up commit. Never add a mixed behavior-and-format commit to that file.
+The current checkout may enable the tracked blame metadata with `git config
+blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 ## Client CSS Architecture
 

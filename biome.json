@@ -15,6 +15,7 @@
       "!**/*.d.ts",
       "!**/.artifacts",
       "!**/.tmp",
+      "!**/.git-blame-ignore-revs",
       "!**/.handoff-recap.md",
       "!**/*.running.md",
       "!**/tasks",

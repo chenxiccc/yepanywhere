@@ -37,6 +37,7 @@ jobs:
           cache: "pnpm"
       - run: pnpm install
       - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm capabilities:audit
       - run: pnpm console:scan
 

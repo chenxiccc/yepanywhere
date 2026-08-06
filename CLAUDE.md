@@ -177,10 +177,11 @@ Requires SSH access to `chromeroot`. See `~/code/chromeos-testbed/CLAUDE.md` for
 After editing TypeScript or other source files, verify your changes compile and pass checks:
 
 ```bash
-pnpm lint       # Biome linter
-pnpm typecheck  # TypeScript type checking (fast, no emit)
-pnpm test       # Unit tests for non-Android workspaces
-pnpm test:e2e   # E2E tests (if UI changes)
+pnpm lint          # Biome linter
+pnpm format:check  # Biome formatter verification (does not write)
+pnpm typecheck     # TypeScript type checking (fast, no emit)
+pnpm test          # Unit tests for non-Android workspaces
+pnpm test:e2e      # E2E tests (if UI changes)
 ```
 
 For site changes (marketing pages in `site/`):

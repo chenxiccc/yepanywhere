@@ -52,6 +52,7 @@
     "test:e2e:sdk:local:quality": "pnpm --filter server test:e2e:local:quality",
     "lint": "node scripts/check-css-architecture.mjs && pnpm css:modules:check && node scripts/biome.cjs lint .",
     "format": "node scripts/biome.cjs format --write .",
+    "format:check": "node scripts/biome.cjs format .",
     "prepare": "husky",
     "site:dev": "node scripts/run-site-npm.mjs dev",
     "site:build": "node scripts/run-site-npm.mjs build"

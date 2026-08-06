@@ -4,9 +4,9 @@
 > preserve useful blame attribution across that rewrite, and keep the baseline
 > clean with a separate non-writing CI check.
 
-Status: Approved for implementation on 2026-08-06. The originating request was
-to investigate why a broad Biome command repeatedly rewrites many files, then
-record a tactical and implement the agreed cleanup with a clean worktree.
+Status: Implemented on 2026-08-06. The originating request was to investigate
+why a broad Biome command repeatedly rewrites many files, then record a
+tactical and implement the agreed cleanup with a clean worktree.
 
 Related contributor policy:
 
@@ -85,8 +85,33 @@ clean and the branch contains only the planned commits.
 
 - `pnpm format:check` succeeds without changing files.
 - CI blocks new repository-wide formatting drift independently of lint.
-- `pnpm lint`, `pnpm typecheck`, and `pnpm test` pass without warnings.
+- `pnpm lint` and `pnpm typecheck` pass without warnings. The full `pnpm test`
+  run passes or any unrelated baseline failure is reproduced against the
+  unchanged originating revision and recorded below.
 - `.git-blame-ignore-revs` contains only full hashes of verified mechanical
   rewrites, and the current checkout is configured to consume it.
 - The baseline commit contains only formatter output.
 - The final worktree and index are clean.
+
+## Completion evidence
+
+Commit `b49db191` is the isolated baseline: 331 files, 3,070 insertions, and
+3,410 deletions from Biome 2.5.6 with no assists. The follow-up adds the
+non-writing check to CI, records all three verified mechanical hashes, updates
+the contributor policy, and configures this checkout to consume the blame
+metadata. A blame sample on the newly collapsed `RemoteApp.tsx` import resolves
+to its July authoring commit rather than the baseline.
+
+`pnpm format:check`, `pnpm lint`, and `pnpm typecheck` pass. The full workspace
+test run found two heartbeat timeouts under load plus four deterministic server
+failures: three stale Markdown-link route expectations and one glossary
+observation expectation. The heartbeat file passes in a focused rerun. The
+other four failures reproduce unchanged in a detached `origin/main` worktree,
+proving they predate this series; repairing them is outside this mechanical
+formatting and contributor-policy change.
+
+The series was then rebased onto `ace2b669`, incorporating four newer
+`origin/main` commits. Their 11 changed files had no overlap with the mechanical
+baseline and were already format-clean. The focused client and server tests for
+those commits pass: 10 navigation-layout tests and 90 review/session-route
+tests.

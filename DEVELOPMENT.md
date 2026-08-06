@@ -24,6 +24,8 @@ pnpm dev
 pnpm setup:core       # Install root + client + server + shared, skipping relay
 pnpm dev              # Start dev server
 pnpm lint             # Biome linter
+pnpm format:check     # Biome formatter verification (does not write)
+pnpm format           # Intentionally format all tracked supported files
 pnpm typecheck        # TypeScript type checking
 pnpm test             # Unit tests for non-Android workspaces
 pnpm --filter @yep-anywhere/android test # Android unit tests
@@ -36,6 +38,24 @@ Commits should be warning-free: `pnpm lint` reports zero warnings, and test
 runs emit no runtime warnings (e.g. React "cannot update while rendering" or
 `act(...)` notices). Fix the cause rather than suppressing the report; a
 warning that must stand needs an inline justification.
+
+Formatting is a separate repository invariant. CI runs `pnpm format:check`,
+which never writes. During feature work in a dirty or shared worktree, format
+only the exact files you edited:
+
+```bash
+node scripts/biome.cjs format --write path/to/file.ts path/to/other.tsx
+```
+
+Reserve repository-wide `pnpm format` for a deliberate clean baseline or a
+formatter-version migration, and keep such a rewrite in its own commit. Add
+the full hash of a verified mechanical rewrite to `.git-blame-ignore-revs` in
+a follow-up commit. GitHub honors that file automatically; enable it for local
+Git blame with:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
 
 The general CI unit-test job runs `pnpm test`. Android unit, lint, build, and
 instrumentation coverage belongs to the dedicated Android App workflow so its
