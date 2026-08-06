@@ -315,15 +315,16 @@ export function InboxProvider({
   /**
    * Force a full refresh with server-provided sort order.
    */
-  const refresh = useCallback(() => {
-    return refetchInboxQuery({ meta: { forceFullSort: true } });
+  const refresh = useCallback(async () => {
+    await refetchInboxQuery({ meta: { forceFullSort: true } });
   }, [refetchInboxQuery]);
 
   const refetch = useCallback(
-    (forceFullSort = false) =>
-      refetchInboxQuery(
+    async (forceFullSort = false) => {
+      await refetchInboxQuery(
         forceFullSort ? { meta: { forceFullSort: true } } : undefined,
-      ),
+      );
+    },
     [refetchInboxQuery],
   );
 

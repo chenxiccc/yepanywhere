@@ -1,33 +1,38 @@
 /**
  * Measures what a stranded stale flag costs a long session.
  *
- * Several mounted consumers of one query each invalidate and then force a
- * refetch when one activity event arrives. The first consumer's request is
- * shared, so the request count looked right — but every later consumer's
- * invalidation advanced the entry's generation past the one that request
- * settles against, so the entry stayed `stale` forever. A stale entry fails
- * `isFresh` unconditionally, so `staleTimeMs` stopped short-circuiting that
- * query for the rest of the session and every subsequent read became a request.
+ * The removed per-consumer event path let every mounted consumer invalidate
+ * the query before forcing a shared refetch. Later invalidations advanced the
+ * generation past that request, stranding the entry `stale` so `staleTimeMs`
+ * could never serve another read from cache.
  *
- * Arm B drives the real `ensureClientQuery`. Arm A models the previous
- * bookkeeping: same shared refetch, but the entry never returns to fresh.
+ * Arm B drives the real shared revalidation owner and query controller: one
+ * reconnect reaches one owner, which selects one compatible subscriber and
+ * performs one forced refetch. Arm A models the previous per-consumer event
+ * bookkeeping and its stranded stale flag.
  *
  * `Date.now` is driven by an explicit clock so a ten-minute session with a
  * thirty-second stale time is measured exactly rather than slept through.
  */
 import { performance } from "node:perf_hooks";
+import { activityBus } from "../src/lib/activityBus.js";
 import {
+  type ClientQuerySettlement,
   ensureClientQuery,
   getClientQueryState,
-  invalidateClientQuery,
   resetClientQueryControllerForTests,
 } from "../src/lib/clientQueryController.js";
+import {
+  resetQueryRevalidationForTests,
+  retainQueryRevalidation,
+} from "../src/lib/clientQueryRevalidation.js";
 import { asClientSummarySourceKey } from "../src/lib/clientSummaryStore.js";
 
 const SOURCE = asClientSummarySourceKey("host:benchmark");
 const QUERY_KEY = "global-sessions";
 const COVERAGE = { minRows: 50 };
 const STALE_TIME_MS = 30_000;
+const REVALIDATE_DEBOUNCE_MS = 0;
 
 /** Sidebar's global feed: the navigation retainer plus each mounted Sidebar. */
 const CONSUMERS = 4;
@@ -86,10 +91,11 @@ function measurePrevious(): ArmResult {
   };
 }
 
-/** Arm B — the real controller. */
+/** Arm B — the real shared revalidation owner and controller. */
 async function measureRetained(): Promise<ArmResult> {
   const startedAt = performance.now();
   resetClientQueryControllerForTests();
+  resetQueryRevalidationForTests();
   installClock();
 
   let requests = 0;
@@ -109,32 +115,56 @@ async function measureRetained(): Promise<ArmResult> {
 
   await read();
 
-  let servedFromCache = 0;
-  for (let index = 0; index < READS; index += 1) {
-    if (index === RECONNECT_BEFORE_READ) {
-      // Every mounted consumer reacts to the one reconnect.
-      const refetches = Array.from({ length: CONSUMERS }, () => {
-        invalidateClientQuery(SOURCE, QUERY_KEY);
-        return ensureClientQuery({
-          sourceKey: SOURCE,
-          key: QUERY_KEY,
-          coverage: COVERAGE,
-          force: true,
-          fetcher,
-        });
-      });
-      await Promise.all(refetches);
-    }
+  const refetches: Promise<ClientQuerySettlement>[] = [];
+  const handles = Array.from({ length: CONSUMERS }, () =>
+    retainQueryRevalidation({
+      sourceKey: SOURCE,
+      key: QUERY_KEY,
+      subscriber: {
+        coverage: COVERAGE,
+        events: ["reconnect"],
+        debounceMs: REVALIDATE_DEBOUNCE_MS,
+        run: () => {
+          refetches.push(
+            ensureClientQuery({
+              sourceKey: SOURCE,
+              key: QUERY_KEY,
+              coverage: COVERAGE,
+              force: true,
+              fetcher,
+            }),
+          );
+        },
+      },
+    }),
+  );
 
-    const before = requests;
-    await read();
-    if (requests === before) servedFromCache += 1;
-    clockMs += READ_INTERVAL_MS;
+  let servedFromCache = 0;
+  try {
+    for (let index = 0; index < READS; index += 1) {
+      if (index === RECONNECT_BEFORE_READ) {
+        activityBus.emitLocal("reconnect", undefined as never);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await Promise.all(refetches);
+        if (refetches.length !== 1) {
+          throw new Error(
+            `shared owner ran ${refetches.length} reconnect refetches, expected 1`,
+          );
+        }
+      }
+
+      const before = requests;
+      await read();
+      if (requests === before) servedFromCache += 1;
+      clockMs += READ_INTERVAL_MS;
+    }
+  } finally {
+    for (const handle of handles) handle.release();
+    resetQueryRevalidationForTests();
+    restoreClock();
   }
 
   const endsStale = getClientQueryState(SOURCE, QUERY_KEY)?.stale === true;
-  restoreClock();
-
   return {
     requests,
     servedFromCache,

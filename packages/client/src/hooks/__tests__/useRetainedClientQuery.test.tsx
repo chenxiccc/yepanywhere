@@ -1,7 +1,9 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type ClientQueryCoverage,
   getClientQueryState,
+  invalidateClientQuery,
   resetClientQueryControllerForTests,
 } from "../../lib/clientQueryController";
 import {
@@ -71,12 +73,14 @@ function renderRetainedQuery({
   sourceKey = SOURCE,
   ready = true,
   fetcher = vi.fn(async () => "loaded"),
+  coverage,
   applySnapshot = vi.fn(),
   shouldRevalidateEvent,
 }: {
   sourceKey?: ClientSummarySourceKey;
   ready?: boolean;
   fetcher?: ReturnType<typeof vi.fn<() => Promise<string>>>;
+  coverage?: ClientQueryCoverage;
   applySnapshot?: ReturnType<typeof vi.fn>;
   shouldRevalidateEvent?: (event: {
     eventType: string;
@@ -88,6 +92,7 @@ function renderRetainedQuery({
       useRetainedClientQuery({
         sourceKey,
         key: { endpoint: "test" },
+        coverage,
         ready: props.ready,
         debounceMs: 50,
         revalidateOn: ["refresh", "reconnect"],
@@ -215,6 +220,86 @@ describe("useRetainedClientQuery", () => {
       inFlight: false,
       stale: false,
     });
+  });
+
+  it("does not publish a dominated foreground failure after broader coverage lands", async () => {
+    const narrowRequest = deferred<string>();
+    const broadRequest = deferred<string>();
+    const fetcher = vi
+      .fn<() => Promise<string>>()
+      .mockReturnValueOnce(narrowRequest.promise)
+      .mockReturnValueOnce(broadRequest.promise);
+    let snapshot: string | null = null;
+    const applySnapshot = vi.fn((result: string) => {
+      snapshot = result;
+    });
+
+    const narrow = renderRetainedQuery({
+      coverage: { minRows: 50 },
+      fetcher,
+      applySnapshot,
+    });
+    const broad = renderRetainedQuery({
+      coverage: { minRows: 100 },
+      fetcher,
+      applySnapshot,
+    });
+    await settle();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    broadRequest.resolve("broad");
+    await settle();
+    narrowRequest.reject(new Error("obsolete narrow failure"));
+    await settle();
+
+    expect(snapshot).toBe("broad");
+    expect(narrow.result.current.error).toBeNull();
+    expect(narrow.result.current.loading).toBe(false);
+    expect(broad.result.current.error).toBeNull();
+    expect(getClientQueryState(SOURCE, { endpoint: "test" })).toMatchObject({
+      coverage: { minRows: 100 },
+      stale: false,
+      error: undefined,
+    });
+  });
+
+  it("does not treat an obsolete no-data failure as a successful acquisition", async () => {
+    const generationA = deferred<string>();
+    const generationB = deferred<string>();
+    const fetcher = vi
+      .fn<() => Promise<string>>()
+      .mockReturnValueOnce(generationA.promise)
+      .mockReturnValueOnce(generationB.promise)
+      .mockRejectedValueOnce(new Error("later current failure"));
+
+    const first = renderRetainedQuery({ fetcher });
+    const second = renderRetainedQuery({ ready: false, fetcher });
+    await settle();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      invalidateClientQuery(SOURCE, { endpoint: "test" });
+    });
+    second.rerender({ ready: true });
+    await settle();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    generationB.reject(new Error("generation B failure"));
+    await settle();
+    expect(second.result.current.error?.message).toBe("generation B failure");
+
+    generationA.reject(new Error("obsolete generation A failure"));
+    await settle();
+    expect(first.result.current.error).toBeNull();
+
+    await act(async () => {
+      busMock.emit("refresh");
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    await settle();
+
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(first.result.current.error?.message).toBe("later current failure");
   });
 
   it("keeps background revalidation errors quiet after data has loaded", async () => {

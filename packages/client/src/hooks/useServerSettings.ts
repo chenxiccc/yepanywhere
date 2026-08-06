@@ -228,6 +228,8 @@ export function useServerSettings(): UseServerSettingsResult {
     error: mutationError ?? (queryError ? queryError.message : null),
     updateSettings,
     updateSetting,
-    refetch,
+    refetch: async () => {
+      await refetch();
+    },
   };
 }

@@ -162,7 +162,7 @@ export function useGitStatus(projectId: string | undefined) {
       };
 
       try {
-        await ensureClientQuery({
+        const settlement = await ensureClientQuery({
           sourceKey,
           key: queryKey,
           staleTimeMs: GIT_STATUS_STALE_MS,
@@ -174,7 +174,9 @@ export function useGitStatus(projectId: string | undefined) {
         if (!mountedRef.current || requestId !== requestSequenceRef.current) {
           return;
         }
-        setError(null);
+        if (settlement.status !== "obsolete") {
+          setError(null);
+        }
       } catch (err) {
         if (!mountedRef.current || requestId !== requestSequenceRef.current) {
           return;

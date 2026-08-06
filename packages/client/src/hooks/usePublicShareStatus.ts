@@ -5,6 +5,7 @@ import {
   createClientQueryKey,
   ensureClientQuery,
   type ClientQueryRequestContext,
+  type ClientQuerySettlement,
 } from "../lib/clientQueryController";
 import {
   type ClientSummarySourceKey,
@@ -126,7 +127,7 @@ function applyPublicShareStatusSnapshot(
 function ensurePublicShareStatus(
   sourceKey: ClientSummarySourceKey,
   force: boolean,
-): Promise<void> {
+): Promise<ClientQuerySettlement> {
   return ensureClientQuery({
     sourceKey,
     key: PUBLIC_SHARE_STATUS_QUERY_KEY,
@@ -235,6 +236,8 @@ export function usePublicShareStatus(
     status: snapshot.status,
     loading,
     error: snapshot.error ?? (error ? error.message : null),
-    refresh: refetch,
+    refresh: async () => {
+      await refetch();
+    },
   };
 }

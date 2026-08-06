@@ -239,15 +239,21 @@ must not install its own activity listener and debounce timer beside the owner â
 per-hook timers make one event cost one refetch per mounted consumer, and
 whether those refetches collapse into one request depends on response latency.
 
-**A response clears staleness only for the generation it answers for.** Each
-entry carries an invalidation generation; a request records the generation it
-answers for and clears `stale` on settling only if the entry is still there.
-That is what keeps an invalidation arriving mid-flight from being erased by the
-response it raced. A forced caller that *joins* an in-flight request raises that
-request's generation to the current one, because joining declares the request
-sufficient for its own force â€” without that, N consumers reacting to one event
-strand the entry as permanently stale and `staleTimeMs` stops short-circuiting
-that query for the rest of the session.
+**Deadline demand is per retainer; acquisition is source-owned.** Each Project
+Queue consumer contributes its own server deadline or active-fallback need. One
+source scheduler arms the earliest deadline and owns the pending acquisition and
+bounded failure retry. Updating or releasing one contribution cannot cancel
+another contribution's deadline, the shared request, or a still-needed retry;
+the last remaining demand releases that ownership.
+
+**A request's admission generation is immutable.** Each entry carries an
+invalidation generation; a request records the generation under which it was
+admitted and never changes it. Demand arriving after invalidation cannot join or
+relabel that older request. Within one generation, accepted coverage also owns
+publication: a narrower late success or failure cannot overwrite a broader
+accepted result, while incomparable coverage remains independently applicable.
+These rules keep a response from erasing the invalidation it raced or replacing
+newer shared state merely because it settled last.
 
 **A shared fetch needs a shared place to put the result.** `applySnapshot` runs
 in the retained owner's closure, so a hook that keeps the value in its own

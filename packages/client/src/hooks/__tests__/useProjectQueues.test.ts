@@ -82,7 +82,11 @@ vi.mock("../useVersion", () => ({
 }));
 
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
-import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
+import {
+  asClientSummarySourceKey,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+} from "../../lib/clientSummaryStore";
 import { PROJECT_QUEUE_CAPABILITY } from "../../lib/projectQueueVisibility";
 import {
   resetProjectQueueBackstopsForTests,
@@ -91,6 +95,17 @@ import {
 
 const PROJECT_ID = "project-1" as ProjectQueueItemSummary["projectId"];
 const PROJECT_ID_2 = "project-2" as ProjectQueueItemSummary["projectId"];
+const PROJECT_ID_3 = "project-3" as ProjectQueueItemSummary["projectId"];
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 function makeItem(
   id: string,
@@ -129,11 +144,12 @@ function makeRecoveredSessionQueue(
   };
 }
 
-function makeProjectStatus(
+function makeProjectStatusFor(
+  projectId: ProjectQueueProjectStatus["projectId"],
   state: ProjectQueueProjectStatus["state"],
 ): ProjectQueueProjectStatus {
   return {
-    projectId: PROJECT_ID,
+    projectId,
     state,
     idle: state !== "blocked",
     blockers: state === "blocked" ? ["session-1:in-turn"] : [],
@@ -143,6 +159,12 @@ function makeProjectStatus(
     itemCount: 1,
     nextItemId: "1",
   };
+}
+
+function makeProjectStatus(
+  state: ProjectQueueProjectStatus["state"],
+): ProjectQueueProjectStatus {
+  return makeProjectStatusFor(PROJECT_ID, state);
 }
 
 beforeEach(() => {
@@ -589,11 +611,19 @@ describe("useProjectQueues", () => {
 describe("useProjectQueues backstop", () => {
   const NOW_MS = Date.parse("2026-08-05T00:00:00.000Z");
 
+  function statusFor(
+    projectId: ProjectQueueProjectStatus["projectId"],
+    state: ProjectQueueProjectStatus["state"],
+    overrides: Partial<ProjectQueueProjectStatus> = {},
+  ): ProjectQueueProjectStatus {
+    return { ...makeProjectStatusFor(projectId, state), ...overrides };
+  }
+
   function statusWith(
     state: ProjectQueueProjectStatus["state"],
     overrides: Partial<ProjectQueueProjectStatus> = {},
   ): ProjectQueueProjectStatus {
-    return { ...makeProjectStatus(state), ...overrides };
+    return statusFor(PROJECT_ID, state, overrides);
   }
 
   async function settle() {
@@ -626,6 +656,7 @@ describe("useProjectQueues backstop", () => {
     renderHook(() => useProjectQueues(["project-1"]));
     await settle();
     expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
@@ -633,6 +664,36 @@ describe("useProjectQueues backstop", () => {
 
     // Three mounted consumers used to mean three five-second intervals.
     expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not slide an active fallback across equivalent rerenders", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID)],
+      projectStatuses: { [PROJECT_ID]: statusWith("dispatching") },
+    });
+
+    const hook = renderHook(
+      ({ projectIds }: { projectIds: string[] }) =>
+        useProjectQueues(projectIds),
+      { initialProps: { projectIds: [PROJECT_ID] } },
+    );
+    await settle();
+
+    for (let second = 0; second < 4; second += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      hook.rerender({ projectIds: [PROJECT_ID] });
+      await settle();
+    }
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
   });
 
   it("waits out a reported quiet window instead of sampling through it", async () => {
@@ -659,6 +720,496 @@ describe("useProjectQueues backstop", () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
     expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("backs off persistent deadline failures with one bounded timer", async () => {
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID)],
+        projectStatuses: {
+          [PROJECT_ID]: statusWith("waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+        },
+      })
+      .mockRejectedValue(new Error("queue unavailable"));
+
+    renderHook(() => useProjectQueues([PROJECT_ID]));
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(4);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_999);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(6);
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(7);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("consumes a retry before a slow refetch can rerender and rearm it", async () => {
+    const slowRetry = deferred<{
+      items: ProjectQueueItemSummary[];
+      projectStatuses: Record<string, ProjectQueueProjectStatus>;
+    }>();
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID)],
+        projectStatuses: {
+          [PROJECT_ID]: statusWith("waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+        },
+      })
+      .mockRejectedValueOnce(new Error("queue unavailable"))
+      .mockReturnValueOnce(slowRetry.promise);
+
+    const hook = renderHook(
+      ({ projectIds }: { projectIds: string[] }) =>
+        useProjectQueues(projectIds),
+      { initialProps: { projectIds: [PROJECT_ID] } },
+    );
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+
+    hook.rerender({ projectIds: [PROJECT_ID] });
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+
+    slowRetry.resolve({
+      items: [makeItem("2", PROJECT_ID)],
+      projectStatuses: { [PROJECT_ID]: statusWith("blocked") },
+    });
+    await settle();
+    expect(hook.result.current.items.map((item) => item.id)).toEqual(["2"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps B's source retry when A changes to a blocked scope", async () => {
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [
+          makeItem("1", PROJECT_ID),
+          makeItem("2", PROJECT_ID_2),
+          makeItem("3", PROJECT_ID_3),
+        ],
+        projectStatuses: {
+          [PROJECT_ID]: statusFor(PROJECT_ID, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 10_000).toISOString(),
+          }),
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+          [PROJECT_ID_3]: statusFor(PROJECT_ID_3, "blocked"),
+        },
+      })
+      .mockRejectedValueOnce(new Error("B deadline failure"))
+      .mockResolvedValueOnce({
+        items: [makeItem("2", PROJECT_ID_2)],
+        projectStatuses: {
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "blocked"),
+        },
+      });
+
+    const first = renderHook(
+      ({ projectId }: { projectId: string }) => useProjectQueues([projectId]),
+      { initialProps: { projectId: PROJECT_ID } },
+    );
+    renderHook(() => useProjectQueues([PROJECT_ID_2]));
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+
+    first.rerender({ projectId: PROJECT_ID_3 });
+    await settle();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps B's source attempt when A changes to a blocked scope", async () => {
+    const sourceAttempt = deferred<{
+      items: ProjectQueueItemSummary[];
+      projectStatuses: Record<string, ProjectQueueProjectStatus>;
+    }>();
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [
+          makeItem("1", PROJECT_ID),
+          makeItem("2", PROJECT_ID_2),
+          makeItem("3", PROJECT_ID_3),
+        ],
+        projectStatuses: {
+          [PROJECT_ID]: statusFor(PROJECT_ID, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 10_000).toISOString(),
+          }),
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+          [PROJECT_ID_3]: statusFor(PROJECT_ID_3, "blocked"),
+        },
+      })
+      .mockReturnValueOnce(sourceAttempt.promise)
+      .mockResolvedValueOnce({
+        items: [makeItem("2", PROJECT_ID_2)],
+        projectStatuses: {
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "blocked"),
+        },
+      });
+
+    const first = renderHook(
+      ({ projectId }: { projectId: string }) => useProjectQueues([projectId]),
+      { initialProps: { projectId: PROJECT_ID } },
+    );
+    renderHook(() => useProjectQueues([PROJECT_ID_2]));
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+
+    first.rerender({ projectId: PROJECT_ID_3 });
+    await settle();
+    expect(vi.getTimerCount()).toBe(0);
+    sourceAttempt.reject(new Error("B pending failure"));
+    await settle();
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+  });
+
+  it("serializes nearby retainer deadlines through one source attempt", async () => {
+    const firstAttempt = deferred<{
+      items: ProjectQueueItemSummary[];
+      projectStatuses: Record<string, ProjectQueueProjectStatus>;
+    }>();
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID), makeItem("2", PROJECT_ID_2)],
+        projectStatuses: {
+          [PROJECT_ID]: statusFor(PROJECT_ID, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_100).toISOString(),
+          }),
+        },
+      })
+      .mockReturnValueOnce(firstAttempt.promise)
+      .mockRejectedValueOnce(new Error("second deadline failure"))
+      .mockResolvedValueOnce({
+        items: [makeItem("2", PROJECT_ID_2)],
+        projectStatuses: {
+          [PROJECT_ID]: statusFor(PROJECT_ID, "blocked"),
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "blocked"),
+        },
+      });
+
+    const first = renderHook(() => useProjectQueues([PROJECT_ID]));
+    renderHook(() => useProjectQueues([PROJECT_ID_2]));
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_250);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+
+    firstAttempt.reject(new Error("first deadline failure"));
+    await settle();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+
+    first.unmount();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps a source attempt when a later-deadline retainer releases", async () => {
+    const sourceAttempt = deferred<{
+      items: ProjectQueueItemSummary[];
+      projectStatuses: Record<string, ProjectQueueProjectStatus>;
+    }>();
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID), makeItem("2", PROJECT_ID_2)],
+        projectStatuses: {
+          [PROJECT_ID]: statusFor(PROJECT_ID, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_100).toISOString(),
+          }),
+        },
+      })
+      .mockReturnValueOnce(sourceAttempt.promise)
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID)],
+        projectStatuses: {
+          [PROJECT_ID]: statusFor(PROJECT_ID, "blocked"),
+          [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "blocked"),
+        },
+      });
+
+    renderHook(() => useProjectQueues([PROJECT_ID]));
+    const second = renderHook(() => useProjectQueues([PROJECT_ID_2]));
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_250);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+
+    second.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    sourceAttempt.reject(new Error("source attempt failure"));
+    await settle();
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+  });
+
+  it("recovers from a deadline failure and returns to server-owned scheduling", async () => {
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID)],
+        projectStatuses: {
+          [PROJECT_ID]: statusWith("waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+        },
+      })
+      .mockRejectedValueOnce(new Error("queue unavailable"))
+      .mockResolvedValueOnce({
+        items: [makeItem("2", PROJECT_ID)],
+        projectStatuses: { [PROJECT_ID]: statusWith("blocked") },
+      });
+
+    const hook = renderHook(() => useProjectQueues([PROJECT_ID]));
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+    expect(hook.result.current.items.map((item) => item.id)).toEqual(["2"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps the later scope's deadline when the earlier scope unmounts", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID), makeItem("2", PROJECT_ID_2)],
+      projectStatuses: {
+        [PROJECT_ID]: statusFor(PROJECT_ID, "waiting-quiet", {
+          quietEligibleAt: new Date(NOW_MS + 10_000).toISOString(),
+        }),
+        [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "waiting-quiet", {
+          quietEligibleAt: new Date(NOW_MS + 20_000).toISOString(),
+        }),
+      },
+    });
+
+    const earlier = renderHook(() => useProjectQueues([PROJECT_ID]));
+    renderHook(() => useProjectQueues([PROJECT_ID_2]));
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    earlier.unmount();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the earlier scope's deadline when the later scope mounted first", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID), makeItem("2", PROJECT_ID_2)],
+      projectStatuses: {
+        [PROJECT_ID]: statusFor(PROJECT_ID, "waiting-quiet", {
+          quietEligibleAt: new Date(NOW_MS + 10_000).toISOString(),
+        }),
+        [PROJECT_ID_2]: statusFor(PROJECT_ID_2, "waiting-quiet", {
+          quietEligibleAt: new Date(NOW_MS + 20_000).toISOString(),
+        }),
+      },
+    });
+
+    const later = renderHook(() => useProjectQueues([PROJECT_ID_2]));
+    renderHook(() => useProjectQueues([PROJECT_ID]));
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    later.unmount();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts deadline revalidation in a new query generation", async () => {
+    const preDeadlineFetch = deferred<{
+      items: ProjectQueueItemSummary[];
+      projectStatuses: Record<string, ProjectQueueProjectStatus>;
+    }>();
+    const deadlineResponse = {
+      items: [makeItem("2", PROJECT_ID)],
+      projectStatuses: { [PROJECT_ID]: statusWith("blocked") },
+    };
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID)],
+        projectStatuses: {
+          [PROJECT_ID]: statusWith("waiting-quiet", {
+            quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+          }),
+        },
+      })
+      .mockReturnValueOnce(preDeadlineFetch.promise)
+      .mockResolvedValueOnce(deadlineResponse);
+
+    const hook = renderHook(() => useProjectQueues([PROJECT_ID]));
+    await settle();
+    act(() => {
+      busMock.emit("refresh");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+    await settle();
+    expect(hook.result.current.items.map((item) => item.id)).toEqual(["2"]);
+
+    preDeadlineFetch.resolve({
+      items: [makeItem("stale", PROJECT_ID)],
+      projectStatuses: {
+        [PROJECT_ID]: statusWith("waiting-quiet", {
+          quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+        }),
+      },
+    });
+    await settle();
+    expect(hook.result.current.items.map((item) => item.id)).toEqual(["2"]);
+  });
+
+  it("fences a pending deadline fetch when its hook switches sources", async () => {
+    const sourceA = asClientSummarySourceKey("host:queue-a");
+    const sourceB = asClientSummarySourceKey("host:queue-b");
+    const oldDeadlineFetch = deferred<{
+      items: ProjectQueueItemSummary[];
+      projectStatuses: Record<string, ProjectQueueProjectStatus>;
+    }>();
+    const sourceAResponse = {
+      items: [makeItem("1", PROJECT_ID)],
+      projectStatuses: {
+        [PROJECT_ID]: statusWith("waiting-quiet", {
+          quietEligibleAt: new Date(NOW_MS + 1_000).toISOString(),
+        }),
+      },
+    };
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce(sourceAResponse)
+      .mockReturnValueOnce(oldDeadlineFetch.promise)
+      .mockResolvedValueOnce({
+        items: [makeItem("2", PROJECT_ID)],
+        projectStatuses: { [PROJECT_ID]: statusWith("blocked") },
+      });
+    setCurrentClientSummarySourceKey(sourceA);
+
+    const hook = renderHook(() => useProjectQueues([PROJECT_ID]));
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(sourceB);
+    });
+    hook.rerender();
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+    expect(hook.result.current.items.map((item) => item.id)).toEqual(["2"]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    oldDeadlineFetch.resolve(sourceAResponse);
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(3);
+    expect(hook.result.current.items.map((item) => item.id)).toEqual(["2"]);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("arms no timer for a blocked backlog that only events can release", async () => {

@@ -15,6 +15,7 @@
  */
 import { performance } from "node:perf_hooks";
 import {
+  type ClientQuerySettlement,
   createClientQueryKey,
   ensureClientQuery,
   resetClientQueryControllerForTests,
@@ -221,7 +222,7 @@ async function measureRetained(): Promise<ArmResult> {
   let consumersResolved = 0;
 
   let settled = false;
-  const ensureVersion = (force: boolean): Promise<void> =>
+  const ensureVersion = (force: boolean): Promise<ClientQuerySettlement> =>
     ensureClientQuery({
       sourceKey: SOURCE,
       key: VERSION_QUERY_KEY,

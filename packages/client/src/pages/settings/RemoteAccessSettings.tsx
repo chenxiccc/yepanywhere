@@ -458,7 +458,9 @@ export function RemoteAccessSettings() {
         DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT
       }
       onUpdate={updateSettings}
-      onRefresh={() => refetchHostAwakeStatus(true)}
+      onRefresh={async () => {
+        await refetchHostAwakeStatus(true);
+      }}
     />
   ) : null;
 

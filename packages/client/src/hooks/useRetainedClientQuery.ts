@@ -10,6 +10,7 @@ import {
   retainClientQuery,
   type ClientQueryCoverage,
   type ClientQueryRequestContext,
+  type ClientQuerySettlement,
 } from "../lib/clientQueryController";
 import {
   retainQueryRevalidation,
@@ -37,16 +38,20 @@ export interface UseRetainedClientQueryOptions<T> {
   revalidateOn?: readonly ActivityEventType[];
   shouldRevalidateEvent?: (event: RetainedClientQueryEvent) => boolean;
   fetcher: (context: ClientQueryRequestContext) => Promise<T>;
-  applySnapshot?: (
-    result: T,
-    context: ClientQueryRequestContext,
-  ) => void | Promise<void>;
+  applySnapshot?: (result: T, context: ClientQueryRequestContext) => void;
 }
+
+export type RetainedClientQuerySettlement =
+  | ClientQuerySettlement
+  | { status: "failed"; error: Error }
+  | { status: "skipped" };
 
 export interface UseRetainedClientQueryResult {
   loading: boolean;
   error: Error | null;
-  refetch: (options?: RetainedClientQueryRunOptions) => Promise<void>;
+  refetch: (
+    options?: RetainedClientQueryRunOptions,
+  ) => Promise<RetainedClientQuerySettlement>;
   scheduleRevalidation: () => void;
 }
 
@@ -143,9 +148,9 @@ export function useRetainedClientQuery<T>({
       force = false,
       background = false,
       meta,
-    }: RetainedClientQueryRunOptions = {}) => {
+    }: RetainedClientQueryRunOptions = {}): Promise<RetainedClientQuerySettlement> => {
       if (!enabled || !ready) {
-        return;
+        return { status: "skipped" };
       }
       void coverageKey;
 
@@ -159,7 +164,7 @@ export function useRetainedClientQuery<T>({
       try {
         const fetcherAtStart = fetcherRef.current;
         const applySnapshotAtStart = applySnapshotRef.current;
-        await ensureClientQuery({
+        const settlement = await ensureClientQuery({
           sourceKey,
           key: queryKey,
           coverage: coverageRef.current,
@@ -167,22 +172,28 @@ export function useRetainedClientQuery<T>({
           force,
           meta: meta ?? metaRef.current,
           fetcher: (context) => fetcherAtStart(context),
-          applySnapshot: (result, context) =>
-            applySnapshotAtStart?.(result, context),
+          applySnapshot: (result, context) => {
+            applySnapshotAtStart?.(result, context);
+          },
         });
 
-        if (!mountedRef.current || requestId !== runSequenceRef.current) {
-          return;
+        if (
+          mountedRef.current &&
+          requestId === runSequenceRef.current &&
+          settlement.status !== "obsolete"
+        ) {
+          hasSuccessfulFetchRef.current = true;
+          setError(null);
         }
-        hasSuccessfulFetchRef.current = true;
-        setError(null);
+        return settlement;
       } catch (err) {
-        if (!mountedRef.current || requestId !== runSequenceRef.current) {
-          return;
+        const error = err instanceof Error ? err : new Error(String(err));
+        if (mountedRef.current && requestId === runSequenceRef.current) {
+          if (!background || !hasSuccessfulFetchRef.current) {
+            setError(error);
+          }
         }
-        if (!background || !hasSuccessfulFetchRef.current) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-        }
+        return { status: "failed", error };
       } finally {
         if (mountedRef.current && requestId === runSequenceRef.current) {
           setLoading(false);

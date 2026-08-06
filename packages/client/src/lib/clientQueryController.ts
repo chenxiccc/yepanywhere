@@ -37,10 +37,7 @@ export interface EnsureClientQueryOptions<T> {
   force?: boolean;
   meta?: unknown;
   fetcher: (context: ClientQueryRequestContext) => Promise<T>;
-  applySnapshot?: (
-    result: T,
-    context: ClientQueryRequestContext,
-  ) => void | Promise<void>;
+  applySnapshot?: (result: T, context: ClientQueryRequestContext) => void;
 }
 
 export interface RetainClientQueryOptions {
@@ -48,27 +45,39 @@ export interface RetainClientQueryOptions {
   key: ClientQueryKey | unknown;
 }
 
+export type ClientQuerySettlement =
+  | { status: "accepted" }
+  | { status: "covered" }
+  | { status: "obsolete" };
+
 type ClientQueryListener = () => void;
 
 interface ClientQueryInFlight {
   coverage: ClientQueryCoverage;
-  promise: Promise<void>;
+  promise: Promise<ClientQuerySettlement>;
   requestStartedAt: number;
+  /** Total order for requests whose wall-clock start timestamps can tie. */
+  admissionId: number;
   /**
-   * The invalidation generation this request answers for. A settling request
-   * clears `stale` only when the entry is still at this generation, so an
-   * invalidation arriving mid-flight survives the response it raced.
-   *
-   * A forced caller that joins this request raises it (see `ensureClientQuery`),
-   * because joining declares this request sufficient for that caller's force.
+   * The invalidation generation at admission. It is immutable: demand from a
+   * later generation must start or join work admitted after that invalidation,
+   * never relabel an older request as current.
    */
-  satisfiesStaleVersion: number;
+  generation: number;
+}
+
+interface AcceptedClientQueryCoverage {
+  coverage: ClientQueryCoverage;
+  admissionId: number;
 }
 
 interface ClientQueryEntry {
   sourceKey: ClientSummarySourceKey;
   key: ClientQueryKey;
   coverage: ClientQueryCoverage;
+  coverageGeneration: number;
+  acceptedCoverage: AcceptedClientQueryCoverage[];
+  acceptedCoverageGeneration: number;
   retainedCount: number;
   inFlights: Set<ClientQueryInFlight>;
   stale: boolean;
@@ -80,6 +89,7 @@ interface ClientQueryEntry {
 
 const entries = new Map<string, ClientQueryEntry>();
 const listeners = new Set<ClientQueryListener>();
+let nextRequestAdmissionId = 1;
 
 function stableSerialize(value: unknown): string {
   if (value === undefined) {
@@ -220,6 +230,9 @@ function getOrCreateEntry(
       sourceKey,
       key,
       coverage: {},
+      coverageGeneration: 0,
+      acceptedCoverage: [],
+      acceptedCoverageGeneration: 0,
       retainedCount: 0,
       inFlights: new Set(),
       stale: true,
@@ -269,9 +282,42 @@ function markStaleForForcedFetch(entry: ClientQueryEntry): void {
   emitChange();
 }
 
+function isCompletionDominated(
+  entry: ClientQueryEntry,
+  generation: number,
+  coverage: ClientQueryCoverage,
+  admissionId: number,
+): boolean {
+  return (
+    entry.acceptedCoverageGeneration === generation &&
+    entry.acceptedCoverage.some(
+      (accepted) =>
+        accepted.admissionId > admissionId &&
+        coverageSatisfies(accepted.coverage, coverage),
+    )
+  );
+}
+
+function acceptCompletionCoverage(
+  entry: ClientQueryEntry,
+  generation: number,
+  coverage: ClientQueryCoverage,
+  admissionId: number,
+): void {
+  const accepted =
+    entry.acceptedCoverageGeneration === generation
+      ? entry.acceptedCoverage
+      : [];
+  entry.acceptedCoverage = [
+    ...accepted.filter((prior) => !coverageSatisfies(coverage, prior.coverage)),
+    { coverage, admissionId },
+  ];
+  entry.acceptedCoverageGeneration = generation;
+}
+
 export function ensureClientQuery<T>(
   options: EnsureClientQueryOptions<T>,
-): Promise<void> {
+): Promise<ClientQuerySettlement> {
   const key = createClientQueryKey(options.key);
   const requestedCoverage = normalizeCoverage(options.coverage);
   const entry = getOrCreateEntry(options.sourceKey, key);
@@ -280,20 +326,14 @@ export function ensureClientQuery<T>(
     !options.force &&
     isFresh(entry, requestedCoverage, options.staleTimeMs)
   ) {
-    return Promise.resolve();
+    return Promise.resolve({ status: "covered" });
   }
 
   for (const inFlight of entry.inFlights) {
-    if (coverageSatisfies(inFlight.coverage, requestedCoverage)) {
-      if (options.force) {
-        // Joining says this request answers our force, so it also answers the
-        // invalidation we raised on the way in. Without this, N consumers
-        // reacting to one event each invalidate and then join the first
-        // consumer's request, which then settles against a generation it can
-        // never match — leaving the entry stale forever and disabling
-        // `staleTimeMs` for the rest of the session.
-        inFlight.satisfiesStaleVersion = entry.staleVersion;
-      }
+    if (
+      inFlight.generation === entry.staleVersion &&
+      coverageSatisfies(inFlight.coverage, requestedCoverage)
+    ) {
       return inFlight.promise;
     }
   }
@@ -303,6 +343,8 @@ export function ensureClientQuery<T>(
   }
 
   const requestStartedAt = Date.now();
+  const admissionId = nextRequestAdmissionId++;
+  const generation = entry.staleVersion;
   const context: ClientQueryRequestContext = {
     sourceKey: options.sourceKey,
     key,
@@ -314,23 +356,63 @@ export function ensureClientQuery<T>(
   const inFlight: ClientQueryInFlight = {
     coverage: requestedCoverage,
     requestStartedAt,
-    satisfiesStaleVersion: entry.staleVersion,
+    admissionId,
+    generation,
     promise: Promise.resolve()
       .then(() => options.fetcher(context))
-      .then(async (result) => {
-        await options.applySnapshot?.(result, context);
-        entry.coverage = mergeCoverage(entry.coverage, requestedCoverage);
+      .then((result): ClientQuerySettlement => {
+        if (entry.staleVersion !== generation) {
+          return { status: "obsolete" };
+        }
+        if (
+          isCompletionDominated(
+            entry,
+            generation,
+            requestedCoverage,
+            admissionId,
+          )
+        ) {
+          return { status: "covered" };
+        }
+
+        // Snapshot publication is deliberately synchronous. Generation and
+        // completion ownership therefore cannot change between this check and
+        // the shared destination update.
+        options.applySnapshot?.(result, context);
+        acceptCompletionCoverage(
+          entry,
+          generation,
+          requestedCoverage,
+          admissionId,
+        );
+        entry.coverage =
+          entry.coverageGeneration === generation
+            ? mergeCoverage(entry.coverage, requestedCoverage)
+            : requestedCoverage;
+        entry.coverageGeneration = generation;
         entry.fetchedAt = Date.now();
         entry.requestStartedAt = Math.max(
           entry.requestStartedAt ?? Number.NEGATIVE_INFINITY,
           requestStartedAt,
         );
         entry.error = undefined;
-        if (entry.staleVersion === inFlight.satisfiesStaleVersion) {
-          entry.stale = false;
-        }
+        entry.stale = false;
+        return { status: "accepted" };
       })
-      .catch((error: unknown) => {
+      .catch((error: unknown): ClientQuerySettlement => {
+        if (entry.staleVersion !== generation) {
+          return { status: "obsolete" };
+        }
+        if (
+          isCompletionDominated(
+            entry,
+            generation,
+            requestedCoverage,
+            admissionId,
+          )
+        ) {
+          return { status: "covered" };
+        }
         entry.error = error instanceof Error ? error : new Error(String(error));
         throw error;
       })
@@ -419,4 +501,5 @@ export function invalidateClientQueries(
 export function resetClientQueryControllerForTests(): void {
   entries.clear();
   listeners.clear();
+  nextRequestAdmissionId = 1;
 }
