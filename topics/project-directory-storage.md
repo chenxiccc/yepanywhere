@@ -7,10 +7,10 @@
 
 Topic: project-directory-storage
 
-Status: implemented in current source after `0.7.0`, with repeated-toggle
-transition safety still incomplete; no stable npm release contains the policy
-yet. The pre-correction writer audit remains below as release and compatibility
-history.
+Status: implemented in current source after `0.7.0`; no stable npm release
+contains the policy yet. Source Review mutable state is revision-safe across
+repeated mode changes. The pre-correction writer audit remains below as release
+and compatibility history.
 
 Settings surface: [Storage Settings](storage-settings.md).
 
@@ -113,26 +113,22 @@ mode into the project.
 
 ## Mode Transitions And Split State
 
-The location setting currently changes write routing; it is not a migration,
-copy, synchronization, or cleanup action. Reads generally try the selected
-location and then the other location. That fallback preserves access when only
-one copy exists, but it does not establish which of two copies is newer or
-authoritative.
+The location setting routes new additive payloads and coordinates the mutable
+Source Review authority; it is not a bulk payload migration or cleanup action.
+General compatibility reads still try the selected location and then the other
+location. That selected-first order is safe only when retained objects are
+immutable and additive and a same-key collision is either impossible or
+verified to contain the same bytes.
 
-Selected-first fallback is safe only when retained objects are immutable and
-additive, and a same-key collision is either impossible or verified to contain
-the same bytes. It is not safe for a mutable singleton. For example, this
-sequence can regress Source Review state:
-
-1. write revision A to project storage;
-2. switch to app-data storage and write revision B;
-3. switch back to project storage;
-4. load the selected project copy A before considering B.
-
-A later mutation may then continue from A and strand B. File modification time
-is not an adequate conflict rule: clocks can differ, atomic replacement changes
-times, restored backups can be newer on disk but older logically, and two
-stores may both contain valid non-overlapping changes.
+Source Review `review-comments.json` does not use selected location or file
+modification time as authority. Each persisted mutation increments a logical
+revision and stores a SHA-256 digest of the domain state. Reads inspect both
+roots, select the highest valid logical revision, and reject equal-revision
+divergence. Legacy stores without the metadata remain readable as revision
+zero. This prevents a project A → app-data B → project sequence from reloading
+A and stranding B. Modification time cannot provide that guarantee: clocks can
+differ, atomic replacement changes times, and a restored backup may be newer on
+disk but older logically.
 
 The routed storage families have different transition requirements:
 
@@ -147,21 +143,32 @@ The routed storage families have different transition requirements:
 | Git author palette | Derived, regenerable cache | Invalidate and regenerate in the destination. Do not migrate it as authoritative state. |
 | `.git/info/exclude` and the Source Review capture ref | Additive project metadata | Leave existing entries and refs in place when disabling project storage. Cleanup is a separate explicit operation. |
 
-A safe toggle must therefore do one of two things before committing the new
-mode: complete an explicit conflict-safe transfer/reconciliation of every
-authoritative mutable family, or refuse the toggle while such state exists and
-offer that transfer as a separate action. The transition needs a durable
-logical revision or equivalent merge basis, must be idempotent across repeated
-toggles, and must leave the old mode selected if any required transfer fails.
-Active writers must either be quiesced or remain pinned to their original
-location for their full lifecycle. Disposable caches should be cleared rather
-than ported.
+`ProjectStoragePolicy` serializes mode changes and writes a durable central
+intent journal before invoking registered transition participants. The Source
+Review participant synchronously blocks new review operations, drains admitted
+operations, and then examines retained projects plus the project scanner's
+current project set. Projects with no durable review state remain untouched.
+For each durable store it loads both roots under the revision rule above, writes
+and verifies that state at the target location, and only then invokes the
+durable settings commit. A failed preflight, copy, verification, or settings
+write leaves the old mode selected. A later attempt consumes the stale intent
+and repeats the idempotent reconciliation. After a successful mode publication,
+retained review stores are released so subsequent operations reload under the
+new routing choice.
 
-The current implementation has no transition coordinator, no cross-root
-revision marker, and no conflict resolution. `ProjectStoragePolicy.readPaths()`
-implements selected-first compatibility lookup only. Until the authoritative
-mutable families satisfy the contract above, isolated lifecycle tests for each
-mode do not prove that toggling between those modes is safe.
+Immutable submission manifests remain a cross-root union. Equal submission IDs
+must contain exactly the same request bytes or the operation fails. An accepted
+request remains pinned to the directory that actually contains its manifest;
+the provider prompt and response observer use that directory even after the
+global mode changes. Exact captures remain content-addressed union members.
+These rules keep active review work on one physical path without treating the
+mode as authority.
+
+The transition coordinator is a participant seam. Every future authoritative
+mutable storage family must register its own quiesce, reconcile, verify, and
+commit wrapper before the storage capability can cover it. Active writers must
+be quiesced or remain pinned to their original location for their full
+lifecycle. Disposable caches should be cleared rather than ported.
 
 ### Explicit migration and cleanup
 
@@ -240,13 +247,18 @@ are true, not merely that a settings field parses:
 - the value is `"app-data" | "project"` and defaults to `"app-data"` when
   absent;
 - every writer in the audit routes through the policy before touching a
-  project or its Git metadata; and
-- disabling project storage stops future writes without migrating or deleting
-  legacy data.
+  project or its Git metadata;
+- mode changes reconcile and verify revisioned authoritative Source Review
+  state before publishing the new mode; and
+- disabling project storage stops future additive writes without bulk-migrating
+  or deleting legacy data.
 
 The registry entry's `introducedIn` value is the first release that implements
-the complete invariant; do not advertise it from a partial implementation.
-Existing capability meanings remain unchanged.
+the complete invariant; do not advertise it from a partial implementation. No
+stable release through `0.7.0` advertised the capability. The maintainer
+explicitly accepted broadening its meaning for post-`0.7.0` source builds that
+briefly advertised routing-only semantics rather than creating a second gate
+before the first stable release.
 
 Without the capability, a new client omits the field and makes no unsupported
 settings write. The storage setting should remain visible but read-only with an

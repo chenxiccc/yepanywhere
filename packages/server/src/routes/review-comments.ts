@@ -250,10 +250,11 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     const turn = request
       ? composeSubmissionReviewTurn({
           request,
-          submissionDirectoryRelPath: service.submissionDirectoryFor(
-            projectPath,
-            request.submissionId,
-          ),
+          submissionDirectoryRelPath:
+            await service.existingSubmissionDirectoryFor(
+              projectPath,
+              request.submissionId,
+            ),
           followUp: target !== "new",
         })
       : composeReviewTurn({

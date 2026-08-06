@@ -135,19 +135,23 @@ setting and every release from `0.5.0` through `0.7.0` writes uploads to
 `.attachments/`. No stable release contains the later tool-result, review,
 author-palette, or managed-exclude writers.
 
-The proposed permanent capability is `project-directory-storage-policy`. It
-owns `GET /api/settings`, `PUT /api/settings`, and the request/response field
+The permanent capability is `project-directory-storage-policy`. It owns
+`GET /api/settings`, `PUT /api/settings`, and the request/response field
 `settings.projectDirectoryStorage: "app-data" | "project"`. Advertisement
-attests that every audited YA-managed writer obeys the setting and that absent
-configuration defaults to `"app-data"`; a server must not advertise a partial
-settings-only implementation.
+attests that every audited YA-managed writer obeys the setting, absent
+configuration defaults to `"app-data"`, and a mode change reconciles
+revisioned authoritative Source Review state before publishing the new mode; a
+server must not advertise a partial settings-only implementation.
 
 Without the capability, the client omits the field and makes no unsupported
 request. Because absence means an older server may still write into projects,
 the Settings surface shows a read-only update-required explanation rather than
-claiming app-data-only protection. Existing capability meanings and older
-server behavior remain unchanged. The implementation release supplies the
-registry `introducedIn` value. The full behavior and audit are in
+claiming app-data-only protection. Stable releases through `0.7.0` never
+advertised this capability, so their behavior and fallback remain unchanged.
+The maintainer explicitly accepted broadening the capability meaning for
+post-`0.7.0` source builds that briefly advertised routing-only semantics rather
+than introducing a second gate before the first stable release. The registry
+`introducedIn` value remains `0.7.1`. The full behavior and audit are in
 [Project Directory Storage](project-directory-storage.md).
 
 ### Session-catalog gate

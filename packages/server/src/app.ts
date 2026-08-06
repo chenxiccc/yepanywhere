@@ -330,6 +330,8 @@ export interface AppOptions {
   browserSettingsBackupService?: BrowserSettingsBackupService;
   /** ServerSettingsService for server-wide settings */
   serverSettingsService?: ServerSettingsService;
+  /** Shared location resolver and transition owner for project-scoped state. */
+  projectStoragePolicy?: ProjectStoragePolicy;
   /** Process-global operating-system sleep assertion policy. */
   hostAwakeService?: HostAwakeService;
   /** WorkstreamService for experimental per-project checkout lanes */
@@ -481,12 +483,14 @@ export function createApp(options: AppOptions): AppResult {
   const effectiveDataDir =
     options.dataDir ??
     join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".yep-anywhere");
-  const projectStoragePolicy = new ProjectStoragePolicy({
-    dataDir: effectiveDataDir,
-    getMode: () =>
-      options.serverSettingsService?.getSetting("projectDirectoryStorage") ??
-      "app-data",
-  });
+  const projectStoragePolicy =
+    options.projectStoragePolicy ??
+    new ProjectStoragePolicy({
+      dataDir: effectiveDataDir,
+      getMode: () =>
+        options.serverSettingsService?.getSetting("projectDirectoryStorage") ??
+        "app-data",
+    });
   const attachmentStagingService =
     options.attachmentStagingService ??
     new AttachmentStagingService({
@@ -1687,7 +1691,10 @@ export function createApp(options: AppOptions): AppResult {
   const reviewCommentService = new ReviewCommentService({
     captureWriter: reviewCaptureService,
     storagePolicy: projectStoragePolicy,
+    listProjectPaths: async () =>
+      (await scanner.listProjects()).map((project) => project.path),
   });
+  projectStoragePolicy.registerTransitionParticipant(reviewCommentService);
   const sourceReviewSubmissionsEnabled = () =>
     options.serverSettingsService?.getSetting(
       "sourceReviewSubmissionsEnabled",
@@ -1839,6 +1846,7 @@ export function createApp(options: AppOptions): AppResult {
       "/api/settings",
       createSettingsRoutes({
         serverSettingsService: options.serverSettingsService,
+        projectStoragePolicy,
         hostAwakeService: options.hostAwakeService,
         sessionMetadataService: options.sessionMetadataService,
         onAllowedHostsChanged: updateAllowedHosts,

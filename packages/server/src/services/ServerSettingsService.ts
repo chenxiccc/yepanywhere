@@ -5,6 +5,7 @@
  * - serviceWorkerEnabled: Whether clients should register the service worker
  */
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type {
@@ -34,7 +35,6 @@ import {
 } from "@yep-anywhere/shared";
 import type { FileAccessSettings } from "../middleware/file-access.js";
 import { publishDeferredDeliverySettings } from "../supervisor/deferredDeliverySettings.js";
-import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 export type { FileAccessSettings };
 
@@ -451,7 +451,7 @@ export class ServerSettingsService {
   private dataDir: string;
   private filePath: string;
   private initialized = false;
-  private save = createCoalescingSaver(() => this.doSave()).save;
+  private updateTail: Promise<void> = Promise.resolve();
   private readonly changeListeners = new Set<ServerSettingsChangeListener>();
 
   constructor(options: ServerSettingsServiceOptions) {
@@ -487,7 +487,7 @@ export class ServerSettingsService {
           version: CURRENT_VERSION,
           settings: normalizeLoadedSettings(parsed.settings),
         };
-        await this.save();
+        await this.doSave(this.state);
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -543,25 +543,33 @@ export class ServerSettingsService {
   /**
    * Update settings.
    */
-  async updateSettings(
-    updates: Partial<ServerSettings>,
-  ): Promise<ServerSettings> {
+  updateSettings(updates: Partial<ServerSettings>): Promise<ServerSettings> {
     this.ensureInitialized();
+    const operation = this.updateTail.then(async () => {
+      const previousSettings = this.state.settings;
+      const nextState: SettingsState = {
+        version: CURRENT_VERSION,
+        settings: {
+          ...previousSettings,
+          ...updates,
+        },
+      };
+      await this.doSave(nextState);
+      this.state = nextState;
 
-    const previousSettings = this.state.settings;
-    this.state.settings = {
-      ...previousSettings,
-      ...updates,
-    };
-
-    const settings = { ...this.state.settings };
-    const previous = { ...previousSettings };
-    for (const listener of this.changeListeners) {
-      listener(settings, previous);
-    }
-    await this.save();
-    this.publishDeferredDelivery();
-    return settings;
+      const settings = { ...nextState.settings };
+      const previous = { ...previousSettings };
+      for (const listener of this.changeListeners) {
+        listener(settings, previous);
+      }
+      this.publishDeferredDelivery();
+      return settings;
+    });
+    this.updateTail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
   }
 
   /**
@@ -575,13 +583,34 @@ export class ServerSettingsService {
     }
   }
 
-  private async doSave(): Promise<void> {
+  private async doSave(state: SettingsState): Promise<void> {
+    const temporaryPath = `${this.filePath}.${randomUUID()}.tmp`;
+    let published = false;
     try {
-      const content = JSON.stringify(this.state, null, 2);
-      await fs.writeFile(this.filePath, content, "utf-8");
+      const file = await fs.open(temporaryPath, "wx", 0o600);
+      try {
+        await file.writeFile(`${JSON.stringify(state, null, 2)}\n`, "utf-8");
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+      await fs.rename(temporaryPath, this.filePath);
+      published = true;
+      const directory = await fs.open(this.dataDir, "r");
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
     } catch (error) {
       console.error("[ServerSettingsService] Failed to save settings:", error);
       throw error;
+    } finally {
+      if (!published) {
+        await fs.unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      }
     }
   }
 }

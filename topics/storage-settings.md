@@ -163,15 +163,29 @@ bounded transient handle remains usable when preservation fails.
 
 ## Changes, Mixed Locations, And Legacy Data
 
-Both settings affect future writes only. Changing either setting does not move,
-merge, copy, rehash, delete, repair, or add exclusions for existing data. A
-server may consequently read a mixture of central data, opted-in `.yep` data,
-legacy `.attachments`, and legacy unconditional `.yep/tool-results` data.
+The media-preservation setting affects future captures only; changing it does
+not move, merge, copy, rehash, delete, repair, or backfill existing data. The
+storage-location setting routes new additive data, but a mode change also
+reconciles authoritative mutable Source Review state before it publishes the
+new mode. Source Review drafts carry a durable logical revision; the highest
+valid revision wins across roots, and equal-revision byte divergence blocks the
+change. Active review operations drain before that state is copied and verified
+at the destination. A failed transition leaves the old mode selected and may be
+retried from its durable intent journal.
+
+Immutable and additive storage families remain a validated union across roots.
+Existing Source Review submission manifests stay pinned to their original
+physical directory so the provider and response observer use the same path
+across a mode change. Other existing attachments, preserved media, captures,
+and project metadata are not migrated or deleted by the setting. A server may
+therefore read a mixture of central data, opted-in `.yep` data, legacy
+`.attachments`, and legacy unconditional `.yep/tool-results` data.
 
 Read compatibility is not authorization to refresh or grow a legacy root. The
-first implementation includes no migration, merge, historical-media import,
-or cleanup workflow. Any later operation with those effects is separate,
-explicit product work with its own preview and compatibility contract.
+first implementation includes no bulk payload migration, historical-media
+import, or cleanup workflow. Any later operation with those effects is
+separate, explicit product work with its own preview and compatibility
+contract.
 
 When either stored setting is absent, including after upgrade, it resolves to
 its default value: `"app-data"` and `"on-demand"`. Existing files remain in
@@ -187,7 +201,8 @@ an older advertised promise.
 This permanent capability owns `GET /api/settings`, `PUT /api/settings`, and
 `settings.projectDirectoryStorage: "app-data" | "project"`. Advertisement
 attests that the complete audited YA-managed project/Git writer set obeys the
-setting and that absent configuration defaults to `"app-data"`.
+setting, absent configuration defaults to `"app-data"`, and revisioned mutable
+Source Review state is reconciled before a mode change is published.
 
 Without it, the client omits the field and shows the location control as
 read-only with an update-required explanation. It does not claim the project
@@ -212,26 +227,35 @@ server may contain the earlier unconditional materializer, so the client must
 not infer on-demand behavior merely because no stable release shipped that
 implementation.
 
-Each capability's registry `introducedIn` value is the first release that
-implements its complete invariant. Existing capability meanings remain
-unchanged. A later cache, historical import, cleanup, retention limit, custom
-location, or per-project override requires a separately reviewed contract and,
-when remotely observable, its own exact capability rather than expansion of
-either promise above.
+Each capability's registry `introducedIn` value is the first stable release
+that implements its complete invariant. No stable release through `0.7.0`
+advertised either capability. The maintainer explicitly accepted including
+revision-safe storage transitions in `project-directory-storage-policy` for the
+first stable release despite post-`0.7.0` source builds that briefly advertised
+routing-only semantics. A later cache, historical import, cleanup, retention
+limit, custom location, or per-project override requires a separately reviewed
+contract and, when remotely observable, its own exact capability rather than
+expansion of either promise above.
 
 ## Acceptance
 
 The Settings implementation verifies:
 
 - both defaults on a fresh and upgraded server with absent fields;
-- server-wide persistence and immediate application to subsequent writes;
+- server-wide persistence after destination preflight and reconciliation;
+- repeated storage toggles retain the highest logical Source Review revision;
+- equal-revision Source Review divergence and unsafe destinations leave the old
+  mode selected;
+- active review writes drain before destination verification and publication;
 - independent gating, saving, loading, search, and undo behavior;
 - read-only missing-capability explanations without unsupported requests;
 - no project/Git mutation in app-data mode;
 - no durable media write from live or historical sessions in on-demand mode;
 - preserve-mode capture for new managed-session results with no open client;
 - no preserve-mode capture from replay or historical detail requests;
-- destination selection without fallback, movement, merging, or deletion; and
+- immutable submission paths remain pinned across mode changes;
+- no bulk payload migration, cleanup, or deletion during destination changes;
+  and
 - legacy `.attachments` and `.yep/tool-results` reads without growth.
 
 ## Related Topics

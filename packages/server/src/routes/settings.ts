@@ -22,6 +22,7 @@ import {
   getFileAccessInfo,
 } from "../middleware/file-access.js";
 import type { SessionMetadataService } from "../metadata/index.js";
+import type { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import { testSSHConnection } from "../sdk/remote-spawn.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
 import type { HostAwakeService } from "../services/host-awake/HostAwakeService.js";
@@ -62,6 +63,8 @@ import {
 
 export interface SettingsRoutesDeps {
   serverSettingsService: ServerSettingsService;
+  /** Shared resolver and transition owner for project-scoped YA storage. */
+  projectStoragePolicy?: ProjectStoragePolicy;
   /** Server-stored per-session cache-billing evidence log. */
   sessionMetadataService?: SessionMetadataService;
   /** Callback to apply allowedHosts changes at runtime */
@@ -112,6 +115,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   };
   const {
     serverSettingsService,
+    projectStoragePolicy,
     sessionMetadataService,
     onAllowedHostsChanged,
     onFileAccessChanged,
@@ -825,7 +829,15 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         }
       }
 
-      const settings = await serverSettingsService.updateSettings(updates);
+      const persistSettings = () =>
+        serverSettingsService.updateSettings(updates);
+      const settings =
+        updates.projectDirectoryStorage !== undefined && projectStoragePolicy
+          ? await projectStoragePolicy.transitionMode(
+              updates.projectDirectoryStorage,
+              persistSettings,
+            )
+          : await persistSettings();
       if (updates.publicSharesEnabled === false && publicShareService) {
         await publicShareService.disableAndRevoke();
       }

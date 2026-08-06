@@ -49,6 +49,29 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("toolResultMediaPreservation")).toBe("preserve");
   });
 
+  it("does not publish a storage mode whose durable write failed", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+    await service.updateSettings({ projectDirectoryStorage: "project" });
+
+    const displaced = `${testDir}-before-failure`;
+    await fs.rename(testDir, displaced);
+    await fs.writeFile(testDir, "not a directory", "utf-8");
+    try {
+      await expect(
+        service.updateSettings({ projectDirectoryStorage: "app-data" }),
+      ).rejects.toBeTruthy();
+      expect(service.getSetting("projectDirectoryStorage")).toBe("project");
+    } finally {
+      await fs.rm(testDir);
+      await fs.rename(displaced, testDir);
+    }
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("projectDirectoryStorage")).toBe("project");
+  });
+
   it("normalizes unknown storage policy values to safe defaults", async () => {
     await fs.writeFile(
       path.join(testDir, "server-settings.json"),

@@ -37,7 +37,11 @@ import {
 import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 import { HttpError } from "../middleware/error-handler.js";
 import { getDataDir } from "../config.js";
-import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
+import {
+  ProjectStoragePolicy,
+  type ProjectStorageTransitionParticipant,
+} from "../projects/projectStoragePolicy.js";
+import type { ProjectDirectoryStorage } from "../services/ServerSettingsService.js";
 
 const REVIEW_COMMENTS_FILENAME = "review-comments.json";
 const SOURCE_REVIEW_DIR = "source-review";
@@ -45,6 +49,31 @@ const REQUEST_FILENAME = "request.json";
 const RESPONSE_FILENAME = "response.json";
 const DEFAULT_MAX_RETAINED_STORE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_RETAINED_STORE_AGE_MS = 10 * 60 * 1000;
+const REVIEW_STORAGE_METADATA_VERSION = 1;
+const REVIEW_STORAGE_METADATA_KEY = "yaStorage";
+
+interface ReviewStorageMetadata {
+  version: typeof REVIEW_STORAGE_METADATA_VERSION;
+  logicalRevision: number;
+  stateSha256: string;
+}
+
+interface PersistedReviewStore extends ReviewStoreFile {
+  [REVIEW_STORAGE_METADATA_KEY]: ReviewStorageMetadata;
+}
+
+interface LoadedReviewStore {
+  state: ReviewStoreFile;
+  logicalRevision: number;
+  stateSha256: string;
+  sourcePath: string;
+}
+
+interface LoadedSubmissionRequest {
+  request: ReviewSubmissionRequest;
+  sourcePath: string;
+  bytes: Buffer;
+}
 
 class InvalidSubmissionRequestError extends HttpError {
   constructor() {
@@ -53,11 +82,23 @@ class InvalidSubmissionRequestError extends HttpError {
   }
 }
 
+class ReviewStorageConflictError extends HttpError {
+  constructor() {
+    super(
+      409,
+      "Source Review state has conflicting copies at the same logical revision",
+    );
+    this.name = "ReviewStorageConflictError";
+  }
+}
+
 interface ProjectStore {
+  projectPath: string;
   state: ReviewStoreFile;
+  logicalRevision: number;
+  hasPersistedState: boolean;
   loadPromise: Promise<void> | null;
   loaded: boolean;
-  dirEnsured: boolean;
   save: () => Promise<void>;
   mutationTail: Promise<void>;
   /** Mutations and saves in flight; a store is releasable only at zero. */
@@ -125,6 +166,8 @@ export interface ReviewCommentServiceOptions {
   newId?: () => string;
   captureWriter?: ReviewCaptureWriter;
   storagePolicy?: ProjectStoragePolicy;
+  /** Projects whose durable mutable state must be preflighted before a toggle. */
+  listProjectPaths?: () => Promise<string[]>;
   /** Byte budget for retained clean project stores. */
   maxRetainedStoreBytes?: number;
   /** Release a clean store untouched for this long even when under budget. */
@@ -143,12 +186,15 @@ export interface ReviewStoreRetentionMetrics {
   stateRevision: number;
 }
 
-export class ReviewCommentService {
+export class ReviewCommentService
+  implements ProjectStorageTransitionParticipant
+{
   private stores = new Map<string, ProjectStore>();
   private now: () => string;
   private newId: () => string;
   private captureWriter?: ReviewCaptureWriter;
   private storagePolicy: ProjectStoragePolicy;
+  private readonly listProjectPaths: () => Promise<string[]>;
   private readonly maxRetainedStoreBytes: number;
   private readonly maxRetainedStoreAgeMs: number;
   private readonly monotonicNowMs: () => number;
@@ -159,6 +205,10 @@ export class ReviewCommentService {
   private protectedSkips = 0;
   private reloadsAfterRelease = 0;
   private releasedKeys = new Set<string>();
+  private activeStorageOperations = 0;
+  private storageOperationsDrained: Promise<void> = Promise.resolve();
+  private resolveStorageOperationsDrained: (() => void) | null = null;
+  private storageTransitionBarrier: Promise<void> | null = null;
 
   constructor(options: ReviewCommentServiceOptions = {}) {
     this.now = options.now ?? (() => new Date().toISOString());
@@ -179,18 +229,23 @@ export class ReviewCommentService {
         dataDir: getDataDir(),
         getMode: () => "app-data",
       });
+    this.listProjectPaths = options.listProjectPaths ?? (async () => []);
   }
 
   /** Stable version-1 projection for established clients. */
   async getFile(projectPath: string): Promise<ReviewCommentsFile> {
-    const store = await this.getStore(projectPath);
-    return cloneLegacyFile(projectLegacyReviewComments(store.state));
+    return this.withStorageOperation(async () => {
+      const store = await this.getStore(projectPath);
+      return cloneLegacyFile(projectLegacyReviewComments(store.state));
+    });
   }
 
   /** Canonical site/entry/submission state for new routes. */
   async getStoreFile(projectPath: string): Promise<ReviewStoreFile> {
-    const store = await this.getStore(projectPath);
-    return cloneStoreFile(store.state);
+    return this.withStorageOperation(async () => {
+      const store = await this.getStore(projectPath);
+      return cloneStoreFile(store.state);
+    });
   }
 
   async listComments(projectPath: string): Promise<ReviewComment[]> {
@@ -713,6 +768,21 @@ export class ReviewCommentService {
     );
   }
 
+  async existingSubmissionDirectoryFor(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<string> {
+    return this.withStorageOperation(async () => {
+      const request = await this.readSubmissionRequestRecord(
+        projectPath,
+        submissionId,
+      );
+      return request
+        ? path.dirname(request.sourcePath)
+        : this.submissionDirectoryFor(projectPath, submissionId);
+    });
+  }
+
   requestPathFor(projectPath: string, submissionId: string): string {
     return path.join(
       this.submissionDirectoryFor(projectPath, submissionId),
@@ -747,19 +817,21 @@ export class ReviewCommentService {
     state: ReviewStoreFile,
     submission: ReviewSubmissionSummary,
   ): Promise<ReviewResponseReadStatus> {
+    let requestRecord: LoadedSubmissionRequest | null;
+    try {
+      requestRecord = await this.readSubmissionRequestRecord(
+        projectPath,
+        submission.id,
+      );
+    } catch {
+      return "invalid";
+    }
+    if (!requestRecord) return "invalid";
+
     let bytes: Buffer;
     try {
-      const responsePath = await this.findReadablePath(
-        this.storagePolicy.readPaths(
-          projectPath,
-          SOURCE_REVIEW_DIR,
-          submission.id,
-          RESPONSE_FILENAME,
-        ),
-      );
-      if (!responsePath) return "missing";
       const bounded = await readFileBounded(
-        responsePath,
+        path.join(path.dirname(requestRecord.sourcePath), RESPONSE_FILENAME),
         MAX_REVIEW_RESPONSE_FILE_BYTES,
       );
       if (!bounded) return "invalid";
@@ -769,7 +841,6 @@ export class ReviewCommentService {
         ? "missing"
         : "invalid";
     }
-    if (bytes.byteLength > MAX_REVIEW_RESPONSE_FILE_BYTES) return "invalid";
 
     let response: ReviewSubmissionResponse | null;
     try {
@@ -780,13 +851,7 @@ export class ReviewCommentService {
       return "invalid";
     }
     if (!response || response.submissionId !== submission.id) return "invalid";
-    let request: ReviewSubmissionRequest | null;
-    try {
-      request = await this.readSubmissionRequest(projectPath, submission.id);
-    } catch {
-      return "invalid";
-    }
-    if (!request) return "invalid";
+    const request = requestRecord.request;
     const expected = new Set(request.entries.map(entryRefKey));
     if (expected.size !== request.entries.length) return "invalid";
     const actual = new Set(response.outcomes.map(entryRefKey));
@@ -851,32 +916,68 @@ export class ReviewCommentService {
     projectPath: string,
     submissionId: string,
   ): Promise<ReviewSubmissionRequest | null> {
-    try {
-      const requestPath = await this.findReadablePath(
-        this.storagePolicy.readPaths(
-          projectPath,
-          SOURCE_REVIEW_DIR,
-          submissionId,
-          REQUEST_FILENAME,
-        ),
-      );
-      if (!requestPath) return null;
-      const raw = await fs.readFile(requestPath, "utf-8");
+    return (
+      (await this.readSubmissionRequestRecord(projectPath, submissionId))
+        ?.request ?? null
+    );
+  }
+
+  private async readSubmissionRequestRecord(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<LoadedSubmissionRequest | null> {
+    const records: LoadedSubmissionRequest[] = [];
+    for (const sourcePath of this.storagePolicy.readPaths(
+      projectPath,
+      SOURCE_REVIEW_DIR,
+      submissionId,
+      REQUEST_FILENAME,
+    )) {
+      let bytes: Buffer;
+      try {
+        bytes = await fs.readFile(sourcePath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
       let value: unknown;
       try {
-        value = JSON.parse(raw);
+        value = JSON.parse(bytes.toString("utf-8"));
       } catch {
         throw new InvalidSubmissionRequestError();
       }
-      const parsed = parseReviewSubmissionRequest(value);
-      if (!parsed || parsed.submissionId !== submissionId) {
+      const request = parseReviewSubmissionRequest(value);
+      if (!request || request.submissionId !== submissionId) {
         throw new InvalidSubmissionRequestError();
       }
-      return parsed;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
+      records.push({ request, sourcePath, bytes });
     }
+    const selected = records[0];
+    if (!selected) return null;
+    if (records.some((record) => !record.bytes.equals(selected.bytes))) {
+      throw new InvalidSubmissionRequestError();
+    }
+    return selected;
+  }
+
+  private async hasSubmissionRequest(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<boolean> {
+    for (const requestPath of this.storagePolicy.readPaths(
+      projectPath,
+      SOURCE_REVIEW_DIR,
+      submissionId,
+      REQUEST_FILENAME,
+    )) {
+      try {
+        await fs.access(requestPath);
+        return true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    return false;
   }
 
   private async writeSubmissionRequest(
@@ -932,10 +1033,17 @@ export class ReviewCommentService {
     projectPath: string,
     submissionId: string,
   ): Promise<void> {
-    try {
-      await fs.unlink(this.requestPathFor(projectPath, submissionId));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    for (const requestPath of this.storagePolicy.readPaths(
+      projectPath,
+      SOURCE_REVIEW_DIR,
+      submissionId,
+      REQUEST_FILENAME,
+    )) {
+      try {
+        await fs.unlink(requestPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
     }
   }
 
@@ -953,10 +1061,12 @@ export class ReviewCommentService {
     if (!store) {
       if (this.releasedKeys.has(storeKey)) this.reloadsAfterRelease += 1;
       const created: ProjectStore = {
+        projectPath,
         state: emptyReviewStoreFile(),
+        logicalRevision: 0,
+        hasPersistedState: false,
         loadPromise: null,
         loaded: false,
-        dirEnsured: false,
         save: () => Promise.resolve(),
         mutationTail: Promise.resolve(),
         activeOperations: 0,
@@ -976,6 +1086,7 @@ export class ReviewCommentService {
         // getStoreFile reads that state, so retained projections go stale here
         // rather than when the write lands.
         this.stateRevision += 1;
+        created.logicalRevision += 1;
         return saver
           .save()
           .catch((error) => {
@@ -1014,26 +1125,111 @@ export class ReviewCommentService {
     projectPath: string,
     mutate: (store: ProjectStore) => Promise<T>,
   ): Promise<T> {
-    // Pin synchronously with store acquisition, before loading or another
-    // project's budget enforcement can release this operation's owner.
-    const storeKey = this.filePathFor(projectPath);
-    const store = await this.getStore(projectPath, true);
-    const runMutation = (): Promise<T> => {
-      if (store.writeFailed) return Promise.reject(store.writeFailure);
-      return mutate(store);
-    };
-    const run = store.mutationTail.then(runMutation, runMutation);
-    store.mutationTail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run.finally(() => {
-      store.activeOperations -= 1;
-      if (this.stores.get(storeKey) === store) {
-        this.measureStore(store);
-        this.releaseFailedStore(storeKey, store);
+    const releaseStorageOperation = await this.acquireStorageOperation();
+    try {
+      // Pin synchronously with store acquisition, before loading or another
+      // project's budget enforcement can release this operation's owner.
+      const storeKey = this.filePathFor(projectPath);
+      const store = await this.getStore(projectPath, true);
+      const runMutation = (): Promise<T> => {
+        if (store.writeFailed) return Promise.reject(store.writeFailure);
+        return mutate(store);
+      };
+      const run = store.mutationTail.then(runMutation, runMutation);
+      store.mutationTail = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return await run.finally(() => {
+        store.activeOperations -= 1;
+        if (this.stores.get(storeKey) === store) {
+          this.measureStore(store);
+          this.releaseFailedStore(storeKey, store);
+        }
+      });
+    } finally {
+      releaseStorageOperation();
+    }
+  }
+
+  private async withStorageOperation<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const release = await this.acquireStorageOperation();
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  private async acquireStorageOperation(): Promise<() => void> {
+    while (this.storageTransitionBarrier) {
+      await this.storageTransitionBarrier;
+    }
+    if (this.activeStorageOperations === 0) {
+      this.storageOperationsDrained = new Promise<void>((resolve) => {
+        this.resolveStorageOperationsDrained = resolve;
+      });
+    }
+    this.activeStorageOperations += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeStorageOperations -= 1;
+      if (this.activeStorageOperations === 0) {
+        this.resolveStorageOperationsDrained?.();
+        this.resolveStorageOperationsDrained = null;
       }
+    };
+  }
+
+  async withStorageTransition<T>(
+    targetMode: ProjectDirectoryStorage,
+    commit: () => Promise<T>,
+  ): Promise<T> {
+    let releaseBarrier!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
     });
+    const previousBarrier = this.storageTransitionBarrier ?? Promise.resolve();
+    const currentBarrier = previousBarrier.then(() => gate);
+    this.storageTransitionBarrier = currentBarrier;
+
+    await previousBarrier;
+    if (this.activeStorageOperations > 0) {
+      await this.storageOperationsDrained;
+    }
+    try {
+      const storesByProject = new Map(
+        [...this.stores.values()].map((store) => [store.projectPath, store]),
+      );
+      const projectPaths = new Set([
+        ...storesByProject.keys(),
+        ...(await this.listProjectPaths()),
+      ]);
+      for (const projectPath of projectPaths) {
+        const retained = storesByProject.get(projectPath);
+        const store =
+          retained?.loaded && !retained.writeFailed
+            ? retained
+            : await this.getStore(projectPath);
+        if (!store.hasPersistedState) continue;
+        await this.writeStoreToMode(store, targetMode);
+      }
+      const result = await commit();
+      if (this.storagePolicy.mode !== targetMode) {
+        throw new Error("Review storage transition did not change modes");
+      }
+      this.releaseAllStores();
+      return result;
+    } finally {
+      releaseBarrier();
+      if (this.storageTransitionBarrier === currentBarrier) {
+        this.storageTransitionBarrier = null;
+      }
+    }
   }
 
   /** Monotonic marker every retained review projection can key against. */
@@ -1099,6 +1295,12 @@ export class ReviewCommentService {
     this.releases += 1;
   }
 
+  private releaseAllStores(): void {
+    for (const [key, store] of this.stores) {
+      this.releaseStore(key, store);
+    }
+  }
+
   private releaseFailedStore(key: string, store: ProjectStore): void {
     if (
       !store.writeFailed ||
@@ -1112,95 +1314,180 @@ export class ReviewCommentService {
 
   private async load(projectPath: string, store: ProjectStore): Promise<void> {
     let needsSave = false;
-    try {
-      const sourcePath = await this.findReadablePath(
-        this.storagePolicy.readPaths(projectPath, REVIEW_COMMENTS_FILENAME),
-      );
-      if (!sourcePath) return this.finishEmptyLoad(store);
-      const content = await fs.readFile(sourcePath, "utf-8");
-      const parsed = JSON.parse(content) as { version?: unknown };
-      store.state = parseReviewStoreFile(parsed);
-      const recovered: ReviewSubmissionSummary[] = [];
-      for (const submission of store.state.submissions) {
-        if (submission.status !== "prepared") {
-          recovered.push(submission);
-          continue;
-        }
-        try {
-          const requestPath = await this.findReadablePath(
-            this.storagePolicy.readPaths(
-              projectPath,
-              SOURCE_REVIEW_DIR,
-              submission.id,
-              REQUEST_FILENAME,
-            ),
+    const candidates: LoadedReviewStore[] = [];
+    for (const sourcePath of this.storagePolicy.readPaths(
+      projectPath,
+      REVIEW_COMMENTS_FILENAME,
+    )) {
+      try {
+        candidates.push(await readPersistedReviewStore(sourcePath));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          console.warn(
+            `[ReviewCommentService] Failed to read review state at ${sourcePath}:`,
+            error,
           );
-          if (!requestPath)
-            throw Object.assign(new Error("missing"), { code: "ENOENT" });
-          recovered.push(submission);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-          needsSave = true;
         }
       }
-      store.state.submissions = recovered;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.warn(
-          `[ReviewCommentService] Failed to load drafts for ${projectPath}, starting fresh:`,
-          error,
-        );
-      }
-      store.state = emptyReviewStoreFile();
     }
+    if (candidates.length === 0) return this.finishEmptyLoad(store);
+
+    candidates.sort(
+      (left, right) => right.logicalRevision - left.logicalRevision,
+    );
+    const selected = candidates[0];
+    if (!selected) return this.finishEmptyLoad(store);
+    const conflicting = candidates.find(
+      (candidate) =>
+        candidate.logicalRevision === selected.logicalRevision &&
+        candidate.stateSha256 !== selected.stateSha256,
+    );
+    if (conflicting) throw new ReviewStorageConflictError();
+
+    store.state = selected.state;
+    store.logicalRevision = selected.logicalRevision;
+    store.hasPersistedState = true;
+    const recovered: ReviewSubmissionSummary[] = [];
+    for (const submission of store.state.submissions) {
+      if (submission.status !== "prepared") {
+        recovered.push(submission);
+        continue;
+      }
+      if (await this.hasSubmissionRequest(projectPath, submission.id)) {
+        recovered.push(submission);
+      } else {
+        needsSave = true;
+      }
+    }
+    store.state.submissions = recovered;
     store.loaded = true;
     if (needsSave) await store.save();
   }
 
   private async doSave(
-    projectPath: string,
+    _projectPath: string,
     store: ProjectStore,
   ): Promise<void> {
-    if (!store.dirEnsured) {
-      await this.storagePolicy.ensureWriteDirectory(projectPath);
-      store.dirEnsured = true;
+    await this.writeStoreToMode(store, this.storagePolicy.mode);
+  }
+
+  private async writeStoreToMode(
+    store: ProjectStore,
+    mode: ProjectDirectoryStorage,
+  ): Promise<void> {
+    const filePath = await this.storagePolicy.ensureParentForWriteFor(
+      mode,
+      store.projectPath,
+      REVIEW_COMMENTS_FILENAME,
+    );
+    await writePersistedReviewStore(
+      filePath,
+      store.state,
+      store.logicalRevision,
+    );
+    const verified = await readPersistedReviewStore(filePath);
+    const expectedSha256 = reviewStoreSha256(store.state);
+    if (
+      verified.logicalRevision !== store.logicalRevision ||
+      verified.stateSha256 !== expectedSha256
+    ) {
+      throw new Error("Source Review state verification failed after write");
     }
-    const filePath = this.filePathFor(projectPath);
-    const tmpPath = `${filePath}.${randomUUID()}.tmp`;
-    const content = JSON.stringify(store.state, null, 2);
-    const file = await fs.open(tmpPath, "wx");
+    store.hasPersistedState = true;
+  }
+
+  private finishEmptyLoad(store: ProjectStore): void {
+    store.state = emptyReviewStoreFile();
+    store.logicalRevision = 0;
+    store.hasPersistedState = false;
+    store.loaded = true;
+  }
+}
+
+function reviewStoreSha256(state: unknown): string {
+  return createHash("sha256").update(JSON.stringify(state)).digest("hex");
+}
+
+async function readPersistedReviewStore(
+  sourcePath: string,
+): Promise<LoadedReviewStore> {
+  const content = await fs.readFile(sourcePath, "utf-8");
+  const value = JSON.parse(content) as unknown;
+  const persistedRecord =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  const metadata = persistedRecord?.[REVIEW_STORAGE_METADATA_KEY];
+  let stateValue: unknown = value;
+  if (persistedRecord) {
+    const storedState: Record<string, unknown> = { ...persistedRecord };
+    delete storedState[REVIEW_STORAGE_METADATA_KEY];
+    stateValue = storedState;
+  }
+  const stateSha256 = reviewStoreSha256(stateValue);
+  const state = parseReviewStoreFile(stateValue);
+  if (metadata === undefined) {
+    return { state, logicalRevision: 0, stateSha256, sourcePath };
+  }
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    throw new Error("Source Review storage metadata is invalid");
+  }
+  const record = metadata as Record<string, unknown>;
+  if (
+    record.version !== REVIEW_STORAGE_METADATA_VERSION ||
+    typeof record.logicalRevision !== "number" ||
+    !Number.isSafeInteger(record.logicalRevision) ||
+    record.logicalRevision < 0 ||
+    typeof record.stateSha256 !== "string" ||
+    record.stateSha256 !== stateSha256
+  ) {
+    throw new Error("Source Review storage metadata is invalid");
+  }
+  return {
+    state,
+    logicalRevision: record.logicalRevision,
+    stateSha256,
+    sourcePath,
+  };
+}
+
+async function writePersistedReviewStore(
+  filePath: string,
+  state: ReviewStoreFile,
+  logicalRevision: number,
+): Promise<void> {
+  const persisted: PersistedReviewStore = {
+    ...state,
+    [REVIEW_STORAGE_METADATA_KEY]: {
+      version: REVIEW_STORAGE_METADATA_VERSION,
+      logicalRevision,
+      stateSha256: reviewStoreSha256(state),
+    },
+  };
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+  let published = false;
+  try {
+    const file = await fs.open(temporaryPath, "wx", 0o600);
     try {
-      await file.writeFile(content, "utf-8");
+      await file.writeFile(`${JSON.stringify(persisted, null, 2)}\n`, "utf-8");
       await file.sync();
     } finally {
       await file.close();
     }
-    await fs.rename(tmpPath, filePath);
+    await fs.rename(temporaryPath, filePath);
+    published = true;
     const directory = await fs.open(path.dirname(filePath), "r");
     try {
       await directory.sync();
     } finally {
       await directory.close();
     }
-  }
-
-  private async findReadablePath(
-    candidates: readonly string[],
-  ): Promise<string | null> {
-    for (const candidate of candidates) {
-      try {
-        await fs.access(candidate);
-        return candidate;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
+  } finally {
+    if (!published) {
+      await fs.unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
     }
-    return null;
-  }
-
-  private finishEmptyLoad(store: ProjectStore): void {
-    store.state = emptyReviewStoreFile();
-    store.loaded = true;
   }
 }
 

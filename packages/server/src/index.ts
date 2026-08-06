@@ -961,6 +961,7 @@ async function startServer() {
     browserProfileService,
     browserSettingsBackupService,
     serverSettingsService,
+    projectStoragePolicy,
     hostAwakeService,
     workstreamService,
     sharingService,

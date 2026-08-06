@@ -3,6 +3,7 @@ import {
   MAX_PROJECT_QUEUE_QUIET_SECONDS,
   NEVER_IDLE_REAP_HOURS,
 } from "@yep-anywhere/shared";
+import type { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 import { createSettingsRoutes } from "../../src/routes/settings.js";
 import type { PublicShareService } from "../../src/services/PublicShareService.js";
 import type { HostAwakeService } from "../../src/services/host-awake/HostAwakeService.js";
@@ -197,6 +198,100 @@ describe("Settings Routes", () => {
           toolResultMediaPreservation: "preserve",
         }),
       );
+    });
+
+    it("prepares project storage before persisting its new mode", async () => {
+      const events: string[] = [];
+      mockServerSettingsService.updateSettings = vi.fn(
+        async (updates: Partial<ServerSettings>) => {
+          events.push(`persist:${updates.projectDirectoryStorage}`);
+          settings = { ...settings, ...updates };
+          return settings;
+        },
+      );
+      const projectStoragePolicy = {
+        transitionMode: vi.fn(
+          async <T>(targetMode: string, commit: () => Promise<T>) => {
+            events.push(`prepare:${targetMode}`);
+            const result = await commit();
+            events.push(`committed:${targetMode}`);
+            return result;
+          },
+        ),
+      } as unknown as ProjectStoragePolicy;
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        projectStoragePolicy,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectDirectoryStorage: "project" }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(events).toEqual([
+        "prepare:project",
+        "persist:project",
+        "committed:project",
+      ]);
+    });
+
+    it("serializes an explicit switch back despite a stale pre-queue mode", async () => {
+      const firstTransitionStarted = deferred();
+      const releaseFirstTransition = deferred();
+      let transitionTail = Promise.resolve();
+      const projectStoragePolicy = {
+        transitionMode: vi.fn(
+          <T>(targetMode: string, commit: () => Promise<T>): Promise<T> => {
+            const operation = transitionTail.then(async () => {
+              if (targetMode === "project") {
+                firstTransitionStarted.resolve();
+                await releaseFirstTransition.promise;
+              }
+              return commit();
+            });
+            transitionTail = operation.then(
+              () => undefined,
+              () => undefined,
+            );
+            return operation;
+          },
+        ),
+      } as unknown as ProjectStoragePolicy;
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        projectStoragePolicy,
+      });
+
+      const switchToProject = routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectDirectoryStorage: "project" }),
+      });
+      await firstTransitionStarted.promise;
+      const switchBack = routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectDirectoryStorage: "app-data" }),
+      });
+      releaseFirstTransition.resolve();
+
+      const responses = await Promise.all([switchToProject, switchBack]);
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(projectStoragePolicy.transitionMode).toHaveBeenCalledTimes(2);
+      expect(projectStoragePolicy.transitionMode).toHaveBeenNthCalledWith(
+        1,
+        "project",
+        expect.any(Function),
+      );
+      expect(projectStoragePolicy.transitionMode).toHaveBeenNthCalledWith(
+        2,
+        "app-data",
+        expect.any(Function),
+      );
+      expect(settings.projectDirectoryStorage).toBe("app-data");
     });
 
     it.each([

@@ -1,12 +1,37 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { lstat, mkdir, realpath } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  rename,
+  unlink,
+} from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { ProjectDirectoryStorage } from "../services/ServerSettingsService.js";
 import { ensureManagedProjectDir } from "./managedProjectDir.js";
 
 const execFileAsync = promisify(execFile);
+const PROJECT_STORAGE_TRANSITION_VERSION = 1;
+const PROJECT_STORAGE_TRANSITION_FILENAME = "project-storage-transition.json";
+
+export interface ProjectStorageTransitionParticipant {
+  /** Hold mutable operations while the destination is prepared and committed. */
+  withStorageTransition<T>(
+    targetMode: ProjectDirectoryStorage,
+    commit: () => Promise<T>,
+  ): Promise<T>;
+}
+
+interface ProjectStorageTransitionJournal {
+  version: typeof PROJECT_STORAGE_TRANSITION_VERSION;
+  id: string;
+  sourceMode: ProjectDirectoryStorage;
+  targetMode: ProjectDirectoryStorage;
+}
 
 export interface ProjectStoragePolicyOptions {
   dataDir: string;
@@ -25,6 +50,9 @@ export class ProjectStoragePolicy {
   readonly dataDir: string;
   private readonly getModeValue: () => ProjectDirectoryStorage;
   private readonly runGit: ProjectStorageGitRunner;
+  private readonly transitionParticipants =
+    new Set<ProjectStorageTransitionParticipant>();
+  private transitionTail: Promise<void> = Promise.resolve();
 
   constructor(options: ProjectStoragePolicyOptions) {
     this.dataDir = resolve(options.dataDir);
@@ -44,21 +72,31 @@ export class ProjectStoragePolicy {
     return join(this.dataDir, "projects", projectStorageKey(projectPath));
   }
 
-  writePath(projectPath: string, ...segments: string[]): string {
-    return containedPath(
-      this.mode === "project"
-        ? this.projectRoot(projectPath)
-        : this.appDataRoot(projectPath),
-      segments,
-    );
+  rootForMode(projectPath: string, mode: ProjectDirectoryStorage): string {
+    return mode === "project"
+      ? this.projectRoot(projectPath)
+      : this.appDataRoot(projectPath);
   }
 
-  /** Create only the selected write location. Reads never call this method. */
-  async ensureWriteDirectory(
+  writePathFor(
+    mode: ProjectDirectoryStorage,
+    projectPath: string,
+    ...segments: string[]
+  ): string {
+    return containedPath(this.rootForMode(projectPath, mode), segments);
+  }
+
+  writePath(projectPath: string, ...segments: string[]): string {
+    return this.writePathFor(this.mode, projectPath, ...segments);
+  }
+
+  /** Create only the requested write location. Reads never call this method. */
+  async ensureWriteDirectoryFor(
+    mode: ProjectDirectoryStorage,
     projectPath: string,
     ...segments: string[]
   ): Promise<string> {
-    if (this.mode === "project") {
+    if (mode === "project") {
       const root = this.projectRoot(projectPath);
       const directory = containedPath(root, segments);
       await assertNoSymlinkComponents(resolve(projectPath), directory);
@@ -74,12 +112,21 @@ export class ProjectStoragePolicy {
     return directory;
   }
 
-  async ensureParentForWrite(
+  async ensureWriteDirectory(
     projectPath: string,
     ...segments: string[]
   ): Promise<string> {
-    const filePath = this.writePath(projectPath, ...segments);
-    await this.ensureWriteDirectory(
+    return this.ensureWriteDirectoryFor(this.mode, projectPath, ...segments);
+  }
+
+  async ensureParentForWriteFor(
+    mode: ProjectDirectoryStorage,
+    projectPath: string,
+    ...segments: string[]
+  ): Promise<string> {
+    const filePath = this.writePathFor(mode, projectPath, ...segments);
+    await this.ensureWriteDirectoryFor(
+      mode,
       projectPath,
       ...segments.slice(0, Math.max(0, segments.length - 1)),
     );
@@ -87,16 +134,174 @@ export class ProjectStoragePolicy {
     return filePath;
   }
 
+  async ensureParentForWrite(
+    projectPath: string,
+    ...segments: string[]
+  ): Promise<string> {
+    return this.ensureParentForWriteFor(this.mode, projectPath, ...segments);
+  }
+
   /** Selected location first, then the other location for read compatibility. */
   readPaths(projectPath: string, ...segments: string[]): string[] {
     const selected = this.writePath(projectPath, ...segments);
-    const alternate = containedPath(
-      this.mode === "project"
-        ? this.appDataRoot(projectPath)
-        : this.projectRoot(projectPath),
-      segments,
+    const alternate = this.writePathFor(
+      this.mode === "project" ? "app-data" : "project",
+      projectPath,
+      ...segments,
     );
     return selected === alternate ? [selected] : [selected, alternate];
+  }
+
+  registerTransitionParticipant(
+    participant: ProjectStorageTransitionParticipant,
+  ): () => void {
+    this.transitionParticipants.add(participant);
+    return () => this.transitionParticipants.delete(participant);
+  }
+
+  transitionJournalPath(): string {
+    return join(this.dataDir, PROJECT_STORAGE_TRANSITION_FILENAME);
+  }
+
+  /** Journal, reconcile, then durably publish one global mode transition. */
+  transitionMode<T>(
+    targetMode: ProjectDirectoryStorage,
+    commit: () => Promise<T>,
+  ): Promise<T> {
+    const operation = this.transitionTail.then(() =>
+      this.runModeTransition(targetMode, commit),
+    );
+    this.transitionTail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
+  }
+
+  private async runModeTransition<T>(
+    targetMode: ProjectDirectoryStorage,
+    commit: () => Promise<T>,
+  ): Promise<T> {
+    const sourceMode = this.mode;
+    if (targetMode === sourceMode) return commit();
+
+    await this.recoverTransitionJournal();
+    const journal: ProjectStorageTransitionJournal = {
+      version: PROJECT_STORAGE_TRANSITION_VERSION,
+      id: randomUUID(),
+      sourceMode,
+      targetMode,
+    };
+    await writeAtomicJson(this.transitionJournalPath(), journal);
+
+    const participants = [...this.transitionParticipants];
+    let reconcileAndCommit = commit;
+    for (const participant of participants.reverse()) {
+      const next = reconcileAndCommit;
+      reconcileAndCommit = () =>
+        participant.withStorageTransition(targetMode, next);
+    }
+
+    const result = await reconcileAndCommit();
+    if (this.mode !== targetMode) {
+      throw new Error(
+        "Project storage mode did not commit the requested target",
+      );
+    }
+    await removeTransitionJournal(this.transitionJournalPath()).catch(
+      (error) => {
+        console.warn(
+          "[ProjectStoragePolicy] Could not clear completed transition journal:",
+          error,
+        );
+      },
+    );
+    return result;
+  }
+
+  private async recoverTransitionJournal(): Promise<void> {
+    let raw: string;
+    try {
+      raw = await readFile(this.transitionJournalPath(), "utf-8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    const journal = parseTransitionJournal(JSON.parse(raw));
+    if (this.mode !== journal.sourceMode && this.mode !== journal.targetMode) {
+      throw new Error("Project storage transition journal has invalid modes");
+    }
+    await removeTransitionJournal(this.transitionJournalPath());
+  }
+}
+
+function parseTransitionJournal(
+  value: unknown,
+): ProjectStorageTransitionJournal {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Project storage transition journal is invalid");
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.version !== PROJECT_STORAGE_TRANSITION_VERSION ||
+    typeof record.id !== "string" ||
+    (record.sourceMode !== "app-data" && record.sourceMode !== "project") ||
+    (record.targetMode !== "app-data" && record.targetMode !== "project") ||
+    record.sourceMode === record.targetMode
+  ) {
+    throw new Error("Project storage transition journal is invalid");
+  }
+  return {
+    version: PROJECT_STORAGE_TRANSITION_VERSION,
+    id: record.id,
+    sourceMode: record.sourceMode,
+    targetMode: record.targetMode,
+  };
+}
+
+async function writeAtomicJson(
+  filePath: string,
+  value: unknown,
+): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+  let published = false;
+  try {
+    const file = await open(temporaryPath, "wx", 0o600);
+    try {
+      await file.writeFile(`${JSON.stringify(value, null, 2)}\n`, "utf-8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temporaryPath, filePath);
+    published = true;
+    await syncDirectory(dirname(filePath));
+  } finally {
+    if (!published) {
+      await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+    }
+  }
+}
+
+async function removeTransitionJournal(filePath: string): Promise<void> {
+  try {
+    await unlink(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  await syncDirectory(dirname(filePath));
+}
+
+async function syncDirectory(directoryPath: string): Promise<void> {
+  const directory = await open(directoryPath, "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
   }
 }
 

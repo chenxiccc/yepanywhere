@@ -167,7 +167,7 @@ export const SERVER_CAPABILITIES = {
     area: "settings",
     introducedIn: "0.7.1",
     description:
-      "Server defaults project-scoped YA state to its data directory and supports an explicit project-local storage opt-in.",
+      "Server defaults project-scoped YA state to its data directory, supports explicit project-local opt-in, and reconciles revisioned mutable state before changing modes.",
     clientFallback:
       "Show the storage location as unavailable and make no unsupported settings write.",
     serverContract: {
