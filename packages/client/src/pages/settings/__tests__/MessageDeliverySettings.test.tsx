@@ -243,6 +243,7 @@ describe("MessageDeliverySettings", () => {
       deferredJoinWindowSeconds: 20,
       projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
       composeAnchorsEnabled: true,
+      turnTimestamps: "off",
       clientDefaults: {
         busyComposerDefaultAction: "steer",
         steerNowDefault: false,

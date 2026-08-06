@@ -13,9 +13,10 @@
  * Format values:
  *   0x01 = UTF-8 JSON string
  *   0x02 = binary upload chunk (future - Phase 2)
- *   0x03 = gzip-compressed JSON (future - Phase 3)
+ *   0x03 = gzip-compressed JSON (Phase 3)
  *   0x04 = speech audio chunk
- *   0x05-0xFF = reserved
+ *   0x05 = transport chunk carrying part of a complete binary message
+ *   0x06-0xFF = reserved
  */
 
 /** Format byte values for binary WebSocket frames */
@@ -28,6 +29,8 @@ export const BinaryFormat = {
   COMPRESSED_JSON: 0x03,
   /** Speech audio chunk for dedicated relayed STT streams */
   SPEECH_AUDIO: 0x04,
+  /** Part of a complete binary WebSocket message (Phase 4) */
+  TRANSPORT_CHUNK: 0x05,
 } as const;
 
 export type BinaryFormatValue =
@@ -88,7 +91,8 @@ export function decodeBinaryFrame(data: ArrayBuffer | Uint8Array): {
     format !== BinaryFormat.JSON &&
     format !== BinaryFormat.BINARY_UPLOAD &&
     format !== BinaryFormat.COMPRESSED_JSON &&
-    format !== BinaryFormat.SPEECH_AUDIO
+    format !== BinaryFormat.SPEECH_AUDIO &&
+    format !== BinaryFormat.TRANSPORT_CHUNK
   ) {
     throw new BinaryFrameError(
       `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
@@ -327,7 +331,8 @@ export function extractFormatAndPayload(decrypted: Uint8Array): {
     format !== BinaryFormat.JSON &&
     format !== BinaryFormat.BINARY_UPLOAD &&
     format !== BinaryFormat.COMPRESSED_JSON &&
-    format !== BinaryFormat.SPEECH_AUDIO
+    format !== BinaryFormat.SPEECH_AUDIO &&
+    format !== BinaryFormat.TRANSPORT_CHUNK
   ) {
     throw new BinaryEnvelopeError(
       `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
@@ -672,4 +677,244 @@ export function decodeCompressedJsonFrame(
   }
 
   return payload;
+}
+
+// =============================================================================
+// Phase 4: Bounded transport chunks
+// =============================================================================
+
+const TRANSPORT_CHUNK_MESSAGE_ID_BYTES = 4;
+const TRANSPORT_CHUNK_OFFSET_BYTES = 4;
+const TRANSPORT_CHUNK_TOTAL_BYTES = 4;
+
+/** Header after the format byte: message id, offset, and total length. */
+export const TRANSPORT_CHUNK_HEADER_SIZE =
+  TRANSPORT_CHUNK_MESSAGE_ID_BYTES +
+  TRANSPORT_CHUNK_OFFSET_BYTES +
+  TRANSPORT_CHUNK_TOTAL_BYTES;
+
+/** Maximum data bytes carried by one physical WebSocket message. */
+export const TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES = 256 * 1024;
+
+/** Maximum complete message retained while reassembling transport chunks. */
+export const TRANSPORT_REASSEMBLY_MAX_BYTES = 64 * 1024 * 1024;
+
+export class TransportChunkError extends Error {
+  constructor(
+    message: string,
+    public readonly code:
+      | "INVALID_HEADER"
+      | "INVALID_SEQUENCE"
+      | "MESSAGE_TOO_LARGE",
+  ) {
+    super(message);
+    this.name = "TransportChunkError";
+  }
+}
+
+export interface TransportChunkData {
+  messageId: number;
+  offset: number;
+  totalBytes: number;
+  data: Uint8Array;
+}
+
+function assertUint32(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff_ffff) {
+    throw new TransportChunkError(
+      `Invalid transport chunk ${name}: ${value}`,
+      "INVALID_HEADER",
+    );
+  }
+}
+
+function validateTransportChunk(chunk: TransportChunkData): void {
+  assertUint32(chunk.messageId, "message id");
+  assertUint32(chunk.offset, "offset");
+  assertUint32(chunk.totalBytes, "total length");
+  if (
+    chunk.totalBytes === 0 ||
+    chunk.totalBytes > TRANSPORT_REASSEMBLY_MAX_BYTES
+  ) {
+    throw new TransportChunkError(
+      `Transport message length ${chunk.totalBytes} exceeds the ${TRANSPORT_REASSEMBLY_MAX_BYTES}-byte limit`,
+      "MESSAGE_TOO_LARGE",
+    );
+  }
+  if (
+    chunk.data.byteLength === 0 ||
+    chunk.data.byteLength > TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES ||
+    chunk.offset + chunk.data.byteLength > chunk.totalBytes
+  ) {
+    throw new TransportChunkError(
+      `Invalid transport chunk range: offset=${chunk.offset}, bytes=${chunk.data.byteLength}, total=${chunk.totalBytes}`,
+      "INVALID_HEADER",
+    );
+  }
+}
+
+export function encodeTransportChunkFrame(
+  chunk: TransportChunkData,
+): ArrayBuffer {
+  validateTransportChunk(chunk);
+  const buffer = new ArrayBuffer(
+    1 + TRANSPORT_CHUNK_HEADER_SIZE + chunk.data.byteLength,
+  );
+  const bytes = new Uint8Array(buffer);
+  const header = new DataView(buffer, 1, TRANSPORT_CHUNK_HEADER_SIZE);
+  bytes[0] = BinaryFormat.TRANSPORT_CHUNK;
+  header.setUint32(0, chunk.messageId, false);
+  header.setUint32(TRANSPORT_CHUNK_MESSAGE_ID_BYTES, chunk.offset, false);
+  header.setUint32(
+    TRANSPORT_CHUNK_MESSAGE_ID_BYTES + TRANSPORT_CHUNK_OFFSET_BYTES,
+    chunk.totalBytes,
+    false,
+  );
+  bytes.set(chunk.data, 1 + TRANSPORT_CHUNK_HEADER_SIZE);
+  return buffer;
+}
+
+export function decodeTransportChunkFrame(
+  frame: ArrayBuffer | Uint8Array,
+): TransportChunkData {
+  const { format, payload } = decodeBinaryFrame(frame);
+  if (format !== BinaryFormat.TRANSPORT_CHUNK) {
+    throw new BinaryFrameError(
+      `Expected transport chunk format (0x05), got 0x${format.toString(16).padStart(2, "0")}`,
+      "UNKNOWN_FORMAT",
+    );
+  }
+  if (payload.byteLength <= TRANSPORT_CHUNK_HEADER_SIZE) {
+    throw new TransportChunkError(
+      `Transport chunk payload is too short: ${payload.byteLength}`,
+      "INVALID_HEADER",
+    );
+  }
+
+  const header = new DataView(
+    payload.buffer,
+    payload.byteOffset,
+    TRANSPORT_CHUNK_HEADER_SIZE,
+  );
+  const chunk: TransportChunkData = {
+    messageId: header.getUint32(0, false),
+    offset: header.getUint32(TRANSPORT_CHUNK_MESSAGE_ID_BYTES, false),
+    totalBytes: header.getUint32(
+      TRANSPORT_CHUNK_MESSAGE_ID_BYTES + TRANSPORT_CHUNK_OFFSET_BYTES,
+      false,
+    ),
+    data: payload.slice(TRANSPORT_CHUNK_HEADER_SIZE),
+  };
+  validateTransportChunk(chunk);
+  return chunk;
+}
+
+export function* encodeTransportChunkFrames(
+  messageId: number,
+  message: ArrayBuffer | Uint8Array,
+): Generator<ArrayBuffer> {
+  assertUint32(messageId, "message id");
+  const bytes =
+    message instanceof ArrayBuffer ? new Uint8Array(message) : message;
+  if (
+    bytes.byteLength === 0 ||
+    bytes.byteLength > TRANSPORT_REASSEMBLY_MAX_BYTES
+  ) {
+    throw new TransportChunkError(
+      `Transport message length ${bytes.byteLength} exceeds the ${TRANSPORT_REASSEMBLY_MAX_BYTES}-byte limit`,
+      "MESSAGE_TOO_LARGE",
+    );
+  }
+
+  for (
+    let offset = 0;
+    offset < bytes.byteLength;
+    offset += TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES
+  ) {
+    yield encodeTransportChunkFrame({
+      messageId,
+      offset,
+      totalBytes: bytes.byteLength,
+      data: bytes.subarray(
+        offset,
+        Math.min(offset + TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES, bytes.byteLength),
+      ),
+    });
+  }
+}
+
+export class TransportChunkReassembler {
+  private active:
+    | {
+        messageId: number;
+        receivedBytes: number;
+        bytes: Uint8Array;
+      }
+    | undefined;
+
+  get hasPendingMessage(): boolean {
+    return this.active !== undefined;
+  }
+
+  reset(): void {
+    this.active = undefined;
+  }
+
+  acceptFrame(frame: ArrayBuffer | Uint8Array): Uint8Array | undefined {
+    const bytes = frame instanceof ArrayBuffer ? new Uint8Array(frame) : frame;
+    if (bytes[0] !== BinaryFormat.TRANSPORT_CHUNK) {
+      if (this.active) {
+        this.active = undefined;
+        throw new TransportChunkError(
+          "Complete binary message interrupted transport chunk reassembly",
+          "INVALID_SEQUENCE",
+        );
+      }
+      return bytes;
+    }
+    return this.accept(frame);
+  }
+
+  accept(frame: ArrayBuffer | Uint8Array): Uint8Array | undefined {
+    try {
+      const chunk = decodeTransportChunkFrame(frame);
+      if (!this.active) {
+        if (chunk.offset !== 0) {
+          throw new TransportChunkError(
+            `Transport message ${chunk.messageId} starts at offset ${chunk.offset}`,
+            "INVALID_SEQUENCE",
+          );
+        }
+        this.active = {
+          messageId: chunk.messageId,
+          receivedBytes: 0,
+          bytes: new Uint8Array(chunk.totalBytes),
+        };
+      }
+
+      if (
+        chunk.messageId !== this.active.messageId ||
+        chunk.totalBytes !== this.active.bytes.byteLength ||
+        chunk.offset !== this.active.receivedBytes
+      ) {
+        throw new TransportChunkError(
+          `Unexpected transport chunk: message=${chunk.messageId}, offset=${chunk.offset}, total=${chunk.totalBytes}`,
+          "INVALID_SEQUENCE",
+        );
+      }
+
+      this.active.bytes.set(chunk.data, chunk.offset);
+      this.active.receivedBytes += chunk.data.byteLength;
+      if (this.active.receivedBytes !== this.active.bytes.byteLength) {
+        return undefined;
+      }
+
+      const complete = this.active.bytes;
+      this.active = undefined;
+      return complete;
+    } catch (error) {
+      this.active = undefined;
+      throw error;
+    }
+  }
 }

@@ -5,7 +5,10 @@ import {
   CODEX_GPT56_CONTEXT_WINDOW,
   DEFAULT_CONTEXT_WINDOW,
   getModelContextWindow,
+  isAppMessage,
+  isAppSession,
 } from "../src/app-types.js";
+import { toUrlProjectId } from "../src/projectId.js";
 
 describe("getModelContextWindow", () => {
   it("returns default window for unknown model", () => {
@@ -69,5 +72,170 @@ describe("getModelContextWindow", () => {
     expect(getModelContextWindow(undefined, "codex-oss")).toBe(
       DEFAULT_CONTEXT_WINDOW,
     );
+  });
+});
+
+describe("isAppMessage", () => {
+  it.each([
+    ["an unknown discriminator", { type: "definitely-not-an-app-message" }],
+    ["an incomplete system entry", { type: "system" }],
+    [
+      "a system subtype without its payload",
+      { type: "system", subtype: "compact_boundary" },
+    ],
+    [
+      "a provider completion without session identity",
+      { type: "system", subtype: "turn_complete" },
+    ],
+    ["a summary without its leaf", { type: "summary", summary: "Recap" }],
+    [
+      "a summary without text",
+      {
+        type: "summary",
+        leafUuid: "00000000-0000-4000-8000-000000000001",
+      },
+    ],
+  ])("rejects %s", (_label, message) => {
+    expect(isAppMessage(message)).toBe(false);
+  });
+
+  it("accepts complete system, provider, and summary entries", () => {
+    expect(
+      isAppMessage({
+        type: "system",
+        subtype: "compact_boundary",
+        content: "Context compacted",
+      }),
+    ).toBe(true);
+    expect(
+      isAppMessage({
+        type: "system",
+        subtype: "api_error",
+        level: "error",
+      }),
+    ).toBe(true);
+    expect(
+      isAppMessage({
+        type: "system",
+        subtype: "turn_complete",
+        session_id: "session-1",
+      }),
+    ).toBe(true);
+    expect(
+      isAppMessage({
+        type: "summary",
+        summary: "Earlier work",
+        leafUuid: "00000000-0000-4000-8000-000000000001",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("isAppSession", () => {
+  const session = {
+    id: "session-1",
+    projectId: toUrlProjectId("/repo"),
+    title: "Session",
+    fullTitle: "Session",
+    createdAt: "2026-08-06T00:00:00.000Z",
+    updatedAt: "2026-08-06T00:01:00.000Z",
+    messageCount: 1,
+    ownership: { owner: "none" },
+    provider: "codex",
+  };
+
+  it.each([
+    [
+      "null nested content",
+      { type: "user", message: { role: "user", content: [null] } },
+    ],
+    [
+      "malformed tool use",
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", id: 42, name: "Read", input: {} }],
+        },
+      },
+    ],
+    [
+      "malformed nested tool result",
+      {
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call-1",
+              content: [{ type: "text", text: 42 }],
+            },
+          ],
+        },
+      },
+    ],
+    [
+      "role mismatch",
+      {
+        type: "user",
+        message: { role: "assistant", content: "wrong role" },
+      },
+    ],
+  ])("rejects %s", (_label, message) => {
+    expect(isAppSession({ ...session, messages: [message] })).toBe(false);
+  });
+
+  it("accepts normalized cross-provider blocks without stripping fields", () => {
+    expect(
+      isAppSession({
+        ...session,
+        messageCount: 4,
+        messages: [
+          {
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                { type: "input_image", image_url: "data:image/png;base64,x" },
+              ],
+            },
+          },
+          {
+            type: "assistant",
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call-1",
+                  name: "custom",
+                  input: ["scalar-compatible"],
+                },
+              ],
+            },
+          },
+          {
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "call-1",
+                  content: "provider-normalized",
+                },
+              ],
+            },
+          },
+          {
+            type: "system",
+            subtype: "compact_boundary",
+            content: "Context compacted",
+            providerExtension: { future: true },
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 });

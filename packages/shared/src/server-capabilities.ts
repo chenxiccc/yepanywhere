@@ -1,3 +1,4 @@
+import { PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY } from "./public-shares.js";
 import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
 
 export type ServerCapabilityKind = "permanent" | "transitional";
@@ -54,6 +55,31 @@ export interface ServerCapabilityDefinition {
 }
 
 export const SERVER_CAPABILITIES = {
+  publicShareSessionChunks: {
+    name: PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY,
+    kind: "permanent",
+    area: "remoteAccess",
+    introducedIn: "0.7.1",
+    description:
+      "Secret-authorized metadata selects sequential pull transfer for one immutable frozen session: at most 256 chunks of 256 KiB, with 64 MiB compressed and decompressed ceilings.",
+    clientFallback:
+      "Use the existing one-response raw-json transfer through its 8 MiB relay cap for marked links, make no chunk request, and keep the combined response for unmarked links.",
+    serverContract: {
+      routes: [
+        "GET /public-api/shares/:secret/metadata",
+        "GET /public-api/shares/:secret/session-chunks",
+      ],
+      responseFields: [
+        "publicShareMetadata.capabilities",
+        "publicShareMetadata.sessionChunks",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted public viewers can outpace installed servers, and frozen sessions need a bounded relay path without changing legacy response semantics.",
+    },
+  },
   publicShareManagement: {
     name: "public-share-management",
     kind: "permanent",

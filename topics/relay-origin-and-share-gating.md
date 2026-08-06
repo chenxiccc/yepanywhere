@@ -35,7 +35,11 @@ Public shares do not intentionally provide a path to spend the YA server's
 metered STT credits. Public-share relay plaintext is restricted to `GET
 /public-api/shares/...`; it must not tunnel `/api/speech/*`, relayed speech
 channels, server-mediated STT, server-minted xAI client secrets, or borrowed
-long-lived xAI keys.
+long-lived xAI keys. Before that unauthenticated exception is dispatched, YA
+canonicalizes the request target and permits only the exact public-share GET
+route grammar. Authority-form targets, fragments, backslashes, dot segments,
+encoded traversal, and encoded path separators fail closed; the canonical path
+that passed authorization is the one handed to routing.
 
 ### Owner management and revocation
 
@@ -73,10 +77,11 @@ global kill switch. Turning it off gates public reads and new creation, then
 revokes every link. Re-enabling starts empty and must never resurrect records
 left by interrupted cleanup. When links exist, the client confirms that
 consequence before disabling. On capable servers, left- and right-click on the
-session broadcast icon and the Session menu's **Share** action open the same
-session-filtered management pane at the same anchor. **Manage all public
-shares** opens the global pane from a searchable row beside the Settings
-control. Merely opening either pane creates no link.
+session broadcast icon open the same session-filtered management pane at the
+same anchor. The Session menu's **Share** action opens the same manager with its
+default placement. **Manage all public shares** opens the global pane from a
+searchable row beside the Settings control. Merely opening either pane creates
+no link.
 
 Global management is optional newer-server functionality gated by the
 permanent `public-share-management` capability. Without it, a current client
@@ -105,7 +110,45 @@ those transport coordinates.
 A compact per-link protocol marker distinguishes this route from legacy links.
 Old viewers ignore the marker and fetch the existing combined response; new
 viewers use old links' display fragments and do not probe an old server for an
-unsupported metadata route. Existing secret-bearing links remain valid.
+unsupported metadata route. Existing secret-bearing links remain valid. The
+marker continues to mean compact metadata plus raw-json selection; it is not a
+chunk protocol version.
+
+The secret-authorized metadata may add
+`public-share-session-chunks-v1` for the selected immutable frozen
+representation. Eligibility requires safe integer compressed and decompressed
+lengths no greater than 64 MiB. When present, the viewer runtime-validates the
+metadata before publication, decompressor construction, allocation, or a first
+chunk request; then it keeps one relay WebSocket and uses sequential ordinary
+request/response exchanges to pull compressed chunks of at most 256 KiB. It
+requires exact status, ordering, size, finality, cursor, revision, integrity,
+and completed `AppSession` shape before publication. When absent, it makes no
+chunk request and uses the existing runtime-validated raw-json response.
+Unmarked links make neither metadata nor chunk requests. The capability says
+nothing about live pagination, general relay streaming, public-share
+encryption, management, or relay multiplexing.
+
+A pre-auth WebSocket selects one lifetime mode. The first public-share read
+locks it to public-read-only, while any SRP control attempt locks it to SRP even
+when authentication later fails. Public and SRP traffic cannot follow one
+another on the same socket. One public-share request may be in flight per
+public-read-only socket. A second is a protocol violation: YA aborts the active
+internal request and closes the socket instead of queueing it. Socket close or
+error also aborts the Hono request and response-body read. A request response
+uses its admission-time plaintext or encrypted framing rather than later auth
+state. This does not change multiplexing after relay authentication.
+
+Every pre-auth public-share response is capped at 8 MiB in the WebSocket
+adapter. It retains at most 8 MiB + 1 logical bytes. Controlled combined and
+raw-json serializers emit at most 64 KiB per source chunk, so source overread is
+at most one bounded producer chunk; an unexpectedly unbounded chunk on that
+controlled path is an internal invariant failure. Other public routes,
+including `/files` and `/files/raw`, use declared length only for early
+rejection and enforce the streamed count as the hard bound. Overflow cancels
+the source and returns 413; the legacy session path includes update guidance.
+Direct HTTP streams, authenticated relay traffic, and unrelated relay routes do
+not inherit that cap, and `public-share-session-chunks-v1` remains a session
+transport rather than a file-transfer capability.
 
 ## Relay Operator Visibility
 
@@ -118,8 +161,12 @@ opens a relay WebSocket and sends unauthenticated, share-secret-bearing
 `GET /public-api/shares/:secret...` requests as plaintext relay payloads. WSS
 protects the browser-to-relay hop from ordinary network observers, and the
 current relay implementation forwards frames rather than logging share payloads,
-but a relay operator who inspects or modifies the relay can see the public share
-request path, bearer secret, and response contents.
+and YA's relay adapter logs only method/status/bounded byte counts rather than
+plaintext frame previews, bearer paths, or chunk cursors. Malformed plaintext
+frames are reported by byte count only, because even an unparseable frame
+may contain a complete bearer URL. A relay operator who
+inspects or modifies the relay can still see the public share request path,
+bearer secret, and response contents.
 
 Therefore public shares are secret-link protected against guessing and against
 viewers who do not possess the link, but they are not currently private from the
@@ -153,9 +200,11 @@ Share-scoped file requests are allowed only for paths already visible or
 explicitly linked from shared session content and for bounded transitive
 render assets from visible Markdown/HTML sources. A frozen revision attempts a
 whole-project copy-on-write snapshot only when the actual source/app-data
-filesystem pair supports it. That clone does not broaden authorization beyond
-the captured path set, and symlinks are omitted so a clone cannot escape to
-later external bytes while claiming frozen semantics. When CoW cloning is unsupported, frozen shares retain
+filesystem pair supports it. Direct paths come from the immutable transcript;
+transitive render references are read from the completed clone, never inferred
+from a pre-clone live-project scan. That clone does not broaden authorization
+beyond the captured path set, and symlinks are omitted so a clone cannot escape
+to later external bytes while claiming frozen semantics. When CoW cloning is unsupported, frozen shares retain
 the current behavior of reading an authorized path from the live project and
 both owner and viewer see a persistent warning that later file contents may be
 exposed. An unexpected clone failure must not silently select that fallback.

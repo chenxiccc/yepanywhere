@@ -1,16 +1,135 @@
 // @vitest-environment jsdom
 
-import { toUrlProjectId } from "@yep-anywhere/shared";
-import { describe, expect, it } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  type AppSession,
+  type PublicSessionSharePublicMetadata,
+  type PublicSessionShareResponse,
+  toUrlProjectId,
+} from "@yep-anywhere/shared";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildPublicShareRawFileApiPath,
   rewritePublicShareLocalAppHref,
   rewritePublicShareLocalAppLinks,
 } from "../../contexts/PublicShareContext";
+import { I18nProvider } from "../../i18n";
+import {
+  fetchPublicShareV2ViaRelay,
+  fetchPublicShareViaRelay,
+} from "../../lib/publicShareRelay";
 import {
   getPublicShareCautionKey,
   isPublicShareLocalAppHref,
+  PublicSharePage,
 } from "../PublicSharePage";
+
+vi.mock("../../lib/publicShareRelay", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/publicShareRelay")>()),
+  fetchPublicShareV2ViaRelay: vi.fn(),
+  fetchPublicShareViaRelay: vi.fn(),
+}));
+
+const fetchPublicShareV2ViaRelayMock = vi.mocked(fetchPublicShareV2ViaRelay);
+const fetchPublicShareViaRelayMock = vi.mocked(fetchPublicShareViaRelay);
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
+
+const pageProjectId = toUrlProjectId("/repo");
+
+function publicShareResult(
+  title: string,
+  options: { messageId?: string; mode?: "frozen" | "live" } = {},
+): {
+  metadata: PublicSessionSharePublicMetadata;
+  share: PublicSessionShareResponse;
+} {
+  const mode = options.mode ?? "frozen";
+  const messages: AppSession["messages"] = options.messageId
+    ? [
+        {
+          type: "user",
+          isSidechain: false,
+          userType: "external",
+          cwd: "/repo",
+          sessionId: "session-1",
+          version: "2.1.0",
+          uuid: options.messageId,
+          parentUuid: null,
+          message: { role: "user", content: `${title} transcript row` },
+          timestamp: "2026-08-06T00:00:00.000Z",
+        },
+      ]
+    : [];
+  const session: AppSession = {
+    id: "session-1",
+    projectId: pageProjectId,
+    projectName: "repo",
+    title,
+    fullTitle: title,
+    createdAt: "2026-08-06T00:00:00.000Z",
+    updatedAt: "2026-08-06T00:01:00.000Z",
+    messageCount: messages.length,
+    ownership: { owner: "none" },
+    provider: "claude",
+    messages,
+  };
+  const metadata: PublicSessionSharePublicMetadata = {
+    mode,
+    title,
+    initialPrompt: null,
+    projectName: "repo",
+    provider: "claude",
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    capturedAt: session.updatedAt,
+    linkedFileMode: "cow",
+  };
+  return {
+    metadata,
+    share: {
+      share: {
+        mode,
+        title,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        capturedAt: session.updatedAt,
+        linkedFileMode: "cow",
+        source: {
+          projectId: pageProjectId,
+          sessionId: session.id,
+          projectName: "repo",
+          provider: "claude",
+        },
+      },
+      session,
+    },
+  };
+}
 
 describe("isPublicShareLocalAppHref", () => {
   const shareUrl = "https://ya.graehl.org/share/secret";
@@ -55,6 +174,134 @@ describe("getPublicShareCautionKey", () => {
     expect(getPublicShareCautionKey("frozen")).toBe(
       "publicShareReadOnlySecretCaution",
     );
+  });
+});
+
+describe("PublicSharePage", () => {
+  it("aborts stale v2 work and keeps the replacement share published", async () => {
+    window.history.replaceState(null, "", "/share/secret-one?h=host-one#v=2");
+    const releaseResources = vi.fn();
+    let firstSignal: AbortSignal | undefined;
+    let publishFirstMetadata:
+      | ((metadata: PublicSessionSharePublicMetadata) => void)
+      | undefined;
+    let resolveFirst!: (value: ReturnType<typeof publicShareResult>) => void;
+    const firstResult = new Promise<ReturnType<typeof publicShareResult>>(
+      (resolve) => {
+        resolveFirst = resolve;
+      },
+    );
+    fetchPublicShareV2ViaRelayMock
+      .mockImplementationOnce((options) => {
+        firstSignal = options.signal;
+        publishFirstMetadata = options.onMetadata;
+        options.signal?.addEventListener("abort", releaseResources, {
+          once: true,
+        });
+        return firstResult;
+      })
+      .mockResolvedValueOnce(publicShareResult("Second share"));
+
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={["/share/secret-one?h=host-one#v=2"]}>
+          <Link to="/share/secret-two?h=host-one#v=2">Next share</Link>
+          <Routes>
+            <Route path="/share/:secret" element={<PublicSharePage />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+    await waitFor(() => {
+      expect(fetchPublicShareV2ViaRelayMock).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Next share" }));
+    expect(
+      await screen.findByRole("heading", { name: "Second share" }),
+    ).toBeTruthy();
+    expect(firstSignal?.aborted).toBe(true);
+    expect(releaseResources).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      publishFirstMetadata?.(publicShareResult("Stale metadata").metadata);
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Stale metadata" }),
+    ).toBeNull();
+
+    await act(async () => {
+      resolveFirst(publicShareResult("Stale first share"));
+      await firstResult;
+    });
+    expect(screen.getByRole("heading", { name: "Second share" })).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Stale first share" }),
+    ).toBeNull();
+    expect(fetchPublicShareViaRelayMock).not.toHaveBeenCalled();
+  });
+
+  it("starts a fresh bootstrap when every share identity coordinate changes", async () => {
+    const first = publicShareResult("First share", {
+      mode: "live",
+      messageId: "first-message-id",
+    });
+    const second = publicShareResult("Second share", {
+      messageId: "second-message-id",
+    });
+    let resolveSecond!: (value: typeof second) => void;
+    const secondResult = new Promise<typeof second>((resolve) => {
+      resolveSecond = resolve;
+    });
+    fetchPublicShareV2ViaRelayMock
+      .mockImplementationOnce(async (options) => {
+        options.onMetadata?.(first.metadata);
+        return first;
+      })
+      .mockImplementationOnce((options) => {
+        options.onMetadata?.(second.metadata);
+        return secondResult;
+      });
+
+    render(
+      <I18nProvider>
+        <MemoryRouter
+          initialEntries={[
+            "/share/secret-one?h=host-one&r=wss%3A%2F%2Frelay.one%2Fws&viewerId=viewer-one#v=2&t=First%20hint",
+          ]}
+        >
+          <Link to="/share/secret-two?h=host-two&r=wss%3A%2F%2Frelay.two%2Fws&viewerId=viewer-two#v=2&t=Second%20hint">
+            Next identity
+          </Link>
+          <Routes>
+            <Route path="/share/:secret" element={<PublicSharePage />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText("First share transcript row")).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "Next identity" }));
+
+    await waitFor(() => {
+      expect(fetchPublicShareV2ViaRelayMock).toHaveBeenCalledTimes(2);
+    });
+    expect(fetchPublicShareV2ViaRelayMock.mock.calls[1]?.[0]).toMatchObject({
+      relayUrl: "wss://relay.two/ws",
+      relayUsername: "host-two",
+      secret: "secret-two",
+      viewerId: "viewer-two",
+    });
+    expect(fetchPublicShareViaRelayMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("First share transcript row")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Second share" })).toBeTruthy();
+
+    await act(async () => {
+      resolveSecond(second);
+      await secondResult;
+    });
+    expect(await screen.findByText("Second share transcript row")).toBeTruthy();
+    expect(screen.queryByText("First share transcript row")).toBeNull();
   });
 });
 

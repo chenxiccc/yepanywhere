@@ -15,7 +15,7 @@ import type {
   SystemEntry,
   UserEntry,
 } from "./claude-sdk-schema/types.js";
-import type { UrlProjectId } from "./projectId.js";
+import { isUrlProjectId, type UrlProjectId } from "./projectId.js";
 import type {
   PermissionMode,
   PromptSuggestionMode,
@@ -661,6 +661,429 @@ export interface InputRequest {
 // =============================================================================
 // Type Guards
 // =============================================================================
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isOptionalString(
+  record: Record<string, unknown>,
+  key: string,
+): boolean {
+  return record[key] === undefined || typeof record[key] === "string";
+}
+
+function isOptionalBoolean(
+  record: Record<string, unknown>,
+  key: string,
+): boolean {
+  return record[key] === undefined || typeof record[key] === "boolean";
+}
+
+function isAppContent(value: unknown): boolean {
+  return (
+    typeof value === "string" ||
+    (Array.isArray(value) &&
+      value.every(
+        (entry) => typeof entry === "string" || isAppContentBlock(entry),
+      ))
+  );
+}
+
+function isAppContentBlock(value: unknown): value is AppContentBlock {
+  if (!isUnknownRecord(value) || typeof value.type !== "string") return false;
+  switch (value.type) {
+    case "text":
+    case "input_text":
+    case "output_text":
+      return typeof value.text === "string";
+    case "thinking":
+      return typeof value.thinking === "string";
+    case "tool_use":
+      return (
+        typeof value.id === "string" &&
+        typeof value.name === "string" &&
+        Object.hasOwn(value, "input")
+      );
+    case "tool_result":
+      return (
+        typeof value.tool_use_id === "string" &&
+        isAppContent(value.content) &&
+        isOptionalBoolean(value, "is_error")
+      );
+    case "image": {
+      if (!isUnknownRecord(value.source)) return false;
+      return (
+        value.source.type === "base64" &&
+        typeof value.source.data === "string" &&
+        (value.source.media_type === "image/png" ||
+          value.source.media_type === "image/jpeg" ||
+          value.source.media_type === "image/gif" ||
+          value.source.media_type === "image/webp")
+      );
+    }
+    case "document": {
+      if (!isUnknownRecord(value.source)) return false;
+      return (
+        typeof value.source.data === "string" &&
+        ((value.source.type === "text" &&
+          value.source.media_type === "text/plain") ||
+          (value.source.type === "base64" &&
+            value.source.media_type === "application/pdf"))
+      );
+    }
+    case "input_image":
+      return (
+        isOptionalString(value, "image_url") &&
+        isOptionalString(value, "file_path") &&
+        isOptionalString(value, "mime_type")
+      );
+    case "tool_reference":
+      return typeof value.tool_name === "string";
+    case "fallback":
+      return (
+        isUnknownRecord(value.from) &&
+        typeof value.from.model === "string" &&
+        isUnknownRecord(value.to) &&
+        typeof value.to.model === "string"
+      );
+    default:
+      return true;
+  }
+}
+
+function hasStringFields(
+  value: Record<string, unknown>,
+  ...fields: string[]
+): boolean {
+  return fields.every((field) => typeof value[field] === "string");
+}
+
+function isAppSystemEntry(value: Record<string, unknown>): boolean {
+  if (value.subtype === undefined) {
+    return (
+      typeof value.content === "string" &&
+      typeof value.toolUseID === "string" &&
+      value.level === "info"
+    );
+  }
+  if (typeof value.subtype !== "string" || value.subtype.length === 0) {
+    return false;
+  }
+
+  switch (value.subtype) {
+    case "compact_boundary":
+    case "microcompact_boundary":
+    case "informational":
+    case "model_refusal_fallback":
+    case "bridge_status":
+    case "away_summary":
+    case "scheduled_task_fire":
+    case "local_command":
+    case "turn_aborted":
+    case "subagent_activity":
+    case "config_ack":
+      return typeof value.content === "string";
+    case "init":
+      return typeof value.session_id === "string";
+    case "status":
+      return value.status === null || value.status === "compacting";
+    case "session_state_changed":
+      return (
+        typeof value.session_id === "string" &&
+        (value.state === "idle" ||
+          value.state === "running" ||
+          value.state === "requires_action")
+      );
+    case "api_error":
+      return typeof value.level === "string";
+    case "stop_hook_summary":
+      return (
+        typeof value.hookCount === "number" &&
+        Array.isArray(value.hookInfos) &&
+        Array.isArray(value.hookErrors) &&
+        typeof value.preventedContinuation === "boolean" &&
+        typeof value.stopReason === "string" &&
+        typeof value.hasOutput === "boolean"
+      );
+    case "turn_duration":
+      return (
+        typeof value.durationMs === "number" &&
+        Number.isFinite(value.durationMs) &&
+        typeof value.messageCount === "number" &&
+        Number.isFinite(value.messageCount)
+      );
+    case "input_request":
+      return isUnknownRecord(value.input_request);
+    case "todo_list":
+      return Array.isArray(value.items);
+    case "turn_complete":
+      return (
+        typeof value.session_id === "string" &&
+        (value.usage === undefined || isUnknownRecord(value.usage))
+      );
+    case "token_usage":
+      return (
+        typeof value.session_id === "string" && isUnknownRecord(value.usage)
+      );
+    case "codex_tool_orphans":
+      return Array.isArray(value.orphanedToolUseIds);
+    case "commands_changed":
+      return (
+        typeof value.session_id === "string" &&
+        (Array.isArray(value.slash_commands) ||
+          Array.isArray(value.slash_command_inventory))
+      );
+    default:
+      return false;
+  }
+}
+
+function isFileHistorySnapshotEntry(value: Record<string, unknown>): boolean {
+  if (!isUnknownRecord(value.snapshot)) return false;
+  return (
+    typeof value.messageId === "string" &&
+    typeof value.snapshot.messageId === "string" &&
+    isUnknownRecord(value.snapshot.trackedFileBackups) &&
+    typeof value.snapshot.timestamp === "string" &&
+    typeof value.isSnapshotUpdate === "boolean"
+  );
+}
+
+function isQueueOperationEntry(value: Record<string, unknown>): boolean {
+  if (
+    typeof value.sessionId !== "string" ||
+    typeof value.timestamp !== "string"
+  ) {
+    return false;
+  }
+  if (
+    value.operation !== "enqueue" &&
+    value.operation !== "dequeue" &&
+    value.operation !== "remove" &&
+    value.operation !== "popAll"
+  ) {
+    return false;
+  }
+  return value.content === undefined || isAppContent(value.content);
+}
+
+function isMetadataEntry(value: Record<string, unknown>): boolean {
+  switch (value.type) {
+    case "custom-title":
+      return hasStringFields(value, "sessionId", "customTitle");
+    case "ai-title":
+      return hasStringFields(value, "sessionId", "aiTitle");
+    case "last-prompt":
+      return (
+        typeof value.sessionId === "string" &&
+        (typeof value.lastPrompt === "string" ||
+          typeof value.leafUuid === "string")
+      );
+    case "permission-mode":
+      return hasStringFields(value, "sessionId", "permissionMode");
+    case "task-summary":
+      return hasStringFields(value, "sessionId", "summary", "timestamp");
+    case "tag":
+      return hasStringFields(value, "sessionId", "tag");
+    case "agent-name":
+      return hasStringFields(value, "sessionId", "agentName");
+    case "agent-color":
+      return hasStringFields(value, "sessionId", "agentColor");
+    case "agent-setting":
+      return hasStringFields(value, "sessionId", "agentSetting");
+    case "pr-link":
+      return (
+        hasStringFields(
+          value,
+          "sessionId",
+          "prUrl",
+          "prRepository",
+          "timestamp",
+        ) && typeof value.prNumber === "number"
+      );
+    case "mode":
+      return (
+        typeof value.sessionId === "string" &&
+        (value.mode === "coordinator" || value.mode === "normal")
+      );
+    case "worktree-state":
+      return (
+        typeof value.sessionId === "string" &&
+        (value.worktreeSession === null ||
+          isUnknownRecord(value.worktreeSession))
+      );
+    case "content-replacement":
+      return (
+        typeof value.sessionId === "string" && Array.isArray(value.replacements)
+      );
+    case "attribution-snapshot":
+      return (
+        hasStringFields(value, "messageId", "surface") &&
+        isUnknownRecord(value.fileStates)
+      );
+    case "speculation-accept":
+      return (
+        typeof value.timestamp === "string" &&
+        typeof value.timeSavedMs === "number" &&
+        Number.isFinite(value.timeSavedMs)
+      );
+    case "marble-origami-commit":
+      return hasStringFields(
+        value,
+        "sessionId",
+        "collapseId",
+        "summaryUuid",
+        "summaryContent",
+        "summary",
+        "firstArchivedUuid",
+        "lastArchivedUuid",
+      );
+    case "marble-origami-snapshot":
+      return (
+        typeof value.sessionId === "string" &&
+        Array.isArray(value.staged) &&
+        typeof value.armed === "boolean" &&
+        typeof value.lastSpawnTokens === "number"
+      );
+    default:
+      return false;
+  }
+}
+
+export function isAppMessage(value: unknown): value is AppMessage {
+  if (!isUnknownRecord(value) || typeof value.type !== "string") return false;
+
+  switch (value.type) {
+    case "user":
+    case "assistant":
+      return (
+        (value.content === undefined || isAppContent(value.content)) &&
+        isUnknownRecord(value.message) &&
+        value.message.role === value.type &&
+        isAppContent(value.message.content)
+      );
+    case "system":
+      return isAppSystemEntry(value);
+    case "summary":
+      return hasStringFields(value, "summary", "leafUuid");
+    case "attachment":
+      return Object.hasOwn(value, "attachment");
+    case "progress":
+      return (
+        isUnknownRecord(value.data) &&
+        hasStringFields(value, "toolUseID", "parentToolUseID")
+      );
+    case "file-history-snapshot":
+      return isFileHistorySnapshotEntry(value);
+    case "queue-operation":
+      return isQueueOperationEntry(value);
+    default:
+      return isMetadataEntry(value);
+  }
+}
+
+function isSessionOwnership(value: unknown): value is SessionOwnership {
+  if (!isUnknownRecord(value)) return false;
+  if (value.owner === "none" || value.owner === "external") return true;
+  return (
+    value.owner === "self" &&
+    typeof value.processId === "string" &&
+    isOptionalString(value, "permissionMode") &&
+    isOptionalString(value, "appliedPermissionMode") &&
+    (value.modeVersion === undefined ||
+      (typeof value.modeVersion === "number" &&
+        Number.isSafeInteger(value.modeVersion))) &&
+    (value.recapAfterSeconds === undefined ||
+      (typeof value.recapAfterSeconds === "number" &&
+        Number.isFinite(value.recapAfterSeconds))) &&
+    isOptionalString(value, "recapMode")
+  );
+}
+
+/** Runtime validation for normalized cross-provider session responses. */
+export function isAppSession(value: unknown): value is AppSession {
+  if (!isUnknownRecord(value)) return false;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.projectId !== "string" ||
+    !isUrlProjectId(value.projectId) ||
+    (value.title !== null && typeof value.title !== "string") ||
+    (value.fullTitle !== null && typeof value.fullTitle !== "string") ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    typeof value.messageCount !== "number" ||
+    !Number.isSafeInteger(value.messageCount) ||
+    value.messageCount < 0 ||
+    !isSessionOwnership(value.ownership) ||
+    typeof value.provider !== "string" ||
+    !Array.isArray(value.messages) ||
+    !value.messages.every(isAppMessage)
+  ) {
+    return false;
+  }
+
+  for (const key of [
+    "projectName",
+    "model",
+    "lastSeenAt",
+    "customTitle",
+    "parentSessionId",
+    "parentSessionKind",
+    "forkedFromSessionId",
+    "initialPrompt",
+    "lastAgentText",
+    "executor",
+    "originator",
+    "cliVersion",
+    "source",
+    "approvalPolicy",
+    "workstreamId",
+  ]) {
+    if (!isOptionalString(value, key)) return false;
+  }
+  for (const key of ["hasUnread", "isArchived", "isStarred"]) {
+    if (!isOptionalBoolean(value, key)) return false;
+  }
+  if (
+    (value.pendingInputType !== undefined &&
+      value.pendingInputType !== "tool-approval" &&
+      value.pendingInputType !== "user-question") ||
+    (value.activity !== undefined &&
+      value.activity !== "in-turn" &&
+      value.activity !== "idle" &&
+      value.activity !== "waiting-input" &&
+      value.activity !== "terminated") ||
+    (value.workingProjectId !== undefined &&
+      (typeof value.workingProjectId !== "string" ||
+        !isUrlProjectId(value.workingProjectId))) ||
+    (value.transcriptProjectId !== undefined &&
+      (typeof value.transcriptProjectId !== "string" ||
+        !isUrlProjectId(value.transcriptProjectId))) ||
+    (value.transcriptDisplayObjects !== undefined &&
+      (!Array.isArray(value.transcriptDisplayObjects) ||
+        !value.transcriptDisplayObjects.every(
+          (entry) =>
+            isUnknownRecord(entry) &&
+            typeof entry.id === "string" &&
+            typeof entry.kind === "string",
+        )))
+  ) {
+    return false;
+  }
+  if (value.contextUsage !== undefined) {
+    if (
+      !isUnknownRecord(value.contextUsage) ||
+      typeof value.contextUsage.inputTokens !== "number" ||
+      !Number.isFinite(value.contextUsage.inputTokens) ||
+      typeof value.contextUsage.percentage !== "number" ||
+      !Number.isFinite(value.contextUsage.percentage)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Check if a message is a user entry.

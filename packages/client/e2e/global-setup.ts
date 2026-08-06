@@ -305,6 +305,9 @@ export default async function globalSetup() {
           RELAY_ALLOWED_ORIGINS: "*",
           RELAY_LOG_LEVEL: "warn", // Reduce noise, port comes from file
           RELAY_LOG_TO_FILE: "false",
+          // Large logical responses and uploads must use bounded application
+          // frames rather than depending on the relay's parser allowance.
+          RELAY_WEBSOCKET_MAX_MESSAGE_BYTES: String(1024 * 1024),
           // The multi-host matrix deliberately remounts the same three targets
           // seven times in under a minute. Raw relay tests cover the production
           // per-target default; keep the browser lifecycle matrix below its

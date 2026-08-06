@@ -7,8 +7,13 @@ import {
   MIN_BINARY_ENVELOPE_LENGTH,
   NONCE_LENGTH,
   OFFSET_BYTE_LENGTH,
+  TRANSPORT_CHUNK_HEADER_SIZE,
+  TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES,
+  TRANSPORT_REASSEMBLY_MAX_BYTES,
   UPLOAD_CHUNK_HEADER_SIZE,
   UUID_BYTE_LENGTH,
+  TransportChunkError,
+  TransportChunkReassembler,
   UploadChunkError,
   VERSION_LENGTH,
   bytesToOffset,
@@ -17,10 +22,13 @@ import {
   decodeBinaryFrame,
   decodeCompressedJsonFrame,
   decodeJsonFrame,
+  decodeTransportChunkFrame,
   decodeUploadChunkFrame,
   decodeUploadChunkPayload,
   encodeCompressedJsonFrame,
   encodeJsonFrame,
+  encodeTransportChunkFrame,
+  encodeTransportChunkFrames,
   encodeUploadChunkFrame,
   encodeUploadChunkPayload,
   extractFormatAndPayload,
@@ -156,14 +164,11 @@ describe("binary-framing", () => {
       }
     });
 
-    it("throws for format byte 0x05 (reserved)", () => {
-      const buffer = new Uint8Array([0x05, 0x01, 0x02]);
-      expect(() => decodeBinaryFrame(buffer)).toThrow(BinaryFrameError);
-      try {
-        decodeBinaryFrame(buffer);
-      } catch (err) {
-        expect((err as BinaryFrameError).code).toBe("UNKNOWN_FORMAT");
-      }
+    it("accepts format 0x05 (TRANSPORT_CHUNK)", () => {
+      const buffer = new Uint8Array([BinaryFormat.TRANSPORT_CHUNK, 0x01, 0x02]);
+      const result = decodeBinaryFrame(buffer);
+      expect(result.format).toBe(BinaryFormat.TRANSPORT_CHUNK);
+      expect(result.payload).toEqual(new Uint8Array([0x01, 0x02]));
     });
 
     it("throws for format byte 0xFF (reserved)", () => {
@@ -1275,5 +1280,84 @@ describe("compressed-json-frames (Phase 3)", () => {
       expect(payload).toEqual(compressedJson);
       // In real code, we would now decompress `payload` to get the original JSON
     });
+  });
+});
+
+// =============================================================================
+// Phase 4: Bounded transport chunk tests
+// =============================================================================
+
+describe("transport-chunk-frames (Phase 4)", () => {
+  it("round-trips frame metadata and payload", () => {
+    const data = new Uint8Array([1, 2, 3, 4]);
+    const frame = encodeTransportChunkFrame({
+      messageId: 17,
+      offset: 8,
+      totalBytes: 12,
+      data,
+    });
+
+    expect(frame.byteLength).toBe(
+      1 + TRANSPORT_CHUNK_HEADER_SIZE + data.length,
+    );
+    expect(decodeTransportChunkFrame(frame)).toEqual({
+      messageId: 17,
+      offset: 8,
+      totalBytes: 12,
+      data,
+    });
+  });
+
+  it("reassembles a message larger than one physical chunk", () => {
+    const message = new Uint8Array(TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES * 2 + 19);
+    for (let index = 0; index < message.length; index += 1) {
+      message[index] = index % 251;
+    }
+    const frames = Array.from(encodeTransportChunkFrames(22, message));
+    const reassembler = new TransportChunkReassembler();
+
+    expect(frames).toHaveLength(3);
+    expect(
+      frames.every(
+        (frame) =>
+          frame.byteLength <=
+          1 + TRANSPORT_CHUNK_HEADER_SIZE + TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES,
+      ),
+    ).toBe(true);
+    expect(reassembler.accept(frames[0])).toBeUndefined();
+    expect(reassembler.accept(frames[1])).toBeUndefined();
+    expect(reassembler.accept(frames[2])).toEqual(message);
+    expect(reassembler.hasPendingMessage).toBe(false);
+  });
+
+  it("rejects noncontiguous or interleaved chunks and clears partial state", () => {
+    const reassembler = new TransportChunkReassembler();
+    const first = encodeTransportChunkFrame({
+      messageId: 1,
+      offset: 0,
+      totalBytes: 4,
+      data: new Uint8Array([1, 2]),
+    });
+    const interleaved = encodeTransportChunkFrame({
+      messageId: 2,
+      offset: 2,
+      totalBytes: 4,
+      data: new Uint8Array([3, 4]),
+    });
+
+    expect(reassembler.accept(first)).toBeUndefined();
+    expect(() => reassembler.accept(interleaved)).toThrow(TransportChunkError);
+    expect(reassembler.hasPendingMessage).toBe(false);
+  });
+
+  it("rejects a logical message above the reassembly ceiling", () => {
+    expect(() =>
+      encodeTransportChunkFrame({
+        messageId: 1,
+        offset: 0,
+        totalBytes: TRANSPORT_REASSEMBLY_MAX_BYTES + 1,
+        data: new Uint8Array([1]),
+      }),
+    ).toThrowError(expect.objectContaining({ code: "MESSAGE_TOO_LARGE" }));
   });
 });

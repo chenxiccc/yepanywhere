@@ -15,6 +15,14 @@ import {
   MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH,
 } from "../../src/services/ServerSettingsService.js";
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((fulfill) => {
+    resolve = fulfill;
+  });
+  return { promise, resolve };
+}
+
 describe("Settings Routes", () => {
   let settings: ServerSettings;
   let mockServerSettingsService: ServerSettingsService;
@@ -241,6 +249,47 @@ describe("Settings Routes", () => {
       );
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
+
+    it.each(["off", "before", "after"] as const)(
+      "persists the %s turn-timestamp placement",
+      async (turnTimestamps) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ turnTimestamps }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+          turnTimestamps,
+        });
+      },
+    );
+
+    it.each(["sometimes", "", null, true, { placement: "before" }])(
+      "rejects invalid turn-timestamp placement %j",
+      async (turnTimestamps) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ turnTimestamps }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "turnTimestamps must be one of: off, before, after",
+        });
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+      },
+    );
 
     it("persists a host process observability opt-out", async () => {
       const routes = createSettingsRoutes({
@@ -1679,6 +1728,206 @@ describe("Settings Routes", () => {
         publicSharesEnabled: false,
       });
       expect(disableAndRevoke).toHaveBeenCalled();
+    });
+
+    it("disables public shares before a later compound effect fails", async () => {
+      settings = { ...settings, publicSharesEnabled: true };
+      const events: string[] = [];
+      let disableMarkerPresent = false;
+      let grantPresent = true;
+      mockServerSettingsService.updateSettings = vi.fn(
+        async (updates: Partial<ServerSettings>) => {
+          settings = { ...settings, ...updates };
+          events.push(`persist:${updates.publicSharesEnabled}`);
+          return settings;
+        },
+      );
+      const disableAndRevoke = vi.fn(async () => {
+        events.push("shares:disable");
+        disableMarkerPresent = true;
+        grantPresent = false;
+        return 1;
+      });
+      const enable = vi.fn(async () => {
+        events.push("shares:enable");
+        if (!disableMarkerPresent) {
+          grantPresent = true;
+        }
+        disableMarkerPresent = false;
+      });
+      const onRemoteSessionPersistenceChanged = vi.fn(async () => {
+        events.push("remote-persistence:fail");
+        throw new Error("remote persistence failed");
+      });
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        onRemoteSessionPersistenceChanged,
+        publicShareService: {
+          disableAndRevoke,
+          enable,
+        } as unknown as PublicShareService,
+      });
+      routes.onError((error, c) => c.json({ error: error.message }, 500));
+
+      const disabling = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicSharesEnabled: false,
+          persistRemoteSessionsToDisk: true,
+        }),
+      });
+
+      expect(disabling.status).toBe(500);
+      expect(await disabling.json()).toEqual({
+        error: "remote persistence failed",
+      });
+      expect(settings.publicSharesEnabled).toBe(false);
+      expect(events).toEqual([
+        "persist:false",
+        "shares:disable",
+        "remote-persistence:fail",
+      ]);
+
+      const enabling = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicSharesEnabled: true }),
+      });
+
+      expect(enabling.status).toBe(200);
+      expect(events).toEqual([
+        "persist:false",
+        "shares:disable",
+        "remote-persistence:fail",
+        "persist:true",
+        "shares:enable",
+      ]);
+      expect(grantPresent).toBe(false);
+    });
+
+    it.each([
+      [false, true],
+      [true, false],
+    ] as const)(
+      "serializes public-share persistence and effects for %s then %s",
+      async (firstEnabled, secondEnabled) => {
+        const gates = [deferred(), deferred()];
+        const events: string[] = [];
+        let _update = 0;
+        mockServerSettingsService.updateSettings = vi.fn(
+          async (updates: Partial<ServerSettings>) => {
+            const enabled = updates.publicSharesEnabled;
+            events.push(`persist:start:${enabled}`);
+            await gates[_update++]!.promise;
+            settings = { ...settings, ...updates };
+            events.push(`persist:done:${enabled}`);
+            return settings;
+          },
+        );
+        const disableAndRevoke = vi.fn(async () => {
+          events.push("effect:false");
+          return 0;
+        });
+        const enable = vi.fn(async () => {
+          events.push("effect:true");
+        });
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+          publicShareService: {
+            disableAndRevoke,
+            enable,
+          } as unknown as PublicShareService,
+        });
+        const request = (enabled: boolean) =>
+          routes.request("/", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ publicSharesEnabled: enabled }),
+          });
+
+        const first = request(firstEnabled);
+        const second = request(secondEnabled);
+        await vi.waitFor(() => {
+          expect(events).toEqual([`persist:start:${firstEnabled}`]);
+        });
+
+        gates[0]!.resolve();
+        await expect(first).resolves.toMatchObject({ status: 200 });
+        await vi.waitFor(() => {
+          expect(events).toEqual([
+            `persist:start:${firstEnabled}`,
+            `persist:done:${firstEnabled}`,
+            `effect:${firstEnabled}`,
+            `persist:start:${secondEnabled}`,
+          ]);
+        });
+
+        gates[1]!.resolve();
+        await expect(second).resolves.toMatchObject({ status: 200 });
+        expect(events).toEqual([
+          `persist:start:${firstEnabled}`,
+          `persist:done:${firstEnabled}`,
+          `effect:${firstEnabled}`,
+          `persist:start:${secondEnabled}`,
+          `persist:done:${secondEnabled}`,
+          `effect:${secondEnabled}`,
+        ]);
+      },
+    );
+
+    it("keeps remote-executor persistence behind an in-flight share disable", async () => {
+      const disableGate = deferred();
+      const events: string[] = [];
+      mockServerSettingsService.updateSettings = vi.fn(
+        async (updates: Partial<ServerSettings>) => {
+          events.push(
+            "publicSharesEnabled" in updates
+              ? `persist:shares:${updates.publicSharesEnabled}`
+              : `persist:executors:${updates.remoteExecutors?.join(",")}`,
+          );
+          settings = { ...settings, ...updates };
+          return settings;
+        },
+      );
+      const disableAndRevoke = vi.fn(async () => {
+        events.push("disable:start");
+        await disableGate.promise;
+        events.push("disable:done");
+        return 0;
+      });
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        publicShareService: {
+          disableAndRevoke,
+        } as unknown as PublicShareService,
+      });
+
+      const disabling = routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicSharesEnabled: false }),
+      });
+      await vi.waitFor(() => {
+        expect(events).toEqual(["persist:shares:false", "disable:start"]);
+      });
+      const updatingExecutors = routes.request("/remote-executors", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ executors: ["worker-one"] }),
+      });
+      await Promise.resolve();
+      expect(events).toEqual(["persist:shares:false", "disable:start"]);
+
+      disableGate.resolve();
+      await expect(disabling).resolves.toMatchObject({ status: 200 });
+      await expect(updatingExecutors).resolves.toMatchObject({ status: 200 });
+      expect(events).toEqual([
+        "persist:shares:false",
+        "disable:start",
+        "disable:done",
+        "persist:executors:worker-one",
+      ]);
     });
 
     it("accepts and normalizes helper target settings", async () => {

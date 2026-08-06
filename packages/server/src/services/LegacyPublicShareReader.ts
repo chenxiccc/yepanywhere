@@ -1,11 +1,18 @@
 import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import { StringDecoder } from "node:string_decoder";
+import {
+  PUBLIC_SHARE_SESSION_DECOMPRESSED_MAX_BYTES,
+  type UrlProjectId,
+} from "@yep-anywhere/shared";
 import type { PublicShareRecord } from "./PublicShareService.js";
+import { enforceOwnerOnlyPathPermissionsStrict } from "../utils/filePermissions.js";
 
 export interface LegacySessionBody {
-  filePath: string;
+  filePath: string | null;
+  snapshotBytes: number;
+  oversized: boolean;
 }
 
 export interface LegacyViewerSnapshot {
@@ -30,17 +37,40 @@ export interface LegacyPublicShareRecord
   viewerSnapshots?: Record<string, LegacyViewerSnapshot>;
 }
 
+async function* decodeUtf8Chunks(
+  source: AsyncIterable<string | Buffer>,
+): AsyncGenerator<string> {
+  let decoder = new StringDecoder("utf8");
+  for await (const chunk of source) {
+    if (typeof chunk === "string") {
+      const pending = decoder.end();
+      if (pending) yield pending;
+      decoder = new StringDecoder("utf8");
+      yield chunk;
+      continue;
+    }
+    const decoded = decoder.write(chunk);
+    if (decoded) yield decoded;
+  }
+  const trailing = decoder.end();
+  if (trailing) yield trailing;
+}
+
 class StreamingCharacterReader {
-  private readonly iterator: AsyncIterator<string | Buffer>;
+  private readonly iterator: AsyncIterator<string>;
   private chunk = "";
   private index = 0;
   private pushed: string | null = null;
 
-  constructor(filePath: string) {
-    this.iterator = createReadStream(filePath, {
-      encoding: "utf8",
-      highWaterMark: 64 * 1024,
-    })[Symbol.asyncIterator]();
+  constructor(source: string | AsyncIterable<string | Buffer>) {
+    const input =
+      typeof source === "string"
+        ? createReadStream(source, {
+            encoding: "utf8",
+            highWaterMark: 64 * 1024,
+          })
+        : source;
+    this.iterator = decodeUtf8Chunks(input)[Symbol.asyncIterator]();
   }
 
   async next(): Promise<string | null> {
@@ -67,110 +97,6 @@ class StreamingCharacterReader {
 
   async close(): Promise<void> {
     await this.iterator.return?.();
-  }
-
-  async copyValueFromFirst(
-    first: string,
-    consume: JsonChunkConsumer,
-  ): Promise<void> {
-    let output = first;
-    const flush = async () => {
-      if (!output) return;
-      const value = output;
-      output = "";
-      await consume(value);
-    };
-    const refill = async (): Promise<boolean> => {
-      await flush();
-      const next = await this.iterator.next();
-      if (next.done) return false;
-      this.chunk = String(next.value);
-      this.index = 0;
-      return true;
-    };
-
-    if (first === "{" || first === "[") {
-      const stack = [first === "{" ? "}" : "]"];
-      let inString = false;
-      let escaped = false;
-      while (true) {
-        if (this.index >= this.chunk.length && !(await refill())) {
-          throw new Error("Invalid legacy public share JSON: truncated value");
-        }
-        const start = this.index;
-        while (this.index < this.chunk.length) {
-          const character = this.chunk[this.index++]!;
-          if (inString) {
-            if (escaped) escaped = false;
-            else if (character === "\\") escaped = true;
-            else if (character === '"') inString = false;
-          } else if (character === '"') {
-            inString = true;
-          } else if (character === "{") {
-            stack.push("}");
-          } else if (character === "[") {
-            stack.push("]");
-          } else if (character === stack.at(-1)) {
-            stack.pop();
-          } else if (character === "}" || character === "]") {
-            throw new Error(
-              "Invalid legacy public share JSON: mismatched value",
-            );
-          }
-          if (stack.length === 0) {
-            output += this.chunk.slice(start, this.index);
-            await flush();
-            return;
-          }
-        }
-        output += this.chunk.slice(start, this.index);
-      }
-    }
-
-    if (first === '"') {
-      let escaped = false;
-      while (true) {
-        if (this.index >= this.chunk.length && !(await refill())) {
-          throw new Error("Invalid legacy public share JSON: truncated string");
-        }
-        const start = this.index;
-        while (this.index < this.chunk.length) {
-          const character = this.chunk[this.index++]!;
-          if (escaped) escaped = false;
-          else if (character === "\\") escaped = true;
-          else if (character === '"') {
-            output += this.chunk.slice(start, this.index);
-            await flush();
-            return;
-          }
-        }
-        output += this.chunk.slice(start, this.index);
-      }
-    }
-
-    while (true) {
-      if (this.index >= this.chunk.length && !(await refill())) {
-        await flush();
-        return;
-      }
-      const start = this.index;
-      while (this.index < this.chunk.length) {
-        const character = this.chunk[this.index]!;
-        if (/\s/.test(character)) {
-          output += this.chunk.slice(start, this.index);
-          this.index += 1;
-          await flush();
-          return;
-        }
-        if (character === "," || character === "]" || character === "}") {
-          output += this.chunk.slice(start, this.index);
-          await flush();
-          return;
-        }
-        this.index += 1;
-      }
-      output += this.chunk.slice(start, this.index);
-    }
   }
 }
 
@@ -226,11 +152,146 @@ async function copyJsonValue(
   reader: StreamingCharacterReader,
   consume: JsonChunkConsumer,
 ): Promise<void> {
-  const first = await nextNonWhitespace(reader);
-  if (first === null) {
-    throw new Error("Invalid legacy public share JSON: missing value");
-  }
-  await reader.copyValueFromFirst(first, consume);
+  let output = "";
+  const flush = async () => {
+    if (!output) return;
+    const chunk = output;
+    output = "";
+    await consume(chunk);
+  };
+  const emit = async (value: string) => {
+    output += value;
+    if (output.length >= 64 * 1024) await flush();
+  };
+  const parseString = async () => {
+    await emit('"');
+    while (true) {
+      const character = await reader.next();
+      if (character === null || character.charCodeAt(0) <= 0x1f) {
+        throw new Error("Invalid legacy public share JSON string");
+      }
+      await emit(character);
+      if (character === '"') return;
+      if (character !== "\\") continue;
+      const escaped = await reader.next();
+      if (escaped === null || !/["\\/bfnrtu]/.test(escaped)) {
+        throw new Error("Invalid legacy public share JSON string escape");
+      }
+      await emit(escaped);
+      if (escaped !== "u") continue;
+      for (let index = 0; index < 4; index += 1) {
+        const digit = await reader.next();
+        if (digit === null || !/[0-9A-Fa-f]/.test(digit)) {
+          throw new Error("Invalid legacy public share JSON unicode escape");
+        }
+        await emit(digit);
+      }
+    }
+  };
+  const parsePrimitive = async (first: string) => {
+    if (first === "t" || first === "f" || first === "n") {
+      const literal = first === "t" ? "true" : first === "f" ? "false" : "null";
+      await emit(first);
+      for (const expected of literal.slice(1)) {
+        const actual = await reader.next();
+        if (actual !== expected) {
+          throw new Error("Invalid legacy public share JSON literal");
+        }
+        await emit(actual);
+      }
+      return;
+    }
+    let token = first;
+    while (true) {
+      const character = await reader.next();
+      if (character === null) break;
+      if (/\s/.test(character)) break;
+      if (character === "," || character === "]" || character === "}") {
+        reader.push(character);
+        break;
+      }
+      token += character;
+    }
+    if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(token)) {
+      throw new Error("Invalid legacy public share JSON number");
+    }
+    await emit(token);
+  };
+  const parseValue = async (first?: string): Promise<void> => {
+    const opening = first ?? (await nextNonWhitespace(reader));
+    if (opening === null) {
+      throw new Error("Invalid legacy public share JSON: missing value");
+    }
+    if (opening === '"') {
+      await parseString();
+      return;
+    }
+    if (opening === "{") {
+      await emit(opening);
+      let next = await nextNonWhitespace(reader);
+      if (next === "}") {
+        await emit(next);
+        return;
+      }
+      if (next !== '"') {
+        throw new Error("Invalid legacy public share JSON object key");
+      }
+      while (true) {
+        await parseString();
+        if ((await nextNonWhitespace(reader)) !== ":") {
+          throw new Error("Invalid legacy public share JSON object separator");
+        }
+        await emit(":");
+        await parseValue();
+        next = await nextNonWhitespace(reader);
+        if (next === "}") {
+          await emit(next);
+          break;
+        }
+        if (next !== ",") {
+          throw new Error("Invalid legacy public share JSON object separator");
+        }
+        await emit(next);
+        next = await nextNonWhitespace(reader);
+        if (next !== '"') {
+          throw new Error("Invalid legacy public share JSON object key");
+        }
+      }
+      return;
+    }
+    if (opening === "[") {
+      await emit(opening);
+      let next = await nextNonWhitespace(reader);
+      if (next === "]") {
+        await emit(next);
+        return;
+      }
+      if (next === null) {
+        throw new Error("Invalid legacy public share JSON array");
+      }
+      while (true) {
+        await parseValue(next);
+        next = await nextNonWhitespace(reader);
+        if (next === "]") {
+          await emit(next);
+          break;
+        }
+        if (next !== ",") {
+          throw new Error("Invalid legacy public share JSON array separator");
+        }
+        await emit(next);
+        next = await nextNonWhitespace(reader);
+        if (next === null) {
+          throw new Error("Invalid legacy public share JSON array");
+        }
+      }
+      return;
+    }
+    await parsePrimitive(opening);
+  };
+
+  await parseValue();
+  await flush();
 }
 
 async function collectJsonValue(
@@ -243,16 +304,55 @@ async function collectJsonValue(
   return JSON.parse(raw);
 }
 
+async function countJsonArrayEntries(
+  reader: StreamingCharacterReader,
+): Promise<number | null> {
+  const opening = await nextNonWhitespace(reader);
+  if (opening === null) {
+    throw new Error("Invalid legacy public share JSON: missing array");
+  }
+  if (opening !== "[") {
+    reader.push(opening);
+    await copyJsonValue(reader, () => undefined);
+    return null;
+  }
+
+  let count = 0;
+  let next = await nextNonWhitespace(reader);
+  if (next === "]") return count;
+  if (next === null) {
+    throw new Error("Invalid legacy public share JSON: truncated array");
+  }
+  while (true) {
+    reader.push(next);
+    await copyJsonValue(reader, () => undefined);
+    count += 1;
+    const separator = await nextNonWhitespace(reader);
+    if (separator === "]") return count;
+    if (separator !== ",") {
+      throw new Error("Invalid legacy public share JSON array separator");
+    }
+    next = await nextNonWhitespace(reader);
+    if (next === null) {
+      throw new Error("Invalid legacy public share JSON: truncated array");
+    }
+  }
+}
+
 async function writeBodyValue(
   reader: StreamingCharacterReader,
   temporaryDirectory: string,
   sequence: number,
+  maxSnapshotBytes: number,
 ): Promise<LegacySessionBody> {
   const filePath = path.join(temporaryDirectory, `body-${sequence}.json`);
   const handle = await fs.open(filePath, "wx", 0o600);
   let inString = false;
   let escaped = false;
+  let snapshotBytes = 0;
+  let oversized = false;
   try {
+    await enforceOwnerOnlyPathPermissionsStrict(filePath, "file");
     await copyJsonValue(reader, async (chunk) => {
       let canonical = "";
       for (const character of chunk) {
@@ -270,13 +370,25 @@ async function writeBodyValue(
           canonical += character;
         }
       }
-      if (canonical) await handle.write(canonical, undefined, "utf8");
+      const chunkBytes = Buffer.byteLength(canonical, "utf8");
+      snapshotBytes += chunkBytes;
+      if (snapshotBytes > maxSnapshotBytes) {
+        oversized = true;
+      }
+      if (canonical && !oversized) {
+        await handle.write(canonical, undefined, "utf8");
+      }
     });
-    await handle.sync();
+    if (!oversized) await handle.sync();
   } finally {
     await handle.close();
   }
-  return { filePath };
+  if (oversized) await fs.rm(filePath);
+  return {
+    filePath: oversized ? null : filePath,
+    snapshotBytes,
+    oversized,
+  };
 }
 
 function normalizeLegacyMentionedPath(
@@ -440,6 +552,7 @@ async function parseViewerSnapshots(
   reader: StreamingCharacterReader,
   temporaryDirectory: string,
   nextBodySequence: () => number,
+  maxSnapshotBytes: number,
 ): Promise<Record<string, LegacyViewerSnapshot> | undefined> {
   const first = await nextNonWhitespace(reader);
   if (first === "n") {
@@ -450,7 +563,7 @@ async function parseViewerSnapshots(
   if (first !== "{") {
     throw new Error("Invalid legacy viewerSnapshots object");
   }
-  const snapshots: Record<string, LegacyViewerSnapshot> = {};
+  const snapshots = Object.create(null) as Record<string, LegacyViewerSnapshot>;
   let separator = await nextNonWhitespace(reader);
   if (separator === "}") return undefined;
   if (separator === null) throw new Error("Truncated legacy viewerSnapshots");
@@ -476,6 +589,7 @@ async function parseViewerSnapshots(
             reader,
             temporaryDirectory,
             nextBodySequence(),
+            maxSnapshotBytes,
           );
         } else {
           await copyJsonValue(reader, () => undefined);
@@ -504,6 +618,7 @@ async function parseRecord(
   reader: StreamingCharacterReader,
   temporaryDirectory: string,
   nextBodySequence: () => number,
+  maxSnapshotBytes: number,
 ): Promise<LegacyPublicShareRecord> {
   await expectCharacter(reader, "{");
   const compact: Record<string, unknown> = {};
@@ -523,12 +638,14 @@ async function parseRecord(
         reader,
         temporaryDirectory,
         nextBodySequence(),
+        maxSnapshotBytes,
       );
     } else if (key === "viewerSnapshots") {
       viewerSnapshots = await parseViewerSnapshots(
         reader,
         temporaryDirectory,
         nextBodySequence,
+        maxSnapshotBytes,
       );
     } else {
       compact[key] = await collectJsonValue(reader);
@@ -559,8 +676,10 @@ async function parseRecord(
 export async function* readLegacyPublicShareRecords(
   filePath: string,
   temporaryDirectory: string,
+  maxSnapshotBytes = PUBLIC_SHARE_SESSION_DECOMPRESSED_MAX_BYTES,
 ): AsyncGenerator<LegacyPublicShareRecord> {
   await fs.mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
+  await enforceOwnerOnlyPathPermissionsStrict(temporaryDirectory, "directory");
   const reader = new StreamingCharacterReader(filePath);
   let bodySequence = 0;
   const nextBodySequence = () => {
@@ -593,6 +712,7 @@ export async function* readLegacyPublicShareRecords(
               reader,
               temporaryDirectory,
               nextBodySequence,
+              maxSnapshotBytes,
             );
             itemSeparator = await nextNonWhitespace(reader);
             if (itemSeparator === "]") break;
@@ -620,12 +740,11 @@ export async function* readLegacyPublicShareRecords(
 }
 
 export async function inspectLegacySessionBody(
-  filePath: string,
+  source: string | AsyncIterable<string | Buffer>,
 ): Promise<{ repairRequired: boolean }> {
-  const reader = new StreamingCharacterReader(filePath);
+  const reader = new StreamingCharacterReader(source);
   let messageCount = 0;
-  let messagesSeen = false;
-  let messagesNonWhitespace = "";
+  let actualMessageCount: number | null | undefined;
   try {
     await expectCharacter(reader, "{");
     let separator = await nextNonWhitespace(reader);
@@ -641,15 +760,7 @@ export async function inspectLegacySessionBody(
           messageCount = value;
         }
       } else if (key === "messages") {
-        messagesSeen = true;
-        await copyJsonValue(reader, (chunk) => {
-          for (const character of chunk) {
-            if (/\s/.test(character)) continue;
-            if (messagesNonWhitespace.length < 3) {
-              messagesNonWhitespace += character;
-            }
-          }
-        });
+        actualMessageCount = await countJsonArrayEntries(reader);
       } else {
         await copyJsonValue(reader, () => undefined);
       }
@@ -661,7 +772,9 @@ export async function inspectLegacySessionBody(
     }
     return {
       repairRequired:
-        messageCount > 0 && (!messagesSeen || messagesNonWhitespace === "[]"),
+        actualMessageCount === undefined
+          ? messageCount > 0
+          : actualMessageCount === null || actualMessageCount < messageCount,
     };
   } finally {
     await reader.close();

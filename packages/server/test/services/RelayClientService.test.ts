@@ -22,7 +22,10 @@ const { MockWebSocket, MockWebSocketInstances } = vi.hoisted(() => {
     OPEN = MockWebSocket.OPEN;
     private listeners: Map<string, Listener[]> = new Map();
 
-    constructor(public url: string) {
+    constructor(
+      public url: string,
+      public options?: { maxPayload?: number },
+    ) {
       instances.push(this);
       // Simulate async connection
       setTimeout(() => {
@@ -84,6 +87,7 @@ vi.mock("ws", () => {
 
 // Import after mock setup
 import { RelayClientService } from "../../src/services/RelayClientService.js";
+import { MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES } from "../../src/websocketLimits.js";
 
 describe("RelayClientService", () => {
   let service: RelayClientService;
@@ -124,6 +128,7 @@ describe("RelayClientService", () => {
       // Should have sent registration message
       expect(MockWebSocketInstances.length).toBe(1);
       const ws = MockWebSocketInstances[0];
+      expect(ws.options?.maxPayload).toBe(MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES);
       expect(ws.sentMessages.length).toBe(1);
       expect(JSON.parse(ws.sentMessages[0])).toEqual({
         type: "server_register",
@@ -222,6 +227,39 @@ describe("RelayClientService", () => {
       });
 
       expect(firstWs.readyState).toBe(MockWebSocket.CLOSED);
+    });
+
+    it("ignores callbacks from a replaced connection", async () => {
+      service.start({
+        relayUrl: "wss://old-relay.example.com/ws",
+        username: "old-user",
+        installId: "old-install",
+        onRelayConnection: mockOnRelayConnection,
+      });
+      const firstWs = MockWebSocketInstances[0];
+
+      service.start({
+        relayUrl: "wss://new-relay.example.com/ws",
+        username: "new-user",
+        installId: "new-install",
+        onRelayConnection: mockOnRelayConnection,
+      });
+      const secondWs = MockWebSocketInstances[1];
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(firstWs.sentMessages).toEqual([]);
+      expect(JSON.parse(secondWs.sentMessages[0])).toMatchObject({
+        username: "new-user",
+        installId: "new-install",
+      });
+
+      firstWs.simulateMessage(JSON.stringify({ type: "server_registered" }));
+      firstWs.simulateMessage(JSON.stringify({ type: "srp_hello" }));
+      expect(service.getState().status).toBe("registering");
+      expect(mockOnRelayConnection).not.toHaveBeenCalled();
+
+      secondWs.simulateMessage(JSON.stringify({ type: "server_registered" }));
+      expect(service.getState().status).toBe("waiting");
     });
   });
 
@@ -375,6 +413,52 @@ describe("RelayClientService", () => {
       ws.simulateMessage(unknownMsg);
 
       expect(mockOnRelayConnection).toHaveBeenCalledWith(ws, unknownMsg, false);
+    });
+
+    it("never logs claimed or malformed text payloads", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const warn = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => undefined);
+      try {
+        service.start({
+          relayUrl: "wss://relay.example.com/ws",
+          username: "testuser",
+          installId: "install-123",
+          onRelayConnection: mockOnRelayConnection,
+        });
+        await vi.advanceTimersByTimeAsync(10);
+
+        const ws = MockWebSocketInstances[0];
+        ws.simulateMessage(JSON.stringify({ type: "server_registered" }));
+        const claimedBearer = "claimed-public-share-bearer";
+        const claimedMessage = JSON.stringify({
+          type: "request",
+          id: "x",
+          method: "GET",
+          path: `/public-api/shares/${claimedBearer}/metadata`,
+          headers: {},
+        });
+        ws.simulateMessage(claimedMessage);
+
+        const malformedBearer = "malformed-public-share-bearer";
+        MockWebSocketInstances[1].simulateMessage(
+          `not-json /public-api/shares/${malformedBearer}/metadata`,
+        );
+
+        const logged = JSON.stringify([...log.mock.calls, ...warn.mock.calls]);
+        expect(logged).not.toContain(claimedBearer);
+        expect(logged).not.toContain(malformedBearer);
+        expect(logged).not.toContain(claimedMessage);
+        expect(mockOnRelayConnection).toHaveBeenCalledWith(
+          ws,
+          claimedMessage,
+          false,
+        );
+      } finally {
+        log.mockRestore();
+        warn.mockRestore();
+      }
     });
   });
 

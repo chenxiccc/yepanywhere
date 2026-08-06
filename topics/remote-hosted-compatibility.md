@@ -118,6 +118,41 @@ the existing compatibility metadata.
   should not be the primary client/server compatibility contract because site
   and server releases use different version systems.
 
+## Client-advertised transport formats
+
+`ClientCapabilities.formats` negotiates binary wire formats independently of
+`/api/version` capabilities. A server may emit a format only after that client
+advertises it. Unknown format numbers in a capability list have no effect on an
+older server.
+
+Format `0x05` carries one contiguous part of an already encoded binary message.
+The sender compresses and encrypts first, then divides the resulting envelope;
+the receiver reassembles the exact envelope before decryption or JSON parsing.
+Each physical chunk carries at most 256 KiB of data plus its format byte and
+12-byte message-id/offset/total header. One connection accepts one strictly
+ordered message at a time and retains at most 64 MiB for reassembly. Missing,
+interleaved, oversized, or interrupted sequences fail closed. File uploads keep
+their existing `0x02` format and 64 KiB application chunks.
+
+New direct and secure clients advertise `0x05`. A new server sends bounded
+chunks only to those clients; without `0x05`, it preserves the complete-frame
+behavior. The supported core release corpus (`v0.5.2`, `v0.6.0`, `v0.6.1`,
+`v0.6.2`, and `v0.7.0`) already accepts `client_capabilities` on the shared
+WebSocket router and stores unknown format values without acting on them, so a
+new client remains compatible with those servers.
+
+YA's direct WebSocket server, relay client, and public relay retain the existing
+100 MiB compatibility allowance for one physical inbound WebSocket message.
+The relay exposes that value as `RELAY_WEBSOCKET_MAX_MESSAGE_BYTES`, but cannot
+inspect end-to-end encrypted capability negotiation; lowering a production
+default could reject a complete frame from an older supported peer. Operators
+may exercise a lower admission boundary without changing the application chunk
+contract. Large historical localhost responses may travel over direct HTTP
+instead, while live WebSocket events use the negotiated binary format. Relay
+mux framing remains unchanged: a complete transport-chunk frame is at most
+256 KiB + 13 bytes, below the incumbent 2 MiB opaque mux-frame default, and
+requires no new mux flag.
+
 ## Support Horizon
 
 The coarse compatibility level does not shorten feature-level support. Apply

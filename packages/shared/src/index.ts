@@ -670,6 +670,8 @@ export {
   isSystemMessage,
   isSummaryMessage,
   isConversationMessage,
+  isAppMessage,
+  isAppSession,
   // Context window utilities
   DEFAULT_CONTEXT_WINDOW,
   CODEX_DEFAULT_CONTEXT_WINDOW,
@@ -692,12 +694,30 @@ export type {
   CodexSessionContent,
 } from "./session/index.js";
 
+export {
+  PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY,
+  PUBLIC_SHARE_TITLE_MAX_LENGTH,
+  PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH,
+  PUBLIC_SHARE_LEGACY_RELAY_BODY_MAX_BYTES,
+  PUBLIC_SHARE_LEGACY_RELAY_FRAME_MAX_BYTES,
+  PUBLIC_SHARE_SESSION_CHUNK_MAX_BYTES,
+  PUBLIC_SHARE_SESSION_COMPRESSED_MAX_BYTES,
+  PUBLIC_SHARE_SESSION_DECOMPRESSED_MAX_BYTES,
+  PUBLIC_SHARE_SESSION_MAX_CHUNK_COUNT,
+  isPublicShareSessionChunksMetadata,
+  isPublicShareSessionTransferSizeWithinLimits,
+  isPublicSessionShareMetadata,
+  isPublicSessionSharePublicMetadata,
+  isPublicSessionShareResponse,
+} from "./public-shares.js";
+
 export type {
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
   FreezePublicSessionLiveSharesResponse,
   PublicSessionShareMetadata,
   PublicShareLinkedFileMode,
+  PublicShareSessionChunksMetadata,
   PublicShareManagementItem,
   PublicShareManagementListResponse,
   PublicShareStorageState,
@@ -956,6 +976,16 @@ export {
   // Phase 3: Compressed JSON
   encodeCompressedJsonFrame,
   decodeCompressedJsonFrame,
+  // Phase 4: Bounded transport chunks
+  TRANSPORT_CHUNK_HEADER_SIZE,
+  TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES,
+  TRANSPORT_REASSEMBLY_MAX_BYTES,
+  TransportChunkError,
+  type TransportChunkData,
+  encodeTransportChunkFrame,
+  decodeTransportChunkFrame,
+  encodeTransportChunkFrames,
+  TransportChunkReassembler,
 } from "./binary-framing.js";
 
 // Compression utilities (Phase 3)

@@ -14,9 +14,13 @@ export interface RelayTelemetryRuntimeConfig {
   sampleIntervalMs: number;
 }
 
+export const DEFAULT_RELAY_WEBSOCKET_MAX_MESSAGE_BYTES = 100 * 1024 * 1024;
+
 export interface RelayConfig {
   /** Port for the relay server (default: 4400) */
   port: number;
+  /** Maximum bytes accepted in one physical WebSocket message. */
+  webSocketMaxMessageBytes: number;
   /** File to write the actual port to after binding (for test harnesses) */
   portFile: string | null;
   /** Data directory for SQLite database (default: ~/.yep-relay/) */
@@ -87,6 +91,10 @@ export function loadConfig(): RelayConfig {
 
   return {
     port: getEnvNumber("RELAY_PORT", 4400),
+    webSocketMaxMessageBytes: getEnvNumber(
+      "RELAY_WEBSOCKET_MAX_MESSAGE_BYTES",
+      DEFAULT_RELAY_WEBSOCKET_MAX_MESSAGE_BYTES,
+    ),
     portFile: process.env.RELAY_PORT_FILE ?? null,
     dataDir,
     pingIntervalMs: getEnvNumber("RELAY_PING_INTERVAL_MS", 60_000),

@@ -162,7 +162,10 @@ const server = createServer(requestListener);
 
 // Create WebSocket server attached to the HTTP server, but with noServer
 // so we can manually handle upgrades for the supported relay paths.
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({
+  noServer: true,
+  maxPayload: config.webSocketMaxMessageBytes,
+});
 
 // Handle WebSocket connections
 wss.on("connection", (ws, request) => {

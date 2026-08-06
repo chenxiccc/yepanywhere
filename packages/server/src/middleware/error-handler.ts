@@ -26,12 +26,19 @@ export class HttpError extends Error {
  * app covers every route group; a sub-app exercised by direct-request tests
  * installs the same handler itself.
  */
+function redactRequestPath(path: string): string {
+  return path.replace(/(\/public-api\/shares\/)[^/]+/g, "$1[redacted]");
+}
+
 export function structuredErrorHandler(error: Error, c: Context): Response {
   if (error instanceof HTTPException) {
     return error.getResponse();
   }
   const message = error.message || String(error);
-  console.error(`[API] ${c.req.method} ${c.req.path} error:`, message);
+  console.error(
+    `[API] ${c.req.method} ${redactRequestPath(c.req.path)} error:`,
+    message,
+  );
   if (error instanceof HttpError) {
     return c.json({ error: message }, error.status);
   }

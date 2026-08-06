@@ -1,6 +1,13 @@
 import { createReadStream, type Stats } from "node:fs";
-import { open, readFile, realpath, stat } from "node:fs/promises";
+import {
+  open,
+  readFile,
+  realpath,
+  stat,
+  type FileHandle,
+} from "node:fs/promises";
 import { homedir } from "node:os";
+import { Readable } from "node:stream";
 import {
   basename,
   dirname,
@@ -24,6 +31,10 @@ import { highlightFile } from "../highlighting/index.js";
 import { linkifyProjectPaths } from "../augments/project-path-links.js";
 import { getProjectPathIndex } from "../projects/projectPathIndex.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import {
+  openProjectRelativeFile,
+  readFileHandleBounded,
+} from "../utils/projectFileAccess.js";
 import { isLikelyUtf8Text } from "../utils/utf8Text.js";
 import { createLocalResourcePathPolicy } from "./local-resource-policy.js";
 
@@ -38,6 +49,8 @@ export interface FilesDeps {
   allowedPaths?: string[] | (() => string[]);
   /** Whether scanned project paths are part of the allow-set (default: true). */
   includeProjects?: () => boolean;
+  /** Fail closed unless relative project files can remain descriptor-bound. */
+  strictProjectFileAccess?: boolean;
 }
 
 type LocalResourcePathPolicy = ReturnType<typeof createLocalResourcePathPolicy>;
@@ -306,6 +319,29 @@ interface TextContentSlice {
 }
 
 type FileViewMode = "full" | "range";
+type FileReadSource = string | FileHandle;
+
+function createTextReadStream(source: FileReadSource) {
+  return typeof source === "string"
+    ? createReadStream(source, { encoding: "utf8" })
+    : source.createReadStream({
+        autoClose: false,
+        encoding: "utf8",
+        start: 0,
+      });
+}
+
+async function readUtf8Bounded(
+  source: FileReadSource,
+  maxBytes: number,
+): Promise<string | null> {
+  if (typeof source === "string") {
+    const content = await readFile(source);
+    return content.byteLength <= maxBytes ? content.toString("utf8") : null;
+  }
+  const content = await readFileHandleBounded(source, maxBytes);
+  return content?.toString("utf8") ?? null;
+}
 
 interface LineEntry {
   bytes: number;
@@ -337,7 +373,7 @@ function trimLineWindowToBudget(
 }
 
 async function readTargetedTextWindow(
-  filePath: string,
+  source: FileReadSource,
   range: { end: number; start: number },
 ): Promise<TextContentSlice> {
   const beforeLines: LineEntry[] = [];
@@ -349,7 +385,7 @@ async function readTargetedTextWindow(
   let lineNumber = 0;
   let completed = true;
 
-  const stream = createReadStream(filePath, { encoding: "utf8" });
+  const stream = createTextReadStream(source);
   const reader = createInterface({
     crlfDelay: Number.POSITIVE_INFINITY,
     input: stream,
@@ -470,7 +506,7 @@ function sliceContentToRange(
 }
 
 async function readExactTextRange(
-  filePath: string,
+  source: FileReadSource,
   range: { end: number; start: number },
 ): Promise<TextContentSlice> {
   const selected: LineEntry[] = [];
@@ -478,7 +514,7 @@ async function readExactTextRange(
   let lineNumber = 0;
   let completed = true;
 
-  const stream = createReadStream(filePath, { encoding: "utf8" });
+  const stream = createTextReadStream(source);
   const reader = createInterface({
     crlfDelay: Number.POSITIVE_INFINITY,
     input: stream,
@@ -579,6 +615,7 @@ function collectRenderedMarkdownMediaPaths(html: string): string[] {
 async function collectEmbeddedMarkdownMedia(
   html: string,
   projectRoot: string,
+  strictProjectFileAccess: boolean,
 ): Promise<FileContentResponse["embeddedMedia"] | undefined> {
   const mediaPaths = collectRenderedMarkdownMediaPaths(html);
   if (mediaPaths.length === 0) {
@@ -593,34 +630,57 @@ async function collectEmbeddedMarkdownMedia(
   let totalBytes = 0;
   const embeddedMedia: NonNullable<FileContentResponse["embeddedMedia"]> = {};
   for (const rawPath of mediaPaths) {
-    if (!rawPath || !isAbsolute(rawPath)) {
-      continue;
-    }
-    const realPath = await realpath(rawPath).catch(() => null);
-    if (!realPath || !isPathInsideDirectory(realPath, realRoot)) {
-      continue;
-    }
-
-    const stats = await stat(realPath).catch(() => null);
     if (
-      !stats?.isFile() ||
-      stats.size > MAX_EMBEDDED_MARKDOWN_MEDIA_FILE_BYTES ||
-      totalBytes + stats.size > MAX_EMBEDDED_MARKDOWN_MEDIA_BYTES
+      !rawPath ||
+      !isAbsolute(rawPath) ||
+      !isPathInsideDirectory(rawPath, realRoot)
     ) {
       continue;
     }
 
-    const mimeType = getMimeType(realPath);
-    if (!mimeType.startsWith("image/")) {
+    const relativePath = relative(realRoot, rawPath);
+    const opened = strictProjectFileAccess
+      ? await openProjectRelativeFile(realRoot, relativePath)
+      : null;
+    const realPath = opened
+      ? opened.filePath
+      : strictProjectFileAccess
+        ? null
+        : await realpath(rawPath).catch(() => null);
+    if (!realPath || !isPathInsideDirectory(realPath, realRoot)) {
+      await opened?.handle.close();
       continue;
     }
 
-    const data = (await readFile(realPath)).toString("base64");
-    const value = { data, mimeType };
-    totalBytes += stats.size;
-    embeddedMedia[rawPath] = value;
-    embeddedMedia[realPath] = value;
-    embeddedMedia[relative(realRoot, realPath).replaceAll("\\", "/")] = value;
+    const mediaHandle = opened?.handle ?? (await open(realPath, "r"));
+    try {
+      const stats = opened?.stats ?? (await mediaHandle.stat());
+      if (
+        !stats.isFile() ||
+        stats.size > MAX_EMBEDDED_MARKDOWN_MEDIA_FILE_BYTES ||
+        totalBytes + stats.size > MAX_EMBEDDED_MARKDOWN_MEDIA_BYTES
+      ) {
+        continue;
+      }
+
+      const mimeType = getMimeType(realPath);
+      if (!mimeType.startsWith("image/")) {
+        continue;
+      }
+
+      const content = await readFileHandleBounded(
+        mediaHandle,
+        MAX_EMBEDDED_MARKDOWN_MEDIA_FILE_BYTES,
+      );
+      if (!content) continue;
+      const value = { data: content.toString("base64"), mimeType };
+      totalBytes += content.byteLength;
+      embeddedMedia[rawPath] = value;
+      embeddedMedia[realPath] = value;
+      embeddedMedia[relative(realRoot, realPath).replaceAll("\\", "/")] = value;
+    } finally {
+      await mediaHandle.close();
+    }
   }
 
   return Object.keys(embeddedMedia).length > 0 ? embeddedMedia : undefined;
@@ -665,7 +725,7 @@ function isSniffableUnknownTextCandidate(
 }
 
 async function isSniffedTextFile(
-  filePath: string,
+  source: FileReadSource,
   stats: Stats,
 ): Promise<boolean> {
   if (stats.size === 0) {
@@ -674,14 +734,14 @@ async function isSniffedTextFile(
 
   const bytesToRead = Math.min(stats.size, TEXT_SNIFF_BYTES);
   const buffer = Buffer.alloc(bytesToRead);
-  const file = await open(filePath, "r");
+  const file = typeof source === "string" ? await open(source, "r") : source;
   try {
     const { bytesRead } = await file.read(buffer, 0, bytesToRead, 0);
     return isLikelyUtf8Text(buffer.subarray(0, bytesRead));
   } catch {
     return false;
   } finally {
-    await file.close();
+    if (typeof source === "string") await file.close();
   }
 }
 
@@ -827,158 +887,173 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
     // Get the project's working directory
     const projectRoot = project.path;
 
-    // Resolve and validate file path
-    const filePath = await resolveFilePath(
-      projectRoot,
-      relativePath,
-      pathPolicy,
-    );
-    if (!filePath) {
-      return c.json({ error: "Invalid file path" }, 400);
-    }
-
-    // Check file exists and get stats
+    let filePath: string;
     let stats: Stats;
-    try {
-      stats = await stat(filePath);
-    } catch {
-      return c.json({ error: "File not found" }, 404);
-    }
-
-    // Must be a file, not a directory
-    if (!stats.isFile()) {
-      return c.json({ error: "Path is not a file" }, 400);
-    }
-
-    const mimeType = getMimeType(filePath);
-    const knownText = isTextFile(filePath);
-    const isText =
-      knownText ||
-      (isSniffableUnknownTextCandidate(filePath, mimeType) &&
-        (await isSniffedTextFile(filePath, stats)));
-
-    const metadata: FileMetadata = {
-      path: relativePath,
-      size: stats.size,
-      mimeType,
-      isText,
-    };
-
-    // Build raw URL
-    const rawUrl = `/api/projects/${projectId}/files/raw?path=${encodeURIComponent(relativePath)}`;
-
-    const response: FileContentResponse = {
-      metadata,
-      rawUrl,
-    };
-
-    // For text files under size limit, include the whole file unless the link
-    // explicitly asks for a compact range view. For targeted links into larger
-    // files, include a bounded window centered on the target.
-    if (isText && (stats.size <= MAX_INLINE_SIZE || requestedRange)) {
+    let fileHandle: FileHandle | undefined;
+    if (deps.strictProjectFileAccess) {
+      const opened = await openProjectRelativeFile(projectRoot, relativePath);
+      if (!opened) {
+        return c.json({ error: "File not found" }, 404);
+      }
+      filePath = opened.filePath;
+      stats = opened.stats;
+      fileHandle = opened.handle;
+    } else {
+      const resolved = await resolveFilePath(
+        projectRoot,
+        relativePath,
+        pathPolicy,
+      );
+      if (!resolved) {
+        return c.json({ error: "Invalid file path" }, 400);
+      }
+      filePath = resolved;
       try {
-        const fullInlineContent =
-          stats.size <= MAX_INLINE_SIZE
-            ? await readFile(filePath, "utf-8")
-            : undefined;
-        const slice =
-          viewMode === "range" && requestedRange
-            ? fullInlineContent !== undefined
-              ? sliceContentToRange(fullInlineContent, requestedRange)
-              : await readExactTextRange(filePath, requestedRange)
-            : fullInlineContent !== undefined
-              ? {
-                  content: fullInlineContent,
-                  endLine: undefined,
-                  startLine: 1,
-                  totalLines: undefined,
-                  truncated: false,
-                }
-              : await readTargetedTextWindow(filePath, requestedRange!);
-        const { content } = slice;
-        response.content = content;
-        response.contentStartLine = slice.startLine;
-        if (slice.endLine !== undefined) {
-          response.contentEndLine = slice.endLine;
-        }
-        if (slice.totalLines !== undefined) {
-          response.contentTotalLines = slice.totalLines;
-        }
-        if (slice.truncated) {
-          response.contentTruncated = true;
-        }
-
-        // Add syntax highlighting if requested
-        if (highlight) {
-          const result = await highlightFile(content, relativePath);
-          if (result) {
-            // A path in this file's text is a link when it names a real file
-            // here, so an agent handing over a JSON manifest of run outputs
-            // becomes navigable without the reader copying paths out.
-            const pathIndex = await getProjectPathIndex(projectRoot);
-            try {
-              response.highlightedHtml = await linkifyProjectPaths(
-                result.html,
-                {
-                  projectPath: projectRoot,
-                  index: pathIndex,
-                  selfRelativePath: relativePath,
-                },
-              );
-            } finally {
-              pathIndex.release();
-            }
-            response.highlightedLanguage = result.language;
-            response.highlightedTruncated = result.truncated;
-          }
-
-          // Render markdown preview for .md files
-          const ext = extname(relativePath).toLowerCase();
-          if (ext === ".md" || ext === ".markdown") {
-            try {
-              const largeRangePreviewSlice =
-                fullInlineContent === undefined &&
-                viewMode === "range" &&
-                requestedRange
-                  ? await readTargetedTextWindow(filePath, requestedRange)
-                  : undefined;
-              const previewContent =
-                fullInlineContent !== undefined && requestedRange
-                  ? fullInlineContent
-                  : (largeRangePreviewSlice?.content ?? content);
-              const previewStartLine =
-                fullInlineContent !== undefined && requestedRange
-                  ? 1
-                  : (largeRangePreviewSlice?.startLine ?? slice.startLine);
-              const renderedMarkdownHtml = await renderMarkdownFilePreview(
-                previewContent,
-                {
-                  localFileBasePath: dirname(filePath),
-                  projectFileLinks: {
-                    projectId,
-                    projectPath: projectRoot,
-                  },
-                },
-                previewStartLine,
-                requestedRange,
-                viewMode,
-              );
-              response.renderedMarkdownHtml = renderedMarkdownHtml;
-              response.embeddedMedia = await collectEmbeddedMarkdownMedia(
-                renderedMarkdownHtml,
-                projectRoot,
-              );
-            } catch {
-              // Ignore markdown rendering errors
-            }
-          }
-        }
+        stats = await stat(filePath);
       } catch {
-        // If we can't read as text, just omit content
+        return c.json({ error: "File not found" }, 404);
+      }
+      if (!stats.isFile()) {
+        return c.json({ error: "Path is not a file" }, 400);
       }
     }
 
-    return c.json(response);
+    const readSource = fileHandle ?? filePath;
+    try {
+      const mimeType = getMimeType(filePath);
+      const knownText = isTextFile(filePath);
+      const isText =
+        knownText ||
+        (isSniffableUnknownTextCandidate(filePath, mimeType) &&
+          (await isSniffedTextFile(readSource, stats)));
+
+      const metadata: FileMetadata = {
+        path: relativePath,
+        size: stats.size,
+        mimeType,
+        isText,
+      };
+
+      // Build raw URL
+      const rawUrl = `/api/projects/${projectId}/files/raw?path=${encodeURIComponent(relativePath)}`;
+
+      const response: FileContentResponse = {
+        metadata,
+        rawUrl,
+      };
+
+      // For text files under size limit, include the whole file unless the link
+      // explicitly asks for a compact range view. For targeted links into larger
+      // files, include a bounded window centered on the target.
+      if (isText && (stats.size <= MAX_INLINE_SIZE || requestedRange)) {
+        try {
+          const fullInlineContent =
+            stats.size <= MAX_INLINE_SIZE
+              ? ((await readUtf8Bounded(readSource, MAX_INLINE_SIZE)) ??
+                undefined)
+              : undefined;
+          const slice =
+            viewMode === "range" && requestedRange
+              ? fullInlineContent !== undefined
+                ? sliceContentToRange(fullInlineContent, requestedRange)
+                : await readExactTextRange(readSource, requestedRange)
+              : fullInlineContent !== undefined
+                ? {
+                    content: fullInlineContent,
+                    endLine: undefined,
+                    startLine: 1,
+                    totalLines: undefined,
+                    truncated: false,
+                  }
+                : await readTargetedTextWindow(readSource, requestedRange!);
+          const { content } = slice;
+          response.content = content;
+          response.contentStartLine = slice.startLine;
+          if (slice.endLine !== undefined) {
+            response.contentEndLine = slice.endLine;
+          }
+          if (slice.totalLines !== undefined) {
+            response.contentTotalLines = slice.totalLines;
+          }
+          if (slice.truncated) {
+            response.contentTruncated = true;
+          }
+
+          // Add syntax highlighting if requested
+          if (highlight) {
+            const result = await highlightFile(content, relativePath);
+            if (result) {
+              // A path in this file's text is a link when it names a real file
+              // here, so an agent handing over a JSON manifest of run outputs
+              // becomes navigable without the reader copying paths out.
+              const pathIndex = await getProjectPathIndex(projectRoot);
+              try {
+                response.highlightedHtml = await linkifyProjectPaths(
+                  result.html,
+                  {
+                    projectPath: projectRoot,
+                    index: pathIndex,
+                    selfRelativePath: relativePath,
+                  },
+                );
+              } finally {
+                pathIndex.release();
+              }
+              response.highlightedLanguage = result.language;
+              response.highlightedTruncated = result.truncated;
+            }
+
+            // Render markdown preview for .md files
+            const ext = extname(relativePath).toLowerCase();
+            if (ext === ".md" || ext === ".markdown") {
+              try {
+                const largeRangePreviewSlice =
+                  fullInlineContent === undefined &&
+                  viewMode === "range" &&
+                  requestedRange
+                    ? await readTargetedTextWindow(readSource, requestedRange)
+                    : undefined;
+                const previewContent =
+                  fullInlineContent !== undefined && requestedRange
+                    ? fullInlineContent
+                    : (largeRangePreviewSlice?.content ?? content);
+                const previewStartLine =
+                  fullInlineContent !== undefined && requestedRange
+                    ? 1
+                    : (largeRangePreviewSlice?.startLine ?? slice.startLine);
+                const renderedMarkdownHtml = await renderMarkdownFilePreview(
+                  previewContent,
+                  {
+                    localFileBasePath: dirname(filePath),
+                    projectFileLinks: {
+                      projectId,
+                      projectPath: projectRoot,
+                    },
+                  },
+                  previewStartLine,
+                  requestedRange,
+                  viewMode,
+                );
+                response.renderedMarkdownHtml = renderedMarkdownHtml;
+                response.embeddedMedia = await collectEmbeddedMarkdownMedia(
+                  renderedMarkdownHtml,
+                  projectRoot,
+                  deps.strictProjectFileAccess ?? false,
+                );
+              } catch {
+                // Ignore markdown rendering errors
+              }
+            }
+          }
+        } catch {
+          // If we can't read as text, just omit content
+        }
+      }
+
+      return c.json(response);
+    } finally {
+      await fileHandle?.close();
+    }
   });
 
   /**
@@ -1014,54 +1089,58 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
     // Get the project's working directory
     const projectRoot = project.path;
 
-    // Resolve and validate file path
-    const filePath = await resolveFilePath(
-      projectRoot,
-      relativePath,
-      pathPolicy,
-    );
-    if (!filePath) {
-      return c.json({ error: "Invalid file path" }, 400);
-    }
-
-    // Check file exists and get stats
+    let filePath: string;
     let stats: Stats;
-    try {
-      stats = await stat(filePath);
-    } catch {
-      return c.json({ error: "File not found" }, 404);
-    }
-
-    // Must be a file, not a directory
-    if (!stats.isFile()) {
-      return c.json({ error: "Path is not a file" }, 400);
-    }
-
-    // Read file content
-    let content: Buffer;
-    try {
-      content = await readFile(filePath);
-    } catch {
-      return c.json({ error: "Failed to read file" }, 500);
+    let fileHandle: FileHandle | undefined;
+    if (deps.strictProjectFileAccess) {
+      const opened = await openProjectRelativeFile(projectRoot, relativePath);
+      if (!opened) {
+        return c.json({ error: "File not found" }, 404);
+      }
+      filePath = opened.filePath;
+      stats = opened.stats;
+      fileHandle = opened.handle;
+    } else {
+      const resolved = await resolveFilePath(
+        projectRoot,
+        relativePath,
+        pathPolicy,
+      );
+      if (!resolved) {
+        return c.json({ error: "Invalid file path" }, 400);
+      }
+      filePath = resolved;
+      try {
+        stats = await stat(filePath);
+      } catch {
+        return c.json({ error: "File not found" }, 404);
+      }
+      if (!stats.isFile()) {
+        return c.json({ error: "Path is not a file" }, 400);
+      }
     }
 
     const mimeType = getMimeType(filePath);
     const fileName = relativePath.split("/").pop() || "file";
-
-    // Set headers
     const headers: Record<string, string> = {
       "Content-Type": mimeType,
-      "Content-Length": String(content.length),
+      "Content-Length": String(stats.size),
+      "Content-Disposition": download
+        ? `attachment; filename="${fileName}"`
+        : `inline; filename="${fileName}"`,
     };
 
-    if (download) {
-      headers["Content-Disposition"] = `attachment; filename="${fileName}"`;
-    } else {
-      headers["Content-Disposition"] = `inline; filename="${fileName}"`;
+    try {
+      const stream = fileHandle
+        ? fileHandle.createReadStream({ autoClose: true, start: 0 })
+        : createReadStream(filePath);
+      const body = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+      const response = new Response(body, { headers });
+      fileHandle = undefined;
+      return response;
+    } finally {
+      await fileHandle?.close();
     }
-
-    // Convert Buffer to Uint8Array for Response compatibility
-    return new Response(new Uint8Array(content), { headers });
   });
 
   /**

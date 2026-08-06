@@ -7,7 +7,7 @@ import {
   normalizeRelayUrl,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { BrandWordmark } from "../components/BrandWordmark";
 import { ConversationViewIcon } from "../components/ConversationViewIcon";
 import { MessageList } from "../components/MessageList";
@@ -24,7 +24,7 @@ import { StreamingMarkdownProvider } from "../contexts/StreamingMarkdownContext"
 import { ToastProvider } from "../contexts/ToastContext";
 import { useI18n } from "../i18n";
 import {
-  fetchPublicShareMetadataViaRelay,
+  fetchPublicShareV2ViaRelay,
   fetchPublicShareViaRelay,
   PublicShareRelayError,
 } from "../lib/publicShareRelay";
@@ -234,6 +234,28 @@ export function getPublicShareCautionKey(
 }
 
 export function PublicSharePage() {
+  const { secret } = useParams<{ secret: string }>();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const requestedViewerId = searchParams.get("viewerId");
+  const shareIdentity = JSON.stringify([
+    secret ?? "",
+    searchParams.get("h") ?? "",
+    searchParams.get("r") ?? "",
+    requestedViewerId && PUBLIC_SHARE_VIEWER_ID_REGEX.test(requestedViewerId)
+      ? requestedViewerId
+      : "",
+    location.hash,
+  ]);
+  return (
+    <PublicSharePageGeneration
+      key={shareIdentity}
+      locationHash={location.hash}
+    />
+  );
+}
+
+function PublicSharePageGeneration({ locationHash }: { locationHash: string }) {
   const { t } = useI18n();
   const { secret } = useParams<{ secret: string }>();
   const [searchParams] = useSearchParams();
@@ -271,7 +293,7 @@ export function PublicSharePage() {
       };
     }
   }, [searchParams]);
-  const hints = useMemo(() => parseShareHints(window.location.hash), []);
+  const hints = useMemo(() => parseShareHints(locationHash), [locationHash]);
   const publicShareContext = useMemo<PublicShareContextValue | null>(() => {
     if (!secret || !relayUsername) {
       return null;
@@ -331,21 +353,39 @@ export function PublicSharePage() {
   const initialPromptPreview = metadata?.initialPrompt ?? hints.initialPrompt;
 
   const refresh = useCallback(
-    async (afterMessageId?: string) => {
+    async (
+      afterMessageId?: string,
+      onMetadata?: (metadata: PublicSessionSharePublicMetadata) => void,
+      signal?: AbortSignal,
+    ) => {
       if (!secret || !relayUsername) {
         throw new Error(t("publicShareMissingRelay"));
       }
       if (relayConfig.error) {
         throw new Error(relayConfig.error);
       }
-      return await fetchPublicShareViaRelay({
-        afterMessageId,
-        relayUrl: relayConfig.url,
-        relayUsername,
-        secret,
-        viewerId,
-        rawJson: hints.version === 2,
-      });
+      if (hints.version === 2 && !afterMessageId) {
+        const result = await fetchPublicShareV2ViaRelay({
+          relayUrl: relayConfig.url,
+          relayUsername,
+          secret,
+          viewerId,
+          signal,
+          onMetadata,
+        });
+        return { metadata: result.metadata, share: result.share };
+      }
+      return {
+        share: await fetchPublicShareViaRelay({
+          afterMessageId,
+          relayUrl: relayConfig.url,
+          relayUsername,
+          secret,
+          viewerId,
+          rawJson: hints.version === 2,
+          signal,
+        }),
+      };
     },
     [
       hints.version,
@@ -359,45 +399,9 @@ export function PublicSharePage() {
   );
 
   useEffect(() => {
-    if (hints.version !== 2 || !secret || !relayUsername || relayConfig.error) {
-      return undefined;
-    }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const loadMetadata = async () => {
-      try {
-        const next = await fetchPublicShareMetadataViaRelay({
-          relayUrl: relayConfig.url,
-          relayUsername,
-          secret,
-        });
-        if (!cancelled) setMetadata(next);
-      } catch (metadataError) {
-        if (
-          !cancelled &&
-          metadataError instanceof PublicShareRelayError &&
-          metadataError.retryable
-        ) {
-          timer = setTimeout(loadMetadata, RETRY_POLL_MS);
-        }
-      }
-    };
-    void loadMetadata();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [
-    hints.version,
-    relayConfig.error,
-    relayConfig.url,
-    relayUsername,
-    secret,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    const abortController = new AbortController();
 
     const run = async () => {
       try {
@@ -405,8 +409,15 @@ export function PublicSharePage() {
           shareRef.current?.share.mode === "live"
             ? (lastMessageIdRef.current ?? undefined)
             : undefined;
-        const response = await refresh(afterMessageId);
+        const result = await refresh(
+          afterMessageId,
+          (nextMetadata) => {
+            if (!cancelled) setMetadata(nextMetadata);
+          },
+          abortController.signal,
+        );
         if (cancelled) return;
+        const response = result.share;
         const nextShare = mergePublicShareResponse(
           shareRef.current,
           response,
@@ -443,6 +454,7 @@ export function PublicSharePage() {
 
     return () => {
       cancelled = true;
+      abortController.abort();
       if (timer) {
         clearTimeout(timer);
       }

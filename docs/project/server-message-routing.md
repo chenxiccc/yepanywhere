@@ -29,11 +29,12 @@ buffer, and no batching: emit is in-process, in-thread, one frame per event.
 2. **Process intake** — `Process.processMessages()` receives each `SDKMessage`,
    updates state (idle / in-turn / waiting-input), and writes it into
    `currentBucket` (the rolling replay buffer).
-3. **Streaming text accumulation** — for `stream_event` deltas, the Process
-   appends to `_streamingText` keyed by `_streamingMessageId`
-   (`Process.ts:132-135`). This is *not* sent as one frame per token at this
-   layer; the SDK already chunks deltas and we forward each as-is to listeners.
-4. **Fan-out** — `Process.emit()` (`Process.ts:1999-2019`) iterates
+3. **Streaming text accumulation** — for `stream_event` deltas,
+   `Process._streamingText` accumulates text keyed by
+   `Process._streamingMessageId`. This is *not* sent as one frame per token at
+   this layer; the SDK already chunks deltas and we forward each as-is to
+   listeners.
+4. **Fan-out** — `Process.emit()` iterates
    `this.listeners: Set<Listener>` and calls each one inline. Listener errors
    are swallowed so one bad subscriber can't stall the others.
 5. **Live-delta demand** — session subscribers advertise
@@ -44,20 +45,48 @@ buffer, and no batching: emit is in-process, in-thread, one frame per event.
    subscriber for the Process wants live deltas, YA drops Codex live delta
    notifications before raw logging, normalization, augmentation, replay
    buffering, or client emission. Final completed messages still flow.
-6. **WS encode** — each WS subscription wraps its listener with `createSendFn()`
-   (`ws-relay-handlers.ts:253-304`), which JSON-encodes the event and writes
-   one `ws.send()` per frame. Three wire variants negotiated at handshake:
-   text JSON (legacy), binary `encodeJsonFrame` (Phase 0/1), or NaCl-encrypted
-   binary envelope with optional gzip (Phase 3, `BinaryFormat.COMPRESSED_JSON`).
+6. **WS encode** — each WS subscription wraps its listener with
+   `createSendFn()`, which JSON-encodes the event and writes one `ws.send()` per
+   frame. Three wire variants negotiated at handshake: text JSON (legacy),
+   binary `encodeJsonFrame` (Phase 0/1), or NaCl-encrypted binary envelope with
+   optional gzip (Phase 3, `BinaryFormat.COMPRESSED_JSON`).
 
 There is no outbound queue between (4) and (5). If a socket's send buffer is
-full, the underlying `ws` library buffers it; if the send throws, the socket is
-closed (`ws-relay-handlers.ts:295-301`).
+full, the underlying `ws` library buffers it; if the send throws,
+`createSendFn()` closes the socket.
+
+### Public-share request/response traffic
+
+The unauthenticated public-share exception uses the existing `RelayRequest` and
+`RelayResponse` messages rather than the provider-event fan-out path. A viewer
+pulling `public-share-session-chunks-v1` keeps one WebSocket and completes each
+ordinary request/response transaction before sending the next 256 KiB-or-smaller
+compressed chunk request. A pre-auth socket selects one lifetime mode: its first
+public read locks public-read-only mode, and any SRP control attempt locks SRP
+mode even if authentication later fails. One public-share request may be in
+flight on a public-read-only socket. A second request is a protocol violation
+that aborts the active internal Hono request and closes the socket; close and
+error paths likewise abort the Hono fetch and response-body reader. Each request
+response keeps the framing selected at admission, so a delayed public response
+cannot become encrypted after mutable auth state changes. Authenticated relay
+requests retain their existing detached concurrency.
+
+The relay adapter materializes each response message because `RelayResponse`
+has no streaming body frames. Every pre-auth public-share response is capped at
+8 MiB there; the adapter retains at most 8 MiB + 1 logical bytes. Controlled
+combined/raw-json route serializers emit at most 64 KiB per source chunk. Other
+public resources use an early declared-length rejection plus a hard streamed
+count, and oversized `/files` or `/files/raw` responses return 413. Raw file and
+frozen-session sources stream so the cap runs before a complete body is read.
+Authenticated and unrelated relay traffic, plus direct HTTP streaming, retain
+their existing behavior. The chunk capability avoids materializing a complete
+session through sequential, application-paced transactions; it does not add
+push framing, an outbound queue, or general file chunking.
 
 ## Late-join replay
 
-When a new client subscribes to an active Process
-(`subscriptions.ts:200-243`):
+When `createSessionSubscription()` subscribes a new client to an active
+Process:
 
 1. Send `connected` with `processId`, `state`, `permissionMode`,
    `deferredMessages`.
@@ -68,8 +97,8 @@ When a new client subscribes to an active Process
    pending HTML and emits a single catch-up frame so the client sees partial
    output without waiting for the next delta.
 
-The two buckets swap every 15 s (`BUCKET_SWAP_INTERVAL_MS`,
-`Process.ts:127-130`). That gives a 15–30 s replay window — long enough to
+The two buckets swap every 15 s (`BUCKET_SWAP_INTERVAL_MS`). That gives a
+15–30 s replay window — long enough to
 cover most page reloads / network hiccups, short enough that an idle Process
 holds at most ~30 s of messages in memory regardless of session length. Older
 history is the responsibility of the JSONL files the provider CLI writes; the
@@ -81,9 +110,8 @@ client loads those over REST on session open.
 same synchronous emit shape as Process, broadcasting cross-session events:
 `FileChangeEvent`, `SessionStatusEvent`, `ProcessStateEvent`,
 `NetworkBindingChangedEvent`, browser-tab connect/disconnect, etc. WS clients
-subscribe via `handleActivitySubscribe()`
-(`ws-relay-handlers.ts:461-515`); the inbox UI uses this to refresh tier
-ordering without polling.
+subscribe via `handleActivitySubscribe()`; the inbox UI uses this to refresh
+tier ordering without polling.
 
 ## Backpressure / coalescing — what's there and what isn't
 
@@ -163,7 +191,7 @@ pub/sub, higher-scale fan-out), see
 
 | # | Change | Cost | Benefit | Recommendation |
 |---|--------|------|---------|----------------|
-| 1 | Replace silent listener `try { } catch { }` in `Process.emit()` (`Process.ts:2012-2018`) with a structured warn-log including subscription id and event type. | Trivial. ~5 LOC. | Stuck/buggy listeners stop being invisible; oncall has a thread to pull. | **Do it next time `Process.ts` is touched.** |
+| 1 | Replace silent listener `try { } catch { }` in `Process.emit()` with a structured warn-log including subscription id and event type. | Trivial. ~5 LOC. | Stuck/buggy listeners stop being invisible; oncall has a thread to pull. | **Do it next time `Process.ts` is touched.** |
 | 2 | Expose fan-out counters on the maintenance `/status` endpoint: per-Process listener count, total events emitted, last emit timestamp. | Small. ~30 LOC, no new deps; reuse the `connectionStats` shape in `maintenance/server.ts`. | A live regression in fan-out (a Process with zero listeners but active state, or a listener leak) becomes one curl away. Also a precursor to the higher-scale fan-out proposal in `ARCHITECTURE.md`. | **Do it next time `/status` is touched.** |
 | 3 | Extract `useAdaptiveThrottle` hook shared by `useStreamingContent` and `useStreamingMarkdown`. | Medium. The two paths have parallel 100–750 ms adaptive logic; refs interact subtly so a regression test would be needed. | One place to tune the windows; less drift between the two surfaces. | **Do it the next time both files are edited in the same change**, not as a standalone refactor. |
 | 4 | Make the bucket swap interval a `const` exported from a config module (currently `BUCKET_SWAP_INTERVAL_MS = 15_000` inline). | Trivial. | Lets test code shorten it without monkey-patching; documents that 15 s is a tuning knob, not magic. | **Low priority**; combine with the next bucket-related change. |

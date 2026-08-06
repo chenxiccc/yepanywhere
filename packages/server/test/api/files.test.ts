@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  realpath,
+  rm,
+  symlink,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FileContentResponse } from "@yep-anywhere/shared";
@@ -584,6 +591,25 @@ describe("Files API", () => {
       expect(res.headers.get("Content-Type")).toBe("image/png");
       const buffer = await res.arrayBuffer();
       expect(buffer.byteLength).toBe(8);
+    });
+
+    it("streams a sparse file larger than the public relay limit over direct HTTP", async () => {
+      const sparsePath = join(projectPath, "large-sparse.bin");
+      const sparseSize = 8 * 1024 * 1024 + 1;
+      await writeFile(sparsePath, "");
+      await truncate(sparsePath, sparseSize);
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files/raw?path=large-sparse.bin`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Length")).toBe(String(sparseSize));
+      await res.body?.cancel();
     });
 
     it("sets attachment disposition when download=true", async () => {

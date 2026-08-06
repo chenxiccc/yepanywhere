@@ -10,11 +10,23 @@
  * 3. Verify projects load via relay connection
  */
 
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
+import { join } from "node:path";
+import {
+  BinaryFormat,
+  PUBLIC_SHARE_SESSION_CHUNK_MAX_BYTES,
+  PUBLIC_SHARE_SESSION_COMPRESSED_MAX_BYTES,
+  TRANSPORT_CHUNK_HEADER_SIZE,
+  TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES,
+  isPublicSessionSharePublicMetadata,
+} from "@yep-anywhere/shared";
 import {
   configureRelay,
   configureRemoteAccess,
   disableRelay,
   disableRemoteAccess,
+  e2ePaths,
   expect,
   test,
   waitForRelayStatus,
@@ -24,6 +36,29 @@ import {
 // Relay username is also used as SRP identity
 const TEST_RELAY_USERNAME = "e2e-relay-test";
 const TEST_SRP_PASSWORD = "relay-test-password-123";
+const LEGACY_PREAUTH_RELAY_MAX_BYTES = 8 * 1024 * 1024;
+const LARGE_ASSISTANT_NOISE_BYTES = 2304 * 1024;
+const LARGE_SHARE_NOISE_BYTES = 10 * 1024 * 1024;
+
+function deterministicNoise(byteLength: number): Buffer {
+  const bytes = Buffer.allocUnsafe(byteLength);
+  let state = 0x6d2b_79f5;
+  for (let offset = 0; offset < byteLength; ) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    for (
+      let byteIndex = 0;
+      byteIndex < 4 && offset < byteLength;
+      byteIndex += 1
+    ) {
+      bytes[offset] = (state >>> (byteIndex * 8)) & 0xff;
+      offset += 1;
+    }
+  }
+  return bytes;
+}
 
 /**
  * Helper to navigate to the Relay Login page from the mode selection page.
@@ -31,6 +66,37 @@ const TEST_SRP_PASSWORD = "relay-test-password-123";
 async function goToRelayLogin(page: import("@playwright/test").Page) {
   await page.click('[data-testid="relay-mode-button"]');
   await expect(page.locator('[data-testid="relay-login-form"]')).toBeVisible();
+}
+
+async function loginViaRelay(
+  page: import("@playwright/test").Page,
+  remoteClientURL: string,
+  relayWsURL: string,
+): Promise<void> {
+  await page.goto(remoteClientURL);
+  await goToRelayLogin(page);
+  await page.fill('[data-testid="relay-username-input"]', TEST_RELAY_USERNAME);
+  await page.fill('[data-testid="srp-password-input"]', TEST_SRP_PASSWORD);
+  await page.click("text=Show Advanced Options");
+  await page.fill('[data-testid="custom-relay-url-input"]', relayWsURL);
+  await page.click('[data-testid="login-button"]');
+  await expect(
+    page.locator('[data-testid="relay-login-form"]'),
+  ).not.toBeVisible({ timeout: 15_000 });
+}
+
+async function putSettings(baseURL: string, body: unknown): Promise<void> {
+  const response = await fetch(`${baseURL}/api/settings`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Yep-Anywhere": "true",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to configure settings: ${await response.text()}`);
+  }
 }
 
 async function setBangHistoryVisibility(
@@ -115,6 +181,341 @@ test.describe("Full Relay Integration", () => {
     await expect(
       page.locator(`a[href="/${TEST_RELAY_USERNAME}/settings"]`),
     ).toBeVisible();
+  });
+
+  test("large assistant content stays viewable directly and uses bounded relay chunks", async ({
+    page,
+    baseURL,
+    remoteClientURL,
+    relayWsURL,
+  }) => {
+    test.setTimeout(45_000);
+    const projectPath = join(e2ePaths.tempDir, "large-assistant-project");
+    const projectId = Buffer.from(projectPath).toString("base64url");
+    const sessionId = "large-assistant-session";
+    const sessionDirectory = join(
+      e2ePaths.claudeSessionsDir,
+      hostname(),
+      projectPath.replace(/\//g, "-"),
+    );
+    const sessionFile = join(sessionDirectory, `${sessionId}.jsonl`);
+    const timestamp = new Date().toISOString();
+    const transcript = [
+      {
+        type: "user",
+        cwd: projectPath,
+        message: { role: "user", content: "show generated content" },
+        timestamp,
+        uuid: "large-assistant-user",
+      },
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: deterministicNoise(LARGE_ASSISTANT_NOISE_BYTES).toString(
+                "base64",
+              ),
+            },
+            { type: "text", text: "large assistant trailing marker" },
+          ],
+        },
+        timestamp,
+        uuid: "large-assistant-response",
+        parentUuid: "large-assistant-user",
+      },
+    ];
+    const relayTransportChunkSizes: number[] = [];
+    let observeRelayChunks = false;
+    page.on("websocket", (socket) => {
+      socket.on("framereceived", ({ payload }) => {
+        if (!observeRelayChunks || typeof payload === "string") return;
+        const bytes = Buffer.from(payload);
+        if (bytes[0] === BinaryFormat.TRANSPORT_CHUNK) {
+          relayTransportChunkSizes.push(bytes.byteLength);
+        }
+      });
+    });
+
+    await mkdir(projectPath, { recursive: true });
+    await mkdir(sessionDirectory, { recursive: true });
+    await writeFile(
+      sessionFile,
+      transcript.map((message) => JSON.stringify(message)).join("\n"),
+    );
+
+    try {
+      await expect
+        .poll(
+          async () =>
+            (
+              await fetch(
+                `${baseURL}/api/projects/${projectId}/sessions/${sessionId}?fullHistory=1`,
+                { headers: { "X-Yep-Anywhere": "true" } },
+              )
+            ).status,
+          { timeout: 10_000 },
+        )
+        .toBe(200);
+      await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
+      await expect(
+        page.getByText("large assistant trailing marker", { exact: true }),
+      ).toBeVisible({ timeout: 20_000 });
+
+      observeRelayChunks = true;
+      await loginViaRelay(page, remoteClientURL, relayWsURL);
+      await page.goto(
+        `${remoteClientURL}/${TEST_RELAY_USERNAME}/projects/${projectId}/sessions/${sessionId}`,
+      );
+      await expect(
+        page.getByText("large assistant trailing marker", { exact: true }),
+      ).toBeVisible({ timeout: 20_000 });
+      expect(relayTransportChunkSizes.length).toBeGreaterThan(1);
+      expect(
+        relayTransportChunkSizes.every(
+          (size) =>
+            size <=
+            1 + TRANSPORT_CHUNK_HEADER_SIZE + TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES,
+        ),
+      ).toBe(true);
+    } finally {
+      await rm(sessionFile);
+    }
+  });
+
+  test("large user upload crosses relay in bounded upload chunks", async ({
+    page,
+    baseURL,
+    remoteClientURL,
+    relayWsURL,
+  }) => {
+    test.setTimeout(45_000);
+    const projectPath = join(e2ePaths.tempDir, "large-upload-project");
+    const projectId = Buffer.from(projectPath).toString("base64url");
+    const sessionId = "large-upload-session";
+    const sessionDirectory = join(
+      e2ePaths.claudeSessionsDir,
+      hostname(),
+      projectPath.replace(/\//g, "-"),
+    );
+    const sessionFile = join(sessionDirectory, `${sessionId}.jsonl`);
+    const timestamp = new Date().toISOString();
+    const uploadBytes = deterministicNoise(LARGE_ASSISTANT_NOISE_BYTES);
+    const sentFrameSizes: number[] = [];
+    let observeUploadFrames = false;
+    page.on("websocket", (socket) => {
+      socket.on("framesent", ({ payload }) => {
+        if (!observeUploadFrames || typeof payload === "string") return;
+        sentFrameSizes.push(Buffer.from(payload).byteLength);
+      });
+    });
+
+    await mkdir(projectPath, { recursive: true });
+    await mkdir(sessionDirectory, { recursive: true });
+    await writeFile(
+      sessionFile,
+      JSON.stringify({
+        type: "user",
+        cwd: projectPath,
+        message: { role: "user", content: "attach generated content" },
+        timestamp,
+        uuid: "large-upload-user",
+      }),
+    );
+
+    try {
+      await expect
+        .poll(
+          async () =>
+            (
+              await fetch(
+                `${baseURL}/api/projects/${projectId}/sessions/${sessionId}?fullHistory=1`,
+                { headers: { "X-Yep-Anywhere": "true" } },
+              )
+            ).status,
+          { timeout: 10_000 },
+        )
+        .toBe(200);
+      await loginViaRelay(page, remoteClientURL, relayWsURL);
+      await page.goto(
+        `${remoteClientURL}/${TEST_RELAY_USERNAME}/projects/${projectId}/sessions/${sessionId}`,
+      );
+      await expect(page.locator('input[type="file"]')).toHaveCount(1);
+
+      observeUploadFrames = true;
+      await page.locator('input[type="file"]').setInputFiles({
+        name: "large-generated-upload.bin",
+        mimeType: "application/octet-stream",
+        buffer: uploadBytes,
+      });
+      await expect(
+        page.getByRole("button", {
+          name: "Remove large-generated-upload.bin",
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 20_000 });
+      observeUploadFrames = false;
+
+      expect(sentFrameSizes.every((size) => size <= 1024 * 1024)).toBe(true);
+      expect(
+        sentFrameSizes.filter((size) => size > 60 * 1024).length,
+      ).toBeGreaterThan(20);
+    } finally {
+      await rm(sessionFile);
+    }
+  });
+
+  test("large frozen public share uses bounded relay chunks", async ({
+    page,
+    baseURL,
+    remoteClientURL,
+  }) => {
+    test.setTimeout(45_000);
+    const projectPath = join(e2ePaths.tempDir, "bounded-share-project");
+    const projectId = Buffer.from(projectPath).toString("base64url");
+    const sessionId = "bounded-public-share-session";
+    const sessionDirectory = join(
+      e2ePaths.claudeSessionsDir,
+      hostname(),
+      projectPath.replace(/\//g, "-"),
+    );
+    const sessionFile = join(sessionDirectory, `${sessionId}.jsonl`);
+    const timestamp = new Date().toISOString();
+    const transcript = [
+      {
+        type: "user",
+        cwd: projectPath,
+        message: { role: "user", content: "bounded relay marker" },
+        timestamp,
+        uuid: "bounded-user-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: deterministicNoise(LARGE_SHARE_NOISE_BYTES).toString(
+            "base64",
+          ),
+        },
+        timestamp,
+        uuid: "bounded-assistant-1",
+        parentUuid: "bounded-user-1",
+      },
+      {
+        type: "user",
+        cwd: projectPath,
+        message: {
+          role: "user",
+          content: "chunk transfer trailing transcript marker",
+        },
+        timestamp,
+        uuid: "bounded-user-2",
+        parentUuid: "bounded-assistant-1",
+      },
+    ];
+
+    await mkdir(projectPath, { recursive: true });
+    await mkdir(sessionDirectory, { recursive: true });
+    await writeFile(
+      sessionFile,
+      transcript.map((message) => JSON.stringify(message)).join("\n"),
+    );
+    await putSettings(baseURL, { publicSharesEnabled: true });
+
+    try {
+      await expect
+        .poll(
+          async () =>
+            (
+              await fetch(
+                `${baseURL}/api/projects/${projectId}/sessions/${sessionId}?fullHistory=1`,
+                { headers: { "X-Yep-Anywhere": "true" } },
+              )
+            ).status,
+          { timeout: 10_000 },
+        )
+        .toBe(200);
+      const createResponse = await fetch(`${baseURL}/api/public-shares`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Yep-Anywhere": "true",
+        },
+        body: JSON.stringify({ projectId, sessionId, mode: "frozen" }),
+      });
+      expect(createResponse.ok).toBe(true);
+      const created = (await createResponse.json()) as { url: string };
+      const shareUrl = new URL(created.url);
+      const secret = shareUrl.pathname.split("/").at(-1);
+      expect(secret).toBeTruthy();
+      const metadataResponse = await fetch(
+        `${baseURL}/public-api/shares/${secret}/metadata`,
+      );
+      expect(metadataResponse.ok).toBe(true);
+      const metadata: unknown = await metadataResponse.json();
+      expect(isPublicSessionSharePublicMetadata(metadata)).toBe(true);
+      if (
+        !isPublicSessionSharePublicMetadata(metadata) ||
+        !metadata.sessionChunks
+      ) {
+        throw new Error("Frozen public share did not advertise chunk metadata");
+      }
+      expect(metadata.sessionChunks.compressedBytes).toBeGreaterThan(
+        LEGACY_PREAUTH_RELAY_MAX_BYTES,
+      );
+      expect(metadata.sessionChunks.compressedBytes).toBeLessThanOrEqual(
+        PUBLIC_SHARE_SESSION_COMPRESSED_MAX_BYTES,
+      );
+      expect(metadata.sessionChunks.maxChunkBytes).toBe(
+        PUBLIC_SHARE_SESSION_CHUNK_MAX_BYTES,
+      );
+
+      const viewerUrl = new URL(
+        `${shareUrl.pathname}${shareUrl.search}${shareUrl.hash}`,
+        remoteClientURL,
+      );
+      const chunkSizes: number[] = [];
+      page.on("websocket", (socket) => {
+        socket.on("framereceived", ({ payload }) => {
+          if (typeof payload !== "string") return;
+          let message: unknown;
+          try {
+            message = JSON.parse(payload);
+          } catch {
+            return;
+          }
+          const body = (message as { body?: unknown }).body;
+          if (
+            body &&
+            typeof body === "object" &&
+            (body as { _binary?: unknown })._binary === true &&
+            typeof (body as { data?: unknown }).data === "string"
+          ) {
+            chunkSizes.push(
+              Buffer.from((body as { data: string }).data, "base64").byteLength,
+            );
+          }
+        });
+      });
+
+      await page.goto(viewerUrl.toString());
+      await expect(
+        page.getByText("chunk transfer trailing transcript marker", {
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 20_000 });
+      expect(chunkSizes.length).toBeGreaterThan(1);
+      expect(
+        chunkSizes.every(
+          (size) => size <= PUBLIC_SHARE_SESSION_CHUNK_MAX_BYTES,
+        ),
+      ).toBe(true);
+    } finally {
+      await putSettings(baseURL, { publicSharesEnabled: false });
+      await rm(sessionFile);
+    }
   });
 
   test("!! Commands sidebar category stays on its relay route", async ({

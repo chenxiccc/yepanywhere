@@ -16,7 +16,10 @@ import { cors } from "hono/cors";
 import pino, { type Logger } from "pino";
 import { WebSocketServer } from "ws";
 import { getClientIp, parseTrustedProxies } from "./client-ip.js";
-import type { RelayConfig } from "./config.js";
+import {
+  DEFAULT_RELAY_WEBSOCKET_MAX_MESSAGE_BYTES,
+  type RelayConfig,
+} from "./config.js";
 import { ConnectionManager } from "./connections.js";
 import { createDb, createTestDb } from "./db.js";
 import type { LogLevel } from "./logger.js";
@@ -40,6 +43,8 @@ import { createWsHandler } from "./ws-handler.js";
 export interface RelayServerOptions {
   /** Port to listen on (default: 0 for random available port) */
   port?: number;
+  /** Maximum bytes accepted in one physical WebSocket message. */
+  webSocketMaxMessageBytes?: number;
   /** Data directory for SQLite database (default: in-memory for testing) */
   dataDir?: string;
   /** Use in-memory database for testing */
@@ -133,6 +138,9 @@ export async function createRelayServer(
 
   const config: RelayConfig = {
     port: options.port ?? 0, // 0 = random available port
+    webSocketMaxMessageBytes:
+      options.webSocketMaxMessageBytes ??
+      DEFAULT_RELAY_WEBSOCKET_MAX_MESSAGE_BYTES,
     portFile: null, // Not used in test/factory mode - caller checks .port directly
     dataDir: options.dataDir ?? "",
     pingIntervalMs: options.pingIntervalMs ?? 60_000,
@@ -325,7 +333,10 @@ export async function createRelayServer(
   const server = createServer(requestListener);
 
   // Create WebSocket server with noServer mode
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: config.webSocketMaxMessageBytes,
+  });
 
   // Handle WebSocket connections
   wss.on("connection", (ws, request) => {

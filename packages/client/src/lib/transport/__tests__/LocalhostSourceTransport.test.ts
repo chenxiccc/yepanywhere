@@ -1,5 +1,6 @@
 import {
   decodeJsonFrame,
+  type RemoteClientMessage,
   type UploadedFile,
   type YepMessage,
 } from "@yep-anywhere/shared";
@@ -192,9 +193,14 @@ describe("LocalhostSourceTransport", () => {
     socket.open();
     await flushPromises();
 
-    const subscribeMessage = decodeJsonFrame<{ subscriptionId: string }>(
-      socket.sent[0] as ArrayBuffer | Uint8Array,
-    );
+    const subscribeMessage = socket.sent
+      .map((frame) =>
+        decodeJsonFrame<RemoteClientMessage>(frame as ArrayBuffer | Uint8Array),
+      )
+      .find((message) => message.type === "subscribe");
+    if (subscribeMessage?.type !== "subscribe") {
+      throw new Error("Expected activity subscription frame.");
+    }
     socket.serverMessage({
       type: "event",
       subscriptionId: subscribeMessage.subscriptionId,

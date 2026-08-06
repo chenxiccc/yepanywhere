@@ -7,6 +7,41 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-06 frozen public-share relay transport — releases `v0.5.2`, `v0.6.0`,
+`v0.6.1`, `v0.6.2`, and `v0.7.0` expose only a materialized one-response
+public-share relay path. Add the exact secret-authorized metadata capability
+`public-share-session-chunks-v1` for bounded 256 KiB compressed pull requests
+over the existing relay request/response framing. Marked v2 metadata without
+it keeps `wire=raw-json` and makes no chunk request; unmarked links keep the
+combined request and make no metadata or chunk request. Existing capability
+meanings and `#v=2` remain unchanged. A browser without
+`DecompressionStream` uses the same-socket raw-json fallback even when the
+metadata capability is present. New clients require exact success statuses and
+runtime-validate each artifact before publishing it: compact metadata may
+publish before the body, while a raw or decompressed complete session validates
+before session publication. A pre-auth socket selects one lifetime mode: its
+first public read locks it to public-read-only, while any SRP control attempt
+locks it to SRP even when authentication later fails. Request responses keep the framing
+selected at admission rather than consulting later mutable auth state.
+Public-read-only sockets allow one request in flight; a second request aborts
+and closes as a protocol violation, while authenticated relay multiplexing
+remains unchanged. Chunk transfer is available only for safe integer compressed
+and decompressed lengths up to 64 MiB. Oversized historical revisions remain
+structurally valid but are not chunk-capable: they omit the capability, so a
+conforming client sends no chunk request and uses `wire=raw-json`. Relay
+raw-json succeeds only through 8 MiB; a larger response returns 413 with update
+guidance. Direct HTTP streaming can still load a larger structurally valid
+revision. Cap every pre-auth public-share response in the WebSocket adapter at
+8 MiB. The adapter retains no more than the accepted 8 MiB body plus
+one logical inspection byte. Controlled combined/raw-json serializers emit at
+most 64 KiB per source chunk, so cancellation may consume at most one such
+bounded chunk past the accepted prefix; an unexpectedly unbounded controlled
+producer chunk is an internal invariant failure. Other public resources use
+declared length only as an early rejection and enforce the streamed count as
+the hard bound; overflow returns 413 without broadening the session-chunk
+capability to files. Direct HTTP public-share streams, authenticated relay
+traffic, and unrelated relay routes remain uncapped by this adapter policy.
+
 2026-08-05 public-share grants and compact URLs — preserve every
 legacy 64-byte/86-character bearer secret and display-hint fragment while new
 links use a 16-byte/22-character secret plus a compact protocol marker and

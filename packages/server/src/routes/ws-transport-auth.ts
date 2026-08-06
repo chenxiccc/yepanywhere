@@ -6,10 +6,28 @@ import {
 /**
  * Minimal auth shape required for transport-level websocket auth checks.
  */
+export type WsConnectionMode = "unselected" | "public_read_only" | "srp";
+
 export interface WsTransportAuthState {
+  /** Authentication state for the transport handshake. */
   authState: "unauthenticated" | "srp_waiting_proof" | "authenticated";
+  /** Derived secretbox key (32 bytes) for encryption. */
   sessionKey: Uint8Array | null;
+  /** Admission policy, distinct from SRP transport key state. */
   connectionPolicy: WsConnectionPolicy;
+  /** Lifetime mode selected by the first public-share read or SRP control attempt. */
+  connectionMode: WsConnectionMode;
+}
+
+export function tryLockWsConnectionMode(
+  connState: Pick<WsTransportAuthState, "connectionMode">,
+  requestedMode: Exclude<WsConnectionMode, "unselected">,
+): boolean {
+  if (connState.connectionMode === "unselected") {
+    connState.connectionMode = requestedMode;
+    return true;
+  }
+  return connState.connectionMode === requestedMode;
 }
 
 /**

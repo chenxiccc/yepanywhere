@@ -5,12 +5,14 @@ import {
   isSrpProofPending,
   isTrustedWithoutSrpTransport,
   shouldMarkInternalWsAuthenticated,
+  tryLockWsConnectionMode,
 } from "../../src/routes/ws-transport-auth.js";
 
 describe("WebSocket Transport Auth State Helpers", () => {
   it("starts unauthenticated with no established SRP transport", () => {
     const connState = createConnectionState();
 
+    expect(connState.connectionMode).toBe("unselected");
     expect(hasEstablishedSrpTransport(connState)).toBe(false);
     expect(isSrpProofPending(connState)).toBe(false);
   });
@@ -65,5 +67,19 @@ describe("WebSocket Transport Auth State Helpers", () => {
     connState.sessionKey = new Uint8Array(32);
 
     expect(shouldMarkInternalWsAuthenticated(connState)).toBe(true);
+  });
+
+  it("locks one connection mode for the socket lifetime", () => {
+    const publicState = createConnectionState();
+    expect(tryLockWsConnectionMode(publicState, "public_read_only")).toBe(true);
+    expect(tryLockWsConnectionMode(publicState, "public_read_only")).toBe(true);
+    expect(tryLockWsConnectionMode(publicState, "srp")).toBe(false);
+    expect(publicState.connectionMode).toBe("public_read_only");
+
+    const srpState = createConnectionState();
+    expect(tryLockWsConnectionMode(srpState, "srp")).toBe(true);
+    expect(tryLockWsConnectionMode(srpState, "srp")).toBe(true);
+    expect(tryLockWsConnectionMode(srpState, "public_read_only")).toBe(false);
+    expect(srpState.connectionMode).toBe("srp");
   });
 });

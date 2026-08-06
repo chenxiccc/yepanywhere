@@ -1,8 +1,9 @@
-import type {
-  ClaudeSessionEntry,
-  CodexSessionContent,
-  UnifiedSession,
-  UrlProjectId,
+import {
+  type ClaudeSessionEntry,
+  type CodexSessionContent,
+  type UnifiedSession,
+  type UrlProjectId,
+  isAppMessage,
 } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import { normalizeSession } from "../../src/sessions/normalization.js";
@@ -488,5 +489,72 @@ describe("normalizeSession", () => {
       "saying a second thing out of turn",
       "saying a third thing out of turn",
     ]);
+  });
+
+  it("normalizes Gemini tool results into valid app messages", () => {
+    const timestamp = "2026-08-06T00:00:00.000Z";
+    const mockSession: LoadedSession = {
+      summary: {
+        id: "gemini-session",
+        projectId: "test-project" as UrlProjectId,
+        title: "Gemini session",
+        fullTitle: "Gemini session",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        messageCount: 2,
+        status: { state: "idle" },
+        provider: "gemini",
+      },
+      data: {
+        provider: "gemini",
+        session: {
+          sessionId: "gemini-session",
+          projectHash: "project-hash",
+          startTime: timestamp,
+          lastUpdated: timestamp,
+          messages: [
+            {
+              id: "assistant-1",
+              timestamp,
+              type: "gemini",
+              content: "I read the file.",
+              toolCalls: [
+                {
+                  id: "call-1",
+                  name: "read_file",
+                  args: { path: "README.md" },
+                  result: [
+                    {
+                      functionResponse: {
+                        id: "call-1",
+                        name: "read_file",
+                        response: { output: "contents" },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const normalized = normalizeSession(mockSession);
+
+    expect(normalized.messages[1]).toMatchObject({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call-1",
+            content: "contents",
+          },
+        ],
+      },
+    });
+    expect(normalized.messages.every(isAppMessage)).toBe(true);
   });
 });

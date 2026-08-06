@@ -1,4 +1,5 @@
 import type {
+  ClientCapabilities,
   DeviceServerMessage,
   RemoteClientMessage,
   StagedAttachmentRef,
@@ -6,7 +7,10 @@ import type {
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
+  BinaryFormat,
   BinaryFrameError,
+  TransportChunkError,
+  TransportChunkReassembler,
   decodeJsonFrame,
   encodeJsonFrame,
   encodeUploadChunkFrame,
@@ -64,6 +68,7 @@ export class WebSocketConnection implements Connection {
   private connectionPromise: Promise<void> | null = null;
   private protocol: RelayProtocol;
   private options: WebSocketConnectionOptions;
+  private readonly inboundChunks = new TransportChunkReassembler();
   private externalOnPong: ((id: string) => void) | undefined;
 
   constructor(options: WebSocketConnectionOptions = {}) {
@@ -152,6 +157,7 @@ export class WebSocketConnection implements Connection {
       ws.onclose = (event) => {
         console.log("[WebSocketConnection] Closed:", event.code, event.reason);
         this.ws = null;
+        this.inboundChunks.reset();
 
         const closeError = new WebSocketCloseError(event.code, event.reason);
         this.protocol.rejectAllPending(closeError);
@@ -175,6 +181,7 @@ export class WebSocketConnection implements Connection {
         clearTimeout(timeout);
         console.log("[WebSocketConnection] Connected");
         this.ws = ws;
+        this.sendCapabilities();
         this.options.connectionManager?.markConnected();
         this.options.onSocketStateChange?.("connected");
         resolve();
@@ -191,7 +198,9 @@ export class WebSocketConnection implements Connection {
 
     if (isBinaryData(data)) {
       try {
-        msg = decodeJsonFrame<YepMessage>(data);
+        const completeMessage = this.inboundChunks.acceptFrame(data);
+        if (!completeMessage) return;
+        msg = decodeJsonFrame<YepMessage>(completeMessage);
       } catch (err) {
         if (err instanceof BinaryFrameError) {
           console.warn(
@@ -204,9 +213,17 @@ export class WebSocketConnection implements Connection {
             err,
           );
         }
+        if (err instanceof TransportChunkError) {
+          this.ws?.close(1002, "Invalid transport chunk sequence");
+        }
         return;
       }
     } else if (typeof data === "string") {
+      if (this.inboundChunks.hasPendingMessage) {
+        this.inboundChunks.reset();
+        this.ws?.close(1002, "Transport chunk sequence interrupted");
+        return;
+      }
       try {
         msg = JSON.parse(data) as YepMessage;
       } catch {
@@ -221,7 +238,19 @@ export class WebSocketConnection implements Connection {
     this.protocol.routeMessage(msg);
   }
 
-  private send(msg: import("@yep-anywhere/shared").RemoteClientMessage): void {
+  private sendCapabilities(): void {
+    const message: ClientCapabilities = {
+      type: "client_capabilities",
+      formats: [
+        BinaryFormat.JSON,
+        BinaryFormat.BINARY_UPLOAD,
+        BinaryFormat.TRANSPORT_CHUNK,
+      ],
+    };
+    this.send(message);
+  }
+
+  private send(msg: RemoteClientMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error("WebSocket not connected");
     }
@@ -329,6 +358,7 @@ export class WebSocketConnection implements Connection {
       this.ws.onmessage = null;
       this.ws.close();
       this.ws = null;
+      this.inboundChunks.reset();
     }
     this.connectionPromise = null;
     await this.ensureConnected();
@@ -352,6 +382,7 @@ export class WebSocketConnection implements Connection {
       this.ws.onopen = null;
       this.ws.close();
       this.ws = null;
+      this.inboundChunks.reset();
     }
     this.options.onSocketStateChange?.("disconnected");
   }

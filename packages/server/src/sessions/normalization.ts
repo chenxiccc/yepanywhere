@@ -1439,13 +1439,18 @@ function convertGeminiMessages(
         for (const toolCall of assistantMsg.toolCalls) {
           if (toolCall.result && toolCall.result.length > 0) {
             for (const result of toolCall.result) {
+              const toolUseResult = {
+                tool_use_id: result.functionResponse.id,
+                content: result.functionResponse.response.output,
+              };
               messages.push({
                 uuid: `${assistantMsg.id}-result-${result.functionResponse.id}`,
-                type: "tool_result",
-                toolUseResult: {
-                  tool_use_id: result.functionResponse.id,
-                  content: result.functionResponse.response.output,
+                type: "user",
+                message: {
+                  role: "user",
+                  content: [{ type: "tool_result", ...toolUseResult }],
                 },
+                toolUseResult,
                 timestamp: toolCall.timestamp ?? assistantMsg.timestamp,
               });
             }

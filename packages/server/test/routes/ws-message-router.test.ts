@@ -48,6 +48,29 @@ describe("WebSocket Message Router", () => {
     expect(parsed).toEqual({ type: "ping", id: "p1" });
   });
 
+  it("does not log bearer content from malformed plaintext frames", async () => {
+    const connState = createConnectionState();
+    const ws = createMockWs();
+    const deps = createDecodeDeps();
+    const bearer = "never-log-this-public-share-secret";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const parsed = await decodeFrameToParsedMessage(
+      ws,
+      `{"type":"request","path":"/public-api/shares/${bearer}`,
+      {},
+      connState,
+      true,
+      deps,
+    );
+
+    expect(parsed).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/Failed to parse text frame: characters=\d+/),
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(bearer);
+  });
+
   it("decodes plaintext binary JSON frames (phase 0)", async () => {
     const connState = createConnectionState();
     const ws = createMockWs();

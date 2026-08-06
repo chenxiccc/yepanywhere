@@ -1,5 +1,7 @@
 import {
   DEFAULT_RELAY_URL,
+  PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH,
+  PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY,
   type AppSession,
   type CreatePublicSessionShareRequest,
   type CreatePublicSessionShareResponse,
@@ -14,16 +16,28 @@ import {
   normalizeRelayUrl,
   parseLineColumn,
 } from "@yep-anywhere/shared";
-import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, posix, win32 } from "node:path";
-import { Readable } from "node:stream";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
 import type { RelayClientStatus } from "../services/RelayClientService.js";
-import type { PublicShareService } from "../services/PublicShareService.js";
+import {
+  PublicShareCaptureError,
+  PublicShareChunkCursorError,
+  type PublicShareCapture,
+  type PublicShareService,
+} from "../services/PublicShareService.js";
 import { augmentEditToolUses } from "../sessions/persisted-augments.js";
 import type { Message } from "../supervisor/types.js";
+import {
+  openProjectRelativeFile,
+  readFileHandleBounded,
+} from "../utils/projectFileAccess.js";
+import {
+  legacyPublicShareResponseStream,
+  serializeLegacyJsonValue,
+  serializeLegacyPublicShareResponse,
+} from "./public-share-json-stream.js";
 import {
   buildPublicShareViewerUrl,
   getDefaultPublicShareViewerBaseUrl,
@@ -37,7 +51,7 @@ export interface RelayConfigForPublicShare {
   username: string;
 }
 
-export interface PublicShareRoutesDeps {
+export interface PublicSharePublicRoutesDeps {
   publicShareService: PublicShareService;
   loadSession: (
     projectId: UrlProjectId,
@@ -82,6 +96,13 @@ export interface PublicShareRoutesDeps {
   ) => Promise<Response>;
 }
 
+export interface PublicShareRoutesDeps extends PublicSharePublicRoutesDeps {
+  loadCompleteSession: (
+    projectId: UrlProjectId,
+    sessionId: string,
+  ) => Promise<AppSession | null>;
+}
+
 const PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS = new Set([
   ".htm",
   ".html",
@@ -105,7 +126,7 @@ const PUBLIC_SHARE_RENDER_ASSET_EXTENSIONS = new Set([
 ]);
 const MAX_PUBLIC_SHARE_TRANSITIVE_SOURCE_BYTES = 1024 * 1024;
 
-function getPublicShareReadiness(deps: PublicShareRoutesDeps): {
+function getPublicShareReadiness(deps: PublicSharePublicRoutesDeps): {
   enabled: boolean;
   relayConfig: RelayConfigForPublicShare | null;
   configured: boolean;
@@ -156,14 +177,17 @@ function buildPublicShareUrl(
 
 function publicShareStoreUnavailable(
   c: Context,
-  deps: PublicShareRoutesDeps,
+  deps: PublicSharePublicRoutesDeps,
 ): Response | null {
   const readiness = deps.publicShareService.getReadiness();
   if (readiness.state === "ready") return null;
   c.header("Retry-After", "2");
   return c.json(
     {
-      error: readiness.error ?? `Public share store is ${readiness.state}`,
+      error:
+        readiness.state === "failed"
+          ? "Public share storage is unavailable"
+          : `Public share store is ${readiness.state}`,
       retryable:
         readiness.state === "opening" || readiness.state === "migrating",
       storageState: readiness.state,
@@ -207,9 +231,49 @@ function normalizePromptPreview(value: string): string | null {
     return null;
   }
   const normalized = trimmed.replace(/\s+/g, " ");
-  return normalized.length > 700
-    ? `${normalized.slice(0, 697).trimEnd()}...`
+  return normalized.length > PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH
+    ? `${normalized
+        .slice(0, PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH - 3)
+        .trimEnd()}...`
     : normalized;
+}
+
+function parseCreatePublicSessionShareRequest(
+  value: unknown,
+): { request: CreatePublicSessionShareRequest } | { error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { error: "Request body must be an object" };
+  }
+  const body = value as Record<string, unknown>;
+  if (typeof body.projectId !== "string" || !isUrlProjectId(body.projectId)) {
+    return { error: "Invalid project ID format" };
+  }
+  if (typeof body.sessionId !== "string" || !body.sessionId) {
+    return { error: "sessionId is required" };
+  }
+  if (body.mode !== "frozen" && body.mode !== "live") {
+    return { error: "mode must be frozen or live" };
+  }
+  if (body.title !== undefined && typeof body.title !== "string") {
+    return { error: "title must be a string" };
+  }
+  if (
+    body.initialPrompt !== undefined &&
+    typeof body.initialPrompt !== "string"
+  ) {
+    return { error: "initialPrompt must be a string" };
+  }
+  return {
+    request: {
+      projectId: body.projectId,
+      sessionId: body.sessionId,
+      mode: body.mode,
+      ...(body.title !== undefined ? { title: body.title } : {}),
+      ...(body.initialPrompt !== undefined
+        ? { initialPrompt: body.initialPrompt }
+        : {}),
+    },
+  };
 }
 
 function getInitialPromptPreview(session: AppSession): string | null {
@@ -232,6 +296,31 @@ function getInitialPromptPreview(session: AppSession): string | null {
 
 function notFound(c: Context) {
   return c.json({ error: "Share not found" }, 404);
+}
+
+function selectedRepresentationUnavailable(
+  c: Context,
+  deps: PublicSharePublicRoutesDeps,
+  record: NonNullable<ReturnType<PublicShareService["getRecordBySecret"]>>,
+  viewerId?: string,
+): Response | null {
+  if (
+    deps.publicShareService.getSelectedRepresentationAvailability(
+      record,
+      viewerId,
+    ) !== "repair-required"
+  ) {
+    return null;
+  }
+  return c.json(
+    {
+      error:
+        "This migrated frozen share needs source-session repair before it can be served",
+      repairRequired: true,
+      retryable: false,
+    },
+    503,
+  );
 }
 
 type SharePathFlavor = "posix" | "windows";
@@ -327,7 +416,7 @@ function normalizePublicShareProjectFilePath(
 }
 
 async function loadLivePublicShareResponse(
-  deps: PublicShareRoutesDeps,
+  deps: PublicSharePublicRoutesDeps,
   record: NonNullable<ReturnType<PublicShareService["getRecordBySecret"]>>,
 ): Promise<PublicSessionShareResponse | null> {
   const session = await deps.loadSession(
@@ -370,35 +459,6 @@ function decodeURIComponentSafe(value: string): string | null {
   } catch {
     return null;
   }
-}
-
-function publicShareSessionMentionsFile(
-  session: AppSession,
-  relativePath: string,
-  projectRoot: string,
-  projectId: UrlProjectId,
-): boolean {
-  const flavor = getSharePathFlavor(projectRoot);
-  const absolutePath = resolveSharePath(projectRoot, relativePath, flavor);
-  const candidates = new Set([
-    relativePath,
-    absolutePath,
-    encodeURIComponent(relativePath),
-    encodeURIComponent(absolutePath),
-    `/projects/${projectId}/file?path=${encodeURIComponent(relativePath)}`,
-    `/api/local-file?path=${encodeURIComponent(absolutePath)}`,
-    `/api/local-image?path=${encodeURIComponent(absolutePath)}`,
-  ]);
-
-  for (const value of collectStringValues(session)) {
-    const decoded = decodeURIComponentSafe(value);
-    for (const candidate of candidates) {
-      if (value.includes(candidate) || decoded?.includes(candidate)) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 function hasPublicShareExtension(
@@ -586,6 +646,26 @@ function normalizeRenderReferencePath(
   );
 }
 
+async function readPublicShareRenderSource(
+  projectRoot: string,
+  relativePath: string,
+): Promise<string | null> {
+  const opened = await openProjectRelativeFile(projectRoot, relativePath);
+  if (!opened) return null;
+  try {
+    if (opened.stats.size > MAX_PUBLIC_SHARE_TRANSITIVE_SOURCE_BYTES) {
+      return null;
+    }
+    const content = await readFileHandleBounded(
+      opened.handle,
+      MAX_PUBLIC_SHARE_TRANSITIVE_SOURCE_BYTES,
+    );
+    return content?.toString("utf8") ?? null;
+  } finally {
+    await opened.handle.close();
+  }
+}
+
 async function publicShareSessionMentionsRenderAsset(
   session: AppSession,
   relativePath: string,
@@ -605,24 +685,12 @@ async function publicShareSessionMentionsRenderAsset(
   );
 
   for (const sourcePath of sourcePaths.slice(0, 50)) {
-    const flavor = getSharePathFlavor(projectRoot);
-    const absoluteSourcePath = resolveSharePath(
-      projectRoot,
-      sourcePath,
-      flavor,
-    );
-    if (!isPathInsideDirectory(absoluteSourcePath, projectRoot)) {
-      continue;
-    }
     try {
-      const stats = await stat(absoluteSourcePath);
-      if (
-        !stats.isFile() ||
-        stats.size > MAX_PUBLIC_SHARE_TRANSITIVE_SOURCE_BYTES
-      ) {
-        continue;
-      }
-      const content = await readFile(absoluteSourcePath, "utf-8");
+      const content = await readPublicShareRenderSource(
+        projectRoot,
+        sourcePath,
+      );
+      if (content === null) continue;
       for (const reference of extractLocalRenderReferences(content)) {
         if (
           normalizeRenderReferencePath(
@@ -641,36 +709,39 @@ async function publicShareSessionMentionsRenderAsset(
   return false;
 }
 
-export async function buildPublicSharePresentation(
+function buildDirectPublicSharePresentation(
   session: AppSession,
   projectRoot: string,
   projectId: UrlProjectId,
+): { version: 1; authorizedPaths: string[] } {
+  return {
+    version: 1,
+    authorizedPaths: [
+      ...collectPublicShareMentionedProjectFiles(
+        session,
+        projectRoot,
+        projectId,
+      ),
+    ].sort(),
+  };
+}
+
+async function extendPublicSharePresentationFromProjectRoot(
+  directPresentation: { version: 1; authorizedPaths: string[] },
+  projectRoot: string,
+  projectId: UrlProjectId,
 ): Promise<{ version: 1; authorizedPaths: string[] }> {
-  const authorizedPaths = collectPublicShareMentionedProjectFiles(
-    session,
-    projectRoot,
-    projectId,
-  );
+  const authorizedPaths = new Set(directPresentation.authorizedPaths);
   const sourcePaths = [...authorizedPaths].filter((sourcePath) =>
     hasPublicShareExtension(sourcePath, PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS),
   );
   for (const sourcePath of sourcePaths.slice(0, 50)) {
-    const flavor = getSharePathFlavor(projectRoot);
-    const absoluteSourcePath = resolveSharePath(
-      projectRoot,
-      sourcePath,
-      flavor,
-    );
-    if (!isPathInsideDirectory(absoluteSourcePath, projectRoot)) continue;
     try {
-      const stats = await stat(absoluteSourcePath);
-      if (
-        !stats.isFile() ||
-        stats.size > MAX_PUBLIC_SHARE_TRANSITIVE_SOURCE_BYTES
-      ) {
-        continue;
-      }
-      const content = await readFile(absoluteSourcePath, "utf8");
+      const content = await readPublicShareRenderSource(
+        projectRoot,
+        sourcePath,
+      );
+      if (content === null) continue;
       for (const reference of extractLocalRenderReferences(content)) {
         const normalized = normalizeRenderReferencePath(
           reference,
@@ -681,13 +752,25 @@ export async function buildPublicSharePresentation(
         if (normalized) authorizedPaths.add(normalized);
       }
     } catch {
-      // A disappearing render source simply contributes no transitive grant.
+      // A disappearing captured render source contributes no transitive grant.
     }
   }
   return {
     version: 1,
     authorizedPaths: [...authorizedPaths].sort(),
   };
+}
+
+export async function buildPublicSharePresentation(
+  session: AppSession,
+  projectRoot: string,
+  projectId: UrlProjectId,
+): Promise<{ version: 1; authorizedPaths: string[] }> {
+  return await extendPublicSharePresentationFromProjectRoot(
+    buildDirectPublicSharePresentation(session, projectRoot, projectId),
+    projectRoot,
+    projectId,
+  );
 }
 
 function escapeRegExp(value: string): string {
@@ -706,7 +789,7 @@ function publicShareFileRawUrl(
 
 async function servePublicShareProjectFile(
   c: Context,
-  deps: PublicShareRoutesDeps,
+  deps: PublicSharePublicRoutesDeps,
   options: { raw: boolean },
 ): Promise<Response> {
   if (!(deps.getPublicSharesEnabled?.() ?? false)) {
@@ -726,18 +809,14 @@ async function servePublicShareProjectFile(
   if (!record) {
     return notFound(c);
   }
-  if (record.repairRequired) {
-    return c.json(
-      {
-        error:
-          "This migrated frozen share needs source-session repair before it can be served",
-        repairRequired: true,
-        retryable: false,
-      },
-      503,
-    );
-  }
   const viewerId = c.req.query("viewerId");
+  const representationUnavailable = selectedRepresentationUnavailable(
+    c,
+    deps,
+    record,
+    viewerId,
+  );
+  if (representationUnavailable) return representationUnavailable;
   if (
     viewerId &&
     deps.publicShareService.isViewerDisconnected(record, viewerId)
@@ -766,7 +845,7 @@ async function servePublicShareProjectFile(
 
   let authorized = false;
   const viewerHasSnapshot = Boolean(
-    viewerId && record.viewerSnapshots?.[viewerId],
+    viewerId && deps.publicShareService.hasViewerSnapshot(record, viewerId),
   );
   if (record.mode === "frozen" || viewerHasSnapshot) {
     const presentation = await deps.publicShareService.getFrozenPresentation(
@@ -776,21 +855,21 @@ async function servePublicShareProjectFile(
     authorized = presentation?.authorizedPaths.includes(relativePath) ?? false;
   } else {
     const shareResponse = await loadLivePublicShareResponse(deps, record);
-    authorized = Boolean(
-      shareResponse &&
-        (publicShareSessionMentionsFile(
+    if (shareResponse) {
+      const directPresentation = buildDirectPublicSharePresentation(
+        shareResponse.session,
+        projectRoot,
+        record.source.projectId,
+      );
+      authorized =
+        directPresentation.authorizedPaths.includes(relativePath) ||
+        (await publicShareSessionMentionsRenderAsset(
           shareResponse.session,
           relativePath,
           projectRoot,
           record.source.projectId,
-        ) ||
-          (await publicShareSessionMentionsRenderAsset(
-            shareResponse.session,
-            relativePath,
-            projectRoot,
-            record.source.projectId,
-          ))),
-    );
+        ));
+    }
   }
   if (!authorized) {
     return notFound(c);
@@ -815,18 +894,16 @@ async function servePublicShareProjectFile(
     fileOptions.viewMode = "range";
   }
 
+  const frozenProjectRoot = await deps.publicShareService.getFrozenProjectRoot(
+    record,
+    viewerId,
+  );
   const response = await deps.fetchProjectFile(
     record.source.projectId,
     relativePath,
     {
       ...fileOptions,
-      ...(deps.publicShareService.getFrozenProjectRoot(record, viewerId)
-        ? {
-            projectRoot:
-              deps.publicShareService.getFrozenProjectRoot(record, viewerId) ??
-              undefined,
-          }
-        : {}),
+      ...(frozenProjectRoot ? { projectRoot: frozenProjectRoot } : {}),
     },
   );
 
@@ -850,14 +927,33 @@ async function servePublicShareProjectFile(
   return c.json(body);
 }
 
-function streamFrozenPublicShareResponse(
-  deps: PublicShareRoutesDeps,
+function streamMaterializedPublicShareResponse(
+  response: PublicSessionShareResponse,
+): Response {
+  return new Response(
+    legacyPublicShareResponseStream(
+      serializeLegacyPublicShareResponse(
+        response.share,
+        serializeLegacyJsonValue(response.session),
+      ),
+    ),
+    {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+    },
+  );
+}
+
+async function streamFrozenPublicShareResponse(
+  deps: PublicSharePublicRoutesDeps,
   record: NonNullable<ReturnType<PublicShareService["getRecordBySecret"]>>,
-  viewerId?: string,
-): Response | null {
-  const frozen = deps.publicShareService.getFrozenSessionStream(
+  options: { rawWire: boolean; viewerId?: string },
+): Promise<Response | null> {
+  const frozen = await deps.publicShareService.getFrozenSessionJsonChunks(
     record,
-    viewerId,
+    options.viewerId,
   );
   if (!frozen) return null;
   const share = {
@@ -870,17 +966,15 @@ function streamFrozenPublicShareResponse(
     activeViewerCount: deps.publicShareService.getActiveViewerCount(record),
     source: record.source,
   };
-  const body = Readable.from(
-    (async function* () {
-      yield Buffer.from(`{"share":${JSON.stringify(share)},"session":`);
-      for await (const chunk of frozen.stream) yield chunk;
-      yield Buffer.from("}");
-    })(),
+  const body = legacyPublicShareResponseStream(
+    serializeLegacyPublicShareResponse(share, frozen.chunks),
   );
-  return new Response(Readable.toWeb(body) as ReadableStream, {
+  return new Response(body, {
     headers: {
       "Cache-Control": "no-store",
-      "Content-Type": "application/x-yep-public-share+json; charset=utf-8",
+      "Content-Type": options.rawWire
+        ? "application/x-yep-public-share+json; charset=utf-8"
+        : "application/json; charset=UTF-8",
     },
   });
 }
@@ -899,22 +993,43 @@ function getSessionParams(
   return { projectId, sessionId };
 }
 
-async function getPublicShareCaptureOptions(
-  session: AppSession,
+async function captureCompletePublicShare(
+  deps: PublicShareRoutesDeps,
   projectId: UrlProjectId,
-): Promise<{
-  presentation: { version: 1; authorizedPaths: string[] };
-  projectRoot: string;
-}> {
+  sessionId: string,
+): Promise<PublicShareCapture | null> {
+  const capture = await deps.publicShareService.captureCompleteSession(() =>
+    deps.loadCompleteSession(projectId, sessionId),
+  );
+  if (!capture) return null;
+
   const projectRoot = decodeProjectId(projectId);
-  return {
+  const presentation = buildDirectPublicSharePresentation(
+    capture.snapshot,
     projectRoot,
-    presentation: await buildPublicSharePresentation(
-      session,
-      projectRoot,
-      projectId,
-    ),
+    projectId,
+  );
+  return {
+    ...capture,
+    projectRoot,
+    presentation,
+    derivePresentationFromProjectRoot: (capturedProjectRoot: string) =>
+      extendPublicSharePresentationFromProjectRoot(
+        presentation,
+        capturedProjectRoot,
+        projectId,
+      ),
   };
+}
+
+function publicShareCaptureErrorResponse(
+  c: Context,
+  error: unknown,
+): Response | never {
+  if (error instanceof PublicShareCaptureError) {
+    return c.json({ error: error.message, retryable: true }, 409);
+  }
+  throw error;
 }
 
 export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
@@ -999,18 +1114,25 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     if (unavailable) return unavailable;
     const params = getSessionParams(c);
     if ("error" in params) return params.error;
-    const session = await deps.loadSession(params.projectId, params.sessionId);
-    if (!session) {
-      return c.json({ error: "Session not found" }, 404);
-    }
-    const response: FreezePublicSessionLiveSharesResponse =
-      await deps.publicShareService.freezeSessionLiveShares(
+    try {
+      const capture = await captureCompletePublicShare(
+        deps,
         params.projectId,
         params.sessionId,
-        session,
-        await getPublicShareCaptureOptions(session, params.projectId),
       );
-    return c.json(response);
+      if (!capture) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+      const response: FreezePublicSessionLiveSharesResponse =
+        await deps.publicShareService.freezeSessionLiveShares(
+          params.projectId,
+          params.sessionId,
+          capture,
+        );
+      return c.json(response);
+    } catch (error) {
+      return publicShareCaptureErrorResponse(c, error);
+    }
   });
 
   app.post(
@@ -1021,22 +1143,41 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       const params = getSessionParams(c);
       if ("error" in params) return params.error;
       const viewerId = c.req.param("viewerId");
-      const session = await deps.loadSession(
-        params.projectId,
-        params.sessionId,
-      );
-      if (!session) {
-        return c.json({ error: "Session not found" }, 404);
-      }
-      const response: PublicSessionShareViewerActionResponse =
-        await deps.publicShareService.freezeSessionViewerToken(
+      if (
+        !deps.publicShareService.canFreezeSessionViewerToken(
           params.projectId,
           params.sessionId,
           viewerId,
-          session,
-          await getPublicShareCaptureOptions(session, params.projectId),
+        )
+      ) {
+        return c.json(
+          deps.publicShareService.getSessionViewerFreezeStatus(
+            params.projectId,
+            params.sessionId,
+            viewerId,
+          ),
         );
-      return c.json(response);
+      }
+      try {
+        const capture = await captureCompletePublicShare(
+          deps,
+          params.projectId,
+          params.sessionId,
+        );
+        if (!capture) {
+          return c.json({ error: "Session not found" }, 404);
+        }
+        const response: PublicSessionShareViewerActionResponse =
+          await deps.publicShareService.freezeSessionViewerToken(
+            params.projectId,
+            params.sessionId,
+            viewerId,
+            capture,
+          );
+        return c.json(response);
+      } catch (error) {
+        return publicShareCaptureErrorResponse(c, error);
+      }
     },
   );
 
@@ -1058,22 +1199,17 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
   app.post("/", async (c) => {
     const unavailable = publicShareStoreUnavailable(c, deps);
     if (unavailable) return unavailable;
-    let body: CreatePublicSessionShareRequest;
+    let rawBody: unknown;
     try {
-      body = await c.req.json<CreatePublicSessionShareRequest>();
+      rawBody = await c.req.json<unknown>();
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
-
-    if (!isUrlProjectId(body.projectId)) {
-      return c.json({ error: "Invalid project ID format" }, 400);
+    const parsedBody = parseCreatePublicSessionShareRequest(rawBody);
+    if ("error" in parsedBody) {
+      return c.json({ error: parsedBody.error }, 400);
     }
-    if (!body.sessionId || typeof body.sessionId !== "string") {
-      return c.json({ error: "sessionId is required" }, 400);
-    }
-    if (body.mode !== "frozen" && body.mode !== "live") {
-      return c.json({ error: "mode must be frozen or live" }, 400);
-    }
+    const body = parsedBody.request;
     const readiness = getPublicShareReadiness(deps);
     if (!readiness.enabled) {
       return c.json(
@@ -1120,7 +1256,7 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       );
     }
 
-    let session: AppSession | null = null;
+    let capture: PublicShareCapture | null = null;
     let sessionSummary: Pick<
       AppSession,
       | "customTitle"
@@ -1130,14 +1266,24 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       | "title"
       | "updatedAt"
     > | null = null;
-    if (body.mode === "frozen" || !deps.loadSessionSummary) {
-      session = await deps.loadSession(body.projectId, body.sessionId);
-      sessionSummary = session;
-    } else {
+    if (body.mode === "frozen") {
+      try {
+        capture = await captureCompletePublicShare(
+          deps,
+          body.projectId,
+          body.sessionId,
+        );
+      } catch (error) {
+        return publicShareCaptureErrorResponse(c, error);
+      }
+      sessionSummary = capture?.snapshot ?? null;
+    } else if (deps.loadSessionSummary) {
       sessionSummary = await deps.loadSessionSummary(
         body.projectId,
         body.sessionId,
       );
+    } else {
+      sessionSummary = await deps.loadSession(body.projectId, body.sessionId);
     }
     if (!sessionSummary) {
       return c.json({ error: "Session not found" }, 404);
@@ -1149,13 +1295,14 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     const projectName = getProjectName(projectRoot);
     const initialPrompt =
       normalizePromptPreview(sessionSummary.initialPrompt ?? "") ??
-      (session ? getInitialPromptPreview(session) : null) ??
+      (capture ? getInitialPromptPreview(capture.snapshot) : null) ??
       normalizePromptPreview(sessionSummary.fullTitle ?? "") ??
       normalizePromptPreview(body.initialPrompt ?? "");
     const secretUrl = (secret: string) =>
       buildPublicShareUrl(secret, relayConfig, yaClientBaseUrl);
-    const { secret, secretBits, record } =
-      await deps.publicShareService.createShare({
+    let created: Awaited<ReturnType<PublicShareService["createShare"]>>;
+    try {
+      created = await deps.publicShareService.createShare({
         mode: body.mode,
         title,
         initialPrompt,
@@ -1166,11 +1313,12 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
           provider: sessionSummary.provider,
         },
         buildPublicUrl: secretUrl,
-        ...(body.mode === "frozen" && session ? { snapshot: session } : {}),
-        ...(body.mode === "frozen" && session
-          ? await getPublicShareCaptureOptions(session, body.projectId)
-          : {}),
+        ...(capture ? { capture } : {}),
       });
+    } catch (error) {
+      return publicShareCaptureErrorResponse(c, error);
+    }
+    const { secret, secretBits, record } = created;
 
     const response: CreatePublicSessionShareResponse = {
       url: record.publicUrl ?? secretUrl(secret),
@@ -1187,11 +1335,11 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
 }
 
 export function createPublicSharePublicRoutes(
-  deps: PublicShareRoutesDeps,
+  deps: PublicSharePublicRoutesDeps,
 ): Hono {
   const app = new Hono();
 
-  app.get("/:secret/metadata", (c) => {
+  app.get("/:secret/metadata", async (c) => {
     if (!(deps.getPublicSharesEnabled?.() ?? false)) return notFound(c);
     const unavailable = publicShareStoreUnavailable(c, deps);
     if (unavailable) return unavailable;
@@ -1199,19 +1347,112 @@ export function createPublicSharePublicRoutes(
       c.req.param("secret"),
     );
     if (!record) return notFound(c);
-    if (record.repairRequired) {
+    const viewerId = c.req.query("viewerId");
+    if (
+      viewerId &&
+      deps.publicShareService.isViewerDisconnected(record, viewerId)
+    ) {
+      return notFound(c);
+    }
+
+    const metadata = deps.publicShareService.getPublicMetadata(
+      record,
+      viewerId,
+    );
+    if (
+      deps.publicShareService.getSelectedRepresentationAvailability(
+        record,
+        viewerId,
+      ) === "available"
+    ) {
+      const sessionChunks =
+        await deps.publicShareService.getFrozenSessionChunksMetadata(
+          record,
+          viewerId,
+        );
+      if (sessionChunks) {
+        metadata.capabilities = [PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY];
+        metadata.sessionChunks = sessionChunks;
+      }
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json(metadata);
+  });
+
+  app.get("/:secret/session-chunks", async (c) => {
+    if (!(deps.getPublicSharesEnabled?.() ?? false)) return notFound(c);
+    const unavailable = publicShareStoreUnavailable(c, deps);
+    if (unavailable) return unavailable;
+    const record = deps.publicShareService.getRecordBySecret(
+      c.req.param("secret"),
+    );
+    if (!record) return notFound(c);
+    const viewerId = c.req.query("viewerId");
+    const representationUnavailable = selectedRepresentationUnavailable(
+      c,
+      deps,
+      record,
+      viewerId,
+    );
+    if (representationUnavailable) return representationUnavailable;
+    if (
+      viewerId &&
+      deps.publicShareService.isViewerDisconnected(record, viewerId)
+    ) {
+      return notFound(c);
+    }
+
+    let chunk: Awaited<ReturnType<PublicShareService["getFrozenSessionChunk"]>>;
+    try {
+      chunk = await deps.publicShareService.getFrozenSessionChunk(
+        record,
+        viewerId,
+        c.req.query("cursor"),
+      );
+    } catch (error) {
+      if (error instanceof PublicShareChunkCursorError) {
+        return c.json(
+          {
+            error: error.message,
+            retryable: false,
+          },
+          409,
+        );
+      }
+      throw error;
+    }
+    if (!chunk) {
       return c.json(
         {
           error:
-            "This migrated frozen share needs source-session repair before it can be served",
-          repairRequired: true,
+            "Bounded frozen share transfer is unavailable for this revision; update or recreate the public share",
           retryable: false,
+          updateRequired: true,
         },
-        503,
+        409,
       );
     }
-    c.header("Cache-Control", "no-store");
-    return c.json(deps.publicShareService.getPublicMetadata(record));
+    if (!c.req.query("cursor") && viewerId) {
+      deps.publicShareService.recordViewerHeartbeat(record, viewerId);
+    }
+
+    const headers = new Headers({
+      "Cache-Control": "no-store",
+      "Content-Type": "application/octet-stream",
+      "X-Yep-Public-Share-Chunk-Index": String(chunk.index),
+      "X-Yep-Public-Share-Chunk-Offset": String(chunk.offset),
+      "X-Yep-Public-Share-Compressed-Bytes": String(
+        chunk.metadata.compressedBytes,
+      ),
+      "X-Yep-Public-Share-Final": chunk.final ? "true" : "false",
+      "X-Yep-Public-Share-Integrity": chunk.metadata.integrityWitness,
+      "X-Yep-Public-Share-Next-Offset": String(chunk.nextOffset),
+      "X-Yep-Public-Share-Revision": chunk.metadata.revisionId,
+    });
+    if (chunk.cursor) {
+      headers.set("X-Yep-Public-Share-Next-Cursor", chunk.cursor);
+    }
+    return new Response(Uint8Array.from(chunk.bytes).buffer, { headers });
   });
 
   app.get("/:secret/files/raw", (c) =>
@@ -1235,17 +1476,13 @@ export function createPublicSharePublicRoutes(
     if (!record) {
       return notFound(c);
     }
-    if (record.repairRequired) {
-      return c.json(
-        {
-          error:
-            "This migrated frozen share needs source-session repair before it can be served",
-          repairRequired: true,
-          retryable: false,
-        },
-        503,
-      );
-    }
+    const representationUnavailable = selectedRepresentationUnavailable(
+      c,
+      deps,
+      record,
+      viewerId,
+    );
+    if (representationUnavailable) return representationUnavailable;
     if (
       viewerId &&
       deps.publicShareService.isViewerDisconnected(record, viewerId)
@@ -1254,11 +1491,13 @@ export function createPublicSharePublicRoutes(
     }
 
     if (
-      c.req.query("wire") === "raw-json" &&
-      (record.mode === "frozen" ||
-        (viewerId && record.viewerSnapshots?.[viewerId]))
+      record.mode === "frozen" ||
+      (viewerId && deps.publicShareService.hasViewerSnapshot(record, viewerId))
     ) {
-      const response = streamFrozenPublicShareResponse(deps, record, viewerId);
+      const response = await streamFrozenPublicShareResponse(deps, record, {
+        rawWire: c.req.query("wire") === "raw-json",
+        ...(viewerId ? { viewerId } : {}),
+      });
       if (!response) return notFound(c);
       if (viewerId) {
         deps.publicShareService.recordViewerHeartbeat(record, viewerId);
@@ -1276,9 +1515,7 @@ export function createPublicSharePublicRoutes(
       response = null;
     }
 
-    if (!response && record.mode === "frozen") {
-      response = await deps.publicShareService.getFrozenShareBySecret(secret);
-    } else if (!response) {
+    if (!response) {
       const session = await deps.loadSession(
         record.source.projectId,
         record.source.sessionId,
@@ -1298,8 +1535,7 @@ export function createPublicSharePublicRoutes(
       ? deps.publicShareService.recordViewerHeartbeat(record, viewerId)
       : deps.publicShareService.getActiveViewerCount(record);
 
-    c.header("Cache-Control", "no-store");
-    return c.json(response);
+    return streamMaterializedPublicShareResponse(response);
   });
 
   return app;

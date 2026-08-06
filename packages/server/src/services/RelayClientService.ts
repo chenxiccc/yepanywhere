@@ -21,6 +21,7 @@ import {
   isRelayServerRejected,
 } from "@yep-anywhere/shared";
 import { WebSocket } from "ws";
+import { MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES } from "../websocketLimits.js";
 
 export interface RelayClientConfig {
   /** WebSocket URL of the relay server (e.g., wss://relay.yepanywhere.com/ws) */
@@ -208,7 +209,9 @@ export class RelayClientService {
     this.updateState({ status: "connecting" });
 
     try {
-      const ws = new WebSocket(this.config.relayUrl);
+      const ws = new WebSocket(this.config.relayUrl, {
+        maxPayload: MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES,
+      });
       this.connectingWs = ws;
 
       ws.on("open", () => {
@@ -237,7 +240,7 @@ export class RelayClientService {
   }
 
   private handleOpen(ws: WebSocket): void {
-    if (!this.config) return;
+    if (ws !== this.connectingWs || !this.config) return;
 
     console.log(`[RelayClient] Connected to relay: ${this.config.relayUrl}`);
     this.updateState({ status: "registering" });
@@ -271,6 +274,8 @@ export class RelayClientService {
   }
 
   private handleMessage(ws: WebSocket, data: Buffer, isBinary: boolean): void {
+    if (ws !== this.connectingWs && ws !== this.waitingWs) return;
+
     // If it's a binary frame, it's the first message from a phone client
     // (after pairing, relay forwards messages with preserved frame types)
     if (isBinary) {
@@ -286,13 +291,17 @@ export class RelayClientService {
     try {
       parsed = JSON.parse(str);
     } catch {
-      // Not valid JSON - shouldn't happen for relay protocol, log and ignore
-      console.warn("[RelayClient] Received non-JSON text frame:", str);
+      // Not valid JSON - shouldn't happen for relay protocol. Incoming frames
+      // can contain credentials, so only log framing metadata.
+      console.warn(
+        `[RelayClient] Received non-JSON text frame (${data.length} bytes)`,
+      );
       return;
     }
 
     // Handle relay protocol responses
     if (isRelayServerRegistered(parsed)) {
+      if (ws !== this.connectingWs) return;
       console.log(
         `[RelayClient] Registered with relay as: ${this.config?.username} (${this.config?.channel ?? DEFAULT_RELAY_CHANNEL})`,
       );
@@ -307,6 +316,7 @@ export class RelayClientService {
     }
 
     if (isRelayServerRejected(parsed)) {
+      if (ws !== this.connectingWs) return;
       this.handleRejection(ws, parsed);
       return;
     }
@@ -349,18 +359,20 @@ export class RelayClientService {
     firstMessage: Buffer,
     isBinary: boolean,
   ): void {
-    if (!this.config) return;
+    if ((ws !== this.connectingWs && ws !== this.waitingWs) || !this.config) {
+      return;
+    }
 
-    const preview = firstMessage.toString("utf-8").slice(0, 100);
     console.log(
-      `[RelayClient] Connection claimed by phone client (${this.config.channel ?? DEFAULT_RELAY_CHANNEL}), firstMessage: Buffer(${firstMessage.length}), isBinary: ${isBinary}, preview: ${preview}`,
+      `[RelayClient] Connection claimed by phone client (${this.config.channel ?? DEFAULT_RELAY_CHANNEL}), firstMessage: Buffer(${firstMessage.length}), isBinary: ${isBinary}`,
     );
 
     // Stop keepalive for this connection (it's being handed off)
     this.stopKeepalive();
 
-    // Remove from waiting state (it's now claimed)
-    this.waitingWs = null;
+    // Release this connection from registration/waiting ownership before handoff.
+    if (ws === this.connectingWs) this.connectingWs = null;
+    if (ws === this.waitingWs) this.waitingWs = null;
 
     // Remove all listeners before handoff - the new handler will attach its own
     // This prevents duplicate message processing

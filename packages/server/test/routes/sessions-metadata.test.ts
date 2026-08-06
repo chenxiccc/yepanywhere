@@ -2818,6 +2818,18 @@ describe("Sessions metadata route", () => {
       eventBus: { emit } as unknown as SessionsDeps["eventBus"],
     });
 
+    const invalidReasonResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restartMode: "fork", reason: 42 }),
+      },
+    );
+    expect(invalidReasonResponse.status).toBe(400);
+    expect(interruptProcess).not.toHaveBeenCalled();
+    expect(forkSession).not.toHaveBeenCalled();
+
     const response = await routes.request(
       `/projects/${project.id}/sessions/sess-1/restart`,
       {
@@ -4381,9 +4393,13 @@ describe("Sessions metadata route", () => {
     expect(forkSession).not.toHaveBeenCalled();
   });
 
-  it("rejects fork restart when the provider has no fork primitive", async () => {
+  it("rejects fork restart before interrupting an unsupported provider", async () => {
     const project = createProject();
     const forkSession = vi.fn();
+    const interruptProcess = vi.fn(async () => ({
+      success: true,
+      supported: true,
+    }));
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => ({
@@ -4405,10 +4421,7 @@ describe("Sessions metadata route", () => {
         })),
         supportsForkSession: vi.fn(() => false),
         forkSession,
-        interruptProcess: vi.fn(async () => ({
-          success: true,
-          supported: true,
-        })),
+        interruptProcess,
       } as unknown as SessionsDeps["supervisor"],
       scanner: {
         getOrCreateProject: vi.fn(async () => project),
@@ -4439,6 +4452,7 @@ describe("Sessions metadata route", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(interruptProcess).not.toHaveBeenCalled();
     expect(forkSession).not.toHaveBeenCalled();
     const body = await response.json();
     expect(body.error).toContain("does not support transcript fork");

@@ -123,7 +123,10 @@ export interface AcceptRelayConnectionDeps {
 /**
  * Create a WSAdapter from a raw ws.WebSocket.
  */
-function createWSAdapter(ws: RawWebSocket): WSAdapter {
+function createWSAdapter(
+  ws: RawWebSocket,
+  connState: ConnectionState,
+): WSAdapter {
   return {
     send(data: string | ArrayBuffer | Uint8Array<ArrayBuffer>): void {
       try {
@@ -135,6 +138,7 @@ function createWSAdapter(ws: RawWebSocket): WSAdapter {
       }
     },
     close(code?: number, reason?: string): void {
+      cleanupConnectionState(connState);
       try {
         ws.close(code, reason);
       } catch {
@@ -302,6 +306,7 @@ export function createWsRelayRoutes(
             }
           },
           close(code?: number, reason?: string): void {
+            cleanupConnectionState(connState);
             try {
               ws.close(code, reason);
             } catch {
@@ -391,6 +396,7 @@ export function createWsRelayRoutes(
 
       onError(evt, _ws) {
         console.error("[WS Relay] WebSocket error:", evt);
+        wsAdapter?.close(1011, "WebSocket error");
       },
     };
   });
@@ -483,7 +489,7 @@ export function createAcceptRelayConnection(
     connState.connectionPolicy = "srp_required";
 
     // Create WSAdapter for raw WebSocket
-    const wsAdapter = createWSAdapter(rawWs);
+    const wsAdapter = createWSAdapter(rawWs, connState);
     const send = createSendFn(wsAdapter, connState);
 
     // Wire up message handling
@@ -539,6 +545,7 @@ export function createAcceptRelayConnection(
     // Wire up error handling
     rawWs.on("error", (err: Error) => {
       console.error("[WS Relay] WebSocket error:", err);
+      wsAdapter.close(1011, "WebSocket error");
     });
 
     // Process the first message (SRP init from phone client)

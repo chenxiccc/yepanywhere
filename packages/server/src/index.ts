@@ -105,6 +105,7 @@ import {
   SharingService,
   WorkstreamService,
 } from "./services/index.js";
+import { configureInboundWebSocketMessageLimit } from "./websocketLimits.js";
 import {
   type SpeechRegistryInitOptions,
   SpeechBackendRegistry,
@@ -1095,6 +1096,9 @@ async function startServer() {
   // This must use the same app instance that has the routes
   // We get wss for the unified upgrade handler (instead of using injectWebSocket)
   const { wss, upgradeWebSocket } = createNodeWebSocket({ app });
+  // Upload and speech payloads are already chunked; reject an oversized message
+  // in ws before the relay handlers buffer or parse it.
+  configureInboundWebSocketMessageLimit(wss);
 
   // Add upload routes with WebSocket support
   // These must be added BEFORE the frontend proxy catch-all

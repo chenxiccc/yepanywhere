@@ -46,6 +46,23 @@ browser context menu unchanged, and sends no management request. Storage
 readiness is reported by the routes themselves and is not inferred from an
 empty inventory.
 
+`public-share-session-chunks-v1` is a representation capability carried by the
+secret-authorized v2 public metadata response, not a global `/api/version`
+claim. It means the selected immutable primary or viewer revision supports
+ordered pull reads of at most 256 KiB of compressed `session.json.gz` data per
+ordinary relay request, with at most 256 chunks and 64 MiB each for compressed
+and decompressed totals. The public viewer gates only on that metadata field;
+an installed server's global capabilities cannot prove that one selected
+revision has the required persisted integrity metadata. Releases `v0.5.2`,
+`v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0` lack this route and field. An
+unmarked link keeps the combined response and makes no metadata request. Marked
+v2 metadata without the capability keeps the one-response `wire=raw-json`
+path and makes no chunk request. Relay raw-json responses are capped at 8 MiB;
+larger responses return 413 with update guidance. A browser without
+`DecompressionStream` takes that same raw-json path on the already-open relay
+WebSocket even when metadata advertises chunks. Existing capability meanings
+and the `#v=2` marker remain unchanged.
+
 ## Capability Classes
 
 Use `kind: "permanent"` for capabilities that may vary indefinitely across

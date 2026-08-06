@@ -15,6 +15,8 @@ function createMockWs() {
   };
 }
 
+const publicShareSecret = "A".repeat(22);
+
 describe("WebSocket Transport Message Auth Helpers", () => {
   it("does not treat pre-auth bytes as encrypted envelope", () => {
     const connState = createConnectionState();
@@ -73,6 +75,106 @@ describe("WebSocket Transport Message Auth Helpers", () => {
     };
 
     const msg = parseApplicationClientMessage(ws, connState, true, parsed);
+
+    expect(msg).toBeNull();
+    expect(ws.close).toHaveBeenCalledWith(4001, "Authentication required");
+  });
+
+  it.each([
+    `/public-api/shares/${publicShareSecret}?wire=raw-json`,
+    `/public-api/shares/${publicShareSecret}/metadata?viewerId=viewer-1234`,
+    `/public-api/shares/${publicShareSecret}/session-chunks?viewerId=viewer-1234&cursor=opaque-next`,
+    `/public-api/shares/${publicShareSecret}/files/raw?path=note.md`,
+  ])("accepts one canonical pre-auth public-share GET target: %s", (path) => {
+    const connState = createConnectionState();
+    const ws = createMockWs();
+    const parsed = {
+      type: "request",
+      id: "public-share-read",
+      method: "GET",
+      path,
+    } as const;
+
+    const msg = parseApplicationClientMessage(ws, connState, true, parsed);
+
+    expect(msg).toEqual(parsed);
+    expect(connState.connectionMode).toBe("public_read_only");
+    expect(ws.close).not.toHaveBeenCalled();
+  });
+
+  it("accepts sequential public reads after public mode is selected", () => {
+    const connState = createConnectionState();
+    const ws = createMockWs();
+    const parsed = {
+      type: "request",
+      id: "public-share-read",
+      method: "GET",
+      path: `/public-api/shares/${publicShareSecret}/metadata`,
+    } as const;
+
+    expect(parseApplicationClientMessage(ws, connState, true, parsed)).toEqual(
+      parsed,
+    );
+    expect(
+      parseApplicationClientMessage(ws, connState, true, {
+        ...parsed,
+        id: "public-share-read-2",
+      }),
+    ).toMatchObject({ id: "public-share-read-2" });
+    expect(connState.connectionMode).toBe("public_read_only");
+    expect(ws.close).not.toHaveBeenCalled();
+  });
+
+  it("rejects a public read after SRP mode is selected", () => {
+    const connState = createConnectionState();
+    connState.connectionMode = "srp";
+    const ws = createMockWs();
+
+    expect(
+      parseApplicationClientMessage(ws, connState, true, {
+        type: "request",
+        id: "public-after-srp",
+        method: "GET",
+        path: `/public-api/shares/${publicShareSecret}/metadata`,
+      }),
+    ).toBeNull();
+    expect(connState.connectionMode).toBe("srp");
+    expect(ws.close).toHaveBeenCalledWith(4001, "Authentication required");
+  });
+
+  it.each([
+    [
+      "dot segments",
+      `/public-api/shares/${publicShareSecret}/../../../api/settings`,
+    ],
+    [
+      "encoded dot segments",
+      `/public-api/shares/${publicShareSecret}/%2e%2e/%2e%2e/api/settings`,
+    ],
+    [
+      "backslashes",
+      `/public-api/shares/${publicShareSecret}\\..\\..\\api\\settings`,
+    ],
+    [
+      "authority target",
+      `//relay.invalid/public-api/shares/${publicShareSecret}`,
+    ],
+    [
+      "encoded path separator",
+      `/public-api/shares/${publicShareSecret}%2Fmetadata`,
+    ],
+    ["fragment", `/public-api/shares/${publicShareSecret}#metadata`],
+    ["reserved authenticated route", "/api/settings"],
+  ])("rejects ambiguous pre-auth request target with %s", (_label, path) => {
+    const connState = createConnectionState();
+    const ws = createMockWs();
+
+    const msg = parseApplicationClientMessage(ws, connState, true, {
+      type: "request",
+      id: "ambiguous-public-share",
+      method: "GET",
+      path,
+    });
 
     expect(msg).toBeNull();
     expect(ws.close).toHaveBeenCalledWith(4001, "Authentication required");

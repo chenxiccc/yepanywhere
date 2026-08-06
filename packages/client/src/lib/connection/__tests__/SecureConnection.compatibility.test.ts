@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { encodeTransportChunkFrames } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import { SecureConnection } from "../SecureConnection";
 import {
@@ -64,6 +65,47 @@ function srpVerifyServerInfoProof(params: {
 }
 
 describe("SecureConnection protocol compatibility", () => {
+  it("reassembles transport chunks before decrypting a server message", async () => {
+    const sessionKey = new Uint8Array(32).fill(9);
+    const routeMessage = vi.fn();
+    const close = vi.fn();
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "test-password",
+    ) as unknown as {
+      sessionKey: Uint8Array;
+      ws: { close: ReturnType<typeof vi.fn> };
+      protocol: { routeMessage: ReturnType<typeof vi.fn> };
+      handleMessage: (data: ArrayBuffer) => Promise<void>;
+    };
+    conn.sessionKey = sessionKey;
+    conn.ws = { close };
+    conn.protocol = { routeMessage };
+
+    const message = {
+      type: "pong",
+      id: "chunked-secure-pong",
+      padding: "secure-transport-padding".repeat(30_000),
+    };
+    const envelope = encryptToBinaryEnvelope(
+      JSON.stringify({ seq: 0, msg: message }),
+      sessionKey,
+    );
+    const chunks = Array.from(encodeTransportChunkFrames(4, envelope));
+    expect(chunks.length).toBeGreaterThan(1);
+
+    for (const chunk of chunks.slice(0, -1)) {
+      await conn.handleMessage(chunk);
+      expect(routeMessage).not.toHaveBeenCalled();
+    }
+    await conn.handleMessage(chunks.at(-1) as ArrayBuffer);
+
+    expect(routeMessage).toHaveBeenCalledOnce();
+    expect(routeMessage).toHaveBeenCalledWith(message);
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it("does not tear down an in-flight ensureConnected recovery", async () => {
     const conn = new SecureConnection(
       "ws://localhost:3400/api/ws",

@@ -279,7 +279,9 @@ export async function decodeFrameToParsedMessage(
   try {
     return JSON.parse(textData);
   } catch {
-    console.warn("[WS Relay] Failed to parse message:", textData);
+    console.warn(
+      `[WS Relay] Failed to parse text frame: characters=${textData.length}`,
+    );
     return null;
   }
 }

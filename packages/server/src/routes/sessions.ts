@@ -430,7 +430,34 @@ function parseOptionalRestartSessionBody(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { error: "Invalid JSON body" };
   }
-  return { body: parsed as RestartSessionBody };
+
+  const body = parsed as Record<string, unknown>;
+  if (
+    body.restartMode !== undefined &&
+    body.restartMode !== "handoff" &&
+    body.restartMode !== "fork"
+  ) {
+    return { error: 'restartMode must be "handoff" or "fork"' };
+  }
+  for (const [field, label] of [
+    ["reason", "reason"],
+    ["forkUpToMessageId", "forkUpToMessageId"],
+    ["sourceUrl", "sourceUrl"],
+    ["model", "model"],
+  ] as const) {
+    if (body[field] !== undefined && typeof body[field] !== "string") {
+      return { error: `${label} must be a string` };
+    }
+  }
+  if (
+    body.provider !== undefined &&
+    (typeof body.provider !== "string" ||
+      !getProvider(body.provider as ProviderName))
+  ) {
+    return { error: "Invalid provider" };
+  }
+
+  return { body: body as RestartSessionBody };
 }
 
 const RESTART_HANDOFF_MAX_CHARS = 40_000;
@@ -4419,13 +4446,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       executor = parsedSavedExecutor.executor;
     }
 
-    if (
-      body.restartMode !== undefined &&
-      body.restartMode !== "handoff" &&
-      body.restartMode !== "fork"
-    ) {
-      return c.json({ error: 'restartMode must be "handoff" or "fork"' }, 400);
-    }
     const restartMode = body.restartMode ?? "handoff";
     if (restartSandboxLevel !== (originalMetadata?.sandboxLevel ?? "none")) {
       return c.json(
@@ -4447,6 +4467,40 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     ) as ProviderName | undefined;
     const preferredSourceProvider =
       metadataProvider ?? oldProcess?.provider ?? project.provider;
+    let sourceSession: Session | null = null;
+
+    // Fork validation must use the source transcript, but it must not disturb
+    // the source process until every unsupported request has been rejected.
+    if (restartMode === "fork") {
+      sourceSession = await loadRestartSourceSession(
+        project,
+        sessionId,
+        projectId,
+        preferredSourceProvider,
+        oldProcess,
+      );
+      if (!sourceSession) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+      const forkSourceProvider =
+        sourceSession.provider ?? preferredSourceProvider;
+      if (body.provider && body.provider !== forkSourceProvider) {
+        return c.json(
+          {
+            error:
+              "Fork keeps the source provider; omit provider or match the source session",
+          },
+          400,
+        );
+      }
+      if (!deps.supervisor.supportsForkSession(forkSourceProvider)) {
+        return c.json(
+          { error: `${forkSourceProvider} does not support transcript fork` },
+          400,
+        );
+      }
+    }
+
     // Fork copies the transcript as-is. Handoff first asks the provider to
     // compact so the bounded transcript can include that boundary when one is
     // available. A supplied draft was already built from a compacted
@@ -4457,14 +4511,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
     const oldProcessInterrupted =
       await interruptOldProcessForHandoff(oldProcess);
-    const sourceSession = await loadRestartSourceSession(
-      project,
-      sessionId,
-      projectId,
-      preferredSourceProvider,
-      oldProcess,
-    );
-
+    if (restartMode !== "fork") {
+      sourceSession = await loadRestartSourceSession(
+        project,
+        sessionId,
+        projectId,
+        preferredSourceProvider,
+        oldProcess,
+      );
+    }
     if (!sourceSession) {
       return c.json({ error: "Session not found" }, 404);
     }
@@ -4498,21 +4553,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode ?? sourceLaunchSettings?.permissionMode;
 
     if (restartMode === "fork") {
-      if (body.provider && body.provider !== sourceProvider) {
-        return c.json(
-          {
-            error:
-              "Fork keeps the source provider; omit provider or match the source session",
-          },
-          400,
-        );
-      }
-      if (!deps.supervisor.supportsForkSession(sourceProvider)) {
-        return c.json(
-          { error: `${sourceProvider} does not support transcript fork` },
-          400,
-        );
-      }
       const forkTitle = deriveForkTitle({
         preferredTitle: originalMetadata?.customTitle,
         sourceSession,

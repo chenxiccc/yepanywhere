@@ -58,6 +58,44 @@ share-owned chunks whose cursor cannot change meaning; a byte range into a
 provider transcript, mutable source file, or ordinary JSON response is not a
 valid frozen boundary.
 
+## Complete frozen capture
+
+Live serving keeps its incremental session loader. Every operation that can
+publish frozen authority—new frozen grants, whole-session live-to-frozen
+conversion, and viewer-token freeze—uses a separate required complete-history
+loader. The app adapter requests the real session-detail route with
+`publicShare=1&fullHistory=1`, parses its normal metadata-plus-top-level-messages
+envelope, and rejects missing messages, pagination, truncation, or inconsistent
+message counts as retryable incomplete history. This does not add a field to
+`AppSession` or the public wire protocol. A detail envelope owned by a current
+YA process (`ownership.owner === "self"`) is also rejected as retryable
+`source-changed`: its merged replay can contain messages not yet durable in the
+provider transcript, so it is not a complete immutable source even when the
+returned count is internally consistent. An invalid, disconnected, or otherwise
+ineligible viewer-token freeze is rejected as a no-op before this complete
+loader or any project scan runs; the serialized store mutation still rechecks
+eligibility before retargeting authority.
+
+One source read produces one sanitized, recursively immutable `AppSession`
+projection. Presentation authorization is derived from that same projection.
+The store serializes the projection through its persistence serializer, and a
+SHA-256 source witness covers exactly those normalized session bytes;
+sanitization is not repeated between witness generation and persistence. A
+separate persisted integrity witness extends those exact session bytes with the
+canonical presentation metadata. Project-backed captures keep this stable
+content witness even though their revision IDs include per-attempt randomness
+to distinguish worktree snapshots.
+
+Frozen publication remains content-before-authority. After the immutable gzip
+revision and optional copy-on-write project tree are complete, but immediately
+before inserting a grant or retargeting whole-session/viewer authority, the
+store invokes a transient validator. The validator performs a second explicit
+complete-history read, builds the same sanitized projection, and compares its
+serialized witness. Missing or partial history and source mismatch are typed,
+retryable capture failures. No new grant is inserted and existing live or
+viewer authority remains unchanged; the durable cleanup journal collects the
+unreferenced attempted revision and project snapshot.
+
 ## Physical access bounds
 
 YA app data owns one public-share directory with two storage classes:
@@ -65,6 +103,7 @@ YA app data owns one public-share directory with two storage classes:
 ```text
 public-shares/
 ├─ grants.<implementation-owned>       compact; no transcript bodies
+├─ cleanup.<implementation-owned>      pending share-state collection journal
 ├─ shares/
 │  └─ <opaque-share-state-id>/         independently openable
 │     ├─ state.json                    small source/header/revision metadata
@@ -94,9 +133,19 @@ content. Global inventory and revocation read compact grants only. Empty state
 and unreferenced revisions are garbage collected after authorization changes
 commit.
 
-All store content is owner-only app data. No share state, index, snapshot,
-migration marker, or garbage-collection record belongs in a selected project or
-its Git metadata.
+All store content is owner-only app data. Opening remediates and verifies the
+store root before trusting it. Every control file, temporary file, gzip body,
+revision directory, project clone, and retained legacy backup is created or
+opened through a strict owner-only path check: regular files are `0600` and
+directories are `0700` on POSIX with ownership and group/other access verified;
+Windows resolves the process principal and SID, assigns object ownership to that
+principal, removes inherited access and owner DENY entries before replacing the
+DACL owner grant, then queries and verifies both the object-owner SID and the
+resulting owner-only DACL. Mismatched ownership, a remaining owner DENY entry,
+or any application/verification failure fails readiness. The unrelated
+best-effort secret-file permission API keeps its existing warning-only contract. No share state, index, snapshot,
+migration marker, cleanup journal, or garbage-collection record belongs in a
+selected project or its Git metadata.
 
 ## Frozen project files
 
@@ -105,9 +154,14 @@ copy-on-write clone on the actual project/app-data filesystem pair. Inferring
 support from an OS name is insufficient. A successful clone supplies as-of file
 bytes without an eager full physical copy.
 
-The clone is storage, not authority. Public file views remain limited to paths
-already linked or visible in share content and bounded render assets; unlinked
-clone content is never exposed. Git metadata is not a public asset.
+The clone is storage, not authority. Direct paths come from the immutable
+transcript projection. Transitive Markdown/HTML render references are derived
+only after a successful clone, by reading the completed clone rather than a
+pre-clone live-project scan; a reference removed before the clone therefore
+cannot authorize an unrelated file that merely remains in the captured tree.
+Public file views remain limited to those captured paths and bounded render
+assets; unlinked clone content is never exposed. Git metadata is not a public
+asset.
 
 Symlinks are omitted from a successful clone. Preserving one could escape the
 immutable tree and expose current external bytes while the revision claimed
@@ -182,17 +236,29 @@ unsupported metadata route.
 
 Create content before authority:
 
-1. create or reuse the share state and make a frozen revision/CoW clone durable;
-2. atomically update its small state metadata;
-3. atomically insert the grant; and
-4. return the URL only after the grant commits.
+1. durably enqueue the affected share-state id for idempotent collection;
+2. create or reuse the share state and make a frozen revision/CoW clone durable;
+3. atomically update its small state metadata;
+4. atomically insert the grant;
+5. drain the journal entry against the now-authoritative grant set; and
+6. return the URL only after the grant commits.
 
 Revoke authority before cleanup:
 
-1. atomically delete the grant from the serving store;
-2. commit invalidation before deleting content;
-3. collect unreferenced revisions and project snapshots; and
-4. delete an empty share-state directory.
+1. durably enqueue every affected share-state id;
+2. atomically delete the grant from the serving store;
+3. commit invalidation before deleting content;
+4. collect unreferenced revisions and project snapshots;
+5. delete an empty share-state directory; and
+6. remove each journal entry only after its idempotent collection succeeds.
+
+Freeze, viewer disconnect, and failed create rollback use the same additive
+owner-only cleanup journal. Startup and re-enable replay it; `cleanupPending` is
+derived from the in-memory mirror of its committed entries. Journal updates are
+copy-on-write: pre-rename failure retains the old set, while a failed directory
+sync after atomic replacement retains the newly committed set. A grant-file
+write that fails after atomic replacement never restores older in-memory
+authority.
 
 Recovery never derives grants from leftover content. “Stop live updates” writes
 the immutable revision first and then atomically retargets the valid grant from
@@ -200,18 +266,39 @@ the immutable revision first and then atomically retargets the valid grant from
 compact store; they do not open transcript bodies.
 
 The immutable revision directory is renamed into place before its state entry
-commits. For a body-only content-addressed capture, a later byte-identical body
-and presentation validates and adopts the complete orphan directory before
-creating authority. Project-backed captures have distinct revision identities;
-an interrupted one can remain only as unreferenced content and cannot become
-authority. An incomplete or malformed matching orphan fails explicitly. A
-state directory without a remaining grant never recreates a bearer
-authorization.
+commits. Before either metadata-known deduplication or filesystem-orphan adoption
+can create authority, one validator remediates and verifies the revision
+directory, gzip body, presentation file and contents, and optional project
+directory, rejecting missing paths, symlinks, wrong kinds, or representation/
+project-clone mismatches. It stream-gunzips the stored session, verifies the
+exact byte count and integrity witness expected from the complete-history
+capture, and includes parsed canonical presentation metadata in that witness.
+The persisted witness must agree too when state metadata already carries one;
+older version-2 state gains the additive witness only after successful reuse
+validation. Equal-size corruption and a structurally valid substituted orphan
+therefore fail before grant or viewer authority changes. For a body-only
+content-addressed capture, a later byte-identical body and presentation can then
+adopt the complete orphan only when no project clone is present; an extraneous
+`project/` is a representation mismatch, not evidence that the orphan should be
+reclassified as CoW-backed. Project-backed captures have distinct revision
+identities; an interrupted one remains unreferenced and cannot become authority.
+Journal collection enumerates the actual frozen-directory children, removes
+`.tmp-*` and every unreferenced revision even when `state.json` never recorded
+it, then trims state metadata. A state directory without a remaining grant never
+recreates a bearer authorization.
 
 The Settings **Public Read-Only Share** toggle remains a destructive global kill
-switch. Disable persists the false gate first, invalidates all grants, and then
-resumes cleanup. Re-enable finishes interrupted disable cleanup and starts with
-no resurrected grants.
+switch. The settings routes reserve one shared serial transaction slot on
+request arrival, before parsing, and keep persistence plus each live settings
+effect in that order; the secondary remote-executor persistence route uses the
+same queue. Initialize, enable, and disable are one request-ordered desired-state
+lifecycle; each call records its desired state before waiting. A superseded
+enable cannot publish stale readiness, while every disable records an obligation
+that survives a rejected call and persists the `disabled` migration marker
+before journaling and invalidating all grants. Re-enable first replays any
+unfulfilled destructive disable, then finishes durable disable cleanup before
+replacing the marker with `complete` and reaching `ready`, so interrupted or
+closely followed toggles cannot resurrect grants.
 
 ## Opening and legacy migration
 
@@ -223,9 +310,11 @@ content scan or blind 10-second delay.
 
 Left- and right-click on the broadcast icon open the same management pane at
 the same dropdown-like anchor. The Session menu's Share action opens that pane
-too. Its two-column layout keeps five filter rows in the left rail: all
-projects, this project, and this session are mutually exclusive (this session
-is the default); read-only and live are independent and both default on. Each
+too, using its default placement. In session context, its two-column layout
+keeps five filter rows in the left rail: all projects, this project, and this
+session are mutually exclusive (this session is the default); read-only and
+live are independent and both default on. Settings management is fixed to all
+projects and exposes only the read-only and live filters. Each
 selector uses the same white line-glyph tile, accent fill, and tinted-row
 selected-state grammar as Settings categories; selection does not depend on a
 subtle border alone. The right column lists matching grants with active
@@ -249,9 +338,23 @@ armed action; outside-click or clicking the broadcast icon dismisses the pane.
 Each listed share carries a compact right-side live/read-only glyph before its
 copy and smaller red revoke actions.
 
+One mounted manager controller belongs to one backend source. Changing the
+current source remounts the controller, clears its inventory and operation
+state, and invalidates every callback owned by the previous source before the
+new inventory request starts. A non-abortable create or revoke may still settle
+on its admitted source, but its late result cannot publish into the replacement
+controller. Losing the advertised management capability unmounts and closes the
+Settings manager immediately; restoring capability does not reopen it without a
+new user action.
+
 Legacy migration is record-at-a-time and streaming. It must not `readFile`,
 `JSON.parse`, or `JSON.stringify` the complete aggregate or one huge embedded
-body. It preserves legacy secret hashes and URL behavior, groups live grants
+body. The streaming reader validates the complete JSON grammar even for ignored
+legacy fields and preserves UTF-8 code points split across its 64 KiB reads; a
+malformed ignored literal cannot advance the source to a backup or commit a
+migration marker. Startup cleanup removes only strictly named regular atomic
+temps for the owned control files, never an unknown lookalike or directory. It
+preserves legacy secret hashes and URL behavior, groups live grants
 for the same source session onto one live state, and writes every frozen body
 independently. Legacy frozen links cannot recover an as-of project tree, so
 they are marked as live-linked-file mode and carry its warning.
@@ -266,17 +369,115 @@ later cleanup decision.
 Migration starts only after the listening server is available. Its durable
 completion marker and log record the migrated grant count, source byte offset,
 body bytes, elapsed time, and observed peak heap. A malformed source remains in
-place; a successful source becomes a non-serving backup. A frozen legacy body
-whose stored message count cannot be satisfied remains explicitly unavailable
-instead of being repaired from later live session contents.
+place; a successful source becomes a non-serving backup. Availability is scoped
+to the selected frozen representation: migration marks the inspected primary or
+viewer revision only. A broken primary does not disable an intact viewer
+snapshot, and a broken viewer snapshot does not disable the live/default view or
+other viewers. In particular, a live primary with no frozen-primary availability
+field is available regardless of the grant-wide downgrade marker; that marker is
+only the fallback for an older frozen primary. Compact metadata remains
+available in every case. Existing
+version-2 grants that lack representation fields are upgraded once by streaming
+each such stored gzip revision through the migration inspector without
+materializing a complete session. Scoped fields take precedence in current
+selection, while `repairRequired: true` remains on disk whenever any scoped
+representation needs repair so older binaries still fail closed; complete
+scoped fields prevent repeated inspection on later startups. A frozen legacy
+body whose stored message count cannot be satisfied remains explicitly
+unavailable instead of being repaired from later live session contents.
 
 ## Serving and management bounds
 
 The compact metadata route reads a grant and its already-persisted public
-header without opening `session.json.gz`. A new frozen viewer requests the
-`raw-json` wire form; the server streams the one selected gzip revision between
-the small response envelope fields. The ordinary combined response remains for
-legacy viewers and live shares.
+header without opening `session.json.gz`, including when a stored representation
+needs repair. Session-body and share-scoped file routes resolve the requested
+primary or viewer representation first and reject only when that selected
+frozen revision is marked `repair-required`.
+
+For an available immutable revision with complete persisted length and
+integrity metadata, the secret-authorized v2 header advertises
+`public-share-session-chunks-v1`. New revisions are eligible only when both the
+compressed gzip and decompressed session are at most 64 MiB; creation rejects a
+larger projection before publishing authority. Structurally valid historical
+revisions above either ceiling remain stored but are not chunk-capable. They
+omit the capability, so a conforming client sends no chunk request and uses
+`wire=raw-json`; relay access succeeds only through the 8 MiB raw-response cap
+and otherwise returns 413 with update guidance. Direct HTTP streaming can still
+load a larger structurally valid revision. Direct chunk requests reject with
+update guidance.
+Repeated ordinary `GET /public-api/shares/:secret/session-chunks` requests read
+at most 256 KiB of compressed bytes directly from that revision's
+owner-validated `session.json.gz`. Each response identifies the immutable
+revision, integrity witness, chunk index, current and next offsets, complete
+compressed length, final state, and an opaque next cursor. The cursor is
+HMAC-bound to the bearer grant/share state, selected primary or viewer identity,
+immutable revision, selected capture timestamp, and next offset. Revocation
+removes the grant before another request can resolve; retargeting, viewer
+changes, revision changes, and cross-grant cursor reuse fail closed. Every
+request still requires the bearer secret. The chunk route never gunzips or
+materializes the complete stored session.
+
+The browser runtime-validates metadata before publishing the compact header,
+constructing a decompressor, allocating the advertised destination, or pulling
+a first chunk. It requires safe integer lengths within both 64 MiB ceilings,
+the exact 256 KiB chunk bound, no more than 256 chunks, and exact HTTP status and
+response shape at every hop. It accepts one chunk before requesting the next
+over the same public viewer WebSocket, feeds the compressed bytes to one
+incremental gzip stream, uses fatal UTF-8 decoding, and parses then validates the
+complete `AppSession` only after final compressed and decompressed lengths
+match. The advertised decompressed length owns one destination allocation;
+chunks are copied into it as they arrive rather than retained for a second full
+copy. One `AbortSignal` owns the page request, pending relay transaction,
+WebSocket, gzip writer/reader, and result-publication fence. A readable-side gzip
+failure is observed immediately and closes the connection before another pull
+can start. A metadata endpoint that is absent or returns an older
+capability-free shape, an otherwise valid response without the capability, or a
+browser without `DecompressionStream` keeps the established one-response
+`raw-json` path and sends no chunk request. The viewer reuses the metadata
+socket when it remains open and creates one fresh socket only when a
+capability-absent one-response peer already closed it; a capable transfer never
+splices chunks across sockets. Malformed metadata that explicitly advertises
+the capability still fails before decompressor work or fallback. Those fallback
+responses are runtime-validated too. Unmarked links keep the ordinary combined
+response and do not probe metadata, so `#v=2` retains its compact-bootstrap
+meaning rather than becoming a transport version.
+
+A pre-auth WebSocket selects one lifetime mode. Its first public-share read
+locks it to `public_read_only`; any SRP control attempt locks it to `srp` even
+when the proof later fails. Neither mode may cross into the other. The server
+also permits exactly one public-share request in flight on a public-read-only
+socket. A second request is a protocol violation that aborts the active request
+and closes the socket rather than queueing more work. Socket close or error
+aborts the internal Hono request and any response-body read. Each response uses
+the plaintext or SRP framing captured when its request was admitted, never
+mutable auth state at response-send time. Authenticated relay request
+multiplexing is unchanged.
+
+The WebSocket relay adapter caps every pre-auth public-share response body at
+8 MiB. It retains no more than the accepted 8 MiB body plus one logical
+inspection byte. Controlled combined/raw-json serializers emit source chunks of
+at most 64 KiB, so cancellation can consume at most one bounded producer chunk
+beyond the accepted prefix; they do not manufacture a one-byte source chunk at
+the boundary. A producer chunk larger than the adapter's entire 8 MiB + 1
+inspection bound is an internal invariant failure only on that controlled
+serializer path. Other public resources, including `/files` and `/files/raw`,
+use `Content-Length` only for early rejection and enforce the streamed count as
+the hard bound; overflow cancels the source and returns 413. Frozen unmarked and
+raw-json responses stream the immutable revision rather than materializing it
+before this cap, and raw project files are cancellation-aware streams.
+Authenticated relay traffic, unrelated relay routes, and direct HTTP
+public-share streaming remain uncapped by this transport policy. The chunk
+capability is not broadened to file transfer.
+
+Viewer-presence telemetry is ephemeral server-owned state, not durable share
+authority or a client-selected workload. It retains at most 4,096 bearer/viewer
+pairs across the process for the two-minute active window. Per-share hash maps
+provide identity lookup while one access-ordered set tracks recency. Expiration
+and capacity maintenance inspect the oldest application record rather than
+rescanning other sessions or viewers; the process-wide cap also bounds any
+engine-dependent scan inside the ordered set. Capacity eviction affects
+approximate presence/count history only and never blocks a valid public read or
+changes frozen/disconnected viewer authority.
 
 Authenticated inventory and revocation are exposed by the dedicated
 `public-share-management` route module. Inventory uses stable keyset pagination
