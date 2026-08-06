@@ -117,9 +117,17 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
 - `claude-gateway` is a separate, default-off provider for an
   Anthropic-compatible LLM gateway. Configuring it must not reroute the regular
   `claude` provider or mutate `~/.claude/settings.json`: every Gateway launch
-  supplies `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
-  `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` in the Claude SDK's per-launch
-  flag-settings layer and in that child process's environment only.
+  supplies `YEP_CLAUDE_GATEWAY=1`, `ANTHROPIC_BASE_URL`,
+  `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` in
+  the Claude SDK's per-launch flag-settings layer and in that child process's
+  environment only. The YA marker identifies the Gateway provider route, not
+  the implementation behind its generic Anthropic-compatible endpoint.
+- Gateway launches also narrow two Claude Code defaults that cost more on a
+  shared Copilot allowance than on a first-party subscription: non-essential
+  traffic and side-model calls are disabled, and
+  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` defaults to `1` (one level of
+  subagents, no nesting; the CLI default is 3). Each of these defers to an
+  explicit operator value in YA's own environment.
 - A Claude Gateway's `/v1/models` response is the authoritative selection
   catalog. YA must not merge Claude Code's first-party `supportedModels()`
   result or static Claude fallbacks into it, because those can advertise

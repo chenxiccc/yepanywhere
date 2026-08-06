@@ -88,6 +88,24 @@ set legacy value supplies it, and every listed legacy key is deleted.
   `WHISPER_*`, …) — historical YA config that predates the product prefix.
   This migration does not rename them merely to maximize prefix coverage.
 
+## Child launch markers
+
+`YEP_CLAUDE_GATEWAY=1` is a YA-owned output marker injected into both the
+Claude SDK flag-settings environment and the spawned child environment for
+`claude-gateway` launches. It distinguishes that provider route from regular
+Claude without guessing from `ANTHROPIC_BASE_URL`; it does not identify which
+Anthropic-compatible gateway implementation serves the endpoint and is not an
+operator setting.
+
+Gateway launches also inject `CLAUDE_CODE_*` narrowings that are not YA
+variables but are decided by YA per launch (`gatewayEnvironment()` in
+`packages/server/src/sdk/providers/claude-gateway.ts`). `ENABLE_PROMPT_CACHING_1H`
+and `CLAUDE_CODE_MAX_RETRIES` in `env-filter.ts` follow the same rule: YA
+supplies a default only when the ambient environment has none, so an operator
+export in YA's own environment always wins. That read-then-default direction is
+the contract — a YA default here must never overwrite an explicit operator
+value, because the child has no other way to express one.
+
 ## Meaningful variables
 
 ### Ports & instance

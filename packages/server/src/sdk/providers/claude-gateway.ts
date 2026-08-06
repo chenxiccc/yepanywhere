@@ -91,11 +91,19 @@ function gatewayEnvironment(
   const maxContextTokens = gatewayMaxContextTokens(windows?.contextWindow);
   const autoCompactWindow = gatewayAutoCompactWindow(windows?.promptWindow);
   return {
+    YEP_CLAUDE_GATEWAY: "1",
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: "dummy",
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
     DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    // Gateway models pay for nesting twice: every extra level multiplies
+    // quota burn against a shared Copilot allowance, and the deeper agents
+    // are the ones least able to recover from a truncated context. Claude
+    // Code's own default is 3; one level of subagents is the useful part.
+    // An explicit operator value still wins.
+    CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH:
+      process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH ?? "1",
     ...(model
       ? {
           ANTHROPIC_MODEL: model,

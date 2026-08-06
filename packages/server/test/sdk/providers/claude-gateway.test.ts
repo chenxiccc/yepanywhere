@@ -181,11 +181,13 @@ describe("ClaudeGatewayProvider", () => {
     ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
     const provider = new ExposedClaudeGatewayProvider();
     const expectedGatewayEnvironment = {
+      YEP_CLAUDE_GATEWAY: "1",
       ANTHROPIC_BASE_URL: "http://localhost:4141",
       ANTHROPIC_AUTH_TOKEN: "dummy",
       CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
       DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1",
       ANTHROPIC_MODEL: "kimi-k2.7-code",
       ANTHROPIC_DEFAULT_OPUS_MODEL: "kimi-k2.7-code",
       ANTHROPIC_DEFAULT_SONNET_MODEL: "kimi-k2.7-code",
@@ -199,6 +201,24 @@ describe("ClaudeGatewayProvider", () => {
     expect(provider.getLaunchEnvironment("kimi-k2.7-code")).toMatchObject(
       expectedGatewayEnvironment,
     );
+  });
+
+  it("keeps an explicit subagent spawn depth chosen by the operator", () => {
+    const previous = process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+    process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "3";
+    try {
+      ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+      const provider = new ExposedClaudeGatewayProvider();
+      expect(provider.getLaunchSettings("kimi-k2.7-code")?.env).toMatchObject({
+        CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "3",
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+      } else {
+        process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = previous;
+      }
+    }
   });
 
   it("keeps Claude Code inside the catalog's total and prompt windows", async () => {
