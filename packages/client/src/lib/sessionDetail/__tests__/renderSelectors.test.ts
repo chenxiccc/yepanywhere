@@ -109,6 +109,47 @@ describe("session detail render selectors", () => {
     expect(second[2]).toBe(first[2]);
   });
 
+  it("hides only Claude Gateway empty-summary thinking placeholders", () => {
+    const messages: Message[] = [
+      {
+        id: "assistant-1",
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "Thinking...",
+              signature: "encrypted-1@reasoning-1",
+            },
+            {
+              type: "thinking",
+              thinking: "Detailed reasoning summary",
+              signature: "encrypted-2@reasoning-2",
+            },
+          ],
+        },
+      },
+    ];
+
+    expect(
+      buildSessionDetailRenderItems({
+        messages,
+        provider: "claude-gateway",
+      }).map((item) => (item.type === "thinking" ? item.thinking : item.type)),
+    ).toEqual(["Detailed reasoning summary"]);
+    expect(
+      buildSessionDetailRenderItems({
+        messages,
+        provider: "claude",
+      }).map((item) => (item.type === "thinking" ? item.thinking : item.type)),
+    ).toEqual(["Thinking...", "Detailed reasoning summary"]);
+    expect(messages[0]?.message?.content).toMatchObject([
+      { signature: "encrypted-1@reasoning-1" },
+      { signature: "encrypted-2@reasoning-2" },
+    ]);
+  });
+
   it("selects render items from session detail state with markdown augments", () => {
     const messages: Message[] = [
       {

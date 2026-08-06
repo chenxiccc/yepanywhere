@@ -10,6 +10,7 @@ import type { MarkdownAugmentMap, SessionDetailState } from "./types";
 
 export interface SessionDetailRenderItemInput {
   messages: Message[];
+  provider?: string;
   markdownAugments?: MarkdownAugmentMap;
   activeToolApproval?: ActiveToolApproval;
   transcriptDisplayObjects?: readonly TranscriptDisplayObject[];
@@ -46,6 +47,7 @@ export interface LatestVisibleTimestampInput<
 
 export function buildSessionDetailRenderItems({
   messages,
+  provider,
   markdownAugments,
   activeToolApproval,
   transcriptDisplayObjects = [],
@@ -55,8 +57,16 @@ export function buildSessionDetailRenderItems({
     markdown: markdownAugments,
     activeToolApproval,
   });
+  // The Responses adapter needs the signed block for later tool turns, but its
+  // empty-summary sentinel is provider activity rather than transcript prose.
+  const providerProjected =
+    provider === "claude-gateway"
+      ? preprocessed.filter(
+          (item) => item.type !== "thinking" || item.thinking !== "Thinking...",
+        )
+      : preprocessed;
   const inserted = insertTranscriptDisplayObjects(
-    preprocessed,
+    providerProjected,
     transcriptDisplayObjects,
   );
   return stabilizeRenderItems(previousRenderItems, inserted);

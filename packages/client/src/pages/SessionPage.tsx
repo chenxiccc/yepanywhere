@@ -5090,7 +5090,7 @@ function SessionPageContent({
                 <MessageList
                   messages={messages}
                   transcriptDisplayObjects={session?.transcriptDisplayObjects}
-                  provider={session?.provider}
+                  provider={effectiveProvider}
                   isProcessing={sessionActivityUi.showProcessingIndicator}
                   isCompacting={isCompacting}
                   scrollTrigger={scrollTrigger}

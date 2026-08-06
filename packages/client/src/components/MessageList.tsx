@@ -1251,6 +1251,7 @@ export const MessageList = memo(function MessageList({
     });
     const nextRenderItems = buildSessionDetailRenderItems({
       messages,
+      provider,
       markdownAugments,
       activeToolApproval,
       transcriptDisplayObjects,
@@ -1264,6 +1265,7 @@ export const MessageList = memo(function MessageList({
     return nextRenderItems;
   }, [
     messages,
+    provider,
     markdownAugments,
     activeToolApproval,
     transcriptDisplayObjects,

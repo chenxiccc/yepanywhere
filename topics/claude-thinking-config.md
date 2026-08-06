@@ -109,6 +109,16 @@ the render-only transcript collapse, not a request control. Claude now
 follows that same product shape: request summaries from the provider, then
 let YA decide whether to render them to a given client.
 
+Claude Gateway has one provider-specific render rule. A Responses adapter may
+represent an encrypted reasoning item with no public summary as a signed
+thinking block whose exact text is `Thinking...`. The signed block remains in
+the source transcript and subsequent provider history because the encrypted
+reasoning chain is required across tool turns. YA omits only that exact
+sentinel from the Claude Gateway render projection, for every gateway model;
+real summary text and every other provider remain unchanged. Live process
+state still drives the ordinary Processing Indicator and its Fun Phrases, so
+removing synthetic transcript prose does not hide that the agent is working.
+
 On Opus 4.7/4.8 the provider default is to show no thinking blocks. YA
 overrides that by explicitly requesting summarized display when thinking
 is enabled. In practice summaries appear routinely only at effort `high`
