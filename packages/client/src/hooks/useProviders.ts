@@ -457,7 +457,7 @@ function providerRowKey(
   sourceKey: ClientSummarySourceKey,
   providerName: ProviderName,
 ): string {
-  return `${sourceKey} ${providerName}`;
+  return `${sourceKey}\0${providerName}`;
 }
 
 /** A current row good enough to skip an ordinary single-provider request. */
