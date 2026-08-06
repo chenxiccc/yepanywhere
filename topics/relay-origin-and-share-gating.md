@@ -10,10 +10,12 @@ Topic: relay-origin-and-share-gating
 
 Public shares are bearer-link read-only views. New links use a 128-bit CSPRNG
 secret (22 unpadded base64url characters); YA continues to accept the legacy
-512-bit form. The server stores only the SHA-512 hash of either form and
-exposes no public lookup route by project id, session id, or sequential share
-id. This blocks guessing from no link while avoiding the legacy
-86-character-secret URL.
+512-bit form. New grants retain the complete public URL in owner-only app data
+so the authenticated owner can copy and reshare an existing authorization;
+they also retain the SHA-512 hash used for secret lookup. Legacy grants retain
+only that hash and remain non-copyable. YA exposes no public lookup route by
+project id, session id, or sequential share id. This blocks guessing from no
+link while avoiding the legacy 86-character-secret URL.
 
 Anyone who possesses the full public share URL can fetch the share until that
 link is revoked. **Stop live updates** converts a live link to a frozen
@@ -46,10 +48,11 @@ revocation scopes:
 - revoke every public link on the server.
 
 The authenticated inventory contains compact metadata for currently valid
-links and may report ephemeral activity. It never returns the bearer secret,
-its hash, a transcript body, or a project filesystem path. Because YA stores
-only the hash, the manager cannot recover or copy an old URL; creating a
-replacement is an explicit session action with a new secret.
+links and may report ephemeral activity. For a new grant it may return the
+retained complete public URL so the owner can copy and reshare that existing
+authorization. It never returns a standalone bearer secret, its hash, a
+transcript body, or a project filesystem path. Legacy hash-only grants have no
+recoverable URL and remain non-copyable.
 
 Owner management does not depend on link-creation readiness. Missing relay
 credentials, disabled Remote Access, or a disconnected relay may prevent a new
@@ -69,13 +72,11 @@ never frozen transcript bodies.
 global kill switch. Turning it off gates public reads and new creation, then
 revokes every link. Re-enabling starts empty and must never resurrect records
 left by interrupted cleanup. When links exist, the client confirms that
-consequence before disabling. The same manager is reachable as **Manage this
-session's shares** from the broadcast popup and **Manage all public shares**
-from a searchable row beside the Settings control; merely opening either view
-creates no link. Right click on the session broadcast icon opens the same
-session-filtered manager directly; ordinary click retains the create/status
-popup, and its ordinary management link remains available to keyboard and
-touch users.
+consequence before disabling. On capable servers, left- and right-click on the
+session broadcast icon and the Session menu's **Share** action open the same
+session-filtered management pane at the same anchor. **Manage all public
+shares** opens the global pane from a searchable row beside the Settings
+control. Merely opening either pane creates no link.
 
 Global management is optional newer-server functionality gated by the
 permanent `public-share-management` capability. Without it, a current client
