@@ -751,8 +751,12 @@ durable and reloaded on exact project demand. Every mutation of one project is
 one serialized operation on one pinned store owner, from any source capture or
 manifest read through state mutation, durable save, and revision publication.
 A store with such a mutation, a save, or a load in flight is pinned: releasing
-it would strand the only copy of state the writer has not yet written. Budgets
-are enforced on access, so the newest store may briefly exceed them.
+it would strand the only copy of state the writer has not yet written. A rejected
+save poisons that in-memory owner because the filesystem outcome may be
+indeterminate after an atomic rename; queued mutations fail without running,
+and the owner is released when its active pins drain. The next operation reloads
+filesystem truth and applies the ordinary prepared-submission recovery rules.
+Budgets are enforced on access, so the newest store may briefly exceed them.
 
 ## Design decisions
 

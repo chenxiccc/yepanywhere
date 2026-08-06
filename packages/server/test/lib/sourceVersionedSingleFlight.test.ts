@@ -186,6 +186,42 @@ describe("SourceVersionedSingleFlight", () => {
     expect(work.getStats()).toMatchObject({ staleCompletions: 1 });
   });
 
+  it("classifies an obsolete failed computation as stale", async () => {
+    const oldGate = deferred<string>();
+    let currentVersion = "v1";
+    const work = new SourceVersionedSingleFlight<string, string>({
+      maxRetainedBytes: 1024,
+      estimateBytes: (value) => value.length,
+    });
+
+    const oldRequest = work.run({
+      key: "session-1:children",
+      sourceVersion: "v1",
+      compute: async () => oldGate.promise,
+      isCurrent: async (version) => currentVersion === version,
+    });
+    currentVersion = "v2";
+    const newRequest = work.run({
+      key: "session-1:children",
+      sourceVersion: "v2",
+      compute: async () => "new",
+      isCurrent: async (version) => currentVersion === version,
+    });
+
+    expect(successful(await newRequest).value).toBe("new");
+    oldGate.reject(new Error("obsolete read failed"));
+    await expect(oldRequest).resolves.toEqual({
+      status: "stale",
+      sourceVersion: "v1",
+      previous: { sourceVersion: "v2", value: "new" },
+    });
+    expect(work.getStats()).toMatchObject({
+      failures: 1,
+      staleCompletions: 1,
+      retainedEntries: 1,
+    });
+  });
+
   it("does not let a delayed older observation suppress current-version work", async () => {
     const currentGate = deferred<string>();
     const oldGate = deferred<string>();
