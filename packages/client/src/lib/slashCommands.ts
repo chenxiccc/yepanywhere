@@ -39,7 +39,7 @@ export function createClientSlashCommand(name: string): SlashCommand {
   const normalized = normalizeSlashCommandForMatch(name);
   return {
     name: normalized,
-    description: "",
+    description: normalized === "run" ? "Direct local shell: !!cmd" : "",
     invocation: { kind: "emulated", prefix: "/" },
   };
 }
