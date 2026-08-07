@@ -991,8 +991,11 @@ export class Process {
   /** Promise that resolves when the process fully terminates (CLI exits) */
   private _exitPromise: Promise<void>;
   private _exitResolve: (() => void) | null = null;
-  /** True while a lifecycle deadline intentionally tears down the provider. */
+  /** True once idle reaping starts, until verified provider teardown releases ownership. */
   private lifecycleReapInProgress = false;
+  private abortInFlight: Promise<ProcessAbortResult> | null = null;
+  /** Registry release is one event, regardless of which terminal path finishes. */
+  private completionEmitted = false;
 
   constructor(
     private sdkIterator: AsyncIterator<SDKMessage>,
@@ -2141,6 +2144,11 @@ export class Process {
     return this._state.type === "terminated";
   }
 
+  /** A prior provider may still be running, so no replacement may claim this session. */
+  get hasUnverifiedProviderOwnership(): boolean {
+    return this.lifecycleReapInProgress;
+  }
+
   /**
    * Get the termination reason if the process was terminated.
    */
@@ -2171,6 +2179,12 @@ export class Process {
     }
     this._appliedPermissionMode = mode;
     this.emit({ type: "mode-applied", mode });
+  }
+
+  private emitCompletion(): void {
+    if (this.completionEmitted) return;
+    this.completionEmitted = true;
+    this.emit({ type: "complete" });
   }
 
   /**
@@ -2217,13 +2231,34 @@ export class Process {
 
     this.setState({ type: "terminated", reason, error });
     this.emit({ type: "terminated", reason, error });
-    this.emit({ type: "complete" });
+    if (this.lifecycleReapInProgress) return;
+
+    this.emitCompletion();
 
     // Resolve exit promise so abort() callers can wait for full termination
     if (this._exitResolve) {
       this._exitResolve();
       this._exitResolve = null;
     }
+  }
+
+  private retainLifecycleTeardownFailure(reason: string, error: unknown): void {
+    if (this.completionEmitted) return;
+    const failure = error instanceof Error ? error : new Error(String(error));
+    getLogger().error(
+      {
+        event: "lifecycle_teardown_failed",
+        sessionId: this._sessionId,
+        processId: this.id,
+        projectId: this.projectId,
+        reason,
+        errorMessage: failure.message,
+        errorStack: failure.stack,
+      },
+      `Provider teardown remains unverified: ${this._sessionId}`,
+    );
+    this.setState({ type: "terminated", reason, error: failure });
+    this.emit({ type: "terminated", reason, error: failure });
   }
 
   /**
@@ -2893,6 +2928,22 @@ export class Process {
     return message;
   }
 
+  private inputRejectionError(): string | null {
+    if (this.detachingForServerReload) {
+      return "Process is detaching for server reload";
+    }
+    if (this.lifecycleReapInProgress) {
+      return "Process provider teardown is in progress or unverified";
+    }
+    if (this._state.type === "terminated") {
+      return `Process terminated: ${this._state.reason}`;
+    }
+    if (this.transportFailed) {
+      return "Process transport failed";
+    }
+    return null;
+  }
+
   /**
    * Queue already-expanded provider text. The emitted user echo and the SDK
    * queue entry must be the same logical turn so live SSE and later transcript
@@ -2906,28 +2957,9 @@ export class Process {
     position?: number;
     error?: string;
   } {
-    if (this.detachingForServerReload) {
-      return {
-        success: false,
-        error: "Process is detaching for server reload",
-      };
-    }
-
-    // Check if process is terminated or transport failed
-    if (this._state.type === "terminated") {
-      return {
-        success: false,
-        error: `Process terminated: ${this._state.reason}`,
-      };
-    }
-
-    // Check if transport failed (spawn error, etc.) - this flag is set synchronously
-    // to prevent race conditions where queueMessage is called before markTerminated completes
-    if (this.transportFailed) {
-      return {
-        success: false,
-        error: "Process transport failed",
-      };
+    const inputError = this.inputRejectionError();
+    if (inputError) {
+      return { success: false, error: inputError };
     }
 
     // Create user message with UUID - this UUID will be used by both SSE and SDK
@@ -3240,6 +3272,10 @@ export class Process {
     position?: number;
     error?: string;
   } {
+    const inputError = this.inputRejectionError();
+    if (inputError) {
+      return { success: false, deferred: false, error: inputError };
+    }
     const canPromoteIfReady = !!(
       options?.promoteIfReady &&
       this.messageQueue &&
@@ -3920,9 +3956,11 @@ export class Process {
    * orphaned processes that continue running after Yep stops tracking them.
    */
   terminate(reason: string): void {
-    // Kill the underlying CLI process first (if available), so it doesn't
-    // continue running as an orphan after we unregister from the Supervisor.
-    this.requestProviderAbortWithoutWaiting(reason);
+    if (!this.lifecycleReapInProgress) {
+      // Kill the underlying CLI process first (if available), so it doesn't
+      // continue running as an orphan after we unregister from the Supervisor.
+      this.requestProviderAbortWithoutWaiting(reason);
+    }
     this.markTerminated(reason);
   }
 
@@ -3947,6 +3985,21 @@ export class Process {
   }
 
   async abort(): Promise<ProcessAbortResult> {
+    const activeAbort = this.abortInFlight;
+    if (activeAbort) return activeAbort;
+
+    const attempt = this.abortAndVerify();
+    this.abortInFlight = attempt;
+    try {
+      return await attempt;
+    } finally {
+      if (this.abortInFlight === attempt) {
+        this.abortInFlight = null;
+      }
+    }
+  }
+
+  private async abortAndVerify(): Promise<ProcessAbortResult> {
     this.clearIdleTimer();
     this.stopRuntimeViewerPresencePublication();
     this.releaseViewerPresence();
@@ -4012,11 +4065,8 @@ export class Process {
       verification = "iterator";
     }
 
-    // Signal completion to subscribers (skip if already terminated —
-    // markTerminated() already emitted "complete")
-    if (this._state.type !== "terminated") {
-      this.emit({ type: "complete" });
-    }
+    this.lifecycleReapInProgress = false;
+    this.emitCompletion();
     this.listeners.clear();
 
     return {
@@ -4081,7 +4131,7 @@ export class Process {
       "Timed out waiting for provider iterator to detach",
     );
     if (this._state.type !== "terminated") {
-      this.emit({ type: "complete" });
+      this.emitCompletion();
     }
     this.listeners.clear();
   }
@@ -4090,6 +4140,7 @@ export class Process {
     try {
       while (!this.iteratorDone) {
         const result = await this.sdkIterator.next();
+        if (this.iteratorDone) break;
 
         if (result.done) {
           this.iteratorDone = true;
@@ -4927,27 +4978,15 @@ export class Process {
   }
 
   private reapIdleProcess(): void {
-    const reason = "idle reap";
     this.lifecycleReapInProgress = true;
-    this.clearIdleTimer();
-    this.stopRuntimeViewerPresencePublication();
-    this.releaseViewerPresence();
-    this.clearPromptCacheKeepaliveTimer();
-    this.stopBucketSwapTimer();
     this.iteratorDone = true;
-    this.clearRetryingProviderRuntimeStatus();
-
     this.emit({ type: "idle-reap" });
-
-    this.requestProviderAbortWithoutWaiting(reason);
-
-    this.emit({ type: "complete" });
-    this.listeners.clear();
-
-    if (this._exitResolve) {
-      this._exitResolve();
-      this._exitResolve = null;
-    }
+    void this.abort().catch((error) => {
+      this.retainLifecycleTeardownFailure(
+        "idle reap provider teardown failed",
+        error,
+      );
+    });
   }
 
   private clearIdleTimer(): void {

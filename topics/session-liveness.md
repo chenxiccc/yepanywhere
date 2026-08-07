@@ -32,6 +32,14 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   Active and waiting-input sessions are presumed live and have no
   viewer-absence kill deadline; only `verified-idle` without another retention
   owner is eligible for the configured idle grace.
+- `verified-idle` plus grace expiry permits `Process` to begin teardown; it does
+  not permit `Supervisor` to release session ownership. Idle teardown fences
+  direct and deferred input synchronously, while the existing process mapping
+  and `owner: "self"` projection remain until provider exit is positively
+  verified by PID, provider liveness, or iterator completion. Failed or timed-
+  out verification remains a terminal error owner: it emits no completion or
+  `owner: "none"`, refuses resume/reactivation/configuration replacement, and
+  can be released only by a later explicit abort that verifies exit.
 - Heartbeat turns are idle-timeout checks, not wall-clock ticks. Once a session
   is `verified-idle`, the timeout anchor is the latest real provider/session
   liveness signal, including verified idle/progress, normalized provider
@@ -202,3 +210,6 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
 - Viewer-absence reaping applies only to verified-idle, unretained work. Any
   open app tab globally refreshes the grace; active, waiting-input, and
   explicitly retained processes have no viewer-absence deadline.
+- Pending or failed idle teardown keeps the same registered process, rejects
+  direct/deferred input and replacement, and emits no ownership release. A
+  later verified abort retry emits exactly one completion and `owner: "none"`.

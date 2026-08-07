@@ -5159,65 +5159,93 @@ describe("Supervisor", () => {
       });
     });
 
-    it("reaps idle sessions even when the underlying process is still alive", async () => {
+    it("keeps an idle owner registered until provider abort is verified", async () => {
       vi.useFakeTimers();
       try {
-        let aborted = false;
+        let providerAlive = true;
+        let releaseAbort: (() => void) | undefined;
+        const abortGate = new Promise<void>((resolve) => {
+          releaseAbort = resolve;
+        });
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: "idle-alive-session-1",
+          };
+          for await (const sdkMessage of queue) {
+            void sdkMessage;
+            if (!providerAlive) return;
+            yield {
+              type: "result" as const,
+              session_id: "idle-alive-session-1",
+            };
+          }
+        }
+        const startSession = vi.fn(async () => ({
+          iterator: iterator(),
+          queue,
+          abort: async () => {
+            await abortGate;
+            providerAlive = false;
+            queue.push({ text: "__abort__" });
+          },
+          isProcessAlive: () => providerAlive,
+        }));
         const eventBus = new EventBus();
         const events: BusEvent[] = [];
-        eventBus.subscribe((event) => events.push(event));
-
-        const realSdk: RealClaudeSDKInterface = {
-          startSession: async () => {
-            async function* iterator() {
-              yield {
-                type: "system",
-                subtype: "init",
-                session_id: "idle-alive-session-1",
-              };
-              yield { type: "result", session_id: "idle-alive-session-1" };
-
-              while (!aborted) {
-                await new Promise((resolve) => setTimeout(resolve, 10));
-              }
-            }
-
-            return {
-              iterator: iterator(),
-              queue: new MessageQueue(),
-              abort: () => {
-                aborted = true;
-              },
-              isProcessAlive: () => !aborted,
-            };
-          },
-        };
-
+        eventBus.subscribe((event) => {
+          events.push(event);
+        });
         const supervisorWithAliveProcess = new Supervisor({
-          realSdk,
+          realSdk: { startSession },
           idleTimeoutMs: 100,
           eventBus,
         });
 
         const process = await supervisorWithAliveProcess.startSession(
           "/tmp/test",
-          {
-            text: "Keep this session alive",
-          },
+          { text: "Keep this session alive" },
         );
+        await vi.waitFor(() => {
+          expect(process.state.type).toBe("idle");
+        });
 
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(process.hasUnverifiedProviderOwnership).toBe(true);
+        expect(
+          supervisorWithAliveProcess.getProcessForSession(
+            "idle-alive-session-1",
+          ),
+        ).toBe(process);
+        expect(
+          events.some(
+            (event) =>
+              event.type === "session-status-changed" &&
+              event.sessionId === "idle-alive-session-1" &&
+              event.ownership.owner === "none",
+          ),
+        ).toBe(false);
+        await expect(
+          supervisorWithAliveProcess.reactivateSession(
+            "/tmp/test",
+            "idle-alive-session-1",
+          ),
+        ).rejects.toThrow(
+          /prior provider teardown is in progress or unverified/,
+        );
+        expect(startSession).toHaveBeenCalledOnce();
+
+        releaseAbort?.();
         await vi.advanceTimersByTimeAsync(0);
-        expect(process.state.type).toBe("idle");
-
-        await vi.advanceTimersByTimeAsync(150);
 
         expect(
           supervisorWithAliveProcess.getProcessForSession(
             "idle-alive-session-1",
           ),
         ).toBeUndefined();
-        expect(aborted).toBe(true);
-
         const abortedIndex = events.findIndex(
           (event) =>
             event.type === "session-aborted" &&
@@ -5231,6 +5259,116 @@ describe("Supervisor", () => {
         );
         expect(abortedIndex).toBeGreaterThanOrEqual(0);
         expect(releasedIndex).toBeGreaterThan(abortedIndex);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("retains a failed idle teardown until an explicit abort retry", async () => {
+      vi.useFakeTimers();
+      try {
+        let providerAlive = true;
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: "idle-failed-abort-session",
+          };
+          for await (const sdkMessage of queue) {
+            void sdkMessage;
+            if (!providerAlive) return;
+            yield {
+              type: "result" as const,
+              session_id: "idle-failed-abort-session",
+            };
+          }
+        }
+        const abort = vi
+          .fn<() => Promise<void>>()
+          .mockRejectedValueOnce(new Error("provider refused shutdown"))
+          .mockImplementationOnce(async () => {
+            providerAlive = false;
+            queue.push({ text: "__abort__" });
+          });
+        const startSession = vi.fn(async () => ({
+          iterator: iterator(),
+          queue,
+          abort,
+          isProcessAlive: () => providerAlive,
+        }));
+        const eventBus = new EventBus();
+        const events: BusEvent[] = [];
+        eventBus.subscribe((event) => {
+          events.push(event);
+        });
+        const supervisorWithFailedAbort = new Supervisor({
+          realSdk: { startSession },
+          idleTimeoutMs: 100,
+          eventBus,
+        });
+
+        const process = await supervisorWithFailedAbort.startSession(
+          "/tmp/test",
+          { text: "Retain this failed owner" },
+        );
+        await vi.waitFor(() => {
+          expect(process.state.type).toBe("idle");
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(abort).toHaveBeenCalledOnce();
+        expect(process.hasUnverifiedProviderOwnership).toBe(true);
+        expect(process.state).toMatchObject({
+          type: "terminated",
+          reason: "idle reap provider teardown failed",
+        });
+        expect(
+          supervisorWithFailedAbort.getProcessForSession(
+            "idle-failed-abort-session",
+          ),
+        ).toBe(process);
+        expect(
+          events.some(
+            (event) =>
+              event.type === "session-status-changed" &&
+              event.sessionId === "idle-failed-abort-session" &&
+              event.ownership.owner === "none",
+          ),
+        ).toBe(false);
+        await expect(
+          supervisorWithFailedAbort.reactivateSession(
+            "/tmp/test",
+            "idle-failed-abort-session",
+          ),
+        ).rejects.toThrow(
+          /prior provider teardown is in progress or unverified/,
+        );
+        expect(startSession).toHaveBeenCalledOnce();
+
+        await expect(
+          supervisorWithFailedAbort.abortProcessWithVerification(process.id),
+        ).resolves.toMatchObject({
+          processId: process.id,
+          verifiedStopped: true,
+          verification: "provider",
+        });
+
+        expect(abort).toHaveBeenCalledTimes(2);
+        expect(
+          supervisorWithFailedAbort.getProcessForSession(
+            "idle-failed-abort-session",
+          ),
+        ).toBeUndefined();
+        expect(
+          events.filter(
+            (event) =>
+              event.type === "session-status-changed" &&
+              event.sessionId === "idle-failed-abort-session" &&
+              event.ownership.owner === "none",
+          ),
+        ).toHaveLength(1);
       } finally {
         vi.useRealTimers();
       }
@@ -5545,6 +5683,7 @@ describe("Supervisor", () => {
   describe("terminal provider status retention", () => {
     it("keeps terminal status after the provider process is reaped", async () => {
       const controller = createControllableIterator();
+      let providerAlive = true;
       const provider: AgentProvider = {
         name: "codex",
         displayName: "Codex",
@@ -5562,8 +5701,11 @@ describe("Supervisor", () => {
         startSession: async () => ({
           iterator: controller.iterator,
           queue: new MessageQueue(),
-          abort: () => controller.finish(),
-          isProcessAlive: () => true,
+          abort: () => {
+            providerAlive = false;
+            controller.finish();
+          },
+          isProcessAlive: () => providerAlive,
         }),
       };
       const runtimeSupervisor = new Supervisor({

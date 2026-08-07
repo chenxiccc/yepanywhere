@@ -513,6 +513,15 @@ retention owns it. Expiry uses the same provider abort path as explicit session
 teardown; a hosted proxy therefore enters the host's bounded
 cooperative/TERM/KILL cleanup rather than leaving the worker alive.
 
+Expiry starts a closing transition; it does not release the Hono registry entry.
+The closing `Process` rejects new direct and deferred input, and `Supervisor`
+retains its session mapping and `owner: "self"` projection until PID, provider,
+or iterator evidence positively verifies shutdown. If cooperative or escalated
+shutdown cannot be verified, the terminal error remains the registered owner and
+blocks resume, reactivation, and configuration replacement. A later explicit
+abort may retry verification; only its verified success emits completion and
+releases the registry entry.
+
 Viewer presence is server-global rather than session-local. Every mounted app
 activity stream holds a viewer lease, so a tab viewing a historical session
 still protects every live provider process. Mounted live-session streams also

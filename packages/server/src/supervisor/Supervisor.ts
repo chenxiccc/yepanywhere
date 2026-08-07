@@ -1330,6 +1330,16 @@ export class Supervisor {
     );
   }
 
+  private assertProviderOwnershipSettled(
+    process: Process,
+    action: string,
+  ): void {
+    if (!process.hasUnverifiedProviderOwnership) return;
+    throw new Error(
+      `Cannot ${action} session ${process.sessionId}: prior provider teardown is in progress or unverified`,
+    );
+  }
+
   private async reactivateSessionSerialized(
     projectPath: string,
     resumeSessionId: string,
@@ -2624,6 +2634,7 @@ export class Supervisor {
     if (existingProcessId) {
       const existingProcess = this.processes.get(existingProcessId);
       if (existingProcess) {
+        this.assertProviderOwnershipSettled(existingProcess, "resume");
         // Check if process is terminated - if so, start a fresh one
         if (existingProcess.isTerminated) {
           this.unregisterProcess(existingProcess);
@@ -2729,7 +2740,9 @@ export class Supervisor {
             if (result.success) {
               return existingProcess;
             }
-            // Failed to queue - process likely terminated, clean up and start fresh
+            // Failed to queue - process likely terminated, clean up and start fresh.
+            // Idle teardown may have started during an awaited configuration step.
+            this.assertProviderOwnershipSettled(existingProcess, "resume");
             this.unregisterProcess(existingProcess);
           }
         }
@@ -3451,6 +3464,7 @@ export class Supervisor {
     coldSettings: ModelSettings | undefined,
     requestedOverrides: SessionReactivationOverrides,
   ): Promise<Process> {
+    this.assertProviderOwnershipSettled(process, "reactivate");
     const updates = requestedOverrides.modelSettings ?? {};
     const configuration = this.resolveProcessModelConfiguration(
       process,
@@ -3598,13 +3612,21 @@ export class Supervisor {
     updates: ModelSettings,
   ): Promise<Process | null> {
     const process = this.getProcess(processId);
-    if (!process || process.isTerminated) {
+    if (
+      !process ||
+      process.isTerminated ||
+      process.hasUnverifiedProviderOwnership
+    ) {
       return null;
     }
 
     return this.enqueueSessionConfiguration(process.sessionId, async () => {
       const current = this.getProcess(processId);
-      if (!current || current.isTerminated) {
+      if (
+        !current ||
+        current.isTerminated ||
+        current.hasUnverifiedProviderOwnership
+      ) {
         return null;
       }
       const configuration = this.resolveProcessModelConfiguration(
@@ -3651,7 +3673,11 @@ export class Supervisor {
     },
   ): Process | null {
     const process = this.getProcess(processId);
-    if (!process || process.isTerminated) {
+    if (
+      !process ||
+      process.isTerminated ||
+      process.hasUnverifiedProviderOwnership
+    ) {
       return null;
     }
     const sandboxError = getSessionSandboxSettingsError(
@@ -5259,6 +5285,7 @@ export class Supervisor {
   }
 
   private unregisterProcess(process: Process): void {
+    this.assertProviderOwnershipSettled(process, "unregister");
     this.observedProcessIds.delete(process.id);
     this.compactThresholdCheckedAssistantVersion.delete(process.id);
     this.cacheMissBillingMonitor.forgetProcess(process.id);

@@ -14,7 +14,9 @@ describe("Process", () => {
       vi.useFakeTimers();
       try {
         const controller = createControllableIterator();
-        const abortFn = vi.fn();
+        const abortFn = vi.fn(() => {
+          controller.finish();
+        });
         const events: string[] = [];
         const process = new Process(controller.iterator, {
           projectPath: "/test",
@@ -25,7 +27,9 @@ describe("Process", () => {
           idleTimeoutMs: 20,
           abortFn,
         });
-        process.subscribe((event) => events.push(event.type));
+        process.subscribe((event) => {
+          events.push(event.type);
+        });
 
         await vi.advanceTimersByTimeAsync(19);
         expect(abortFn).not.toHaveBeenCalled();
@@ -33,6 +37,108 @@ describe("Process", () => {
         await vi.advanceTimersByTimeAsync(1);
         expect(abortFn).toHaveBeenCalledOnce();
         expect(events).toEqual(["idle-reap", "complete"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("retains ownership and fences input while idle abort is pending", async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveAbort: (() => void) | undefined;
+        const abortGate = new Promise<void>((resolve) => {
+          resolveAbort = resolve;
+        });
+        const controller = createControllableIterator();
+        const abortFn = vi.fn(() => abortGate);
+        const events: string[] = [];
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          initialState: "idle",
+          idleTimeoutMs: 20,
+          abortFn,
+        });
+        process.subscribe((event) => {
+          events.push(event.type);
+        });
+
+        await vi.advanceTimersByTimeAsync(20);
+
+        expect(process.hasUnverifiedProviderOwnership).toBe(true);
+        expect(events).toEqual(["idle-reap"]);
+        expect(process.queueMessage({ text: "too late" })).toMatchObject({
+          success: false,
+          error: "Process provider teardown is in progress or unverified",
+        });
+        expect(
+          process.deferMessage({ text: "also too late", tempId: "late" }),
+        ).toMatchObject({
+          success: false,
+          deferred: false,
+          error: "Process provider teardown is in progress or unverified",
+        });
+
+        const joinedAbort = process.abort();
+        expect(abortFn).toHaveBeenCalledOnce();
+        controller.finish();
+        resolveAbort?.();
+        await joinedAbort;
+
+        expect(process.hasUnverifiedProviderOwnership).toBe(false);
+        expect(events).toEqual(["idle-reap", "complete"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("retains a failed idle teardown until an explicit retry verifies exit", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const abortFn = vi
+          .fn<() => Promise<void>>()
+          .mockRejectedValueOnce(new Error("shutdown failed"))
+          .mockImplementationOnce(async () => {
+            controller.finish();
+          });
+        const events: string[] = [];
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          initialState: "idle",
+          idleTimeoutMs: 20,
+          abortFn,
+        });
+        process.subscribe((event) => {
+          events.push(event.type);
+        });
+
+        await vi.advanceTimersByTimeAsync(20);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(process.hasUnverifiedProviderOwnership).toBe(true);
+        expect(process.state).toMatchObject({
+          type: "terminated",
+          reason: "idle reap provider teardown failed",
+        });
+        expect(events.filter((type) => type === "complete")).toEqual([]);
+        expect(abortFn).toHaveBeenCalledOnce();
+
+        await expect(process.abort()).resolves.toMatchObject({
+          verifiedStopped: true,
+          verification: "iterator",
+        });
+
+        expect(abortFn).toHaveBeenCalledTimes(2);
+        expect(process.hasUnverifiedProviderOwnership).toBe(false);
+        expect(events.filter((type) => type === "complete")).toEqual([
+          "complete",
+        ]);
       } finally {
         vi.useRealTimers();
       }
