@@ -35,7 +35,15 @@ import {
   systemAwaySummaryExcerpt,
 } from "./agent-excerpt.js";
 import { collectVisibleClaudeEntries } from "./claude-messages.js";
-import { readClaudeSessionSummary } from "./claude-summary.js";
+import {
+  buildSummaryFromState,
+  lastAgentExcerptFromState,
+  readClaudeSessionSummary,
+} from "./claude-summary.js";
+import {
+  type ClaudeTranscriptSnapshot,
+  claudeTranscriptCache,
+} from "./claude-transcript-cache.js";
 import { SummaryParserClient } from "./summary-parser-worker-client.js";
 import type {
   SummaryParserWorkerMode,
@@ -265,6 +273,23 @@ export class ClaudeSessionReader implements ISessionReader {
     return null;
   }
 
+  /** Summary from an already-parsed transcript snapshot (no file re-read). */
+  private summaryFromSnapshot(
+    snapshot: ClaudeTranscriptSnapshot,
+    filePath: string,
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): SessionSummary | null {
+    if (snapshot.summaryState.metrics.parsedEntries === 0) return null;
+    return buildSummaryFromState(snapshot.summaryState, {
+      filePath,
+      stats: snapshot.stats,
+      sessionId,
+      projectId,
+      resolveContextWindow: this.resolveContextWindow,
+    });
+  }
+
   private async getSessionSummaryFromDir(
     dir: string,
     sessionId: string,
@@ -273,6 +298,13 @@ export class ClaudeSessionReader implements ISessionReader {
     const filePath = join(dir, `${sessionId}.jsonl`);
 
     try {
+      // A warm transcript cache entry (detail-loaded session) revalidates
+      // incrementally; summary-only callers never populate the cache.
+      const cached = await claudeTranscriptCache.peek(filePath);
+      if (cached) {
+        return this.summaryFromSnapshot(cached, filePath, sessionId, projectId);
+      }
+
       const stats = await stat(filePath);
       const inProcessParser = () =>
         readClaudeSessionSummary({
@@ -344,23 +376,24 @@ export class ClaudeSessionReader implements ISessionReader {
     afterMessageId?: string,
     _options?: GetSessionOptions,
   ): Promise<LoadedSession | null> {
-    const summary = await this.getSessionSummary(sessionId, projectId);
-    if (!summary) return null;
-
     // Find the session file across all dirs
     const filePath = await this.findSessionFile(sessionId);
     if (!filePath) return null;
-    const content = await readFile(filePath, "utf-8");
-    const lines = content.trim().split("\n");
 
-    const rawMessages: ClaudeSessionEntry[] = [];
-    for (const line of lines) {
-      try {
-        rawMessages.push(JSON.parse(line) as ClaudeSessionEntry);
-      } catch {
-        // Skip malformed lines
-      }
-    }
+    // One cached parse serves both the summary and the message list; the
+    // previous shape read and parsed the full file twice per request.
+    const snapshot = await claudeTranscriptCache.load(filePath);
+    if (!snapshot) return null;
+
+    const summary = this.summaryFromSnapshot(
+      snapshot,
+      filePath,
+      sessionId,
+      projectId,
+    );
+    if (!summary) return null;
+
+    const rawMessages = snapshot.entries;
 
     // Filter messages for incremental fetching if needed
     // Note: Raw messages might not have UUIDs if they are old format or haven't been normalized.
@@ -694,6 +727,13 @@ export class ClaudeSessionReader implements ISessionReader {
   async getLastAgentExcerpt(sessionId: string): Promise<string | undefined> {
     const filePath = await this.findSessionFile(sessionId);
     if (!filePath) return undefined;
+    // A warm transcript avoids re-reading the file and yields the same
+    // active-branch excerpt the summary path computes.
+    const cached = await claudeTranscriptCache.peek(filePath);
+    if (cached && cached.summaryState.metrics.parsedEntries > 0) {
+      const excerpt = lastAgentExcerptFromState(cached.summaryState);
+      if (excerpt) return excerpt;
+    }
     let content: string;
     try {
       content = await readFile(filePath, "utf-8");

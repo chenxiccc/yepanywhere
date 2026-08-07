@@ -99,6 +99,18 @@ const codexMessageCache = new WeakMap<
   }
 >();
 
+// Keyed by the reader's cache-stable entries array (claude-transcript-cache):
+// an unchanged transcript skips DAG rebuild + per-message conversion, and
+// eviction of the parsed transcript releases this copy via WeakMap semantics.
+const claudeMessageCache = new WeakMap<
+  ClaudeSessionEntry[],
+  {
+    length: number;
+    lastEntry: ClaudeSessionEntry | undefined;
+    messages: Message[];
+  }
+>();
+
 function normalizeClaudeQueueOperationContent(content: unknown): string {
   if (content === undefined) {
     return "";
@@ -147,12 +159,30 @@ export function normalizeSession(loaded: LoadedSession): Session {
     case "claude-gateway":
     case "claude-ollama": {
       const rawMessages = data.session.messages;
+      const lastEntry = rawMessages[rawMessages.length - 1];
+      const cached = claudeMessageCache.get(rawMessages);
+      if (
+        cached &&
+        cached.length === rawMessages.length &&
+        cached.lastEntry === lastEntry
+      ) {
+        return {
+          ...summary,
+          messages: cached.messages,
+        };
+      }
+
       const { entries, orphanedToolUses } =
         collectVisibleClaudeEntries(rawMessages);
       const messages: Message[] = entries.map((raw, index) =>
         convertClaudeMessage(raw, index, orphanedToolUses),
       );
 
+      claudeMessageCache.set(rawMessages, {
+        length: rawMessages.length,
+        lastEntry,
+        messages,
+      });
       return {
         ...summary,
         messages,

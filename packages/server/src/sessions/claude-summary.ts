@@ -27,7 +27,7 @@ type UsageFields = {
   cache_creation_input_tokens?: number;
 };
 
-interface CompactClaudeSummaryNode {
+export interface CompactClaudeSummaryNode {
   uuid: string;
   parentUuid: string | null;
   logicalParentUuid?: string;
@@ -64,7 +64,7 @@ export interface ClaudeSessionSummaryRead {
   metrics: ClaudeSummaryStreamMetrics;
 }
 
-interface ClaudeSummaryParseState {
+export interface ClaudeSummaryParseState {
   nodeMap: Map<string, CompactClaudeSummaryNode>;
   childrenMap: Map<string | null, string[]>;
   progressUuids: Set<string>;
@@ -202,7 +202,7 @@ function getCompactionPreTokens(entry: ClaudeSessionEntry): number | undefined {
   return typeof preTokens === "number" && preTokens > 0 ? preTokens : undefined;
 }
 
-function createParseState(): ClaudeSummaryParseState {
+export function createParseState(): ClaudeSummaryParseState {
   return {
     nodeMap: new Map(),
     childrenMap: new Map(),
@@ -231,7 +231,7 @@ function rememberChild(
   }
 }
 
-function addEntryToState(
+export function addEntryToState(
   state: ClaudeSummaryParseState,
   entry: ClaudeSessionEntry,
   lineIndex: number,
@@ -357,35 +357,40 @@ function walkBranchLength(
 function selectActiveTip(
   state: ClaudeSummaryParseState,
 ): CompactClaudeSummaryNode | null {
-  const tipsWithLength: Array<{
-    node: CompactClaudeSummaryNode;
-    length: number;
-  }> = [];
-
+  const tips: CompactClaudeSummaryNode[] = [];
   for (const node of state.nodeMap.values()) {
     const children = state.childrenMap.get(node.uuid);
     if (!children || children.length === 0) {
-      tipsWithLength.push({
-        node,
-        length: walkBranchLength(node.uuid, state.nodeMap, state.progressUuids),
-      });
+      tips.push(node);
     }
   }
+  if (tips.length === 0) return null;
 
-  if (tipsWithLength.length === 0) return null;
+  // Branch length only breaks timestamp ties, so walk branches solely for
+  // the tips tied on the newest timestamp: walking every tip is quadratic on
+  // large sessions (each walk is O(depth) with O(n) fallback scans).
+  let maxTimestamp = "";
+  for (const node of tips) {
+    if (node.timestamp > maxTimestamp) maxTimestamp = node.timestamp;
+  }
+  const candidates = tips.filter((node) => node.timestamp === maxTimestamp);
+  if (candidates.length === 1) return candidates[0] ?? null;
 
-  return tipsWithLength.reduce((best, current) => {
-    if (current.node.timestamp > best.node.timestamp) return current;
-    if (current.node.timestamp < best.node.timestamp) return best;
-    if (current.length > best.length) return current;
-    if (
-      current.length === best.length &&
-      current.node.lineIndex > best.node.lineIndex
-    ) {
-      return current;
-    }
-    return best;
-  }).node;
+  return candidates
+    .map((node) => ({
+      node,
+      length: walkBranchLength(node.uuid, state.nodeMap, state.progressUuids),
+    }))
+    .reduce((best, current) => {
+      if (current.length > best.length) return current;
+      if (
+        current.length === best.length &&
+        current.node.lineIndex > best.node.lineIndex
+      ) {
+        return current;
+      }
+      return best;
+    }).node;
 }
 
 function buildActiveBranch(
@@ -518,6 +523,13 @@ function extractContextUsage(
   return undefined;
 }
 
+/** Active-branch agent excerpt for a parse state (hover-card refresh path). */
+export function lastAgentExcerptFromState(
+  state: ClaudeSummaryParseState,
+): string | undefined {
+  return findLastAgentExcerpt(buildActiveBranch(state));
+}
+
 function findLastAgentExcerpt(
   activeBranch: CompactClaudeSummaryNode[],
 ): string | undefined {
@@ -550,7 +562,31 @@ function findContentUpdatedAt(
   return fallback.toISOString();
 }
 
-function buildSummaryFromState(
+/**
+ * Shallow-clone a parse state so a provisional (unterminated) trailing entry
+ * can be folded in for summary building without polluting the incremental
+ * state retained by the transcript cache.
+ */
+export function cloneParseState(
+  state: ClaudeSummaryParseState,
+): ClaudeSummaryParseState {
+  return {
+    nodeMap: new Map(state.nodeMap),
+    childrenMap: new Map(
+      [...state.childrenMap].map(([parent, children]) => [
+        parent,
+        [...children],
+      ]),
+    ),
+    progressUuids: new Set(state.progressUuids),
+    firstTimestamp: state.firstTimestamp,
+    firstUserTitleContent: state.firstUserTitleContent,
+    firstUserTitleCaptured: state.firstUserTitleCaptured,
+    metrics: { ...state.metrics },
+  };
+}
+
+export function buildSummaryFromState(
   state: ClaudeSummaryParseState,
   options: ReadClaudeSessionSummaryOptions,
 ): SessionSummary | null {

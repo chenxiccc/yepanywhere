@@ -250,7 +250,8 @@ The 2026-08-05 audit supplies the initial registry backlog:
 | Owner | Current risk | Required pressure contract |
 |---|---|---|
 | App session readers | 500-entry FIFO without hit retouch; individual Codex readers may retain full parsed transcripts and mapping/file caches | Byte/rebuild-cost bound and access retouch; close and release cold project readers |
-| Pi parsed transcripts | Full parsed value per `filePath:mtime`; obsolete append versions remain | One current version per canonical file plus byte-bounded LRU |
+| Claude parsed transcripts | Added 2026-08-07 (`claude-transcript-cache.ts`): process-wide, source-byte LRU (default 192 MB, `YEP_CLAUDE_PARSE_CACHE_MB`), in-flight coalescing, incremental append parsing; a file over the whole budget is never retained | Register with a future pressure coordinator as rebuildable; entries plus WeakMap-linked normalized copies release together |
+| Pi parsed transcripts | Resolved 2026-08-07: one current version per file, 64-file LRU with access retouch | One current version per canonical file plus byte-bounded LRU |
 | Session summary index | 10,000 scopes by FIFO count, each holding all summaries; FIFO eviction leaves validation/persisted-scope metadata behind, including another UTC-day cutoff key per scope/day | Evict the complete scope/cutoff record, preserve 10,000-project discovery, and cap live bytes; release disk-rebuildable cold scopes |
 | Codex shared session scans | Every UTC-day auto-archive cutoff can leave a provider-wide file array in the process-global scan cache | Retain only current/in-flight range generations under an entry/byte LRU |
 | Session discovery shards | A source-root index is retained per touched Codex root, and each loaded shard stays in memory for that index's lifetime | Release cold root indexes and byte/LRU-release clean shards; retain dirty/saving shards until durable |

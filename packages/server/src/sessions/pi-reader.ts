@@ -119,8 +119,14 @@ export class PiSessionReader implements ISessionReader {
   private cacheTimestamp = 0;
   private readonly CACHE_TTL_MS = 5000;
 
-  /** Parsed-transcript cache keyed by `${filePath}:${mtime}` (avoids re-parse). */
-  private parseCache: Map<string, PiParsedSession> = new Map();
+  /**
+   * Parsed-transcript cache: one current version per file, LRU-bounded.
+   * The previous `${filePath}:${mtime}` keying retained every obsolete
+   * version of a growing session for the reader's lifetime.
+   */
+  private parseCache: Map<string, { mtime: number; parsed: PiParsedSession }> =
+    new Map();
+  private static readonly PARSE_CACHE_MAX_FILES = 64;
 
   constructor(options: PiSessionReaderOptions = {}) {
     this.sessionsDir = options.sessionsDir ?? PI_SESSIONS_DIR;
@@ -216,9 +222,13 @@ export class PiSessionReader implements ISessionReader {
   private async parseSession(
     info: PiSessionInfo,
   ): Promise<PiParsedSession | null> {
-    const cacheKey = `${info.filePath}:${info.mtime}`;
-    const cached = this.parseCache.get(cacheKey);
-    if (cached) return cached;
+    const cached = this.parseCache.get(info.filePath);
+    if (cached && cached.mtime === info.mtime) {
+      // Refresh LRU recency by delete-and-reinsert (see lruCollections).
+      this.parseCache.delete(info.filePath);
+      this.parseCache.set(info.filePath, cached);
+      return cached.parsed;
+    }
 
     let raw: string;
     try {
@@ -263,7 +273,13 @@ export class PiSessionReader implements ISessionReader {
     const model = this.modelFromPath(path);
 
     const parsed: PiParsedSession = { messageNodes, cwd, createdAt, model };
-    this.parseCache.set(cacheKey, parsed);
+    this.parseCache.delete(info.filePath);
+    this.parseCache.set(info.filePath, { mtime: info.mtime, parsed });
+    while (this.parseCache.size > PiSessionReader.PARSE_CACHE_MAX_FILES) {
+      const oldest = this.parseCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.parseCache.delete(oldest);
+    }
     return parsed;
   }
 

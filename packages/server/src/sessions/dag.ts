@@ -31,16 +31,6 @@ export interface DagNode {
   raw: ClaudeSessionEntry;
 }
 
-/** Info about an alternate branch (not selected as active) */
-export interface AlternateBranch {
-  /** The tip node of this branch */
-  tipUuid: string;
-  /** Number of messages from root to tip */
-  length: number;
-  /** Type of the tip message (user/assistant) */
-  tipType: string;
-}
-
 /** Result of building and traversing the DAG */
 export interface DagResult {
   /** Messages on the active branch, in conversation order (root to tip) */
@@ -51,8 +41,6 @@ export interface DagResult {
   tip: DagNode | null;
   /** Whether the session has multiple branches (forks detected) */
   hasBranches: boolean;
-  /** Info about alternate branches not selected as active */
-  alternateBranches: AlternateBranch[];
 }
 
 /** Message types that count as conversation (not internal/progress) */
@@ -160,6 +148,41 @@ function getTipTimestamp(node: DagNode): string {
 }
 
 /**
+ * Pick the active tip: newest timestamp first, then branch length, then line
+ * index; a full tie keeps the earliest-encountered tip. `computeLength` runs
+ * only for timestamp-tied tips.
+ */
+function selectTipByTimestampThenLength(
+  tips: DagNode[],
+  computeLength: (node: DagNode) => number,
+): DagNode | null {
+  if (tips.length === 0) return null;
+
+  let maxTimestamp = "";
+  for (const node of tips) {
+    const timestamp = getTipTimestamp(node);
+    if (timestamp > maxTimestamp) maxTimestamp = timestamp;
+  }
+  const candidates = tips.filter(
+    (node) => getTipTimestamp(node) === maxTimestamp,
+  );
+  if (candidates.length === 1) return candidates[0] ?? null;
+
+  return candidates
+    .map((node) => ({ node, length: computeLength(node) }))
+    .reduce((best, current) => {
+      if (current.length > best.length) return current;
+      if (
+        current.length === best.length &&
+        current.node.lineIndex > best.node.lineIndex
+      ) {
+        return current;
+      }
+      return best;
+    }).node;
+}
+
+/**
  * Build a DAG from raw JSONL messages and find the active conversation branch.
  *
  * Algorithm:
@@ -208,52 +231,25 @@ export function buildDag(messages: ClaudeSessionEntry[]): DagResult {
     }
   }
 
-  // Find tips (nodes with no children) and calculate branch lengths
-  const tipsWithLength: Array<{ node: DagNode; length: number }> = [];
+  // Find tips (nodes with no children)
+  const tips: DagNode[] = [];
   for (const node of nodeMap.values()) {
     const children = childrenMap.get(node.uuid);
     if (!children || children.length === 0) {
-      const length = walkBranchLength(node.uuid, nodeMap, progressUuids);
-      tipsWithLength.push({ node, length });
+      tips.push(node);
     }
   }
 
   // Select the "active" tip: most recent timestamp wins, tiebreaker is branch length.
   // Timestamp-first ensures post-compaction branches beat stale pre-compaction ones
   // even when compacted-away history makes the old branch appear longer.
-  const selectedTip =
-    tipsWithLength.length > 0
-      ? tipsWithLength.reduce((best, current) => {
-          const bestTs = getTipTimestamp(best.node);
-          const currentTs = getTipTimestamp(current.node);
-          if (currentTs > bestTs) return current;
-          if (currentTs < bestTs) return best;
-          // Same timestamp: prefer longer branch, then latest lineIndex
-          if (current.length > best.length) return current;
-          if (
-            current.length === best.length &&
-            current.node.lineIndex > best.node.lineIndex
-          ) {
-            return current;
-          }
-          return best;
-        })
-      : null;
-
-  const tip = selectedTip?.node ?? null;
-  const hasBranches = tipsWithLength.length > 1;
-
-  // Build alternate branches info (all tips except the selected one)
-  const alternateBranches: AlternateBranch[] = hasBranches
-    ? tipsWithLength
-        .filter((t) => t.node.uuid !== tip?.uuid)
-        .map((t) => ({
-          tipUuid: t.node.uuid,
-          length: t.length,
-          tipType: t.node.raw.type,
-        }))
-        .sort((a, b) => b.length - a.length) // Sort by length descending
-    : [];
+  // Branch length only breaks timestamp ties, so walk branches solely for the
+  // tips tied on the newest timestamp: walking every tip is quadratic on large
+  // sessions (each walk is O(depth) with O(n) fallback scans).
+  const tip = selectTipByTimestampThenLength(tips, (node) =>
+    walkBranchLength(node.uuid, nodeMap, progressUuids),
+  );
+  const hasBranches = tips.length > 1;
 
   // Walk from tip to root, collecting the active branch
   const activeBranch: DagNode[] = [];
@@ -301,7 +297,6 @@ export function buildDag(messages: ClaudeSessionEntry[]): DagResult {
     activeBranchUuids,
     tip,
     hasBranches,
-    alternateBranches,
   };
 }
 

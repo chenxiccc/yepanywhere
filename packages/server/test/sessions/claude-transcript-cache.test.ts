@@ -1,0 +1,259 @@
+import { randomUUID } from "node:crypto";
+import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { UrlProjectId } from "@yep-anywhere/shared";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildSummaryFromState } from "../../src/sessions/claude-summary.js";
+import { ClaudeTranscriptCache } from "../../src/sessions/claude-transcript-cache.js";
+import { normalizeSession } from "../../src/sessions/normalization.js";
+import type { LoadedSession } from "../../src/sessions/types.js";
+
+function line(fields: Record<string, unknown>): string {
+  return JSON.stringify(fields);
+}
+
+function uuids(entries: readonly unknown[] | undefined): string[] {
+  return (entries ?? []).map((e) => (e as { uuid?: string }).uuid ?? "");
+}
+
+function userLine(uuid: string, parentUuid: string | null, text: string) {
+  return line({
+    type: "user",
+    uuid,
+    parentUuid,
+    timestamp: "2026-08-07T00:00:00.000Z",
+    message: { content: text },
+  });
+}
+
+function assistantLine(uuid: string, parentUuid: string | null, text: string) {
+  return line({
+    type: "assistant",
+    uuid,
+    parentUuid,
+    timestamp: "2026-08-07T00:00:01.000Z",
+    message: { content: [{ type: "text", text }], model: "claude-fable-5" },
+  });
+}
+
+describe("ClaudeTranscriptCache", () => {
+  let testDir: string;
+  let filePath: string;
+  let cache: ClaudeTranscriptCache;
+
+  beforeEach(async () => {
+    testDir = join(tmpdir(), `claude-transcript-cache-${randomUUID()}`);
+    await mkdir(testDir, { recursive: true });
+    filePath = join(testDir, "session.jsonl");
+    cache = new ClaudeTranscriptCache();
+  });
+
+  afterEach(async () => {
+    await rm(testDir, { recursive: true, force: true });
+  });
+
+  it("parses entries and reuses the array for an unchanged file", async () => {
+    await writeFile(
+      filePath,
+      `${userLine("u1", null, "hello")}\n${assistantLine("a1", "u1", "hi")}\n`,
+    );
+
+    const first = await cache.load(filePath);
+    expect(uuids(first?.entries)).toEqual(["u1", "a1"]);
+
+    const second = await cache.load(filePath);
+    expect(second?.entries).toBe(first?.entries);
+  });
+
+  it("extends the same array in place when the file grows", async () => {
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
+    const first = await cache.load(filePath);
+    expect(uuids(first?.entries)).toEqual(["u1"]);
+
+    await appendFile(filePath, `${assistantLine("a1", "u1", "hi")}\n`);
+    const second = await cache.load(filePath);
+    expect(second?.entries).toBe(first?.entries);
+    expect(uuids(second?.entries)).toEqual(["u1", "a1"]);
+  });
+
+  it("keeps the incremental summary state consistent with a fresh parse", async () => {
+    await writeFile(filePath, `${userLine("u1", null, "first prompt")}\n`);
+    await cache.load(filePath);
+    await appendFile(filePath, `${assistantLine("a1", "u1", "answer")}\n`);
+    const incremental = await cache.load(filePath);
+
+    const fresh = new ClaudeTranscriptCache();
+    const reparsed = await fresh.load(filePath);
+    expect(incremental).not.toBeNull();
+    expect(reparsed).not.toBeNull();
+    if (!incremental || !reparsed) return;
+
+    const options = {
+      filePath,
+      stats: reparsed.stats,
+      sessionId: "session",
+      projectId: "project" as UrlProjectId,
+    };
+    expect(buildSummaryFromState(incremental.summaryState, options)).toEqual(
+      buildSummaryFromState(reparsed.summaryState, options),
+    );
+  });
+
+  it("re-parses fully when the file shrinks", async () => {
+    await writeFile(
+      filePath,
+      `${userLine("u1", null, "hello")}\n${assistantLine("a1", "u1", "hi")}\n`,
+    );
+    const first = await cache.load(filePath);
+    expect(first?.entries).toHaveLength(2);
+
+    await writeFile(filePath, `${userLine("u2", null, "rewritten")}\n`);
+    const second = await cache.load(filePath);
+    expect(second?.entries).not.toBe(first?.entries);
+    expect(uuids(second?.entries)).toEqual(["u2"]);
+  });
+
+  it("re-parses fully when bytes before the parse offset changed", async () => {
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
+    const first = await cache.load(filePath);
+    expect(uuids(first?.entries)).toEqual(["u1"]);
+
+    // Same prefix length, different content, plus growth: the boundary probe
+    // must reject the incremental path.
+    await writeFile(
+      filePath,
+      `${userLine("u9", null, "hellp")}\n${assistantLine("a1", "u9", "hi")}\n`,
+    );
+    const second = await cache.load(filePath);
+    expect(second?.entries).not.toBe(first?.entries);
+    expect(uuids(second?.entries)).toEqual(["u9", "a1"]);
+  });
+
+  it("serves an unterminated final line and re-reads it on growth", async () => {
+    const complete = userLine("u1", null, "hello");
+    const partial = assistantLine("a1", "u1", "hi");
+    await writeFile(filePath, `${complete}\n${partial}`);
+
+    const first = await cache.load(filePath);
+    expect(uuids(first?.entries)).toEqual(["u1", "a1"]);
+
+    await appendFile(filePath, `\n${userLine("u2", "a1", "next")}\n`);
+    const second = await cache.load(filePath);
+    expect(uuids(second?.entries)).toEqual(["u1", "a1", "u2"]);
+  });
+
+  it("ignores a torn (unparseable) trailing line until it completes", async () => {
+    const torn = `{"type":"user","uuid":"u2","parentU`;
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n${torn}`);
+
+    const first = await cache.load(filePath);
+    expect(uuids(first?.entries)).toEqual(["u1"]);
+
+    await appendFile(filePath, `uid":"u1","message":{"content":"finished"}}\n`);
+    const second = await cache.load(filePath);
+    expect(uuids(second?.entries)).toEqual(["u1", "u2"]);
+  });
+
+  it("peek returns null for a cold file and refreshes a warm one", async () => {
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
+    expect(await cache.peek(filePath)).toBeNull();
+
+    const loaded = await cache.load(filePath);
+    await appendFile(filePath, `${assistantLine("a1", "u1", "hi")}\n`);
+    const peeked = await cache.peek(filePath);
+    expect(peeked?.entries).toBe(loaded?.entries);
+    expect(uuids(peeked?.entries)).toEqual(["u1", "a1"]);
+  });
+
+  it("evicts the least recently used file beyond the byte budget", async () => {
+    const small = new ClaudeTranscriptCache({ maxSourceBytes: 150 });
+    const fileA = join(testDir, "a.jsonl");
+    const fileB = join(testDir, "b.jsonl");
+    await writeFile(fileA, `${userLine("a", null, "aaaa")}\n`);
+    await writeFile(fileB, `${userLine("b", null, "bbbb")}\n`);
+
+    await small.load(fileA);
+    await small.load(fileB);
+
+    // fileA should have been evicted to fit fileB.
+    expect(await small.peek(fileA)).toBeNull();
+    expect(await small.peek(fileB)).not.toBeNull();
+  });
+
+  it("never retains a file larger than the whole budget", async () => {
+    const small = new ClaudeTranscriptCache({ maxSourceBytes: 10 });
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
+    const loaded = await small.load(filePath);
+    expect(uuids(loaded?.entries)).toEqual(["u1"]);
+    expect(await small.peek(filePath)).toBeNull();
+  });
+
+  it("coalesces concurrent loads into one parse", async () => {
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
+    const [a, b] = await Promise.all([
+      cache.load(filePath),
+      cache.load(filePath),
+    ]);
+    expect(a?.entries).toBe(b?.entries);
+  });
+
+  it("returns null for a missing file and drops stale state", async () => {
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
+    await cache.load(filePath);
+    await rm(filePath);
+    expect(await cache.load(filePath)).toBeNull();
+    expect(await cache.peek(filePath)).toBeNull();
+  });
+});
+
+describe("claude normalization cache", () => {
+  function loadedSessionFor(rawMessages: unknown[]): LoadedSession {
+    return {
+      summary: {
+        id: "session",
+        projectId: "project" as UrlProjectId,
+        title: null,
+        fullTitle: null,
+        createdAt: "2026-08-07T00:00:00.000Z",
+        updatedAt: "2026-08-07T00:00:01.000Z",
+        messageCount: rawMessages.length,
+        ownership: { owner: "none" },
+        provider: "claude",
+      },
+      data: {
+        provider: "claude",
+        session: {
+          // biome-ignore lint/suspicious/noExplicitAny: loose fixture rows by design
+          messages: rawMessages as any,
+        },
+      },
+    };
+  }
+
+  it("reuses converted messages for an unchanged entries array", () => {
+    const rawMessages = [
+      JSON.parse(userLine("u1", null, "hello")),
+      JSON.parse(assistantLine("a1", "u1", "hi")),
+    ];
+    const loaded = loadedSessionFor(rawMessages);
+
+    const first = normalizeSession(loaded);
+    const second = normalizeSession(loaded);
+    expect(second.messages).toBe(first.messages);
+  });
+
+  it("reconverts when the entries array grows in place", () => {
+    const rawMessages = [
+      JSON.parse(userLine("u1", null, "hello")),
+      JSON.parse(assistantLine("a1", "u1", "hi")),
+    ];
+    const loaded = loadedSessionFor(rawMessages);
+
+    const first = normalizeSession(loaded);
+    rawMessages.push(JSON.parse(userLine("u2", "a1", "more")));
+    const second = normalizeSession(loaded);
+    expect(second.messages).not.toBe(first.messages);
+    expect(second.messages).toHaveLength(3);
+  });
+});
