@@ -97,6 +97,12 @@ Claude without guessing from `ANTHROPIC_BASE_URL`; it does not identify which
 Anthropic-compatible gateway implementation serves the endpoint and is not an
 operator setting.
 
+`YEP_COPILOT_API=1` is the narrower implementation marker. YA injects it only
+after the configured gateway's `/v1/models` response explicitly advertises
+`X-Copilot-API: 1`, and clears the learned identity when the Gateway URL
+changes. Model names, ports, vendors, and generic endpoint compatibility never
+imply it.
+
 Gateway launches also inject `CLAUDE_CODE_*` narrowings that are not YA
 variables but are decided by YA per launch (`gatewayEnvironment()` in
 `packages/server/src/sdk/providers/claude-gateway.ts`). `ENABLE_PROMPT_CACHING_1H`

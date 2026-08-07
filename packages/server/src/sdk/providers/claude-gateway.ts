@@ -57,6 +57,7 @@ interface GatewayModelLaunchMetadata {
 interface GatewayCatalogSnapshot {
   configurationGeneration: number;
   baseUrl: string;
+  isCopilotApi: boolean;
   launchMetadata: Map<string, GatewayModelLaunchMetadata>;
 }
 
@@ -69,6 +70,7 @@ interface GatewayCatalogSnapshot {
  */
 const AUTO_COMPACT_WINDOW_MIN = 100_000;
 const AUTO_COMPACT_WINDOW_MAX = 1_000_000;
+const COPILOT_API_IDENTITY_HEADER = "x-copilot-api";
 
 export function gatewayAutoCompactWindow(
   promptWindow: number | undefined,
@@ -97,6 +99,7 @@ function gatewayEnvironment(
   baseUrl: string,
   model?: string,
   metadata?: GatewayModelLaunchMetadata,
+  isCopilotApi = false,
 ): Record<string, string> {
   const maxContextTokens = gatewayMaxContextTokens(
     metadata?.windows?.contextWindow,
@@ -106,6 +109,7 @@ function gatewayEnvironment(
   );
   return {
     YEP_CLAUDE_GATEWAY: "1",
+    ...(isCopilotApi ? { YEP_COPILOT_API: "1" } : {}),
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: "dummy",
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
@@ -338,6 +342,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   private static rememberGatewayCatalog(
     configurationGeneration: number,
     baseUrl: string,
+    isCopilotApi: boolean,
     launchMetadata: Map<string, GatewayModelLaunchMetadata>,
   ): boolean {
     if (
@@ -348,6 +353,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     ClaudeGatewayProvider.catalogSnapshot = {
       configurationGeneration,
       baseUrl,
+      isCopilotApi,
       launchMetadata,
     };
     return true;
@@ -421,6 +427,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
         !ClaudeGatewayProvider.rememberGatewayCatalog(
           configurationGeneration,
           baseUrl,
+          response.headers.get(COPILOT_API_IDENTITY_HEADER) === "1",
           catalog.launchMetadata,
         )
       ) {
@@ -443,6 +450,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   private static launchContext(model?: string):
     | {
         baseUrl: string;
+        isCopilotApi: boolean;
         metadata: GatewayModelLaunchMetadata | undefined;
       }
     | undefined {
@@ -456,6 +464,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
         : undefined;
     return {
       baseUrl: currentSnapshot?.baseUrl ?? gatewayUrl,
+      isCopilotApi: currentSnapshot?.isCopilotApi ?? false,
       metadata: model ? currentSnapshot?.launchMetadata.get(model) : undefined,
     };
   }
@@ -464,7 +473,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     const launch = ClaudeGatewayProvider.launchContext(model);
     if (!launch) return undefined;
     return {
-      env: gatewayEnvironment(launch.baseUrl, model, launch.metadata),
+      env: gatewayEnvironment(
+        launch.baseUrl,
+        model,
+        launch.metadata,
+        launch.isCopilotApi,
+      ),
     };
   }
 
@@ -475,7 +489,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     return launch
       ? {
           ...super.getEnv(model),
-          ...gatewayEnvironment(launch.baseUrl, model, launch.metadata),
+          ...gatewayEnvironment(
+            launch.baseUrl,
+            model,
+            launch.metadata,
+            launch.isCopilotApi,
+          ),
         }
       : super.getEnv(model);
   }

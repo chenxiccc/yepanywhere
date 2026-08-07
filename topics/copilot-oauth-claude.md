@@ -70,6 +70,11 @@ Claude is never rerouted:
   variables. YA never temporarily edits the user's
   `~/.claude/settings.json`, so manual TUIs and concurrent normal-Claude
   sessions cannot race with gateway selection.
+- Gateway implementation remains generic unless the catalog endpoint
+  explicitly identifies itself. The focused `copilot-api` fork returns
+  `X-Copilot-API: 1` from `/v1/models`; after YA observes it, matching child
+  launches receive `YEP_COPILOT_API=1`. This supports backend-specific
+  instructions without guessing from port 4141, model names, or vendor rows.
 - The gateway's `/v1/models` response is authoritative. Claude Code's own
   `supportedModels()` result is deliberately ignored for this provider because
   a gateway launch still reports first-party Claude choices such as Opus/Fable

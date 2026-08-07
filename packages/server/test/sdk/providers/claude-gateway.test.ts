@@ -226,6 +226,48 @@ describe("ClaudeGatewayProvider", () => {
     });
   });
 
+  it("propagates an explicit copilot-api catalog identity", async () => {
+    const responses = [
+      new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "X-Copilot-API": "1" },
+      }),
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const response = responses.shift();
+        if (!response) throw new Error("Unexpected catalog request");
+        return response;
+      }),
+    );
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+    const provider = new ExposedClaudeGatewayProvider({
+      ensureReady: async () => null,
+    });
+
+    expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
+      "YEP_COPILOT_API",
+    );
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings()?.env).toMatchObject({
+      YEP_COPILOT_API: "1",
+    });
+    expect(provider.getLaunchEnvironment()).toMatchObject({
+      YEP_COPILOT_API: "1",
+    });
+
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4242");
+    expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
+      "YEP_COPILOT_API",
+    );
+    await provider.getAvailableModels();
+    expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
+      "YEP_COPILOT_API",
+    );
+  });
+
   it("retains metadata-less rows but filters known unsupported rows", () => {
     expect(
       parseClaudeGatewayModels({
