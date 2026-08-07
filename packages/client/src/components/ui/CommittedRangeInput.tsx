@@ -38,6 +38,10 @@ export function CommittedRangeInput({
 }: CommittedRangeInputProps) {
   const [draft, setDraft] = useState(value);
   const editingRef = useRef(false);
+  // Compare commits against the value where the gesture began, not the live
+  // prop: parents that mirror onDraftChange back into `value` have already
+  // moved the prop to the dragged position by release time.
+  const editStartRef = useRef(value);
 
   useEffect(() => {
     if (!editingRef.current) {
@@ -45,23 +49,30 @@ export function CommittedRangeInput({
     }
   }, [value]);
 
+  const beginEditing = () => {
+    if (!editingRef.current) {
+      editingRef.current = true;
+      editStartRef.current = value;
+    }
+  };
+
   const commit = (next: number) => {
     editingRef.current = false;
     setDraft(next);
-    if (!Object.is(next, value)) {
+    if (!Object.is(next, editStartRef.current)) {
       onCommit(next);
     }
   };
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const next = readRangeValue(event.currentTarget);
-    editingRef.current = true;
+    beginEditing();
     setDraft(next);
     onDraftChange?.(next);
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLInputElement>) => {
-    editingRef.current = true;
+    beginEditing();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     onPointerDown?.(event);
   };
