@@ -492,6 +492,7 @@ export function TooltipLayer() {
       const target = glossaryTarget(event.target);
       if (!target || hasSelectedText()) return;
       event.preventDefault();
+      event.stopPropagation();
       revealAndCopy(target, event.clientX, event.clientY);
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -503,6 +504,7 @@ export function TooltipLayer() {
       const target = glossaryTarget(event.target);
       if (!target) return;
       event.preventDefault();
+      event.stopPropagation();
       const rect = target.getBoundingClientRect();
       revealAndCopy(target, rect.left + rect.width / 2, rect.bottom);
     };
@@ -550,13 +552,13 @@ export function TooltipLayer() {
     // bubbling. Capture activation so the same term interaction works in
     // file-viewer modals and ordinary rendered prose.
     document.addEventListener("click", onClick, true);
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     return () => {
       document.removeEventListener("click", onClick, true);
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);

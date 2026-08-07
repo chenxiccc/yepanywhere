@@ -242,7 +242,11 @@ dismisses the revealed definition, so the browser's menu is not covered by the
 enlarged box sitting at that same position. Keyboard focus reveals the
 definition; Enter or Space performs the same reveal-and-copy action. A
 non-collapsed text selection wins over activation so selecting prose does not
-unexpectedly write to the clipboard.
+unexpectedly write to the clipboard. Successful pointer or keyboard activation
+owns that event at the shared tooltip coordinator and stops it before an
+enclosing Edit diff, row, or other semantic action can also activate. Selection
+does not take that isolation path, preserving the enclosing selection-transfer
+behavior; ordinary non-glossary links are unchanged.
 
 The term interaction is semantic and keyboard-operable, not a click handler
 inferred from arbitrary generated DOM. Tooltip text remains selectable in
@@ -461,13 +465,23 @@ another artifact request. A source-file artifact whose reported governing path
 is root `GLOSSARY.md` may also satisfy the root assistant-prose context once the
 subscription snapshot has arrived; that reuse needs no new hierarchy guess or
 server query. Leaving the project closes the subscription and clears its
-artifacts. Every uncached source-context artifact request goes directly to the
-server, which resolves the nearest glossary from the source path. Modification
-invalidates cached artifacts whose dependency list names the changed glossary.
-Creation, deletion, or rename invalidates cached source contexts below the
-changed glossary's directory because nearest-governing resolution may have
-changed. A snapshot generation change after reconnect invalidates the tab's
-cached artifacts without creating one subscription per queried source.
+artifacts. Actively claimed/listened and in-flight source contexts stay pinned;
+settled inactive contexts use least-recently-used retention bounded to 32
+artifacts and 32 MiB of UTF-8 serialized responses. Either inactive limit may
+evict a context, whose next visit requests it again; active work may exceed
+those inactive limits rather than losing a live render or publishing an
+in-flight result into an evicted entry. Every uncached source-context artifact
+request goes directly to the server, which resolves the nearest glossary from
+the source path. Modification invalidates cached artifacts whose dependency
+list names the changed glossary. Creation, deletion, or rename invalidates
+cached source contexts below the changed glossary's directory because nearest-
+governing resolution may have changed. A snapshot generation change after
+reconnect invalidates the tab's cached artifacts without creating one
+subscription per queried source. The first snapshot also serial-fences any
+artifact request that began without snapshot provenance: if the snapshot
+arrives first, an active request restarts under that generation and the earlier
+completion cannot publish. A request that already completed before the first
+snapshot remains reusable.
 
 Filesystem truth remains authoritative, but cache use must not `stat` directory
 mtime on every render or artifact reuse. A current watcher generation makes

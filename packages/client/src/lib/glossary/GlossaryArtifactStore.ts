@@ -13,6 +13,13 @@ import {
 } from "../transport";
 
 const ROOT_CONTEXT_KEY = "";
+const DEFAULT_MAX_INACTIVE_ARTIFACTS = 32;
+const DEFAULT_MAX_INACTIVE_BYTES = 32 * 1024 * 1024;
+
+export interface GlossaryArtifactStoreOptions {
+  maxInactiveArtifacts?: number;
+  maxInactiveBytes?: number;
+}
 
 export type GlossaryArtifactState =
   | "idle"
@@ -33,6 +40,8 @@ interface ArtifactEntry {
   snapshot: GlossaryArtifactSnapshot;
   requested: boolean;
   requestSerial: number;
+  lastUsedSerial: number;
+  estimatedBytes: number;
 }
 
 interface ActiveProject {
@@ -95,6 +104,14 @@ function isGlossarySubscriptionEvent(
   return type === "glossary-paths-snapshot" || type === "glossary-path-changed";
 }
 
+function estimateResponseBytes(
+  result: GlossaryArtifactResponse | undefined,
+): number {
+  return result === undefined
+    ? 0
+    : new TextEncoder().encode(JSON.stringify(result)).byteLength;
+}
+
 /** Tab-local cache for the one project currently rendered by the tab. */
 export class GlossaryArtifactStore {
   private active: ActiveProject | null = null;
@@ -105,6 +122,22 @@ export class GlossaryArtifactStore {
   private entries = new Map<string, ArtifactEntry>();
   private listeners = new Map<string, Set<() => void>>();
   private activationSerial = 0;
+  private accessSerial = 0;
+  private readonly maxInactiveArtifacts: number;
+  private readonly maxInactiveBytes: number;
+
+  constructor(options: GlossaryArtifactStoreOptions = {}) {
+    this.maxInactiveArtifacts = Math.max(
+      0,
+      Math.floor(
+        options.maxInactiveArtifacts ?? DEFAULT_MAX_INACTIVE_ARTIFACTS,
+      ),
+    );
+    this.maxInactiveBytes = Math.max(
+      0,
+      Math.floor(options.maxInactiveBytes ?? DEFAULT_MAX_INACTIVE_BYTES),
+    );
+  }
 
   activate(projectId: UrlProjectId, transport: SourceTransport): void {
     if (
@@ -142,7 +175,10 @@ export class GlossaryArtifactStore {
   getSnapshot(sourcePath?: string): GlossaryArtifactSnapshot {
     const key = normalizeSourcePath(sourcePath);
     if (key === null) return IDLE_SNAPSHOT;
-    return this.entries.get(key)?.snapshot ?? IDLE_SNAPSHOT;
+    const entry = this.entries.get(key);
+    if (!entry) return IDLE_SNAPSHOT;
+    this.touch(entry);
+    return entry.snapshot;
   }
 
   subscribe(sourcePath: string | undefined, listener: () => void): () => void {
@@ -154,14 +190,20 @@ export class GlossaryArtifactStore {
       this.listeners.set(key, listeners);
     }
     listeners.add(listener);
+    const entry = this.entries.get(key);
+    if (entry) this.touch(entry);
     return () => {
       const current = this.listeners.get(key);
       if (!current) return;
       current.delete(listener);
       if (current.size === 0) {
         this.listeners.delete(key);
-        const entry = this.entries.get(key);
-        if (entry) entry.requested = false;
+        const currentEntry = this.entries.get(key);
+        if (currentEntry) {
+          currentEntry.requested = false;
+          this.touch(currentEntry);
+        }
+        this.pruneInactiveEntries();
       }
     };
   }
@@ -171,6 +213,7 @@ export class GlossaryArtifactStore {
     if (key === null) return;
     const entry = this.getOrCreateEntry(key);
     entry.requested = true;
+    this.touch(entry);
     this.ensureEntry(key, entry);
   }
 
@@ -178,12 +221,23 @@ export class GlossaryArtifactStore {
     activeProjectId: UrlProjectId | null;
     artifacts: number;
     glossaryPaths: number;
+    inactiveArtifacts: number;
+    inactiveBytes: number;
     pathsReady: boolean;
   } {
+    let inactiveArtifacts = 0;
+    let inactiveBytes = 0;
+    for (const [key, entry] of this.entries) {
+      if (this.isPinned(key, entry)) continue;
+      inactiveArtifacts += 1;
+      inactiveBytes += entry.estimatedBytes;
+    }
     return {
       activeProjectId: this.active?.projectId ?? null,
       artifacts: this.entries.size,
       glossaryPaths: this.paths.size,
+      inactiveArtifacts,
+      inactiveBytes,
       pathsReady: this.pathsReady,
     };
   }
@@ -203,10 +257,13 @@ export class GlossaryArtifactStore {
     this.paths = new Set(event.paths);
     this.pathsReady = true;
     this.generation = event.generation;
-    if (generationChanged) {
+    if (!hadSnapshot) {
+      this.invalidateEntries((entry) => entry.snapshot.state === "loading");
+    } else if (generationChanged) {
       this.invalidateEntries(() => true);
     }
     this.ensureRequestedEntries();
+    this.pruneInactiveEntries();
   }
 
   private handlePathChange(event: GlossaryPathChangedEvent): void {
@@ -243,6 +300,7 @@ export class GlossaryArtifactStore {
       });
     }
     this.ensureRequestedEntries();
+    this.pruneInactiveEntries();
   }
 
   private invalidateEntries(
@@ -252,6 +310,7 @@ export class GlossaryArtifactStore {
       if (!predicate(entry)) continue;
       entry.requestSerial += 1;
       entry.snapshot = IDLE_SNAPSHOT;
+      entry.estimatedBytes = 0;
       this.emit(key);
     }
   }
@@ -274,9 +333,11 @@ export class GlossaryArtifactStore {
       return;
     }
 
-    const reusableRootSnapshot = this.findReusableRootSnapshot(entry);
-    if (reusableRootSnapshot) {
-      entry.snapshot = reusableRootSnapshot;
+    const reusableRootEntry = this.findReusableRootEntry(entry);
+    if (reusableRootEntry) {
+      entry.snapshot = reusableRootEntry.snapshot;
+      entry.estimatedBytes = reusableRootEntry.estimatedBytes;
+      this.touch(entry);
       this.emit(key);
       return;
     }
@@ -285,6 +346,7 @@ export class GlossaryArtifactStore {
     const generation = this.generation;
     const requestSerial = ++entry.requestSerial;
     entry.snapshot = { state: "loading" };
+    entry.estimatedBytes = 0;
     this.emit(key);
     const params = new URLSearchParams();
     if (entry.sourcePath !== undefined) {
@@ -307,7 +369,10 @@ export class GlossaryArtifactStore {
           state: result.status,
           result,
         };
+        entry.estimatedBytes = estimateResponseBytes(result);
+        this.touch(entry);
         this.emit(key);
+        this.pruneInactiveEntries();
       })
       .catch((error) => {
         if (this.active !== active || entry.requestSerial !== requestSerial) {
@@ -317,13 +382,14 @@ export class GlossaryArtifactStore {
           state: "error",
           error: error instanceof Error ? error : new Error(String(error)),
         };
+        entry.estimatedBytes = 0;
+        this.touch(entry);
         this.emit(key);
+        this.pruneInactiveEntries();
       });
   }
 
-  private findReusableRootSnapshot(
-    entry: ArtifactEntry,
-  ): GlossaryArtifactSnapshot | null {
+  private findReusableRootEntry(entry: ArtifactEntry): ArtifactEntry | null {
     if (entry.sourcePath !== undefined || !this.pathsReady) return null;
     for (const candidate of this.entries.values()) {
       if (candidate === entry) continue;
@@ -335,7 +401,7 @@ export class GlossaryArtifactStore {
         "governingPath" in result &&
         result.governingPath === "GLOSSARY.md"
       ) {
-        return candidate.snapshot;
+        return candidate;
       }
     }
     return null;
@@ -349,9 +415,48 @@ export class GlossaryArtifactStore {
       snapshot: IDLE_SNAPSHOT,
       requested: false,
       requestSerial: 0,
+      lastUsedSerial: ++this.accessSerial,
+      estimatedBytes: 0,
     };
     this.entries.set(key, entry);
     return entry;
+  }
+
+  private touch(entry: ArtifactEntry): void {
+    entry.lastUsedSerial = ++this.accessSerial;
+  }
+
+  private isPinned(key: string, entry: ArtifactEntry): boolean {
+    return (
+      entry.requested ||
+      entry.snapshot.state === "loading" ||
+      this.listeners.has(key)
+    );
+  }
+
+  private pruneInactiveEntries(): void {
+    const inactive = Array.from(this.entries.entries())
+      .filter(([key, entry]) => !this.isPinned(key, entry))
+      .sort(
+        ([, left], [, right]) => left.lastUsedSerial - right.lastUsedSerial,
+      );
+    let inactiveArtifacts = inactive.length;
+    let inactiveBytes = inactive.reduce(
+      (total, [, entry]) => total + entry.estimatedBytes,
+      0,
+    );
+
+    for (const [key, entry] of inactive) {
+      if (
+        inactiveArtifacts <= this.maxInactiveArtifacts &&
+        inactiveBytes <= this.maxInactiveBytes
+      ) {
+        break;
+      }
+      this.entries.delete(key);
+      inactiveArtifacts -= 1;
+      inactiveBytes -= entry.estimatedBytes;
+    }
   }
 
   private emit(key: string): void {

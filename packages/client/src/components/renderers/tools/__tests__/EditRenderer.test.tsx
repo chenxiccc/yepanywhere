@@ -10,6 +10,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../../i18n";
 import { UI_KEYS } from "../../../../lib/storageKeys";
+import { TooltipLayer } from "../../../ui/TooltipLayer";
 import { editRenderer } from "../EditRenderer";
 
 vi.mock("../../../../contexts/SchemaValidationContext", () => ({
@@ -1024,6 +1025,44 @@ describe("EditRenderer collapsed preview fallback", () => {
 
     fireEvent.click(modalToggle as Element);
     expect(container.textContent).toContain("Recent MT Adapter Progress");
+  });
+
+  it("does not open the full diff when a glossary term is activated", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-old", "+oracle"],
+      },
+    ];
+    const { container } = render(
+      <>
+        <TooltipLayer />
+        {renderCollapsedPreview(
+          { _structuredPatch: structuredPatch } as never,
+          { filePath: "notes.md", structuredPatch } as never,
+          false,
+          renderContext,
+        )}
+      </>,
+    );
+    const preview = container.querySelector<HTMLElement>(".diff-tap-target");
+    const term = document.createElement("span");
+    term.dataset.glossaryTerm = "true";
+    term.dataset.tooltip = "oracle — Best published system.";
+    term.setAttribute("role", "button");
+    term.tabIndex = 0;
+    term.textContent = "oracle";
+    preview?.append(term);
+
+    fireEvent.click(term);
+
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "oracle — Best published system.",
+    );
+    expect(document.body.querySelector(".modal")).toBeNull();
   });
 
   it("counts only hidden rendered diff lines in the +N badge", () => {

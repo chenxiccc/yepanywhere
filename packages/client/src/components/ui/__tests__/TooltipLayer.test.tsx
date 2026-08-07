@@ -1213,6 +1213,49 @@ describe("TooltipLayer", () => {
     expect(term.getAttribute("data-tooltip")).toBeNull();
   });
 
+  it("isolates glossary pointer and keyboard activation from enclosing actions", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const openEnclosing = vi.fn();
+    const activateEnclosing = vi.fn();
+    render(
+      <>
+        <TooltipLayer />
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Open enclosing preview"
+          onClick={openEnclosing}
+          onKeyDown={activateEnclosing}
+        >
+          <span
+            data-glossary-term="true"
+            data-tooltip="oracle — Best published system."
+            role="button"
+            tabIndex={0}
+          >
+            oracle
+          </span>
+        </div>
+      </>,
+    );
+    const term = screen.getByRole("button", { name: "oracle" });
+
+    fireEvent.click(term, { clientX: 20, clientY: 30 });
+    fireEvent.keyDown(term, { key: "Enter" });
+    fireEvent.keyDown(term, { key: " " });
+
+    expect(writeText).toHaveBeenCalledTimes(3);
+    expect(openEnclosing).not.toHaveBeenCalled();
+    expect(activateEnclosing).not.toHaveBeenCalled();
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "oracle — Best published system.",
+    );
+  });
+
   it("marks a passively hovered glossary definition without enlarging it", () => {
     render(
       <>
@@ -1322,6 +1365,7 @@ describe("TooltipLayer", () => {
 
   it("preserves glossary text selection instead of activating it", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const openEnclosing = vi.fn();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
@@ -1333,20 +1377,29 @@ describe("TooltipLayer", () => {
     render(
       <>
         <TooltipLayer />
-        <span
-          data-glossary-term="true"
-          data-tooltip="oracle — Best published system."
+        <div
           role="button"
           tabIndex={0}
+          aria-label="Open enclosing preview"
+          onClick={openEnclosing}
+          onKeyDown={openEnclosing}
         >
-          oracle
-        </span>
+          <span
+            data-glossary-term="true"
+            data-tooltip="oracle — Best published system."
+            role="button"
+            tabIndex={0}
+          >
+            oracle
+          </span>
+        </div>
       </>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "oracle" }));
 
     expect(writeText).not.toHaveBeenCalled();
+    expect(openEnclosing).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });
