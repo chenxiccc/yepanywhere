@@ -32,6 +32,10 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   Active and waiting-input sessions are presumed live and have no
   viewer-absence kill deadline; only `verified-idle` without another retention
   owner is eligible for the configured idle grace.
+- An idle grace owns one absolute deadline. Delays longer than Node can arm in
+  one timer are scheduled in safe chunks against that unchanged deadline; a
+  chunk firing is not grace expiry. Live timeout changes replace the deadline
+  from the current idle/no-viewer anchor rather than restarting the idle period.
 - `verified-idle` plus grace expiry permits `Process` to begin teardown; it does
   not permit `Supervisor` to release session ownership. Idle teardown fences
   direct and deferred input synchronously, while the existing process mapping
@@ -210,6 +214,9 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
 - Viewer-absence reaping applies only to verified-idle, unretained work. Any
   open app tab globally refreshes the grace; active, waiting-input, and
   explicitly retained processes have no viewer-absence deadline.
+- An idle timeout longer than Node's maximum single-timer delay is armed only in
+  bounded chunks and reaps at the original deadline. Live shortening and
+  lengthening retain the current idle/no-viewer anchor.
 - Pending or failed idle teardown keeps the same registered process, rejects
   direct/deferred input and replacement, and emits no ownership release. A
   later verified abort retry emits exactly one completion and `owner: "none"`.

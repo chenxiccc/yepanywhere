@@ -568,8 +568,11 @@ and persisted representation stable.
 An explicitly configured legacy `IDLE_TIMEOUT` remains authoritative until the
 user deliberately saves `idleReapHours`; that save is the opt-in that moves
 the deployment to the persisted setting. Changes apply to existing processes:
-idle timers are recalculated, while active and waiting-input processes remain
-unaffected.
+idle timers are recalculated from their current idle/no-viewer anchor, while
+active and waiting-input processes remain unaffected. Each idle grace retains
+one absolute deadline. A deadline beyond Node's maximum single-timer delay is
+armed in bounded chunks, so a long legacy `IDLE_TIMEOUT` cannot overflow into
+near-immediate teardown.
 
 An idle process that is temporarily ineligible because another owner retains
 it is rechecked periodically. An explicit retention-release signal starts a

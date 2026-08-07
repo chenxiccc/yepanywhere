@@ -308,6 +308,16 @@ describe("loadConfig codex paths", () => {
     expect(config.idleTimeoutMs).toBe(45 * 1000);
   });
 
+  it("preserves a legacy idle timeout above Node's timer limit", async () => {
+    const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
+    vi.stubEnv("IDLE_TIMEOUT", String(thirtyDaysInSeconds));
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.idleTimeoutMs).toBe(thirtyDaysInSeconds * 1000);
+  });
+
   it("reads the xAI STT key from YA-private module env", async () => {
     vi.stubEnv("YEP_STT_XAI_API_KEY", "xai-key");
     vi.stubEnv("XAI_API_KEY", "ambient-xai-key");

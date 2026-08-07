@@ -131,6 +131,7 @@ export interface RecapRequestResult {
 }
 
 const CLAUDE_UNBOUNDED_MAX_RETRIES = 2_147_483_647;
+const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
 const PROCESS_ABORT_TIMEOUT_MS = 5_000;
 const PID_EXIT_POLL_INTERVAL_MS = 25;
 const MODEL_SWITCH_RETRY_INTERRUPT_PREAMBLE =
@@ -797,6 +798,7 @@ export class Process {
   private readonly viewerPresence: SessionViewerPresence;
   private releaseViewerPresenceSubscription: (() => void) | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
+  private idleDeadlineMs: number | null = null;
   private idleTimeoutMs: number;
   private unviewedSince: Date | null;
   private getRuntimeUnviewedSinceFn: (() => Date | undefined) | null;
@@ -4885,44 +4887,62 @@ export class Process {
     if (!this.shouldScheduleIdleReapCheck()) {
       return;
     }
-    this.idleTimer = setTimeout(
-      () => {
-        this.idleTimer = null;
+    this.idleDeadlineMs = Date.now() + Math.max(0, delayMs);
+    this.armIdleTimer();
+  }
 
-        if (!this.isIdleReapEligible()) {
-          const retainedByFeature =
-            this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
-          const retainedByPromptCacheKeepalive =
-            this.hasPromptCacheKeepaliveLease();
-          const providerRetention = this.getProviderRetentionSnapshot();
-          getLogger().debug(
-            {
-              event: "idle_cleanup_deferred",
-              sessionId: this._sessionId,
-              processId: this.id,
-              projectId: this.projectId,
-              idleTimeoutMs: this.idleTimeoutMs,
-              viewerCount: this.viewerPresence.getViewerCount(),
-              liveDeltaSubscriberCount: this.liveDeltaSubscriberCount,
-              retainedByFeature,
-              retainedByPromptCacheKeepalive,
-              retainedByProvider: providerRetention.retained,
-              providerRetentionReasons: providerRetention.reasons,
-              providerBackgroundTaskCount:
-                providerRetention.backgroundTaskCount,
-              providerSessionCronCount: providerRetention.sessionCronCount,
-              providerLiveTaskCount: providerRetention.liveTaskCount,
-            },
-            `Idle cleanup deferred: ${this._sessionId} is not currently eligible`,
-          );
-          this.startIdleTimer(IDLE_REAP_ELIGIBILITY_RECHECK_MS);
-          return;
-        }
-
-        this.reapIdleProcess();
-      },
-      Math.max(0, delayMs),
+  private armIdleTimer(): void {
+    const deadlineMs = this.idleDeadlineMs;
+    if (deadlineMs === null || !this.shouldScheduleIdleReapCheck()) {
+      this.clearIdleTimer();
+      return;
+    }
+    const delayMs = Math.min(
+      MAX_NODE_TIMER_DELAY_MS,
+      Math.max(0, deadlineMs - Date.now()),
     );
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.idleDeadlineMs !== deadlineMs) {
+        return;
+      }
+      if (Date.now() < deadlineMs) {
+        this.armIdleTimer();
+        return;
+      }
+      this.idleDeadlineMs = null;
+
+      if (!this.isIdleReapEligible()) {
+        const retainedByFeature =
+          this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
+        const retainedByPromptCacheKeepalive =
+          this.hasPromptCacheKeepaliveLease();
+        const providerRetention = this.getProviderRetentionSnapshot();
+        getLogger().debug(
+          {
+            event: "idle_cleanup_deferred",
+            sessionId: this._sessionId,
+            processId: this.id,
+            projectId: this.projectId,
+            idleTimeoutMs: this.idleTimeoutMs,
+            viewerCount: this.viewerPresence.getViewerCount(),
+            liveDeltaSubscriberCount: this.liveDeltaSubscriberCount,
+            retainedByFeature,
+            retainedByPromptCacheKeepalive,
+            retainedByProvider: providerRetention.retained,
+            providerRetentionReasons: providerRetention.reasons,
+            providerBackgroundTaskCount: providerRetention.backgroundTaskCount,
+            providerSessionCronCount: providerRetention.sessionCronCount,
+            providerLiveTaskCount: providerRetention.liveTaskCount,
+          },
+          `Idle cleanup deferred: ${this._sessionId} is not currently eligible`,
+        );
+        this.startIdleTimer(IDLE_REAP_ELIGIBILITY_RECHECK_MS);
+        return;
+      }
+
+      this.reapIdleProcess();
+    }, delayMs);
     this.idleTimer.unref?.();
   }
 
@@ -4994,6 +5014,7 @@ export class Process {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
+    this.idleDeadlineMs = null;
   }
 
   private handleViewerPresenceChanged(hasViewers: boolean): void {

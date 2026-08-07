@@ -42,6 +42,77 @@ describe("Process", () => {
       }
     });
 
+    it("chunks deadlines above Node's maximum timer delay", async () => {
+      vi.useFakeTimers();
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      try {
+        const maxTimerDelayMs = 2_147_483_647;
+        const idleTimeoutMs = maxTimerDelayMs * 2 + 1_000;
+        const controller = createControllableIterator();
+        const abortFn = vi.fn(() => {
+          controller.finish();
+        });
+        new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          initialState: "idle",
+          idleTimeoutMs,
+          abortFn,
+        });
+
+        expect(setTimeoutSpy.mock.calls.at(-1)?.[1]).toBe(maxTimerDelayMs);
+        await vi.advanceTimersByTimeAsync(maxTimerDelayMs);
+        expect(abortFn).not.toHaveBeenCalled();
+        expect(setTimeoutSpy.mock.calls.at(-1)?.[1]).toBe(maxTimerDelayMs);
+
+        await vi.advanceTimersByTimeAsync(maxTimerDelayMs);
+        expect(abortFn).not.toHaveBeenCalled();
+        expect(setTimeoutSpy.mock.calls.at(-1)?.[1]).toBe(1_000);
+
+        await vi.advanceTimersByTimeAsync(999);
+        expect(abortFn).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(abortFn).toHaveBeenCalledOnce();
+      } finally {
+        setTimeoutSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it("recalculates live timeout changes from the current idle period", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const abortFn = vi.fn(() => {
+          controller.finish();
+        });
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          initialState: "idle",
+          idleTimeoutMs: 100,
+          abortFn,
+        });
+
+        await vi.advanceTimersByTimeAsync(40);
+        process.updateIdleTimeoutMs(200);
+        await vi.advanceTimersByTimeAsync(110);
+        expect(abortFn).not.toHaveBeenCalled();
+
+        process.updateIdleTimeoutMs(160);
+        await vi.advanceTimersByTimeAsync(9);
+        expect(abortFn).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(abortFn).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("retains ownership and fences input while idle abort is pending", async () => {
       vi.useFakeTimers();
       try {
