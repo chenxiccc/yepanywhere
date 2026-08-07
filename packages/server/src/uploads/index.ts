@@ -15,6 +15,7 @@ export {
   getProjectAttachmentDir,
   getProjectAttachmentUploadDir,
   getLegacyProjectAttachmentDir,
+  isSafeUploadPathSegment,
   resolveUploadStoragePath,
   sanitizeFilename,
   UPLOADS_DIR,

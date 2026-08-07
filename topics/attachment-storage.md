@@ -121,6 +121,16 @@ It may check, in policy-defined order:
 2. the opted-in current project-local location; and
 3. legacy `<project>/.attachments/<session>/` and legacy central paths.
 
+The URL's session id is the logical session the client is viewing, but a
+file is materialized under the session id known at upload time — a
+provisional id for a brand-new session's first turn (the provider assigns
+the real id only after launch), or a prior resume-generation id once the
+provider rotates session ids. Files are never moved to follow the id: the
+delivered prompt names the physical path, and a provider may re-read it at
+any later turn. When the exact `<session>/` directory misses, the route
+therefore falls back to searching the sibling session directories of each
+storage root for the UUID-prefixed filename, which is globally unique.
+
 Reading a legacy attachment never authorizes creating, refreshing, migrating,
 or excluding that directory. The public response does not expose a new broad
 filesystem read capability merely because physical storage moved.

@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type UploadClientMessage,
@@ -21,6 +21,7 @@ import {
   type AttachmentStagingService,
   UploadManager,
   getLegacyProjectAttachmentDir,
+  isSafeUploadPathSegment,
   resolveUploadStoragePath,
 } from "../uploads/index.js";
 
@@ -71,6 +72,34 @@ function isStagedAttachmentRefArray(
   value: unknown,
 ): value is StagedAttachmentRef[] {
   return Array.isArray(value);
+}
+
+/**
+ * Look for a UUID-prefixed attachment filename in every session subdirectory
+ * of the given attachment roots, skipping the directory already probed.
+ */
+async function findFilenameInSessionDirs(
+  roots: readonly string[],
+  filename: string,
+  probedSessionId: string,
+): Promise<{ path: string; size: number } | null> {
+  for (const root of roots) {
+    let subdirs: string[];
+    try {
+      subdirs = await readdir(root);
+    } catch {
+      continue;
+    }
+    for (const subdir of subdirs) {
+      if (subdir === probedSessionId) continue;
+      const candidate = join(root, subdir, filename);
+      const stats = await stat(candidate).catch(() => null);
+      if (stats?.isFile()) {
+        return { path: candidate, size: stats.size };
+      }
+    }
+  }
+  return null;
 }
 
 export function createUploadRoutes(deps: UploadDeps): Hono {
@@ -545,7 +574,11 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
       }
 
       // Validate filename - must have UUID prefix format
-      if (!filename || !/^[0-9a-f-]{36}_/.test(filename)) {
+      if (
+        !filename ||
+        !/^[0-9a-f-]{36}_/.test(filename) ||
+        !isSafeUploadPathSegment(filename)
+      ) {
         return c.json({ error: "Invalid filename" }, 400);
       }
 
@@ -578,6 +611,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
           legacyFilePath,
         ].filter((candidate): candidate is string => Boolean(candidate));
 
+        let found: { path: string; size: number } | null = null;
         for (const candidate of candidates) {
           const stats = await stat(candidate).catch((err) => {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -585,38 +619,61 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
             }
             throw err;
           });
-          if (!stats?.isFile()) {
-            continue;
+          if (stats?.isFile()) {
+            found = { path: candidate, size: stats.size };
+            break;
           }
-
-          // Determine content type from filename extension
-          const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-          const mimeTypes: Record<string, string> = {
-            png: "image/png",
-            jpg: "image/jpeg",
-            jpeg: "image/jpeg",
-            gif: "image/gif",
-            webp: "image/webp",
-            svg: "image/svg+xml",
-            pdf: "application/pdf",
-            txt: "text/plain",
-            json: "application/json",
-          };
-          const contentType = mimeTypes[ext] ?? "application/octet-stream";
-
-          c.header("Content-Type", contentType);
-          c.header("Content-Length", stats.size.toString());
-          c.header("Cache-Control", "private, max-age=3600");
-
-          return stream(c, async (s) => {
-            const readable = createReadStream(candidate);
-            for await (const chunk of readable) {
-              await s.write(chunk);
-            }
-          });
         }
 
-        return c.json({ error: "File not found" }, 404);
+        // The URL's session id is the logical session the client is viewing,
+        // but files are materialized under the session id known at upload
+        // time: a provisional id for a brand-new session's first turn, or a
+        // prior resume-generation id. The UUID-prefixed filename is globally
+        // unique, so fall back to the sibling session directories of each
+        // storage root. See topics/attachment-storage.md.
+        if (!found) {
+          const attachmentRoots = [
+            ...storagePolicy.readPaths(project.path, "attachments"),
+            join(project.path, ".attachments"),
+            join(storagePolicy.dataDir, "uploads", projectId),
+          ];
+          found = await findFilenameInSessionDirs(
+            attachmentRoots,
+            filename,
+            sessionId,
+          );
+        }
+
+        if (!found) {
+          return c.json({ error: "File not found" }, 404);
+        }
+        const foundPath = found.path;
+
+        // Determine content type from filename extension
+        const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+        const mimeTypes: Record<string, string> = {
+          png: "image/png",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          gif: "image/gif",
+          webp: "image/webp",
+          svg: "image/svg+xml",
+          pdf: "application/pdf",
+          txt: "text/plain",
+          json: "application/json",
+        };
+        const contentType = mimeTypes[ext] ?? "application/octet-stream";
+
+        c.header("Content-Type", contentType);
+        c.header("Content-Length", found.size.toString());
+        c.header("Cache-Control", "private, max-age=3600");
+
+        return stream(c, async (s) => {
+          const readable = createReadStream(foundPath);
+          for await (const chunk of readable) {
+            await s.write(chunk);
+          }
+        });
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
           return c.json({ error: "File not found" }, 404);

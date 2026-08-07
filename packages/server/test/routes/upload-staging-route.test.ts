@@ -258,4 +258,57 @@ describe("staged upload direct route", () => {
     expect(served.status).toBe(200);
     await expect(served.text()).resolves.toBe("central materialize");
   });
+
+  // A first-turn upload materializes under a provisional session id (the real
+  // id is assigned by the provider afterwards), and every resume generation
+  // changes the id again. The serve route must find the unique filename in
+  // sibling session directories.
+  it("serves app-data attachments requested under a different session id", async () => {
+    storageMode = "app-data";
+    const ref = await completeStagedUpload("provisional turn");
+
+    const response = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/provisional-id/attachments/staging/materialize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId: "batch-a", refs: [ref] }),
+      },
+    );
+    expect(response.status).toBe(200);
+
+    const served = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/real-session-id/upload/${ref.name}`,
+    );
+    expect(served.status).toBe(200);
+    await expect(served.text()).resolves.toBe("provisional turn");
+  });
+
+  it("serves project-mode attachments requested under a different session id", async () => {
+    const ref = await completeStagedUpload("resumed generation");
+
+    const response = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/old-generation/attachments/staging/materialize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId: "batch-a", refs: [ref] }),
+      },
+    );
+    expect(response.status).toBe(200);
+
+    const served = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/new-generation/upload/${ref.name}`,
+    );
+    expect(served.status).toBe(200);
+    await expect(served.text()).resolves.toBe("resumed generation");
+  });
+
+  it("returns 404 for a filename absent from every session directory", async () => {
+    const missing = `${randomUUID()}_missing.txt`;
+    const served = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/any-session/upload/${missing}`,
+    );
+    expect(served.status).toBe(404);
+  });
 });
