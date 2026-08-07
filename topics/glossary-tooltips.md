@@ -97,9 +97,11 @@ must not reuse the authenticated project artifact route.
 
 ## Glossary term grammar
 
-The first Markdown table supplies glossary rows. The first column is the term
-pattern, the second is the definition, and later columns are references or
-other metadata that do not enter the tooltip.
+The first Markdown table outside fenced or indented code supplies glossary
+rows. A table-shaped example inside backtick/tilde fences or an indented code
+block is inert. The first column is the term pattern, the second is the
+definition, and later columns are references or other metadata that do not
+enter the tooltip.
 
 A top-level comma in the term cell separates independent phrase patterns. A
 Markdown-escaped comma is literal. Each phrase is interpreted separately:
@@ -120,7 +122,9 @@ tokens and is normalized when optional tokens are omitted.
 - Omission joins the surviving neighboring pieces with the normalized
   separator implied by the authored phrase; it does not concatenate words.
 - Inline code and Markdown escapes contribute their visible literal text.
-  Formatting markup itself never becomes match text.
+  Paired emphasis, strong-emphasis, and strikethrough delimiters contribute only
+  their visible content. Intraword or unmatched `*`, `_`, and `~` characters are
+  literal text rather than formatting to strip.
 
 For example:
 
@@ -159,10 +163,14 @@ are excluded from tooltip text even when a reference creates an include edge.
 
 ## Match semantics
 
-Matching is case-insensitive over normalized Unicode text. Runs of Markdown
-whitespace normalize to one separator for matching while retaining source
-offsets for annotation. Punctuation is literal: punctuation and spacing inside
-a declared phrase are consumed by that phrase and do not break it.
+Compilation and matching use the same context-independent Unicode stream:
+grapheme-local NFKC normalization, lowercase folding with final sigma
+canonicalized to standard sigma, and one separator for each whitespace run.
+Matching retains the original UTF-16 start/end range for every emitted code
+point, so compatibility expansion, combining marks, and folded case still map
+back to exact annotation offsets. Punctuation is literal: punctuation and
+spacing inside a declared phrase are consumed by that phrase and do not break
+it.
 Hyphen-minus, Unicode hyphen, and non-breaking hyphen are word characters at
 phrase edges. Hyphenated and space-separated forms are therefore distinct
 unless the term cell declares both as comma-separated alternatives or derives
@@ -277,10 +285,14 @@ Compilation proceeds conceptually as follows:
 5. Serialize the trie transitions, failure links, terminal metadata, and
    source-version identity.
 
-The hot scan performs amortized constant transition work per normalized code
-point plus bounded terminal work: `O(rendered characters + selected matches)`,
-with no factor for glossary rows or maximum phrase length after compilation.
-Sparse trie transitions keep the serialized artifact small.
+The automaton scan performs amortized constant transition work per normalized
+code point plus one visit per emitted terminal candidate. Let `n` be normalized
+rendered code points and `c` be boundary-valid candidate matches. Deterministic
+precedence sorting and coordinate-compressed interval admission cost
+`O(c log c)`; accepted intervals mark each compressed source segment at most
+once. The complete bound is therefore `O(n + c log c)`, with no multiplicative
+factor for glossary rows or maximum phrase length after compilation. Sparse
+trie transitions keep the serialized artifact small.
 
 Compilation has explicit aggregate limits for include depth, included files,
 glossary bytes, rows, phrase length, the two optional tokens per phrase,
@@ -575,14 +587,17 @@ Grammar and matcher tests cover:
   two-optional-token cap, comma alternatives, and escaped commas;
 - independently present/absent optional tokens, rejection of a third optional
   token, and rejection of arbitrary gaps;
-- case, Unicode, whitespace, punctuation, phrase-edge boundaries, and matches
-  spanning ordinary inline formatting;
+- contextual Unicode case, compatibility and combining normalization, whitespace,
+  literal delimiter punctuation, phrase-edge boundaries, and stable source
+  offsets;
+- fenced/indented table-shaped examples and matches spanning ordinary inline
+  formatting;
 - same-form definitions within and across glossaries, concatenated paragraph
-  order, overlap precedence, and stable source offsets after normalization;
-- state/byte/row limits, file-identity invalidation, failed-compilation
-  caching, and process-memory bounds; and
-- a long nonmatching document proving scan work is independent of glossary row
-  count and maximum phrase length after compilation.
+  order, and overlap precedence;
+- state/byte/row limits, file-identity invalidation, failed-compilation caching,
+  and process-memory bounds; and
+- a long nonmatching document plus dense disjoint candidates, proving the scan
+  has no glossary-row factor and overlap admission follows its indexed bound.
 
 Resolution tests cover same-directory and nearest-ancestor governing selection,
 root-governed project prose, independent multi-file diff sections, project-

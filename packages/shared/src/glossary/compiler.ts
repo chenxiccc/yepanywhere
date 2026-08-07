@@ -3,6 +3,7 @@ import {
   parseGlossaryInline,
   splitGlossaryAlternatives,
 } from "./markdown.js";
+import { normalizeGlossaryText } from "./normalization.js";
 import {
   GLOSSARY_ARTIFACT_VERSION,
   GLOSSARY_LIMITS,
@@ -42,10 +43,6 @@ function fail(
   message: string,
 ): GlossaryCompileResult {
   return { diagnostic: { code, message }, ok: false };
-}
-
-export function normalizeGlossaryText(text: string): string {
-  return text.normalize("NFKC").toLowerCase().replace(/\s+/gu, " ").trim();
 }
 
 function phraseTokens(

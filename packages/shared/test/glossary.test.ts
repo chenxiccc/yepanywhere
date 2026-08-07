@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   GLOSSARY_ARTIFACT_VERSION,
   GLOSSARY_LIMITS,
   compileGlossaryArtifact,
   flattenGlossaryInlineMarkdown,
   matchGlossaryText,
+  normalizeGlossaryText,
   parseFirstGlossaryTable,
   parseGlossaryInline,
   splitGlossaryAlternatives,
@@ -68,12 +69,52 @@ describe("glossary Markdown parsing", () => {
     ).toBe("escaped | pipe");
   });
 
+  it("ignores table-shaped examples in fenced and indented code", () => {
+    const parsed = parseFirstGlossaryTable(`
+\`\`\`markdown
+| fenced | example |
+| --- | --- |
+| wrong | no |
+\`\`\`
+
+    | indented | example |
+    | --- | --- |
+    | wrong | no |
+
+~~~markdown
+| tilde fenced | example |
+| --- | --- |
+| wrong | no |
+~~~
+
+| term | definition |
+| --- | --- |
+| **actual** | selected |
+`);
+
+    expect(parsed?.rows).toHaveLength(1);
+    expect(parsed?.rows[0]).toMatchObject({
+      definitionMarkdown: "selected",
+      termMarkdown: "**actual**",
+    });
+  });
+
   it("flattens formatting while retaining visible labels and literals", () => {
     expect(
       flattenGlossaryInlineMarkdown(
         "**Term** with `literal  code` and [visible](./hidden) &amp; \\*",
       ),
     ).toBe("Term with literal code and visible & *");
+  });
+
+  it("preserves literal intraword and unmatched delimiter punctuation", () => {
+    expect(flattenGlossaryInlineMarkdown("snake_case")).toBe("snake_case");
+    expect(flattenGlossaryInlineMarkdown("grow*able")).toBe("grow*able");
+    expect(flattenGlossaryInlineMarkdown("x~y")).toBe("x~y");
+    expect(flattenGlossaryInlineMarkdown("unmatched*")).toBe("unmatched*");
+    expect(flattenGlossaryInlineMarkdown("__bold__ *emphasis* ~~old~~")).toBe(
+      "bold emphasis old",
+    );
   });
 
   it("excludes Markdown comments from visible term text", () => {
@@ -95,6 +136,13 @@ describe("glossary Markdown parsing", () => {
       "**bold, comma**",
       "`code, comma`",
       "[label, x](url)",
+    ]);
+  });
+
+  it("splits after literal intraword strong-marker characters", () => {
+    expect(splitGlossaryAlternatives("literal__name, second")).toEqual([
+      "literal__name",
+      "second",
     ]);
   });
 
@@ -294,6 +342,40 @@ describe("compiled glossary matching", () => {
     );
   });
 
+  it("uses one context-independent Unicode fold for compile and match", () => {
+    const artifact = compile([row("**ΟΣ**", "Greek sigma")]);
+    const text = "ΟΣ ος οσ";
+    const matchedText = matchGlossaryText(text, artifact).map((match) =>
+      text.slice(match.start, match.end),
+    );
+
+    expect(normalizeGlossaryText("ΟΣ")).toBe("οσ");
+    expect(normalizeGlossaryText("ος")).toBe("οσ");
+    expect(matchedText).toEqual(["ΟΣ", "ος", "οσ"]);
+  });
+
+  it("normalizes combining and Hangul clusters without Intl.Segmenter", async () => {
+    const segmenterDescriptor = Object.getOwnPropertyDescriptor(
+      Intl,
+      "Segmenter",
+    );
+    Object.defineProperty(Intl, "Segmenter", {
+      configurable: true,
+      value: undefined,
+    });
+    vi.resetModules();
+    try {
+      const fallback = await import("../src/glossary/normalization.js");
+      expect(fallback.normalizeGlossaryText("CAFÉ")).toBe("café");
+      expect(fallback.normalizeGlossaryText("가")).toBe("가");
+    } finally {
+      if (segmenterDescriptor) {
+        Object.defineProperty(Intl, "Segmenter", segmenterDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
   it("requires phrase-edge boundaries while retaining literal punctuation", () => {
     const artifact = compile([
       row("**term**"),
@@ -355,6 +437,25 @@ describe("compiled glossary matching", () => {
     const text = "A CAFE\u0301 result";
     const [match] = matchGlossaryText(text, artifact);
     expect(text.slice(match?.start, match?.end)).toBe("CAFE\u0301");
+  });
+
+  it("selects dense disjoint candidates under the indexed overlap budget", () => {
+    const artifact = compile([row("**term**")]);
+    const text = "term ".repeat(12_000);
+    const startedAt = performance.now();
+    const matches = matchGlossaryText(text, artifact);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(matches).toHaveLength(12_000);
+    expect(elapsedMs).toBeLessThan(1_000);
+  });
+
+  it("maps compatibility-composed graphemes back to their full source span", () => {
+    const artifact = compile([row("**가**")]);
+    const text = "A 가 result";
+    const [match] = matchGlossaryText(text, artifact);
+
+    expect(text.slice(match?.start, match?.end)).toBe("가");
   });
 
   it("compiles 999 hyphen-alias rows and scans a long miss under the cold budget", () => {

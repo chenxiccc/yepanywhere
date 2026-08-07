@@ -1,10 +1,5 @@
+import { normalizeGlossarySource } from "./normalization.js";
 import type { GlossaryArtifact, GlossaryMatch } from "./types.js";
-
-interface NormalizedSource {
-  chars: string[];
-  ends: number[];
-  starts: number[];
-}
 
 interface Candidate extends GlossaryMatch {
   alternativeOrder: number;
@@ -14,60 +9,6 @@ interface Candidate extends GlossaryMatch {
   visibleCodePoints: number;
 }
 
-function normalizeSource(text: string): NormalizedSource {
-  const chars: string[] = [];
-  const starts: number[] = [];
-  const ends: number[] = [];
-  let offset = 0;
-  let cluster = "";
-  let clusterStart = 0;
-  let clusterEnd = 0;
-  let whitespaceStart: number | null = null;
-
-  const flushCluster = () => {
-    if (!cluster) return;
-    const normalized = cluster.normalize("NFKC").toLowerCase();
-    for (const char of normalized) {
-      chars.push(char);
-      starts.push(clusterStart);
-      ends.push(clusterEnd);
-    }
-    cluster = "";
-  };
-
-  const flushWhitespace = () => {
-    if (whitespaceStart === null) return;
-    chars.push(" ");
-    starts.push(whitespaceStart);
-    ends.push(offset);
-    whitespaceStart = null;
-  };
-
-  for (const sourceChar of text) {
-    const start = offset;
-    if (/\s/u.test(sourceChar)) {
-      flushCluster();
-      offset += sourceChar.length;
-      whitespaceStart ??= start;
-      continue;
-    }
-    flushWhitespace();
-    offset += sourceChar.length;
-    if (/\p{Mark}/u.test(sourceChar) && cluster) {
-      cluster += sourceChar;
-      clusterEnd = offset;
-    } else {
-      flushCluster();
-      cluster = sourceChar;
-      clusterStart = start;
-      clusterEnd = offset;
-    }
-  }
-  flushCluster();
-  flushWhitespace();
-  return { chars, ends, starts };
-}
-
 function isBoundary(char: string | undefined): boolean {
   return (
     char === undefined ||
@@ -75,8 +16,57 @@ function isBoundary(char: string | undefined): boolean {
   );
 }
 
-function overlaps(left: Candidate, right: Candidate): boolean {
-  return left.start < right.end && right.start < left.end;
+class SelectedSpanIndex {
+  private readonly boundaryIndexes: Map<number, number>;
+  private readonly occupiedSegments: Uint32Array;
+
+  constructor(candidates: readonly Candidate[]) {
+    const boundaries = Array.from(
+      new Set(
+        candidates.flatMap((candidate) => [candidate.start, candidate.end]),
+      ),
+    ).sort((left, right) => left - right);
+    this.boundaryIndexes = new Map(
+      boundaries.map((boundary, index) => [boundary, index]),
+    );
+    this.occupiedSegments = new Uint32Array(boundaries.length + 1);
+  }
+
+  overlaps(start: number, end: number): boolean {
+    const startIndex = this.boundaryIndexes.get(start)!;
+    const endIndex = this.boundaryIndexes.get(end)!;
+    return this.prefixSum(endIndex) > this.prefixSum(startIndex);
+  }
+
+  add(start: number, end: number): void {
+    const startIndex = this.boundaryIndexes.get(start)!;
+    const endIndex = this.boundaryIndexes.get(end)!;
+    for (let index = startIndex; index < endIndex; index += 1) {
+      this.addSegment(index);
+    }
+  }
+
+  private addSegment(index: number): void {
+    for (
+      let treeIndex = index + 1;
+      treeIndex < this.occupiedSegments.length;
+      treeIndex += treeIndex & -treeIndex
+    ) {
+      this.occupiedSegments[treeIndex]! += 1;
+    }
+  }
+
+  private prefixSum(endIndex: number): number {
+    let sum = 0;
+    for (
+      let treeIndex = endIndex;
+      treeIndex > 0;
+      treeIndex -= treeIndex & -treeIndex
+    ) {
+      sum += this.occupiedSegments[treeIndex] ?? 0;
+    }
+    return sum;
+  }
 }
 
 function compareCandidatePrecedence(left: Candidate, right: Candidate): number {
@@ -99,7 +89,7 @@ export function matchGlossaryText(
   if (!text || artifact.nodes.length === 0 || artifact.terminals.length === 0) {
     return [];
   }
-  const normalized = normalizeSource(text);
+  const normalized = normalizeGlossarySource(text);
   const candidates: Candidate[] = [];
   let state = 0;
 
@@ -146,10 +136,11 @@ export function matchGlossaryText(
 
   candidates.sort(compareCandidatePrecedence);
   const selected: Candidate[] = [];
+  const selectedSpans = new SelectedSpanIndex(candidates);
   for (const candidate of candidates) {
-    if (!selected.some((existing) => overlaps(existing, candidate))) {
-      selected.push(candidate);
-    }
+    if (selectedSpans.overlaps(candidate.start, candidate.end)) continue;
+    selectedSpans.add(candidate.start, candidate.end);
+    selected.push(candidate);
   }
   selected.sort(
     (left, right) => left.start - right.start || left.end - right.end,

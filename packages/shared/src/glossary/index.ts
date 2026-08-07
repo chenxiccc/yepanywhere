@@ -1,4 +1,5 @@
-export { compileGlossaryArtifact, normalizeGlossaryText } from "./compiler.js";
+export { compileGlossaryArtifact } from "./compiler.js";
+export { normalizeGlossaryText } from "./normalization.js";
 export {
   flattenGlossaryInlineMarkdown,
   parseFirstGlossaryTable,
