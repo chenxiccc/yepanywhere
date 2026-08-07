@@ -289,6 +289,15 @@ Exceeding a limit disables glossary annotation for that governing-graph
 version with one bounded diagnostic; ordinary Markdown rendering continues
 unchanged. It must never fall back to a per-character regex or phrase loop.
 
+The byte limit binds snapshot acquisition, not only compilation. An obvious
+oversized file is rejected from metadata before opening it; every other file is
+read through a `remaining graph bytes + 1` bound, and only a stable result within
+that bound is decoded or hashed. Includes are acquired and visited depth-first,
+so each receives the exact graph remainder after its predecessors rather than
+being preloaded under independent per-file limits. Growth after the metadata
+check therefore crosses the bounded read by at most one byte and produces the
+same aggregate-limit diagnostic.
+
 ## In-memory resolution and compiled cache
 
 The server owns the canonical governing-glossary and include-graph resolver and

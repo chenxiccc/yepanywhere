@@ -1,11 +1,14 @@
 import {
+  appendFile,
   mkdtemp,
   mkdir,
+  open,
   readFile,
   realpath,
   rm,
   stat,
   symlink,
+  truncate,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -18,6 +21,7 @@ import {
   GlossaryIndexService,
 } from "../../src/projects/glossaryIndexService.js";
 import { invalidateProjectPathIndex } from "../../src/projects/projectPathIndex.js";
+import { readFileHandleBounded } from "../../src/utils/projectFileAccess.js";
 
 const projects: string[] = [];
 
@@ -37,6 +41,18 @@ async function writeProjectFile(
   const path = join(project, relativePath);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content);
+}
+
+async function readPathBounded(
+  path: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const handle = await open(path, "r");
+  try {
+    return await readFileHandleBounded(handle, maxBytes);
+  } finally {
+    await handle.close();
+  }
 }
 
 function glossary(
@@ -207,6 +223,110 @@ describe("governing glossary resolution", () => {
   });
 });
 
+describe("glossary byte limits", () => {
+  it("rejects an oversized sparse governing file before reading it", async () => {
+    const project = await createProject();
+    const glossaryPath = join(project, "GLOSSARY.md");
+    await writeProjectFile(project, "GLOSSARY.md", "");
+    await truncate(glossaryPath, 65);
+    const read = vi.fn(async () => Buffer.alloc(0));
+    const compile = vi.fn(compileGlossaryArtifact);
+    const service = new GlossaryIndexService({
+      compile,
+      io: { readFileBounded: read },
+      limits: { ...GLOSSARY_LIMITS, maxGlossaryBytes: 64 },
+    });
+
+    await expect(service.resolve(project)).resolves.toMatchObject({
+      dependencies: [],
+      diagnostic: {
+        code: "total-byte-limit",
+        glossaryPath: "GLOSSARY.md",
+      },
+      governingPath: "GLOSSARY.md",
+      sourceVersion: null,
+      status: "disabled",
+    });
+    expect(read).not.toHaveBeenCalled();
+    expect(compile).not.toHaveBeenCalled();
+  });
+
+  it("stops a governing read that grows beyond its post-stat budget", async () => {
+    const project = await createProject();
+    const content = glossary([["growing term", "Meaning"]]);
+    const maxGlossaryBytes = Buffer.byteLength(content);
+    await writeProjectFile(project, "GLOSSARY.md", content);
+    const read = vi.fn(async (path: string, maxBytes: number) => {
+      await appendFile(path, "x");
+      return readPathBounded(path, maxBytes);
+    });
+    const compile = vi.fn(compileGlossaryArtifact);
+    const service = new GlossaryIndexService({
+      compile,
+      io: { readFileBounded: read },
+      limits: { ...GLOSSARY_LIMITS, maxGlossaryBytes },
+    });
+
+    await expect(service.resolve(project)).resolves.toMatchObject({
+      dependencies: [],
+      diagnostic: {
+        code: "total-byte-limit",
+        glossaryPath: "GLOSSARY.md",
+      },
+      status: "disabled",
+    });
+    expect(read).toHaveBeenCalledWith(
+      join(project, "GLOSSARY.md"),
+      maxGlossaryBytes,
+    );
+    expect(compile).not.toHaveBeenCalled();
+  });
+
+  it("passes each include only the aggregate graph remainder", async () => {
+    const project = await createProject();
+    const governing = glossary([["root term", "Root", "nested/GLOSSARY.md"]]);
+    const included = glossary([["nested term", "Nested"]]);
+    const maxGlossaryBytes =
+      Buffer.byteLength(governing) + Buffer.byteLength(included);
+    await writeProjectFile(project, "GLOSSARY.md", governing);
+    await writeProjectFile(project, "nested/GLOSSARY.md", included);
+    const includedPath = join(project, "nested/GLOSSARY.md");
+    const read = vi.fn(async (path: string, maxBytes: number) => {
+      if (path === includedPath) await appendFile(path, "x");
+      return readPathBounded(path, maxBytes);
+    });
+    const compile = vi.fn(compileGlossaryArtifact);
+    const service = new GlossaryIndexService({
+      compile,
+      io: { readFileBounded: read },
+      limits: { ...GLOSSARY_LIMITS, maxGlossaryBytes },
+    });
+
+    await expect(service.resolve(project)).resolves.toMatchObject({
+      dependencies: [
+        { path: "GLOSSARY.md", size: Buffer.byteLength(governing) },
+      ],
+      diagnostic: {
+        code: "total-byte-limit",
+        glossaryPath: "nested/GLOSSARY.md",
+      },
+      status: "disabled",
+    });
+    expect(read).toHaveBeenNthCalledWith(
+      1,
+      join(project, "GLOSSARY.md"),
+      maxGlossaryBytes,
+    );
+    expect(read).toHaveBeenNthCalledWith(
+      2,
+      includedPath,
+      Buffer.byteLength(included),
+    );
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(compile).not.toHaveBeenCalled();
+  });
+});
+
 describe("glossary process cache", () => {
   it("detects a same-size edit even when its mtime is restored", async () => {
     const project = await createProject();
@@ -282,7 +402,7 @@ describe("glossary process cache", () => {
       await readGate;
       return readFile(path);
     });
-    const service = new GlossaryIndexService({ io: { readFile: read } });
+    const service = new GlossaryIndexService({ io: { readFileBounded: read } });
 
     const first = service.resolve(project, "README.md");
     const second = service.resolve(project, "README.md");

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { open, realpath, stat } from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -23,6 +23,7 @@ import {
   type ParsedGlossaryTable,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
+import { readFileHandleBounded } from "../utils/projectFileAccess.js";
 import {
   getProjectPathIndex,
   type ProjectPathIndex,
@@ -59,6 +60,17 @@ interface GlossarySnapshot {
   projectRelativePath: string;
 }
 
+type GlossarySnapshotRead =
+  | {
+      snapshot: GlossarySnapshot;
+      status: "ready";
+    }
+  | {
+      canonicalPath: string;
+      projectRelativePath: string;
+      status: "too-large";
+    };
+
 interface ParsedGlossaryCacheEntry {
   contentHash: string;
   includes: string[];
@@ -80,7 +92,7 @@ interface ClosureResult {
 
 interface GlossaryIndexIo {
   getPathIndex(projectPath: string): Promise<ProjectPathIndex>;
-  readFile(path: string): Promise<Buffer>;
+  readFileBounded(path: string, maxBytes: number): Promise<Buffer | null>;
   realpath(path: string): Promise<string>;
   stat(path: string): Promise<FileStatsIdentity & { isFile(): boolean }>;
 }
@@ -217,6 +229,18 @@ function touchBoundedMap<Key, Value>(
   }
 }
 
+async function readPathBounded(
+  path: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const handle = await open(path, "r");
+  try {
+    return await readFileHandleBounded(handle, maxBytes);
+  } finally {
+    await handle.close();
+  }
+}
+
 export class GlossaryIndexService {
   private readonly compile: typeof compileGlossaryArtifact;
   private readonly limits: GlossaryLimits;
@@ -253,7 +277,7 @@ export class GlossaryIndexService {
     );
     this.io = {
       getPathIndex: options.io?.getPathIndex ?? getProjectPathIndex,
-      readFile: options.io?.readFile ?? ((path) => readFile(path)),
+      readFileBounded: options.io?.readFileBounded ?? readPathBounded,
       realpath: options.io?.realpath ?? ((path) => realpath(path)),
       stat: options.io?.stat ?? ((path) => stat(path)),
     };
@@ -409,11 +433,12 @@ export class GlossaryIndexService {
       return { reason: "no-governing-glossary", status: "none" };
     }
 
-    const governing = await this.readSnapshot(
+    const governingRead = await this.readSnapshot(
       canonicalProject,
       resolve(canonicalProject, governingRelative),
+      this.limits.maxGlossaryBytes,
     );
-    if (!governing) {
+    if (!governingRead) {
       const diagnostic = makeDiagnostic(
         "invalid-governing-glossary",
         governingRelative,
@@ -428,6 +453,22 @@ export class GlossaryIndexService {
         status: "disabled",
       };
     }
+    if (governingRead.status === "too-large") {
+      const diagnostic = makeDiagnostic(
+        "total-byte-limit",
+        governingRead.projectRelativePath,
+        `Glossary graph exceeds ${this.limits.maxGlossaryBytes} bytes`,
+      );
+      return {
+        dependencies: [],
+        diagnostic,
+        diagnostics: [diagnostic],
+        governingPath: governingRead.projectRelativePath,
+        sourceVersion: null,
+        status: "disabled",
+      };
+    }
+    const governing = governingRead.snapshot;
 
     const closure = await this.buildClosure(
       canonicalProject,
@@ -534,15 +575,6 @@ export class GlossaryIndexService {
         path: snapshot.projectRelativePath,
         size: snapshot.identity.size,
       });
-      if (totalBytes > this.limits.maxGlossaryBytes) {
-        fatal = makeDiagnostic(
-          "total-byte-limit",
-          snapshot.projectRelativePath,
-          `Glossary graph exceeds ${this.limits.maxGlossaryBytes} bytes`,
-        );
-        addDiagnostic(fatal);
-        return;
-      }
 
       const parsed = this.parseSnapshot(snapshot);
       const glossaryOrder = dependencies.length - 1;
@@ -559,17 +591,27 @@ export class GlossaryIndexService {
         });
       }
 
-      const included = await this.resolveIncludes(
+      await this.walkIncludes(
         projectRoot,
         pathIndex,
         snapshot,
         parsed.includes,
+        () => Math.max(0, this.limits.maxGlossaryBytes - totalBytes),
+        async (included) => {
+          if (included.status === "too-large") {
+            fatal = makeDiagnostic(
+              "total-byte-limit",
+              included.projectRelativePath,
+              `Glossary graph exceeds ${this.limits.maxGlossaryBytes} bytes`,
+            );
+            addDiagnostic(fatal);
+            return false;
+          }
+          await visit(included.snapshot, depth + 1);
+          return !fatal;
+        },
         addDiagnostic,
       );
-      for (const child of included) {
-        await visit(child, depth + 1);
-        if (fatal) return;
-      }
     };
 
     await visit(governing, 0);
@@ -611,13 +653,15 @@ export class GlossaryIndexService {
     return parsed;
   }
 
-  private async resolveIncludes(
+  private async walkIncludes(
     projectRoot: string,
     pathIndex: ProjectPathIndex,
     referring: GlossarySnapshot,
     mentions: readonly string[],
+    remainingBytes: () => number,
+    visit: (snapshot: GlossarySnapshotRead) => Promise<boolean>,
     addDiagnostic: (diagnostic: GlossaryResolutionDiagnostic) => void,
-  ): Promise<GlossarySnapshot[]> {
+  ): Promise<void> {
     const mentionCandidates: Array<{
       escaped: boolean;
       mention: string;
@@ -651,7 +695,6 @@ export class GlossaryIndexService {
 
     const existing = await pathIndex.findExisting(allRelativePaths);
     this.observePaths(projectRoot, allRelativePaths);
-    const included: GlossarySnapshot[] = [];
     const includedCanonical = new Set<string>();
     for (const entry of mentionCandidates) {
       let retained = 0;
@@ -660,13 +703,18 @@ export class GlossaryIndexService {
         const snapshot = await this.readSnapshot(
           projectRoot,
           resolve(projectRoot, relativePath),
+          remainingBytes(),
         );
         if (!snapshot) continue;
         retained += 1;
-        if (snapshot.canonicalPath === referring.canonicalPath) continue;
-        if (includedCanonical.has(snapshot.canonicalPath)) continue;
-        includedCanonical.add(snapshot.canonicalPath);
-        included.push(snapshot);
+        const canonicalPath =
+          snapshot.status === "ready"
+            ? snapshot.snapshot.canonicalPath
+            : snapshot.canonicalPath;
+        if (canonicalPath === referring.canonicalPath) continue;
+        if (includedCanonical.has(canonicalPath)) continue;
+        includedCanonical.add(canonicalPath);
+        if (!(await visit(snapshot))) return;
       }
       if (retained === 0) {
         addDiagnostic(
@@ -680,13 +728,13 @@ export class GlossaryIndexService {
         );
       }
     }
-    return included;
   }
 
   private async readSnapshot(
     projectRoot: string,
     candidatePath: string,
-  ): Promise<GlossarySnapshot | null> {
+    maxBytes: number,
+  ): Promise<GlossarySnapshotRead | null> {
     let canonicalPath: string;
     try {
       canonicalPath = await this.io.realpath(candidatePath);
@@ -696,13 +744,22 @@ export class GlossaryIndexService {
     if (!isContained(projectRoot, canonicalPath)) return null;
     const projectRelativePath = toProjectRelative(projectRoot, canonicalPath);
     if (projectRelativePath === null) return null;
+    const byteLimit = Math.max(0, Math.floor(maxBytes));
+    const tooLarge = (): GlossarySnapshotRead => ({
+      canonicalPath,
+      projectRelativePath,
+      status: "too-large",
+    });
 
     for (let attempt = 0; attempt < STABLE_READ_ATTEMPTS; attempt += 1) {
       try {
         const before = await this.io.stat(canonicalPath);
         if (!before.isFile()) return null;
-        const bytes = await this.io.readFile(canonicalPath);
+        if (before.size > byteLimit) return tooLarge();
+        const bytes = await this.io.readFileBounded(canonicalPath, byteLimit);
+        if (!bytes || bytes.byteLength > byteLimit) return tooLarge();
         const after = await this.io.stat(canonicalPath);
+        if (after.size > byteLimit) return tooLarge();
         if (
           stableIdentity(before) !== stableIdentity(after) ||
           bytes.byteLength !== after.size
@@ -718,11 +775,14 @@ export class GlossaryIndexService {
         };
         this.observeIdentity(projectRoot, projectRelativePath, identity);
         return {
-          canonicalPath,
-          content: bytes.toString("utf-8"),
-          contentHash: createHash("sha256").update(bytes).digest("hex"),
-          identity,
-          projectRelativePath,
+          snapshot: {
+            canonicalPath,
+            content: bytes.toString("utf-8"),
+            contentHash: createHash("sha256").update(bytes).digest("hex"),
+            identity,
+            projectRelativePath,
+          },
+          status: "ready",
         };
       } catch {
         return null;
