@@ -260,9 +260,9 @@ describe("staged upload direct route", () => {
   });
 
   // A first-turn upload materializes under a provisional session id (the real
-  // id is assigned by the provider afterwards), and every resume generation
-  // changes the id again. The serve route must find the unique filename in
-  // sibling session directories.
+  // id is assigned by the provider afterwards), and a forked session inherits
+  // turns whose attachments live under the source id. The serve route must
+  // find the unique filename in sibling session directories.
   it("serves app-data attachments requested under a different session id", async () => {
     storageMode = "app-data";
     const ref = await completeStagedUpload("provisional turn");
@@ -285,10 +285,10 @@ describe("staged upload direct route", () => {
   });
 
   it("serves project-mode attachments requested under a different session id", async () => {
-    const ref = await completeStagedUpload("resumed generation");
+    const ref = await completeStagedUpload("forked history");
 
     const response = await fetch(
-      `http://localhost:${port}/api/projects/${projectId}/sessions/old-generation/attachments/staging/materialize`,
+      `http://localhost:${port}/api/projects/${projectId}/sessions/fork-source-id/attachments/staging/materialize`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -298,10 +298,10 @@ describe("staged upload direct route", () => {
     expect(response.status).toBe(200);
 
     const served = await fetch(
-      `http://localhost:${port}/api/projects/${projectId}/sessions/new-generation/upload/${ref.name}`,
+      `http://localhost:${port}/api/projects/${projectId}/sessions/forked-session-id/upload/${ref.name}`,
     );
     expect(served.status).toBe(200);
-    await expect(served.text()).resolves.toBe("resumed generation");
+    await expect(served.text()).resolves.toBe("forked history");
   });
 
   it("returns 404 for a filename absent from every session directory", async () => {

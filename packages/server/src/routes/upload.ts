@@ -627,10 +627,10 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
 
         // The URL's session id is the logical session the client is viewing,
         // but files are materialized under the session id known at upload
-        // time: a provisional id for a brand-new session's first turn, or a
-        // prior resume-generation id. The UUID-prefixed filename is globally
-        // unique, so fall back to the sibling session directories of each
-        // storage root. See topics/attachment-storage.md.
+        // time: the provisional startup id for a brand-new session's first
+        // turn, or a fork's source-session id. The UUID-prefixed filename is
+        // globally unique, so fall back to the sibling session directories of
+        // each storage root. See topics/attachment-storage.md.
         if (!found) {
           const attachmentRoots = [
             ...storagePolicy.readPaths(project.path, "attachments"),

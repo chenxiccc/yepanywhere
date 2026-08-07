@@ -122,14 +122,21 @@ It may check, in policy-defined order:
 3. legacy `<project>/.attachments/<session>/` and legacy central paths.
 
 The URL's session id is the logical session the client is viewing, but a
-file is materialized under the session id known at upload time — a
-provisional id for a brand-new session's first turn (the provider assigns
-the real id only after launch), or a prior resume-generation id once the
-provider rotates session ids. Files are never moved to follow the id: the
-delivered prompt names the physical path, and a provider may re-read it at
-any later turn. When the exact `<session>/` directory misses, the route
-therefore falls back to searching the sibling session directories of each
-storage root for the UUID-prefixed filename, which is globally unique.
+file is materialized under the session id known at upload time, and the
+two can differ. Confirmed sources of divergence: the YA-generated
+provisional startup id used for a brand-new session's first turn (the
+provider reports the canonical id only after launch — see
+[Session ID Remap Events](session-id-remap.md)); an explicit session fork,
+whose new id inherits turns whose attachments live under the source id;
+and transcripts from old provider versions that rotated ids per resume.
+A current-version plain resume does not rotate the id (verified
+2026-08-07 against live session files: entries carry only the filename's
+own `sessionId` across many resumed turns). Files are never moved to
+follow an id change: the delivered prompt names the physical path, and a
+provider may re-read it at any later turn. When the exact `<session>/`
+directory misses, the route therefore falls back to searching the sibling
+session directories of each storage root for the UUID-prefixed filename,
+which is globally unique.
 
 Reading a legacy attachment never authorizes creating, refreshing, migrating,
 or excluding that directory. The public response does not expose a new broad
