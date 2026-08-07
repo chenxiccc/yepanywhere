@@ -57,7 +57,7 @@ export function resolvePreferredProjectId<T extends ProjectLike>(
  * Matches direct and relay-mode paths such as:
  * - /projects/:projectId
  * - /projects/:projectId/sessions/:sessionId
- * - /remote/:server/projects/:projectId/sessions/:sessionId
+ * - /remote/-/relay/:server/projects/:projectId/sessions/:sessionId
  */
 export function extractProjectIdFromPath(pathname: string): string | null {
   const match = pathname.match(/\/projects\/([^/]+)/);

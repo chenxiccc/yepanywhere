@@ -72,14 +72,25 @@ describe("resolveClientSummarySourceKey", () => {
     ).toBe("local");
   });
 
-  it("uses the requested relay host from the URL immediately", () => {
+  it("uses the requested relay host from a canonical URL immediately", () => {
     saveHost(relayHost("host-macbook", "macbook"));
     saveHost(relayHost("host-winnative", "winnative"));
 
     expect(
       resolveClientSummarySourceKey({
-        pathname: "/winnative/sessions",
+        pathname: "/-/relay/winnative/sessions",
         remote: remote({ currentHostId: "host-macbook" }),
+      }),
+    ).toBe("host:host-winnative");
+  });
+
+  it("keeps unambiguous legacy relay URLs bound to their saved host", () => {
+    saveHost(relayHost("host-winnative", "winnative"));
+
+    expect(
+      resolveClientSummarySourceKey({
+        pathname: "/winnative/sessions",
+        remote: remote(),
       }),
     ).toBe("host:host-winnative");
   });
@@ -173,7 +184,7 @@ describe("ClientSummarySourceBinding", () => {
     remoteState = remote({ currentHostId: "host-macbook" });
 
     render(
-      <MemoryRouter initialEntries={["/winnative/sessions"]}>
+      <MemoryRouter initialEntries={["/-/relay/winnative/sessions"]}>
         <ClientSummarySourceBinding />
         <SourceProbe />
       </MemoryRouter>,

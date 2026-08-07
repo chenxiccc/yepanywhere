@@ -47,6 +47,25 @@ const RECOMMENDED_REMOTE_COMPATIBILITY_LEVEL = 10;
 Missing `remoteCompatibilityLevel` means "old server, level 0" for warning
 purposes. Do not infer a hard cutoff from absence alone.
 
+## Client URL compatibility
+
+Hosted and root-built clients share one router-path grammar. Relay-host routes
+are canonical under `/-/relay/:relayUsername/*`; the hosted browser URL adds its
+configured application base, normally `/remote/`. The current client redirects
+legacy username-at-root links only when the first segment is a valid relay
+username and is not reserved by an application route. Canonical routes may use
+reserved application names as relay usernames without collision.
+
+React Router navigation applies the configured base automatically. Raw browser
+navigation, service-worker paths, and raw-path route classification must apply
+the same base explicitly. Source-runtime selection parses the canonical and
+legacy route grammars through the same route owner so rendering a connected
+shell cannot bind its queries to a different source.
+
+This URL migration is client-owned and requires no server capability. Existing
+servers see the same authenticated HTTP and WebSocket requests after the client
+resolves the route.
+
 ## Initial Rollout
 
 The first implemented level is `10`.

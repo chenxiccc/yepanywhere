@@ -1,7 +1,7 @@
 /**
  * RelayConnectionGate - Layout route for relay host connections.
  *
- * Used as a layout route for /:relayUsername/* in remote-main.tsx.
+ * Used as a layout route for /-/relay/:relayUsername/* in remote-main.tsx.
  * Manages the relay connection lifecycle:
  * - Extracts relayUsername from URL
  * - Looks up saved host by username
@@ -10,7 +10,7 @@
  * - Once connected, renders ConnectedAppContent + child routes via Outlet
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
 import { HostOfflineModal } from "../components/HostOfflineModal";
 import {
@@ -120,6 +120,91 @@ export function RelayConnectionGate() {
     params.set("returnTo", returnTo);
     return `/login/relay?${params.toString()}`;
   }, [relayUsername, returnTo]);
+  const routeRelayUsernameRef = useRef(relayUsername);
+  routeRelayUsernameRef.current = relayUsername;
+  const connectionAttemptRef = useRef(0);
+  const pendingRelayUsernameRef = useRef<string | null>(null);
+
+  const startRelayConnection = useCallback(
+    (
+      host: NonNullable<ReturnType<typeof getHostByRelayUsername>>,
+      targetRelayUsername: string,
+      replacePending = false,
+    ) => {
+      if (
+        !replacePending &&
+        pendingRelayUsernameRef.current === targetRelayUsername
+      ) {
+        return;
+      }
+      if (!host.session || !host.relayUrl) {
+        setState("no_session");
+        return;
+      }
+
+      const attempt = connectionAttemptRef.current + 1;
+      connectionAttemptRef.current = attempt;
+      pendingRelayUsernameRef.current = targetRelayUsername;
+      setState("connecting");
+      setError(null);
+      setDismissedError(null);
+      setCurrentHostId(host.id);
+
+      void connectViaRelay({
+        relayUrl: host.relayUrl,
+        relayUsername: host.relayUsername ?? targetRelayUsername,
+        srpUsername: host.srpUsername,
+        srpPassword: "",
+        rememberMe: true,
+        onStatusChange: () => {},
+        session: host.session,
+      })
+        .then(() => {
+          if (
+            connectionAttemptRef.current !== attempt ||
+            routeRelayUsernameRef.current !== targetRelayUsername
+          ) {
+            return;
+          }
+          pendingRelayUsernameRef.current = null;
+          setLastConnectedRelayUsername(targetRelayUsername);
+          setState("connected");
+        })
+        .catch((err) => {
+          if (
+            connectionAttemptRef.current !== attempt ||
+            routeRelayUsernameRef.current !== targetRelayUsername
+          ) {
+            return;
+          }
+          pendingRelayUsernameRef.current = null;
+          const autoResumeError = createAutoResumeError(
+            err,
+            host.relayUsername ?? targetRelayUsername,
+            host.relayUrl,
+          );
+          if (
+            autoResumeError.reason === "resume_incompatible" ||
+            autoResumeError.reason === "auth_failed"
+          ) {
+            clearHostSession(host.id);
+            setState("no_session");
+            return;
+          }
+          setError(autoResumeError);
+          setState("error");
+        });
+    },
+    [connectViaRelay, setCurrentHostId],
+  );
+
+  useEffect(() => {
+    return () => {
+      connectionAttemptRef.current += 1;
+      pendingRelayUsernameRef.current = null;
+      disconnect(false);
+    };
+  }, [disconnect]);
 
   // Attempt to connect when username changes
   useEffect(() => {
@@ -219,96 +304,24 @@ export function RelayConnectionGate() {
       return;
     }
 
-    // Attempt to connect using saved session
-    setState("connecting");
-    // Set host ID before auth so session refresh callbacks can sync hostStorage.
-    setCurrentHostId(host.id);
-
-    connectViaRelay({
-      relayUrl: host.relayUrl,
-      relayUsername: host.relayUsername ?? relayUsername,
-      srpUsername: host.srpUsername,
-      srpPassword: "", // Ignored when session is provided
-      rememberMe: true,
-      onStatusChange: () => {},
-      session: host.session,
-    })
-      .then(() => {
-        setLastConnectedRelayUsername(relayUsername);
-        setDismissedError(null);
-        setState("connected");
-      })
-      .catch((err) => {
-        const autoResumeError = createAutoResumeError(
-          err,
-          host.relayUsername ?? relayUsername,
-          host.relayUrl,
-        );
-        if (
-          autoResumeError.reason === "resume_incompatible" ||
-          autoResumeError.reason === "auth_failed"
-        ) {
-          clearHostSession(host.id);
-          setState("no_session");
-          return;
-        }
-        setDismissedError(null);
-        setError(autoResumeError);
-        setState("error");
-      });
+    startRelayConnection(host, relayUsername);
   }, [
     relayUsername,
     connection,
-    connectViaRelay,
     isAutoResuming,
-    setCurrentHostId,
     currentHostId,
     currentRelayUsername,
     isIntentionalDisconnect,
     disconnect,
+    startRelayConnection,
+    setCurrentHostId,
   ]);
 
   const retryConnection = () => {
-    setState("connecting");
-    setError(null);
-    setDismissedError(null);
-    const host = getHostByRelayUsername(relayUsername ?? "");
-    if (host?.relayUrl && host.relayUsername && host.session) {
-      connectViaRelay({
-        relayUrl: host.relayUrl,
-        relayUsername: host.relayUsername,
-        srpUsername: host.srpUsername,
-        srpPassword: "", // Ignored when session is provided
-        rememberMe: true,
-        onStatusChange: () => {},
-        session: host.session,
-      })
-        .then(() => {
-          setCurrentHostId(host.id);
-          setLastConnectedRelayUsername(
-            relayUsername ?? host.relayUsername ?? null,
-          );
-          setDismissedError(null);
-          setState("connected");
-        })
-        .catch((err) => {
-          const autoResumeError = createAutoResumeError(
-            err,
-            host.relayUsername ?? relayUsername ?? "",
-            host.relayUrl,
-          );
-          if (
-            autoResumeError.reason === "resume_incompatible" ||
-            autoResumeError.reason === "auth_failed"
-          ) {
-            clearHostSession(host.id);
-            setState("no_session");
-            return;
-          }
-          setDismissedError(null);
-          setError(autoResumeError);
-          setState("error");
-        });
+    const targetRelayUsername = relayUsername ?? "";
+    const host = getHostByRelayUsername(targetRelayUsername);
+    if (host) {
+      startRelayConnection(host, targetRelayUsername, true);
     } else {
       setState("no_session");
     }

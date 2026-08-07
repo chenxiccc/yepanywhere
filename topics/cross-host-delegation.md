@@ -93,7 +93,8 @@ The first UI slice therefore uses a dedicated experimental YA Hosts route
 rather than changing the existing host switcher:
 
 - the local client exposes `/-/hosts` and the relay client exposes the same
-  page inside the current host route, such as `/:relayUsername/-/hosts`;
+  page inside the canonical current-host route,
+  `/-/relay/:relayUsername/-/hosts`;
 - both render one shared component representing the currently connected YA
   server;
 - the page is linked only from an opt-in control in Developer settings;

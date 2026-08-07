@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { type MessageKey, useI18n } from "../i18n";
 import { loadSavedHosts, type SavedHost } from "../lib/hostStorage";
+import { getRelayBasePath } from "../lib/remoteRoutePaths";
 import {
   MultiHostMonitorController,
   type MultiHostMonitorHostSnapshot,
@@ -33,7 +34,7 @@ function sessionPath(
   sessionId: string,
 ): string | null {
   if (!host.relayUsername) return null;
-  return `/${encodeURIComponent(host.relayUsername)}/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`;
+  return `${getRelayBasePath(host.relayUsername)}/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`;
 }
 
 function HostMonitorCard({

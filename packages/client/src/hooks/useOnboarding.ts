@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
+import { isBrowserAppRoutePath } from "../lib/appHref";
 import { authEvents } from "../lib/authEvents";
 
 interface OnboardingState {
@@ -43,7 +44,10 @@ export function useOnboarding() {
 
     async function fetchStatus() {
       // Don't fetch if on login page or login is required (prevents 401s)
-      if (window.location.pathname === "/login" || authEvents.loginRequired) {
+      if (
+        isBrowserAppRoutePath(window.location.pathname, "/login") ||
+        authEvents.loginRequired
+      ) {
         if (!cancelled) {
           setState({ showWizard: false, isLoading: false });
         }

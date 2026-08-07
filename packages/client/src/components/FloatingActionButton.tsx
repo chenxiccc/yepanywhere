@@ -13,7 +13,10 @@ import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { createFabDraftKey } from "../hooks/useDrafts";
 import { useFabVisibility } from "../hooks/useFabVisibility";
 import { useFloatingActionButtonEnabled } from "../hooks/useFloatingActionButtonEnabled";
-import { setRecentProjectId } from "../hooks/useRecentProject";
+import {
+  extractProjectIdFromPath,
+  setRecentProjectId,
+} from "../hooks/useRecentProject";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
@@ -721,15 +724,4 @@ export function FloatingActionButton() {
       </button>
     </div>
   );
-}
-
-/**
- * Extract projectId from URL path.
- * Matches: /projects/:projectId, /projects/:projectId/sessions/:sessionId,
- * and relay mode paths like /remote/:username/projects/:projectId
- */
-function extractProjectIdFromPath(pathname: string): string | null {
-  // Match both direct paths and relay mode paths
-  const match = pathname.match(/\/projects\/([^/]+)/);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }

@@ -38,6 +38,20 @@ async function flushUntil(predicate: () => boolean): Promise<void> {
   throw new Error("Timed out waiting for async protocol work");
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  reject: (reason?: unknown) => void;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
+  });
+  return { promise, reject, resolve };
+}
+
 describe("RelayProtocol hooks", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -66,6 +80,102 @@ describe("RelayProtocol hooks", () => {
     expect(onInboundEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "heartbeat" }),
     );
+  });
+
+  it("does not send delayed subscriptions after their handles close", async () => {
+    const connected = deferred<void>();
+    const sent: RemoteClientMessage[] = [];
+    const onClose = vi.fn();
+    const onError = vi.fn();
+    const protocol = new RelayProtocol({
+      sendMessage: (message) => sent.push(message),
+      sendUploadChunk: vi.fn(),
+      ensureConnected: vi.fn(() => connected.promise),
+      isConnected: vi.fn(() => false),
+    });
+    const handlers = { onEvent: vi.fn(), onClose, onError };
+    const subscriptions = [
+      protocol.subscribeSession("session-1", handlers),
+      protocol.subscribeActivity(handlers),
+      protocol.subscribeGlossary("project-1", handlers),
+      protocol.subscribeSessionWatch("session-1", handlers),
+    ];
+
+    for (const subscription of subscriptions) {
+      subscription.close();
+      subscription.close();
+    }
+    connected.resolve(undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sent).toEqual([]);
+    expect(onClose).toHaveBeenCalledTimes(4);
+    expect(onError).not.toHaveBeenCalled();
+    expect(protocol.subscriptions.size).toBe(0);
+  });
+
+  it("sends one unsubscribe for each subscription that was sent", async () => {
+    const sent: RemoteClientMessage[] = [];
+    const onClose = vi.fn();
+    const protocol = new RelayProtocol({
+      sendMessage: (message) => sent.push(message),
+      sendUploadChunk: vi.fn(),
+      ensureConnected: vi.fn(async () => undefined),
+      isConnected: vi.fn(() => true),
+    });
+    const handlers = { onEvent: vi.fn(), onClose };
+    const subscriptions = [
+      protocol.subscribeSession("session-1", handlers),
+      protocol.subscribeActivity(handlers),
+      protocol.subscribeGlossary("project-1", handlers),
+      protocol.subscribeSessionWatch("session-1", handlers),
+    ];
+    await flushUntil(
+      () => sent.filter((message) => message.type === "subscribe").length === 4,
+    );
+    const subscribeIds = sent
+      .filter((message) => message.type === "subscribe")
+      .map((message) => message.subscriptionId)
+      .sort();
+
+    for (const subscription of subscriptions) {
+      subscription.close();
+      subscription.close();
+    }
+
+    const unsubscribeIds = sent
+      .filter((message) => message.type === "unsubscribe")
+      .map((message) => message.subscriptionId)
+      .sort();
+    expect(unsubscribeIds).toEqual(subscribeIds);
+    expect(onClose).toHaveBeenCalledTimes(4);
+    expect(protocol.subscriptions.size).toBe(0);
+  });
+
+  it("does not publish a late connection failure after pending close", async () => {
+    const connected = deferred<void>();
+    const onClose = vi.fn();
+    const onError = vi.fn();
+    const protocol = new RelayProtocol({
+      sendMessage: vi.fn(),
+      sendUploadChunk: vi.fn(),
+      ensureConnected: vi.fn(() => connected.promise),
+      isConnected: vi.fn(() => false),
+    });
+    const subscription = protocol.subscribeSession("session-1", {
+      onEvent: vi.fn(),
+      onClose,
+      onError,
+    });
+
+    subscription.close();
+    connected.reject(new Error("relay unavailable"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("uses injected critical-operation guards for uploads", async () => {

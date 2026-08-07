@@ -20,6 +20,7 @@ import {
   type RetainedClientQueryEvent,
   useRetainedClientQuery,
 } from "../hooks/useRetainedClientQuery";
+import { isBrowserAppRoutePath } from "../lib/appHref";
 import { authEvents } from "../lib/authEvents";
 import {
   createClientQueryKey,
@@ -222,7 +223,7 @@ export function InboxProvider({
     (remoteConnection !== null && remoteConnection.connection !== null);
   const queryEnabled =
     enabled &&
-    window.location.pathname !== "/login" &&
+    !isBrowserAppRoutePath(window.location.pathname, "/login") &&
     !authEvents.loginRequired;
 
   // Track the order of session IDs per tier for stable rendering

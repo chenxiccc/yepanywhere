@@ -55,6 +55,7 @@ beforeEach(() => {
   resetClientQueryControllerForTests();
   resetQueryRevalidationForTests();
   backendDirty = false;
+  window.history.replaceState({}, "", "/projects");
   mockFetchJSON.mockImplementation(async (url) => {
     if (url === "/dev/status") {
       return {
@@ -136,6 +137,18 @@ describe("getVisibleReloadBanners", () => {
 });
 
 describe("useReloadNotifications dismissal", () => {
+  it("does not query reload status on a login child route", async () => {
+    window.history.replaceState({}, "", "/login/relay");
+
+    renderHook(() => useReloadNotifications());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockFetchJSON).not.toHaveBeenCalled();
+  });
+
   it("retries a transient backend safety sync failure", async () => {
     vi.useFakeTimers();
     let workerAttempts = 0;

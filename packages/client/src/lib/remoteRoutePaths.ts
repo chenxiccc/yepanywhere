@@ -1,8 +1,12 @@
+import { isValidRelayUsername } from "@yep-anywhere/shared";
+
 export interface RemoteRouteLocationParts {
   pathname: string;
   search?: string;
   hash?: string;
 }
+
+export const RELAY_ROUTE_PREFIX = "/-/relay";
 
 const DIRECT_APP_ROUTE_SEGMENTS = new Set([
   "activity",
@@ -17,14 +21,30 @@ const DIRECT_APP_ROUTE_SEGMENTS = new Set([
   "settings",
 ]);
 
+const RESERVED_REMOTE_ROUTE_SEGMENTS = new Set([
+  ...DIRECT_APP_ROUTE_SEGMENTS,
+  "-",
+  "login",
+  "remote",
+  "share",
+]);
+
 export function isDirectAppRouteSegment(segment: string): boolean {
   return DIRECT_APP_ROUTE_SEGMENTS.has(segment);
+}
+
+export function isReservedRemoteRouteSegment(segment: string): boolean {
+  return RESERVED_REMOTE_ROUTE_SEGMENTS.has(segment);
 }
 
 function isDirectAppRoutePath(pathname: string): boolean {
   if (pathname === "/") return true;
   const firstSegment = pathname.split("/")[1];
   return firstSegment ? isDirectAppRouteSegment(firstSegment) : false;
+}
+
+export function getRelayBasePath(relayUsername: string): string {
+  return `${RELAY_ROUTE_PREFIX}/${encodeURIComponent(relayUsername)}`;
 }
 
 function formatRouteTarget(location: RemoteRouteLocationParts): string {
@@ -60,25 +80,78 @@ function parseSafeRouteTarget(
   return { pathname: pathname || "/", search, hash };
 }
 
+function getRelayRouteTarget(
+  location: RemoteRouteLocationParts,
+  relayUsername: string,
+): string {
+  const pathname = location.pathname === "/" ? "/projects" : location.pathname;
+  return `${getRelayBasePath(relayUsername)}${pathname}${location.search ?? ""}${location.hash ?? ""}`;
+}
+
+function decodeRelayUsernameSegment(
+  encodedSegment: string | undefined,
+): string | null {
+  if (!encodedSegment) return null;
+
+  try {
+    const relayUsername = decodeURIComponent(encodedSegment);
+    return isValidRelayUsername(relayUsername) ? relayUsername : null;
+  } catch {
+    return null;
+  }
+}
+
+function getLegacyRelayUsername(pathname: string): string | null {
+  const relayUsername = decodeRelayUsernameSegment(pathname.split("/")[1]);
+  return relayUsername && !isReservedRemoteRouteSegment(relayUsername)
+    ? relayUsername
+    : null;
+}
+
+export function getRelayUsernameFromRoute(pathname: string): string | null {
+  const segments = pathname.split("/");
+  if (segments[1] === "-" && segments[2] === "relay") {
+    return decodeRelayUsernameSegment(segments[3]);
+  }
+  return getLegacyRelayUsername(pathname);
+}
+
+export function getLegacyRelayRedirectTarget(
+  location: RemoteRouteLocationParts,
+): string | null {
+  const relayUsername = getLegacyRelayUsername(location.pathname);
+  if (!relayUsername) return null;
+
+  const suffixIndex = location.pathname.indexOf("/", 1);
+  const suffix =
+    suffixIndex === -1 || location.pathname.slice(suffixIndex) === "/"
+      ? "/projects"
+      : location.pathname.slice(suffixIndex);
+  return getRelayRouteTarget({ ...location, pathname: suffix }, relayUsername);
+}
+
 export function getRelayCanonicalRedirectTarget(
   location: RemoteRouteLocationParts,
   relayUsername: string | null | undefined,
 ): string | null {
   if (!relayUsername) return null;
 
-  const encodedRelayUsername = encodeURIComponent(relayUsername);
-  const pathname = location.pathname === "/" ? "/projects" : location.pathname;
-  const relayPrefix = `/${encodedRelayUsername}`;
-
-  if (!isDirectAppRoutePath(pathname)) {
+  const relayBasePath = getRelayBasePath(relayUsername);
+  if (
+    location.pathname === relayBasePath ||
+    location.pathname.startsWith(`${relayBasePath}/`)
+  ) {
     return null;
   }
 
-  if (pathname === relayPrefix || pathname.startsWith(`${relayPrefix}/`)) {
-    return null;
+  if (isDirectAppRoutePath(location.pathname)) {
+    return getRelayRouteTarget(location, relayUsername);
   }
 
-  return `${relayPrefix}${pathname}${location.search ?? ""}${location.hash ?? ""}`;
+  const legacyTarget = getLegacyRelayRedirectTarget(location);
+  return getLegacyRelayUsername(location.pathname) === relayUsername
+    ? legacyTarget
+    : null;
 }
 
 export function getSafeRemoteReturnTarget(
@@ -92,19 +165,21 @@ export function getSafeRemoteReturnTarget(
     return null;
   }
 
-  const relayCanonicalTarget = getRelayCanonicalRedirectTarget(
+  if (!relayUsername) {
+    return isDirectAppRoutePath(target.pathname)
+      ? formatRouteTarget(target)
+      : null;
+  }
+
+  const canonicalTarget = getRelayCanonicalRedirectTarget(
     target,
     relayUsername,
   );
-  if (relayCanonicalTarget) return relayCanonicalTarget;
+  if (canonicalTarget) return canonicalTarget;
 
-  if (relayUsername) {
-    const relayPrefix = `/${encodeURIComponent(relayUsername)}`;
-    const isActiveRelayTarget =
-      target.pathname === relayPrefix ||
-      target.pathname.startsWith(`${relayPrefix}/`);
-    if (!isActiveRelayTarget) return null;
-  }
-
-  return formatRouteTarget(target);
+  const relayBasePath = getRelayBasePath(relayUsername);
+  const isActiveRelayTarget =
+    target.pathname === relayBasePath ||
+    target.pathname.startsWith(`${relayBasePath}/`);
+  return isActiveRelayTarget ? formatRouteTarget(target) : null;
 }

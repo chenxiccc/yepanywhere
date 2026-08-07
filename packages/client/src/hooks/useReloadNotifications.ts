@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { SafeRestartState } from "@yep-anywhere/shared";
 import { fetchJSON } from "../api/client";
+import { isBrowserAppRoutePath } from "../lib/appHref";
 import {
   type SourceChangeEvent,
   activityBus,
@@ -97,7 +98,10 @@ function useDevStatusSnapshot() {
     readDevStatus,
   );
   // The login screen renders none of this and may not even be authenticated.
-  const offLoginRoute = window.location.pathname !== "/login";
+  const offLoginRoute = !isBrowserAppRoutePath(
+    window.location.pathname,
+    "/login",
+  );
 
   useRetainedClientQuery({
     sourceKey,

@@ -9,16 +9,17 @@
  */
 
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { getRelayBasePath } from "../lib/remoteRoutePaths";
 
 /**
  * Get the base path for the current relay host.
  *
- * @returns The base path (e.g., "/my-server") or empty string if not in relay mode
+ * @returns The base path (e.g., "/-/relay/my-server") or empty string if not in relay mode
  */
 export function useRemoteBasePath(): string {
   const conn = useOptionalRemoteConnection();
   const relayUsername = conn?.currentRelayUsername;
-  return relayUsername ? `/${relayUsername}` : "";
+  return relayUsername ? getRelayBasePath(relayUsername) : "";
 }
 
 /**

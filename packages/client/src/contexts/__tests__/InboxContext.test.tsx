@@ -158,6 +158,20 @@ describe("InboxProvider", () => {
     expect(mockGetInbox).not.toHaveBeenCalled();
   });
 
+  it("does not fetch on a login child route", async () => {
+    remoteState.connection = { connection: {} };
+    window.history.replaceState({}, "", "/login/relay");
+
+    render(
+      <InboxProvider>
+        <InboxConsumer />
+      </InboxProvider>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockGetInbox).not.toHaveBeenCalled();
+  });
+
   it("fetches once the remote connection becomes available", async () => {
     mockGetInbox.mockResolvedValue(
       emptyInbox({

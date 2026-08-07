@@ -277,6 +277,13 @@ interface Props {
   children: ReactNode;
 }
 
+class ConnectionAttemptSupersededError extends Error {
+  constructor() {
+    super("Connection attempt superseded");
+    this.name = "ConnectionAttemptSupersededError";
+  }
+}
+
 function resolveRemoteConnectionSourceKey(options: {
   hostId: string | null;
   directUrl: string | null;
@@ -347,6 +354,15 @@ export function RemoteConnectionProvider({ children }: Props) {
   const activeTransportStatusUnsubscribeRef = useRef<(() => void) | null>(null);
   const connectionRef = useRef<SecureConnection | null>(connection);
   connectionRef.current = connection;
+  const connectionAttemptRef = useRef(0);
+  const beginConnectionAttempt = useCallback(() => {
+    connectionAttemptRef.current += 1;
+    return connectionAttemptRef.current;
+  }, []);
+  const isCurrentConnectionAttempt = useCallback(
+    (attempt: number) => connectionAttemptRef.current === attempt,
+    [],
+  );
 
   // Keep stored credentials in ref for updates during the component lifecycle
   const storedRef = useRef(initialStored);
@@ -480,24 +496,20 @@ export function RemoteConnectionProvider({ children }: Props) {
     transport?.detach();
   }, [clearTransportStatusSubscription]);
 
-  // Track whether we want to remember sessions
-  const rememberMeRef = useRef(false);
-
-  // Callback for when a new session is established (to store it)
-  const handleSessionEstablished = useCallback((session: StoredSession) => {
-    if (rememberMeRef.current) {
+  const handleSessionEstablished = useCallback(
+    (attempt: number, session: StoredSession) => {
+      if (!isCurrentConnectionAttempt(attempt)) return;
       console.log("[RemoteConnection] Storing session for resumption");
-      // Save to old storage (for backwards compatibility)
       updateStoredSession(session);
 
-      // Also save to hostStorage for multi-host support
       const hostId = currentHostIdRef.current;
       if (hostId) {
         console.log("[RemoteConnection] Also updating hostStorage for", hostId);
         updateHostSession(hostId, session);
       }
-    }
-  }, []);
+    },
+    [isCurrentConnectionAttempt],
+  );
 
   // Callback for when connection is lost unexpectedly. The attached
   // SourceTransport manager observes the same close before this callback fires,
@@ -514,12 +526,12 @@ export function RemoteConnectionProvider({ children }: Props) {
       password: string,
       rememberMe = false,
     ) => {
+      const attempt = beginConnectionAttempt();
       setIsConnecting(true);
       setError(null);
       setIsIntentionalDisconnect(false);
       setCurrentRelayUsername(null);
       setCurrentDirectUrl(wsUrl);
-      rememberMeRef.current = rememberMe;
 
       try {
         // If rememberMe is true, save credentials BEFORE auth so the onSessionEstablished
@@ -532,7 +544,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         // Create and authenticate connection
         const conn = new SecureConnection(wsUrl, username, password, {
           onSessionEstablished: rememberMe
-            ? handleSessionEstablished
+            ? (session) => handleSessionEstablished(attempt, session)
             : undefined,
           onDisconnect: handleDisconnect,
         });
@@ -540,23 +552,33 @@ export function RemoteConnectionProvider({ children }: Props) {
         // Test the connection by making a simple request
         // This triggers the SRP handshake and verifies auth
         await conn.fetch("/auth/status");
+        if (!isCurrentConnectionAttempt(attempt)) {
+          conn.close();
+          throw new ConnectionAttemptSupersededError();
+        }
 
         // Attach the transport before setConnection so children rendered by
         // the connected app can route API calls through the source runtime.
         publishConnection(conn);
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Connection failed";
-        setError(message);
-        setCurrentDirectUrl(null);
+        if (isCurrentConnectionAttempt(attempt)) {
+          const message =
+            err instanceof Error ? err.message : "Connection failed";
+          setError(message);
+          setCurrentDirectUrl(null);
+        }
         throw err;
       } finally {
-        setIsConnecting(false);
+        if (isCurrentConnectionAttempt(attempt)) {
+          setIsConnecting(false);
+        }
       }
     },
     [
+      beginConnectionAttempt,
       handleSessionEstablished,
       handleDisconnect,
+      isCurrentConnectionAttempt,
       publishConnection,
       setCurrentDirectUrl,
     ],
@@ -569,11 +591,11 @@ export function RemoteConnectionProvider({ children }: Props) {
         throw new Error("No stored session to resume");
       }
 
+      const attempt = beginConnectionAttempt();
       setIsConnecting(true);
       setError(null);
       setCurrentRelayUsername(null);
       setCurrentDirectUrl(currentStored.wsUrl);
-      rememberMeRef.current = true; // If resuming, we want to keep remembering
 
       try {
         // Create connection from stored session
@@ -581,30 +603,41 @@ export function RemoteConnectionProvider({ children }: Props) {
           currentStored.session,
           password,
           {
-            onSessionEstablished: handleSessionEstablished,
+            onSessionEstablished: (session) =>
+              handleSessionEstablished(attempt, session),
             onDisconnect: handleDisconnect,
           },
         );
 
         // Test the connection - this will try resume, fall back to SRP if needed
         await conn.fetch("/auth/status");
+        if (!isCurrentConnectionAttempt(attempt)) {
+          conn.close();
+          throw new ConnectionAttemptSupersededError();
+        }
 
         // Attach the transport before setConnection so connected children can
         // route API calls through the source runtime.
         publishConnection(conn);
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Session resume failed";
-        setError(message);
-        setCurrentDirectUrl(null);
+        if (isCurrentConnectionAttempt(attempt)) {
+          const message =
+            err instanceof Error ? err.message : "Session resume failed";
+          setError(message);
+          setCurrentDirectUrl(null);
+        }
         throw err;
       } finally {
-        setIsConnecting(false);
+        if (isCurrentConnectionAttempt(attempt)) {
+          setIsConnecting(false);
+        }
       }
     },
     [
+      beginConnectionAttempt,
       handleSessionEstablished,
       handleDisconnect,
+      isCurrentConnectionAttempt,
       publishConnection,
       setCurrentDirectUrl,
     ],
@@ -621,6 +654,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         onStatusChange,
         session,
       } = options;
+      const attempt = beginConnectionAttempt();
 
       setIsConnecting(true);
       setError(null);
@@ -636,7 +670,6 @@ export function RemoteConnectionProvider({ children }: Props) {
       ) {
         setCurrentHostId(getHostByRelayUsername(relayUsername)?.id ?? null);
       }
-      rememberMeRef.current = rememberMe;
       onStatusChange?.("connecting_relay");
 
       try {
@@ -644,8 +677,16 @@ export function RemoteConnectionProvider({ children }: Props) {
         const ws = await openRelayClientSocket({
           relayUrl,
           relayUsername,
-          onOpen: () => onStatusChange?.("waiting_server"),
+          onOpen: () => {
+            if (isCurrentConnectionAttempt(attempt)) {
+              onStatusChange?.("waiting_server");
+            }
+          },
         });
+        if (!isCurrentConnectionAttempt(attempt)) {
+          ws.close();
+          throw new ConnectionAttemptSupersededError();
+        }
 
         // 2. Now we have a direct pipe to yepanywhere server - do SRP auth
         onStatusChange?.("authenticating");
@@ -670,7 +711,8 @@ export function RemoteConnectionProvider({ children }: Props) {
             session,
             {
               onSessionEstablished: rememberMe
-                ? handleSessionEstablished
+                ? (establishedSession) =>
+                    handleSessionEstablished(attempt, establishedSession)
                 : undefined,
               onDisconnect: handleDisconnect,
             },
@@ -683,7 +725,8 @@ export function RemoteConnectionProvider({ children }: Props) {
             srpPassword,
             {
               onSessionEstablished: rememberMe
-                ? handleSessionEstablished
+                ? (establishedSession) =>
+                    handleSessionEstablished(attempt, establishedSession)
                 : undefined,
               onDisconnect: handleDisconnect,
             },
@@ -691,24 +734,39 @@ export function RemoteConnectionProvider({ children }: Props) {
           );
         }
 
+        if (!isCurrentConnectionAttempt(attempt)) {
+          conn.close();
+          throw new ConnectionAttemptSupersededError();
+        }
+
         // Test the connection
         await conn.fetch("/auth/status");
+        if (!isCurrentConnectionAttempt(attempt)) {
+          conn.close();
+          throw new ConnectionAttemptSupersededError();
+        }
 
         // Attach the source transport before connected routes render.
         publishConnection(conn);
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Connection failed";
-        setError(message);
-        onStatusChange?.("error");
+        if (isCurrentConnectionAttempt(attempt)) {
+          const message =
+            err instanceof Error ? err.message : "Connection failed";
+          setError(message);
+          onStatusChange?.("error");
+        }
         throw err;
       } finally {
-        setIsConnecting(false);
+        if (isCurrentConnectionAttempt(attempt)) {
+          setIsConnecting(false);
+        }
       }
     },
     [
+      beginConnectionAttempt,
       handleSessionEstablished,
       handleDisconnect,
+      isCurrentConnectionAttempt,
       publishConnection,
       setCurrentHostId,
       setCurrentDirectUrl,
@@ -717,6 +775,7 @@ export function RemoteConnectionProvider({ children }: Props) {
 
   const disconnect = useCallback(
     (isIntentional = true) => {
+      beginConnectionAttempt();
       // Use flushSync to ensure state updates are processed synchronously
       // before any navigation happens. This prevents race conditions where
       // ConnectionGate might redirect back to the host before seeing the disconnect.
@@ -738,7 +797,12 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsIntentionalDisconnect(isIntentional);
       });
     },
-    [detachTransport, setCurrentHostId, setCurrentDirectUrl],
+    [
+      beginConnectionAttempt,
+      detachTransport,
+      setCurrentHostId,
+      setCurrentDirectUrl,
+    ],
   );
 
   const clearAutoResumeError = useCallback(() => {
@@ -774,13 +838,13 @@ export function RemoteConnectionProvider({ children }: Props) {
     if (!storedSession) return; // Already checked above, but satisfies TypeScript
 
     const attemptAutoResume = async () => {
+      const attempt = beginConnectionAttempt();
       console.log(
         "[RemoteConnection] Attempting auto-resume from stored session",
       );
       setIsConnecting(true);
       setIsAutoResuming(true);
       setError(null);
-      rememberMeRef.current = true;
 
       try {
         let conn: SecureConnection;
@@ -802,13 +866,18 @@ export function RemoteConnectionProvider({ children }: Props) {
             relayUrl,
             relayUsername,
           });
+          if (!isCurrentConnectionAttempt(attempt)) {
+            ws.close();
+            throw new ConnectionAttemptSupersededError();
+          }
 
           // 2. Create SecureConnection for resume using the existing socket
           conn = await SecureConnection.forResumeOnlyWithSocket(
             ws,
             storedSession,
             {
-              onSessionEstablished: handleSessionEstablished,
+              onSessionEstablished: (session) =>
+                handleSessionEstablished(attempt, session),
               onDisconnect: handleDisconnect,
             },
             { relayUrl, relayUsername },
@@ -818,13 +887,23 @@ export function RemoteConnectionProvider({ children }: Props) {
           setCurrentDirectUrl(currentStored.wsUrl);
           // Direct mode: just create connection and resume
           conn = SecureConnection.forResumeOnly(storedSession, {
-            onSessionEstablished: handleSessionEstablished,
+            onSessionEstablished: (session) =>
+              handleSessionEstablished(attempt, session),
             onDisconnect: handleDisconnect,
           });
         }
 
+        if (!isCurrentConnectionAttempt(attempt)) {
+          conn.close();
+          throw new ConnectionAttemptSupersededError();
+        }
+
         // Test the connection - this will try resume only
         await conn.fetch("/auth/status");
+        if (!isCurrentConnectionAttempt(attempt)) {
+          conn.close();
+          throw new ConnectionAttemptSupersededError();
+        }
 
         console.log("[RemoteConnection] Auto-resume successful");
         if (currentStored.mode === "relay") {
@@ -847,6 +926,9 @@ export function RemoteConnectionProvider({ children }: Props) {
         // Attach the source transport before connected routes render.
         publishConnection(conn);
       } catch (err) {
+        if (!isCurrentConnectionAttempt(attempt)) {
+          throw err;
+        }
         if (currentStored.mode !== "relay") {
           setCurrentHostId(null);
           setCurrentDirectUrl(null);
@@ -881,16 +963,20 @@ export function RemoteConnectionProvider({ children }: Props) {
         }
         // If auth_failed or other, just show login form (no modal)
       } finally {
-        setIsConnecting(false);
-        setIsAutoResuming(false);
+        if (isCurrentConnectionAttempt(attempt)) {
+          setIsConnecting(false);
+          setIsAutoResuming(false);
+        }
       }
     };
 
     void attemptAutoResume();
   }, [
     autoResumeAttempted,
+    beginConnectionAttempt,
     handleSessionEstablished,
     handleDisconnect,
+    isCurrentConnectionAttempt,
     publishConnection,
     setCurrentHostId,
     setCurrentDirectUrl,
@@ -900,12 +986,13 @@ export function RemoteConnectionProvider({ children }: Props) {
   // Using empty deps + ref avoids the cleanup running when connection changes
   useEffect(() => {
     return () => {
+      beginConnectionAttempt();
       if (connectionRef.current) {
         connectionRef.current.close();
       }
       detachTransport();
     };
-  }, [detachTransport]);
+  }, [beginConnectionAttempt, detachTransport]);
 
   const value: RemoteConnectionState = {
     connection,

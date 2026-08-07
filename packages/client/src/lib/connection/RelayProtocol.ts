@@ -171,6 +171,21 @@ interface PendingUpload {
   onProgress?: (bytesUploaded: number) => void;
 }
 
+type SubscriptionState = "pending" | "sent" | "closed";
+type SubscriptionSettlementSource = "connection" | "consumer" | "error";
+
+interface SubscriptionSettlement {
+  source: SubscriptionSettlementSource;
+  error?: Error;
+  notifyClose: boolean;
+  sendUnsubscribe: boolean;
+}
+
+interface RelaySubscriptionLifecycle {
+  beforeSend?: (subscriptionId: string) => void;
+  beforeConsumerClose?: (subscriptionId: string) => void;
+}
+
 /**
  * Shared relay protocol logic for routing messages, managing subscriptions,
  * and coordinating request/response correlation.
@@ -182,6 +197,10 @@ export class RelayProtocol {
   readonly pendingRequests = new Map<string, PendingRequest>();
   readonly pendingUploads = new Map<string, PendingUpload>();
   readonly subscriptions = new Map<string, StreamHandlers>();
+  private subscriptionSettlers = new Map<
+    string,
+    (settlement: SubscriptionSettlement) => void
+  >();
   /** Recently-closed subscription IDs — suppresses warnings for in-flight events */
   private recentlyClosed = new Set<string>();
   /** Registered handlers for emulator signaling messages */
@@ -240,6 +259,88 @@ export class RelayProtocol {
    */
   setBeginCriticalOperation(cb: BeginCriticalOperation | undefined): void {
     this.options.beginCriticalOperation = cb;
+  }
+
+  private createSubscription(
+    handlers: StreamHandlers,
+    buildMessage: (subscriptionId: string) => RelaySubscribe,
+    lifecycle: RelaySubscriptionLifecycle = {},
+  ): Subscription {
+    const subscriptionId = generateId();
+    let state: SubscriptionState = "pending";
+
+    const settle = (settlement: SubscriptionSettlement): void => {
+      if (state === "closed") return;
+      const wasSent = state === "sent";
+      state = "closed";
+      this.subscriptions.delete(subscriptionId);
+      this.subscriptionSettlers.delete(subscriptionId);
+      this.trackRecentlyClosed(subscriptionId);
+
+      if (settlement.source === "consumer") {
+        lifecycle.beforeConsumerClose?.(subscriptionId);
+      }
+      if (
+        wasSent &&
+        settlement.sendUnsubscribe &&
+        this.transport.isConnected()
+      ) {
+        try {
+          const message: RelayUnsubscribe = {
+            type: "unsubscribe",
+            subscriptionId,
+          };
+          this.transport.sendMessage(message);
+        } catch {
+          // Connection teardown releases server-owned subscriptions.
+        }
+      }
+      if (settlement.error) {
+        handlers.onError?.(settlement.error);
+      }
+      if (settlement.notifyClose) {
+        handlers.onClose?.(settlement.error);
+      }
+    };
+
+    this.subscriptions.set(subscriptionId, handlers);
+    this.subscriptionSettlers.set(subscriptionId, settle);
+
+    void this.transport.ensureConnected().then(
+      () => {
+        if (state !== "pending") return;
+        state = "sent";
+        try {
+          lifecycle.beforeSend?.(subscriptionId);
+          this.transport.sendMessage(buildMessage(subscriptionId));
+        } catch (error) {
+          settle({
+            source: "error",
+            error: error instanceof Error ? error : new Error(String(error)),
+            notifyClose: false,
+            sendUnsubscribe: false,
+          });
+        }
+      },
+      (error) => {
+        settle({
+          source: "error",
+          error: error instanceof Error ? error : new Error(String(error)),
+          notifyClose: false,
+          sendUnsubscribe: false,
+        });
+      },
+    );
+
+    return {
+      close: () => {
+        settle({
+          source: "consumer",
+          notifyClose: true,
+          sendUnsubscribe: true,
+        });
+      },
+    };
   }
 
   /**
@@ -361,10 +462,12 @@ export class RelayProtocol {
       console.log(
         `${this.logPrefix} Subscription ${response.id} failed: ${errorMessage}`,
       );
-      this.subscriptions.delete(response.id);
-      subscriptionHandlers.onError?.(
-        new SubscriptionError(response.status, errorMessage),
-      );
+      this.subscriptionSettlers.get(response.id)?.({
+        source: "error",
+        error: new SubscriptionError(response.status, errorMessage),
+        notifyClose: false,
+        sendUnsubscribe: false,
+      });
       return;
     }
 
@@ -652,53 +755,20 @@ export class RelayProtocol {
     lastEventId?: string,
     options?: SessionSubscriptionOptions,
   ): Subscription {
-    const subscriptionId = generateId();
-
-    this.subscriptions.set(subscriptionId, handlers);
-
-    this.transport
-      .ensureConnected()
-      .then(() => {
-        const msg: RelaySubscribe = {
-          type: "subscribe",
-          subscriptionId,
-          channel: "session",
-          sessionId,
-          lastEventId,
-          wantsLiveDeltas: options?.wantsLiveDeltas,
-        };
-        this.transport.sendMessage(msg);
-      })
-      .catch((err) => {
-        handlers.onError?.(err);
-        this.subscriptions.delete(subscriptionId);
-      });
-
-    return {
-      close: () => {
-        this.subscriptions.delete(subscriptionId);
-        this.trackRecentlyClosed(subscriptionId);
-        if (this.transport.isConnected()) {
-          const msg: RelayUnsubscribe = {
-            type: "unsubscribe",
-            subscriptionId,
-          };
-          try {
-            this.transport.sendMessage(msg);
-          } catch {
-            // Ignore send errors on close
-          }
-        }
-        handlers.onClose?.();
-      },
-    };
+    return this.createSubscription(handlers, (subscriptionId) => ({
+      type: "subscribe",
+      subscriptionId,
+      channel: "session",
+      sessionId,
+      lastEventId,
+      wantsLiveDeltas: options?.wantsLiveDeltas,
+    }));
   }
 
   /**
    * Subscribe to activity events.
    */
   subscribeActivity(handlers: StreamHandlers): Subscription {
-    const subscriptionId = generateId();
     const browserProfileId = getOrCreateBrowserProfileId();
     const logEventDebug = this.debugEnabled || isActivityDebugEnabled();
 
@@ -712,99 +782,44 @@ export class RelayProtocol {
       userAgent: navigator.userAgent,
     };
 
-    this.subscriptions.set(subscriptionId, handlers);
-
-    this.transport
-      .ensureConnected()
-      .then(() => {
-        const msg: RelaySubscribe = {
-          type: "subscribe",
-          subscriptionId,
-          channel: "activity",
-          browserProfileId,
-          originMetadata,
-        };
-        if (logEventDebug) {
-          console.log(
-            `${this.logPrefix} Sending activity subscribe:`,
-            subscriptionId,
-          );
-        }
-        this.transport.sendMessage(msg);
-      })
-      .catch((err) => {
-        handlers.onError?.(err);
-        this.subscriptions.delete(subscriptionId);
-      });
-
-    return {
-      close: () => {
-        this.subscriptions.delete(subscriptionId);
-        this.trackRecentlyClosed(subscriptionId);
-        if (logEventDebug) {
-          console.log(
-            `${this.logPrefix} Closing activity subscribe:`,
-            subscriptionId,
-          );
-        }
-        if (this.transport.isConnected()) {
-          const msg: RelayUnsubscribe = {
-            type: "unsubscribe",
-            subscriptionId,
-          };
-          try {
-            this.transport.sendMessage(msg);
-          } catch {
-            // Ignore send errors on close
+    return this.createSubscription(
+      handlers,
+      (subscriptionId) => ({
+        type: "subscribe",
+        subscriptionId,
+        channel: "activity",
+        browserProfileId,
+        originMetadata,
+      }),
+      {
+        beforeSend: (subscriptionId) => {
+          if (logEventDebug) {
+            console.log(
+              `${this.logPrefix} Sending activity subscribe:`,
+              subscriptionId,
+            );
           }
-        }
-        handlers.onClose?.();
+        },
+        beforeConsumerClose: (subscriptionId) => {
+          if (logEventDebug) {
+            console.log(
+              `${this.logPrefix} Closing activity subscribe:`,
+              subscriptionId,
+            );
+          }
+        },
       },
-    };
+    );
   }
 
   /** Subscribe to one project's glossary path snapshot and later changes. */
   subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
-    const subscriptionId = generateId();
-    let closed = false;
-    this.subscriptions.set(subscriptionId, handlers);
-
-    this.transport
-      .ensureConnected()
-      .then(() => {
-        if (closed) return;
-        const msg: RelaySubscribe = {
-          type: "subscribe",
-          subscriptionId,
-          channel: "glossary",
-          projectId,
-        };
-        this.transport.sendMessage(msg);
-      })
-      .catch((err) => {
-        handlers.onError?.(err);
-        this.subscriptions.delete(subscriptionId);
-      });
-
-    return {
-      close: () => {
-        if (closed) return;
-        closed = true;
-        this.subscriptions.delete(subscriptionId);
-        this.trackRecentlyClosed(subscriptionId);
-        if (this.transport.isConnected()) {
-          try {
-            this.transport.sendMessage({
-              type: "unsubscribe",
-              subscriptionId,
-            });
-          } catch {
-            // Ignore send errors on close.
-          }
-        }
-        handlers.onClose?.();
-      },
-    };
+    return this.createSubscription(handlers, (subscriptionId) => ({
+      type: "subscribe",
+      subscriptionId,
+      channel: "glossary",
+      projectId,
+    }));
   }
 
   /**
@@ -818,46 +833,14 @@ export class RelayProtocol {
       provider?: string;
     },
   ): Subscription {
-    const subscriptionId = generateId();
-
-    this.subscriptions.set(subscriptionId, handlers);
-
-    this.transport
-      .ensureConnected()
-      .then(() => {
-        const msg: RelaySubscribe = {
-          type: "subscribe",
-          subscriptionId,
-          channel: "session-watch",
-          sessionId,
-          projectId: options?.projectId,
-          provider: options?.provider,
-        };
-        this.transport.sendMessage(msg);
-      })
-      .catch((err) => {
-        handlers.onError?.(err);
-        this.subscriptions.delete(subscriptionId);
-      });
-
-    return {
-      close: () => {
-        this.subscriptions.delete(subscriptionId);
-        this.trackRecentlyClosed(subscriptionId);
-        if (this.transport.isConnected()) {
-          const msg: RelayUnsubscribe = {
-            type: "unsubscribe",
-            subscriptionId,
-          };
-          try {
-            this.transport.sendMessage(msg);
-          } catch {
-            // Ignore send errors on close
-          }
-        }
-        handlers.onClose?.();
-      },
-    };
+    return this.createSubscription(handlers, (subscriptionId) => ({
+      type: "subscribe",
+      subscriptionId,
+      channel: "session-watch",
+      sessionId,
+      projectId: options?.projectId,
+      provider: options?.provider,
+    }));
   }
 
   /**
@@ -1069,14 +1052,14 @@ export class RelayProtocol {
    * Notify all subscriptions that the connection closed, then clear them.
    */
   notifySubscriptionsClosed(error?: Error): void {
-    for (const [id, handlers] of this.subscriptions) {
-      this.trackRecentlyClosed(id);
-      if (error) {
-        handlers.onError?.(error);
-      }
-      handlers.onClose?.(error);
+    for (const settle of Array.from(this.subscriptionSettlers.values())) {
+      settle({
+        source: "connection",
+        error,
+        notifyClose: true,
+        sendUnsubscribe: false,
+      });
     }
-    this.subscriptions.clear();
   }
 
   /**
@@ -1085,11 +1068,13 @@ export class RelayProtocol {
   close(): void {
     const closeError = new Error("Connection closed");
 
-    for (const [id, handlers] of this.subscriptions) {
-      this.trackRecentlyClosed(id);
-      handlers.onClose?.();
+    for (const settle of Array.from(this.subscriptionSettlers.values())) {
+      settle({
+        source: "connection",
+        notifyClose: true,
+        sendUnsubscribe: false,
+      });
     }
-    this.subscriptions.clear();
 
     for (const pending of this.pendingRequests.values()) {
       clearTimeout(pending.timeout);

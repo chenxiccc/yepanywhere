@@ -117,7 +117,7 @@ export function RelayLoginPage() {
     }
 
     // Save the current relay URL before connecting so session callbacks and
-    // later /:relayUsername routes do not reuse a stale relay endpoint.
+    // later relay routes do not reuse a stale relay endpoint.
     const host = upsertRelayHost({
       relayUrl: effectiveRelayUrl,
       relayUsername: username,
@@ -199,7 +199,7 @@ export function RelayLoginPage() {
     }
 
     // Save the current relay URL before connecting so session callbacks and
-    // later /:relayUsername routes do not reuse a stale relay endpoint.
+    // later relay routes do not reuse a stale relay endpoint.
     if (rememberMe) {
       const host = upsertRelayHost({
         relayUrl,

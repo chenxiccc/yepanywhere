@@ -6,10 +6,11 @@
  * needed by all users; push subscription is opt-in.
  */
 import { api } from "../api/client";
+import { toBrowserAssetHref } from "./appHref";
 import { isRemoteClient } from "./connection";
 
 /** Service Worker file path, compatible with Vite base URL (local "/" and remote "/remote/") */
-const SW_PATH = `${import.meta.env.BASE_URL}sw.js`;
+const SW_PATH = toBrowserAssetHref("sw.js");
 
 /** Whether the browser supports Service Worker */
 const hasBrowserSupport =

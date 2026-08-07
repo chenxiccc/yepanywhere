@@ -8,7 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { type ReactNode, useEffect, useState } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RelayConnectionGate } from "../RelayConnectionGate";
 
@@ -23,6 +23,14 @@ const testState = vi.hoisted(() => ({
     relayUsername: "macbook",
     session: { sessionId: "stored-session" },
     srpUsername: "macbook",
+  },
+  secondHost: {
+    id: "host-2",
+    mode: "relay",
+    relayUrl: "wss://relay.example.test/ws",
+    relayUsername: "laptop",
+    session: { sessionId: "second-stored-session" },
+    srpUsername: "laptop",
   },
   remote: {
     connection: {} as object | null,
@@ -43,9 +51,11 @@ vi.mock("../../contexts/RemoteConnectionContext", () => ({
 vi.mock("../../lib/hostStorage", () => ({
   clearHostSession: testState.clearHostSession,
   getHostById: (hostId: string) =>
-    hostId === testState.host.id ? testState.host : undefined,
+    [testState.host, testState.secondHost].find((host) => host.id === hostId),
   getHostByRelayUsername: (relayUsername: string) =>
-    relayUsername === testState.host.relayUsername ? testState.host : undefined,
+    [testState.host, testState.secondHost].find(
+      (host) => host.relayUsername === relayUsername,
+    ),
 }));
 
 vi.mock("../../RemoteApp", () => ({
@@ -92,12 +102,33 @@ function CachedDocument() {
   );
 }
 
+function RouteSwitchControl() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => navigate("/-/relay/laptop/document")}
+      >
+        Open laptop
+      </button>
+      <button
+        type="button"
+        onClick={() => navigate("/-/relay/unknown/document")}
+      >
+        Open unknown
+      </button>
+    </>
+  );
+}
+
 function TestRoutes() {
   return (
-    <MemoryRouter initialEntries={["/macbook/document"]}>
+    <MemoryRouter initialEntries={["/-/relay/macbook/document"]}>
+      <RouteSwitchControl />
       <Routes>
         <Route path="/login/relay" element={<div>Relay login</div>} />
-        <Route path="/:relayUsername" element={<RelayConnectionGate />}>
+        <Route path="/-/relay/:relayUsername" element={<RelayConnectionGate />}>
           <Route path="document" element={<CachedDocument />} />
         </Route>
       </Routes>
@@ -153,6 +184,65 @@ describe("RelayConnectionGate", () => {
       await screen.findByRole("button", { name: "Loaded document" }),
     ).toBeTruthy();
     expect(testState.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("ignores a superseded host attempt that rejects after the current route connects", async () => {
+    const firstAttempt = deferred<void>();
+    const secondAttempt = deferred<void>();
+    testState.remote = {
+      ...testState.remote,
+      connection: null,
+      currentHostId: null,
+      currentRelayUsername: null,
+    };
+    testState.connectViaRelay
+      .mockReturnValueOnce(firstAttempt.promise)
+      .mockReturnValueOnce(secondAttempt.promise);
+
+    render(<TestRoutes />);
+    await waitFor(() =>
+      expect(testState.connectViaRelay).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open laptop" }));
+    await waitFor(() =>
+      expect(testState.connectViaRelay).toHaveBeenCalledTimes(2),
+    );
+
+    secondAttempt.resolve(undefined);
+    expect(
+      await screen.findByRole("button", { name: "Loaded document" }),
+    ).toBeTruthy();
+
+    firstAttempt.reject(new Error("Failed to connect to relay server"));
+    await waitFor(() => {
+      expect(screen.queryByText("Relay Unreachable")).toBeNull();
+    });
+    expect(
+      screen.getByRole("button", { name: "Loaded document" }),
+    ).toBeTruthy();
+  });
+
+  it("cancels a pending provider attempt when the replacement route has no host", async () => {
+    const pendingAttempt = deferred<void>();
+    testState.remote = {
+      ...testState.remote,
+      connection: null,
+      currentHostId: null,
+      currentRelayUsername: null,
+    };
+    testState.connectViaRelay.mockReturnValueOnce(pendingAttempt.promise);
+
+    render(<TestRoutes />);
+    await waitFor(() =>
+      expect(testState.connectViaRelay).toHaveBeenCalledOnce(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open unknown" }));
+
+    expect(await screen.findByText("Relay login")).toBeTruthy();
+    expect(testState.disconnect).toHaveBeenCalledWith(false);
+    pendingAttempt.resolve(undefined);
+    await Promise.resolve();
+    expect(screen.queryByTestId("connected-content")).toBeNull();
   });
 
   it("dismisses a post-connect relay error without unmounting cached content", async () => {

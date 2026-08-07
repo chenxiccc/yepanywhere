@@ -96,7 +96,8 @@ vi.mock("../../hooks/useFloatingActionButtonEnabled", () => ({
   useFloatingActionButtonEnabled: () => ({ floatingActionButtonEnabled: true }),
 }));
 
-vi.mock("../../hooks/useRecentProject", () => ({
+vi.mock("../../hooks/useRecentProject", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useRecentProject")>()),
   setRecentProjectId: vi.fn(),
 }));
 

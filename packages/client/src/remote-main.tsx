@@ -9,7 +9,7 @@
  * Route structure:
  * - UnauthenticatedGate: wraps login routes, redirects to app if already connected
  * - ConnectionGate: wraps direct-mode app routes (no relay username in URL)
- * - RelayConnectionGate: wraps relay-mode app routes (/:relayUsername/...)
+ * - RelayConnectionGate: wraps relay-mode app routes (/-/relay/:relayUsername/...)
  *
  * ConnectionGate and RelayConnectionGate share the same APP_ROUTES.
  * This avoids duplicating route definitions or provider wrapping.
@@ -24,7 +24,13 @@ import { createRoot } from "react-dom/client";
 const STRICT_MODE = false;
 const Wrapper = STRICT_MODE ? StrictMode : Fragment;
 
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
 import { TooltipLayer } from "./components/ui/TooltipLayer";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
@@ -59,6 +65,7 @@ import { SettingsLayout } from "./pages/settings";
 import { WorkstreamsPage } from "./pages/WorkstreamsPage";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
+import { getLegacyRelayRedirectTarget } from "./lib/remoteRoutePaths";
 import "./styles/index.css";
 
 // Apply saved preferences before React renders to avoid flash
@@ -82,10 +89,16 @@ function ProjectRedirect() {
   return <Navigate to={`${basePath}/sessions`} replace />;
 }
 
+function LegacyRelayRouteRedirect() {
+  const location = useLocation();
+  const target = getLegacyRelayRedirectTarget(location);
+  return <Navigate to={target ?? "/projects"} replace />;
+}
+
 /**
  * Shared app routes used by both direct mode (ConnectionGate) and
  * relay mode (RelayConnectionGate). Uses relative paths so they resolve
- * correctly under both "/" and "/:relayUsername/".
+ * correctly under both "/" and "/-/relay/:relayUsername/".
  */
 const APP_ROUTES = (
   <>
@@ -173,15 +186,19 @@ createRoot(rootElement).render(
                   {/* Direct mode — requires connection, no relay username in URL */}
                   <Route element={<ConnectionGate />}>{APP_ROUTES}</Route>
 
-                  {/* Relay mode — manages relay connection by URL username.
-                React Router ranks static segments above dynamic params,
-                so /projects matches ConnectionGate, not /:relayUsername. */}
+                  {/* Canonical relay routes live under a reserved namespace. */}
                   <Route
-                    path="/:relayUsername"
+                    path="/-/relay/:relayUsername"
                     element={<RelayConnectionGate />}
                   >
                     {APP_ROUTES}
                   </Route>
+
+                  {/* Old username-at-root links redirect only when unambiguous. */}
+                  <Route
+                    path="/:legacyRelayUsername/*"
+                    element={<LegacyRelayRouteRedirect />}
+                  />
                 </Routes>
               </RemoteApp>
             }

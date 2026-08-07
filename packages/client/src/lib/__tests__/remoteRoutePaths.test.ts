@@ -1,10 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
+  getLegacyRelayRedirectTarget,
+  getRelayBasePath,
   getRelayCanonicalRedirectTarget,
+  getRelayUsernameFromRoute,
   getSafeRemoteReturnTarget,
 } from "../remoteRoutePaths";
 
-describe("getRelayCanonicalRedirectTarget", () => {
+describe("relay route parsing", () => {
+  it("reads a relay username from the canonical namespace", () => {
+    expect(getRelayUsernameFromRoute("/-/relay/macbook/projects")).toBe(
+      "macbook",
+    );
+  });
+
+  it("allows reserved app names only in the canonical namespace", () => {
+    expect(getRelayUsernameFromRoute("/-/relay/projects/sessions")).toBe(
+      "projects",
+    );
+    expect(getRelayUsernameFromRoute("/projects/sessions")).toBe(null);
+  });
+
+  it("still reads unambiguous legacy relay routes", () => {
+    expect(getRelayUsernameFromRoute("/macbook/projects")).toBe("macbook");
+  });
+
+  it("rejects malformed canonical relay usernames", () => {
+    expect(getRelayUsernameFromRoute("/-/relay/ab/projects")).toBe(null);
+    expect(getRelayUsernameFromRoute("/-/relay/%GG/projects")).toBe(null);
+  });
+});
+
+describe("relay route formatting", () => {
+  it("formats relay hosts under the reserved canonical namespace", () => {
+    expect(getRelayBasePath("macbook")).toBe("/-/relay/macbook");
+  });
+
   it("redirects direct app routes into the active relay namespace", () => {
     expect(
       getRelayCanonicalRedirectTarget(
@@ -15,31 +46,31 @@ describe("getRelayCanonicalRedirectTarget", () => {
         },
         "macbook",
       ),
-    ).toBe("/macbook/projects?queueItem=item-1#top");
-  });
-
-  it("redirects bang-command history into the active relay namespace", () => {
-    expect(
-      getRelayCanonicalRedirectTarget(
-        { pathname: "/bang-commands" },
-        "macbook",
-      ),
-    ).toBe("/macbook/bang-commands");
+    ).toBe("/-/relay/macbook/projects?queueItem=item-1#top");
   });
 
   it("redirects the direct index route to relay projects", () => {
     expect(getRelayCanonicalRedirectTarget({ pathname: "/" }, "macbook")).toBe(
-      "/macbook/projects",
+      "/-/relay/macbook/projects",
     );
   });
 
-  it("does not redirect routes already under the relay namespace", () => {
+  it("does not redirect routes already under the canonical relay namespace", () => {
     expect(
       getRelayCanonicalRedirectTarget(
-        { pathname: "/macbook/projects" },
+        { pathname: "/-/relay/macbook/projects" },
         "macbook",
       ),
     ).toBe(null);
+  });
+
+  it("canonicalizes an active host's legacy route", () => {
+    expect(
+      getRelayCanonicalRedirectTarget(
+        { pathname: "/macbook/bang-commands" },
+        "macbook",
+      ),
+    ).toBe("/-/relay/macbook/bang-commands");
   });
 
   it("does not redirect when no relay host is active", () => {
@@ -48,7 +79,7 @@ describe("getRelayCanonicalRedirectTarget", () => {
     ).toBe(null);
   });
 
-  it("does not redirect paths that are not direct app routes", () => {
+  it("does not redirect paths owned by another relay host", () => {
     expect(
       getRelayCanonicalRedirectTarget(
         { pathname: "/other-host/projects" },
@@ -58,20 +89,75 @@ describe("getRelayCanonicalRedirectTarget", () => {
   });
 });
 
+describe("getLegacyRelayRedirectTarget", () => {
+  it("preserves the app path, search, and hash", () => {
+    expect(
+      getLegacyRelayRedirectTarget({
+        pathname: "/macbook/projects/project-1",
+        search: "?queueItem=item-1",
+        hash: "#top",
+      }),
+    ).toBe("/-/relay/macbook/projects/project-1?queueItem=item-1#top");
+  });
+
+  it("sends a legacy host root to projects", () => {
+    expect(getLegacyRelayRedirectTarget({ pathname: "/macbook" })).toBe(
+      "/-/relay/macbook/projects",
+    );
+  });
+
+  it.each([
+    "activity",
+    "agents",
+    "bang-commands",
+    "devices",
+    "git-status",
+    "inbox",
+    "login",
+    "new-session",
+    "projects",
+    "remote",
+    "sessions",
+    "settings",
+    "share",
+  ])(
+    "never reinterprets reserved segment %s as a relay username",
+    (segment) => {
+      expect(
+        getLegacyRelayRedirectTarget({ pathname: `/${segment}/projects` }),
+      ).toBe(null);
+    },
+  );
+
+  it("rejects invalid relay usernames", () => {
+    expect(getLegacyRelayRedirectTarget({ pathname: "/ab/projects" })).toBe(
+      null,
+    );
+  });
+});
+
 describe("getSafeRemoteReturnTarget", () => {
   it("redirects direct return targets into the active relay namespace", () => {
     expect(
       getSafeRemoteReturnTarget("/projects?queueItem=item-1#top", "macbook"),
-    ).toBe("/macbook/projects?queueItem=item-1#top");
+    ).toBe("/-/relay/macbook/projects?queueItem=item-1#top");
   });
 
   it("redirects the direct index return target to relay projects", () => {
-    expect(getSafeRemoteReturnTarget("/", "macbook")).toBe("/macbook/projects");
+    expect(getSafeRemoteReturnTarget("/", "macbook")).toBe(
+      "/-/relay/macbook/projects",
+    );
   });
 
-  it("preserves already scoped relay return targets", () => {
+  it("preserves already canonical relay return targets", () => {
+    expect(
+      getSafeRemoteReturnTarget("/-/relay/macbook/projects", "macbook"),
+    ).toBe("/-/relay/macbook/projects");
+  });
+
+  it("canonicalizes an active host's legacy return target", () => {
     expect(getSafeRemoteReturnTarget("/macbook/projects", "macbook")).toBe(
-      "/macbook/projects",
+      "/-/relay/macbook/projects",
     );
   });
 

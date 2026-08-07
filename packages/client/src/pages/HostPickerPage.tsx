@@ -126,7 +126,7 @@ export function HostPickerPage() {
               onStatusChange: () => {},
               session: host.session,
             });
-            // ConnectionGate will redirect to /{username}/projects (URL: /remote/{username}/projects)
+            // ConnectionGate redirects to the host's canonical relay projects route.
           } else {
             // No session - go to relay login pre-filled
             navigate(relayLoginPath(host));

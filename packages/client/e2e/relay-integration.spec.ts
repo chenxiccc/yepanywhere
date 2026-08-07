@@ -40,6 +40,14 @@ const LEGACY_PREAUTH_RELAY_MAX_BYTES = 8 * 1024 * 1024;
 const LARGE_ASSISTANT_NOISE_BYTES = 2304 * 1024;
 const LARGE_SHARE_NOISE_BYTES = 10 * 1024 * 1024;
 
+function relayAppPath(path = "projects"): string {
+  return `/-/relay/${TEST_RELAY_USERNAME}/${path}`;
+}
+
+function remoteRelayUrl(remoteClientURL: string, path = "projects"): string {
+  return `${remoteClientURL}${relayAppPath(path)}`;
+}
+
 function deterministicNoise(byteLength: number): Buffer {
   const bytes = Buffer.allocUnsafe(byteLength);
   let state = 0x6d2b_79f5;
@@ -175,11 +183,9 @@ test.describe("Full Relay Integration", () => {
 
     // Verify navigation items are present (proves API requests work through relay)
     // In relay mode, URLs are prefixed with the relay username
+    await expect(page.locator(`a[href="${relayAppPath()}"]`)).toBeVisible();
     await expect(
-      page.locator(`a[href="/${TEST_RELAY_USERNAME}/projects"]`),
-    ).toBeVisible();
-    await expect(
-      page.locator(`a[href="/${TEST_RELAY_USERNAME}/settings"]`),
+      page.locator(`a[href="${relayAppPath("settings")}"]`),
     ).toBeVisible();
   });
 
@@ -267,7 +273,10 @@ test.describe("Full Relay Integration", () => {
       observeRelayChunks = true;
       await loginViaRelay(page, remoteClientURL, relayWsURL);
       await page.goto(
-        `${remoteClientURL}/${TEST_RELAY_USERNAME}/projects/${projectId}/sessions/${sessionId}`,
+        remoteRelayUrl(
+          remoteClientURL,
+          `projects/${projectId}/sessions/${sessionId}`,
+        ),
       );
       await expect(
         page.getByText("large assistant trailing marker", { exact: true }),
@@ -340,7 +349,10 @@ test.describe("Full Relay Integration", () => {
         .toBe(200);
       await loginViaRelay(page, remoteClientURL, relayWsURL);
       await page.goto(
-        `${remoteClientURL}/${TEST_RELAY_USERNAME}/projects/${projectId}/sessions/${sessionId}`,
+        remoteRelayUrl(
+          remoteClientURL,
+          `projects/${projectId}/sessions/${sessionId}`,
+        ),
       );
       await expect(page.locator('input[type="file"]')).toHaveCount(1);
 
@@ -545,13 +557,13 @@ test.describe("Full Relay Integration", () => {
       await openSidebar.click();
 
       const bangHistoryLink = page.locator(
-        `a[href="/${TEST_RELAY_USERNAME}/bang-commands"]`,
+        `a[href="${relayAppPath("bang-commands")}"]`,
       );
       await expect(bangHistoryLink).toBeVisible();
       await bangHistoryLink.click();
 
       await expect(page).toHaveURL(
-        new RegExp(`/${TEST_RELAY_USERNAME}/bang-commands$`),
+        new RegExp(`${relayAppPath("bang-commands")}$`),
       );
       await expect(
         page.getByText("No local commands have been run yet."),
@@ -666,9 +678,7 @@ test.describe("Full Relay Integration", () => {
 
     // Verify projects are still accessible after refresh
     // In relay mode, URLs are prefixed with the relay username
-    await expect(
-      page.locator(`a[href="/${TEST_RELAY_USERNAME}/projects"]`),
-    ).toBeVisible();
+    await expect(page.locator(`a[href="${relayAppPath()}"]`)).toBeVisible();
   });
 
   test("old relay resume session falls back to fresh login", async ({
@@ -725,6 +735,9 @@ test.describe("Full Relay Integration", () => {
     await expect(page.locator('[data-testid="relay-login-form"]')).toBeVisible({
       timeout: 10000,
     });
+    expect(new URL(page.url()).searchParams.get("returnTo")).toBe(
+      relayAppPath(),
+    );
     await expect(
       page.locator('[data-testid="relay-username-input"]'),
     ).toHaveValue(TEST_RELAY_USERNAME);

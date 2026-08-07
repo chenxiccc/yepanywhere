@@ -623,7 +623,7 @@ export function Sidebar({
   // Handle switching hosts - disconnect and go to host picker
   const handleSwitchHost = () => {
     remoteConnection?.disconnect();
-    const loginUrl = new URL("/login", window.location.href);
+    const loginUrl = new URL(toBrowserAppHref("/login"), window.location.href);
     window.location.replace(
       buildFrontendReloadUrl(loginUrl, String(Date.now())),
     );

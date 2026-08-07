@@ -61,7 +61,9 @@ describe("project context extraction", () => {
       "alpha",
     );
     expect(
-      extractProjectIdFromPath("/remote/test/projects/beta/sessions/session-2"),
+      extractProjectIdFromPath(
+        "/remote/-/relay/test/projects/beta/sessions/session-2",
+      ),
     ).toBe("beta");
   });
 
