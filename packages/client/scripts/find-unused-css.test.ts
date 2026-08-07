@@ -328,6 +328,29 @@ describe("parsing helpers", () => {
     expect(source.exact.has("state")).toBe(false);
   });
 
+  it("canonicalizes selector strings and generated markup class lists", () => {
+    const source = buildSourceUsageIndex(
+      new Map([
+        [
+          "Selector.test.ts",
+          String.raw`const selector = ".escaped\\:state, .\\31 23, .café, .x";`,
+        ],
+        [
+          "generated.ts",
+          `const markup = '<div class="generated:shell café">';`,
+        ],
+      ]),
+    );
+
+    for (const name of ["escaped:state", "123", "café", "x"]) {
+      expect(source.exact.get(name)).toContain("Selector.test.ts");
+    }
+    expect(source.exact.get("generated:shell")).toContain("generated.ts");
+    expect(source.exact.get("café")).toContain("generated.ts");
+    expect(source.exact.has("escaped")).toBe(false);
+    expect(source.exact.has("state")).toBe(false);
+  });
+
   it("keeps module-global anchors local to their selector branch", () => {
     const { globalUses } = extractModuleSelectors(
       [

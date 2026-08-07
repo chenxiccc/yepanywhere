@@ -593,8 +593,8 @@ export function extractBindingUsage(
 
 export interface SourceUsageIndex {
   /**
-   * Complete class-like tokens found in source string literals, plus the
-   * escaped-dot class selectors spelled out in regular-expression literals.
+   * Complete whitespace-delimited source tokens, plus decoded classes from
+   * selector strings, generated markup attributes, and regex literals.
    */
   exact: Map<string, Set<string>>;
   /** Template-literal prefixes such as `status-` in `status-${tone}`. */
@@ -631,6 +631,44 @@ function addExactTokens(
   for (const token of value.split(/\s+/u)) {
     if (token) addSourceFact(exact, token, filename);
   }
+}
+
+function addSelectorStringTokens(
+  exact: Map<string, Set<string>>,
+  value: string,
+  filename: string,
+): void {
+  const selector = value.trim();
+  if (!selector.startsWith(".")) return;
+  try {
+    for (const token of extractSelectorClassNames(selector)) {
+      addSourceFact(exact, token, filename);
+    }
+  } catch {
+    // Most source strings are not selectors; their exact tokens still count.
+  }
+}
+
+function addMarkupClassTokens(
+  exact: Map<string, Set<string>>,
+  value: string,
+  filename: string,
+): void {
+  for (const match of value.matchAll(
+    /\bclass(?:Name)?\s*=\s*(?:"([^"]*)"|'([^']*)')/gu,
+  )) {
+    addExactTokens(exact, match[1] ?? match[2] ?? "", filename);
+  }
+}
+
+function addSourceStringTokens(
+  exact: Map<string, Set<string>>,
+  value: string,
+  filename: string,
+): void {
+  addExactTokens(exact, value, filename);
+  addSelectorStringTokens(exact, value, filename);
+  addMarkupClassTokens(exact, value, filename);
 }
 
 function addDynamicPrefix(
@@ -694,7 +732,7 @@ export function buildSourceUsageIndex(
 
     function visit(node: ts.Node): void {
       if (ts.isStringLiteralLike(node)) {
-        addExactTokens(exact, node.text, filename);
+        addSourceStringTokens(exact, node.text, filename);
       }
       if (ts.isRegularExpressionLiteral(node)) {
         // Selector-only vocabulary; a regex builds no class, so it never
@@ -702,11 +740,11 @@ export function buildSourceUsageIndex(
         addRegexClassTokens(exact, node.text, filename);
       }
       if (ts.isTemplateExpression(node)) {
-        addExactTokens(exact, node.head.text, filename);
+        addSourceStringTokens(exact, node.head.text, filename);
         addDynamicPrefix(dynamic, node.head.text, filename);
         for (let index = 0; index < node.templateSpans.length; index++) {
           const literal = node.templateSpans[index].literal.text;
-          addExactTokens(exact, literal, filename);
+          addSourceStringTokens(exact, literal, filename);
           if (index < node.templateSpans.length - 1) {
             addDynamicPrefix(dynamic, literal, filename);
           }
