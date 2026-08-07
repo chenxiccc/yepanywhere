@@ -37,10 +37,7 @@ type ShareWorkingState =
   | `freeze:${string}`;
 
 interface LegacySessionShareModalProps
-  extends Omit<
-    SessionShareModalProps,
-    "initialView" | "managementAvailable"
-  > {
+  extends Omit<SessionShareModalProps, "initialView" | "managementAvailable"> {
   onManage?: () => void;
 }
 

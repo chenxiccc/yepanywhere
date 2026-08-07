@@ -435,9 +435,7 @@ export function MessageDeliverySettings() {
             }}
             aria-label={t("messageDeliveryTurnTimestampsTitle")}
           >
-            <option value="off">
-              {t("messageDeliveryTurnTimestampsOff")}
-            </option>
+            <option value="off">{t("messageDeliveryTurnTimestampsOff")}</option>
             <option value="before">
               {t("messageDeliveryTurnTimestampsBefore")}
             </option>

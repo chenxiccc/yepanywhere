@@ -1114,9 +1114,7 @@ export function GlobalSessionsPage() {
                             updatedAt={session.updatedAt}
                             createdAt={session.createdAt}
                             hasUnread={session.hasUnread}
-                            publicShareCreationReady={
-                              publicShareCreationReady
-                            }
+                            publicShareCreationReady={publicShareCreationReady}
                             publicShareManagementAvailable={
                               publicShareManagementAvailable
                             }
