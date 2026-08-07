@@ -1938,8 +1938,8 @@ export class ClaudeProvider implements AgentProvider {
           abortController,
           // Pass permission mode to SDK for system prompt configuration.
           // However, for "bypassPermissions" we pass "default" to the SDK so it always
-          // calls our canUseTool callback - we handle the bypass logic ourselves to
-          // allow exceptions (e.g., always prompting for AskUserQuestion/ExitPlanMode).
+          // calls our canUseTool callback - we handle the bypass logic ourselves so
+          // user questions still surface instead of being silently answered.
           permissionMode:
             options.permissionMode === "bypassPermissions"
               ? "default"

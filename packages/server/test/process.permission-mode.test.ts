@@ -175,6 +175,50 @@ describe("Process", () => {
       expect(result.behavior).toBe("allow");
     });
 
+    it("auto-approves plan completion and remains in Bypass mode", async () => {
+      const process = new Process(createMockIterator([]), {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude-gateway",
+        idleTimeoutMs: 100,
+        permissionMode: "bypassPermissions",
+      });
+
+      const approval = process.handleToolApproval(
+        "ExitPlanMode",
+        {},
+        { signal: new AbortController().signal },
+      );
+
+      expect(process.getPendingInputRequest()).toBeNull();
+      await expect(approval).resolves.toEqual({ behavior: "allow" });
+      expect(process.permissionMode).toBe("bypassPermissions");
+    });
+
+    it("still surfaces user questions in Bypass mode", async () => {
+      const process = new Process(createMockIterator([]), {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude-gateway",
+        idleTimeoutMs: 100,
+        permissionMode: "bypassPermissions",
+      });
+      const input = {
+        questions: [{ question: "Choose?", header: "Choice", options: [] }],
+      };
+      const approval = process.handleToolApproval("AskUserQuestion", input, {
+        signal: new AbortController().signal,
+      });
+
+      expect(process.getPendingInputRequest()?.type).toBe("question");
+      const requestId = process.getPendingInputRequest()?.id;
+      process.respondToInput(requestId ?? "", "approve", { "Choose?": "One" });
+      await expect(approval).resolves.toMatchObject({ behavior: "allow" });
+      expect(process.permissionMode).toBe("bypassPermissions");
+    });
+
     it("uses a provider-frozen Ask mode after the toolbar changes", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {

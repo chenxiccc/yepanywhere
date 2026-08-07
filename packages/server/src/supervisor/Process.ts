@@ -3595,7 +3595,7 @@ export class Process {
    * - default: Ask user for approval
    * - acceptEdits: Auto-approve Edit/Write tools, ask for others
    * - plan: Auto-approve read-only tools (Read, Glob, Grep, etc.), prompt for others
-   * - bypassPermissions: Auto-approve all tools except AskUserQuestion and ExitPlanMode
+   * - bypassPermissions: Auto-approve all tools except AskUserQuestion
    */
   async handleToolApproval(
     toolName: string,
@@ -3635,12 +3635,11 @@ export class Process {
     // Handle based on permission mode
     switch (effectivePermissionMode) {
       case "bypassPermissions": {
-        // Always prompt for user questions and plan approval, even in bypass mode
-        // These are inherently interactive and shouldn't be auto-answered
-        if (toolName === "ExitPlanMode" || isUserQuestion) {
+        // Questions require the user's answer; plan completion does not weaken
+        // the user's standing Bypass choice or add another approval boundary.
+        if (isUserQuestion) {
           break; // Fall through to ask user
         }
-        // Auto-approve all other tools
         return { behavior: "allow" };
       }
 

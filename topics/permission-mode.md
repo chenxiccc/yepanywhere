@@ -63,5 +63,10 @@ equivalent is `Ask`, not `Bypass` and not a hidden provider-specific setting.
   from a different mode selected for the next turn.
 - Approval callbacks must use the effective mode of the request's turn, not a
   launch-time mode captured by a long-lived provider process.
+- Plan completion follows the standing permission choice. In `Bypass`,
+  `ExitPlanMode` is already authorized and must complete without a prompt or a
+  transition to `Edit`; `AskUserQuestion` still surfaces because it requires the
+  user's answer. An explicitly selected `Plan` mode still prompts for plan
+  approval.
 - Tightening a mode is never less important than loosening it. A UI that says
   Ask must not leave the next turn running under a sticky Bypass policy.
