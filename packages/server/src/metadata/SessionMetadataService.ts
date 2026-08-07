@@ -137,7 +137,8 @@ export class SessionMetadataService {
   private dataDir: string;
   private filePath: string;
   private sessionIdAliases = new Map<string, string>();
-  private save = createCoalescingSaver(() => this.doSave()).save;
+  private metadataSaver = createCoalescingSaver(() => this.doSave());
+  private save = this.metadataSaver.save;
 
   constructor(options: SessionMetadataServiceOptions = {}) {
     this.dataDir =
@@ -523,6 +524,7 @@ export class SessionMetadataService {
       JSON.stringify(existing.thinking) === JSON.stringify(value.thinking) &&
       existing.effort === value.effort
     ) {
+      await this.metadataSaver.flush();
       return existing;
     }
 
@@ -536,8 +538,17 @@ export class SessionMetadataService {
       requestedModel: value.requestedModel || undefined,
       effectiveLaunchSettings: next,
     }));
-    await this.save();
+    await this.metadataSaver.flush();
     return next;
+  }
+
+  /**
+   * Rewrite the current metadata snapshot and wait for the coalesced writer to
+   * reach quiescence. Callers use this after a group of ordinary metadata
+   * mutations when their response must acknowledge durable state.
+   */
+  async flushPendingWrites(): Promise<void> {
+    await this.metadataSaver.flush();
   }
 
   /**

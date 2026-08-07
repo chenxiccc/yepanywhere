@@ -35,6 +35,34 @@ describe("createCoalescingSaver", () => {
     expect(writes).toBe(2);
   });
 
+  it("flush waits for the coalesced write containing its state", async () => {
+    const gates = [deferred(), deferred()];
+    let writes = 0;
+    const saver = createCoalescingSaver(() => {
+      const gate = gates[writes++];
+      if (!gate) throw new Error("unexpected extra write");
+      return gate.promise;
+    });
+
+    const first = saver.save();
+    let flushed = false;
+    const flush = saver.flush().then(() => {
+      flushed = true;
+    });
+    await tick();
+    expect(writes).toBe(1);
+    expect(flushed).toBe(false);
+
+    gates[0]?.resolve();
+    await tick();
+    expect(writes).toBe(2);
+    expect(flushed).toBe(false);
+
+    gates[1]?.resolve();
+    await Promise.all([first, flush]);
+    expect(flushed).toBe(true);
+  });
+
   it("recovers after a rejected write instead of wedging", async () => {
     let writes = 0;
     let fail = true;

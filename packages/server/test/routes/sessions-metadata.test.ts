@@ -27,7 +27,10 @@ import type {
   ISessionReader,
   LoadedSession,
 } from "../../src/sessions/types.js";
-import { ResumeCompactionError } from "../../src/supervisor/Supervisor.js";
+import {
+  ResumeCompactionError,
+  SessionConfigurationConflictError,
+} from "../../src/supervisor/Supervisor.js";
 import type {
   Message,
   Project,
@@ -3598,6 +3601,7 @@ describe("Sessions metadata route", () => {
         providerName: "codex",
         promptSuggestionMode: "off",
       }),
+      { requestedOverrides: {} },
     );
     expect(forkSession).toHaveBeenCalledWith({
       sessionId: "sess-1",
@@ -5282,6 +5286,174 @@ describe("Sessions metadata route", () => {
   });
 });
 
+describe("Session reactivation route", () => {
+  const projectId = encodeProjectId("/tmp/project");
+  const reactivatePath = `/projects/${projectId}/sessions/sess-1/reactivate`;
+  const project = { ...createProject(), id: projectId };
+  const readerFactory = vi.fn(
+    () => ({ getSessionSummary: vi.fn(async () => null) }) as ISessionReader,
+  );
+
+  it.each([
+    ["malformed", "{not-json"],
+    ["array", "[]"],
+    ["null", "null"],
+  ])(
+    "rejects a %s body before project or process lookup",
+    async (_name, body) => {
+      const getOrCreateProject = vi.fn(async () => project);
+      const reactivateSession = vi.fn();
+      const getProcessForSession = vi.fn();
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession,
+          reactivateSession,
+        } as unknown as SessionsDeps["supervisor"],
+        scanner: {
+          getOrCreateProject,
+        } as unknown as SessionsDeps["scanner"],
+        readerFactory,
+      });
+
+      const response = await routes.request(reactivatePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+
+      expect(response.status).toBe(400);
+      expect(getOrCreateProject).not.toHaveBeenCalled();
+      expect(getProcessForSession).not.toHaveBeenCalled();
+      expect(reactivateSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it("passes exact explicit overrides even when a live process already exists", async () => {
+    const process = {
+      id: "process-live",
+      projectId,
+      projectPath: project.path,
+      provider: "codex" as ProviderName,
+      executor: "build-host",
+      permissionMode: "plan",
+      appliedPermissionMode: "plan",
+      modeVersion: 3,
+      recapMode: "fork" as const,
+      recapAfterSeconds: 45,
+      promptSuggestionMode: "off" as const,
+      sandboxEnforcement: undefined,
+    };
+    const reactivateSession = vi.fn(async () => process);
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => process),
+        reactivateSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory,
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({
+          provider: "claude" as ProviderName,
+          requestedModel: "sonnet",
+          executor: "old-host",
+          recapAfterSeconds: 30,
+        })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(reactivatePath, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "plan",
+        provider: "codex",
+        executor: "build-host",
+        sandboxLevel: "none",
+        model: "gpt-5.4",
+        serviceTier: "priority",
+        thinking: "on:high",
+        showThinking: "off",
+        recapMode: "fork",
+        recapAfterSeconds: 45,
+        promptSuggestionMode: "off",
+        permissions: { deny: ["Bash(rm *)"] },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(reactivateSession).toHaveBeenCalledWith(
+      project.path,
+      "sess-1",
+      "plan",
+      expect.objectContaining({
+        providerName: "codex",
+        executor: "build-host",
+        sandboxLevel: "none",
+        model: "gpt-5.4",
+        requestedModel: "gpt-5.4",
+        serviceTier: "priority",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "high",
+        recapMode: "fork",
+        recapAfterSeconds: 45,
+        promptSuggestionMode: "off",
+        permissions: { deny: ["Bash(rm *)"] },
+      }),
+      {
+        requestedOverrides: {
+          permissionMode: "plan",
+          modelSettings: {
+            model: "gpt-5.4",
+            requestedModel: "gpt-5.4",
+            serviceTier: "priority",
+            thinking: { type: "adaptive", display: "summarized" },
+            effort: "high",
+            providerName: "codex",
+            executor: "build-host",
+            permissions: { deny: ["Bash(rm *)"] },
+            sandboxLevel: "none",
+            sandboxStateKey: undefined,
+            recapMode: "fork",
+            recapAfterSeconds: 45,
+            promptSuggestionMode: "off",
+          },
+        },
+      },
+    );
+  });
+
+  it("reports an active-turn configuration conflict as 409", async () => {
+    const reactivateSession = vi.fn(async () => {
+      throw new SessionConfigurationConflictError(["service tier"]);
+    });
+    const routes = createSessionsRoutes({
+      supervisor: {
+        reactivateSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory,
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({ provider: "claude" as ProviderName })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(reactivatePath, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serviceTier: "priority" }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: expect.stringContaining("service tier"),
+    });
+  });
+});
+
 describe("Session-keyed away-recap route", () => {
   const projectId = encodeProjectId("/tmp/project");
   const recapPath = `/projects/${projectId}/sessions/sess-1/recap`;
@@ -5347,7 +5519,7 @@ describe("Session-keyed away-recap route", () => {
       "sess-1",
       undefined,
       expect.objectContaining({ recapMode: "fork", providerName: "claude" }),
-      { preempt: false },
+      { preempt: false, requestedOverrides: {} },
     );
     expect(requestRecap).toHaveBeenCalledWith("p-revived", {
       sinceMs: null,

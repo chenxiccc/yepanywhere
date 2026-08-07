@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
+  DEFAULT_RECAP_AFTER_SECONDS,
+  HELPER_SIDE_MODEL_CHEAPEST,
   type CacheMissBillingSettings,
   type EffortLevel,
   type PermissionRules,
@@ -135,6 +137,13 @@ function thinkingConfigsEqual(
     );
   }
   return true;
+}
+
+function permissionRulesEqual(
+  current: PermissionRules | undefined,
+  next: PermissionRules | undefined,
+): boolean {
+  return JSON.stringify(current) === JSON.stringify(next);
 }
 
 function isDynamicThinkingModeConfig(thinking?: ThinkingConfig): boolean {
@@ -499,6 +508,49 @@ export interface ModelSettings {
   sandboxStateKey?: string;
 }
 
+export interface SessionReactivationOverrides {
+  /** Standing permission selector explicitly requested by this activation. */
+  permissionMode?: PermissionMode;
+  /** Exact launch-setting fields explicitly requested by this activation. */
+  modelSettings?: ModelSettings;
+}
+
+export interface SessionReactivationOptions {
+  preempt?: boolean;
+  requestedOverrides?: SessionReactivationOverrides;
+}
+
+export class SessionConfigurationConflictError extends Error {
+  readonly status = 409;
+  readonly changes: readonly string[];
+
+  constructor(changes: readonly string[]) {
+    super(
+      `Cannot apply launch-scoped configuration while the session is active: ${changes.join(", ")}`,
+    );
+    this.name = "SessionConfigurationConflictError";
+    this.changes = changes;
+  }
+}
+
+interface ProcessModelConfiguration {
+  nextModel: string | undefined;
+  nextRequestedModel: string | null;
+  nextServiceTier: string | undefined;
+  nextThinking: ThinkingConfig | undefined;
+  nextEffort: EffortLevel | undefined;
+  modelChanged: boolean;
+  serviceTierChanged: boolean;
+  thinkingChanged: boolean;
+  effortChanged: boolean;
+  dynamicChange: "model" | "thinking" | "effort" | null;
+}
+
+interface PendingProcessLaunchSettings {
+  processId: string;
+  value: EffectiveSessionLaunchSettingsValue;
+}
+
 export interface SessionLaunchOptions {
   /** Canonical YA project id when the provider cwd is a checkout lane. */
   projectId?: UrlProjectId;
@@ -631,6 +683,11 @@ export class Supervisor {
     Extract<Exclude<ProviderRuntimeStatus, null>, { kind: "terminal" }>
   >();
   private sessionActivationInFlight: Map<string, Promise<Process>> = new Map();
+  private sessionConfigurationTails: Map<string, Promise<void>> = new Map();
+  private pendingProcessLaunchSettings = new Map<
+    string,
+    PendingProcessLaunchSettings
+  >();
   private observedProcessIds: Set<string> = new Set();
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
   private terminatedProcesses: ProcessInfo[] = []; // Recently terminated processes
@@ -853,10 +910,138 @@ export class Supervisor {
   }
 
   private async persistProcessLaunchSettings(process: Process): Promise<void> {
+    const pending: PendingProcessLaunchSettings = {
+      processId: process.id,
+      value: this.processLaunchSettings(process),
+    };
+    this.pendingProcessLaunchSettings.set(process.sessionId, pending);
     await this.sessionMetadataService?.recordEffectiveLaunchSettings(
       process.sessionId,
-      this.processLaunchSettings(process),
+      pending.value,
     );
+    if (this.pendingProcessLaunchSettings.get(process.sessionId) === pending) {
+      this.pendingProcessLaunchSettings.delete(process.sessionId);
+    }
+  }
+
+  private async flushPendingProcessLaunchSettings(
+    process: Process,
+  ): Promise<void> {
+    const pending = this.pendingProcessLaunchSettings.get(process.sessionId);
+    if (pending?.processId === process.id) {
+      await this.persistProcessLaunchSettings(process);
+    }
+  }
+
+  private async persistReactivationOverrides(
+    process: Process,
+    requestedOverrides: SessionReactivationOverrides,
+  ): Promise<void> {
+    const service = this.sessionMetadataService;
+    const updates = requestedOverrides.modelSettings;
+    if (!service || !updates) {
+      return;
+    }
+
+    let wroteMetadata = false;
+    if (Object.hasOwn(updates, "providerName")) {
+      await service.setProvider(process.sessionId, process.provider);
+      wroteMetadata = true;
+    }
+    if (Object.hasOwn(updates, "executor")) {
+      await service.setExecutor(process.sessionId, process.executor);
+      wroteMetadata = true;
+    }
+    if (
+      Object.hasOwn(updates, "recapMode") ||
+      Object.hasOwn(updates, "recapAfterSeconds") ||
+      Object.hasOwn(updates, "promptSuggestionMode")
+    ) {
+      await service.updateMetadata(process.sessionId, {
+        ...(Object.hasOwn(updates, "recapMode")
+          ? { recapMode: process.recapMode }
+          : {}),
+        ...(Object.hasOwn(updates, "recapAfterSeconds")
+          ? { recapAfterSeconds: process.recapAfterSeconds }
+          : {}),
+        ...(Object.hasOwn(updates, "promptSuggestionMode")
+          ? { promptSuggestionMode: process.promptSuggestionMode }
+          : {}),
+      });
+      wroteMetadata = true;
+    }
+    if (Object.hasOwn(updates, "sandboxLevel")) {
+      await service.setSessionSandbox(process.sessionId, {
+        level: process.sandboxEnforcement?.effective ?? "none",
+        stateKey: process.sandboxStateKey,
+        projectPath: process.sandboxProjectPath ?? process.projectPath,
+        projectId: process.projectId,
+        provider: process.provider,
+      });
+      wroteMetadata = true;
+    }
+    if (wroteMetadata) {
+      await service.flushPendingWrites();
+    }
+  }
+
+  private enqueueSessionConfiguration<T>(
+    sessionId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.sessionConfigurationTails.get(sessionId);
+    const result = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(operation);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.sessionConfigurationTails.set(sessionId, tail);
+    void tail.finally(() => {
+      if (this.sessionConfigurationTails.get(sessionId) === tail) {
+        this.sessionConfigurationTails.delete(sessionId);
+      }
+    });
+    return result;
+  }
+
+  private scheduleProcessLaunchSettingsPersistence(
+    process: Process,
+    setting: string,
+  ): void {
+    if (
+      process.isTerminated ||
+      this.getProcessForSession(process.sessionId) !== process
+    ) {
+      return;
+    }
+    const pending: PendingProcessLaunchSettings = {
+      processId: process.id,
+      value: this.processLaunchSettings(process),
+    };
+    this.pendingProcessLaunchSettings.set(process.sessionId, pending);
+    void this.enqueueSessionConfiguration(process.sessionId, async () => {
+      if (
+        this.pendingProcessLaunchSettings.get(process.sessionId) !== pending ||
+        process.isTerminated ||
+        this.getProcessForSession(process.sessionId) !== process
+      ) {
+        return;
+      }
+      await this.persistProcessLaunchSettings(process);
+    }).catch((error) => {
+      getLogger().warn(
+        {
+          event: "session_launch_settings_save_failed",
+          sessionId: process.sessionId,
+          processId: process.id,
+          setting,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to save applied session launch settings",
+      );
+    });
   }
 
   private async persistSuccessfulSessionBoundaryOrAbort(
@@ -1125,14 +1310,45 @@ export class Supervisor {
     resumeSessionId: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
-    options?: { preempt?: boolean },
+    options?: SessionReactivationOptions,
   ): Promise<Process> {
     this.assertSessionSandboxSettings(modelSettings);
+    const requestedOverrides = options?.requestedOverrides ?? {
+      ...(permissionMode !== undefined ? { permissionMode } : {}),
+      ...(modelSettings ? { modelSettings } : {}),
+    };
+
+    return this.enqueueSessionConfiguration(resumeSessionId, () =>
+      this.reactivateSessionSerialized(
+        projectPath,
+        resumeSessionId,
+        permissionMode,
+        modelSettings,
+        requestedOverrides,
+        options,
+      ),
+    );
+  }
+
+  private async reactivateSessionSerialized(
+    projectPath: string,
+    resumeSessionId: string,
+    permissionMode: PermissionMode | undefined,
+    modelSettings: ModelSettings | undefined,
+    requestedOverrides: SessionReactivationOverrides,
+    options: SessionReactivationOptions | undefined,
+  ): Promise<Process> {
     const existing = this.getProcessForSession(resumeSessionId);
     if (existing) {
       if (!existing.isTerminated) {
-        this.assertProcessSandboxMatches(existing, modelSettings);
-        return existing;
+        const reconciled = await this.reconcileReactivatedProcess(
+          existing,
+          projectPath,
+          modelSettings,
+          requestedOverrides,
+        );
+        await this.persistReactivationOverrides(reconciled, requestedOverrides);
+        return reconciled;
       }
       this.unregisterProcess(existing);
     }
@@ -1141,64 +1357,81 @@ export class Supervisor {
       this.sessionActivationInFlight.get(resumeSessionId);
     if (activeActivation) {
       const activated = await activeActivation;
-      this.assertProcessSandboxMatches(activated, modelSettings);
-      return activated;
+      const reconciled = await this.reconcileReactivatedProcess(
+        activated,
+        projectPath,
+        modelSettings,
+        requestedOverrides,
+      );
+      await this.persistReactivationOverrides(reconciled, requestedOverrides);
+      return reconciled;
     }
 
-    return this.startSessionActivation(resumeSessionId, async () => {
-      const activated = this.getProcessForSession(resumeSessionId);
-      if (activated) {
-        if (!activated.isTerminated) {
-          this.assertProcessSandboxMatches(activated, modelSettings);
-          return activated;
+    const activated = await this.startSessionActivation(
+      resumeSessionId,
+      async () => {
+        const activated = this.getProcessForSession(resumeSessionId);
+        if (activated) {
+          if (!activated.isTerminated) {
+            return this.reconcileReactivatedProcess(
+              activated,
+              projectPath,
+              modelSettings,
+              requestedOverrides,
+            );
+          }
+          this.unregisterProcess(activated);
         }
-        this.unregisterProcess(activated);
-      }
 
-      if (this.isAtCapacity()) {
-        const preemptable =
-          options?.preempt === false ? undefined : this.findPreemptableWorker();
-        if (preemptable) {
-          await this.preemptWorker(preemptable);
-        } else {
-          // A background away-recap passes preempt:false: it should never evict
-          // a live worker just to revive a different session for a recap.
-          throw new Error(
-            "Cannot reactivate: server is at worker capacity and no idle process can be preempted",
+        if (this.isAtCapacity()) {
+          const preemptable =
+            options?.preempt === false
+              ? undefined
+              : this.findPreemptableWorker();
+          if (preemptable) {
+            await this.preemptWorker(preemptable);
+          } else {
+            // A background away-recap passes preempt:false: it should never evict
+            // a live worker just to revive a different session for a recap.
+            throw new Error(
+              "Cannot reactivate: server is at worker capacity and no idle process can be preempted",
+            );
+          }
+        }
+
+        const projectId = encodeProjectId(projectPath);
+        const resolved = this.resolveColdLaunchSettings(
+          resumeSessionId,
+          permissionMode,
+          modelSettings,
+        );
+        const provider = this.resolveProvider(resolved.modelSettings);
+        if (provider) {
+          return this.createProviderSession(
+            projectPath,
+            projectId,
+            resolved.permissionMode,
+            resolved.modelSettings,
+            provider,
+            resumeSessionId,
           );
         }
-      }
-
-      const projectId = encodeProjectId(projectPath);
-      const resolved = this.resolveColdLaunchSettings(
-        resumeSessionId,
-        permissionMode,
-        modelSettings,
-      );
-      const provider = this.resolveProvider(resolved.modelSettings);
-      if (provider) {
-        return this.createProviderSession(
-          projectPath,
-          projectId,
-          resolved.permissionMode,
-          resolved.modelSettings,
-          provider,
-          resumeSessionId,
+        if (this.realSdk) {
+          return this.createRealSession(
+            projectPath,
+            projectId,
+            resolved.permissionMode,
+            resolved.modelSettings,
+            resumeSessionId,
+          );
+        }
+        throw new Error(
+          "reactivateSession requires provider or real SDK - legacy mock SDK not supported",
         );
-      }
-      if (this.realSdk) {
-        return this.createRealSession(
-          projectPath,
-          projectId,
-          resolved.permissionMode,
-          resolved.modelSettings,
-          resumeSessionId,
-        );
-      }
-      throw new Error(
-        "reactivateSession requires provider or real SDK - legacy mock SDK not supported",
-      );
-    });
+      },
+    );
+    await this.persistReactivationOverrides(activated, requestedOverrides);
+    return activated;
   }
 
   /**
@@ -3020,15 +3253,10 @@ export class Supervisor {
     return this.processes.get(processId);
   }
 
-  async reconfigureProcess(
-    processId: string,
+  private resolveProcessModelConfiguration(
+    process: Process,
     updates: ModelSettings,
-  ): Promise<Process | null> {
-    const process = this.getProcess(processId);
-    if (!process || process.isTerminated) {
-      return null;
-    }
-
+  ): ProcessModelConfiguration {
     const hasModelUpdate = Object.hasOwn(updates, "model");
     const hasRequestedModelUpdate = Object.hasOwn(updates, "requestedModel");
     const hasServiceTierUpdate = Object.hasOwn(updates, "serviceTier");
@@ -3057,23 +3285,17 @@ export class Supervisor {
     const modelChanged =
       (hasModelUpdate || hasRequestedModelUpdate) &&
       nextRequestedModel !== currentRequestedModel;
-    const serviceTierChanged = nextServiceTier !== process.serviceTier;
-    const thinkingChanged = !thinkingConfigsEqual(
-      process.thinking,
-      nextThinking,
-    );
-    const effortChanged = nextEffort !== process.effort;
+    const serviceTierChanged =
+      hasServiceTierUpdate && nextServiceTier !== process.serviceTier;
+    const thinkingChanged =
+      hasThinkingUpdate &&
+      !thinkingConfigsEqual(process.thinking, nextThinking);
+    const effortChanged =
+      hasEffortUpdate && nextEffort !== process.appliedEffort;
 
+    let dynamicChange: ProcessModelConfiguration["dynamicChange"] = null;
     if (
-      !modelChanged &&
-      !serviceTierChanged &&
-      !thinkingChanged &&
-      !effortChanged
-    ) {
-      return process;
-    }
-
-    if (
+      modelChanged &&
       !serviceTierChanged &&
       !thinkingChanged &&
       !effortChanged &&
@@ -3081,59 +3303,343 @@ export class Supervisor {
       (process.getProviderRuntimeStatus()?.kind !== "retrying" ||
         process.supportsInterrupt)
     ) {
-      const changed = await process.setModel(nextModel, nextRequestedModel);
-      return changed ? process : null;
-    }
-
-    if (
+      dynamicChange = "model";
+    } else if (
+      !modelChanged &&
+      !serviceTierChanged &&
+      thinkingChanged &&
+      !effortChanged &&
+      canApplyThinkingConfigDynamically(process.thinking, nextThinking) &&
+      process.supportsThinkingModeChange
+    ) {
+      dynamicChange = "thinking";
+    } else if (
       !modelChanged &&
       !serviceTierChanged &&
       !thinkingChanged &&
       effortChanged &&
       process.supportsEffortChange
     ) {
-      const changed = await process.setEffort(nextEffort);
-      return changed ? process : null;
+      dynamicChange = "effort";
     }
 
-    const effectiveProvider = this.resolveProvider({
-      providerName: process.provider,
-    });
+    return {
+      nextModel,
+      nextRequestedModel,
+      nextServiceTier,
+      nextThinking,
+      nextEffort,
+      modelChanged,
+      serviceTierChanged,
+      thinkingChanged,
+      effortChanged,
+      dynamicChange,
+    };
+  }
+
+  private modelConfigurationChanges(
+    configuration: ProcessModelConfiguration,
+  ): string[] {
+    return [
+      configuration.modelChanged ? "model" : undefined,
+      configuration.serviceTierChanged ? "service tier" : undefined,
+      configuration.thinkingChanged ? "thinking" : undefined,
+      configuration.effortChanged ? "effort" : undefined,
+    ].filter((change): change is string => change !== undefined);
+  }
+
+  private async applyDynamicModelConfiguration(
+    process: Process,
+    configuration: ProcessModelConfiguration,
+  ): Promise<boolean> {
+    switch (configuration.dynamicChange) {
+      case "model":
+        return process.setModel(
+          configuration.nextModel,
+          configuration.nextRequestedModel,
+        );
+      case "thinking": {
+        const tokens =
+          configuration.nextThinking?.type === "disabled" ? undefined : 1;
+        const changed = await process.setMaxThinkingTokens(tokens);
+        if (changed) {
+          process.updateThinkingConfig(
+            configuration.nextThinking,
+            configuration.nextEffort,
+          );
+        }
+        return changed;
+      }
+      case "effort":
+        if (process.state.type !== "idle") {
+          throw new SessionConfigurationConflictError(["effort"]);
+        }
+        return process.setEffort(configuration.nextEffort);
+      case null:
+        return false;
+    }
+  }
+
+  private restartSettingsForProcess(
+    process: Process,
+    configuration: ProcessModelConfiguration,
+    updates: ModelSettings,
+  ): ModelSettings {
+    return {
+      ...updates,
+      model: configuration.nextModel,
+      requestedModel: configuration.nextRequestedModel ?? undefined,
+      serviceTier: configuration.nextServiceTier,
+      thinking: configuration.nextThinking,
+      effort: configuration.nextEffort,
+      compactAtContextPercent:
+        updates.compactAtContextPercent ?? process.compactAtContextPercent,
+      compactAtContextWindow:
+        updates.compactAtContextWindow ?? process.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        updates.forceYaOrchestratedCompaction ??
+        process.forceYaOrchestratedCompaction,
+      claudeAutoCompactPercentOverride:
+        updates.claudeAutoCompactPercentOverride ??
+        process.launchCompactPercentOverride,
+      providerName: updates.providerName ?? process.provider,
+      executor: Object.hasOwn(updates, "executor")
+        ? updates.executor
+        : process.executor,
+      permissions: Object.hasOwn(updates, "permissions")
+        ? updates.permissions
+        : process.permissions,
+      recapMode: updates.recapMode ?? process.recapMode,
+      recapAfterSeconds: updates.recapAfterSeconds ?? process.recapAfterSeconds,
+      promptSuggestionMode:
+        updates.promptSuggestionMode ?? process.promptSuggestionMode,
+      helperSideModel: updates.helperSideModel ?? process.helperSideModel,
+      sandboxLevel:
+        updates.sandboxLevel ?? process.sandboxEnforcement?.effective,
+      sandboxStateKey: updates.sandboxStateKey ?? process.sandboxStateKey,
+    };
+  }
+
+  private async restartProcessWithConfiguration(
+    process: Process,
+    projectPath: string,
+    permissionMode: PermissionMode,
+    settings: ModelSettings,
+  ): Promise<Process | null> {
+    const effectiveProvider = this.resolveProvider(settings);
     if (!effectiveProvider) {
       return null;
     }
-
-    const mergedSettings: ModelSettings = {
-      model: nextModel,
-      requestedModel: nextRequestedModel ?? undefined,
-      serviceTier: nextServiceTier,
-      thinking: nextThinking,
-      effort: nextEffort,
-      compactAtContextPercent: process.compactAtContextPercent,
-      compactAtContextWindow: process.compactAtContextWindow,
-      forceYaOrchestratedCompaction: process.forceYaOrchestratedCompaction,
-      claudeAutoCompactPercentOverride: process.launchCompactPercentOverride,
-      providerName: process.provider,
-      executor: process.executor,
-      recapMode: process.recapMode,
-      recapAfterSeconds: process.recapAfterSeconds,
-      promptSuggestionMode: process.promptSuggestionMode,
-      helperSideModel: process.helperSideModel,
-      sandboxLevel: process.sandboxEnforcement?.effective,
-      sandboxStateKey: process.sandboxStateKey,
-    };
+    this.assertSessionSandboxSettings(settings);
 
     await process.abort();
     this.unregisterProcess(process);
 
-    return await this.createProviderSession(
-      process.projectPath,
+    return this.createProviderSession(
+      projectPath,
       process.projectId,
-      process.permissionMode,
-      mergedSettings,
+      permissionMode,
+      settings,
       effectiveProvider,
       process.sessionId,
     );
+  }
+
+  private async reconcileReactivatedProcess(
+    process: Process,
+    projectPath: string,
+    coldSettings: ModelSettings | undefined,
+    requestedOverrides: SessionReactivationOverrides,
+  ): Promise<Process> {
+    const updates = requestedOverrides.modelSettings ?? {};
+    const configuration = this.resolveProcessModelConfiguration(
+      process,
+      updates,
+    );
+    const desiredPermissionMode =
+      requestedOverrides.permissionMode ?? process.permissionMode;
+    const desiredProvider = Object.hasOwn(updates, "providerName")
+      ? (updates.providerName ?? process.provider)
+      : process.provider;
+    const desiredExecutor = Object.hasOwn(updates, "executor")
+      ? updates.executor
+      : process.executor;
+    const desiredPermissions = Object.hasOwn(updates, "permissions")
+      ? updates.permissions
+      : process.permissions;
+    const desiredSandboxLevel = Object.hasOwn(updates, "sandboxLevel")
+      ? (updates.sandboxLevel ?? "none")
+      : (process.sandboxEnforcement?.effective ?? "none");
+    const desiredSandboxStateKey = Object.hasOwn(updates, "sandboxStateKey")
+      ? updates.sandboxStateKey
+      : process.sandboxStateKey;
+    const desiredPromptSuggestionMode = Object.hasOwn(
+      updates,
+      "promptSuggestionMode",
+    )
+      ? (updates.promptSuggestionMode ?? "off")
+      : process.promptSuggestionMode;
+    const desiredRecapMode = Object.hasOwn(updates, "recapMode")
+      ? (updates.recapMode ?? "off")
+      : process.recapMode;
+    const desiredRecapAfterSeconds = Object.hasOwn(updates, "recapAfterSeconds")
+      ? (updates.recapAfterSeconds ?? DEFAULT_RECAP_AFTER_SECONDS)
+      : process.recapAfterSeconds;
+    const desiredHelperSideModel = Object.hasOwn(updates, "helperSideModel")
+      ? updates.helperSideModel || HELPER_SIDE_MODEL_CHEAPEST
+      : process.helperSideModel;
+
+    const sandboxError = getSessionSandboxSettingsError(
+      desiredSandboxLevel,
+      desiredRecapMode,
+    );
+    if (sandboxError) {
+      throw new Error(sandboxError);
+    }
+
+    const restartChanges = [
+      desiredProvider !== process.provider ? "provider" : undefined,
+      desiredExecutor !== process.executor ? "executor" : undefined,
+      !permissionRulesEqual(desiredPermissions, process.permissions)
+        ? "permission rules"
+        : undefined,
+      desiredSandboxLevel !==
+        (process.sandboxEnforcement?.effective ?? "none") ||
+      (desiredSandboxLevel === "project-write" &&
+        desiredSandboxStateKey !== undefined &&
+        desiredSandboxStateKey !== process.sandboxStateKey)
+        ? "sandbox"
+        : undefined,
+      desiredPromptSuggestionMode !== process.promptSuggestionMode
+        ? "prompt suggestions"
+        : undefined,
+      configuration.dynamicChange === null
+        ? this.modelConfigurationChanges(configuration)
+        : [],
+    ]
+      .flat()
+      .filter((change): change is string => change !== undefined);
+
+    if (restartChanges.length > 0) {
+      if (process.state.type !== "idle") {
+        throw new SessionConfigurationConflictError(restartChanges);
+      }
+      const restartSettings = this.restartSettingsForProcess(
+        process,
+        configuration,
+        {
+          ...coldSettings,
+          ...updates,
+          providerName: desiredProvider,
+          executor: desiredExecutor,
+          permissions: desiredPermissions,
+          promptSuggestionMode: desiredPromptSuggestionMode,
+          recapMode: desiredRecapMode,
+          recapAfterSeconds: desiredRecapAfterSeconds,
+          helperSideModel: desiredHelperSideModel,
+          sandboxLevel: desiredSandboxLevel,
+          sandboxStateKey: desiredSandboxStateKey,
+        },
+      );
+      const replacement = await this.restartProcessWithConfiguration(
+        process,
+        projectPath,
+        desiredPermissionMode,
+        restartSettings,
+      );
+      if (!replacement) {
+        throw new Error(
+          "Provider does not support the requested configuration",
+        );
+      }
+      return replacement;
+    }
+
+    const modelChanges = this.modelConfigurationChanges(configuration);
+    if (modelChanges.length > 0) {
+      const changed = await this.applyDynamicModelConfiguration(
+        process,
+        configuration,
+      );
+      if (!changed) {
+        throw new Error("Provider did not apply the requested configuration");
+      }
+    }
+
+    const permissionChanged = desiredPermissionMode !== process.permissionMode;
+    if (permissionChanged) {
+      process.setPermissionMode(desiredPermissionMode);
+    }
+    const recapChanged =
+      desiredRecapMode !== process.recapMode ||
+      desiredRecapAfterSeconds !== process.recapAfterSeconds ||
+      desiredHelperSideModel !== process.helperSideModel;
+    if (recapChanged) {
+      process.setRecapConfig({
+        recapMode: desiredRecapMode,
+        recapAfterSeconds: desiredRecapAfterSeconds,
+        helperSideModel: desiredHelperSideModel,
+      });
+    }
+
+    if (
+      modelChanges.length > 0 ||
+      permissionChanged ||
+      this.pendingProcessLaunchSettings.get(process.sessionId)?.processId ===
+        process.id
+    ) {
+      await this.persistProcessLaunchSettings(process);
+    }
+    return process;
+  }
+
+  async reconfigureProcess(
+    processId: string,
+    updates: ModelSettings,
+  ): Promise<Process | null> {
+    const process = this.getProcess(processId);
+    if (!process || process.isTerminated) {
+      return null;
+    }
+
+    return this.enqueueSessionConfiguration(process.sessionId, async () => {
+      const current = this.getProcess(processId);
+      if (!current || current.isTerminated) {
+        return null;
+      }
+      const configuration = this.resolveProcessModelConfiguration(
+        current,
+        updates,
+      );
+      const changes = this.modelConfigurationChanges(configuration);
+      if (changes.length === 0) {
+        await this.flushPendingProcessLaunchSettings(current);
+        return current;
+      }
+
+      if (configuration.dynamicChange !== null) {
+        const changed = await this.applyDynamicModelConfiguration(
+          current,
+          configuration,
+        );
+        if (!changed) {
+          return null;
+        }
+        await this.persistProcessLaunchSettings(current);
+        return current;
+      }
+
+      if (current.state.type !== "idle") {
+        throw new SessionConfigurationConflictError(changes);
+      }
+      const replacement = await this.restartProcessWithConfiguration(
+        current,
+        current.projectPath,
+        current.permissionMode,
+        this.restartSettingsForProcess(current, configuration, updates),
+      );
+      return replacement;
+    });
   }
 
   configureProcessRecaps(
@@ -4407,19 +4913,10 @@ export class Supervisor {
         event.type === "mode-change" ||
         event.type === "configuration-applied"
       ) {
-        void this.persistProcessLaunchSettings(process).catch((error) => {
-          getLogger().warn(
-            {
-              event: "session_launch_settings_save_failed",
-              sessionId: process.sessionId,
-              processId: process.id,
-              setting:
-                event.type === "mode-change" ? "permissionMode" : event.setting,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Failed to save applied session launch settings",
-          );
-        });
+        this.scheduleProcessLaunchSettingsPersistence(
+          process,
+          event.type === "mode-change" ? "permissionMode" : event.setting,
+        );
       } else if (event.type === "idle-reap") {
         this.emitSessionAborted(process.sessionId, process.projectId);
       } else if (event.type === "complete") {
@@ -4765,6 +5262,12 @@ export class Supervisor {
     this.observedProcessIds.delete(process.id);
     this.compactThresholdCheckedAssistantVersion.delete(process.id);
     this.cacheMissBillingMonitor.forgetProcess(process.id);
+    if (
+      this.pendingProcessLaunchSettings.get(process.sessionId)?.processId ===
+      process.id
+    ) {
+      this.pendingProcessLaunchSettings.delete(process.sessionId);
+    }
     this.pendingForkedRecapRequests.delete(process.id);
     this.forkedRecapInFlight.get(process.id)?.abort();
     this.forkedRecapInFlight.delete(process.id);

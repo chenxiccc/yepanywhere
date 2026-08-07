@@ -18,7 +18,10 @@ import { getProvider } from "../sdk/providers/index.js";
 import type { ResumeExemptionResult } from "../sessions/resume-exemption.js";
 import type { ISessionReader } from "../sessions/types.js";
 import { getSessionSandboxSettingsError } from "../session-sandbox.js";
-import type { Supervisor } from "../supervisor/Supervisor.js";
+import {
+  SessionConfigurationConflictError,
+  type Supervisor,
+} from "../supervisor/Supervisor.js";
 import type { ProcessInfo, Project } from "../supervisor/types.js";
 
 export interface ProcessesDeps {
@@ -489,10 +492,18 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       }
     }
 
-    const updatedProcess = await deps.supervisor.reconfigureProcess(
-      processId,
-      updates,
-    );
+    let updatedProcess: Awaited<ReturnType<Supervisor["reconfigureProcess"]>>;
+    try {
+      updatedProcess = await deps.supervisor.reconfigureProcess(
+        processId,
+        updates,
+      );
+    } catch (error) {
+      if (error instanceof SessionConfigurationConflictError) {
+        return c.json({ error: error.message }, 409);
+      }
+      throw error;
+    }
 
     if (!updatedProcess) {
       return c.json({ error: "Process reconfiguration failed" }, 400);
@@ -515,10 +526,18 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     if (!process) {
       return c.json({ error: "Process not found" }, 404);
     }
-    const updatedProcess = await deps.supervisor.reconfigureProcess(processId, {
-      model: body.model && body.model !== "default" ? body.model : undefined,
-      requestedModel: body.model,
-    });
+    let updatedProcess: Awaited<ReturnType<Supervisor["reconfigureProcess"]>>;
+    try {
+      updatedProcess = await deps.supervisor.reconfigureProcess(processId, {
+        model: body.model && body.model !== "default" ? body.model : undefined,
+        requestedModel: body.model,
+      });
+    } catch (error) {
+      if (error instanceof SessionConfigurationConflictError) {
+        return c.json({ error: error.message }, 409);
+      }
+      throw error;
+    }
     if (!updatedProcess) {
       return c.json({ error: "Model switching failed" }, 400);
     }

@@ -1,3 +1,4 @@
+import { DEFAULT_RECAP_AFTER_SECONDS } from "@yep-anywhere/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageQueue } from "../src/sdk/messageQueue.js";
 import type {
@@ -11,6 +12,7 @@ import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
 import { createControllableIterator, waitFor } from "./process.test-support.js";
 import {
   type ResumeCompactionError,
+  SessionConfigurationConflictError,
   Supervisor,
 } from "../src/supervisor/Supervisor.js";
 import {
@@ -22,11 +24,25 @@ import { type BusEvent, EventBus } from "../src/watcher/EventBus.js";
 function createLaunchSettingsMetadata(
   initial?: EffectiveSessionLaunchSettings,
   legacyRequestedModel?: string,
-): {
-  service: SessionMetadataService;
-  current: () => EffectiveSessionLaunchSettings | undefined;
-} {
+) {
   let current = initial;
+  const writes = {
+    setProvider: vi.fn<SessionMetadataService["setProvider"]>(
+      async () => undefined,
+    ),
+    setExecutor: vi.fn<SessionMetadataService["setExecutor"]>(
+      async () => undefined,
+    ),
+    updateMetadata: vi.fn<SessionMetadataService["updateMetadata"]>(
+      async () => undefined,
+    ),
+    setSessionSandbox: vi.fn<SessionMetadataService["setSessionSandbox"]>(
+      async () => undefined,
+    ),
+    flushPendingWrites: vi.fn<SessionMetadataService["flushPendingWrites"]>(
+      async () => undefined,
+    ),
+  };
   const service = {
     getEffectiveLaunchSettings: () => current,
     getRequestedModel: () =>
@@ -50,8 +66,9 @@ function createLaunchSettingsMetadata(
       }
       return current as EffectiveSessionLaunchSettings;
     },
+    ...writes,
   } as unknown as SessionMetadataService;
-  return { service, current: () => current };
+  return { service, current: () => current, writes };
 }
 
 function testProvider(
@@ -1106,7 +1123,7 @@ describe("Supervisor", () => {
       await supervisorWithProvider.abortProcess(started.id);
     });
 
-    it("applies an effort change without interrupting an active turn", async () => {
+    it("rejects an effort change that cannot settle during an active turn", async () => {
       let aborted = false;
       let completeTurn = () => {};
       const turnCompleted = new Promise<void>((resolve) => {
@@ -1179,28 +1196,25 @@ describe("Supervisor", () => {
         expect(process.state.type).toBe("in-turn");
       });
 
-      const updated = await supervisorWithProvider.reconfigureProcess(
-        process.id,
-        {
-          thinking: { type: "adaptive", display: "summarized" },
-          effort: "medium",
-        },
-      );
-
       try {
-        expect(updated).toBe(process);
+        await expect(
+          supervisorWithProvider.reconfigureProcess(process.id, {
+            thinking: { type: "adaptive", display: "summarized" },
+            effort: "medium",
+          }),
+        ).rejects.toBeInstanceOf(SessionConfigurationConflictError);
         expect(startSession).toHaveBeenCalledTimes(1);
         expect(aborted).toBe(false);
-        expect(process.effort).toBe("medium");
+        expect(process.effort).toBe("low");
         expect(setEffort).not.toHaveBeenCalled();
 
         completeTurn();
         await vi.waitFor(() => {
           expect(process.state.type).toBe("idle");
         });
-        expect(setEffort).toHaveBeenCalledWith("medium");
+        expect(setEffort).not.toHaveBeenCalled();
       } finally {
-        await supervisorWithProvider.abortProcess(updated?.id ?? process.id);
+        await supervisorWithProvider.abortProcess(process.id);
       }
     });
 
@@ -2011,6 +2025,504 @@ describe("Supervisor", () => {
       });
 
       await supervisor.abortProcess(process.id);
+    });
+
+    it("applies a later override after an in-flight activation settles", async () => {
+      let releaseStart!: () => void;
+      const startGate = new Promise<void>((resolve) => {
+        releaseStart = resolve;
+      });
+      const setModel = vi.fn(async () => undefined);
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          await startGate;
+          const queue = new MessageQueue();
+          let aborted = false;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const message of queue) {
+              if (aborted) return;
+              void message;
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            setModel,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+          };
+        },
+      );
+      const metadata = createLaunchSettingsMetadata();
+      const serialized = new Supervisor({
+        provider: testProvider(startSession),
+        sessionMetadataService: metadata.service,
+        idleTimeoutMs: 60_000,
+      });
+
+      const first = serialized.reactivateSession(
+        "/tmp/test",
+        "serialized-reactivation",
+        "default",
+        {
+          providerName: "claude",
+          model: "sonnet",
+          requestedModel: "sonnet",
+        },
+      );
+      await vi.waitFor(() => expect(startSession).toHaveBeenCalledTimes(1));
+      const second = serialized.reactivateSession(
+        "/tmp/test",
+        "serialized-reactivation",
+        "plan",
+        {
+          providerName: "claude",
+          model: "opus",
+          requestedModel: "opus",
+          recapAfterSeconds: 45,
+        },
+        {
+          requestedOverrides: {
+            permissionMode: "plan",
+            modelSettings: {
+              model: "opus",
+              requestedModel: "opus",
+              providerName: "claude",
+              executor: undefined,
+              recapMode: "fork",
+              recapAfterSeconds: 45,
+              promptSuggestionMode: "off",
+              sandboxLevel: "none",
+            },
+          },
+        },
+      );
+      releaseStart();
+
+      const [activated, reconciled] = await Promise.all([first, second]);
+      expect(reconciled).toBe(activated);
+      expect(startSession).toHaveBeenCalledTimes(1);
+      expect(setModel).toHaveBeenCalledWith("opus");
+      expect(reconciled.permissionMode).toBe("plan");
+      expect(reconciled.recapMode).toBe("fork");
+      expect(reconciled.recapAfterSeconds).toBe(45);
+      expect(reconciled.promptSuggestionMode).toBe("off");
+      expect(metadata.current()).toMatchObject({
+        revision: 2,
+        permissionMode: "plan",
+        requestedModel: "opus",
+      });
+      expect(metadata.writes.setProvider).toHaveBeenLastCalledWith(
+        "serialized-reactivation",
+        "claude",
+      );
+      expect(metadata.writes.setExecutor).toHaveBeenCalledWith(
+        "serialized-reactivation",
+        undefined,
+      );
+      expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
+        "serialized-reactivation",
+        {
+          recapMode: "fork",
+          recapAfterSeconds: 45,
+          promptSuggestionMode: "off",
+        },
+      );
+      expect(metadata.writes.setSessionSandbox).toHaveBeenCalledWith(
+        "serialized-reactivation",
+        expect.objectContaining({
+          level: "none",
+          projectPath: "/tmp/test",
+          provider: "claude",
+        }),
+      );
+      expect(metadata.writes.flushPendingWrites).toHaveBeenCalled();
+
+      const clearOverrides = () =>
+        serialized.reactivateSession(
+          "/tmp/test",
+          "serialized-reactivation",
+          undefined,
+          { providerName: "claude" },
+          {
+            requestedOverrides: {
+              modelSettings: {
+                recapMode: undefined,
+                recapAfterSeconds: undefined,
+                promptSuggestionMode: undefined,
+              },
+            },
+          },
+        );
+      metadata.writes.flushPendingWrites.mockRejectedValueOnce(
+        new Error("metadata unavailable"),
+      );
+      await expect(clearOverrides()).rejects.toThrow("metadata unavailable");
+      expect(reconciled.recapMode).toBe("off");
+      expect(setModel).toHaveBeenCalledTimes(1);
+
+      const cleared = await clearOverrides();
+      expect(cleared).toBe(reconciled);
+      expect(cleared.recapMode).toBe("off");
+      expect(cleared.recapAfterSeconds).toBe(DEFAULT_RECAP_AFTER_SECONDS);
+      expect(cleared.promptSuggestionMode).toBe("off");
+      expect(metadata.writes.updateMetadata).toHaveBeenLastCalledWith(
+        "serialized-reactivation",
+        {
+          recapMode: "off",
+          recapAfterSeconds: DEFAULT_RECAP_AFTER_SECONDS,
+          promptSuggestionMode: "off",
+        },
+      );
+
+      await serialized.abortProcess(reconciled.id);
+    });
+
+    it("serializes distinct reactivation overrides in request order", async () => {
+      let releaseOpus!: () => void;
+      const opusGate = new Promise<void>((resolve) => {
+        releaseOpus = resolve;
+      });
+      let releasePersistence!: () => void;
+      const persistenceGate = new Promise<void>((resolve) => {
+        releasePersistence = resolve;
+      });
+      const setModel = vi.fn(async (model?: string) => {
+        if (model === "opus") {
+          await opusGate;
+        }
+      });
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const message of queue) {
+              if (aborted) return;
+              void message;
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            setModel,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+          };
+        },
+      );
+      const metadata = createLaunchSettingsMetadata();
+      let pendingRecapAfterSeconds: number | null | undefined;
+      metadata.writes.updateMetadata.mockImplementation(
+        async (_sessionId, updates) => {
+          pendingRecapAfterSeconds = updates.recapAfterSeconds;
+        },
+      );
+      metadata.writes.flushPendingWrites.mockImplementation(async () => {
+        if (pendingRecapAfterSeconds === 10) {
+          await persistenceGate;
+        }
+      });
+      const serialized = new Supervisor({
+        provider: testProvider(startSession),
+        sessionMetadataService: metadata.service,
+        idleTimeoutMs: 60_000,
+      });
+      const process = await serialized.reactivateSession(
+        "/tmp/test",
+        "ordered-reactivation",
+        undefined,
+        {
+          providerName: "claude",
+          model: "sonnet",
+          requestedModel: "sonnet",
+        },
+      );
+      metadata.writes.updateMetadata.mockClear();
+      metadata.writes.flushPendingWrites.mockClear();
+
+      const opus = serialized.reactivateSession(
+        "/tmp/test",
+        "ordered-reactivation",
+        undefined,
+        {
+          providerName: "claude",
+          model: "opus",
+          requestedModel: "opus",
+          recapAfterSeconds: 10,
+        },
+        {
+          requestedOverrides: {
+            modelSettings: {
+              model: "opus",
+              requestedModel: "opus",
+              recapAfterSeconds: 10,
+            },
+          },
+        },
+      );
+      await vi.waitFor(() => expect(setModel).toHaveBeenCalledWith("opus"));
+      const haiku = serialized.reactivateSession(
+        "/tmp/test",
+        "ordered-reactivation",
+        undefined,
+        {
+          providerName: "claude",
+          model: "haiku",
+          requestedModel: "haiku",
+          recapAfterSeconds: 20,
+        },
+        {
+          requestedOverrides: {
+            modelSettings: {
+              model: "haiku",
+              requestedModel: "haiku",
+              recapAfterSeconds: 20,
+            },
+          },
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(setModel).toHaveBeenCalledTimes(1);
+      releaseOpus();
+      await vi.waitFor(() =>
+        expect(metadata.writes.flushPendingWrites).toHaveBeenCalledTimes(1),
+      );
+      expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
+        "ordered-reactivation",
+        { recapAfterSeconds: 10 },
+      );
+      expect(setModel).toHaveBeenCalledTimes(1);
+      releasePersistence();
+
+      await Promise.all([opus, haiku]);
+      expect(setModel.mock.calls.map(([model]) => model)).toEqual([
+        "opus",
+        "haiku",
+      ]);
+      expect(
+        metadata.writes.updateMetadata.mock.calls.map(
+          ([, updates]) => updates.recapAfterSeconds,
+        ),
+      ).toEqual([10, 20]);
+      expect(process.requestedModel).toBe("haiku");
+      expect(process.recapAfterSeconds).toBe(20);
+
+      await serialized.abortProcess(process.id);
+    });
+
+    it("applies supported active overrides and rejects restart requirements", async () => {
+      const setModel = vi.fn(async () => undefined);
+      let aborted = false;
+      let activeQueue: MessageQueue | undefined;
+      const abort = vi.fn(() => {
+        aborted = true;
+        activeQueue?.push({ text: "__abort__" });
+      });
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          activeQueue = queue;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const message of queue) {
+              if (aborted) return;
+              void message;
+            }
+          }
+          return { iterator: iterator(), queue, setModel, abort };
+        },
+      );
+      const serialized = new Supervisor({
+        provider: testProvider(startSession),
+        idleTimeoutMs: 60_000,
+      });
+      const process = await serialized.reactivateSession(
+        "/tmp/test",
+        "active-reactivation",
+        undefined,
+        {
+          providerName: "claude",
+          model: "sonnet",
+          requestedModel: "sonnet",
+        },
+      );
+      expect(process.queueMessage({ text: "active turn" }).success).toBe(true);
+      expect(process.state.type).toBe("in-turn");
+
+      await expect(
+        serialized.reactivateSession(
+          "/tmp/test",
+          "active-reactivation",
+          undefined,
+          { providerName: "claude", model: "opus", requestedModel: "opus" },
+          {
+            requestedOverrides: {
+              modelSettings: { model: "opus", requestedModel: "opus" },
+            },
+          },
+        ),
+      ).resolves.toBe(process);
+      expect(setModel).toHaveBeenCalledWith("opus");
+
+      await expect(
+        serialized.reactivateSession(
+          "/tmp/test",
+          "active-reactivation",
+          undefined,
+          { providerName: "claude", serviceTier: "priority" },
+          {
+            requestedOverrides: {
+              modelSettings: { serviceTier: "priority" },
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        changes: ["service tier"],
+      });
+      expect(abort).not.toHaveBeenCalled();
+      expect(serialized.getProcessForSession("active-reactivation")).toBe(
+        process,
+      );
+
+      await serialized.abortProcess(process.id);
+    });
+
+    it("reports persistence failure and later reconciles the applied state", async () => {
+      const setModel = vi.fn(async () => undefined);
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const message of queue) {
+              if (aborted) return;
+              void message;
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            setModel,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+          };
+        },
+      );
+      let durable: EffectiveSessionLaunchSettings | undefined;
+      let persistenceAvailable = true;
+      const recordEffectiveLaunchSettings = vi.fn(
+        async (
+          _sessionId: string,
+          value: EffectiveSessionLaunchSettingsValue,
+        ) => {
+          if (!persistenceAvailable) {
+            throw new Error("metadata unavailable");
+          }
+          durable = {
+            schemaVersion: 1,
+            revision: (durable?.revision ?? 0) + 1,
+            ...value,
+          };
+          return durable;
+        },
+      );
+      const metadata = {
+        getEffectiveLaunchSettings: () => durable,
+        getRequestedModel: () => durable?.requestedModel ?? undefined,
+        recordEffectiveLaunchSettings,
+      } as unknown as SessionMetadataService;
+      const serialized = new Supervisor({
+        provider: testProvider(startSession),
+        sessionMetadataService: metadata,
+        idleTimeoutMs: 60_000,
+      });
+      const process = await serialized.reactivateSession(
+        "/tmp/test",
+        "durability-reactivation",
+        undefined,
+        {
+          providerName: "claude",
+          model: "sonnet",
+          requestedModel: "sonnet",
+        },
+        { requestedOverrides: {} },
+      );
+      persistenceAvailable = false;
+
+      await expect(
+        serialized.reconfigureProcess(process.id, {
+          model: "opus",
+          requestedModel: "opus",
+        }),
+      ).rejects.toThrow("metadata unavailable");
+      expect(process.requestedModel).toBe("opus");
+      expect(durable?.requestedModel).toBe("sonnet");
+      expect(setModel).toHaveBeenCalledTimes(1);
+
+      persistenceAvailable = true;
+      await expect(
+        serialized.reconfigureProcess(process.id, {
+          model: "opus",
+          requestedModel: "opus",
+        }),
+      ).resolves.toBe(process);
+      expect(durable?.requestedModel).toBe("opus");
+      expect(setModel).toHaveBeenCalledTimes(1);
+      expect(recordEffectiveLaunchSettings.mock.calls.length).toBeGreaterThan(
+        2,
+      );
+
+      persistenceAvailable = false;
+      await expect(
+        serialized.reconfigureProcess(process.id, {
+          model: "haiku",
+          requestedModel: "haiku",
+        }),
+      ).rejects.toThrow("metadata unavailable");
+      const configurationState = serialized as unknown as {
+        pendingProcessLaunchSettings: Map<string, unknown>;
+      };
+      expect(
+        configurationState.pendingProcessLaunchSettings.has(process.sessionId),
+      ).toBe(true);
+
+      await serialized.abortProcess(process.id);
+      expect(
+        configurationState.pendingProcessLaunchSettings.has(process.sessionId),
+      ).toBe(false);
+
+      process.setPermissionMode("plan");
+      await Promise.resolve();
+      expect(
+        configurationState.pendingProcessLaunchSettings.has(process.sessionId),
+      ).toBe(false);
     });
 
     it("refuses to preempt a live worker when preempt:false", async () => {

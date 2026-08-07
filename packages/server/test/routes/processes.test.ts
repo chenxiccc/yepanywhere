@@ -7,7 +7,10 @@ import { createApp } from "../../src/app.js";
 import { createProcessesRoutes } from "../../src/routes/processes.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
-import type { Supervisor } from "../../src/supervisor/Supervisor.js";
+import {
+  SessionConfigurationConflictError,
+  type Supervisor,
+} from "../../src/supervisor/Supervisor.js";
 import type {
   ProcessInfo,
   Project,
@@ -58,6 +61,56 @@ function createSummary(): SessionSummary {
 }
 
 describe("Processes Routes", () => {
+  it.each(["config", "model"])(
+    "returns conflict when %s cannot change an active process",
+    async (route) => {
+      const reconfigureProcess = vi.fn(async () => {
+        throw new SessionConfigurationConflictError(["service tier"]);
+      });
+      const routes = createProcessesRoutes({
+        supervisor: {
+          getProcess: vi.fn(() => ({})),
+          reconfigureProcess,
+        } as unknown as Supervisor,
+        scanner: {} as ProjectScanner,
+        readerFactory: vi.fn(),
+      });
+
+      const response = await routes.request(`/proc-1/${route}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "opus" }),
+      });
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "Cannot apply launch-scoped configuration while the session is active: service tier",
+      });
+    },
+  );
+
+  it("does not acknowledge configuration whose persistence fails", async () => {
+    const routes = createProcessesRoutes({
+      supervisor: {
+        getProcess: vi.fn(() => ({})),
+        reconfigureProcess: vi.fn(async () => {
+          throw new Error("metadata unavailable");
+        }),
+      } as unknown as Supervisor,
+      scanner: {} as ProjectScanner,
+      readerFactory: vi.fn(),
+    });
+
+    const response = await routes.request("/proc-1/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "opus" }),
+    });
+
+    expect(response.status).toBe(500);
+  });
+
   it("returns PID shutdown verification for an aborted process", async () => {
     const abortProcessWithVerification = vi.fn(async () => ({
       processId: "proc-1",

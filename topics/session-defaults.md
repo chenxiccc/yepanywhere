@@ -166,7 +166,12 @@ settings lifetime: every replacement process for an existing session starts
 from that record. A replacement process resolves
 an explicit validated request first, then this durable record, then applicable
 legacy model metadata, and finally the conservative server/provider default.
-Legacy absence never grants Bypass.
+Legacy absence never grants Bypass. A live configuration response is successful
+only after the provider applies the selection and the metadata writer flushes a
+snapshot containing it. Explicit reactivation metadata changes for provider,
+executor, recap, prompt suggestion, and sandbox selection flush in that same
+serialized transaction. If a write fails, YA retains the actual live state as
+pending and retries it without repeating an already-applied provider change.
 
 Browser-local permission/model state remains useful for immediate stopped-row
 presentation and compatibility with older servers, while global thinking and

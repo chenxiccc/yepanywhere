@@ -17,6 +17,12 @@
 export interface CoalescingSaver {
   save(): Promise<void>;
   /**
+   * Marks the current state for a write and resolves only after that write's
+   * drain reaches quiescence. Unlike save(), a call that joins an active writer
+   * does not return before the coalesced follow-up has run.
+   */
+  flush(): Promise<void>;
+  /**
    * Resolves once no write is running or marked — quiescence, not success:
    * write failures are swallowed here (they surface to save()'s callers).
    */
@@ -63,6 +69,25 @@ export function createCoalescingSaver(
 
   return {
     save,
+    async flush(): Promise<void> {
+      let failure: unknown;
+      let failed = false;
+      do {
+        let current = draining;
+        if (current) {
+          pending = true;
+        } else {
+          current = save();
+        }
+        try {
+          await current;
+        } catch (error) {
+          failure = error;
+          failed = true;
+        }
+      } while (draining);
+      if (failed) throw failure;
+    },
     async idle(): Promise<void> {
       while (draining) {
         await draining.catch(() => {});

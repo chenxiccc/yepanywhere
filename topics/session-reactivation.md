@@ -60,8 +60,11 @@ resume:
 ## As built
 
 - **`Supervisor.reactivateSession(projectPath, resumeSessionId, mode?, settings?)`**
-  — idempotent (returns the existing live process if already owned); preempts an
-  idle worker at capacity, else throws; otherwise calls
+  — serializes activation and configuration by session id. A request that joins
+  an existing or in-flight process reconciles its explicit overrides after
+  earlier requests; live-supported changes apply in place, while a launch-only
+  change returns conflict during an active turn. A cold request preempts an idle
+  worker at capacity, else throws, then calls
   `createProviderSession`/`createRealSession` with the `resumeSessionId` and no
   message.
 - **Message-less lifecycle:** both create-only factories construct the process
@@ -73,12 +76,15 @@ resume:
   reactivation observes `verified-idle`, waits the entry's patience window, and
   then promotes it. It cannot be blocked forever by a synthetic `in-turn`
   state when no provider turn was actually submitted.
-- **`POST /api/projects/:projectId/sessions/:sessionId/reactivate`** — resolves
-  provider/executor from session metadata and resolves mode, exact requested
-  model, service tier, thinking, and effort through the same durable launch
-  settings used by every cold `Supervisor` resume. It returns the new process
-  identity and mode; the established process-info request/stream supplies the
-  full authoritative live configuration without adding a new wire dependency.
+- **`POST /api/projects/:projectId/sessions/:sessionId/reactivate`** — validates
+  the complete optional body before project or process lookup, then separates
+  exact request overrides from cold-launch fallbacks. Explicit mode, model,
+  service tier, thinking, provider, executor, permission rules, recap, prompt suggestion, and sandbox fields reconcile even when a process already exists;
+  explicit empty helper settings reset to their normal process defaults. The
+  browser-only **Show thinking** preference remains outside process launch
+  state. The route returns the process identity and mode; the established
+  process-info request/stream supplies authoritative live configuration without
+  adding a new wire dependency.
 - **Client:** `api.reactivateSession`; `ModelSwitchModal`'s "No active process"
   note becomes an Activate button (`onActivate`); `SessionPage` calls reactivate
   and flips `status` to `{ owner: "self", processId }`, after which the existing
@@ -86,8 +92,14 @@ resume:
 - **Durable settings:** `SessionMetadata.effectiveLaunchSettings` is a complete,
   versioned snapshot of the last successfully applied process launch policy.
   Resolution is explicit request, durable snapshot, legacy requested-model
-  metadata, then conservative server/provider defaults. Identical reattach
-  snapshots do not advance the session-local revision.
+  metadata, then conservative server/provider defaults. Configuration success
+  waits for provider application and for the coalesced metadata writer to flush
+  the snapshot containing that state. Explicit provider, executor, recap,
+  prompt suggestion, and sandbox metadata uses the same per-session transaction
+  and receives a final durability flush before the response. A failed write
+  leaves the live state in place and pending for retry; it is not reported as
+  rolled back or successful. Identical reattach snapshots do not advance the
+  session-local revision, but do retry a prior failed write.
 - Coverage: `supervisor.test.ts` asserts message-less resume, immediate idle
   liveness, ownership, idempotency, first-message wake, ordinary idle reaping,
   and recovered patient-message promotion.

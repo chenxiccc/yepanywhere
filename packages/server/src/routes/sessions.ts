@@ -99,9 +99,13 @@ import type {
   ModelSettings,
   QueueFullResponse,
   ResumeMode,
+  SessionReactivationOverrides,
   Supervisor,
 } from "../supervisor/Supervisor.js";
-import { ResumeCompactionError } from "../supervisor/Supervisor.js";
+import {
+  ResumeCompactionError,
+  SessionConfigurationConflictError,
+} from "../supervisor/Supervisor.js";
 import type { QueuedResponse } from "../supervisor/WorkerQueue.js";
 import type {
   ContentBlock,
@@ -417,9 +421,9 @@ interface RestartSessionBody extends CreateSessionBody {
   handoffText?: string;
 }
 
-function parseOptionalRestartSessionBody(
+function parseOptionalJsonObjectBody(
   rawBody: string,
-): { body: RestartSessionBody } | { error: string } {
+): { body: Record<string, unknown> } | { error: string } {
   if (rawBody.trim().length === 0) return { body: {} };
   let parsed: unknown;
   try {
@@ -430,8 +434,100 @@ function parseOptionalRestartSessionBody(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { error: "Invalid JSON body" };
   }
+  return { body: parsed as Record<string, unknown> };
+}
 
-  const body = parsed as Record<string, unknown>;
+const REACTIVATE_THINKING_OPTIONS: ReadonlySet<unknown> = new Set([
+  "off",
+  "auto",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "on:low",
+  "on:medium",
+  "on:high",
+  "on:xhigh",
+  "on:max",
+]);
+const REACTIVATE_SHOW_THINKING_OPTIONS: ReadonlySet<unknown> = new Set([
+  "default",
+  "on",
+  "off",
+]);
+
+function isPermissionRules(value: unknown): value is PermissionRules {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const rules = value as Record<string, unknown>;
+  return ["allow", "deny"].every((field) => {
+    const patterns = rules[field];
+    return (
+      patterns === undefined ||
+      (Array.isArray(patterns) &&
+        patterns.every((pattern) => typeof pattern === "string"))
+    );
+  });
+}
+
+function parseOptionalReactivateSessionBody(
+  rawBody: string,
+): { body: CreateSessionBody } | { error: string } {
+  const parsed = parseOptionalJsonObjectBody(rawBody);
+  if ("error" in parsed) return parsed;
+  const body = parsed.body;
+
+  if (Object.hasOwn(body, "model") && typeof body.model !== "string") {
+    return { error: "model must be a string" };
+  }
+  if (
+    Object.hasOwn(body, "provider") &&
+    (typeof body.provider !== "string" ||
+      !getProvider(body.provider as ProviderName))
+  ) {
+    return { error: "Invalid provider" };
+  }
+  if (
+    Object.hasOwn(body, "serviceTier") &&
+    body.serviceTier !== undefined &&
+    body.serviceTier !== null &&
+    body.serviceTier !== "" &&
+    normalizeOptionalServiceTier(body.serviceTier) === undefined
+  ) {
+    return { error: "serviceTier must be a valid tier name" };
+  }
+  if (
+    Object.hasOwn(body, "thinking") &&
+    !REACTIVATE_THINKING_OPTIONS.has(body.thinking)
+  ) {
+    return { error: "Invalid thinking option" };
+  }
+  if (
+    Object.hasOwn(body, "showThinking") &&
+    !REACTIVATE_SHOW_THINKING_OPTIONS.has(body.showThinking)
+  ) {
+    return { error: "Invalid showThinking option" };
+  }
+  if (
+    Object.hasOwn(body, "permissions") &&
+    body.permissions !== undefined &&
+    body.permissions !== null &&
+    !isPermissionRules(body.permissions)
+  ) {
+    return { error: "permissions must contain string allow/deny arrays" };
+  }
+
+  return { body: body as unknown as CreateSessionBody };
+}
+
+function parseOptionalRestartSessionBody(
+  rawBody: string,
+): { body: RestartSessionBody } | { error: string } {
+  const parsed = parseOptionalJsonObjectBody(rawBody);
+  if ("error" in parsed) return parsed;
+  const body = parsed.body;
   if (
     body.restartMode !== undefined &&
     body.restartMode !== "handoff" &&
@@ -4008,9 +4104,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   });
 
   // POST /api/projects/:projectId/sessions/:sessionId/reactivate
-  // Spawn a live harness process bound to the session WITHOUT delivering a turn,
-  // so the client can read live process state (model options) before messaging.
-  // Idempotent: returns the existing process if the session is already owned.
+  // Spawn or reconcile a live harness process without delivering a turn. Every
+  // request is validated and serialized, including when the session is already
+  // owned or another activation is still in flight.
   routes.post(
     "/projects/:projectId/sessions/:sessionId/reactivate",
     async (c) => {
@@ -4021,41 +4117,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         return c.json({ error: "Invalid project ID format" }, 400);
       }
 
-      const project = await deps.scanner.getOrCreateProject(projectId);
-      if (!project) {
-        return c.json(
-          { error: "Project not found or path does not exist" },
-          404,
-        );
+      const parsedBody = parseOptionalReactivateSessionBody(await c.req.text());
+      if ("error" in parsedBody) {
+        return c.json({ error: parsedBody.error }, 400);
       }
-
-      // Already owned by a live process - return it (idempotent).
-      const existing = deps.supervisor.getProcessForSession(sessionId);
-      if (existing) {
-        return c.json({
-          processId: existing.id,
-          permissionMode: existing.permissionMode,
-          appliedPermissionMode: existing.appliedPermissionMode,
-          modeVersion: existing.modeVersion,
-          recapAfterSeconds: existing.recapAfterSeconds,
-          sandboxEnforcement: existing.sandboxEnforcement,
-          serverTimestamp: Date.now(),
-        });
-      }
-
-      // Body is optional - allows overriding mode/model/executor.
-      let body: StartSessionBody = {} as StartSessionBody;
-      try {
-        body = await c.req.json<StartSessionBody>();
-      } catch {
-        // No body - resume with the session's saved settings.
-      }
-
+      const body = parsedBody.body;
       const modeError = permissionModeError(body.mode);
       if (modeError) {
         return c.json({ error: modeError }, 400);
       }
-
       const parsedBodyExecutor = parseOptionalExecutor(body.executor);
       if (parsedBodyExecutor.error) {
         return c.json({ error: parsedBodyExecutor.error }, 400);
@@ -4064,33 +4134,133 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       if (helperSettings.error) {
         return c.json({ error: helperSettings.error }, 400);
       }
+      const parsedSandbox = parseSessionSandboxLevel(body.sandboxLevel);
+      if ("error" in parsedSandbox) {
+        return c.json({ error: parsedSandbox.error }, 400);
+      }
 
-      // Resolve provider/model/executor from the YA launch record (persisted on
-      // launch) so reactivation resumes with the correct backend and model.
+      const project = await deps.scanner.getOrCreateProject(projectId);
+      if (!project) {
+        return c.json(
+          { error: "Project not found or path does not exist" },
+          404,
+        );
+      }
+
       const metadata = deps.sessionMetadataService?.getMetadata?.(sessionId);
+      const hasProvider = Object.hasOwn(body, "provider");
+      const hasExecutor = Object.hasOwn(body, "executor");
+      const hasModel = Object.hasOwn(body, "model");
+      const hasServiceTier = Object.hasOwn(body, "serviceTier");
+      const hasThinking = Object.hasOwn(body, "thinking");
+      const hasSandbox = Object.hasOwn(body, "sandboxLevel");
+      const hasPermissions = Object.hasOwn(body, "permissions");
+      const hasRecapMode = Object.hasOwn(body, "recapMode");
+      const hasRecapAfterSeconds = Object.hasOwn(body, "recapAfterSeconds");
+      const hasPromptSuggestionMode = Object.hasOwn(
+        body,
+        "promptSuggestionMode",
+      );
+      const hasHelperSideModel = Object.hasOwn(body, "helperSideModel");
+
+      const providerName = hasProvider
+        ? body.provider
+        : ((metadata?.provider as ProviderName | undefined) ??
+          project.provider);
+      const executor = hasExecutor
+        ? parsedBodyExecutor.executor
+        : metadata?.executor;
+      const requestedModel = hasModel ? body.model : metadata?.requestedModel;
+      const model =
+        requestedModel && requestedModel !== "default"
+          ? requestedModel
+          : undefined;
+      const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
+      const thinkingOptions = hasThinking
+        ? buildThinkingOptions(body)
+        : undefined;
+      const sandboxLevel = hasSandbox
+        ? parsedSandbox.sandboxLevel
+        : metadata?.sandboxLevel;
+      const recapMode = hasRecapMode
+        ? helperSettings.recapMode
+        : metadata?.recapMode;
+      const recapAfterSeconds = hasRecapAfterSeconds
+        ? helperSettings.recapAfterSeconds
+        : metadata?.recapAfterSeconds;
+      const promptSuggestionMode = hasPromptSuggestionMode
+        ? helperSettings.promptSuggestionMode
+        : metadata?.promptSuggestionMode;
       const sandboxSettingsError = getSessionSandboxSettingsError(
-        metadata?.sandboxLevel,
-        helperSettings.recapMode ?? metadata?.recapMode,
+        sandboxLevel,
+        recapMode,
       );
       if (sandboxSettingsError) {
         return c.json({ error: sandboxSettingsError }, 400);
       }
-      const providerName =
-        (metadata?.provider as ProviderName | undefined) ??
-        body.provider ??
-        project.provider;
-      const executor = parsedBodyExecutor.executor ?? metadata?.executor;
-      // Prefer an explicit override, else the YA id the session was launched
-      // with; "default" means let the backend pick (pass undefined).
-      const rawModel =
-        body.model && body.model !== "default"
-          ? body.model
-          : metadata?.requestedModel;
-      const model = rawModel && rawModel !== "default" ? rawModel : undefined;
-      const { thinking, effort } = buildThinkingOptions(body);
+
+      const coldSettings: ModelSettings = {
+        model,
+        requestedModel,
+        ...(hasServiceTier ? { serviceTier } : {}),
+        ...thinkingOptions,
+        providerName,
+        executor,
+        ...(hasPermissions
+          ? { permissions: body.permissions ?? undefined }
+          : {}),
+        sandboxLevel,
+        sandboxStateKey: metadata?.sandboxStateKey,
+        globalInstructions: getGlobalInstructions(),
+        recapAfterSeconds,
+        recapMode,
+        promptSuggestionMode,
+        ...(hasHelperSideModel
+          ? { helperSideModel: helperSettings.helperSideModel }
+          : {}),
+        ...resolveCompactModelSettings(deps, {
+          provider: providerName,
+          yaModelId: requestedModel,
+          modelCandidates: [requestedModel, model],
+        }),
+      };
+      const overrideModelSettings: ModelSettings = {
+        ...(hasModel ? { model, requestedModel: body.model } : {}),
+        ...(hasServiceTier ? { serviceTier } : {}),
+        ...thinkingOptions,
+        ...(hasProvider ? { providerName: body.provider } : {}),
+        ...(hasExecutor ? { executor: parsedBodyExecutor.executor } : {}),
+        ...(hasPermissions
+          ? { permissions: body.permissions ?? undefined }
+          : {}),
+        ...(hasSandbox
+          ? {
+              sandboxLevel: parsedSandbox.sandboxLevel,
+              sandboxStateKey: metadata?.sandboxStateKey,
+            }
+          : {}),
+        ...(hasRecapMode ? { recapMode: helperSettings.recapMode } : {}),
+        ...(hasRecapAfterSeconds
+          ? { recapAfterSeconds: helperSettings.recapAfterSeconds }
+          : {}),
+        ...(hasPromptSuggestionMode
+          ? { promptSuggestionMode: helperSettings.promptSuggestionMode }
+          : {}),
+        ...(hasHelperSideModel
+          ? { helperSideModel: helperSettings.helperSideModel }
+          : {}),
+      };
+      const requestedOverrides: SessionReactivationOverrides = {
+        ...(Object.hasOwn(body, "mode") && body.mode !== undefined
+          ? { permissionMode: body.mode }
+          : {}),
+        ...(Object.keys(overrideModelSettings).length > 0
+          ? { modelSettings: overrideModelSettings }
+          : {}),
+      };
       const reactivationProjectPath =
-        metadata?.sandboxLevel === "project-write"
-          ? (metadata.sandboxProjectPath ?? project.path)
+        sandboxLevel === "project-write"
+          ? (metadata?.sandboxProjectPath ?? project.path)
           : project.path;
 
       let process: Process;
@@ -4099,20 +4269,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           reactivationProjectPath,
           sessionId,
           body.mode,
-          {
-            model,
-            requestedModel: body.model,
-            thinking,
-            effort,
-            providerName,
-            executor,
-            sandboxLevel: metadata?.sandboxLevel,
-            sandboxStateKey: metadata?.sandboxStateKey,
-            globalInstructions: getGlobalInstructions(),
-            recapAfterSeconds:
-              helperSettings.recapAfterSeconds ?? metadata?.recapAfterSeconds,
-            recapMode: helperSettings.recapMode ?? metadata?.recapMode,
-          },
+          coldSettings,
+          { requestedOverrides },
         );
       } catch (error) {
         return c.json(
@@ -4122,12 +4280,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
                 ? error.message
                 : "Failed to reactivate session",
           },
-          503,
+          error instanceof SessionConfigurationConflictError ? 409 : 503,
         );
       }
-
-      // Keep the launch record current (provider/executor) for this session.
-      await persistLaunchMetadata(sessionId, providerName, executor);
 
       return c.json({
         processId: process.id,
@@ -4230,7 +4385,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           recapAfterSeconds: metadata?.recapAfterSeconds,
           recapMode: "fork",
         },
-        { preempt: false },
+        { preempt: false, requestedOverrides: {} },
       );
     } catch (error) {
       // At capacity with no idle worker to drop (background recaps never
@@ -5225,6 +5380,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             promptSuggestionMode,
             recapAfterSeconds,
           },
+          { requestedOverrides: {} },
         );
         requestedModel = requestedModel ?? sourceProcess.model;
       }

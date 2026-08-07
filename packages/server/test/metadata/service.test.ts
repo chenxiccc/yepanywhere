@@ -271,6 +271,35 @@ describe("SessionMetadataService", () => {
       expect(changed.revision).toBe(2);
     });
 
+    it("retries an identical snapshot after its first save fails", async () => {
+      await service.initialize();
+      const saveSpy = vi
+        .spyOn(service as unknown as { doSave(): Promise<void> }, "doSave")
+        .mockRejectedValueOnce(new Error("disk full"));
+      const value = {
+        permissionMode: "plan" as const,
+        requestedModel: "opus",
+        serviceTier: null,
+        thinking: null,
+        effort: null,
+      };
+
+      await expect(
+        service.recordEffectiveLaunchSettings("session-1", value),
+      ).rejects.toThrow("disk full");
+      await expect(
+        service.recordEffectiveLaunchSettings("session-1", value),
+      ).resolves.toMatchObject({ revision: 1, requestedModel: "opus" });
+      expect(saveSpy).toHaveBeenCalledTimes(2);
+
+      const reloaded = new SessionMetadataService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.getEffectiveLaunchSettings("session-1")).toMatchObject({
+        revision: 1,
+        requestedModel: "opus",
+      });
+    });
+
     it("uses legacy requestedModel only when no durable record exists", async () => {
       await service.initialize();
       await service.setRequestedModel("legacy", "sonnet");
