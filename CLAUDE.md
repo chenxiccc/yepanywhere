@@ -206,6 +206,22 @@ version, no override is needed: refresh the lockfile with
 `pnpm -r update <pkg> --depth=Infinity` (plain `pnpm update` skips transitive
 deps).
 
+### Install-script allowlist
+
+Dependency install scripts (preinstall/install/postinstall) are blocked by
+default via `pnpm.onlyBuiltDependencies` in the root `package.json`; only
+`bcrypt` and `better-sqlite3` (native node-gyp/prebuild builds) may run
+theirs. This neutralizes the `"preinstall": "node setup.mjs"` vector used
+by npm supply-chain attacks. If a newly added dep needs its build script,
+`pnpm install` warns `build scripts that were ignored: <pkg>` and the
+package will be missing its native binary at runtime — vet the script,
+then add the package name to the allowlist. Blocked today, each verified
+a no-op with no performance fallback: `esbuild` (native binary ships via
+`@esbuild/*` optional deps; the postinstall only swaps the bin shim, and
+there is no silent WASM fallback), `@firebase/util` (bakes
+`FIREBASE_WEBAPP_CONFIG` into web-SDK defaults; unset here), `protobufjs`
+(prints a version-scheme warning).
+
 ### Known-unreachable advisories
 
 Advisories triaged as unreachable are suppressed via
