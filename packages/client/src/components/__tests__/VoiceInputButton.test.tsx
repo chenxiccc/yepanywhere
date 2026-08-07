@@ -1,16 +1,32 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { VOICE_INPUT_CAPABILITY } from "@yep-anywhere/shared";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseSpeechRecognitionOptions } from "../../hooks/useSpeechRecognition";
-import { VoiceInputButton } from "../VoiceInputButton";
+import {
+  cancelSpeechFollowUp,
+  getSpeechFollowUpSnapshot,
+} from "../../lib/speechFollowUp";
+import {
+  VoiceInputButton,
+  type VoiceInputButtonRef,
+} from "../VoiceInputButton";
 
 const {
   observedSpeechOptions,
   openSpeechSocket,
   sourceTransport,
+  speechCaptureState,
   speechState,
+  startListening,
   versionState,
 } = vi.hoisted(() => {
   const openSpeechSocket = vi.fn();
@@ -23,6 +39,13 @@ const {
         speech: { open: openSpeechSocket },
       },
     },
+    speechCaptureState: {
+      keepMicWarm: false,
+      micDeviceId: null as string | null,
+      reducePlayback: true,
+      followUpListenMs: 0,
+    },
+    startListening: vi.fn(),
     speechState: {
       isSupported: true,
       isListening: false,
@@ -40,6 +63,11 @@ const {
     versionState: {
       capabilities: [] as string[],
       loading: false,
+      voiceBackends: [] as string[],
+      voiceBackendCapabilities: {} as Record<
+        string,
+        { streaming?: boolean; smartTurn?: boolean }
+      >,
     },
   };
 });
@@ -65,11 +93,7 @@ vi.mock("../../hooks/useRemoteBasePath", () => ({
 }));
 
 vi.mock("../../hooks/useSpeechCaptureSettings", () => ({
-  useSpeechCaptureSettings: () => ({
-    keepMicWarm: false,
-    micDeviceId: null,
-    reducePlayback: true,
-  }),
+  useSpeechCaptureSettings: () => speechCaptureState,
 }));
 
 vi.mock("../../hooks/useSpeechRecognition", () => ({
@@ -80,7 +104,7 @@ vi.mock("../../hooks/useSpeechRecognition", () => ({
       isListening: speechState.isListening,
       status: speechState.status,
       interimTranscript: speechState.interimTranscript,
-      startListening: vi.fn(),
+      startListening,
       stopListening: vi.fn(),
       toggleListening: vi.fn(),
       prewarm: vi.fn(),
@@ -93,8 +117,8 @@ vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({
     version: {
       capabilities: versionState.capabilities,
-      voiceBackends: [],
-      voiceBackendCapabilities: {},
+      voiceBackends: versionState.voiceBackends,
+      voiceBackendCapabilities: versionState.voiceBackendCapabilities,
     },
     loading: versionState.loading,
   }),
@@ -141,7 +165,86 @@ describe("VoiceInputButton", () => {
     speechState.isSupported = true;
     speechState.status = "idle";
     speechState.interimTranscript = "";
+    speechCaptureState.keepMicWarm = false;
+    speechCaptureState.micDeviceId = null;
+    speechCaptureState.reducePlayback = true;
+    speechCaptureState.followUpListenMs = 0;
+    startListening.mockReset();
     versionState.loading = false;
+    versionState.voiceBackends = [];
+    versionState.voiceBackendCapabilities = {};
+    cancelSpeechFollowUp();
+    vi.useRealTimers();
+  });
+
+  it("warms only an armed follow-up and ends the window on wait", () => {
+    speechCaptureState.followUpListenMs = 3_000;
+    versionState.voiceBackends = ["ya-grok"];
+    versionState.voiceBackendCapabilities = {
+      "ya-grok": { streaming: true, smartTurn: true },
+    };
+    const ref = createRef<VoiceInputButtonRef>();
+    const onTranscript = vi.fn(() => "wait" as const);
+
+    render(
+      <VoiceInputButton
+        ref={ref}
+        onTranscript={onTranscript}
+        speechMethod="ya-grok"
+        smartTurn={{ enabled: true, threshold: 0.95, timeoutMs: 3_000 }}
+      />,
+    );
+
+    const options = observedSpeechOptions.at(-1);
+    expect(options?.keepMicWarm).toBe(false);
+    expect(options?.temporarilyKeepMicWarm?.()).toBe(false);
+
+    act(() => ref.current?.continueAfterSpeechSend());
+    expect(getSpeechFollowUpSnapshot().active).toBe(true);
+    expect(options?.temporarilyKeepMicWarm?.()).toBe(true);
+
+    act(() => {
+      options?.onResult?.("wait", { smartTurnCommand: "wait" });
+    });
+    expect(getSpeechFollowUpSnapshot().active).toBe(false);
+  });
+
+  it("does not restart after the absolute follow-up deadline", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    speechCaptureState.followUpListenMs = 3_000;
+    versionState.voiceBackends = ["ya-grok"];
+    versionState.voiceBackendCapabilities = {
+      "ya-grok": { streaming: true, smartTurn: true },
+    };
+    const ref = createRef<VoiceInputButtonRef>();
+    const props = {
+      ref,
+      onTranscript: vi.fn(() => "committed" as const),
+      speechMethod: "ya-grok" as const,
+      smartTurn: { enabled: true, threshold: 0.95, timeoutMs: 3_000 },
+    };
+
+    const view = render(<VoiceInputButton {...props} />);
+    act(() => ref.current?.continueAfterSpeechSend());
+    expect(startListening).toHaveBeenCalledOnce();
+
+    speechState.status = "receiving";
+    speechState.isListening = true;
+    view.rerender(<VoiceInputButton {...props} />);
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(getSpeechFollowUpSnapshot()).toMatchObject({
+      active: true,
+      deadlineMs: 13_000,
+      expired: true,
+    });
+
+    const startsAtExpiry = startListening.mock.calls.length;
+    speechState.status = "idle";
+    speechState.isListening = false;
+    view.rerender(<VoiceInputButton {...props} />);
+    expect(getSpeechFollowUpSnapshot().active).toBe(false);
+    expect(startListening).toHaveBeenCalledTimes(startsAtExpiry);
   });
 
   it("keeps the relayed speech socket opener stable across rerenders", () => {
@@ -175,6 +278,16 @@ describe("VoiceInputButton", () => {
       />,
     );
 
+    const button = screen.getByRole("button", {
+      name: "Speech input unavailable",
+    });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not fall back to unavailable browser-native speech", () => {
+    render(<VoiceInputButton onTranscript={vi.fn()} />);
+
+    expect(observedSpeechOptions.at(-1)?.speechMethod).toBeNull();
     const button = screen.getByRole("button", {
       name: "Speech input unavailable",
     });
@@ -324,7 +437,7 @@ describe("VoiceInputButton", () => {
     expect(onTranscript).toHaveBeenCalledWith("batch result", undefined);
   });
 
-  it("does not clear the parent speech target while capture is starting", () => {
+  it("keeps one pending transaction from capture startup into listening", () => {
     speechState.status = "starting";
     const onPendingSpeechChange = vi.fn();
     const props = {
@@ -335,13 +448,52 @@ describe("VoiceInputButton", () => {
     };
 
     const { rerender } = render(<VoiceInputButton {...props} />);
-    expect(onPendingSpeechChange).not.toHaveBeenCalled();
+    expect(onPendingSpeechChange).toHaveBeenCalledWith("starting");
 
     speechState.status = "listening";
     speechState.isListening = true;
     rerender(<VoiceInputButton {...props} />);
-    expect(onPendingSpeechChange).toHaveBeenCalledOnce();
     expect(onPendingSpeechChange).toHaveBeenLastCalledWith("listening");
+    expect(onPendingSpeechChange).not.toHaveBeenCalledWith(
+      null,
+      expect.anything(),
+    );
+  });
+
+  it("fails a delivery transaction when capture startup fails", () => {
+    speechState.status = "starting";
+    const onPendingSpeechChange = vi.fn();
+    const props = {
+      onTranscript: vi.fn(),
+      onInterimTranscript: vi.fn(),
+      onPendingSpeechChange,
+      speechMethod: "browser-native",
+    };
+
+    const { rerender } = render(<VoiceInputButton {...props} />);
+    speechState.status = "error";
+    rerender(<VoiceInputButton {...props} />);
+
+    expect(onPendingSpeechChange).toHaveBeenLastCalledWith(null, "failed");
+  });
+
+  it("fails a pending speech transaction when the mic unmounts", () => {
+    speechState.status = "starting";
+    const onPendingSpeechChange = vi.fn();
+
+    const { unmount } = render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        onPendingSpeechChange={onPendingSpeechChange}
+        speechMethod="browser-native"
+      />,
+    );
+    onPendingSpeechChange.mockClear();
+    unmount();
+
+    expect(onPendingSpeechChange).toHaveBeenCalledOnce();
+    expect(onPendingSpeechChange).toHaveBeenCalledWith(null, "failed");
   });
 
   it("suppresses redundant listening text when a live waveform is available", () => {

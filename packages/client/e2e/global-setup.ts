@@ -153,6 +153,19 @@ export default async function globalSetup() {
   );
   console.log(`[E2E] Created mock session at ${sessionFile}`);
 
+  for (const speechSessionId of [
+    "speech-caret-001",
+    "speech-caret-002",
+    "speech-caret-003",
+    "speech-caret-004",
+  ]) {
+    writeFileSync(
+      join(mockSessionDir, `${speechSessionId}.jsonl`),
+      mockMessages.map((message) => JSON.stringify(message)).join("\n"),
+    );
+  }
+  console.log("[E2E] Created isolated speech composer sessions");
+
   // Deterministic transcript specimen for semantic-boundary browser gates.
   // Keep it separate from mock-session-001 so transport/navigation tests that
   // expect the historical one-row fixture retain their exact input.

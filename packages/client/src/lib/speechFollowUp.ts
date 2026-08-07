@@ -1,6 +1,7 @@
 export interface SpeechFollowUpSnapshot {
   active: boolean;
   deadlineMs: number | null;
+  expired: boolean;
   speechStarted: boolean;
   owner: object | null;
 }
@@ -8,6 +9,7 @@ export interface SpeechFollowUpSnapshot {
 const EMPTY_SNAPSHOT: SpeechFollowUpSnapshot = {
   active: false,
   deadlineMs: null,
+  expired: false,
   speechStarted: false,
   owner: null,
 };
@@ -38,6 +40,17 @@ function endFollowUp(): void {
   cleanup?.();
 }
 
+function expireFollowUp(): void {
+  if (!snapshot.active) return;
+  expiryTimer = null;
+  if (!snapshot.speechStarted) {
+    endFollowUp();
+    return;
+  }
+  snapshot = { ...snapshot, expired: true };
+  emit();
+}
+
 export function getSpeechFollowUpSnapshot(): SpeechFollowUpSnapshot {
   return snapshot;
 }
@@ -61,11 +74,12 @@ export function armSpeechFollowUp(
   snapshot = {
     active: true,
     deadlineMs,
+    expired: false,
     speechStarted: false,
     owner,
   };
   onEnd = cleanup;
-  expiryTimer = setTimeout(endFollowUp, durationMs);
+  expiryTimer = setTimeout(expireFollowUp, durationMs);
   emit();
 }
 
@@ -93,8 +107,7 @@ export function noteSpeechFollowUpActivity(owner: object): void {
   if (!snapshot.active || snapshot.owner !== owner || snapshot.speechStarted) {
     return;
   }
-  clearExpiryTimer();
-  snapshot = { ...snapshot, deadlineMs: null, speechStarted: true };
+  snapshot = { ...snapshot, speechStarted: true };
   emit();
 }
 

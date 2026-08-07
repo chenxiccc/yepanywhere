@@ -33,7 +33,7 @@ interface SpeechControlMenuProps {
   trigger: ReactNode;
   showMethodSelector: boolean;
   methodOptions: FilterOption<SpeechMethodId>[];
-  selectedMethod: SpeechMethodId;
+  selectedMethod: SpeechMethodId | null;
   onMethodChange: (selected: string[]) => void;
   smartTurnSettings?: SpeechSmartTurnSettings;
   onSmartTurnSettingsChange?: (settings: SpeechSmartTurnSettings) => void;
@@ -86,13 +86,16 @@ export function SpeechControlMenu({
   const selectedMethodLabel = useMemo(
     () =>
       methodOptions.find((option) => option.value === selectedMethod)?.label ??
-      selectedMethod,
-    [methodOptions, selectedMethod],
+      selectedMethod ??
+      t("speechSettingsBackendUnavailable"),
+    [methodOptions, selectedMethod, t],
   );
   const showSmartTurnControls =
     !!smartTurnSettings && !!onSmartTurnSettingsChange;
-  const showMicDeviceControls = selectedMethod !== "browser-native";
-  const showParakeetModelControls = isParakeetModelBackend(selectedMethod);
+  const showMicDeviceControls =
+    selectedMethod !== null && selectedMethod !== "browser-native";
+  const showParakeetModelControls =
+    selectedMethod !== null && isParakeetModelBackend(selectedMethod);
   const enabledParakeetBackends = useMemo(() => {
     const backends: ParakeetModelBackendId[] = [];
     const addBackend = (backendId: string) => {
@@ -100,7 +103,7 @@ export function SpeechControlMenu({
         backends.push(backendId);
       }
     };
-    addBackend(selectedMethod);
+    if (selectedMethod !== null) addBackend(selectedMethod);
     for (const option of methodOptions) {
       addBackend(option.value);
     }
@@ -113,7 +116,7 @@ export function SpeechControlMenu({
   // model (see prepareParakeetBackend) and the mic reconciles as a safety net.
   const parakeetPresetOptions = useMemo(
     () =>
-      isParakeetModelBackend(selectedMethod)
+      selectedMethod !== null && isParakeetModelBackend(selectedMethod)
         ? PARAKEET_SPEECH_MODEL_PRESETS.filter((preset) =>
             preset.supportedBackends.includes(selectedMethod),
           )
@@ -132,10 +135,13 @@ export function SpeechControlMenu({
     !micDevices.some((device) => device.deviceId === micDeviceId);
 
   const prewarmParakeetModel = useCallback(
-    (modelValue: string, backendId: SpeechMethodId = selectedMethod) => {
-      if (!isParakeetModelBackend(backendId)) return;
+    (modelValue: string, backendId?: SpeechMethodId) => {
+      const targetBackend = backendId ?? selectedMethod;
+      if (targetBackend === null || !isParakeetModelBackend(targetBackend)) {
+        return;
+      }
       const model = cleanParakeetSpeechModel(modelValue);
-      void prewarmYaServerSpeechBackend(backendId, model).catch(
+      void prewarmYaServerSpeechBackend(targetBackend, model).catch(
         (err: unknown) => {
           console.warn(
             "[YaSTT] Speech model prewarm failed",
@@ -157,6 +163,7 @@ export function SpeechControlMenu({
   );
   const selectParakeetPreset = useCallback(
     (modelValue: string) => {
+      if (selectedMethod === null) return;
       const model = cleanParakeetSpeechModel(modelValue);
       const backendId = resolveParakeetModelBackend(
         model,

@@ -55,8 +55,8 @@ export interface SpeechCommitContext {
   onEdit?: (next: string) => void;
   /** Capture a transcription id for submission metadata; no-op if absent. */
   onTranscriptionId?: (id: string) => void;
-  /** Submit the composer when a batch/streaming `send` command commits. */
-  onSmartTurnSend?: (text: string) => void;
+  /** Submit the composer; return false only when current admission rejects it. */
+  onSmartTurnSend?: (text: string) => unknown;
   /**
    * Whether the user has manually edited the draft (non-whitespace) during the
    * active mic transaction. When true, an automatic Smart Turn endpoint send is
@@ -76,6 +76,14 @@ export function hasNonWhitespaceEdit(before: string, after: string): boolean {
   return before.replace(/\s+/g, "") !== after.replace(/\s+/g, "");
 }
 
+export type SpeechCommitOutcome =
+  | "committed"
+  | "cancelled"
+  | "wait"
+  | "send-dispatched"
+  | "send-held"
+  | "send-unhandled";
+
 /**
  * Integrate one finalized speech chunk (or a spoken `cancel`/`send` command)
  * into the draft at the transaction's insertion target, mapping any other
@@ -87,7 +95,7 @@ export function commitSpeechTranscript(
   ctx: SpeechCommitContext,
   transcript: string,
   metadata?: SpeechTranscriptionResultMetadata,
-): void {
+): SpeechCommitOutcome {
   const {
     textareaRef,
     getDraft,
@@ -213,7 +221,7 @@ export function commitSpeechTranscript(
       if (targetId) updateSpeechRange(null);
     }
     setInterimTranscript("");
-    return;
+    return "cancelled";
   }
 
   const currentText = getDraft();
@@ -326,8 +334,12 @@ export function commitSpeechTranscript(
     const holdAutoSend =
       metadata.smartTurnAutoSend === true &&
       composerEditedDuringSpeech?.() === true;
-    if (!holdAutoSend) {
-      onSmartTurnSend?.(nextText);
+    if (holdAutoSend) return "send-held";
+    if (!onSmartTurnSend || onSmartTurnSend(nextText) === false) {
+      return "send-unhandled";
     }
+    return "send-dispatched";
   }
+  if (metadata?.smartTurnCommand === "wait") return "wait";
+  return "committed";
 }

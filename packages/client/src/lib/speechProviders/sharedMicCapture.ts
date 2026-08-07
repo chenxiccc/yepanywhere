@@ -28,6 +28,10 @@ let sharedWarmRequest: Promise<MediaStream> | null = null;
 let sharedWarmRequestKey: string | null = null;
 let sharedWarmGeneration = 0;
 let sharedActiveCaptureLeases = 0;
+let sharedTemporaryWarmLeases = 0;
+const managedSharedStreams = new WeakSet<MediaStream>();
+const activeLeaseCountByStream = new WeakMap<MediaStream, number>();
+const retiredActiveStreams = new Set<MediaStream>();
 let releaseSharedWarmWhenInactive = false;
 let reacquireSharedWarmWhenVisible = false;
 let sharedWarmRequested = false;
@@ -211,10 +215,24 @@ function tryAcquireIdleLease(): boolean {
   return true;
 }
 
+function activeLeaseCount(stream: MediaStream): number {
+  return activeLeaseCountByStream.get(stream) ?? 0;
+}
+
+function stopManagedStream(stream: MediaStream): void {
+  managedSharedStreams.delete(stream);
+  retiredActiveStreams.delete(stream);
+  stopSpeechStreamTracks(stream);
+}
+
 function stopSharedWarmStreamNow(): void {
   sharedWarmGeneration += 1;
   if (sharedWarmStream) {
-    stopSpeechStreamTracks(sharedWarmStream);
+    if (activeLeaseCount(sharedWarmStream) > 0) {
+      retiredActiveStreams.add(sharedWarmStream);
+    } else {
+      stopManagedStream(sharedWarmStream);
+    }
   }
   sharedWarmStream = null;
   sharedWarmDeviceKey = null;
@@ -280,13 +298,21 @@ function maybeReacquireSharedWarmStream(): void {
     });
 }
 
+function shouldRetainIdleWarmStream(): boolean {
+  return (
+    sharedWarmRequested ||
+    sharedTemporaryWarmLeases > 0 ||
+    getStoredKeepMicWarm()
+  );
+}
+
 function retainOrReleaseIdleWarmStream(): void {
   if (sharedActiveCaptureLeases > 0) return;
 
   if (releaseSharedWarmWhenInactive) {
     const shouldTryRetain =
       isDocumentVisible() &&
-      (sharedWarmRequested || getStoredKeepMicWarm()) &&
+      shouldRetainIdleWarmStream() &&
       !reacquireSharedWarmWhenVisible;
     releaseSharedWarmWhenInactive = false;
     if (!shouldTryRetain || !tryAcquireIdleLease()) {
@@ -298,7 +324,7 @@ function retainOrReleaseIdleWarmStream(): void {
   if (!hasLiveSpeechTracks(sharedWarmStream)) return;
   if (
     !isDocumentVisible() ||
-    (!sharedWarmRequested && !getStoredKeepMicWarm()) ||
+    !shouldRetainIdleWarmStream() ||
     !tryAcquireIdleLease()
   ) {
     stopSharedWarmStreamNow();
@@ -336,17 +362,59 @@ function installSharedMicLifecycle(): void {
   });
 }
 
-export function acquireSharedSpeechMicActiveLease(): () => void {
+export interface SharedSpeechMicActiveLease {
+  bind(stream: MediaStream): void;
+  release(): void;
+}
+
+export function acquireSharedSpeechMicActiveLease(): SharedSpeechMicActiveLease {
   installSharedMicLifecycle();
   if (sharedActiveCaptureLeases === 0) {
     broadcastIdleLease("claimed");
   }
   sharedActiveCaptureLeases += 1;
+  let boundStream: MediaStream | null = null;
+  let released = false;
+  return {
+    bind(stream) {
+      if (released || boundStream === stream) return;
+      if (boundStream !== null) {
+        throw new Error("Shared speech mic lease is already bound");
+      }
+      if (!managedSharedStreams.has(stream)) {
+        throw new Error("Shared speech mic lease requires a managed stream");
+      }
+      boundStream = stream;
+      activeLeaseCountByStream.set(stream, activeLeaseCount(stream) + 1);
+    },
+    release() {
+      if (released) return;
+      released = true;
+      sharedActiveCaptureLeases = Math.max(0, sharedActiveCaptureLeases - 1);
+      if (boundStream !== null) {
+        const remaining = Math.max(0, activeLeaseCount(boundStream) - 1);
+        if (remaining > 0) {
+          activeLeaseCountByStream.set(boundStream, remaining);
+        } else {
+          activeLeaseCountByStream.delete(boundStream);
+          if (retiredActiveStreams.has(boundStream)) {
+            stopManagedStream(boundStream);
+          }
+        }
+      }
+      retainOrReleaseIdleWarmStream();
+    },
+  };
+}
+
+export function acquireSharedSpeechMicWarmLease(): () => void {
+  installSharedMicLifecycle();
+  sharedTemporaryWarmLeases += 1;
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    sharedActiveCaptureLeases = Math.max(0, sharedActiveCaptureLeases - 1);
+    sharedTemporaryWarmLeases = Math.max(0, sharedTemporaryWarmLeases - 1);
     retainOrReleaseIdleWarmStream();
   };
 }
@@ -411,7 +479,7 @@ export function startSpeechWaveformMonitor(
 }
 
 export function isSharedSpeechMicStream(stream: MediaStream | null): boolean {
-  return stream !== null && stream === sharedWarmStream;
+  return stream !== null && managedSharedStreams.has(stream);
 }
 
 export function speechMicConstraints(
@@ -452,10 +520,14 @@ export function releaseSharedSpeechMicStream(): void {
 
 export function getSpeechMicStream({
   keepWarm,
+  retainWhenIdle = keepWarm,
+  activeLease,
   micDeviceId,
   reducePlayback = true,
 }: {
   keepWarm: boolean;
+  retainWhenIdle?: boolean;
+  activeLease?: SharedSpeechMicActiveLease | null;
   micDeviceId?: string | null;
   reducePlayback?: boolean;
 }): Promise<MediaStream> {
@@ -465,7 +537,7 @@ export function getSpeechMicStream({
     return navigator.mediaDevices.getUserMedia(constraints);
   }
   installSharedMicLifecycle();
-  sharedWarmRequested = true;
+  if (retainWhenIdle) sharedWarmRequested = true;
 
   const hasActiveCapture = sharedActiveCaptureLeases > 0;
   if (!hasActiveCapture) {
@@ -482,10 +554,14 @@ export function getSpeechMicStream({
   sharedWarmDeviceKey = key;
 
   if (hasLiveSpeechTracks(sharedWarmStream)) {
+    activeLease?.bind(sharedWarmStream);
     return Promise.resolve(sharedWarmStream);
   }
   if (sharedWarmRequest && sharedWarmRequestKey === key) {
-    return sharedWarmRequest;
+    return sharedWarmRequest.then((stream) => {
+      if (managedSharedStreams.has(stream)) activeLease?.bind(stream);
+      return stream;
+    });
   }
 
   const generation = sharedWarmGeneration;
@@ -502,7 +578,9 @@ export function getSpeechMicStream({
         (sharedActiveCaptureLeases > 0 ||
           (isDocumentVisible() && idleLeaseHeld))
       ) {
+        managedSharedStreams.add(stream);
         sharedWarmStream = stream;
+        activeLease?.bind(stream);
       } else if (hasLiveSpeechTracks(stream)) {
         stopSpeechStreamTracks(stream);
       }

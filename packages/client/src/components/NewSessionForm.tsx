@@ -57,6 +57,7 @@ import {
 } from "../hooks/useAttachmentUploadQuality";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
+import { useSpeechSourceRuntime } from "../hooks/useSpeechSourceRuntime";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useI18n } from "../i18n";
@@ -156,6 +157,7 @@ import type {
   SpeechTranscriptionContext,
   SpeechTranscriptionResultMetadata,
 } from "../lib/speechProviders/SpeechProvider";
+import { focusComposerForSpeechTransition } from "../lib/speechComposerFocus";
 import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
@@ -336,6 +338,8 @@ export function NewSessionForm({
   const { t } = useI18n();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
+  const { relayTransport, relayedServerSpeechAvailable } =
+    useSpeechSourceRuntime();
   const clientSummarySourceKey = useClientSummarySourceKey();
   const sourceRuntime = useCurrentSourceRuntime();
   const sourceSummary = sourceRuntime.summary;
@@ -1630,14 +1634,21 @@ export function NewSessionForm({
   );
   const showSpeechMethodSelector =
     voiceInputEnabled && speechMethodOptions.length > 1;
-  const selectedSpeechMethodCapabilities = getSpeechMethodCapabilities(
-    selectedSpeechMethod,
-    versionInfo?.voiceBackendCapabilities,
-  );
-  const selectedSpeechCanStream = canSpeechMethodStream({
-    methodId: selectedSpeechMethod,
-    serverCapabilities: versionInfo?.voiceBackendCapabilities,
-  });
+  const selectedSpeechMethodCapabilities =
+    selectedSpeechMethod === null
+      ? {}
+      : getSpeechMethodCapabilities(
+          selectedSpeechMethod,
+          versionInfo?.voiceBackendCapabilities,
+        );
+  const selectedSpeechCanStream =
+    selectedSpeechMethod !== null &&
+    canSpeechMethodStream({
+      methodId: selectedSpeechMethod,
+      serverCapabilities: versionInfo?.voiceBackendCapabilities,
+      relayTransport,
+      relayedServerSpeechAvailable,
+    });
   const supportsSelectedSpeechSmartTurn =
     selectedSpeechCanStream &&
     selectedSpeechMethodCapabilities.smartTurn === true;
@@ -2548,7 +2559,7 @@ export function NewSessionForm({
     pendingSpeechRetargetRef.current = null;
     composerEditedDuringSpeechRef.current = false;
     if (textarea) {
-      textarea.focus();
+      focusComposerForSpeechTransition(textarea);
       textarea.setSelectionRange(selectionStart, selectionEnd);
     }
     interimTranscriptRef.current = "";
@@ -2655,7 +2666,7 @@ export function NewSessionForm({
         noteSpeechAttribution();
       }
       pendingSpeechDeliverySettledRef.current = true;
-      commitSpeechTranscript(
+      const outcome = commitSpeechTranscript(
         {
           textareaRef,
           getDraft: draftControls.getDraft,
@@ -2694,6 +2705,7 @@ export function NewSessionForm({
       ) {
         setSpeechPreviewRevision((revision) => revision + 1);
       }
+      return outcome;
     },
     [
       draftControls,
@@ -2726,7 +2738,7 @@ export function NewSessionForm({
       }
 
       clearPendingSpeechFinal();
-      commitVoiceTranscript(transcript, metadata);
+      return commitVoiceTranscript(transcript, metadata);
     },
     [clearPendingSpeechFinal, commitVoiceTranscript],
   );
@@ -2750,7 +2762,7 @@ export function NewSessionForm({
     pendingSpeechRetargetRef.current = null;
     interimTranscriptRef.current = "";
     setInterimTranscript("");
-    textareaRef.current?.focus();
+    focusComposerForSpeechTransition(textareaRef.current);
     return Boolean(visibleInterim);
   }, [commitVoiceTranscript, draftControls, flushPendingSpeechFinal]);
 

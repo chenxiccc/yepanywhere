@@ -27,6 +27,7 @@ import {
   type ComposerToolbarOverflowLayoutSignatureInput,
 } from "../../hooks/useMessageInputToolbarLayout";
 import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
+import type { SpeechCommitOutcome } from "../../lib/speechDraftTransaction";
 import { createClientSlashCommand } from "../../lib/slashCommands";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
@@ -106,12 +107,12 @@ const {
           replacePreviousTranscriptChars?: number;
           speechTargetId?: string;
         },
-      ) => void;
+      ) => SpeechCommitOutcome | undefined;
       onInterimTranscript?: (text: string) => void;
       onListeningStart?: () => void;
       onListeningStop?: () => boolean | undefined;
       onPendingSpeechChange?: (
-        kind: "listening" | "transcribing" | "finalizing" | null,
+        kind: "starting" | "listening" | "transcribing" | "finalizing" | null,
         settlement?: "completed" | "failed",
       ) => void;
       onWaveformActiveChange?: (active: boolean) => void;
@@ -408,17 +409,22 @@ vi.mock("../VoiceInputButton", async () => {
               replacePreviousTranscriptChars?: number;
               speechTargetId?: string;
             },
-          ) => void;
+          ) => SpeechCommitOutcome | undefined;
           onInterimTranscript?: (text: string) => void;
           onListeningStart?: () => void;
           onListeningStop?: () => boolean | undefined;
           onPendingSpeechChange?: (
-            kind: "listening" | "transcribing" | "finalizing" | null,
+            kind:
+              | "starting"
+              | "listening"
+              | "transcribing"
+              | "finalizing"
+              | null,
             settlement?: "completed" | "failed",
           ) => void;
           onWaveformActiveChange?: (active: boolean) => void;
           getTranscriptionContext?: () => { speechTargetId?: string };
-          speechMethod?: string;
+          speechMethod?: string | null;
           showWaveform?: boolean;
           inlineWaveform?: boolean;
           className?: string;
@@ -1202,6 +1208,335 @@ describe("MessageInput", () => {
     expect(onSubmitWithoutSummary).toHaveBeenCalledWith("  branch text  ");
     expect(onSubmit).not.toHaveBeenCalled();
     expect(textarea.value).toBe("");
+  });
+
+  it("dispatches a command-only speech fork-summary as a typed action", async () => {
+    const onSend = vi.fn();
+    const onSubmit = vi.fn();
+    renderMessageInput(vi.fn(), {
+      onSend,
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description: "Generate a summary before forking.",
+        placeholder: "Optional summary instructions",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork with generated summary",
+        icon: "⑂",
+        onCancel: vi.fn(),
+        onSubmit,
+      },
+    });
+
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onTranscript?.("", {
+        smartTurnCommand: "send",
+      });
+    });
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit).toHaveBeenCalledWith("");
+    expect(onSend).not.toHaveBeenCalled();
+
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit).toHaveBeenCalledWith("");
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("reports an ineligible command-only speech fork as unhandled", () => {
+    const onSubmit = vi.fn();
+    renderMessageInput(vi.fn(), {
+      disabled: true,
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description: "Generate a summary before forking.",
+        placeholder: "Optional summary instructions",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork with generated summary",
+        icon: "⑂",
+        onCancel: vi.fn(),
+        onSubmit,
+      },
+    });
+
+    let outcome: SpeechCommitOutcome | undefined;
+    act(() => {
+      outcome = voicePropsState.current?.onTranscript?.("", {
+        smartTurnCommand: "send",
+      });
+    });
+
+    expect(outcome).toBe("send-unhandled");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(mockVoiceContinueAfterSpeechSend).not.toHaveBeenCalled();
+  });
+
+  it("settles a no-summary speech fork exactly once", async () => {
+    const onSubmitWithoutSummary = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description: "Fork without retaining later turns.",
+        placeholder: "Optional summary instructions",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork with generated summary",
+        icon: "⑂",
+        noSummarySubmitLabel: "Fork without summary",
+        onCancel: vi.fn(),
+        onSubmit: vi.fn(),
+        onSubmitWithoutSummary,
+      },
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "branch " } });
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("provisional");
+    });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    expect(onSubmitWithoutSummary).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("");
+
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    await waitFor(() =>
+      expect(onSubmitWithoutSummary).toHaveBeenCalledWith("branch provisional"),
+    );
+    expect(onSubmitWithoutSummary).toHaveBeenCalledOnce();
+  });
+
+  it("restores a failed no-summary speech fork without dispatching", () => {
+    const onSubmitWithoutSummary = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description: "Fork without retaining later turns.",
+        placeholder: "Optional summary instructions",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork with generated summary",
+        icon: "⑂",
+        noSummarySubmitLabel: "Fork without summary",
+        onCancel: vi.fn(),
+        onSubmit: vi.fn(),
+        onSubmitWithoutSummary,
+      },
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "branch draft" } });
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "failed");
+    });
+
+    expect(onSubmitWithoutSummary).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("branch draft");
+  });
+
+  it("does not detach pending speech for an ineligible fork", () => {
+    const onSubmitWithoutSummary = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      disabled: true,
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description: "Fork without retaining later turns.",
+        placeholder: "Optional summary instructions",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork with generated summary",
+        icon: "⑂",
+        noSummarySubmitLabel: "Fork without summary",
+        onCancel: vi.fn(),
+        onSubmit: vi.fn(),
+        onSubmitWithoutSummary,
+      },
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "keep this draft" } });
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    expect(mockVoiceStopAndFinalize).not.toHaveBeenCalled();
+    expect(onSubmitWithoutSummary).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("keep this draft");
+  });
+
+  it("restores a deferred summary fork rejected at settlement", () => {
+    const onSubmit = vi.fn();
+    const forkSummaryMode = {
+      title: "Fork after selected turn",
+      description: "Generate a summary before forking.",
+      placeholder: "Optional summary instructions",
+      submitLabel: "Fork with summary",
+      tooltip: "Fork with generated summary",
+      icon: "⑂",
+      onCancel: vi.fn(),
+      onSubmit,
+    };
+    const view = (disabled: boolean) => (
+      <MessageInput
+        onSend={vi.fn()}
+        draftKey="test-draft"
+        placeholder="Message"
+        supportsPermissionMode={false}
+        supportsThinkingToggle={false}
+        disabled={disabled}
+        forkSummaryMode={forkSummaryMode}
+      />
+    );
+    const { rerender } = render(view(false));
+    const textarea = screen.getByPlaceholderText(
+      "Optional summary instructions",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "keep summary draft" } });
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Fork with summary" }));
+    expect(textarea.value).toBe("");
+
+    rerender(view(true));
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("keep summary draft");
+
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("keep summary draft");
+  });
+
+  it("restores a deferred no-summary fork rejected at settlement", () => {
+    const onSubmitWithoutSummary = vi.fn();
+    const forkSummaryMode = {
+      title: "Fork after selected turn",
+      description: "Fork without retaining later turns.",
+      placeholder: "Optional summary instructions",
+      submitLabel: "Fork with summary",
+      tooltip: "Fork with generated summary",
+      icon: "⑂",
+      noSummarySubmitLabel: "Fork without summary",
+      onCancel: vi.fn(),
+      onSubmit: vi.fn(),
+      onSubmitWithoutSummary,
+    };
+    const view = (disabled: boolean) => (
+      <MessageInput
+        onSend={vi.fn()}
+        draftKey="test-draft"
+        placeholder="Message"
+        supportsPermissionMode={false}
+        supportsThinkingToggle={false}
+        disabled={disabled}
+        forkSummaryMode={forkSummaryMode}
+      />
+    );
+    const { rerender } = render(view(false));
+    const textarea = screen.getByPlaceholderText(
+      "Optional summary instructions",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "keep no-summary draft" } });
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    expect(textarea.value).toBe("");
+
+    rerender(view(true));
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    expect(onSubmitWithoutSummary).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("keep no-summary draft");
+
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+    expect(onSubmitWithoutSummary).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("keep no-summary draft");
+  });
+
+  it("restores a deferred typed fork when its action throws", () => {
+    const onSubmit = vi.fn(() => {
+      throw new Error("fork failed");
+    });
+    const textarea = renderMessageInput(vi.fn(), {
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description: "Generate a summary before forking.",
+        placeholder: "Optional summary instructions",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork with generated summary",
+        icon: "⑂",
+        onCancel: vi.fn(),
+        onSubmit,
+      },
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "recover after throw" } });
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Fork with summary" }));
+    expect(textarea.value).toBe("");
+
+    let thrown: unknown;
+    act(() => {
+      try {
+        voiceButtonState.isListening = false;
+        voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+      } catch (error) {
+        thrown = error;
+      }
+    });
+    expect(thrown).toEqual(new Error("fork failed"));
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(textarea.value).toBe("recover after throw");
+
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(textarea.value).toBe("recover after throw");
   });
 
   it("sends the current draft as fork summary instructions with Ctrl+Alt+Enter", () => {

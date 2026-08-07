@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserNativeProvider } from "../speechProviders/BrowserNativeProvider";
 import { DirectXaiStreamingSpeechProvider } from "../speechProviders/DirectXaiStreamingSpeechProvider";
 import { DirectXaiSpeechProvider } from "../speechProviders/DirectXaiSpeechProvider";
+import { UnavailableSpeechProvider } from "../speechProviders/UnavailableSpeechProvider";
 import {
   YaServerProvider,
   decideSmartTurn,
@@ -226,7 +227,7 @@ describe("speech provider method selection", () => {
     ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
   });
 
-  it("keeps explicit choices only while they are still available", () => {
+  it("preserves available explicit choices and reports unavailable ones", () => {
     expect(
       resolveSpeechMethod("ya-deepgram", ["ya-grok", "ya-deepgram"], true),
     ).toBe("ya-deepgram");
@@ -236,12 +237,10 @@ describe("speech provider method selection", () => {
     expect(resolveSpeechMethod(DEFAULT_SPEECH_METHOD, ["ya-grok"], true)).toBe(
       DEFAULT_SPEECH_METHOD,
     );
-    expect(resolveSpeechMethod("ya-deepgram", ["ya-grok"], true)).toBe(
-      DEFAULT_SPEECH_METHOD,
-    );
+    expect(resolveSpeechMethod("ya-deepgram", ["ya-grok"], true)).toBeNull();
     expect(
       resolveSpeechMethod(XAI_DIRECT_STREAMING_SPEECH_METHOD, [], true),
-    ).toBe(DEFAULT_SPEECH_METHOD);
+    ).toBeNull();
     expect(
       resolveSpeechMethod(XAI_DIRECT_STREAMING_SPEECH_METHOD, [], true, {
         directXaiAvailable: true,
@@ -249,22 +248,45 @@ describe("speech provider method selection", () => {
     ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
   });
 
-  it("falls back from unavailable browser speech when another method can run", () => {
+  it("chooses a runnable default only when no explicit method is stored", () => {
+    expect(
+      resolveSpeechMethod(DEFAULT_SPEECH_METHOD, ["ya-grok"], false, {
+        browserNativeAvailable: false,
+      }),
+    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
     expect(
       resolveSpeechMethod(DEFAULT_SPEECH_METHOD, ["ya-grok"], true, {
         browserNativeAvailable: false,
       }),
-    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
+    ).toBeNull();
     expect(
       resolveSpeechMethod(DEFAULT_SPEECH_METHOD, ["ya-grok"], true, {
         browserNativeAvailable: true,
       }),
     ).toBe(DEFAULT_SPEECH_METHOD);
     expect(
-      resolveSpeechMethod(DEFAULT_SPEECH_METHOD, [], true, {
+      resolveSpeechMethod(DEFAULT_SPEECH_METHOD, [], false, {
         browserNativeAvailable: false,
       }),
-    ).toBe(DEFAULT_SPEECH_METHOD);
+    ).toBeNull();
+    expect(
+      resolveSpeechMethod("ya-deepgram", [], true, {
+        browserNativeAvailable: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("represents no runnable method as an unsupported provider", () => {
+    const provider = new UnavailableSpeechProvider();
+
+    expect(provider.id).toBe("unavailable");
+    expect(provider.isSupported).toBe(false);
+    expect(provider.getState()).toEqual({
+      status: "idle",
+      isListening: false,
+      interimTranscript: "",
+      error: null,
+    });
   });
 });
 
@@ -2921,10 +2943,10 @@ describe("YA server speech provider", () => {
       value: { getUserMedia: vi.fn(async () => fakeStream) },
     });
 
-    const releaseActive = acquireSharedSpeechMicActiveLease();
-    await expect(getSpeechMicStream({ keepWarm: true })).resolves.toBe(
-      fakeStream,
-    );
+    const activeLease = acquireSharedSpeechMicActiveLease();
+    const activeStream = await getSpeechMicStream({ keepWarm: true });
+    activeLease.bind(activeStream);
+    expect(activeStream).toBe(fakeStream);
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -2933,8 +2955,132 @@ describe("YA server speech provider", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     expect(stopTrack).not.toHaveBeenCalled();
 
-    releaseActive();
+    activeLease.release();
     expect(stopTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an active stream alive when another owner changes capture mode", async () => {
+    const makeStream = () => {
+      let stopped = false;
+      const track = {
+        get readyState() {
+          return stopped ? "ended" : "live";
+        },
+        stop: vi.fn(() => {
+          stopped = true;
+        }),
+      } as unknown as MediaStreamTrack;
+      return {
+        stream: { getTracks: () => [track] } as unknown as MediaStream,
+        track,
+      };
+    };
+    const first = makeStream();
+    const second = makeStream();
+    const getUserMedia = vi
+      .fn<() => Promise<MediaStream>>()
+      .mockResolvedValueOnce(first.stream)
+      .mockResolvedValueOnce(second.stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    const firstLease = acquireSharedSpeechMicActiveLease();
+    const firstStream = await getSpeechMicStream({
+      keepWarm: true,
+      activeLease: firstLease,
+      micDeviceId: "first-mic",
+      reducePlayback: true,
+    });
+
+    const secondLease = acquireSharedSpeechMicActiveLease();
+    const secondStream = await getSpeechMicStream({
+      keepWarm: true,
+      activeLease: secondLease,
+      micDeviceId: "second-mic",
+      reducePlayback: false,
+    });
+
+    expect(firstStream).toBe(first.stream);
+    expect(secondStream).toBe(second.stream);
+    expect(first.track.stop).not.toHaveBeenCalled();
+    expect(second.track.stop).not.toHaveBeenCalled();
+
+    firstLease.release();
+    expect(first.track.stop).toHaveBeenCalledOnce();
+    expect(second.track.stop).not.toHaveBeenCalled();
+
+    secondLease.release();
+    releaseSharedSpeechMicStream();
+    expect(second.track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("binds every owner that joins an in-flight microphone request", async () => {
+    const makeStream = () => {
+      let stopped = false;
+      const track = {
+        get readyState() {
+          return stopped ? "ended" : "live";
+        },
+        stop: vi.fn(() => {
+          stopped = true;
+        }),
+      } as unknown as MediaStreamTrack;
+      return {
+        stream: { getTracks: () => [track] } as unknown as MediaStream,
+        track,
+      };
+    };
+    const pendingFirst = deferred<MediaStream>();
+    const first = makeStream();
+    const replacement = makeStream();
+    const getUserMedia = vi
+      .fn<() => Promise<MediaStream>>()
+      .mockReturnValueOnce(pendingFirst.promise)
+      .mockResolvedValueOnce(replacement.stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    const firstLease = acquireSharedSpeechMicActiveLease();
+    const firstRequest = getSpeechMicStream({
+      keepWarm: true,
+      activeLease: firstLease,
+      micDeviceId: "shared-mic",
+    });
+    const secondLease = acquireSharedSpeechMicActiveLease();
+    const secondRequest = getSpeechMicStream({
+      keepWarm: true,
+      activeLease: secondLease,
+      micDeviceId: "shared-mic",
+    });
+    expect(getUserMedia).toHaveBeenCalledOnce();
+
+    pendingFirst.resolve(first.stream);
+    await expect(firstRequest).resolves.toBe(first.stream);
+    await expect(secondRequest).resolves.toBe(first.stream);
+
+    const replacementLease = acquireSharedSpeechMicActiveLease();
+    await expect(
+      getSpeechMicStream({
+        keepWarm: true,
+        activeLease: replacementLease,
+        micDeviceId: "replacement-mic",
+      }),
+    ).resolves.toBe(replacement.stream);
+    expect(first.track.stop).not.toHaveBeenCalled();
+
+    firstLease.release();
+    expect(first.track.stop).not.toHaveBeenCalled();
+    secondLease.release();
+    expect(first.track.stop).toHaveBeenCalledOnce();
+    expect(replacement.track.stop).not.toHaveBeenCalled();
+
+    replacementLease.release();
+    releaseSharedSpeechMicStream();
+    expect(replacement.track.stop).toHaveBeenCalledOnce();
   });
 
   it("does not open an idle warm mic when another visible tab has the lease", async () => {

@@ -22,6 +22,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { generateUUID } from "../lib/uuid";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
+import { focusComposerForSpeechTransition } from "../lib/speechComposerFocus";
 import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
@@ -313,7 +314,7 @@ export function FloatingActionButton() {
     pendingSpeechRetargetRef.current = null;
     composerEditedDuringSpeechRef.current = false;
     if (textarea) {
-      textarea.focus();
+      focusComposerForSpeechTransition(textarea);
       textarea.setSelectionRange(selectionStart, selectionEnd);
     }
     interimTranscriptRef.current = "";
@@ -415,7 +416,7 @@ export function FloatingActionButton() {
 
   const commitVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
-      commitSpeechTranscript(
+      const outcome = commitSpeechTranscript(
         {
           textareaRef,
           getDraft: draftControls.getDraft,
@@ -450,6 +451,7 @@ export function FloatingActionButton() {
       ) {
         setSpeechPreviewRevision((revision) => revision + 1);
       }
+      return outcome;
     },
     [draftControls, handleSubmit],
   );
@@ -477,7 +479,7 @@ export function FloatingActionButton() {
       }
 
       clearPendingSpeechFinal();
-      commitVoiceTranscript(transcript, metadata);
+      return commitVoiceTranscript(transcript, metadata);
     },
     [clearPendingSpeechFinal, commitVoiceTranscript],
   );
@@ -501,7 +503,7 @@ export function FloatingActionButton() {
     pendingSpeechRetargetRef.current = null;
     interimTranscriptRef.current = "";
     setInterimTranscript("");
-    textareaRef.current?.focus();
+    focusComposerForSpeechTransition(textareaRef.current);
     return Boolean(visibleInterim);
   }, [commitVoiceTranscript, draftControls, flushPendingSpeechFinal]);
 

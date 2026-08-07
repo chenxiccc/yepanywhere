@@ -134,6 +134,8 @@ export interface SpeechProviderOptions extends SpeechProviderEvents {
   smartTurn?: SpeechSmartTurnSettings;
   /** Keep the mic device warm between dictations (skips getUserMedia cold-open). */
   keepMicWarm?: boolean;
+  /** Temporary transaction-owned warm policy, such as an armed follow-up. */
+  temporarilyKeepMicWarm?: () => boolean;
   /** Browser-local microphone device id for YA-server capture. */
   micDeviceId?: string | null;
   /** Ask the browser to reduce speaker leakage into YA-controlled capture. */

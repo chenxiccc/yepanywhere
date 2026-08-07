@@ -285,12 +285,15 @@ function directXaiAvailable(
 export function getPreferredSpeechMethod(
   serverBackends: readonly string[] = [],
   availability: SpeechMethodAvailability = {},
-): SpeechMethodId {
+): SpeechMethodId | null {
   const orderedServerBackends = getOrderedServerSpeechBackends(serverBackends);
   if (directXaiAvailable(orderedServerBackends, availability)) {
     return XAI_DIRECT_STREAMING_SPEECH_METHOD;
   }
-  return orderedServerBackends[0] ?? DEFAULT_SPEECH_METHOD;
+  if (orderedServerBackends[0]) return orderedServerBackends[0];
+  return availability.browserNativeAvailable === false
+    ? null
+    : DEFAULT_SPEECH_METHOD;
 }
 
 export function resolveSpeechMethod(
@@ -298,38 +301,49 @@ export function resolveSpeechMethod(
   serverBackends: readonly string[] | undefined,
   hasStoredMethod: boolean,
   availability: SpeechMethodAvailability = {},
-): SpeechMethodId {
+): SpeechMethodId | null {
   if (serverBackends === undefined) {
-    return hasStoredMethod ? storedMethod : DEFAULT_SPEECH_METHOD;
+    if (!hasStoredMethod) {
+      return availability.browserNativeAvailable === false
+        ? null
+        : DEFAULT_SPEECH_METHOD;
+    }
+    if (
+      storedMethod === DEFAULT_SPEECH_METHOD &&
+      availability.browserNativeAvailable === false
+    ) {
+      return null;
+    }
+    return storedMethod;
   }
 
   const activeServerBackends = getOrderedServerSpeechBackends(serverBackends);
   if (!hasStoredMethod) {
-    return getPreferredSpeechMethod(serverBackends, availability);
+    return getPreferredSpeechMethod(activeServerBackends, availability);
   }
 
   if (storedMethod === DEFAULT_SPEECH_METHOD) {
     return availability.browserNativeAvailable === false
-      ? getPreferredSpeechMethod(serverBackends, availability)
+      ? null
       : DEFAULT_SPEECH_METHOD;
   }
 
   if (storedMethod === XAI_DIRECT_STREAMING_SPEECH_METHOD) {
     return directXaiAvailable(activeServerBackends, availability)
       ? storedMethod
-      : DEFAULT_SPEECH_METHOD;
+      : null;
   }
 
   if (storedMethod === XAI_DIRECT_BATCH_SPEECH_METHOD) {
     return directXaiAvailable(activeServerBackends, availability)
       ? XAI_DIRECT_STREAMING_SPEECH_METHOD
-      : DEFAULT_SPEECH_METHOD;
+      : null;
   }
 
   if (storedMethod === YA_GROK_BATCH_SPEECH_METHOD) {
     return activeServerBackends.includes(YA_GROK_BACKEND_ID)
       ? getPreferredSpeechMethod(activeServerBackends, availability)
-      : DEFAULT_SPEECH_METHOD;
+      : null;
   }
 
   return getAvailableSpeechMethodIds(
@@ -337,7 +351,7 @@ export function resolveSpeechMethod(
     availability,
   ).includes(storedMethod)
     ? storedMethod
-    : DEFAULT_SPEECH_METHOD;
+    : null;
 }
 
 /**

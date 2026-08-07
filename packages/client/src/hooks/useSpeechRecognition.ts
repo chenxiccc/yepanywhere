@@ -4,6 +4,7 @@ import { BrowserNativeProvider } from "../lib/speechProviders/BrowserNativeProvi
 import { DirectXaiSpeechProvider } from "../lib/speechProviders/DirectXaiSpeechProvider";
 import { DirectXaiStreamingSpeechProvider } from "../lib/speechProviders/DirectXaiStreamingSpeechProvider";
 import { YaServerProvider } from "../lib/speechProviders/YaServerProvider";
+import { UnavailableSpeechProvider } from "../lib/speechProviders/UnavailableSpeechProvider";
 import {
   XAI_DIRECT_BATCH_SPEECH_METHOD,
   XAI_DIRECT_STREAMING_SPEECH_METHOD,
@@ -24,7 +25,7 @@ export interface UseSpeechRecognitionOptions {
   /** Language for recognition (default: browser default). */
   lang?: string;
   /** Selected speech method id (default: "browser-native"). */
-  speechMethod?: string;
+  speechMethod?: string | null;
   /** Base path for relay/remote connections (used by YaServerProvider). */
   basePath?: string;
   /** Context attached to YA-server transcription requests. */
@@ -35,6 +36,8 @@ export interface UseSpeechRecognitionOptions {
   smartTurn?: SpeechSmartTurnSettings;
   /** Keep the mic device warm between dictations (skips getUserMedia cold-open). */
   keepMicWarm?: boolean;
+  /** Dynamic transaction-owned warm policy, such as an armed follow-up. */
+  temporarilyKeepMicWarm?: () => boolean;
   /** Browser-local microphone device id for YA-server capture. */
   micDeviceId?: string | null;
   /** Ask the browser to reduce speaker leakage into YA-controlled capture. */
@@ -79,7 +82,7 @@ export interface UseSpeechRecognitionReturn {
 }
 
 function createProvider(
-  speechMethod: string | undefined,
+  speechMethod: string | null | undefined,
   basePath: string,
   events: {
     lang?: string;
@@ -87,6 +90,7 @@ function createProvider(
     serverStreaming?: boolean;
     smartTurn?: SpeechSmartTurnSettings;
     keepMicWarm?: boolean;
+    temporarilyKeepMicWarm?: () => boolean;
     micDeviceId?: string | null;
     reducePlayback?: boolean;
     onAudioSamples?: (samples: Float32Array) => void;
@@ -104,6 +108,9 @@ function createProvider(
     ) => void;
   },
 ): SpeechProvider {
+  if (speechMethod === null) {
+    return new UnavailableSpeechProvider();
+  }
   if (speechMethod === XAI_DIRECT_STREAMING_SPEECH_METHOD) {
     return new DirectXaiStreamingSpeechProvider(events);
   }
@@ -123,8 +130,8 @@ function createProvider(
 /**
  * Hook for using a pluggable speech-recognition provider.
  *
- * Selects BrowserNativeProvider or YaServerProvider based on
- * `speechMethod`. The provider owns all status/error/auto-restart
+ * Selects the browser-native, direct xAI, YA-server, or explicit unavailable
+ * provider for `speechMethod`. The provider owns all status/error/auto-restart
  * machinery; this hook is a thin subscription layer.
  */
 export function useSpeechRecognition(
@@ -138,6 +145,7 @@ export function useSpeechRecognition(
     serverStreaming,
     smartTurn,
     keepMicWarm,
+    temporarilyKeepMicWarm,
     micDeviceId,
     reducePlayback,
     onAudioSamples,
@@ -158,6 +166,7 @@ export function useSpeechRecognition(
   const onAudioSamplesRef = useRef(onAudioSamples);
   const onAudioSamplesEnabledRef = useRef(Boolean(onAudioSamples));
   const getTranscriptionContextRef = useRef(getTranscriptionContext);
+  const temporarilyKeepMicWarmRef = useRef(temporarilyKeepMicWarm);
   useEffect(() => {
     onResultRef.current = onResult;
     onInterimResultRef.current = onInterimResult;
@@ -166,6 +175,7 @@ export function useSpeechRecognition(
     onTranscriptionSettledRef.current = onTranscriptionSettled;
     onAudioSamplesRef.current = onAudioSamples;
     getTranscriptionContextRef.current = getTranscriptionContext;
+    temporarilyKeepMicWarmRef.current = temporarilyKeepMicWarm;
   }, [
     onResult,
     onInterimResult,
@@ -174,6 +184,7 @@ export function useSpeechRecognition(
     onTranscriptionSettled,
     onAudioSamples,
     getTranscriptionContext,
+    temporarilyKeepMicWarm,
   ]);
 
   const speechMethodRef = useRef(speechMethod);
@@ -197,6 +208,8 @@ export function useSpeechRecognition(
         serverStreaming: serverStreamingRef.current,
         smartTurn: smartTurnRef.current,
         keepMicWarm: keepMicWarmRef.current,
+        temporarilyKeepMicWarm: () =>
+          temporarilyKeepMicWarmRef.current?.() === true,
         micDeviceId: micDeviceIdRef.current,
         reducePlayback: reducePlaybackRef.current,
         onAudioSamples: onAudioSamples
@@ -260,6 +273,8 @@ export function useSpeechRecognition(
       serverStreaming,
       smartTurn,
       keepMicWarm,
+      temporarilyKeepMicWarm: () =>
+        temporarilyKeepMicWarmRef.current?.() === true,
       micDeviceId,
       reducePlayback,
       onAudioSamples: onAudioSamples

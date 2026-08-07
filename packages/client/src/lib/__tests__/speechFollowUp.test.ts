@@ -40,8 +40,9 @@ describe("speechFollowUp", () => {
     expect(getSpeechFollowUpSnapshot().owner).toBe(nextOwner);
   });
 
-  it("keeps listening once speech begins before the deadline", () => {
+  it("expires without cutting off speech that began before the deadline", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(10_000);
     const owner = {};
     const cleanup = vi.fn();
 
@@ -51,9 +52,27 @@ describe("speechFollowUp", () => {
 
     expect(getSpeechFollowUpSnapshot()).toMatchObject({
       active: true,
-      deadlineMs: null,
+      deadlineMs: 13_000,
+      expired: true,
       speechStarted: true,
     });
     expect(cleanup).not.toHaveBeenCalled();
+  });
+
+  it("does not move the absolute deadline when speech begins", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(20_000);
+    const owner = {};
+
+    armSpeechFollowUp(3_000, owner, vi.fn());
+    vi.advanceTimersByTime(2_000);
+    noteSpeechFollowUpActivity(owner);
+
+    expect(getSpeechFollowUpSnapshot()).toMatchObject({
+      active: true,
+      deadlineMs: 23_000,
+      expired: false,
+      speechStarted: true,
+    });
   });
 });

@@ -16,8 +16,8 @@ import { SpeechSmartTurnControls } from "../../components/SpeechSmartTurnControl
 import { SpeechTimingControls } from "../../components/SpeechTimingControls";
 import { useModelSettings } from "../../hooks/useModelSettings";
 import { useBrowserXaiSttApiKey } from "../../hooks/useBrowserXaiSttApiKey";
-import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useSpeechCaptureSettings } from "../../hooks/useSpeechCaptureSettings";
+import { useSpeechSourceRuntime } from "../../hooks/useSpeechSourceRuntime";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import {
@@ -80,7 +80,8 @@ export function SpeechSettings() {
     hasBrowserXaiSttApiKey,
     setBrowserXaiSttApiKey,
   } = useBrowserXaiSttApiKey();
-  const relayTransport = useRemoteBasePath() !== "";
+  const { relayTransport, relayedServerSpeechAvailable } =
+    useSpeechSourceRuntime();
   const { version: versionInfo, loading: versionLoading } = useVersion();
   const undoState = useMemo(
     () => ({
@@ -175,14 +176,19 @@ export function SpeechSettings() {
   );
   const selectedBackendLabel =
     backendOptions.find((option) => option.value === selectedBackend)?.label ??
-    selectedBackend;
-  const selectedBackendCapabilities = getSpeechMethodCapabilities(
-    selectedBackend,
-    versionInfo?.voiceBackendCapabilities,
-  );
+    selectedBackend ??
+    t("speechSettingsBackendUnavailable");
+  const selectedBackendCapabilities =
+    selectedBackend === null
+      ? {}
+      : getSpeechMethodCapabilities(
+          selectedBackend,
+          versionInfo?.voiceBackendCapabilities,
+        );
   const selectedBackendServerRouted =
-    isServerRoutedSpeechMethod(selectedBackend);
-  const showParakeetModelControls = isParakeetModelBackend(selectedBackend);
+    selectedBackend !== null && isServerRoutedSpeechMethod(selectedBackend);
+  const showParakeetModelControls =
+    selectedBackend !== null && isParakeetModelBackend(selectedBackend);
   const selectedParakeetPreset =
     getParakeetSpeechPresetValue(parakeetSpeechModel);
   const enabledParakeetBackends = useMemo(() => {
@@ -192,31 +198,38 @@ export function SpeechSettings() {
         backends.push(backendId);
       }
     };
-    addBackend(selectedBackend);
+    if (selectedBackend !== null) addBackend(selectedBackend);
     for (const backendId of serverBackends) {
       addBackend(backendId);
     }
     return backends;
   }, [selectedBackend, serverBackends]);
-  const selectedBackendCanStream = canSpeechMethodStream({
-    methodId: selectedBackend,
-    serverCapabilities: versionInfo?.voiceBackendCapabilities,
-    relayTransport,
-    relayedServerSpeechAvailable: !selectedBackendServerRouted,
-  });
+  const selectedBackendCanStream =
+    selectedBackend !== null &&
+    canSpeechMethodStream({
+      methodId: selectedBackend,
+      serverCapabilities: versionInfo?.voiceBackendCapabilities,
+      relayTransport,
+      relayedServerSpeechAvailable,
+    });
   const supportsSelectedSmartTurn =
     selectedBackendCanStream && selectedBackendCapabilities.smartTurn === true;
   const smartTurnUnavailableHint =
-    relayTransport && selectedBackend !== "browser-native"
+    relayTransport &&
+    selectedBackendServerRouted &&
+    !relayedServerSpeechAvailable
       ? t("speechSettingsStreamingRelayUnavailable")
       : t("speechSettingsSmartTurnUnavailable", {
           backend: selectedBackendLabel,
         });
   const prewarmParakeetModel = useCallback(
-    (modelValue: string, backendId: SpeechMethodId = selectedBackend) => {
-      if (!isParakeetModelBackend(backendId)) return;
+    (modelValue: string, backendId?: SpeechMethodId) => {
+      const targetBackend = backendId ?? selectedBackend;
+      if (targetBackend === null || !isParakeetModelBackend(targetBackend)) {
+        return;
+      }
       const model = cleanParakeetSpeechModel(modelValue);
-      void prewarmYaServerSpeechBackend(backendId, model).catch(
+      void prewarmYaServerSpeechBackend(targetBackend, model).catch(
         (err: unknown) => {
           console.warn(
             "[YaSTT] Speech model prewarm failed",
@@ -237,6 +250,7 @@ export function SpeechSettings() {
   );
   const selectParakeetPreset = useCallback(
     (modelValue: string) => {
+      if (selectedBackend === null) return;
       const model = cleanParakeetSpeechModel(modelValue);
       const backendId = resolveParakeetModelBackend(
         model,
@@ -379,6 +393,7 @@ export function SpeechSettings() {
           className="model-settings-item"
           after={
             relayTransport &&
+            !relayedServerSpeechAvailable &&
             selectedBackend === "ya-grok" && (
               <p className="settings-hint">
                 {t("speechSettingsStreamingRelayUnavailable")}
@@ -390,7 +405,7 @@ export function SpeechSettings() {
             <FilterDropdown
               label={t("speechSettingsBackendTitle")}
               options={backendOptions}
-              selected={[selectedBackend]}
+              selected={selectedBackend === null ? [] : [selectedBackend]}
               onChange={(selected) => {
                 const nextBackend = selected[0];
                 if (!nextBackend) return;
@@ -400,7 +415,11 @@ export function SpeechSettings() {
                 setSpeechMethod(nextBackend);
               }}
               multiSelect={false}
-              placeholder={t("speechSettingsBackendPlaceholder")}
+              placeholder={
+                selectedBackend === null
+                  ? t("speechSettingsBackendUnavailable")
+                  : t("speechSettingsBackendPlaceholder")
+              }
               fullWidth
             />
             {serverBackends.length === 0 && (

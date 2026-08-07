@@ -97,7 +97,7 @@ const {
   voicePropsState: {
     current: null as null | {
       onPendingSpeechChange?: (
-        kind: "listening" | "transcribing" | "finalizing" | null,
+        kind: "starting" | "listening" | "transcribing" | "finalizing" | null,
         settlement?: "completed" | "failed",
       ) => void;
       onInterimTranscript?: (text: string) => void;
@@ -253,6 +253,12 @@ const {
       updatedAt: string;
     },
   },
+}));
+
+const coarsePointerState = vi.hoisted(() => ({ current: false }));
+
+vi.mock("../../lib/deviceDetection", () => ({
+  hasCoarsePointer: () => coarsePointerState.current,
 }));
 
 vi.mock("react-router-dom", async () => {
@@ -659,6 +665,7 @@ function installObjectUrlMock() {
 
 describe("NewSessionForm", () => {
   beforeEach(() => {
+    coarsePointerState.current = false;
     installObjectUrlMock();
     vi.stubGlobal(
       "matchMedia",
@@ -2505,6 +2512,47 @@ describe("NewSessionForm", () => {
     });
 
     expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps mic focus through coarse-pointer speech transitions", () => {
+    coarsePointerState.current = true;
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    const textarea = screen.getByPlaceholderText("newSessionPlaceholder");
+    const voice = screen.getByRole("button", { name: "voice" });
+
+    act(() => voice.focus());
+    act(() => voicePropsState.current?.onListeningStart?.());
+    expect(document.activeElement).toBe(voice);
+
+    act(() => voicePropsState.current?.onListeningStop?.());
+    expect(document.activeElement).toBe(voice);
+    expect(document.activeElement).not.toBe(textarea);
+  });
+
+  it("returns keyboard mic focus to the fine-pointer composer", () => {
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    const textarea = screen.getByPlaceholderText("newSessionPlaceholder");
+    const voice = screen.getByRole("button", { name: "voice" });
+
+    act(() => voice.focus());
+    act(() => voicePropsState.current?.onListeningStart?.());
+    expect(document.activeElement).toBe(textarea);
+
+    act(() => voice.focus());
+    act(() => voicePropsState.current?.onListeningStop?.());
+    expect(document.activeElement).toBe(textarea);
   });
 
   it("prefixes speech-triggered new-session submissions with ASR", async () => {

@@ -58,6 +58,7 @@ import {
   filterComposerTurnRecall,
 } from "../lib/composerTurnRecall";
 import { hasCoarsePointer } from "../lib/deviceDetection";
+import { focusComposerForSpeechTransition } from "../lib/speechComposerFocus";
 import type {
   SpeechTranscriptionContext,
   SpeechTranscriptionResultMetadata,
@@ -159,7 +160,13 @@ type PendingSpeechDeliveryIntent =
       focusAfterSubmit: boolean;
     }
   | { kind: "queue" }
-  | { kind: "project-queue"; newSession: boolean };
+  | { kind: "project-queue"; newSession: boolean }
+  | {
+      kind: "fork-summary";
+      focusAfterSubmit: boolean;
+      speechTriggered: boolean;
+    }
+  | { kind: "fork-without-summary"; focusAfterSubmit: boolean };
 
 interface SubmissionCompositionSnapshot {
   typingStartedAt: string | null;
@@ -1215,6 +1222,133 @@ export function MessageInput({
     [controls, resetCompositionMetadata],
   );
 
+  const handleForkSummarySubmit = useCallback(
+    (
+      messageOverride?: unknown,
+      focusAfterSubmit = true,
+      speechTriggered = false,
+      preserveComposer = false,
+    ) => {
+      if (
+        !forkSummaryMode ||
+        disabled ||
+        attachments.length > 0 ||
+        uploadProgress.length > 0
+      ) {
+        return false;
+      }
+      const override =
+        typeof messageOverride === "string" ? messageOverride : undefined;
+      if (
+        override === undefined &&
+        deferSpeechDelivery({
+          kind: "fork-summary",
+          focusAfterSubmit,
+          speechTriggered,
+        })
+      ) {
+        return true;
+      }
+
+      const instructions = (override ?? controls.getDraft()).trim();
+      const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+        configuredPrefix: speechMessagePrefix,
+        speechTriggered,
+        recentSpeech: isRecentSpeechAttribution(),
+      });
+      if (!preserveComposer) {
+        controls.clearInput();
+        resetCompositionMetadata();
+        setInterimTranscript("");
+      }
+      forkSummaryMode.onSubmit(
+        instructions
+          ? prependSpeechMessagePrefix(instructions, deliverySpeechPrefix)
+          : instructions,
+      );
+      consumeSpeechAttribution();
+      if (focusAfterSubmit) {
+        textareaRef.current?.focus();
+      } else {
+        textareaRef.current?.blur();
+      }
+      return true;
+    },
+    [
+      attachments.length,
+      consumeSpeechAttribution,
+      controls,
+      deferSpeechDelivery,
+      disabled,
+      forkSummaryMode,
+      isRecentSpeechAttribution,
+      resetCompositionMetadata,
+      speechMessagePrefix,
+      uploadProgress.length,
+    ],
+  );
+
+  const handleForkWithoutSummary = useCallback(
+    (
+      messageOverride?: unknown,
+      focusAfterSubmit = true,
+      preserveComposer = false,
+    ) => {
+      if (
+        !forkSummaryMode?.onSubmitWithoutSummary ||
+        disabled ||
+        attachments.length > 0 ||
+        uploadProgress.length > 0
+      ) {
+        return false;
+      }
+      const override =
+        typeof messageOverride === "string" ? messageOverride : undefined;
+      if (
+        override === undefined &&
+        deferSpeechDelivery({ kind: "fork-without-summary", focusAfterSubmit })
+      ) {
+        return true;
+      }
+
+      const finalText = override ?? controls.getDraft();
+      const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+        configuredPrefix: speechMessagePrefix,
+        speechTriggered: false,
+        recentSpeech: isRecentSpeechAttribution(),
+      });
+      if (!preserveComposer) {
+        controls.clearInput();
+        resetCompositionMetadata();
+        setInterimTranscript("");
+      }
+      forkSummaryMode.onSubmitWithoutSummary(
+        deliverySpeechPrefix
+          ? prependSpeechMessagePrefix(finalText, deliverySpeechPrefix)
+          : finalText,
+      );
+      consumeSpeechAttribution();
+      if (focusAfterSubmit) {
+        textareaRef.current?.focus();
+      } else {
+        textareaRef.current?.blur();
+      }
+      return true;
+    },
+    [
+      attachments.length,
+      consumeSpeechAttribution,
+      controls,
+      deferSpeechDelivery,
+      disabled,
+      forkSummaryMode,
+      isRecentSpeechAttribution,
+      resetCompositionMetadata,
+      speechMessagePrefix,
+      uploadProgress.length,
+    ],
+  );
+
   const handleSubmit = useCallback(
     async (
       messageOverride?: unknown,
@@ -1244,28 +1378,7 @@ export function MessageInput({
         recentSpeech: isRecentSpeechAttribution(),
       });
 
-      if (forkSummaryMode) {
-        if (
-          !disabled &&
-          attachments.length === 0 &&
-          uploadProgress.length === 0
-        ) {
-          if (!preserveComposer) {
-            controls.clearInput();
-            resetCompositionMetadata();
-            setInterimTranscript("");
-          }
-          const instructions = finalText.trim();
-          forkSummaryMode.onSubmit(
-            instructions
-              ? prependSpeechMessagePrefix(instructions, deliverySpeechPrefix)
-              : instructions,
-          );
-          consumeSpeechAttribution();
-          textareaRef.current?.focus();
-        }
-        return;
-      }
+      if (forkSummaryMode) return;
 
       if (bangSupport) {
         const bangDraft = resolveComposerBangDraft(finalText);
@@ -1330,7 +1443,6 @@ export function MessageInput({
       controls,
       onSend,
       attachments.length,
-      uploadProgress.length,
       effectivePrimaryActionKind,
       buildSubmissionMetadata,
       resetCompositionMetadata,
@@ -1346,48 +1458,6 @@ export function MessageInput({
   const handleSteer = useCallback(() => {
     handleSubmit(undefined, "steer");
   }, [handleSubmit]);
-
-  const handleForkWithoutSummary = useCallback(() => {
-    if (
-      !forkSummaryMode?.onSubmitWithoutSummary ||
-      disabled ||
-      attachments.length > 0 ||
-      uploadProgress.length > 0
-    ) {
-      return;
-    }
-    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-    const finalText = getSpeechVisibleDraftText(
-      controls.getDraft(),
-      pendingVoice,
-      speechInsertionRangeRef.current,
-    );
-    controls.clearInput();
-    resetCompositionMetadata();
-    setInterimTranscript("");
-    const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
-      configuredPrefix: speechMessagePrefix,
-      speechTriggered: false,
-      recentSpeech: isRecentSpeechAttribution(),
-    });
-    forkSummaryMode.onSubmitWithoutSummary(
-      deliverySpeechPrefix
-        ? prependSpeechMessagePrefix(finalText, deliverySpeechPrefix)
-        : finalText,
-    );
-    consumeSpeechAttribution();
-    textareaRef.current?.focus();
-  }, [
-    attachments.length,
-    controls,
-    disabled,
-    forkSummaryMode,
-    consumeSpeechAttribution,
-    isRecentSpeechAttribution,
-    resetCompositionMetadata,
-    speechMessagePrefix,
-    uploadProgress.length,
-  ]);
 
   const handleQueue = useCallback(
     (
@@ -1509,6 +1579,21 @@ export function MessageInput({
     submitToProjectQueue(onProjectQueueNewSession);
   }, [deferSpeechDelivery, onProjectQueueNewSession, submitToProjectQueue]);
 
+  const restorePendingSpeechDeliveryDraft = useCallback(() => {
+    const pending = pendingSpeechDeliveryRef.current;
+    if (!pending) return false;
+    pendingSpeechDeliveryRef.current = null;
+    pendingSpeechDeliverySettledRef.current = false;
+    const pendingDraft = pending.draft;
+    const liveDraft = controls.getDraft();
+    if (pendingDraft) {
+      controls.setDraft(
+        liveDraft ? `${pendingDraft}\n\n${liveDraft}` : pendingDraft,
+      );
+    }
+    return true;
+  }, [controls]);
+
   const runPendingSpeechDelivery = useCallback(() => {
     if (
       speechPendingRef.current !== null ||
@@ -1519,8 +1604,14 @@ export function MessageInput({
     if (!pendingSpeechDeliverySettledRef.current) return;
     const pending = pendingSpeechDeliveryRef.current;
     if (!pending) return;
-    pendingSpeechDeliveryRef.current = null;
-    pendingSpeechDeliverySettledRef.current = false;
+    const typedForkPending =
+      pending.intent.kind === "fork-summary" ||
+      pending.intent.kind === "fork-without-summary";
+    const clearPendingOwner = () => {
+      pendingSpeechDeliveryRef.current = null;
+      pendingSpeechDeliverySettledRef.current = false;
+    };
+    if (!typedForkPending) clearPendingOwner();
     dispatchingSettledSpeechDeliveryRef.current = true;
     try {
       if (pending.intent.kind === "queue") {
@@ -1536,6 +1627,27 @@ export function MessageInput({
         );
         return;
       }
+      if (pending.intent.kind === "fork-summary") {
+        const accepted = handleForkSummarySubmit(
+          pending.visibleTextSnapshot,
+          pending.intent.focusAfterSubmit,
+          pending.intent.speechTriggered,
+          true,
+        );
+        if (accepted) clearPendingOwner();
+        else restorePendingSpeechDeliveryDraft();
+        return;
+      }
+      if (pending.intent.kind === "fork-without-summary") {
+        const accepted = handleForkWithoutSummary(
+          pending.visibleTextSnapshot,
+          pending.intent.focusAfterSubmit,
+          true,
+        );
+        if (accepted) clearPendingOwner();
+        else restorePendingSpeechDeliveryDraft();
+        return;
+      }
       void handleSubmit(
         pending.visibleTextSnapshot,
         pending.intent.actionOverride,
@@ -1544,14 +1656,20 @@ export function MessageInput({
         pending.composition,
         true,
       );
+    } catch (error) {
+      if (typedForkPending) restorePendingSpeechDeliveryDraft();
+      throw error;
     } finally {
       dispatchingSettledSpeechDeliveryRef.current = false;
     }
   }, [
+    handleForkSummarySubmit,
+    handleForkWithoutSummary,
     handleQueue,
     handleSubmit,
     onProjectQueue,
     onProjectQueueNewSession,
+    restorePendingSpeechDeliveryDraft,
     submitToProjectQueue,
   ]);
   runPendingSpeechDeliveryRef.current = runPendingSpeechDelivery;
@@ -1577,7 +1695,7 @@ export function MessageInput({
   }, [controls, disabled, onBtwShortcut, resetCompositionMetadata]);
 
   const submitPrimaryAction = forkSummaryMode
-    ? handleSubmit
+    ? handleForkSummarySubmit
     : effectivePrimaryActionKind === "queue"
       ? handleQueue
       : handleSubmit;
@@ -2384,9 +2502,7 @@ export function MessageInput({
     pendingSpeechRetargetRef.current = null;
     composerEditedDuringSpeechRef.current = false;
     if (textarea) {
-      // On touch devices, the mic is a complete input path of its own. Only a
-      // deliberate textarea focus should ask the IME to cover the session.
-      if (!hasCoarsePointer()) textarea.focus();
+      focusComposerForSpeechTransition(textarea);
       textarea.setSelectionRange(selectionStart, selectionEnd);
     }
     interimTranscriptRef.current = "";
@@ -2493,10 +2609,25 @@ export function MessageInput({
 
   const handleSmartTurnSend = useCallback(
     (text: string) => {
+      if (forkSummaryMode) {
+        if (!handleForkSummarySubmit(text, !hasCoarsePointer(), true)) {
+          return false;
+        }
+      } else {
+        if (disabled || (!text.trim() && attachments.length === 0))
+          return false;
+        void handleSubmit(text, undefined, !hasCoarsePointer(), true);
+      }
       voiceButtonRef.current?.continueAfterSpeechSend();
-      void handleSubmit(text, undefined, !hasCoarsePointer(), true);
+      return true;
     },
-    [handleSubmit],
+    [
+      attachments.length,
+      disabled,
+      forkSummaryMode,
+      handleForkSummarySubmit,
+      handleSubmit,
+    ],
   );
 
   const commitVoiceTranscript = useCallback(
@@ -2530,7 +2661,7 @@ export function MessageInput({
       const targetPendingSpeechRetargetRef = commitsPendingDelivery
         ? pendingDelivery.pendingSpeechRetargetRef
         : pendingSpeechRetargetRef;
-      commitSpeechTranscript(
+      const outcome = commitSpeechTranscript(
         {
           textareaRef: commitsPendingDelivery ? { current: null } : textareaRef,
           getDraft: commitsPendingDelivery
@@ -2593,6 +2724,7 @@ export function MessageInput({
       ) {
         setSpeechPreviewRevision((revision) => revision + 1);
       }
+      return outcome;
     },
     [
       controls,
@@ -2634,7 +2766,7 @@ export function MessageInput({
       }
 
       clearPendingSpeechFinal();
-      commitVoiceTranscript(transcript, metadata);
+      return commitVoiceTranscript(transcript, metadata);
     },
     [clearPendingSpeechFinal, commitVoiceTranscript],
   );
@@ -2658,26 +2790,9 @@ export function MessageInput({
     pendingSpeechRetargetRef.current = null;
     interimTranscriptRef.current = "";
     setInterimTranscript("");
-    // Preserve desktop's ready-to-type caret without summoning a touch
-    // keyboard merely because YA-owned dictation finished.
-    if (!hasCoarsePointer()) textareaRef.current?.focus();
+    focusComposerForSpeechTransition(textareaRef.current);
     return Boolean(visibleInterim);
   }, [commitVoiceTranscript, controls, flushPendingSpeechFinal]);
-
-  const restorePendingSpeechDeliveryDraft = useCallback(() => {
-    const pending = pendingSpeechDeliveryRef.current;
-    if (!pending) return false;
-    pendingSpeechDeliveryRef.current = null;
-    pendingSpeechDeliverySettledRef.current = false;
-    const pendingDraft = pending.draft;
-    const liveDraft = controls.getDraft();
-    if (pendingDraft) {
-      controls.setDraft(
-        liveDraft ? `${pendingDraft}\n\n${liveDraft}` : pendingDraft,
-      );
-    }
-    return true;
-  }, [controls]);
 
   const handleInterimTranscript = useCallback((transcript: string) => {
     interimTranscriptRef.current = transcript;
@@ -2839,7 +2954,7 @@ export function MessageInput({
     isThinking,
     onStop,
     onSend: forkSummaryMode
-      ? handleSubmit
+      ? handleForkSummarySubmit
       : effectivePrimaryActionKind === "queue"
         ? handleQueue
         : handleSubmit,

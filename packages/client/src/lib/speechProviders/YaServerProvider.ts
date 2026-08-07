@@ -559,25 +559,37 @@ export class YaServerProvider implements SpeechProvider {
     for (const sub of this.subscribers) sub(this.state);
   }
 
+  private shouldKeepMicWarm(): boolean {
+    return (
+      this.options.keepMicWarm === true ||
+      this.options.temporarilyKeepMicWarm?.() === true
+    );
+  }
+
   private getWarmMicStream(): Promise<MediaStream> {
     return getSpeechMicStream({
-      keepWarm: this.options.keepMicWarm === true,
+      keepWarm: this.shouldKeepMicWarm(),
+      retainWhenIdle: this.options.keepMicWarm === true,
       micDeviceId: this.options.micDeviceId,
       reducePlayback: this.options.reducePlayback !== false,
     });
   }
 
   private getActiveMicStream(): Promise<MediaStream> {
-    let acquiredActiveLease = false;
-    if (
-      this.options.keepMicWarm === true &&
-      this.releaseSharedMicActiveLease === null
-    ) {
-      this.releaseSharedMicActiveLease = acquireSharedSpeechMicActiveLease();
-      acquiredActiveLease = true;
+    const lease = this.shouldKeepMicWarm()
+      ? acquireSharedSpeechMicActiveLease()
+      : null;
+    if (lease) {
+      this.releaseSharedMicActiveLease = () => lease.release();
     }
-    return this.getWarmMicStream().catch((err: unknown) => {
-      if (acquiredActiveLease) this.releaseSharedMicActive();
+    return getSpeechMicStream({
+      keepWarm: lease !== null,
+      retainWhenIdle: this.options.keepMicWarm === true,
+      activeLease: lease,
+      micDeviceId: this.options.micDeviceId,
+      reducePlayback: this.options.reducePlayback !== false,
+    }).catch((err: unknown) => {
+      this.releaseSharedMicActive();
       throw err;
     });
   }
@@ -597,7 +609,7 @@ export class YaServerProvider implements SpeechProvider {
   }
 
   prewarm(): void {
-    if (this.options.keepMicWarm !== true || !this.isSupported) return;
+    if (!this.shouldKeepMicWarm() || !this.isSupported) return;
     if (
       this.state.isListening ||
       this.state.status === "starting" ||

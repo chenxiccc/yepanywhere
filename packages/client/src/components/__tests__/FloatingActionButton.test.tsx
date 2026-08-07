@@ -38,7 +38,7 @@ const {
   voicePropsState: {
     current: null as null | {
       onPendingSpeechChange?: (
-        kind: "listening" | "transcribing" | "finalizing" | null,
+        kind: "starting" | "listening" | "transcribing" | "finalizing" | null,
         settlement?: "completed" | "failed",
       ) => void;
       onInterimTranscript?: (text: string) => void;
@@ -46,6 +46,12 @@ const {
       onListeningStop?: () => boolean | undefined;
     },
   },
+}));
+
+const coarsePointerState = vi.hoisted(() => ({ current: false }));
+
+vi.mock("../../lib/deviceDetection", () => ({
+  hasCoarsePointer: () => coarsePointerState.current,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -142,6 +148,7 @@ afterEach(() => {
   mockSetNewSessionPrefill.mockReset();
   voiceButtonState.isListening = false;
   voicePropsState.current = null;
+  coarsePointerState.current = false;
 });
 
 describe("FloatingActionButton speech", () => {
@@ -156,6 +163,37 @@ describe("FloatingActionButton speech", () => {
     fireEvent.click(screen.getByLabelText("fabClose"));
     fireEvent.click(screen.getByLabelText("fabNewSession"));
     await waitFor(() => expect(mockVoicePrewarm).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps mic focus through coarse-pointer speech transitions", async () => {
+    coarsePointerState.current = true;
+    render(<FloatingActionButton />);
+    fireEvent.click(screen.getByLabelText("fabNewSession"));
+    const textarea = await screen.findByPlaceholderText("fabPlaceholder");
+    const voice = screen.getByRole("button", { name: "voice" });
+
+    act(() => voice.focus());
+    act(() => voicePropsState.current?.onListeningStart?.());
+    expect(document.activeElement).toBe(voice);
+
+    act(() => voicePropsState.current?.onListeningStop?.());
+    expect(document.activeElement).toBe(voice);
+    expect(document.activeElement).not.toBe(textarea);
+  });
+
+  it("returns keyboard mic focus to the fine-pointer composer", async () => {
+    render(<FloatingActionButton />);
+    fireEvent.click(screen.getByLabelText("fabNewSession"));
+    const textarea = await screen.findByPlaceholderText("fabPlaceholder");
+    const voice = screen.getByRole("button", { name: "voice" });
+
+    act(() => voice.focus());
+    act(() => voicePropsState.current?.onListeningStart?.());
+    expect(document.activeElement).toBe(textarea);
+
+    act(() => voice.focus());
+    act(() => voicePropsState.current?.onListeningStop?.());
+    expect(document.activeElement).toBe(textarea);
   });
 
   it("keeps the real quick-composer textarea editable while transcribing", async () => {

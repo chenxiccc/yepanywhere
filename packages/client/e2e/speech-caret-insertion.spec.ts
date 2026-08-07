@@ -4,7 +4,12 @@ import { e2ePaths, expect, test } from "./fixtures.js";
 
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
-const sessionId = "mock-session-001";
+const speechSessionIds = {
+  moveInterim: "speech-caret-001",
+  laterFinal: "speech-caret-002",
+  sendInterim: "speech-caret-003",
+  stopInterim: "speech-caret-004",
+} as const;
 
 interface FakeSpeechResultInput {
   transcript: string;
@@ -22,6 +27,7 @@ async function dismissOnboardingIfVisible(page: Page) {
 async function openBrowserSpeechComposer(
   page: Page,
   baseURL: string,
+  sessionId: string,
   initialText = "",
 ) {
   await page.addInitScript(() => {
@@ -140,6 +146,7 @@ test("moves only the next fragment when the caret changes mid-interim", async ({
   const textarea = await openBrowserSpeechComposer(
     page,
     baseURL,
+    speechSessionIds.moveInterim,
     "existing text",
   );
 
@@ -190,7 +197,11 @@ test("moves a later final-only browser result to the live caret", async ({
   page,
   baseURL,
 }) => {
-  const textarea = await openBrowserSpeechComposer(page, baseURL);
+  const textarea = await openBrowserSpeechComposer(
+    page,
+    baseURL,
+    speechSessionIds.laterFinal,
+  );
 
   await emitSpeechResults(page, [
     { transcript: "spoken first", isFinal: true },
@@ -218,6 +229,7 @@ test("sends the interim text visible when Send is pressed", async ({
   const textarea = await openBrowserSpeechComposer(
     page,
     baseURL,
+    speechSessionIds.sendInterim,
     "alpha omega",
   );
 
@@ -247,6 +259,7 @@ test("commits the interim text visible when Stop is pressed", async ({
   const textarea = await openBrowserSpeechComposer(
     page,
     baseURL,
+    speechSessionIds.stopInterim,
     "alpha omega",
   );
 

@@ -31,6 +31,7 @@ import {
 } from "../hooks/useModelSettings";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useConversationView } from "../hooks/useConversationView";
+import { useSpeechSourceRuntime } from "../hooks/useSpeechSourceRuntime";
 import {
   getComposerToolbarOverflowLayoutSignature,
   type MessageInputToolbarLayoutRefs,
@@ -95,6 +96,7 @@ import type {
   SpeechTranscriptionResultMetadata,
   SpeechTranscriptionSettlement,
 } from "../lib/speechProviders/SpeechProvider";
+import type { SpeechCommitOutcome } from "../lib/speechDraftTransaction";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextThresholdQuickEdit } from "./ContextThresholdQuickEdit";
 import { SpeechPrefixActionCue } from "./SpeechPrefixActionCue";
@@ -201,7 +203,7 @@ export interface MessageInputToolbarProps {
   onVoiceTranscript?: (
     transcript: string,
     metadata?: SpeechTranscriptionResultMetadata,
-  ) => void;
+  ) => SpeechCommitOutcome | undefined;
   onInterimTranscript?: (transcript: string) => void;
   onListeningStart?: () => void;
   onListeningStop?: () => boolean | undefined;
@@ -528,7 +530,7 @@ type ToolbarVoiceButtonControl =
       onTranscript: (
         transcript: string,
         metadata?: SpeechTranscriptionResultMetadata,
-      ) => void;
+      ) => SpeechCommitOutcome | undefined;
       onInterimTranscript: (transcript: string) => void;
       onListeningStart?: () => void;
       onListeningStop?: () => boolean | undefined;
@@ -541,7 +543,7 @@ type ToolbarVoiceButtonControl =
       ) => void;
       showWaveform?: boolean;
       disabled?: boolean;
-      speechMethod: SpeechMethodId;
+      speechMethod: SpeechMethodId | null;
       getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
       smartTurn?: SpeechSmartTurnSettings;
     }
@@ -553,7 +555,7 @@ type ToolbarVoiceButtonControl =
 interface ToolbarSpeechControl {
   showMethodSelector: boolean;
   methodOptions: FilterOption<SpeechMethodId>[];
-  selectedMethod: SpeechMethodId;
+  selectedMethod: SpeechMethodId | null;
   onMethodChange: (selected: string[]) => void;
   smartTurnSettings?: SpeechSmartTurnSettings;
   onSmartTurnSettingsChange?: (settings: SpeechSmartTurnSettings) => void;
@@ -959,7 +961,7 @@ export function MessageInputToolbarView({
   );
   const showProjectQueueButton =
     showCurrentSessionProjectQueueButton || showNewSessionProjectQueueButton;
-  const selectedSpeechMethod = speechControl?.selectedMethod;
+  const selectedSpeechMethod = speechControl?.selectedMethod ?? null;
   const queueControl = actionsControl.send?.queue;
   const canToggleSteerNow = !!(
     visibility.steerNow &&
@@ -1483,7 +1485,6 @@ export function MessageInputToolbarView({
           </button>
         )}
         {visibility.microphone &&
-          selectedSpeechMethod &&
           speechControl?.voiceButton?.kind === "preview" && (
             <SpeechControlMenu
               showMethodSelector={speechControl.showMethodSelector}
@@ -1509,7 +1510,6 @@ export function MessageInputToolbarView({
             />
           )}
         {visibility.microphone &&
-          selectedSpeechMethod &&
           speechControl?.voiceButton?.kind === "live" &&
           speechControl.voiceButton.ref && (
             <SpeechControlMenu
@@ -2364,6 +2364,8 @@ export function MessageInputToolbar({
     setSpeechSmartTurnSettings,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
+  const { relayTransport, relayedServerSpeechAvailable } =
+    useSpeechSourceRuntime();
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const { providers } = useProviders();
   const { visibility: toolbarVisibility, priority: toolbarPriority } =
@@ -2644,14 +2646,21 @@ export function MessageInputToolbar({
     voiceInputEnabled &&
     serverVoiceEnabled &&
     speechMethodOptions.length > 1;
-  const selectedSpeechMethodCapabilities = getSpeechMethodCapabilities(
-    selectedSpeechMethod,
-    versionInfo?.voiceBackendCapabilities,
-  );
-  const selectedSpeechCanStream = canSpeechMethodStream({
-    methodId: selectedSpeechMethod,
-    serverCapabilities: versionInfo?.voiceBackendCapabilities,
-  });
+  const selectedSpeechMethodCapabilities =
+    selectedSpeechMethod === null
+      ? {}
+      : getSpeechMethodCapabilities(
+          selectedSpeechMethod,
+          versionInfo?.voiceBackendCapabilities,
+        );
+  const selectedSpeechCanStream =
+    selectedSpeechMethod !== null &&
+    canSpeechMethodStream({
+      methodId: selectedSpeechMethod,
+      serverCapabilities: versionInfo?.voiceBackendCapabilities,
+      relayTransport,
+      relayedServerSpeechAvailable,
+    });
   const supportsSelectedSpeechSmartTurn =
     selectedSpeechCanStream &&
     selectedSpeechMethodCapabilities.smartTurn === true;

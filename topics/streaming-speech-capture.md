@@ -173,11 +173,11 @@ settings surface):
 
   Smart Turn follow-up listening is independent of this preference. A non-zero
   follow-up window temporarily uses the same shared warm stream so a second
-  utterance can start without another device cold-open. When the window expires
-  with Keep Mic Warm off, YA stops the follow-up capture and releases that
-  temporary stream. With Keep Mic Warm on, only active follow-up listening
-  stops; the visibility-scoped idle stream remains under the ordinary warm-mic
-  contract.
+  utterance can start without another device cold-open. Expiry stops an idle
+  follow-up, but speech begun before the deadline may finish; the temporary
+  stream releases when that transaction settles. With Keep Mic Warm on, only
+  follow-up listening ends; the visibility-scoped idle stream remains under the
+  ordinary warm-mic contract.
 
   Settings copy should name this visibility scope. Prefer wording like "Keep
   this browser's microphone stream ready while this tab is visible between

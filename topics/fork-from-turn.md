@@ -567,7 +567,16 @@ No-summary semantics:
 
 The alternate path must not run the generator fork, must not rewrite the typed
 text, and must not alter normal `Enter` / `Ctrl+Enter` behavior outside
-fork-after mode.
+fork-after mode. If speech capture or transcription is pending, both fork
+buttons preserve the exact visible click-time snapshot and wait for that speech
+transaction's terminal settlement. Both typed actions retain recovery ownership
+of the detached draft until settlement-time admission accepts the dispatch.
+Successful settlement dispatches once. A lifecycle failure or current-admission
+rejection restores the detached draft and creates no fork; a synchronously
+thrown typed action restores the draft before propagating its error. A spoken
+command-only generated-summary action may validly submit empty
+instructions, but it must invoke the typed generated-summary action rather than
+generic empty message submission.
 
 Wiring: `SessionPage` → `MessageList` (`onForkBeforeUserMessage`,
 `onForkAfterUserMessage`, `onCopyUserMessage`, `onTrimBeforeUserMessage`) →

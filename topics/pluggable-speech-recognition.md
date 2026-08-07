@@ -1,8 +1,8 @@
 # Pluggable Speech Recognition Providers
 > YA speech recognition should be an explicit user-selected method:
-> browser-native stays as the device-local fallback, while configured YA server
-> backends receive browser-captured audio for transcription or future audio
-> forwarding without exposing speech credentials to clients.
+> browser-native remains a device-local option when available, while configured
+> YA server backends receive browser-captured audio for transcription or future
+> audio forwarding without exposing speech credentials to clients.
 
 Topic: pluggable-speech-recognition
 
@@ -324,16 +324,19 @@ client through `fetchJSON("/speech/transcribe", ...)`.
 
 - With no cloud STT keys and an empty `YEP_VOICE_BACKENDS`, a server advertises
   `voiceInput` but `voiceBackends: []`, causing the UI to expose only
-  browser-native recognition. Seeing device-native speech on mobile is
-  therefore expected in that bare runtime.
+  browser-native recognition when that browser supports it. A browser without
+  Web Speech instead shows the visible-disabled unavailable mic state.
 - `/api/speech/ws` remains the direct/local streaming endpoint. Relay streaming
   uses the dedicated secure relay `speech` channel instead of trying to route a
   raw browser WebSocket through the hosted app origin.
-- Previously selected server methods are reconciled against current
-  `voiceBackends` before the mic button is used. If an explicit server backend
-  disappears, the current resolver falls back to browser-native rather than
-  silently choosing another server backend; a one-time notice or re-pick prompt
-  is still a UI follow-up.
+- Previously selected methods are reconciled against the current source's
+  `voiceBackends` and browser capability before the mic button is used. If an
+  explicit server method disappears, or an explicit browser-native choice is
+  unavailable in the current browser, the resolver returns an explicit
+  unavailable state rather than silently choosing another method. The mic stays
+  visible-disabled with unavailable copy, and the user can choose an advertised
+  method from the selector. Legacy hidden Grok batch ids still migrate to Grok
+  streaming only while the corresponding Grok method remains available.
 - The current UI setting is a server-learned client default plus local override,
   not a true per-session speech method. The original plan's per-new-session
   override is not persisted as session metadata or passed through message
@@ -665,5 +668,7 @@ to a local model remains a later optimization after local batch is solid.
   the Transformers backend is active switches the STT backend to `ya-nemo` and
   prewarms that model. With `ya-nemo` unavailable, compact mic options hide that
   preset and global settings disable it with a required-backend hint.
-- Removing a previously selected backend causes an explicit method-selection
-  prompt or notice, not a silent fallback and not a dead mic button.
+- Removing a previously selected backend does not silently select another
+  provider: the current method resolves unavailable, the mic remains visible
+  and disabled with unavailable copy, and advertised methods remain available
+  for explicit re-selection.

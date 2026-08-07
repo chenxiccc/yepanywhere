@@ -49,6 +49,10 @@ const browserXaiKey = vi.hoisted(() => ({
   hasBrowserXaiSttApiKey: false,
   setBrowserXaiSttApiKey: vi.fn(),
 }));
+const speechSourceRuntime = vi.hoisted(() => ({
+  relayTransport: false,
+  relayedServerSpeechAvailable: false,
+}));
 const versionState = vi.hoisted(() => ({
   capabilities: [] as string[],
   voiceBackends: ["ya-grok", "ya-parakeet", "ya-nemo"],
@@ -77,8 +81,8 @@ vi.mock("../../../hooks/useBrowserXaiSttApiKey", () => ({
   useBrowserXaiSttApiKey: () => browserXaiKey,
 }));
 
-vi.mock("../../../hooks/useRemoteBasePath", () => ({
-  useRemoteBasePath: () => "",
+vi.mock("../../../hooks/useSpeechSourceRuntime", () => ({
+  useSpeechSourceRuntime: () => speechSourceRuntime,
 }));
 
 vi.mock("../../../hooks/useVersion", () => ({
@@ -121,6 +125,8 @@ describe("SpeechSettings", () => {
     modelSettings.parakeetSpeechModel = "nvidia/parakeet-tdt-0.6b-v3";
     versionState.voiceBackends = ["ya-grok", "ya-parakeet", "ya-nemo"];
     versionState.voiceBackendStatuses = [];
+    speechSourceRuntime.relayTransport = false;
+    speechSourceRuntime.relayedServerSpeechAvailable = false;
     modelSettings.setSpeechMethod.mockClear();
     modelSettings.setParakeetSpeechModel.mockClear();
     speechCaptureSettings.setKeepMicWarm.mockClear();
@@ -264,5 +270,41 @@ describe("SpeechSettings", () => {
       "ya-parakeet",
       "nvidia/parakeet-tdt-0.6b-v3",
     );
+  });
+
+  it("shows a missing explicit backend as unavailable without switching", () => {
+    modelSettings.speechMethod = "ya-deepgram";
+    versionState.voiceBackends = ["ya-grok"];
+
+    render(<SpeechSettings />);
+
+    expect(screen.getByText("speechSettingsBackendUnavailable")).toBeTruthy();
+    expect(modelSettings.setSpeechMethod).not.toHaveBeenCalled();
+  });
+
+  it("uses the current relayed source speech channel for Smart Turn", () => {
+    modelSettings.speechMethod = "ya-grok";
+    speechSourceRuntime.relayTransport = true;
+    speechSourceRuntime.relayedServerSpeechAvailable = true;
+
+    render(<SpeechSettings />);
+
+    expect(screen.getByRole("checkbox", { name: "Smart Turn" })).toBeTruthy();
+    expect(
+      screen.queryByText("speechSettingsStreamingRelayUnavailable"),
+    ).toBeNull();
+  });
+
+  it("reports relayed streaming unavailable without a speech channel", () => {
+    modelSettings.speechMethod = "ya-grok";
+    speechSourceRuntime.relayTransport = true;
+    speechSourceRuntime.relayedServerSpeechAvailable = false;
+
+    render(<SpeechSettings />);
+
+    expect(screen.queryByRole("checkbox", { name: "Smart Turn" })).toBeNull();
+    expect(
+      screen.getAllByText("speechSettingsStreamingRelayUnavailable").length,
+    ).toBeGreaterThan(0);
   });
 });

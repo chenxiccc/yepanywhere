@@ -263,7 +263,16 @@ provisional text into the editable textarea. A failed speech cycle clears the
 pending delivery instead of sending the snapshot; a later deliberate delivery
 press may still send the retained draft. This contract applies to the
 active-session, new-session, and floating composers and to mic-button or
-keyboard-shortcut invocation of the same action.
+keyboard-shortcut invocation of the same action. Action eligibility is checked
+before speech ownership transfers and again before a deferred typed action
+runs. The pending intent keeps recovery ownership of its detached draft until
+the typed action accepts; rejection or an exception restores that draft. A
+Smart Turn send rejected by its typed action settles as unhandled and does not
+arm follow-up listening. Generated-summary and no-summary forks are typed
+delivery intents under the same settlement owner: command-only
+generated-summary speech may invoke its valid empty-instructions action, while
+no-summary dispatches exactly once only after successful settlement and
+restores the detached draft on failure.
 
 In the active-session composer, that delivery press also transfers the current
 draft and speech insertion target into a delivery-owned transaction and clears
@@ -411,12 +420,14 @@ possibly with a high startup latency (model cold-load). The pending-result wait
 conceptual state at different latencies, surfaced by one status beside the mic.
 The distinct surface wording is deliberate and stays — `Transcribing…` for
 batch and `Finalizing…` for streaming. The composer still receives the pending
-*kind* (`listening` | `transcribing` | `finalizing`) from the mic button for
-transaction lifecycle, but none of those status strings enter the draft.
-The absence of a pending kind during provider startup is not a completed
-transaction. A composer target is cleared only when a previously non-null kind
-returns to null (or its mic control unmounts), so the normal
-`idle -> starting -> listening` sequence preserves the captured caret.
+*kind* (`starting` | `listening` | `transcribing` | `finalizing`) from the mic
+button for transaction lifecycle, but none of those status strings enter the
+draft. Provider startup and
+reconnection belong to the same speech transaction as capture. A composer
+target is cleared only when a previously non-null kind returns to null (or its
+mic control unmounts), so `idle -> starting -> listening` preserves the
+captured caret. Startup failure is a terminal settlement: a recorded delivery
+must fail and restore its detached draft rather than hang or disappear.
 
 Cancel (Escape) abandons only the in-progress, non-final portion of the active
 mini-turn; already-accepted `is_final` blocks remain in the draft. For batch
