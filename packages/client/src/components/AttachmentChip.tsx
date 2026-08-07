@@ -22,9 +22,6 @@ export interface AttachmentChipProps {
   /** Logical project id for attachments outside session context. The URL's
    * session segment always comes from the file path's physical directory. */
   projectId?: string;
-  /** Accepted for caller convenience; the physical path supplies the
-   * session segment, so this is not used for routing. */
-  sessionId?: string;
   onRemove?: () => void;
 }
 

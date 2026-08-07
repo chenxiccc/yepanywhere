@@ -114,9 +114,10 @@ URL.
 - **Attachment chips** — image thumbnails on a sent user message and in the
   composer's pending-attachment row. `components/AttachmentChip.tsx` via
   `useRemoteImage` → `/api/projects/:id/sessions/:sid/upload/:filename`.
-  The route coordinates come from logical session metadata, never from the
-  attachment's physical storage path; app-data project keys are intentionally
-  irreversible and project-local paths are a storage detail. Legacy
+  The project coordinate comes from logical session metadata because app-data
+  project keys are intentionally irreversible. The session coordinate comes
+  from the attachment path's physical directory, which remains stable when a
+  provisional or forked session id differs from the viewed session. Legacy
   `.attachments` and central-upload paths retain path-based fallback routing
   when no current session context exists. Rendered from `MessageInput.tsx`,
   `MessageList.tsx`, and `blocks/UserPromptBlock.tsx`. Relay-safe.
