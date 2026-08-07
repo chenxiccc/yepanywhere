@@ -37,7 +37,7 @@
     "@yep-anywhere/shared": "workspace:*",
     "bcrypt": "^6.0.0",
     "diff": "^8.0.3",
-    "hono": "^4.12.25",
+    "hono": "^4.13.1",
     "http-proxy": "^1.18.1",
     "katex": "^0.16.45",
     "markdown-it": "15.0.0",

@@ -193,19 +193,34 @@ Fix any errors before considering the task complete.
 
 ## Dependency Security Maintenance
 
-Periodically run `pnpm audit --prod` and pay special attention to the `web-push -> asn1.js -> bn.js` chain. Keep `bn.js` patched (currently via pnpm override) until `web-push` ships an upstream fix.
+CI runs `pnpm audit --prod` on every push (the `audit` job in `ci.yml`) and it
+must exit 0. Pay special attention to the `web-push -> asn1.js -> bn.js` chain.
+Keep `bn.js` patched (currently via pnpm override) until `web-push` ships an
+upstream fix.
 
-When a transitive dep has no direct upgrade path, prefer a pnpm override. Pin it exactly if a newer major would escape the parent's declared range — `fast-uri` is pinned to `3.1.4` rather than `^3.1.4` because 4.x is published and `ajv` declares `^3.0.1`.
+When a transitive dep has no direct upgrade path, prefer a pnpm override. Pin it
+exactly if a newer major would escape the parent's declared range — `fast-uri`
+is pinned to `3.1.5` rather than `^3.1.5` because 4.x is published and `ajv`
+declares `^3.0.1`. When the parent's declared range already contains the patched
+version, no override is needed: refresh the lockfile with
+`pnpm -r update <pkg> --depth=Infinity` (plain `pnpm update` skips transitive
+deps).
 
 ### Known-unreachable advisories
 
-`pnpm audit --prod` is expected to report a non-zero count. As of 2026-07-25 three advisories remain, each triaged as unreachable with no safe fix available. Re-check when the listed trigger fires rather than re-deriving the analysis:
+Advisories triaged as unreachable are suppressed via
+`pnpm.auditConfig.ignoreGhsas` in the root `package.json`; that list and this
+table must stay in sync — every ignored GHSA needs a row here, and removing a
+row means removing the ignore. As of 2026-08-07 four advisories are triaged as
+unreachable with no safe in-range fix available. Re-check when the listed
+trigger fires rather than re-deriving the analysis:
 
 | Advisory | Why unreachable | Revisit when |
 |---|---|---|
 | `react-router` RSC-mode CSRF (GHSA-qwww-vcr4-c8h2) | Client is SPA-only — `BrowserRouter`/`Routes`, no `createBrowserRouter`, RSC, or server actions | Migrating to react-router v8. The fix lands in 8.3.0 and `react-router-dom` never reaches it (v8 consolidated into `react-router`) |
 | `@hono/node-server` serve-static traversal (GHSA-frvp-7c67-39w9) | `serveStatic` is never imported; only `serve`, `getRequestListener`, `HttpBindings`, `RESPONSE_ALREADY_SENT` | `@hono/node-ws` supports node-server 2.x — its peer is currently `^1.19.11`, so 2.x breaks the WebSocket path |
 | `body-parser` limit DoS (GHSA-v422-hmwv-36x6) | Arrives via `@modelcontextprotocol/sdk`'s express *server* transports; YA is an MCP client and never loads express | `@modelcontextprotocol/sdk` bumps its express dep |
+| `uuid` buffer bounds (GHSA-w5hq-g745-h8pq) | Only path is `firebase-admin -> @google-cloud/storage -> gaxios@6`, which calls `uuid.v4()` with no arguments; the defect needs v3/v5/v6 with a caller-supplied `buf`. Patched only in `>=11.1.1`, outside gaxios 6's `^9` range | `firebase-admin`/`gaxios` declare uuid `>=11`, or a 9.x patch release appears |
 
 Anything not on this list is untriaged — treat a new advisory as actionable.
 

@@ -41,6 +41,21 @@ jobs:
       - run: pnpm capabilities:audit
       - run: pnpm console:scan
 
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.12
+          cache: "pnpm"
+      # Advisories triaged as unreachable are listed in pnpm.auditConfig.ignoreGhsas
+      # (package.json) with rationale in CLAUDE.md "Known-unreachable advisories".
+      # A failure here means a new, untriaged advisory: fix it or triage it in both
+      # places — never ignore without a table entry.
+      - run: pnpm audit --prod
+
   typecheck:
     runs-on: ubuntu-latest
     steps:
