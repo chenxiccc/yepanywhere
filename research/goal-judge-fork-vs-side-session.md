@@ -531,15 +531,30 @@ any claim in this section is load-bearing):
 - Huang et al., *Large Language Models Cannot Self-Correct Reasoning
   Yet*, ICLR 2024 (arXiv:2310.01798) — weak intrinsic
   self-verification; background for SELF.
+- Datacurve, *DeepSWE: Measuring Frontier Coding Agents on Original,
+  Long-Horizon Engineering Tasks* (arXiv:2607.07946) — original tasks
+  on 91 OSS repos, never merged upstream; releases the benchmark,
+  verifiers, full evaluation trajectories, and the complete judge
+  audit (per-rollout trajectory, patch, verifier output, verdict);
+  the exact judge prompt is withheld as an internal instrument. Its
+  tool-era relevance here: an independent frontier judge disagreed
+  with SWE-Bench Pro's verifier on 32.4% of rollouts vs 1.4% for
+  DeepSWE's own verifiers — direct evidence that benchmark oracle
+  noise is large (supporting this proposal's oracle-noise threat and
+  audit mitigation), and that an independent judge's disagreements
+  mostly surface verifier weakness rather than worker self-deception.
+  No judge-identity or judge-placement ablation arms, so the gap
+  below stands; its released rollouts are candidate audit material
+  for our coding arm.
 
 **The gap**: none of the found work ablates goal-loop stop-judge
 *architecture* — context placement (fork vs fresh vs in-context) ×
 judge identity × evidence access — holding worker, task, and stop
 boundaries fixed, with cost measured under real prompt-cache
-economics. Claims from an earlier informal discussion of this topic
-(a "DeepSWE" judge-audit disagreement figure and several named
-systems) could not be verified in this pass and are deliberately not
-relied on here.
+economics. The DeepSWE judge-audit figure from an earlier informal
+discussion of this topic has since been verified against
+arXiv:2607.07946 and is cited above; the other systems named in that
+discussion remain unverified and are deliberately not relied on here.
 
 ## Threats to validity
 
