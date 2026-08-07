@@ -7,6 +7,8 @@
 
 Topic: glossary-tooltips
 
+See also: [relay head-of-line blocking](../docs/project/relay-head-of-line-blocking.md).
+
 Status: Implemented 2026-08-04. The shared grammar, resolver, capability-gated
 delivery, tab-local cache,
 annotation boundary, interaction, authenticated render surfaces, FileViewer
@@ -397,7 +399,13 @@ nothing. If a replacement subscriber arrives before that attempt settles, the
 same serialized activation driver waits out the invalid attempt, then reacquires
 a fresh claim, timer, watch set, and initial refresh; the replacement never
 becomes ready on resources the cancelled attempt released. Failed and cancelled
-states are inactive and remain subject to the retained-project bound.
+states are inactive and remain subject to the retained-project bound. The
+WebSocket adapter installs that synchronous release operation in the
+connection's subscription map, then runs readiness outside the serialized frame
+queue. Ping, unsubscribe, and unrelated frame admission therefore continue
+while filesystem acquisition is pending; a close or unsubscribe invalidates the
+installed generation, and its late readiness continuation releases without
+publishing.
 
 Observation growth while claim acquisition or initial refresh is pending sets
 one refresh-needed flag instead of starting a debounce timer or independent

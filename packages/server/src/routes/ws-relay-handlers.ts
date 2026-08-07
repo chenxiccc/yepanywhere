@@ -1026,12 +1026,12 @@ export function handleSessionWatchSubscribe(
 }
 
 /** Subscribe to the complete glossary-path set and later changes for a project. */
-export async function handleGlossarySubscribe(
+export function handleGlossarySubscribe(
   subscriptions: Map<string, () => void>,
   msg: RelaySubscribe,
   send: SendFn,
   manager?: ProjectGlossarySubscriptionManager,
-): Promise<void> {
+): void {
   const { subscriptionId, projectId } = msg;
   if (!manager) {
     send({
@@ -1081,60 +1081,76 @@ export async function handleGlossarySubscribe(
   };
   subscriptions.set(subscriptionId, cleanup);
 
+  const fail = (error: unknown) => {
+    const ownsSubscription = subscriptions.get(subscriptionId) === cleanup;
+    if (ownsSubscription) subscriptions.delete(subscriptionId);
+    const shouldReport = !cancelled && ownsSubscription;
+    cancelled = true;
+    release?.();
+    release = null;
+    if (!shouldReport) return;
+    try {
+      send({
+        type: "response",
+        id: subscriptionId,
+        status:
+          error instanceof Error && error.message === "Project not found"
+            ? 404
+            : 500,
+        body: {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Glossary subscription failed",
+        },
+      });
+    } catch (sendError) {
+      getLogger().warn(
+        { error: sendError, subscriptionId },
+        "[WS Relay] Failed to send glossary subscription error",
+      );
+    }
+  };
+  const open = () => {
+    if (cancelled || subscriptions.get(subscriptionId) !== cleanup) {
+      cancelled = true;
+      release?.();
+      release = null;
+      return;
+    }
+
+    opened = true;
+    send({
+      type: "event",
+      subscriptionId,
+      eventType: "connected",
+      eventId: String(eventId++),
+      data: { timestamp: new Date().toISOString() },
+    });
+    for (const event of buffered) sendEvent(event.eventType, event.data);
+    heartbeatInterval = setInterval(() => {
+      sendEvent("heartbeat", { timestamp: new Date().toISOString() });
+    }, 30_000);
+    getLogger().debug(
+      `[WS Relay] Subscribed to glossary project=${projectId} (${subscriptionId})`,
+    );
+  };
+
   try {
     const subscription = manager.subscribe(projectId, (event) => {
       sendEvent(event.type, event);
     });
     release = subscription.release;
-    await subscription.ready;
+    void subscription.ready.then(open).catch(fail);
   } catch (error) {
-    if (subscriptions.get(subscriptionId) === cleanup) {
-      subscriptions.delete(subscriptionId);
-    }
-    if (cancelled) return;
-    send({
-      type: "response",
-      id: subscriptionId,
-      status:
-        error instanceof Error && error.message === "Project not found"
-          ? 404
-          : 500,
-      body: {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Glossary subscription failed",
-      },
-    });
-    return;
+    fail(error);
   }
-  if (cancelled || subscriptions.get(subscriptionId) !== cleanup) {
-    release?.();
-    release = null;
-    return;
-  }
-
-  opened = true;
-  send({
-    type: "event",
-    subscriptionId,
-    eventType: "connected",
-    eventId: String(eventId++),
-    data: { timestamp: new Date().toISOString() },
-  });
-  for (const event of buffered) sendEvent(event.eventType, event.data);
-  heartbeatInterval = setInterval(() => {
-    sendEvent("heartbeat", { timestamp: new Date().toISOString() });
-  }, 30_000);
-  getLogger().debug(
-    `[WS Relay] Subscribed to glossary project=${projectId} (${subscriptionId})`,
-  );
 }
 
 /**
  * Handle a subscribe message.
  */
-export async function handleSubscribe(
+export function handleSubscribe(
   subscriptions: Map<string, () => void>,
   msg: RelaySubscribe,
   send: SendFn,
@@ -1146,7 +1162,7 @@ export async function handleSubscribe(
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
   closeConnection?: () => void,
-): Promise<void> {
+): void {
   const { subscriptionId, channel } = msg;
 
   if (subscriptions.has(subscriptionId)) {
@@ -1188,7 +1204,7 @@ export async function handleSubscribe(
       break;
 
     case "glossary":
-      await handleGlossarySubscribe(
+      handleGlossarySubscribe(
         subscriptions,
         msg,
         send,
@@ -1739,7 +1755,7 @@ export async function handleMessage(
         // the way it never would over plain HTTP.
         void handleRequest(requestMsg, send, ws, app, baseUrl, connState);
       },
-      onSubscribe: async (subscribeMsg) =>
+      onSubscribe: (subscribeMsg) =>
         handleSubscribe(
           subscriptions,
           subscribeMsg,

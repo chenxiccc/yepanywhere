@@ -1,14 +1,18 @@
 # Relay Head-of-Line Blocking
 
-## Status: Not Currently a Problem
+See also: [glossary tooltips](../../topics/glossary-tooltips.md).
+
+## Status: Mitigated at independent-work boundaries
 
 Investigated as a possible cause of intermittent "Request timeout" errors (~1 in 30-60 requests) via relay. The actual root cause turned out to be a nonce-byte heuristic bug in `isBinaryEncryptedEnvelope` — see commit `0f4f7a1`.
 
-This doc captures the HOL blocking analysis for future reference, since it could become relevant if session data endpoints get slower or traffic increases.
+The per-connection queue still serializes decrypt/auth/decode and stateful frame admission. Work with its own identity and completion channel leaves that queue after admission: tunneled HTTP requests run independently by request id, and glossary subscription readiness runs behind a synchronously installed subscription-id cancellation generation. Upload framing and other stateful message sequences remain serialized.
 
-## The Mechanism
+This doc retains the original HOL analysis and records the boundaries that have since moved.
 
-Both the Hono and raw WebSocket relay paths serialize ALL incoming messages through a single promise queue:
+## Original Mechanism
+
+At the time of the original investigation, both the Hono and raw WebSocket relay paths serialized all incoming messages through a single promise queue:
 
 ```typescript
 // ws-relay.ts (both paths)
@@ -19,7 +23,7 @@ rawWs.on("message", (data, isBinary) => {
 });
 ```
 
-Inside `routeMessage`, HTTP request processing is awaited:
+At that point, `routeMessage` also awaited complete HTTP request processing:
 
 ```typescript
 case "request":
@@ -28,45 +32,41 @@ case "request":
 
 `handleRequest` does `await app.fetch(...)` — the full Hono route handler round-trip. A slow request blocks all subsequent messages (requests, subscriptions, pings) in the queue.
 
-This affects **all tunneled connections** (both relay and direct encrypted), since both tunnel HTTP requests through the WebSocket. Direct unencrypted connections use regular HTTP and are unaffected.
+That behavior affected **all tunneled connections** (both relay and direct encrypted), since both tunnel HTTP requests through the WebSocket. Direct unencrypted connections use regular HTTP and were unaffected.
 
-## Why It's Not Currently a Problem
+## Why It Was Not the Observed Timeout
 
 In practice, responses are fast — the observed timeouts were caused by the nonce heuristic silently dropping ~0.78% of encrypted messages, not by queue delays. If HOL blocking were the issue, you'd see increasing latency on later requests, not instant responses with occasional total drops.
 
-## Potential Fix
+## Implemented Independent-Work Boundaries
 
-Fire-and-forget `handleRequest` instead of awaiting it:
+Tunneled requests now launch `handleRequest` without awaiting the route result in the frame queue:
 
 ```typescript
-case "request":
-    handleRequest(msg, send, app, baseUrl).catch((err) => {
-        console.error(`[WS Relay] Unhandled error in handleRequest:`, err);
-        try {
-            send({ type: "response", id: msg.id, status: 500,
-                   body: { error: "Internal server error" } });
-        } catch { /* connection dead */ }
-    });
-    break;
+onRequest: async (requestMsg) => {
+    // handleRequest always answers through the request's own id.
+    void handleRequest(requestMsg, send, ws, app, baseUrl, connState);
+}
 ```
 
-### What Would Stay Serialized
+### What Stays Serialized
 
-Only `case "request"` would change. All other message types continue through the queue:
-- **subscribe/unsubscribe** — ordering matters (unsubscribe must not race its subscribe)
-- **upload_start/chunk/end** — offset validation requires ordering
-- **ping** — lightweight, no real concern
+The queue still orders admission for connection-scoped state:
+
+- **subscribe/unsubscribe** — subscription-id admission remains ordered. Glossary subscription readiness is separate work after its cancellation generation is installed, so an unsubscribe can cancel it immediately.
+- **upload_start/chunk/end** — offset validation requires ordering.
+- **ping** — lightweight admission remains ordered, but no earlier independent request or glossary initialization can hold it behind route/filesystem completion.
 
 ### Risks and Caveats
 
-- **Implicit request ordering**: If the client fires a mutation (`POST /api/sessions/:id/message`) then immediately reads (`GET /api/sessions/:id`), concurrent processing could return stale data. The current queue accidentally guarantees causal ordering between requests. This would need to be verified safe for all client call patterns.
-- **`send()` concurrency**: `send()` does `JSON.stringify` + encrypt + `ws.send()`. Encryption uses random nonces (no counter), and the ws library buffers internally, so concurrent sends should be safe — but this hasn't been stress-tested.
-- **Error attribution**: If a concurrent request fails, the error response goes back by request ID. But stack traces and server logs become harder to correlate since multiple requests are in-flight simultaneously.
-- **No current payoff**: Since the nonce bug was the actual cause of timeouts, this optimization has no observable benefit right now. It adds concurrency to reason about for no current problem.
+- **No implicit request ordering**: A client with a mutation followed by a dependent read must await the mutation response. Independent request ids are completion channels, not a causal-order promise.
+- **`send()` concurrency**: Responses may finish out of request order. `send()` encrypts each response with an independent random nonce and the WebSocket buffers writes; clients correlate results by request id.
+- **Error attribution**: Concurrent failures still answer through their request ids, while logs need the same ids for correlation.
+- **Stateful protocols stay admitted in order**: Upload offsets, transport sequencing, authentication, and subscription-id creation/removal do not inherit the independent-request rule.
 
 ## Recommendation
 
-Shelve this. If slow responses (not drops) are observed in the future — e.g., large session data loads stalling pings or subscriptions — it's a clean, low-risk change to pull out. But don't apply preemptively.
+Keep the serialized admission queue rather than broadly parallelizing frame handling. When a new operation has its own identity, cancellation generation, and response channel, install those synchronously and move only its independent completion work outside the queue. Its regression should hold that work pending while a later lightweight frame and cancellation both proceed.
 
 ## Files
 
