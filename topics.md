@@ -274,3 +274,7 @@
   and multi-client single-flight refresh.
 - biome-format-baseline - Repository-wide Biome formatting invariant, CI
   enforcement, and blame preservation for verified mechanical rewrites.
+- goal-judge-fork-vs-side-session - Proposal + experiment deciding where a
+  loop-until-done stop judge lives: forked same-model turn vs side session
+  (small/same-tier/cross-vendor/tool-running) vs self-declaration, on
+  false-complete/false-continue rates and real billed cost.
