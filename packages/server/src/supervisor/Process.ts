@@ -9,6 +9,7 @@ import type {
   ProviderRuntimeStatus,
   RecapMode,
   SessionLivenessSnapshot,
+  SessionQueuedMessageSummary,
   SessionSandboxEnforcement,
   SessionWakeReason,
   SessionWakeReasonSnapshot,
@@ -3428,16 +3429,9 @@ export class Process {
   }
 
   /**
-   * Get a summary of the deferred queue for SSE events and client sync.
+   * Get a summary of the live deferred queue for canonical server projection.
    */
-  getDeferredQueueSummary(): {
-    tempId?: string;
-    content: string;
-    timestamp: string;
-    attachments?: UserMessage["attachments"];
-    attachmentCount?: number;
-    metadata?: UserMessage["metadata"];
-  }[] {
+  getDeferredQueueSummary(): SessionQueuedMessageSummary[] {
     return this.deferredQueue.map((entry) => {
       const attachmentCount =
         (entry.message.attachments?.length ?? 0) +
@@ -3445,6 +3439,13 @@ export class Process {
         (entry.message.documents?.length ?? 0);
 
       return {
+        ...(entry.persistedQueueId
+          ? {
+              id: entry.persistedQueueId,
+              kind: "patient" as const,
+              status: "queued" as const,
+            }
+          : {}),
         tempId: entry.message.tempId,
         content: entry.message.text,
         timestamp: entry.timestamp,
@@ -3494,7 +3495,7 @@ export class Process {
   }
 
   /**
-   * Emit a deferred-queue event with the current queue state.
+   * Signal that subscribers should publish the canonical deferred queue state.
    */
   private emitDeferredQueueChange(
     reason?: "queued" | "cancelled" | "promoted",
@@ -3502,7 +3503,6 @@ export class Process {
   ): void {
     this.emit({
       type: "deferred-queue",
-      messages: this.getDeferredQueueSummary(),
       reason,
       tempId,
     });

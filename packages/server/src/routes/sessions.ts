@@ -134,10 +134,7 @@ import {
   providerResolutionDeps,
 } from "./session-provider-resolution.js";
 import { parseSessionMetadataPatch } from "./session-metadata-patch.js";
-import {
-  recoveredPatientQueueSummaries,
-  sessionQueueSummaries,
-} from "./session-queue-summaries.js";
+import { sessionQueueSummaries } from "./session-queue-summaries.js";
 import {
   reportableProcessState,
   resolveRecoveredGroupForDelivery,
@@ -6109,7 +6106,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         deferred: deferredResult.deferred,
         promoted: deferredResult.promoted,
         position: deferredResult.position,
-        deferredMessages: process.getDeferredQueueSummary(),
+        deferredMessages: sessionQueueSummaries(deps, sessionId, process),
         serverTimestamp,
       });
     }
@@ -6223,7 +6220,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     await service.deleteItem(queueId);
     return c.json({
       deleted: true,
-      deferredMessages: recoveredPatientQueueSummaries(deps, sessionId),
+      deferredMessages: sessionQueueSummaries(
+        deps,
+        sessionId,
+        deps.supervisor.getProcessForSession(sessionId),
+      ),
     });
   });
 

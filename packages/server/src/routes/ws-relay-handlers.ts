@@ -58,6 +58,7 @@ import type {
 } from "../services/index.js";
 import type { SecurityClientService } from "../services/SecurityClientService.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
+import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
 import {
   LEGACY_PUBLIC_SHARE_RELAY_MAX_BYTES as PUBLIC_SHARE_RELAY_LIMIT_BYTES,
   LEGACY_PUBLIC_SHARE_RESPONSE_CHUNK_MAX_BYTES,
@@ -276,6 +277,8 @@ export interface RelayHandlerDeps {
   remoteSessionService?: RemoteSessionService;
   /** Registered-client continuity and security audit service. */
   securityClientService?: SecurityClientService;
+  /** Durable patient queue state included in session snapshots. */
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** Connected browsers service for tracking WS connections (optional) */
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
@@ -791,6 +794,7 @@ export function handleSessionSubscribe(
   msg: RelaySubscribe,
   send: SendFn,
   supervisor: Supervisor,
+  sessionQueuePersistenceService?: SessionQueuePersistenceService,
 ): void {
   const { subscriptionId, sessionId } = msg;
   const wantsLiveDeltas = msg.wantsLiveDeltas !== false;
@@ -829,6 +833,7 @@ export function handleSessionSubscribe(
 
   const { cleanup } = createSessionSubscription(process, sendEvent, {
     wantsLiveDeltas,
+    sessionQueuePersistenceService,
     onError: (err) => {
       console.error("[WS Relay] Error in session subscription:", err);
     },
@@ -1155,6 +1160,7 @@ export function handleSubscribe(
   msg: RelaySubscribe,
   send: SendFn,
   supervisor: Supervisor,
+  sessionQueuePersistenceService: SessionQueuePersistenceService | undefined,
   eventBus: EventBus,
   connState: ConnectionState,
   focusedSessionWatchManager?: FocusedSessionWatchManager,
@@ -1177,7 +1183,13 @@ export function handleSubscribe(
 
   switch (channel) {
     case "session":
-      handleSessionSubscribe(subscriptions, msg, send, supervisor);
+      handleSessionSubscribe(
+        subscriptions,
+        msg,
+        send,
+        supervisor,
+        sessionQueuePersistenceService,
+      );
       break;
 
     case "activity":
@@ -1761,6 +1773,7 @@ export async function handleMessage(
           subscribeMsg,
           send,
           supervisor,
+          deps.sessionQueuePersistenceService,
           eventBus,
           connState,
           deps.focusedSessionWatchManager,

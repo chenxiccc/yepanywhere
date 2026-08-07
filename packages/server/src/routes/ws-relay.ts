@@ -15,6 +15,7 @@ import type {
 } from "../services/index.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { SecurityClientService } from "../services/SecurityClientService.js";
+import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
 import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
@@ -61,6 +62,8 @@ export interface WsRelayDeps {
   remoteSessionService?: RemoteSessionService;
   /** Registered-client continuity and security audit service. */
   securityClientService?: SecurityClientService;
+  /** Durable patient queue state included in session snapshots. */
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** Connected browsers service for tracking WS connections (optional) */
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
@@ -102,6 +105,8 @@ export interface AcceptRelayConnectionDeps {
   remoteSessionService: RemoteSessionService;
   /** Registered-client continuity and security audit service. */
   securityClientService?: SecurityClientService;
+  /** Durable patient queue state included in session snapshots. */
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** Connected browsers service for tracking WS connections (optional) */
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
@@ -225,6 +230,7 @@ export function createWsRelayRoutes(
     remoteAccessService,
     remoteSessionService,
     securityClientService,
+    sessionQueuePersistenceService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
@@ -246,6 +252,7 @@ export function createWsRelayRoutes(
     remoteAccessService,
     remoteSessionService,
     securityClientService,
+    sessionQueuePersistenceService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
@@ -431,6 +438,7 @@ export function createAcceptRelayConnection(
     remoteAccessService,
     remoteSessionService,
     securityClientService,
+    sessionQueuePersistenceService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
@@ -452,6 +460,7 @@ export function createAcceptRelayConnection(
     remoteAccessService,
     remoteSessionService,
     securityClientService,
+    sessionQueuePersistenceService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,

@@ -69,6 +69,7 @@ import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
 import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
+import { MockServerClaudeProvider } from "./sdk/mock.js";
 import {
   closeCodexRuntimeHostRegistration,
   hasReloadSafeCodexRuntime,
@@ -456,8 +457,10 @@ async function warnIfCodexVersionMismatch(): Promise<void> {
 
 await warnIfCodexVersionMismatch();
 
-// Create the real SDK
-const realSdk = new RealClaudeSDK();
+const mockProvider = config.useMockSdk
+  ? new MockServerClaudeProvider()
+  : undefined;
+const realSdk = config.useMockSdk ? undefined : new RealClaudeSDK();
 
 // Create the event bus and the eligibility-gated provider watcher owner.
 const eventBus = new EventBus();
@@ -914,6 +917,7 @@ async function startServer() {
     disposeSessionReaders,
     glossaryIndexService,
   } = createApp({
+    provider: mockProvider,
     realSdk,
     projectsDir: config.claudeProjectsDir,
     idleTimeoutMs,
@@ -1144,6 +1148,7 @@ async function startServer() {
     remoteAccessService,
     remoteSessionService,
     securityClientService,
+    sessionQueuePersistenceService,
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,
@@ -1167,6 +1172,7 @@ async function startServer() {
     remoteAccessService,
     remoteSessionService,
     securityClientService,
+    sessionQueuePersistenceService,
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,

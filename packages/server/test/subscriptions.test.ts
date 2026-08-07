@@ -12,6 +12,7 @@ import {
   createActivitySubscription,
   createSessionSubscription,
 } from "../src/subscriptions.js";
+import type { SessionQueuePersistenceService } from "../src/services/SessionQueuePersistenceService.js";
 import type { Process } from "../src/supervisor/Process.js";
 import type { ProcessEvent, ProcessState } from "../src/supervisor/types.js";
 import type { BusEvent, EventBus } from "../src/watcher/index.js";
@@ -256,6 +257,86 @@ describe("createSessionSubscription", () => {
       liveness: MOCK_LIVENESS,
       providerRuntimeStatus: MOCK_PROVIDER_RUNTIME_STATUS,
       request: { prompt: "Continue?" },
+    });
+  });
+
+  it("keeps recovered queue entries in connected and change snapshots", async () => {
+    let liveMessages: ReturnType<Process["getDeferredQueueSummary"]> = [];
+    const { process, fireEvent } = createMockProcess({
+      getDeferredQueueSummary: vi.fn(() => liveMessages),
+    });
+    const sessionQueuePersistenceService = {
+      listSession: vi.fn(() => [
+        {
+          id: "queue-1",
+          sessionId: "sess-1",
+          projectId: "proj-1",
+          projectPath: "/tmp/project",
+          provider: "claude",
+          kind: "patient",
+          message: {
+            text: "resume after restart",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          },
+          createdAt: "2026-06-30T09:00:00.000Z",
+          updatedAt: "2026-06-30T09:01:00.000Z",
+          queuedAt: "2026-06-30T09:00:00.000Z",
+          status: "paused-after-restart",
+        },
+      ]),
+    } as unknown as SessionQueuePersistenceService;
+    const { emit, events } = collectEmit();
+
+    createSessionSubscription(process, emit, {
+      sessionQueuePersistenceService,
+    });
+
+    expect(events.find(([type]) => type === "connected")?.[1]).toMatchObject({
+      deferredMessages: [
+        {
+          id: "queue-1",
+          tempId: "temp-recovered",
+          content: "resume after restart",
+          status: "paused-after-restart",
+        },
+      ],
+    });
+
+    liveMessages = [
+      {
+        id: "queue-1",
+        tempId: "temp-recovered",
+        content: "resume after restart",
+        timestamp: "2026-06-30T09:00:00.000Z",
+        kind: "patient",
+        status: "queued",
+      },
+      {
+        tempId: "temp-live",
+        content: "new live work",
+        timestamp: "2026-06-30T09:05:00.000Z",
+      },
+    ];
+    await fireEvent({
+      type: "deferred-queue",
+      reason: "queued",
+      tempId: "temp-live",
+    });
+
+    expect(
+      events.filter(([type]) => type === "deferred-queue").at(-1)?.[1],
+    ).toMatchObject({
+      messages: [
+        {
+          id: "queue-1",
+          content: "resume after restart",
+          status: "queued",
+        },
+        { tempId: "temp-live", content: "new live work" },
+      ],
+      reason: "queued",
+      tempId: "temp-live",
     });
   });
 

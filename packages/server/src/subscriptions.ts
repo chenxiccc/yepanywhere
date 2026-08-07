@@ -17,6 +17,10 @@ import {
 } from "./augments/index.js";
 import { getLogger } from "./logging/logger.js";
 import {
+  sessionQueueSummaries,
+  type SessionQueueSummaryDeps,
+} from "./routes/session-queue-summaries.js";
+import {
   type ProjectPathIndex,
   tryClaimProjectPathIndex,
 } from "./projects/projectPathIndex.js";
@@ -26,7 +30,7 @@ import type { BusEvent, EventBus } from "./watcher/index.js";
 
 export type Emit = (eventType: string, data: unknown) => void;
 
-export interface SubscriptionOptions {
+export interface SubscriptionOptions extends SessionQueueSummaryDeps {
   /** Called when an internal error occurs (e.g. augmentation failure). */
   onError?: (err: unknown) => void;
   /** Optional label for debug logs (e.g., subscription id). */
@@ -272,7 +276,11 @@ export function createSessionSubscription(
 
         case "deferred-queue":
           emit("deferred-queue", {
-            messages: event.messages,
+            messages: sessionQueueSummaries(
+              options ?? {},
+              process.sessionId,
+              process,
+            ),
             reason: event.reason,
             tempId: event.tempId,
           });
@@ -298,7 +306,11 @@ export function createSessionSubscription(
 
   // Now that we're subscribed, capture state and emit "connected"
   const currentState = process.state;
-  const deferredMessages = process.getDeferredQueueSummary();
+  const deferredMessages = sessionQueueSummaries(
+    options ?? {},
+    process.sessionId,
+    process,
+  );
   emit("connected", {
     processId: process.id,
     sessionId: process.sessionId,

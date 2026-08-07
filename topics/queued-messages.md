@@ -31,10 +31,11 @@ minutes.
 
 ## Principles
 
-1. **Server-authoritative.** The single source of truth is the in-process
-   queue on `Process` (`deferredQueue`). Every client renders exactly what the
-   server reports. There is no client-side queue model, merge step, or
-   reconciliation pass.
+1. **Server-authoritative.** Live queue state is owned by the in-process queue
+   on `Process` (`deferredQueue`), while restart-recovered patient entries are
+   owned by the server persistence service. Every client renders exactly the
+   server's canonical projection of those two stores. There is no client-side
+   queue model, merge step, or reconciliation pass.
 2. **There is one composer draft, and it is the only client-persisted state.**
    Queued messages introduce no draft of their own. The only thing persisted on
    the client is the existing main session composer draft — the text you are
@@ -77,16 +78,33 @@ minutes.
   reflect those server-reported entries on the next sync and never resurrect
   queue state locally.
 
+## Canonical queue projection
+
+Every complete wire snapshot is produced by `sessionQueueSummaries()`. It
+combines the active `Process` queue with persisted `paused-after-restart`
+patient entries, orders the result chronologically, and removes a
+resume-transition duplicate by durable queue id. A resumed live patient entry
+carries the same durable id as its persisted representation and wins while both
+stores briefly contain it.
+
+The initial session `connected` event, every `deferred-queue` event, session
+detail reads, and queue mutation responses all publish this same projection.
+An internal `Process` `deferred-queue` event is only a change signal; the
+transport queries the projection when it emits rather than forwarding a
+process-local list. Consequently, replacing the client's last snapshot remains
+correct: an empty authoritative list removes deleted work, while a stream event
+cannot erase a recovered chip that still exists on the server.
+
 ## Surface
 
 - **List:** the client receives the queue from the server only — the `connected`
-  event payload on (re)connect and `deferred-queue` SSE events on change.
-  Session detail/metadata responses may also decorate recovered
-  `paused-after-restart` patient entries for initial load after a server
-  restart.
-- **Add:** `POST` a queue request; the server appends and broadcasts the new
-  list.
-- **Cancel:** `DELETE` by id; the server removes and broadcasts the new list.
+  event payload on (re)connect and `deferred-queue` subscription events on
+  change. Session detail/metadata responses use the same canonical projection
+  for initial load after a server restart.
+- **Add:** `POST` a queue request; the server appends and returns/broadcasts the
+  new canonical list.
+- **Cancel:** `DELETE` by id; the server removes and returns/broadcasts the new
+  canonical list.
 - **Draft:** the main composer's existing single draft, persisted in
   `localStorage` per session and cleared on a confirmed send. Queue and send-now
   share this one draft; there is no queued-message-specific draft.

@@ -215,6 +215,16 @@ describe("Process", () => {
             createdAt: "2026-06-30T10:00:00.000Z",
           },
         ]);
+        expect(process.getDeferredQueueSummary()).toMatchObject([
+          { tempId: "temp-deferred", content: "short deferred" },
+          {
+            id: service.list()[0]?.id,
+            tempId: "temp-patient",
+            content: "patient follow-up",
+            kind: "patient",
+            status: "queued",
+          },
+        ]);
 
         expect(process.cancelDeferredMessage("temp-patient")).toBe(true);
         await process.waitForPatientQueuePersistenceIdle();
@@ -453,11 +463,10 @@ describe("Process", () => {
         { text: "second", tempId: "temp-2" },
       ]);
       expect(process.getDeferredQueueSummary()).toEqual([]);
-      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+      expect(deferredEvents[deferredEvents.length - 1]).toEqual({
         type: "deferred-queue",
         reason: "promoted",
         tempId: "temp-1",
-        messages: [],
       });
     });
 
@@ -1231,7 +1240,9 @@ describe("Process", () => {
         session_id: "sess-1",
       });
 
-      await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
 
       const userContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
@@ -1284,7 +1295,9 @@ describe("Process", () => {
         session_id: "sess-1",
       });
 
-      await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
 
       const userContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
@@ -1338,7 +1351,9 @@ describe("Process", () => {
         session_id: "sess-1",
       });
 
-      await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
 
       const userContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
@@ -1390,7 +1405,9 @@ describe("Process", () => {
         session_id: "sess-1",
       });
 
-      await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
 
       const userContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
@@ -1468,8 +1485,10 @@ describe("Process", () => {
       expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
         type: "deferred-queue",
         reason: "promoted",
-        messages: [],
       });
+      expect(deferredEvents[deferredEvents.length - 1]).not.toHaveProperty(
+        "messages",
+      );
 
       controller.finish();
       await process.abort();

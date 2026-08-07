@@ -22,10 +22,20 @@ export interface MockClaudeSession {
   sessionId: string;
 }
 
+export interface YaServerProfilePaths {
+  claudeSessionsDir: string;
+  codexSessionsDir: string;
+  dataDir: string;
+  geminiSessionsDir: string;
+  profileDir: string;
+  tempDir: string;
+}
+
 export interface StartYaServerProcessOptions {
   label: string;
   tempPrefix?: string;
   mockClaudeSession?: MockClaudeSession;
+  setupProfile?: (paths: YaServerProfilePaths) => void | Promise<void>;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -165,6 +175,14 @@ export async function startYaServerProcess(
   if (options.mockClaudeSession) {
     writeMockClaudeSession(claudeSessionsDir, options.mockClaudeSession);
   }
+  await options.setupProfile?.({
+    claudeSessionsDir,
+    codexSessionsDir,
+    dataDir,
+    geminiSessionsDir,
+    profileDir,
+    tempDir,
+  });
 
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,

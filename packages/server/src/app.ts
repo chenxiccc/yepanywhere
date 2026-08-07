@@ -150,6 +150,7 @@ import {
   isProviderRuntimeHostAvailable,
 } from "./sdk/providers/index.js";
 import { isCodexRuntimeHostAvailable } from "./sdk/providers/codex-runtime-host.js";
+import type { AgentProvider } from "./sdk/providers/types.js";
 import type {
   ClaudeSDK,
   PermissionMode,
@@ -215,6 +216,8 @@ import type { EventBus } from "./watcher/index.js";
 import { LifecycleWebhookService } from "./webhooks/LifecycleWebhookService.js";
 
 export interface AppOptions {
+  /** Explicit provider override for embedding and isolated tests. */
+  provider?: AgentProvider;
   /** Legacy SDK interface for mock SDK (for testing) */
   sdk?: ClaudeSDK;
   /** Real SDK interface with full features */
@@ -1032,9 +1035,11 @@ export function createApp(options: AppOptions): AppResult {
   supervisor = new Supervisor({
     sdk: options.sdk,
     realSdk: options.realSdk,
-    provider: isProviderRuntimeHostAvailable()
-      ? (getProvider("claude") ?? undefined)
-      : undefined,
+    provider:
+      options.provider ??
+      (isProviderRuntimeHostAvailable()
+        ? (getProvider("claude") ?? undefined)
+        : undefined),
     idleTimeoutMs: options.idleTimeoutMs,
     defaultPermissionMode: options.defaultPermissionMode,
     eventBus: options.eventBus,

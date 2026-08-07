@@ -325,6 +325,62 @@ describe("Sessions metadata route", () => {
     });
   });
 
+  it("retains recovered work when a deferred-message response adds live work", async () => {
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        await sessionQueuePersistenceService.replaceAll([
+          createPersistedPatientQueueItem(project, {
+            id: "queue-recovered",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+          }),
+        ]);
+        const process = {
+          isTerminated: false,
+          setPermissionMode: vi.fn(),
+          noteInputIntent: vi.fn(),
+          primeSupportedCommandsForMessage: vi.fn(async () => {}),
+          deferMessage: vi.fn(() => ({ success: true, deferred: true })),
+          waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
+          getDeferredQueueSummary: vi.fn(() => [
+            {
+              tempId: "temp-live",
+              content: "new live work",
+              timestamp: "2026-06-30T09:05:00.000Z",
+            },
+          ]),
+        };
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => process),
+          } as unknown as SessionsDeps["supervisor"],
+          sessionQueuePersistenceService,
+        });
+
+        const response = await routes.request("/sessions/sess-1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "new live work",
+            tempId: "temp-live",
+            deferred: true,
+          }),
+        });
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toMatchObject({
+          deferredMessages: [
+            {
+              id: "queue-recovered",
+              status: "paused-after-restart",
+            },
+            { tempId: "temp-live", content: "new live work" },
+          ],
+        });
+      },
+    );
+  });
+
   it("records input intent before deferred slash-command preparation awaits", async () => {
     const noteInputIntent = vi.fn();
     let resolvePrime!: () => void;
@@ -627,7 +683,7 @@ describe("Sessions metadata route", () => {
     );
   });
 
-  it("deletes a paused recovered patient queue entry by durable id", async () => {
+  it("deletes a recovered entry without hiding live queued work", async () => {
     await withSessionQueuePersistence(
       async (sessionQueuePersistenceService) => {
         const project = createProject();
@@ -653,7 +709,15 @@ describe("Sessions metadata route", () => {
 
         const routes = createSessionsRoutes({
           supervisor: {
-            getProcessForSession: vi.fn(() => null),
+            getProcessForSession: vi.fn(() => ({
+              getDeferredQueueSummary: vi.fn(() => [
+                {
+                  tempId: "temp-live",
+                  content: "keep me",
+                  timestamp: "2026-06-30T09:05:00.000Z",
+                },
+              ]),
+            })),
           } as unknown as SessionsDeps["supervisor"],
           scanner: {
             getOrCreateProject: vi.fn(async () => project),
@@ -668,7 +732,13 @@ describe("Sessions metadata route", () => {
         expect(response.status).toBe(200);
         await expect(response.json()).resolves.toEqual({
           deleted: true,
-          deferredMessages: [],
+          deferredMessages: [
+            {
+              tempId: "temp-live",
+              content: "keep me",
+              timestamp: "2026-06-30T09:05:00.000Z",
+            },
+          ],
         });
         expect(sessionQueuePersistenceService.listSession("sess-1")).toEqual(
           [],
@@ -1634,6 +1704,7 @@ describe("Sessions metadata route", () => {
           state: { type: "idle", since: new Date("2026-03-10T09:47:00.000Z") },
           provider: "claude",
           supportsDynamicCommands: false,
+          getDeferredQueueSummary: vi.fn(() => []),
           getProviderRuntimeStatus: vi.fn(() => null),
         })),
       } as unknown as SessionsDeps["supervisor"],

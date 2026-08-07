@@ -74,21 +74,22 @@ export function sessionQueueSummaries(
   process: Process | undefined,
 ): SessionQueuedMessageSummary[] {
   const recovered = recoveredPatientQueueSummaries(deps, sessionId);
-  if (process && typeof process.getDeferredQueueSummary === "function") {
-    const messages: SessionQueuedMessageSummary[] = [
-      ...process.getDeferredQueueSummary(),
-      ...recovered,
-    ];
-    return messages.sort((left, right) =>
-      (left.queuedAt ?? left.timestamp).localeCompare(
-        right.queuedAt ?? right.timestamp,
-      ),
-    );
-  }
-  if (process) {
-    return recovered;
-  }
-  return recovered;
+  const live = process?.getDeferredQueueSummary() ?? [];
+  const liveIds = new Set(
+    live
+      .map((message) => message.id)
+      .filter((id): id is string => id !== undefined),
+  );
+  return [
+    ...live,
+    ...recovered.filter(
+      (message) => message.id === undefined || !liveIds.has(message.id),
+    ),
+  ].sort((left, right) =>
+    (left.queuedAt ?? left.timestamp).localeCompare(
+      right.queuedAt ?? right.timestamp,
+    ),
+  );
 }
 
 export function recoveredPatientUserMessage(
