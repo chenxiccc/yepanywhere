@@ -137,10 +137,32 @@ describe("review submission routes", () => {
       anchor: anchor(),
       text: "first",
     });
-    const batch = await service.archiveComments(dir, {
+    const submissionId = "submission-1";
+    await service.prepareSubmission(dir, {
+      submissionId,
       commentIds: [comment.id],
-      targetSessionId: "session-1",
+      requestedTarget: "session-1",
+      relocations: new Map([
+        [
+          comment.id,
+          {
+            status: "relocated" as const,
+            path: "src/a.ts",
+            line: 3,
+            snippet: "line",
+            currentSha: null,
+            moved: false,
+          },
+        ],
+      ]),
     });
+    const batch = await service.acceptSubmission(dir, {
+      submissionId,
+      targetSessionId: "session-1",
+      deliveryStatus: "delivered",
+      responseTurnLimit: 8,
+    });
+    if (!batch) throw new Error("fixture submission was not accepted");
     const siteId = (await service.getStoreFile(dir)).sites[0]!.id;
     const routes = createReviewSubmissionsRoutes({
       scanner,
