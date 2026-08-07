@@ -11,7 +11,9 @@ import {
 
 const sessionId = "recovered-queue-session";
 const queueId = "recovered-publish-queue-item";
+const staleQueueId = "recovered-stale-queue-item";
 const queuedAt = "2026-08-06T07:33:44.792Z";
+const staleQueuedAt = "2026-08-06T07:34:44.792Z";
 let projectPath = "";
 let projectId = "";
 let server: YaServerProcess | null = null;
@@ -88,6 +90,30 @@ test.describe("Recovered queue stream snapshots", () => {
                 status: "paused-after-restart",
                 source: { tempId: "temp-recovered-publish" },
               },
+              {
+                id: staleQueueId,
+                sessionId,
+                projectId,
+                projectPath,
+                provider: "claude",
+                mode: "default",
+                kind: "patient",
+                message: {
+                  text: "remove stale queued work",
+                  mode: "default",
+                  tempId: "temp-recovered-stale",
+                  metadata: {
+                    deliveryIntent: "patient",
+                    patienceSeconds: 2,
+                    serverReceivedAt: staleQueuedAt,
+                  },
+                },
+                createdAt: staleQueuedAt,
+                updatedAt: staleQueuedAt,
+                queuedAt: staleQueuedAt,
+                status: "paused-after-restart",
+                source: { tempId: "temp-recovered-stale" },
+              },
             ],
           }),
         );
@@ -124,7 +150,7 @@ test.describe("Recovered queue stream snapshots", () => {
     }
   });
 
-  test("keeps a restart-paused chip after the live connected snapshot", async ({
+  test("keeps recovered rows live and manages them from Projects", async ({
     page,
   }) => {
     let connected = false;
@@ -173,5 +199,34 @@ test.describe("Recovered queue stream snapshots", () => {
     await expect(recoveredChip).toHaveCount(1);
     await expect(recoveredChip.getByText("Paused after restart")).toBeVisible();
     await capture(page, "recovered-queue-mobile.png");
+
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(`${server.baseUrl}/projects`);
+    const publishRow = page.locator(`[data-recovered-queue-id="${queueId}"]`);
+    const staleRow = page.locator(
+      `[data-recovered-queue-id="${staleQueueId}"]`,
+    );
+    await expect(publishRow).toBeVisible();
+    await expect(staleRow).toBeVisible();
+    await capture(page, "recovered-projects-desktop.png");
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(publishRow).toBeVisible();
+    await expect(staleRow).toBeVisible();
+    await capture(page, "recovered-projects-mobile.png");
+
+    await staleRow
+      .getByRole("button", { name: "Delete recovered queued message" })
+      .click();
+    await expect(staleRow).toHaveCount(0);
+    await expect(publishRow).toBeVisible();
+
+    await publishRow
+      .getByRole("button", { name: "Resume recovered queued message" })
+      .click();
+    await expect(publishRow).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Paused Session Queue" }),
+    ).toHaveCount(0);
   });
 });

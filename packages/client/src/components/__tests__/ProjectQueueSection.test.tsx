@@ -12,6 +12,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -89,6 +90,8 @@ function renderSection(
     onResumeDispatch: vi.fn(),
     onPromoteNow: vi.fn(),
     onDeleteItem: vi.fn(),
+    onResumeRecoveredItem: vi.fn(),
+    onDeleteRecoveredItem: vi.fn(),
     onRetryItem: vi.fn(),
     onMoveItemToTop: vi.fn(),
     onUpdateItem: vi.fn(),
@@ -98,6 +101,7 @@ function renderSection(
   recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[] = [],
   projectStatusesByProject: Record<string, ProjectQueueProjectStatus> = {},
   projects: Project[] = [project, otherProject],
+  mutatingRecoveredQueueId: string | null = null,
 ) {
   render(
     <I18nProvider>
@@ -109,6 +113,7 @@ function renderSection(
           loading={false}
           error={null}
           mutatingItemId={null}
+          mutatingRecoveredQueueId={mutatingRecoveredQueueId}
           mutatingDispatchState={false}
           mutatingPromoteItemId={null}
           dispatchState={dispatchState}
@@ -118,6 +123,8 @@ function renderSection(
           onResumeDispatch={handlers.onResumeDispatch}
           onPromoteNow={handlers.onPromoteNow}
           onDeleteItem={handlers.onDeleteItem}
+          onResumeRecoveredItem={handlers.onResumeRecoveredItem}
+          onDeleteRecoveredItem={handlers.onDeleteRecoveredItem}
           onRetryItem={handlers.onRetryItem}
           onMoveItemToTop={handlers.onMoveItemToTop}
           onUpdateItem={handlers.onUpdateItem}
@@ -244,6 +251,70 @@ describe("ProjectQueueSection", () => {
     expect(screen.getByText("Recovered queued message")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
     expect(screen.queryByText("0 queued")).toBeNull();
+  });
+
+  it("resumes and deletes the selected recovered queue row", () => {
+    const handlers = renderSection(
+      [],
+      undefined,
+      undefined,
+      { status: "running" },
+      [
+        makeRecoveredSessionQueue(),
+        makeRecoveredSessionQueue({
+          id: "recovered-2",
+          content: "Second recovered queued message",
+        }),
+      ],
+    );
+    const row = document.querySelector(
+      '[data-recovered-queue-id="recovered-2"]',
+    );
+    expect(row).toBeTruthy();
+
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", {
+        name: "Resume recovered queued message",
+      }),
+    );
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", {
+        name: "Delete recovered queued message",
+      }),
+    );
+
+    expect(handlers.onResumeRecoveredItem).toHaveBeenCalledWith(
+      "session-recovered",
+      "recovered-2",
+    );
+    expect(handlers.onDeleteRecoveredItem).toHaveBeenCalledWith(
+      "session-recovered",
+      "recovered-2",
+    );
+  });
+
+  it("disables recovered actions while a row mutation is pending", () => {
+    renderSection(
+      [],
+      undefined,
+      undefined,
+      { status: "running" },
+      [
+        makeRecoveredSessionQueue(),
+        makeRecoveredSessionQueue({ id: "recovered-2" }),
+      ],
+      {},
+      [project],
+      "recovered-2",
+    );
+
+    const busyRow = document.querySelector(
+      '[data-recovered-queue-id="recovered-2"]',
+    );
+    expect(busyRow?.getAttribute("aria-busy")).toBe("true");
+    for (const button of screen.getAllByRole("button")) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+    }
   });
 
   it("pauses dispatch from the header", () => {

@@ -34,6 +34,8 @@ const apiMock = vi.hoisted(() => ({
   getProjectQueueItems: vi.fn(),
   updateProjectQueueItem: vi.fn(),
   deleteProjectQueueItem: vi.fn(),
+  deleteRecoveredQueuedMessage: vi.fn(),
+  resumeRecoveredQueuedMessage: vi.fn(),
   retryProjectQueueItem: vi.fn(),
   moveProjectQueueItemToTop: vi.fn(),
   pauseProjectQueueDispatch: vi.fn(),
@@ -177,6 +179,8 @@ beforeEach(() => {
   apiMock.getProjectQueueItems.mockReset();
   apiMock.updateProjectQueueItem.mockReset();
   apiMock.deleteProjectQueueItem.mockReset();
+  apiMock.deleteRecoveredQueuedMessage.mockReset();
+  apiMock.resumeRecoveredQueuedMessage.mockReset();
   apiMock.retryProjectQueueItem.mockReset();
   apiMock.moveProjectQueueItemToTop.mockReset();
   apiMock.pauseProjectQueueDispatch.mockReset();
@@ -264,6 +268,105 @@ describe("useProjectQueues", () => {
         status: "paused-after-restart",
       },
     ]);
+  });
+
+  it("keeps recovered rows until delete is confirmed by a collection refetch", async () => {
+    const deleteRequest = deferred<{
+      deleted: boolean;
+      deferredMessages: never[];
+    }>();
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [],
+        recoveredSessionQueues: [makeRecoveredSessionQueue("1", PROJECT_ID)],
+      })
+      .mockResolvedValueOnce({ items: [], recoveredSessionQueues: [] });
+    apiMock.deleteRecoveredQueuedMessage.mockReturnValue(deleteRequest.promise);
+
+    const { result } = renderHook(() => useProjectQueues([PROJECT_ID]));
+    await waitFor(() =>
+      expect(result.current.recoveredSessionQueues).toHaveLength(1),
+    );
+
+    let mutation!: Promise<void>;
+    act(() => {
+      mutation = result.current.deleteRecoveredItem("session-1", "1");
+    });
+    await waitFor(() =>
+      expect(result.current.mutatingRecoveredQueueId).toBe("1"),
+    );
+    expect(result.current.recoveredSessionQueues).toHaveLength(1);
+
+    deleteRequest.resolve({ deleted: true, deferredMessages: [] });
+    await act(async () => mutation);
+
+    expect(apiMock.deleteRecoveredQueuedMessage).toHaveBeenCalledWith(
+      "session-1",
+      "1",
+    );
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(result.current.recoveredSessionQueues).toEqual([]);
+    expect(result.current.mutatingRecoveredQueueId).toBeNull();
+  });
+
+  it("accepts resume-through removal from the canonical collection", async () => {
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [],
+        recoveredSessionQueues: [
+          makeRecoveredSessionQueue("1", PROJECT_ID),
+          makeRecoveredSessionQueue("2", PROJECT_ID),
+        ],
+      })
+      .mockResolvedValueOnce({ items: [], recoveredSessionQueues: [] });
+    apiMock.resumeRecoveredQueuedMessage.mockResolvedValue({
+      resumed: true,
+      resumedCount: 2,
+      processId: "process-1",
+      deferredMessages: [],
+      serverTimestamp: 1,
+    });
+
+    const { result } = renderHook(() => useProjectQueues([PROJECT_ID]));
+    await waitFor(() =>
+      expect(result.current.recoveredSessionQueues).toHaveLength(2),
+    );
+
+    await act(async () => {
+      await result.current.resumeRecoveredItem("session-2", "2");
+    });
+
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(result.current.recoveredSessionQueues).toEqual([]);
+  });
+
+  it("retains recovered rows and exposes resume failures", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [],
+      recoveredSessionQueues: [makeRecoveredSessionQueue("1", PROJECT_ID)],
+    });
+    apiMock.resumeRecoveredQueuedMessage.mockRejectedValue(
+      new Error("Resume rejected"),
+    );
+
+    const { result } = renderHook(() => useProjectQueues([PROJECT_ID]));
+    await waitFor(() =>
+      expect(result.current.recoveredSessionQueues).toHaveLength(1),
+    );
+
+    await act(async () => {
+      await expect(
+        result.current.resumeRecoveredItem("session-1", "1"),
+      ).rejects.toThrow("Resume rejected");
+    });
+
+    expect(apiMock.resumeRecoveredQueuedMessage).toHaveBeenCalledWith(
+      "session-1",
+      "1",
+    );
+    expect(result.current.recoveredSessionQueues).toHaveLength(1);
+    expect(result.current.error?.message).toBe("Resume rejected");
+    expect(result.current.mutatingRecoveredQueueId).toBeNull();
   });
 
   it("shares dispatch state with consumers that reuse a fresh query", async () => {

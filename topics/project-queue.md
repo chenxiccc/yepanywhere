@@ -284,10 +284,13 @@ per-project in-flight protection; the UI must surface the blockers before
 making that override available.
 
 When recovered `paused-after-restart` patient session-queue entries exist, the
-projects page should show them above Project Queue items because they run first
-and block Project Queue promotion. This is a read-only overview grouped by
-session and linked back to the session page; resume/delete controls remain on
-the session surface until project-level queue management is intentionally added.
+projects page shows them above Project Queue items because they run first and
+block Project Queue promotion. Each recovered row offers Resume and Delete
+through the existing session-scoped routes. Resume keeps the established
+resume-through ordering, while Delete removes only the selected durable id; the
+row remains until a server-confirmed collection read removes it. The session
+link remains the surface for full context and Steer now. There is no
+project-wide Resume all action.
 
 ## Attachments
 

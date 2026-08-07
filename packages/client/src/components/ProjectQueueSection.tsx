@@ -38,6 +38,7 @@ interface ProjectQueueSectionProps {
   loading: boolean;
   error: Error | null;
   mutatingItemId: string | null;
+  mutatingRecoveredQueueId: string | null;
   mutatingDispatchState: boolean;
   mutatingPromoteItemId: string | null;
   dispatchState: ProjectQueueDispatchState;
@@ -52,6 +53,8 @@ interface ProjectQueueSectionProps {
     options?: { force?: boolean },
   ) => void;
   onDeleteItem: (projectId: string, itemId: string) => void;
+  onResumeRecoveredItem: (sessionId: string, queueId: string) => void;
+  onDeleteRecoveredItem: (sessionId: string, queueId: string) => void;
   onRetryItem: (projectId: string, itemId: string) => void;
   onMoveItemToTop: (projectId: string, itemId: string) => void;
   onUpdateItem: (
@@ -362,6 +365,7 @@ export function ProjectQueueSection({
   loading,
   error,
   mutatingItemId,
+  mutatingRecoveredQueueId,
   mutatingDispatchState,
   mutatingPromoteItemId,
   dispatchState,
@@ -372,6 +376,8 @@ export function ProjectQueueSection({
   onResumeDispatch,
   onPromoteNow,
   onDeleteItem,
+  onResumeRecoveredItem,
+  onDeleteRecoveredItem,
   onRetryItem,
   onMoveItemToTop,
   onUpdateItem,
@@ -495,19 +501,56 @@ export function ProjectQueueSection({
                     </span>
                   </div>
                   <ul className={styles.recoveredMessages}>
-                    {group.items.map((item) => (
-                      <li className={styles.recoveredMessage} key={item.id}>
-                        <span className={styles.recoveredPreview}>
-                          {item.content || t("projectQueueAttachmentOnly")}
-                        </span>
-                        <span className={styles.recoveredAge}>
-                          {formatRelativeTime(
-                            item.queuedAt ?? item.timestamp,
-                            t,
-                          )}
-                        </span>
-                      </li>
-                    ))}
+                    {group.items.map((item) => {
+                      const isMutatingRecovered =
+                        mutatingRecoveredQueueId === item.id;
+                      const recoveredMutationPending =
+                        mutatingRecoveredQueueId !== null;
+                      return (
+                        <li
+                          className={styles.recoveredMessage}
+                          key={item.id}
+                          data-recovered-queue-id={item.id}
+                          aria-busy={isMutatingRecovered || undefined}
+                        >
+                          <div className={styles.recoveredMessageContent}>
+                            <span className={styles.recoveredPreview}>
+                              {item.content || t("projectQueueAttachmentOnly")}
+                            </span>
+                            <span className={styles.recoveredAge}>
+                              {formatRelativeTime(
+                                item.queuedAt ?? item.timestamp,
+                                t,
+                              )}
+                            </span>
+                          </div>
+                          <div className={styles.recoveredMessageActions}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onResumeRecoveredItem(item.sessionId, item.id)
+                              }
+                              disabled={recoveredMutationPending}
+                              aria-label={t("sessionRecoveredQueuedResume")}
+                              title={t("sessionRecoveredQueuedResume")}
+                            >
+                              {t("projectQueueResume")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onDeleteRecoveredItem(item.sessionId, item.id)
+                              }
+                              disabled={recoveredMutationPending}
+                              aria-label={t("sessionRecoveredQueuedDelete")}
+                              title={t("sessionRecoveredQueuedDelete")}
+                            >
+                              {t("projectQueueDelete")}
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </li>
               );

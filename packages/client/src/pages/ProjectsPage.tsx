@@ -129,6 +129,28 @@ export function ProjectsPage() {
     }
   };
 
+  const handleResumeRecoveredQueueItem = async (
+    sessionId: string,
+    queueId: string,
+  ) => {
+    try {
+      await projectQueues.resumeRecoveredItem(sessionId, queueId);
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
+  const handleDeleteRecoveredQueueItem = async (
+    sessionId: string,
+    queueId: string,
+  ) => {
+    try {
+      await projectQueues.deleteRecoveredItem(sessionId, queueId);
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
   const handlePauseProjectQueue = async () => {
     try {
       await projectQueues.pauseDispatch();
@@ -281,6 +303,7 @@ export function ProjectsPage() {
               loading={projectQueues.loading}
               error={projectQueues.error}
               mutatingItemId={projectQueues.mutatingItemId}
+              mutatingRecoveredQueueId={projectQueues.mutatingRecoveredQueueId}
               mutatingDispatchState={projectQueues.mutatingDispatchState}
               mutatingPromoteItemId={projectQueues.mutatingPromoteItemId}
               dispatchState={projectQueues.dispatchState}
@@ -291,6 +314,8 @@ export function ProjectsPage() {
               onResumeDispatch={handleResumeProjectQueue}
               onPromoteNow={handlePromoteProjectQueueItem}
               onDeleteItem={handleDeleteQueueItem}
+              onResumeRecoveredItem={handleResumeRecoveredQueueItem}
+              onDeleteRecoveredItem={handleDeleteRecoveredQueueItem}
               onRetryItem={handleRetryQueueItem}
               onMoveItemToTop={handleMoveQueueItemToTop}
               onUpdateItem={handleUpdateQueueItem}

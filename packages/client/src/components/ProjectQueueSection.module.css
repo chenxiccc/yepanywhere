@@ -124,7 +124,8 @@
 
 .recoveredHeader,
 .recoveredGroupHeader,
-.recoveredMessage {
+.recoveredMessage,
+.recoveredMessageContent {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -211,7 +212,18 @@
 }
 
 .recoveredMessage {
+  align-items: flex-start;
   padding-left: var(--space-2);
+}
+
+.recoveredMessageContent {
+  flex: 1;
+}
+
+.recoveredMessageActions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-1);
 }
 
 .recoveredPreview {
@@ -422,7 +434,8 @@
 }
 
 .itemActions button,
-.itemEditActions button {
+.itemEditActions button,
+.recoveredMessageActions button {
   min-height: 28px;
   padding: 0.25rem 0.55rem;
   border: 1px solid var(--border-input);
@@ -434,7 +447,8 @@
 }
 
 .itemActions button:hover:not(:disabled),
-.itemEditActions button:hover:not(:disabled) {
+.itemEditActions button:hover:not(:disabled),
+.recoveredMessageActions button:hover:not(:disabled) {
   border-color: var(--text-muted);
   background: var(--bg-hover);
   color: var(--text-primary);
@@ -456,9 +470,15 @@
 }
 
 .itemActions button:disabled,
-.itemEditActions button:disabled {
+.itemEditActions button:disabled,
+.recoveredMessageActions button:disabled {
   cursor: default;
   opacity: 0.45;
+}
+
+.recoveredMessageActions button {
+  min-height: 32px;
+  padding-inline: 0.65rem;
 }
 
 @media (max-width: 640px) {
@@ -487,13 +507,25 @@
 
   .recoveredHeader,
   .recoveredGroupHeader,
-  .recoveredMessage {
+  .recoveredMessage,
+  .recoveredMessageContent {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.2rem;
   }
 
   .recoveredMessage {
+    align-items: stretch;
+    gap: var(--space-1);
     padding-left: 0;
+  }
+
+  .recoveredMessageActions {
+    align-self: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .recoveredMessageActions button {
+    min-height: 36px;
   }
 }

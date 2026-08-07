@@ -38,6 +38,7 @@ export interface UseProjectQueuesResult {
   loading: boolean;
   error: Error | null;
   mutatingItemId: string | null;
+  mutatingRecoveredQueueId: string | null;
   mutatingDispatchState: boolean;
   mutatingPromoteItemId: string | null;
   dispatchState: ProjectQueueDispatchState;
@@ -55,6 +56,8 @@ export interface UseProjectQueuesResult {
     request: UpdateProjectQueueItemRequest,
   ) => Promise<void>;
   deleteItem: (projectId: string, itemId: string) => Promise<void>;
+  resumeRecoveredItem: (sessionId: string, queueId: string) => Promise<void>;
+  deleteRecoveredItem: (sessionId: string, queueId: string) => Promise<void>;
   retryItem: (projectId: string, itemId: string) => Promise<void>;
   moveItemToTop: (projectId: string, itemId: string) => Promise<void>;
 }
@@ -531,6 +534,10 @@ export function useProjectQueues(
   const storedProjectStatusesByProject =
     useProjectQueueProjectStatusesByProject();
   const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
+  const [mutatingRecoveredQueueId, setMutatingRecoveredQueueId] = useState<
+    string | null
+  >(null);
+  const mutatingRecoveredQueueIdRef = useRef<string | null>(null);
   const [mutatingDispatchState, setMutatingDispatchState] = useState(false);
   const [mutatingPromoteItemId, setMutatingPromoteItemId] = useState<
     string | null
@@ -646,6 +653,43 @@ export function useProjectQueues(
   const refetchQueues = useCallback(async () => {
     await refetchQueuesWithSettlement();
   }, [refetchQueuesWithSettlement]);
+
+  const mutateRecoveredItem = useCallback(
+    async (sessionId: string, queueId: string, action: "resume" | "delete") => {
+      if (mutatingRecoveredQueueIdRef.current) return;
+      mutatingRecoveredQueueIdRef.current = queueId;
+      setMutatingRecoveredQueueId(queueId);
+      setMutationError(null);
+      try {
+        if (action === "resume") {
+          await api.resumeRecoveredQueuedMessage(sessionId, queueId);
+        } else {
+          await api.deleteRecoveredQueuedMessage(sessionId, queueId);
+        }
+        invalidateClientQuery(sourceKey, PROJECT_QUEUE_QUERY_KEY);
+        await refetchQueuesWithSettlement();
+      } catch (err) {
+        setMutationError(err instanceof Error ? err : new Error(String(err)));
+        throw err;
+      } finally {
+        mutatingRecoveredQueueIdRef.current = null;
+        setMutatingRecoveredQueueId(null);
+      }
+    },
+    [refetchQueuesWithSettlement, sourceKey],
+  );
+
+  const resumeRecoveredItem = useCallback(
+    (sessionId: string, queueId: string) =>
+      mutateRecoveredItem(sessionId, queueId, "resume"),
+    [mutateRecoveredItem],
+  );
+
+  const deleteRecoveredItem = useCallback(
+    (sessionId: string, queueId: string) =>
+      mutateRecoveredItem(sessionId, queueId, "delete"),
+    [mutateRecoveredItem],
+  );
 
   const pauseDispatch = useCallback(async () => {
     setMutatingDispatchState(true);
@@ -769,6 +813,7 @@ export function useProjectQueues(
     loading,
     error: mutationError ?? queryError,
     mutatingItemId,
+    mutatingRecoveredQueueId,
     mutatingDispatchState,
     mutatingPromoteItemId,
     dispatchState: enabled ? storedDispatchState : RUNNING_DISPATCH_STATE,
@@ -778,6 +823,8 @@ export function useProjectQueues(
     promoteNow,
     updateItem,
     deleteItem,
+    resumeRecoveredItem,
+    deleteRecoveredItem,
     retryItem,
     moveItemToTop,
   };

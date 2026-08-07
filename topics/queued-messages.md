@@ -175,9 +175,12 @@ reports recovered patient entries as preserved work, not blockers, and converts
 live patient entries to `paused-after-restart` once active sessions plus
 short-term/direct queue blockers have drained. Project Queue promotion treats
 persisted recovered patient entries as project-busy so project-level work
-cannot jump ahead of preserved per-session work. The Projects page shows a
-read-only recovered queue overview grouped by session; management remains on
-the session page, and project-level resume-all controls are still pending.
+cannot jump ahead of preserved per-session work. The Projects page groups
+recovered entries by session and offers per-row Resume and Delete through the
+same session-scoped routes as the session page. Those actions remain
+server-confirmed and id-addressed: Resume preserves resume-through ordering,
+and Delete removes only the selected durable id. Full context and Steer now
+remain on the session page; there is no project-level Resume all control.
 
 ## What we are removing and why
 
