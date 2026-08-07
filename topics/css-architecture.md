@@ -94,9 +94,14 @@ not carry a migration queue.
   tests may pin behavior, but they do not prove shipped code uses a selector.
 - Each `:global(...)` or `composes ... from global` use in a module must name a
   class present in an authored global stylesheet and carry a module-local class
-  anchor in the same selector. The shared-shell form
+  anchor in the same selector-list branch. An anchor in a sibling comma branch
+  does not scope the global use. The shared-shell form
   `:global(.modal):has(.localContent)` is valid because `.localContent` makes
   ownership and scope explicit.
+- CSS analysis compares selector-parser-decoded class values with complete
+  whitespace-delimited class tokens from source. Escaped punctuation, Unicode,
+  leading digits, and single-character classes retain one canonical identity;
+  source tokenization must not split one runtime class into ASCII word fragments.
 - `pnpm css:unused` remains the investigative global-and-module report. Its
   known legacy findings may make that command exit nonzero without breaking
   ordinary lint. `--remove` remains limited to global rules; module rules are

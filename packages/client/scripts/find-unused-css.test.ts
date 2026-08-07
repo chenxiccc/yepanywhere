@@ -16,6 +16,7 @@ import {
   extractBindingUsage,
   extractComposes,
   extractModuleImports,
+  extractModuleSelectors,
   extractSelectorClassNames,
   findSourceFiles,
   moduleContractIssues,
@@ -311,6 +312,64 @@ describe("parsing helpers", () => {
         '.root[data-ext=".json"]:not(.disabled, .escaped\\:state)',
       ),
     ).toEqual(["root", "disabled", "escaped:state"]);
+  });
+
+  it("matches decoded selectors to complete source class tokens", () => {
+    const names = extractSelectorClassNames(
+      ".escaped\\:state, .\\31 23, .café, .x",
+    );
+    const source = buildSourceUsageIndex(
+      new Map([["Owner.tsx", 'const classes = "escaped:state 123 café x";']]),
+    );
+
+    expect(names).toEqual(["escaped:state", "123", "café", "x"]);
+    for (const name of names) expect(source.exact.has(name)).toBe(true);
+    expect(source.exact.has("escaped")).toBe(false);
+    expect(source.exact.has("state")).toBe(false);
+  });
+
+  it("keeps module-global anchors local to their selector branch", () => {
+    const { globalUses } = extractModuleSelectors(
+      [
+        ":global(.shell), .other { color: red; }",
+        ":global(.shell).owned, .other { color: blue; }",
+        ".owned, :global(.shell) { composes: legacy from global; }",
+      ].join("\n"),
+      "Branches.module.css",
+    );
+
+    expect(globalUses).toEqual([
+      expect.objectContaining({
+        name: "shell",
+        selector: ":global(.shell)",
+        localAnchors: [],
+        kind: "selector",
+      }),
+      expect.objectContaining({
+        name: "shell",
+        selector: ":global(.shell).owned",
+        localAnchors: ["owned"],
+        kind: "selector",
+      }),
+      expect.objectContaining({
+        name: "shell",
+        selector: ":global(.shell)",
+        localAnchors: [],
+        kind: "selector",
+      }),
+      expect.objectContaining({
+        name: "legacy",
+        selector: ".owned",
+        localAnchors: ["owned"],
+        kind: "composes",
+      }),
+      expect.objectContaining({
+        name: "legacy",
+        selector: ":global(.shell)",
+        localAnchors: [],
+        kind: "composes",
+      }),
+    ]);
   });
 
   it("scans every package for generated vocabulary by default", () => {

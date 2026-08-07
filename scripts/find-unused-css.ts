@@ -264,20 +264,60 @@ export function isModuleStylesheet(file: string): boolean {
   return file.endsWith(".module.css");
 }
 
-function isLikelyClassName(name: string): boolean {
-  if (name.match(/^[0-9]/)) return false; // .5em etc
-  if (name.length < 2) return false; // Single char classes
-  return true;
+interface SelectorClassBranch {
+  selector: string;
+  localClassNames: string[];
+  globalClassNames: string[];
 }
 
-/** Extract actual class-selector nodes, excluding dots in strings and values. */
+interface SelectorClassAnalysis {
+  branches: SelectorClassBranch[];
+  globalClassNames: string[];
+  scoped: string;
+}
+
+function analyzeSelectorClasses(selector: string): SelectorClassAnalysis {
+  const root = selectorParser().astSync(selector);
+  const globalClassNames = new Set<string>();
+  const branches = root.nodes.map((branch) => {
+    const local = new Set<string>();
+    const global = new Set<string>();
+    branch.walkClasses((node) => {
+      let parent = node.parent;
+      let globalClass = false;
+      while (parent && parent !== branch) {
+        if (parent.type === "pseudo" && parent.value === ":global") {
+          globalClass = true;
+          break;
+        }
+        parent = parent.parent;
+      }
+      (globalClass ? global : local).add(node.value);
+    });
+    for (const name of global) globalClassNames.add(name);
+    return {
+      selector: branch.toString().trim(),
+      localClassNames: Array.from(local),
+      globalClassNames: Array.from(global),
+    };
+  });
+  root.walkPseudos((pseudo) => {
+    if (pseudo.value === ":global") pseudo.remove();
+  });
+  return {
+    branches,
+    globalClassNames: Array.from(globalClassNames),
+    scoped: root.toString(),
+  };
+}
+
+/** Extract decoded class-selector nodes, excluding dots in strings and values. */
 export function extractSelectorClassNames(selector: string): string[] {
   const names = new Set<string>();
-  selectorParser((root) => {
-    root.walkClasses((node) => {
-      if (isLikelyClassName(node.value)) names.add(node.value);
-    });
-  }).processSync(selector);
+  for (const branch of analyzeSelectorClasses(selector).branches) {
+    for (const name of branch.localClassNames) names.add(name);
+    for (const name of branch.globalClassNames) names.add(name);
+  }
   return Array.from(names);
 }
 
@@ -317,16 +357,11 @@ export function splitGlobalReferences(line: string): {
   scoped: string;
   globalRefs: string[];
 } {
-  const root = selectorParser().astSync(line);
-  const globalRefs = new Set<string>();
-  root.walkPseudos((pseudo) => {
-    if (pseudo.value !== ":global") return;
-    pseudo.walkClasses((node) => {
-      if (isLikelyClassName(node.value)) globalRefs.add(node.value);
-    });
-    pseudo.remove();
-  });
-  return { scoped: root.toString(), globalRefs: Array.from(globalRefs) };
+  const analysis = analyzeSelectorClasses(line);
+  return {
+    scoped: analysis.scoped,
+    globalRefs: analysis.globalClassNames,
+  };
 }
 
 export interface ComposesReference {
@@ -381,32 +416,31 @@ export function extractModuleSelectors(
 
   const root = postcss.parse(cssContent, { from: filename });
   root.walkRules((rule) => {
-    const { scoped, globalRefs: lineGlobals } = splitGlobalReferences(
-      rule.selector,
-    );
-    const localAnchors = extractSelectorClassNames(scoped);
-    for (const name of lineGlobals) {
-      globalRefs.add(name);
-      globalUses.push({
-        name,
-        line: rule.source?.start?.line ?? 1,
-        selector: rule.selector,
-        localAnchors,
-        kind: "selector",
-      });
-    }
+    const analysis = analyzeSelectorClasses(rule.selector);
+    for (const branch of analysis.branches) {
+      for (const name of branch.globalClassNames) {
+        globalRefs.add(name);
+        globalUses.push({
+          name,
+          line: rule.source?.start?.line ?? 1,
+          selector: branch.selector,
+          localAnchors: branch.localClassNames,
+          kind: "selector",
+        });
+      }
 
-    for (const className of localAnchors) {
-      if (seen.has(className)) continue;
-      seen.add(className);
-      selectors.push({
-        name: className,
-        cssFile: filename,
-        line: rule.source?.start?.line ?? 1,
-        usedIn: [],
-        productionUsedIn: [],
-        testUsedIn: [],
-      });
+      for (const className of branch.localClassNames) {
+        if (seen.has(className)) continue;
+        seen.add(className);
+        selectors.push({
+          name: className,
+          cssFile: filename,
+          line: rule.source?.start?.line ?? 1,
+          usedIn: [],
+          productionUsedIn: [],
+          testUsedIn: [],
+        });
+      }
     }
   });
 
@@ -415,17 +449,27 @@ export function extractModuleSelectors(
     if (!match) return;
     const rule = declaration.parent;
     const selector = rule?.type === "rule" ? rule.selector : "<declaration>";
-    const { scoped } = splitGlobalReferences(selector);
-    const localAnchors = extractSelectorClassNames(scoped);
+    const branches =
+      rule?.type === "rule"
+        ? analyzeSelectorClasses(rule.selector).branches
+        : [
+            {
+              selector,
+              localClassNames: [],
+              globalClassNames: [],
+            },
+          ];
     for (const name of match[1].split(/\s+/).filter(Boolean)) {
       globalRefs.add(name);
-      globalUses.push({
-        name,
-        line: declaration.source?.start?.line ?? 1,
-        selector,
-        localAnchors,
-        kind: "composes",
-      });
+      for (const branch of branches) {
+        globalUses.push({
+          name,
+          line: declaration.source?.start?.line ?? 1,
+          selector: branch.selector,
+          localAnchors: branch.localClassNames,
+          kind: "composes",
+        });
+      }
     }
   });
 
@@ -584,8 +628,8 @@ function addExactTokens(
   value: string,
   filename: string,
 ): void {
-  for (const match of value.matchAll(/[a-zA-Z_][a-zA-Z0-9_-]*/g)) {
-    addSourceFact(exact, match[0], filename);
+  for (const token of value.split(/\s+/u)) {
+    if (token) addSourceFact(exact, token, filename);
   }
 }
 
@@ -594,7 +638,7 @@ function addDynamicPrefix(
   value: string,
   filename: string,
 ): void {
-  const match = /(?:^|[^a-zA-Z0-9_-])([a-zA-Z_][a-zA-Z0-9_-]*-)$/.exec(value);
+  const match = /(?:^|\s)(\S*-)$/.exec(value);
   if (match) addSourceFact(dynamic, match[1], filename);
 }
 
