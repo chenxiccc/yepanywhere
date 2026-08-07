@@ -131,7 +131,17 @@ describeOnLinux("CodexProvider reload-safe resume", () => {
         resumeSessionId: "existing-thread",
         initialMessage: { text: "continue" },
       });
+      let viewerPublicationSettled = false;
+      const viewerPublication = Promise.resolve(
+        session.setRuntimeViewerPresence?.(false),
+      ).then(() => {
+        viewerPublicationSettled = true;
+      });
+      await Promise.resolve();
+      expect(viewerPublicationSettled).toBe(false);
+
       const init = await session.iterator.next();
+      await viewerPublication;
       expect(init.value).toMatchObject({
         type: "system",
         subtype: "init",
@@ -141,6 +151,7 @@ describeOnLinux("CodexProvider reload-safe resume", () => {
         expect.objectContaining({
           sessionId: "existing-thread",
           attachedServerGeneration: "resume-test-generation",
+          unviewedSince: expect.any(String),
         }),
       ]);
       const requests = (await readFile(logPath, "utf8"))

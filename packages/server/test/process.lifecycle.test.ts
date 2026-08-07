@@ -79,6 +79,147 @@ describe("Process", () => {
       }
     });
 
+    it("retries a failed runtime viewer publication until acknowledged", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const setRuntimeViewerPresenceFn = vi
+          .fn<(hasViewers: boolean) => Promise<void>>()
+          .mockRejectedValueOnce(new Error("host unavailable"))
+          .mockResolvedValue(undefined);
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          setRuntimeViewerPresenceFn,
+        });
+
+        const releaseViewer = process.registerViewer();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(setRuntimeViewerPresenceFn.mock.calls).toEqual([[true]]);
+
+        await vi.advanceTimersByTimeAsync(99);
+        expect(setRuntimeViewerPresenceFn).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(setRuntimeViewerPresenceFn.mock.calls).toEqual([[true], [true]]);
+
+        controller.finish();
+        await process.abort();
+        releaseViewer();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("supersedes a pending retry with the latest viewer state", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const setRuntimeViewerPresenceFn = vi
+          .fn<(hasViewers: boolean) => Promise<void>>()
+          .mockRejectedValueOnce(new Error("host unavailable"))
+          .mockResolvedValue(undefined);
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          setRuntimeViewerPresenceFn,
+        });
+
+        const releaseViewer = process.registerViewer();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(setRuntimeViewerPresenceFn.mock.calls).toEqual([[true]]);
+
+        releaseViewer();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(setRuntimeViewerPresenceFn.mock.calls).toEqual([
+          [true],
+          [false],
+        ]);
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(setRuntimeViewerPresenceFn).toHaveBeenCalledTimes(2);
+
+        controller.finish();
+        await process.abort();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("publishes newer viewer state after a stale publication succeeds", async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveFirst: (() => void) | undefined;
+        const firstPublication = new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        });
+        const controller = createControllableIterator();
+        const setRuntimeViewerPresenceFn = vi
+          .fn<(hasViewers: boolean) => Promise<void>>()
+          .mockImplementationOnce(() => firstPublication)
+          .mockResolvedValue(undefined);
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          setRuntimeViewerPresenceFn,
+        });
+
+        const releaseViewer = process.registerViewer();
+        await vi.advanceTimersByTimeAsync(0);
+        releaseViewer();
+        resolveFirst?.();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(setRuntimeViewerPresenceFn.mock.calls).toEqual([
+          [true],
+          [false],
+        ]);
+
+        controller.finish();
+        await process.abort();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not retry a late viewer publication failure after teardown", async () => {
+      vi.useFakeTimers();
+      try {
+        let rejectPublication: ((error: Error) => void) | undefined;
+        const publication = new Promise<void>((_resolve, reject) => {
+          rejectPublication = reject;
+        });
+        const controller = createControllableIterator();
+        const setRuntimeViewerPresenceFn = vi
+          .fn<(hasViewers: boolean) => Promise<void>>()
+          .mockImplementation(() => publication);
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          setRuntimeViewerPresenceFn,
+        });
+
+        process.registerViewer();
+        await vi.advanceTimersByTimeAsync(0);
+        controller.finish();
+        const abort = process.abort();
+        rejectPublication?.(new Error("late host failure"));
+        await vi.advanceTimersByTimeAsync(10_000);
+        await abort;
+
+        expect(setRuntimeViewerPresenceFn.mock.calls).toEqual([[true]]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("a viewer on one session suspends idle reaping for all sessions", async () => {
       vi.useFakeTimers();
       try {

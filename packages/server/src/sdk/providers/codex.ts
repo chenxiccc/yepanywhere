@@ -1492,48 +1492,48 @@ export class CodexProvider implements AgentProvider {
     }
 
     let activeClient: CodexAppServerClient | null = null;
-    let runtimeHasViewers = false;
-    let runtimeViewerPresenceKnown = false;
-    let runtimeViewerPresenceTail = Promise.resolve();
-    const syncRuntimeViewerPresence = (): Promise<void> => {
-      const client = activeClient;
-      if (!client || !runtimeViewerPresenceKnown) {
-        return runtimeViewerPresenceTail;
-      }
-      const hasViewers = runtimeHasViewers;
-      runtimeViewerPresenceTail = runtimeViewerPresenceTail
-        .catch(() => {})
-        .then(() => client.setRuntimeViewerPresence(hasViewers));
-      return runtimeViewerPresenceTail;
+    let resolveInitialActiveClient:
+      | ((client: CodexAppServerClient | null) => void)
+      | null = null;
+    const initialActiveClient = new Promise<CodexAppServerClient | null>(
+      (resolve) => {
+        resolveInitialActiveClient = resolve;
+      },
+    );
+    const settleInitialActiveClient = (
+      client: CodexAppServerClient | null,
+    ): void => {
+      resolveInitialActiveClient?.(client);
+      resolveInitialActiveClient = null;
     };
     const skillInventory: CodexSessionSkillInventory = {
       skills: [],
       stale: true,
     };
-    const iterator = this.runSession(
+    const sessionIterator = this.runSession(
       options,
       queue,
       abortController.signal,
       runtimeState,
       (client) => {
         activeClient = client;
-        void syncRuntimeViewerPresence().catch((error) => {
-          log.warn(
-            {
-              sessionId: runtimeState.threadId || undefined,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Failed to initialize Codex runtime viewer presence",
-          );
-        });
+        settleInitialActiveClient(client);
       },
       skillInventory,
     );
+    const iterator = (async function* () {
+      try {
+        yield* sessionIterator;
+      } finally {
+        settleInitialActiveClient(null);
+      }
+    })();
 
     return {
       iterator,
       queue,
       abort: async () => {
+        settleInitialActiveClient(null);
         if (
           !shouldReleaseCodexRuntimeForReload(runtimeState.threadId) &&
           activeClient &&
@@ -1564,10 +1564,9 @@ export class CodexProvider implements AgentProvider {
           lastRawProviderEventSource: null,
         },
       getRuntimeUnviewedSince: () => activeClient?.getRuntimeUnviewedSince(),
-      setRuntimeViewerPresence: (hasViewers) => {
-        runtimeViewerPresenceKnown = true;
-        runtimeHasViewers = hasViewers;
-        return syncRuntimeViewerPresence();
+      setRuntimeViewerPresence: async (hasViewers) => {
+        const client = activeClient ?? (await initialActiveClient);
+        await client?.setRuntimeViewerPresence(hasViewers);
       },
       get pid() {
         return activeClient?.pid;
@@ -2072,8 +2071,8 @@ export class CodexProvider implements AgentProvider {
       }
 
       const liveEventState = this.createLiveEventState();
-      const provider = this;
       const consumeTurn = async function* (
+        provider: CodexProvider,
         turn: CodexThreadTurn,
       ): AsyncIterableIterator<SDKMessage> {
         const activeTurnId = turn.id;
@@ -2227,7 +2226,7 @@ export class CodexProvider implements AgentProvider {
           { sessionId, turnId: resumedActiveTurn.id },
           "Rejoined active Codex app-server turn",
         );
-        yield* consumeTurn(resumedActiveTurn);
+        yield* consumeTurn(this, resumedActiveTurn);
       }
 
       const messageGen = queue[Symbol.asyncIterator]();
@@ -2323,7 +2322,7 @@ export class CodexProvider implements AgentProvider {
             },
             "Started Codex app-server turn",
           );
-          yield* consumeTurn(turnResult.turn);
+          yield* consumeTurn(this, turnResult.turn);
         }
       } finally {
         signal.removeEventListener("abort", stopMessageWait);

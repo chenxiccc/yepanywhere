@@ -526,12 +526,20 @@ transition. Thus any visit or open session tab refreshes the dead-man switch
 for all sessions.
 
 Both reload-safe hosts retain the global first/last-viewer transition with
-their runtime entries. Reattach returns the existing no-viewer anchor to the
-replacement `Process`; claiming a runtime or losing its controller preserves
-the viewer-absence evidence. The replacement generation re-establishes idle
-eligibility from its attached provider state, so the best-effort idle grace may
-restart across reload. A real viewer reconnect still refreshes every idle
-runtime.
+their runtime entries. Each `Process` owns one latest-desired-state publisher:
+a provider callback completes only after its host accepts that exact state,
+failed writes retry with bounded exponential backoff, and a newer transition
+supersedes any queued retry without waiting for it. A stale completion can
+acknowledge only the value it actually wrote; the reconciler immediately
+publishes a newer desired value. Terminal teardown cancels timers and fences
+late completions. Reload detach gives the final no-viewer write a short bounded
+courtesy window, but viewer telemetry cannot block lifecycle teardown.
+
+Reattach returns the existing no-viewer anchor to the replacement `Process`;
+claiming a runtime or losing its controller preserves the viewer-absence
+evidence. The replacement generation re-establishes idle eligibility from its
+attached provider state, so the best-effort idle grace may restart across
+reload. A real viewer reconnect still refreshes every idle runtime.
 
 ### Configurable idle-reap courtesy
 

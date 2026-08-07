@@ -229,7 +229,10 @@ export interface StartSessionResult {
   getProviderRetention?: () => ProviderRetentionSnapshot;
   /** No-viewer period retained by a reload-safe runtime owner. */
   getRuntimeUnviewedSince?: () => Date | undefined;
-  /** Persist the first/last viewer transition with a reload-safe runtime owner. */
+  /**
+   * Persist a viewer transition with a reload-safe runtime owner. Completion
+   * acknowledges that exact state; failures reject for caller-owned retry.
+   */
   setRuntimeViewerPresence?: (hasViewers: boolean) => void | Promise<void>;
   /**
    * Change max thinking tokens without restarting the session.

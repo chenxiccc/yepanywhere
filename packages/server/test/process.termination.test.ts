@@ -84,6 +84,41 @@ describe("Process", () => {
       await detach;
     });
 
+    it("does not let viewer telemetry failure block reload-safe detach", async () => {
+      vi.useFakeTimers();
+      try {
+        const detachForServerReloadFn = vi.fn(async () => {});
+        const setRuntimeViewerPresenceFn = vi.fn(async () => {
+          throw new Error("host viewer update unavailable");
+        });
+        const process = new Process(
+          createMockIterator([
+            { type: "system", subtype: "init", session_id: "sess-reload" },
+          ]),
+          {
+            projectPath: "/test",
+            projectId: "proj-1" as UrlProjectId,
+            sessionId: "sess-reload",
+            provider: "codex",
+            idleTimeoutMs: 100,
+            detachForServerReloadFn,
+            setRuntimeViewerPresenceFn,
+          },
+        );
+
+        const detach = process.detachForServerReload();
+        await vi.advanceTimersByTimeAsync(499);
+        expect(detachForServerReloadFn).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await detach;
+
+        expect(setRuntimeViewerPresenceFn).toHaveBeenCalled();
+        expect(detachForServerReloadFn).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("emits terminated event when process dies", async () => {
       const error = new Error("ProcessTransport is not ready for writing");
       async function* failingIterator(): AsyncIterator<SDKMessage> {

@@ -113,6 +113,10 @@ type PendingRecapRequest = {
 type PromptCacheKeepaliveLease = {
   getInactivityMs: () => number | null;
 };
+type RuntimeViewerPresenceWaiter = {
+  hasViewers: boolean;
+  resolve: () => void;
+};
 
 export const NATIVE_RECAP_FALLBACK_GRACE_MS = 2_000;
 
@@ -222,6 +226,9 @@ const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 const PROMPT_CACHE_KEEPALIVE_RECHECK_MS = 30_000;
 const PROMPT_CACHE_KEEPALIVE_MIN_DELAY_MS = 1_000;
 const IDLE_REAP_ELIGIBILITY_RECHECK_MS = 60_000;
+const RUNTIME_VIEWER_PRESENCE_RETRY_INITIAL_MS = 100;
+const RUNTIME_VIEWER_PRESENCE_RETRY_MAX_MS = 5_000;
+const RUNTIME_VIEWER_PRESENCE_DETACH_GRACE_MS = 500;
 
 function isAskUserQuestionTool(toolName: string): boolean {
   return toolName === ASK_USER_QUESTION_TOOL_NAME;
@@ -702,7 +709,7 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   getProviderRetentionFn?: () => ProviderRetentionSnapshot;
   /** No-viewer period retained by a reload-safe runtime owner. */
   getRuntimeUnviewedSinceFn?: () => Date | undefined;
-  /** Persist first/last viewer transitions with a reload-safe runtime owner. */
+  /** Publish first/last viewer transitions to a reload-safe runtime owner. */
   setRuntimeViewerPresenceFn?: (hasViewers: boolean) => void | Promise<void>;
   /** Provider no-context-pollution prompt-cache refresh action. */
   refreshPromptCacheFn?: (options: {
@@ -796,7 +803,15 @@ export class Process {
   private setRuntimeViewerPresenceFn:
     | ((hasViewers: boolean) => void | Promise<void>)
     | null;
-  private runtimeViewerPresenceTail: Promise<void> = Promise.resolve();
+  private desiredRuntimeViewerPresence: boolean | null = null;
+  private acknowledgedRuntimeViewerPresence: boolean | null = null;
+  private runtimeViewerPresenceInFlight: Promise<void> | null = null;
+  private runtimeViewerPresenceRetryTimer: ReturnType<
+    typeof setTimeout
+  > | null = null;
+  private runtimeViewerPresenceRetryAttempt = 0;
+  private runtimeViewerPresenceStopped = false;
+  private runtimeViewerPresenceWaiters = new Set<RuntimeViewerPresenceWaiter>();
   private iteratorDone = false;
 
   /** Set synchronously when transport/spawn fails to prevent race with queueMessage */
@@ -2188,6 +2203,7 @@ export class Process {
     );
 
     this.clearIdleTimer();
+    this.stopRuntimeViewerPresencePublication();
     this.releaseViewerPresence();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
@@ -3932,6 +3948,7 @@ export class Process {
 
   async abort(): Promise<ProcessAbortResult> {
     this.clearIdleTimer();
+    this.stopRuntimeViewerPresencePublication();
     this.releaseViewerPresence();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
@@ -4028,7 +4045,28 @@ export class Process {
     this.clearRetryingProviderRuntimeStatus();
     this.unviewedSince = new Date();
     this.recordRuntimeViewerPresence(false);
-    await this.runtimeViewerPresenceTail;
+    const viewerPresenceDeadline =
+      Date.now() + RUNTIME_VIEWER_PRESENCE_DETACH_GRACE_MS;
+    try {
+      await waitUntilAbortDeadline(
+        this.waitForRuntimeViewerPresence(false),
+        viewerPresenceDeadline,
+        "Timed out publishing no-viewer state before provider detach",
+      );
+    } catch (error) {
+      getLogger().warn(
+        {
+          event: "runtime_viewer_presence_detach_unconfirmed",
+          sessionId: this._sessionId,
+          processId: this.id,
+          projectId: this.projectId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Proceeding with provider detach without confirmed viewer state",
+      );
+    } finally {
+      this.stopRuntimeViewerPresencePublication();
+    }
     const deadline = Date.now() + PROCESS_ABORT_TIMEOUT_MS;
     await waitUntilAbortDeadline(
       this.detachForServerReloadFn
@@ -4892,6 +4930,7 @@ export class Process {
     const reason = "idle reap";
     this.lifecycleReapInProgress = true;
     this.clearIdleTimer();
+    this.stopRuntimeViewerPresencePublication();
     this.releaseViewerPresence();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
@@ -4934,24 +4973,142 @@ export class Process {
   }
 
   private recordRuntimeViewerPresence(hasViewers: boolean): void {
+    if (!this.setRuntimeViewerPresenceFn || this.runtimeViewerPresenceStopped) {
+      return;
+    }
+    if (this.desiredRuntimeViewerPresence !== hasViewers) {
+      this.desiredRuntimeViewerPresence = hasViewers;
+      this.runtimeViewerPresenceRetryAttempt = 0;
+      this.clearRuntimeViewerPresenceRetryTimer();
+      this.settleRuntimeViewerPresenceWaiters();
+    }
+    this.reconcileRuntimeViewerPresence();
+  }
+
+  private reconcileRuntimeViewerPresence(): void {
     const update = this.setRuntimeViewerPresenceFn;
-    if (!update) return;
-    this.runtimeViewerPresenceTail = this.runtimeViewerPresenceTail
-      .catch(() => {})
-      .then(() => update(hasViewers))
-      .catch((error) => {
-        getLogger().warn(
-          {
-            event: "runtime_viewer_presence_update_failed",
-            sessionId: this._sessionId,
-            processId: this.id,
-            projectId: this.projectId,
-            hasViewers,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to update reload-safe runtime viewer presence",
-        );
+    const desired = this.desiredRuntimeViewerPresence;
+    if (
+      !update ||
+      desired === null ||
+      this.runtimeViewerPresenceStopped ||
+      this.runtimeViewerPresenceInFlight
+    ) {
+      return;
+    }
+    if (this.acknowledgedRuntimeViewerPresence === desired) {
+      this.settleRuntimeViewerPresenceWaiters();
+      return;
+    }
+
+    const publication = Promise.resolve().then(() => update(desired));
+    this.runtimeViewerPresenceInFlight = publication;
+    void publication
+      .then(
+        () => {
+          if (!this.runtimeViewerPresenceStopped) {
+            this.acknowledgedRuntimeViewerPresence = desired;
+            this.runtimeViewerPresenceRetryAttempt = 0;
+          }
+        },
+        (error: unknown) => {
+          if (this.runtimeViewerPresenceStopped) return;
+          if (this.desiredRuntimeViewerPresence === desired) {
+            this.runtimeViewerPresenceRetryAttempt += 1;
+          }
+          getLogger().warn(
+            {
+              event: "runtime_viewer_presence_update_failed",
+              sessionId: this._sessionId,
+              processId: this.id,
+              projectId: this.projectId,
+              hasViewers: desired,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to update reload-safe runtime viewer presence",
+          );
+        },
+      )
+      .finally(() => {
+        if (this.runtimeViewerPresenceInFlight === publication) {
+          this.runtimeViewerPresenceInFlight = null;
+        }
+        if (this.runtimeViewerPresenceStopped) return;
+        if (this.desiredRuntimeViewerPresence !== desired) {
+          this.reconcileRuntimeViewerPresence();
+        } else if (this.acknowledgedRuntimeViewerPresence !== desired) {
+          this.scheduleRuntimeViewerPresenceRetry();
+        } else {
+          this.settleRuntimeViewerPresenceWaiters();
+        }
       });
+  }
+
+  private scheduleRuntimeViewerPresenceRetry(): void {
+    if (
+      this.runtimeViewerPresenceStopped ||
+      this.runtimeViewerPresenceRetryTimer ||
+      this.desiredRuntimeViewerPresence === null
+    ) {
+      return;
+    }
+    const exponent = Math.min(
+      Math.max(0, this.runtimeViewerPresenceRetryAttempt - 1),
+      30,
+    );
+    const delayMs = Math.min(
+      RUNTIME_VIEWER_PRESENCE_RETRY_INITIAL_MS * 2 ** exponent,
+      RUNTIME_VIEWER_PRESENCE_RETRY_MAX_MS,
+    );
+    this.runtimeViewerPresenceRetryTimer = setTimeout(() => {
+      this.runtimeViewerPresenceRetryTimer = null;
+      this.reconcileRuntimeViewerPresence();
+    }, delayMs);
+    this.runtimeViewerPresenceRetryTimer.unref?.();
+  }
+
+  private clearRuntimeViewerPresenceRetryTimer(): void {
+    if (this.runtimeViewerPresenceRetryTimer) {
+      clearTimeout(this.runtimeViewerPresenceRetryTimer);
+      this.runtimeViewerPresenceRetryTimer = null;
+    }
+  }
+
+  private waitForRuntimeViewerPresence(hasViewers: boolean): Promise<void> {
+    if (
+      !this.setRuntimeViewerPresenceFn ||
+      this.runtimeViewerPresenceStopped ||
+      (this.desiredRuntimeViewerPresence === hasViewers &&
+        this.acknowledgedRuntimeViewerPresence === hasViewers &&
+        !this.runtimeViewerPresenceInFlight)
+    ) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.runtimeViewerPresenceWaiters.add({ hasViewers, resolve });
+    });
+  }
+
+  private settleRuntimeViewerPresenceWaiters(): void {
+    const desired = this.desiredRuntimeViewerPresence;
+    for (const waiter of this.runtimeViewerPresenceWaiters) {
+      const superseded = waiter.hasViewers !== desired;
+      const acknowledged =
+        !this.runtimeViewerPresenceInFlight &&
+        waiter.hasViewers === desired &&
+        waiter.hasViewers === this.acknowledgedRuntimeViewerPresence;
+      if (this.runtimeViewerPresenceStopped || superseded || acknowledged) {
+        this.runtimeViewerPresenceWaiters.delete(waiter);
+        waiter.resolve();
+      }
+    }
+  }
+
+  private stopRuntimeViewerPresencePublication(): void {
+    if (this.runtimeViewerPresenceStopped) return;
+    this.runtimeViewerPresenceStopped = true;
+    this.clearRuntimeViewerPresenceRetryTimer();
+    this.settleRuntimeViewerPresenceWaiters();
   }
 
   private clearPromptCacheKeepaliveTimer(): void {
