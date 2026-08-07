@@ -1,5 +1,10 @@
 Read and follow `CLAUDE.md` for repo context and instructions, and `DEVELOPMENT.md` for dev/contributor policy (setup, commands, contribution ethos). For architectural context (server message routing, client render pipeline, transports, auth state, large-scope refactor proposals), start at `ARCHITECTURE.md` rather than re-deriving from source.
 
+When `AGENTS.local.md` exists here, it is the machine-local final-authority
+amendment to these instructions: read it before acting in this repo — it
+defines request verbs such as `push` and `publish` and their standing
+constraints. A clone without the file loses nothing.
+
 Before fielding a user request to improve **stability**, **performance**, or **security**, read `ARCHITECTURE.md` first. Check whether the issue is already addressed in the large-scope refactor proposals or the per-doc cleanup tables, and whether a relevant trigger condition has now been met. If the proposed work would touch a load-bearing piece named in `ARCHITECTURE.md` (fan-out, replay buffer, streaming throttle, transport framing, auth state), prefer reading the linked detailed doc and surfacing the existing trade-off to the user before writing code.
 
 ## Architecture Mandates
