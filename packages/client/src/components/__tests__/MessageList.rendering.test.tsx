@@ -683,6 +683,50 @@ describe("MessageList rendering", () => {
     expect(toolRow()?.classList.contains("expanded")).toBe(false);
   });
 
+  it("prunes explored disclosure only after its semantic owner leaves the loaded window", () => {
+    const toolUse = (id: string, name: string, input: unknown) => ({
+      type: "tool_use" as const,
+      id,
+      name,
+      input,
+    });
+    const read = toolUse("read-owner", "Read", { file_path: "README.md" });
+    const grep = toolUse("grep-adjacent", "Grep", { pattern: "needle" });
+    const list = toolUse("list-appended", "list_dir", { path: "src" });
+    const messagesFor = (tools: Array<typeof read>) => [
+      userMessage("user-exploration", "inspect the project"),
+      assistantToolUseMessage("assistant-exploration", tools),
+    ];
+    const view = (tools: Array<typeof read>, activeWindowTrimRevision = 0) => (
+      <MessageList
+        activeWindowTrimRevision={activeWindowTrimRevision}
+        conversationViewEnabledOverride={false}
+        conversationViewStateKey="session-exploration"
+        messages={messagesFor(tools)}
+      />
+    );
+
+    const { rerender } = render(view([read, grep]));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse explored tools" }),
+    );
+
+    rerender(view([read, grep, list]));
+    expect(
+      screen.getByRole("button", { name: "Expand explored tools" }),
+    ).toBeTruthy();
+
+    rerender(view([grep, list], 1));
+    expect(
+      screen.getByRole("button", { name: "Collapse explored tools" }),
+    ).toBeTruthy();
+
+    rerender(view([read, grep, list], 1));
+    expect(
+      screen.getByRole("button", { name: "Collapse explored tools" }),
+    ).toBeTruthy();
+  });
+
   it("shows compact conversation activity durations", () => {
     window.localStorage.setItem(UI_KEYS.conversationView, "true");
     const { container } = render(

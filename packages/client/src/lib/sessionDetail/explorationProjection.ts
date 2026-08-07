@@ -26,6 +26,7 @@ export interface ExplorationParent {
 
 export interface ExplorationProjection {
   id: string;
+  disclosureOwnerId: string;
   parents: ExplorationParent[];
   entries: ExplorationEntry[];
 }
@@ -222,6 +223,7 @@ export function createExplorationProjection(
   const last = parents[parents.length - 1]?.item.id ?? "end";
   return {
     id: `explored-${first}-${last}`,
+    disclosureOwnerId: first,
     parents: [...parents],
     entries: parents.flatMap((parent) => parent.entries),
   };

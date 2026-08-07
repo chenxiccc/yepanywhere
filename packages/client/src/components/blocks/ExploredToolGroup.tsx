@@ -115,10 +115,9 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
   staleNowMs,
   latestVisibleTimestampMs,
 }: Props) {
-  const disclosureOwnerId = projection.parents[0]?.item.id ?? id;
   const [expanded, setExpanded] = useRememberedDisclosureState(
-    disclosureOwnerId,
-    `explored-group:${id}`,
+    projection.disclosureOwnerId,
+    "explored-group",
     true,
   );
   const [expandedParentIds, setExpandedParentIds] = useState<

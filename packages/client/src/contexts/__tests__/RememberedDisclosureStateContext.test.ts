@@ -22,9 +22,28 @@ describe("remembered disclosure state registry", () => {
     expect(registry.size).toBe(0);
   });
 
-  it("drops an override that becomes equal to a new default", () => {
+  it("preserves explicit intent across default changes and pure reads", () => {
     const registry = createRememberedDisclosureStateRegistry();
-    registry.write("tool-a", "media-a", false, true);
+    registry.write("tool-a", "media-a", true, false);
+
+    expect(registry.read("tool-a", "media-a", false)).toEqual({
+      expanded: false,
+      overridden: true,
+    });
+    expect(registry.size).toBe(1);
+
+    expect(registry.read("tool-a", "media-a", true)).toEqual({
+      expanded: false,
+      overridden: true,
+    });
+    expect(registry.size).toBe(1);
+  });
+
+  it("drops explicit intent only when a write returns to the current default", () => {
+    const registry = createRememberedDisclosureStateRegistry();
+    registry.write("tool-a", "media-a", true, false);
+
+    registry.write("tool-a", "media-a", false, false);
 
     expect(registry.read("tool-a", "media-a", true)).toEqual({
       expanded: true,

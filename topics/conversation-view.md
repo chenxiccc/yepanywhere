@@ -91,13 +91,17 @@ provider-history rewrite and not deletion.
   fallback) so the reader does not jump to an unrelated passage.
 - Switching the whole mode also preserves manual disclosure state for ordinary
   tool rows, tool-result media previews, and explored-tool outline groups while
-  the session view remains mounted. The state is a sparse set of controls that
-  differ from their default: returning a control to its default removes its
-  entry. Presentation-only hiding, including Conversation view and ordinary
-  scrolling, does not discard an entry. Active-window trimming prunes entries
-  whose owning render item has actually left the loaded transcript; revealing
-  an older still-loaded turn through **Load earlier** therefore retains its
-  state, while refetching an evicted turn starts from the normal default.
+  the session view remains mounted. The state records explicit per-control
+  intent separately from each control's computed default. Returning a control
+  to its current default removes its entry, but a later default change that
+  happens to match the remembered value does not: reads never rewrite intent.
+  Presentation-only hiding, including Conversation view and ordinary scrolling,
+  does not discard an entry. An explored group is owned by its first semantic
+  tool parent, so appending adjacent exploration cannot reset its disclosure.
+  Active-window trimming prunes entries only when that semantic owner has left
+  the loaded transcript; revealing an older still-loaded turn through **Load
+  earlier** therefore retains its state, while refetching an evicted turn starts
+  from the normal default.
 - Search follows the currently projected transcript. Condensed tool/thinking
   text does not produce hidden matches; expanding its turn makes those rows
   searchable again.

@@ -10,12 +10,8 @@ import {
 
 const KEY_SEPARATOR = "\u0000";
 
-function stateKey(
-  ownerId: string,
-  controlId: string,
-  defaultExpanded: boolean,
-): string {
-  return [ownerId, controlId, defaultExpanded ? "1" : "0"].join(KEY_SEPARATOR);
+function stateKey(ownerId: string, controlId: string): string {
+  return [ownerId, controlId].join(KEY_SEPARATOR);
 }
 
 function ownerIdFromStateKey(key: string): string {
@@ -40,35 +36,30 @@ export interface RememberedDisclosureStateRegistry {
 }
 
 export function createRememberedDisclosureStateRegistry(): RememberedDisclosureStateRegistry {
-  const toggled = new Set<string>();
+  const explicitStates = new Map<string, boolean>();
 
   return {
     get size() {
-      return toggled.size;
+      return explicitStates.size;
     },
     read(ownerId, controlId, defaultExpanded) {
-      const currentDefaultKey = stateKey(ownerId, controlId, defaultExpanded);
-      const previousDefaultKey = stateKey(ownerId, controlId, !defaultExpanded);
-      if (toggled.has(currentDefaultKey)) {
-        return { expanded: !defaultExpanded, overridden: true };
-      }
-
-      // A remembered value opposite the prior default now equals the current
-      // default. Drop it instead of retaining a redundant entry.
-      toggled.delete(previousDefaultKey);
-      return { expanded: defaultExpanded, overridden: false };
+      const explicitState = explicitStates.get(stateKey(ownerId, controlId));
+      return explicitState === undefined
+        ? { expanded: defaultExpanded, overridden: false }
+        : { expanded: explicitState, overridden: true };
     },
     write(ownerId, controlId, defaultExpanded, expanded) {
-      toggled.delete(stateKey(ownerId, controlId, defaultExpanded));
-      toggled.delete(stateKey(ownerId, controlId, !defaultExpanded));
-      if (expanded !== defaultExpanded) {
-        toggled.add(stateKey(ownerId, controlId, defaultExpanded));
+      const key = stateKey(ownerId, controlId);
+      if (expanded === defaultExpanded) {
+        explicitStates.delete(key);
+      } else {
+        explicitStates.set(key, expanded);
       }
     },
     pruneOwners(loadedOwnerIds) {
-      for (const key of toggled) {
+      for (const key of explicitStates.keys()) {
         if (!loadedOwnerIds.has(ownerIdFromStateKey(key))) {
-          toggled.delete(key);
+          explicitStates.delete(key);
         }
       }
     },

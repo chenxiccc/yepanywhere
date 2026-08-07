@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createRememberedDisclosureStateRegistry,
+  RememberedDisclosureStateProvider,
+} from "../../../contexts/RememberedDisclosureStateContext";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../i18n";
 import { buildAssistantRenderSegments } from "../../../lib/sessionDetail/renderSelectors";
@@ -509,6 +513,46 @@ describe("ExploredToolGroup", () => {
         (entry) => entry.textContent,
       ),
     ).toEqual(["Read", "Read", "Search"]);
+  });
+
+  it("preserves collapse when an adjacent parent remounts the projection", () => {
+    const registry = createRememberedDisclosureStateRegistry();
+    const read = toolCall("read-stable", "Read", { file_path: "README.md" });
+    const grep = toolCall("grep-adjacent", "Grep", { pattern: "needle" });
+    const list = toolCall("list-appended", "list_dir", { path: "src" });
+
+    const renderGroup = (items: ToolCallItem[]) => {
+      const projection = projectionFor(items);
+      return (
+        <RememberedDisclosureStateProvider registry={registry}>
+          <I18nProvider>
+            <SessionMetadataProvider
+              projectId={projectId}
+              projectPath={projectRoot}
+              sessionId="session-1"
+            >
+              <ExploredToolGroup
+                key={projection.id}
+                id={projection.id}
+                projection={projection}
+              />
+            </SessionMetadataProvider>
+          </I18nProvider>
+        </RememberedDisclosureStateProvider>
+      );
+    };
+
+    const { rerender } = render(renderGroup([read, grep]));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse explored tools" }),
+    );
+
+    rerender(renderGroup([read, grep, list]));
+
+    expect(
+      screen.getByRole("button", { name: "Expand explored tools" }),
+    ).toBeDefined();
+    expect(screen.queryByText("List")).toBeNull();
   });
 
   it("preserves collapse and raw-detail state while a live parent settles to rollout", () => {

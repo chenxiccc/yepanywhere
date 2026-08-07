@@ -171,6 +171,35 @@ describe("exploration projection", () => {
     expect(completedParent?.item.status).toBe("complete");
   });
 
+  it("keeps disclosure ownership stable as adjacent parents extend a group", () => {
+    const read = toolCall({
+      id: "read-owner",
+      toolName: "Read",
+      toolInput: { file_path: "README.md" },
+    });
+    const grep = toolCall({
+      id: "grep-adjacent",
+      toolName: "Grep",
+      toolInput: { pattern: "needle" },
+    });
+    const list = toolCall({
+      id: "list-appended",
+      toolName: "list_dir",
+      toolInput: { target_directory: "src" },
+    });
+
+    const before = buildExplorationProjectionSegments([read, grep])[0];
+    const after = buildExplorationProjectionSegments([read, grep, list])[0];
+    expect(before?.kind).toBe("explored");
+    expect(after?.kind).toBe("explored");
+    if (before?.kind !== "explored" || after?.kind !== "explored") return;
+
+    expect(before.projection.id).toBe("explored-read-owner-grep-adjacent");
+    expect(after.projection.id).toBe("explored-read-owner-list-appended");
+    expect(before.projection.disclosureOwnerId).toBe("read-owner");
+    expect(after.projection.disclosureOwnerId).toBe("read-owner");
+  });
+
   it("adapts adjacent canonical parents without changing legacy grouping", () => {
     const read = toolCall({
       id: "read-1",
