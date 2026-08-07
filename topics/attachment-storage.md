@@ -121,22 +121,26 @@ It may check, in policy-defined order:
 2. the opted-in current project-local location; and
 3. legacy `<project>/.attachments/<session>/` and legacy central paths.
 
-The URL's session id is the logical session the client is viewing, but a
-file is materialized under the session id known at upload time, and the
-two can differ. Confirmed sources of divergence: the YA-generated
-provisional startup id used for a brand-new session's first turn (the
-provider reports the canonical id only after launch — see
-[Session ID Remap Events](session-id-remap.md)); an explicit session fork,
-whose new id inherits turns whose attachments live under the source id;
-and transcripts from old provider versions that rotated ids per resume.
-A current-version plain resume does not rotate the id (verified
-2026-08-07 against live session files: entries carry only the filename's
-own `sessionId` across many resumed turns). Files are never moved to
-follow an id change: the delivered prompt names the physical path, and a
-provider may re-read it at any later turn. When the exact `<session>/`
-directory misses, the route therefore falls back to searching the sibling
-session directories of each storage root for the UUID-prefixed filename,
-which is globally unique.
+A file is materialized under the session id known at upload time, which
+can differ from the logical session the client is viewing. Confirmed
+sources of divergence: the YA-generated provisional startup id used for a
+brand-new session's first turn (the provider reports the canonical id
+only after launch — see [Session ID Remap Events](session-id-remap.md)),
+and an explicit session fork, whose new id inherits turns whose
+attachments live under the source id. A current-version plain resume does
+not rotate the id (verified 2026-08-07 against live session files:
+entries carry only the filename's own `sessionId` across many resumed
+turns).
+
+Files are never moved to follow an id change: the delivered prompt names
+the physical path, and a provider may re-read it at any later turn. The
+persisted turn therefore also tells the browser where the file lives, and
+the client derives the URL's `<session>` segment from the physical
+directory in the persisted path — never from the viewed logical session
+id. Only the `<project>` segment uses logical identity, because an
+app-data project key is not reversible to a URL project id. The route
+performs exact lookups only; it does not search sibling session
+directories.
 
 Reading a legacy attachment never authorizes creating, refreshing, migrating,
 or excluding that directory. The public response does not expose a new broad

@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type UploadClientMessage,
@@ -72,34 +72,6 @@ function isStagedAttachmentRefArray(
   value: unknown,
 ): value is StagedAttachmentRef[] {
   return Array.isArray(value);
-}
-
-/**
- * Look for a UUID-prefixed attachment filename in every session subdirectory
- * of the given attachment roots, skipping the directory already probed.
- */
-async function findFilenameInSessionDirs(
-  roots: readonly string[],
-  filename: string,
-  probedSessionId: string,
-): Promise<{ path: string; size: number } | null> {
-  for (const root of roots) {
-    let subdirs: string[];
-    try {
-      subdirs = await readdir(root);
-    } catch {
-      continue;
-    }
-    for (const subdir of subdirs) {
-      if (subdir === probedSessionId) continue;
-      const candidate = join(root, subdir, filename);
-      const stats = await stat(candidate).catch(() => null);
-      if (stats?.isFile()) {
-        return { path: candidate, size: stats.size };
-      }
-    }
-  }
-  return null;
 }
 
 export function createUploadRoutes(deps: UploadDeps): Hono {
@@ -625,25 +597,9 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
           }
         }
 
-        // The URL's session id is the logical session the client is viewing,
-        // but files are materialized under the session id known at upload
-        // time: the provisional startup id for a brand-new session's first
-        // turn, or a fork's source-session id. The UUID-prefixed filename is
-        // globally unique, so fall back to the sibling session directories of
-        // each storage root. See topics/attachment-storage.md.
-        if (!found) {
-          const attachmentRoots = [
-            ...storagePolicy.readPaths(project.path, "attachments"),
-            join(project.path, ".attachments"),
-            join(storagePolicy.dataDir, "uploads", projectId),
-          ];
-          found = await findFilenameInSessionDirs(
-            attachmentRoots,
-            filename,
-            sessionId,
-          );
-        }
-
+        // The URL's session segment is the physical directory named by the
+        // persisted file path (the client derives it there), so an exact
+        // candidate lookup suffices. See topics/attachment-storage.md.
         if (!found) {
           return c.json({ error: "File not found" }, 404);
         }

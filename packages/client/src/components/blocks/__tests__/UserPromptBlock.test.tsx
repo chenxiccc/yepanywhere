@@ -296,8 +296,11 @@ describe("UserPromptBlock", () => {
       "/workspace/project/.yep/attachments/session-a/123e4567-e89b-12d3-a456-426614174000_photo.jpg",
     ],
   ])(
-    "routes a persisted %s attachment through logical session metadata",
+    "routes a persisted %s attachment by its physical session directory",
     async (_storageMode, filePath) => {
+      // The viewed logical session id differs from the path's directory
+      // (provisional first-turn id, fork source id); the URL must carry the
+      // physical directory so the server's exact lookup hits.
       const remotePath =
         "/api/projects/project-a/sessions/session-a/upload/123e4567-e89b-12d3-a456-426614174000_photo.jpg";
       const content = `Attached image\n\nUser uploaded files:\n- [photo.jpg](<${filePath}>) (6 kb, image/jpeg, 277x100)`;
@@ -306,7 +309,7 @@ describe("UserPromptBlock", () => {
         <SessionMetadataProvider
           projectId="project-a"
           projectPath="/workspace/project"
-          sessionId="session-a"
+          sessionId="logical-session-b"
         >
           <I18nProvider>
             <UserPromptBlock content={content} />

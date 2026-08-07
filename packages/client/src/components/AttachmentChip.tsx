@@ -19,8 +19,11 @@ export interface AttachmentChipProps {
   imageWidth?: number;
   imageHeight?: number;
   previewUrl?: string;
-  /** Logical route coordinates for attachments outside session context. */
+  /** Logical project id for attachments outside session context. The URL's
+   * session segment always comes from the file path's physical directory. */
   projectId?: string;
+  /** Accepted for caller convenience; the physical path supplies the
+   * session segment, so this is not used for routing. */
   sessionId?: string;
   onRemove?: () => void;
 }
@@ -70,7 +73,6 @@ export function formatAttachmentName(name: string): string {
 function getUploadUrl(
   filePath: string | undefined,
   projectId?: string,
-  sessionId?: string,
 ): string | null {
   if (!filePath) return null;
   const parts = filePath.split("/");
@@ -83,11 +85,14 @@ function getUploadUrl(
   if (!filename || !pathSessionId || !projectSegment) return null;
   if (!/^[0-9a-f-]{36}_/.test(filename)) return null;
 
-  // Current storage paths contain either an irreversible app-data project key
-  // or a physical `.yep` directory. Build the browser route from the logical
-  // session identity instead of trying to reverse either filesystem layout.
-  if (projectId && sessionId) {
-    return `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/upload/${encodeURIComponent(filename)}`;
+  // The persisted path names the physical session directory the file was
+  // materialized into, which can differ from the logical session id the
+  // client is viewing (provisional first-turn id, fork source id). Use the
+  // path's directory for the session segment so the server's exact lookup
+  // always hits; only the project segment needs logical identity, because an
+  // app-data project key is irreversible to a URL project id.
+  if (projectId) {
+    return `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(pathSessionId)}/upload/${encodeURIComponent(filename)}`;
   }
 
   if (projectSegment === ".attachments") {
@@ -114,7 +119,6 @@ function useCachedAttachmentImage(
   remotePreviewEnabled: boolean,
   previewUrl?: string,
   projectId?: string,
-  sessionId?: string,
 ): {
   previewUrl: string | null;
   fullUrl: string | null;
@@ -138,8 +142,8 @@ function useCachedAttachmentImage(
   const fullUrlRef = useRef<string | null>(null);
 
   const remotePath = useMemo(
-    () => getUploadUrl(path, projectId, sessionId),
-    [path, projectId, sessionId],
+    () => getUploadUrl(path, projectId),
+    [path, projectId],
   );
 
   useEffect(() => {
@@ -285,19 +289,10 @@ function ImageAttachmentChip({
   imageHeight,
   previewUrl,
   projectId,
-  sessionId,
   onRemove,
 }: AttachmentChipProps) {
   const sessionMetadata = useOptionalSessionMetadata();
-  const routeCoordinates =
-    projectId && sessionId
-      ? { projectId, sessionId }
-      : sessionMetadata
-        ? {
-            projectId: sessionMetadata.projectId,
-            sessionId: sessionMetadata.sessionId,
-          }
-        : null;
+  const routeProjectId = projectId ?? sessionMetadata?.projectId;
   const [showModal, setShowModal] = useState(false);
   const [showHoverPreview, setShowHoverPreview] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
@@ -314,8 +309,7 @@ function ImageAttachmentChip({
     path,
     showModal || showHoverPreview,
     previewUrl,
-    routeCoordinates?.projectId,
-    routeCoordinates?.sessionId,
+    routeProjectId,
   );
 
   const clearHoverTimer = useCallback(() => {
