@@ -3251,13 +3251,18 @@ export function MessageInput({
                   role="menuitem"
                   aria-label={parts.label}
                 >
-                  {parts.shortcut && (
-                    <strong className="slash-command-shortcut">
-                      {parts.shortcut}
-                    </strong>
-                  )}
                   <span className="slash-command-copy">
-                    <span>{parts.rest}</span>
+                    {/* shortcut + rest is one command word split for
+                        highlighting; keep it a single inline run so no flex
+                        gap lands inside the word. */}
+                    <span>
+                      {parts.shortcut && (
+                        <strong className="slash-command-shortcut">
+                          {parts.shortcut}
+                        </strong>
+                      )}
+                      {parts.rest}
+                    </span>
                     {(command.description || command.argumentHint) && (
                       <span className="slash-command-detail">
                         {[command.description, command.argumentHint]
