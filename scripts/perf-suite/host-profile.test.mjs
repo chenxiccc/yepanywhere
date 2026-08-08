@@ -45,8 +45,8 @@ test("profiles a stable capacity key and a bounded host window", async () => {
 test("grades host eligibility from baseline capacity and headroom", () => {
   const policy = {
     maximumBaselineCpuBusyFraction: 0.8,
-    maximumBaselineLoadPerEffectiveCpu: 1,
-    maximumBaselineSwapGrowthMiB: 0,
+    maximumBaselineLoadPerEffectiveCpu: 2,
+    maximumBaselineSwapGrowthMiB: 16,
     minimumEffectiveAvailableMemoryMiB: 1024,
     minimumEffectiveLogicalCpuCount: 2,
     minimumIdleLogicalCpuCount: 1,
@@ -85,7 +85,7 @@ test("grades host eligibility from baseline capacity and headroom", () => {
       {
         metric: "baselineLoadPerEffectiveCpu",
         actual: 0.5,
-        maximum: 1,
+        maximum: 2,
         pass: true,
       },
       {
@@ -97,7 +97,7 @@ test("grades host eligibility from baseline capacity and headroom", () => {
       {
         metric: "baselineSwapGrowthBytes",
         actual: 0,
-        maximum: 0,
+        maximum: 16 * 1024 * 1024,
         pass: true,
       },
     ],
@@ -109,6 +109,12 @@ test("grades host eligibility from baseline capacity and headroom", () => {
   const contended = assessHostEligibility(capacity, baseline, policy);
   assert.equal(contended.pass, false);
   assert.equal(contended.grade, "diagnostic");
+
+  baseline.cpuBusyFraction = 0.25;
+  baseline.swapUsedBytesAtEnd = 17 * 1024 * 1024;
+  const swapping = assessHostEligibility(capacity, baseline, policy);
+  assert.equal(swapping.pass, false);
+  assert.equal(swapping.grade, "diagnostic");
 
   baseline.cpuBusyFraction = null;
   baseline.swapUsedBytesAtStart = null;

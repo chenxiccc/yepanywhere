@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "keepWorkDirectories": false,
   "hostEligibility": {
-    "baselineSampleMs": 1000,
+    "baselineSampleMs": 3000,
     "maximumBaselineCpuBusyFraction": 0.8,
-    "maximumBaselineLoadPerEffectiveCpu": 1,
-    "maximumBaselineSwapGrowthMiB": 0,
+    "maximumBaselineLoadPerEffectiveCpu": 2,
+    "maximumBaselineSwapGrowthMiB": 16,
     "minimumEffectiveLogicalCpuCount": 2,
     "minimumIdleLogicalCpuCount": {
       "server": 1,

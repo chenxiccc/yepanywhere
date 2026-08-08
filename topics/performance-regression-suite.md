@@ -73,14 +73,26 @@ Each repetition records the same start/end window so one noisy repetition can
 be separated from a stable batch.
 
 A benchmark host does not need to be otherwise idle. Before fixture work, the
-suite samples a one-second baseline and checks effective CPU count, idle logical
-CPU equivalents, CPU busy fraction, load per effective CPU, effective available
-memory (host and cgroup), and swap growth against `config.json`. Missing CPU or
-swap measurements are not treated as clean. A failed baseline makes the
-completed result diagnostic-grade and prevents a ratchet pass. Run-window
-resource and pressure evidence remains recorded for interpretation. A
-questionable run is sampling evidence: rerun before expanding the matrix or
+suite samples a three-second baseline and checks effective CPU count, idle
+logical CPU equivalents, CPU busy fraction, load per effective CPU, effective
+available memory (host and cgroup), and swap growth against `config.json`.
+Missing CPU or swap measurements are not treated as clean. A failed baseline
+makes the completed result diagnostic-grade and prevents a ratchet pass.
+Run-window resource and pressure evidence remains recorded for interpretation.
+A questionable run is sampling evidence: rerun before expanding the matrix or
 changing a baseline.
+
+The portable baseline permits a decaying one-minute load average up to two tasks
+per effective CPU and up to 16 MiB of swap growth during its three-second
+sample. A stricter load ceiling rejected an otherwise 95%-idle interval because
+work completed earlier in the minute; an absolute-zero swap rule rejected a
+host with more than 100 GiB of available physical memory because the kernel
+moved one stale page. Neither observation showed that the measured process
+lacked current CPU or RAM. The contemporaneous CPU-busy, minimum-idle-CPU, and
+available-memory gates remain independent. Load or swap growth above these
+tolerances remains diagnostic-only. Exact start/end evidence stays in every
+result so a machine class can adopt stricter reviewed overrides when its history
+supports them.
 
 Capacity-keyed history uses the tuple in `historyKey`: capacity key, driver,
 and scenario. Every run appends a compact JSONL record under that tuple.
