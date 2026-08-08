@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import {
   appendFile,
@@ -16,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { performance } from "node:perf_hooks";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SUITE_VERSION = 2;
 const GENERALIZED_PROJECT_PATHS_BASE =
@@ -670,6 +671,52 @@ async function sampleMemory(inspectorUrl, maintenanceUrl, timeoutMs) {
 
 function gitRevision(checkout) {
   return runProcess("git", ["rev-parse", "HEAD"], { cwd: checkout });
+}
+
+function absoluteFilePath(file) {
+  return file instanceof URL ? fileURLToPath(file) : path.resolve(file);
+}
+
+function repositoryRelativePath(repository, file) {
+  const relative = path.relative(repository, absoluteFilePath(file));
+  if (
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return null;
+  }
+  return relative;
+}
+
+async function harnessIdentity(repository, options, config, ratchets) {
+  const runner = fileURLToPath(import.meta.url);
+  const repositoryPaths = [runner, options.config, options.ratchets]
+    .map((file) => repositoryRelativePath(repository, file))
+    .filter(Boolean);
+  const revision = await runProcess(
+    "git",
+    ["log", "-1", "--format=%H", "--", ...repositoryPaths],
+    { cwd: repository },
+  );
+  const dirty =
+    (await runProcess(
+      "git",
+      ["status", "--porcelain", "--", ...repositoryPaths],
+      { cwd: repository },
+    )) !== "";
+  const content = createHash("sha256");
+  content.update(await readFile(runner));
+  content.update("\0config\0");
+  content.update(JSON.stringify(config));
+  content.update("\0ratchets\0");
+  content.update(JSON.stringify(ratchets));
+  return {
+    contentSha256: content.digest("hex"),
+    dirty,
+    revision,
+  };
 }
 
 async function gitIsAncestor(checkout, ancestor, descendant) {
@@ -2804,8 +2851,13 @@ function evaluateRatchets(serverAggregate, browserAggregate, targets) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const suiteRoot = path.dirname(new URL(import.meta.url).pathname);
-  const suiteRepository = path.resolve(
+  const suiteRoot = path.dirname(fileURLToPath(import.meta.url));
+  const harnessRepository = await runProcess(
+    "git",
+    ["rev-parse", "--show-toplevel"],
+    { cwd: suiteRoot },
+  );
+  const fixtureRepository = path.resolve(
     options["fixture-repository"] ?? path.join(suiteRoot, "..", ".."),
   );
   const checkout = path.resolve(options.checkout);
@@ -2820,7 +2872,7 @@ async function main() {
   validateScenario(scenario, options.scenario);
   const fixtureConfig = {
     ...config.fixture,
-    repository: suiteRepository,
+    repository: fixtureRepository,
   };
   if (!/^[0-9a-f]{40}$/.test(fixtureConfig.revision ?? "")) {
     throw new Error("fixture.revision must be a full 40-character SHA");
@@ -2850,11 +2902,12 @@ async function main() {
     throw new Error("Unsupported ratchet schemaVersion");
 
   const revision = await gitRevision(checkout);
-  const harnessRevision = await gitRevision(suiteRepository);
-  const harnessDirty =
-    (await runProcess("git", ["status", "--porcelain"], {
-      cwd: suiteRepository,
-    })) !== "";
+  const harness = await harnessIdentity(
+    harnessRepository,
+    options,
+    config,
+    ratchets,
+  );
   const generalizedProjectPathsSupported = await gitIsAncestor(
     checkout,
     GENERALIZED_PROJECT_PATHS_BASE,
@@ -2918,8 +2971,9 @@ async function main() {
       identity: {
         executionRevision: revision,
         fixtureRevision: fixtureConfig.revision,
-        harnessDirty,
-        harnessRevision,
+        harnessContentSha256: harness.contentSha256,
+        harnessDirty: harness.dirty,
+        harnessRevision: harness.revision,
       },
       label: options.label,
       revision,

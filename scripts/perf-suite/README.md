@@ -5,8 +5,10 @@ creates detached project worktrees from an immutable repository revision,
 generates a deterministic Claude store whose sessions use those worktrees,
 starts one isolated YA instance from the named execution checkout, drives
 public interfaces, proves fixture-derived correctness, and records raw JSON
-results. Every result distinguishes the harness revision and dirty state, the
-measured execution revision, and the fixture revision.
+results. Every result distinguishes the measured execution revision, fixture
+revision, and exact harness inputs. Harness identity includes the latest commit
+touching runner/config/ratchets, path-scoped dirty state, and a content SHA-256,
+so unrelated shared-worktree changes do not relabel the measurement.
 
 The JSON scenario dimensions are:
 

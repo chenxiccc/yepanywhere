@@ -160,6 +160,8 @@ exhausted.
 | P22 | Decide malformed-JSON compatibility for raw relay envelopes | Current relay parsing maps invalid/empty JSON bodies to `body: null`; raw byte splicing would instead invalidate the complete relay frame. | Restrict the fast path to trusted internal JSON responses, validate before preserving bytes, or deliberately revise the producer contract with compatibility tests. |
 | P23 | Keep relay buffering and frame limits explicit | Raw JSON preservation removes body parse/re-stringify but still buffers the Hono body and one authenticated envelope; chunking occurs only after application encoding/encryption and reassembly is capped at 64 MiB. | Treat zero-copy/streaming as a separate protocol project. Preserve text/binary, compression, encryption, chunk ordering, and the pre-auth frame-mode snapshot. |
 | P24 | Measure augmentation and relay reuse directly | Totals can improve while cache misses, fallback traffic, or encrypted transport regress independently. | Add augmentation join/hit/retained-byte/stale-discard gauges plus relay raw-fast-path hits, bytes saved, and fallbacks; benchmark plaintext and encrypted paths separately. |
+| P25 | Make harness identity independent of unrelated shared-worktree changes | Whole-repository `HEAD` and dirty state changed as peers committed or edited unrelated files even though the harness/config/ratchets were unchanged, giving identical measurements different apparent identities. | Record the latest commit touching actual harness inputs, path-scoped dirty state, and a SHA-256 of runner plus parsed config/ratchets. This is fixed in the current harness and must be verified across every accepted result. |
+| P26 | Prevent stale results from masking crashed runs | The ad-hoc sweep reused output paths; one browser crashed before writing, but the wrapper saw an older nonempty result and mislabeled the crash as an expected ratchet failure. | Every orchestrated invocation must remove its generated output first or use a unique path, and accept ratchet nonzero only when that invocation produced a fresh result. Keep runner failure strict rather than synthesizing partial output. |
 
 Primary fix and evidence sites:
 
@@ -203,6 +205,8 @@ Primary fix and evidence sites:
 - P22–P24: `packages/server/src/routes/ws-relay-handlers.ts`,
   `packages/shared/src/relay.ts`, `packages/shared/src/binary-framing.ts`, and
   the relay framing/concurrency/secure-transport tests.
+- P25–P26: harness identity in `scripts/perf-suite/run.mjs` and any survey
+  orchestration that reuses paths under `scripts/perf-suite/results/`.
 
 Validation anchors for the two investigated recovery seams:
 
