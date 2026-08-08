@@ -30,7 +30,7 @@ Offload expensive computation to the server so the mobile client:
 
 ## Solution: Server-Side Augments
 
-The server will compute "augments" - pre-rendered presentation data - and send them alongside SDK messages. SDK message types stay unchanged; augments are a separate data channel.
+The server computes "augments" — pre-rendered presentation data — on detached message copies. Finalized fields travel inline on those copies; the separate `markdown-augment` WebSocket event remains only as a compatibility-equivalent update.
 
 ### Security boundary
 
@@ -179,7 +179,7 @@ implemented; current behavior is described in **Data Flow** above.
 This architecture is highly testable:
 
 - **Unit tests**: Augment service functions (diff computation, highlighting) in isolation
-- **Integration tests**: End-to-end augment flow through SSE and REST endpoints
+- **Integration tests**: End-to-end augment flow through WebSocket and REST paths
 - **Snapshot tests**: Verify highlighted output doesn't regress
 - **Performance tests**: Measure augment computation time, ensure it doesn't delay message delivery
 
