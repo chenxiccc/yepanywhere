@@ -12,6 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import http from "node:http";
+import { createRequire } from "node:module";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +34,12 @@ const GENERALIZED_PROJECT_PATHS_BASE =
 const DEFAULT_CONFIG_PATH = new URL("./config.json", import.meta.url);
 const DEFAULT_RATCHETS_PATH = new URL("./ratchets.json", import.meta.url);
 const HOST_PROFILE_PATH = new URL("./host-profile.mjs", import.meta.url);
+const requireServerDependency = createRequire(
+  new URL("../../packages/server/package.json", import.meta.url),
+);
+const { WebSocket: InspectorWebSocket } = requireServerDependency("ws");
+const { version: INSPECTOR_WEBSOCKET_VERSION } =
+  requireServerDependency("ws/package.json");
 
 function parseArgs(argv) {
   const options = {
@@ -721,7 +728,7 @@ async function openInspector(maintenanceUrl, timeoutMs, port) {
 
 async function collectGarbage(inspectorUrl, timeoutMs) {
   await new Promise((resolve, reject) => {
-    const socket = new WebSocket(inspectorUrl);
+    const socket = new InspectorWebSocket(inspectorUrl);
     const timeout = setTimeout(() => {
       socket.close();
       reject(new Error("Inspector garbage collection timed out"));
@@ -838,6 +845,8 @@ async function harnessIdentity(repository, options, config, ratchets) {
     )) !== "";
   const content = createHash("sha256");
   content.update(await readFile(runner));
+  content.update("\0inspector-websocket-version\0");
+  content.update(INSPECTOR_WEBSOCKET_VERSION);
   content.update("\0host-profile\0");
   content.update(await readFile(hostProfile));
   content.update("\0config\0");
