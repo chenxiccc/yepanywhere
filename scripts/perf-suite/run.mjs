@@ -358,20 +358,22 @@ async function createFixture(root, scenario, fixtureConfig) {
   };
 }
 
-async function appendTurns(fixture, scenario) {
+function prepareAppendedTurns(fixture, scenario) {
+  return fixture.sessionFiles.map(({ file, projectPath, sessionId }) => ({
+    content: transcriptRows({
+      projectPath,
+      sessionId,
+      startTurn: scenario.initialTurns,
+      turns: scenario.newTurns,
+      payloadBytes: scenario.payloadBytes,
+    }),
+    file,
+  }));
+}
+
+async function appendTurns(appends) {
   await Promise.all(
-    fixture.sessionFiles.map(({ file, projectPath, sessionId }) =>
-      appendFile(
-        file,
-        transcriptRows({
-          projectPath,
-          sessionId,
-          startTurn: scenario.initialTurns,
-          turns: scenario.newTurns,
-          payloadBytes: scenario.payloadBytes,
-        }),
-      ),
-    ),
+    appends.map(({ content, file }) => appendFile(file, content)),
   );
 }
 
@@ -508,17 +510,49 @@ function requestProfile(response) {
   const markedServerMs = hasServerProfile
     ? ownerValues.reduce((sum, value) => sum + value, 0)
     : null;
+  const frameworkSerializeLoopbackMs = hasServerProfile
+    ? Math.max(0, response.firstByteMs - serverTotalMs)
+    : null;
+  const serverPhaseResidualMs = hasServerProfile
+    ? Math.max(0, serverTotalMs - markedServerMs)
+    : null;
+  const nonOverlappingPhases = hasServerProfile
+    ? {
+        projectMs: serverTimings["ya-project"],
+        readMs: serverTimings["ya-read"],
+        normalizeMs: serverTimings["ya-normalize"],
+        routeMs: serverTimings["ya-route"],
+        augmentMs: serverTimings["ya-augment"],
+        serverResidualMs: serverPhaseResidualMs,
+        frameworkSerializeLoopbackMs,
+        bodyTransferMs: response.bodyTransferMs,
+        jsonParseMs: response.jsonParseMs,
+      }
+    : null;
+  const coveredMs = nonOverlappingPhases
+    ? sumAvailablePhases(nonOverlappingPhases)
+    : null;
+  const harnessResidualMs =
+    coveredMs === null ? null : Math.max(0, response.ms - coveredMs);
+  if (nonOverlappingPhases && harnessResidualMs !== null) {
+    nonOverlappingPhases.harnessResidualMs = harnessResidualMs;
+  }
   return {
     available: hasServerProfile,
     bodyTransferMs: response.bodyTransferMs,
-    frameworkSerializeLoopbackMs: hasServerProfile
-      ? Math.max(0, response.firstByteMs - serverTotalMs)
-      : null,
+    coverage:
+      coveredMs !== null && response.ms > 0
+        ? {
+            coveredMs: round(coveredMs + harnessResidualMs),
+            fraction: round((coveredMs + harnessResidualMs) / response.ms),
+            totalMs: round(response.ms),
+          }
+        : null,
+    frameworkSerializeLoopbackMs,
     jsonParseMs: response.jsonParseMs,
     markedServerMs,
-    serverPhaseResidualMs: hasServerProfile
-      ? Math.max(0, serverTotalMs - markedServerMs)
-      : null,
+    nonOverlappingPhases,
+    serverPhaseResidualMs,
     serverTimings,
   };
 }
@@ -877,6 +911,7 @@ function summarizeRequestProfiles(profiles) {
     sampleCount: profiles.length,
     bodyTransfer: summarize(values((profile) => profile.bodyTransferMs)),
     jsonParse: summarize(values((profile) => profile.jsonParseMs)),
+    phaseCoverage: phaseCoverageReport(available),
     server: {
       project: summarize(
         values((profile) => profile.serverTimings["ya-project"], available),
@@ -1113,6 +1148,54 @@ function sumAvailablePhases(phases) {
   return values.every((value) => typeof value === "number")
     ? round(values.reduce((sum, value) => sum + value, 0))
     : null;
+}
+
+function phaseCoverageReport(profiles) {
+  const available = profiles.filter(
+    (profile) => profile.available && profile.coverage?.totalMs > 0,
+  );
+  const totalMs = available.reduce(
+    (sum, profile) => sum + profile.coverage.totalMs,
+    0,
+  );
+  if (totalMs <= 0) {
+    return {
+      explainedFraction: null,
+      individuallySignificant: [],
+      rankedPhases: [],
+      smallestSetAt80Percent: [],
+    };
+  }
+  const totals = new Map();
+  for (const profile of available) {
+    for (const [name, duration] of Object.entries(
+      profile.nonOverlappingPhases,
+    )) {
+      totals.set(name, (totals.get(name) ?? 0) + duration);
+    }
+  }
+  const rankedPhases = [...totals.entries()]
+    .map(([name, duration]) => ({
+      fraction: round(duration / totalMs),
+      meanMs: round(duration / available.length),
+      name,
+    }))
+    .sort((left, right) => right.fraction - left.fraction);
+  const smallestSetAt80Percent = [];
+  let explainedFraction = 0;
+  for (const phase of rankedPhases) {
+    if (explainedFraction >= 0.8) break;
+    smallestSetAt80Percent.push(phase.name);
+    explainedFraction += phase.fraction;
+  }
+  return {
+    explainedFraction: round(explainedFraction),
+    individuallySignificant: rankedPhases
+      .filter((phase) => phase.fraction >= 0.1)
+      .map((phase) => phase.name),
+    rankedPhases,
+    smallestSetAt80Percent,
+  };
 }
 
 async function collectClientNavigationProfile(
@@ -1469,6 +1552,7 @@ function summarizeClientAppendProfiles(profiles) {
         ),
       ]),
     ),
+    phaseCoverage: phaseCoverageReport(available),
     sampleCount: profiles.length,
     unavailableCount: profiles.length - available.length,
   };
@@ -1536,6 +1620,7 @@ function summarizeClientNavigationProfiles(profiles) {
         phaseSummary(`nonOverlappingPhases.${name}`),
       ]),
     ),
+    phaseCoverage: phaseCoverageReport(available),
     refresh: {
       completedAfterFinalDisplayCount: available.filter(
         (profile) => profile.refresh.completedAfterFinalDisplay,
@@ -2303,9 +2388,10 @@ async function measureRepetition({
       config.server.requestTimeoutMs,
     );
 
+    const preparedAppends = prepareAppendedTurns(fixture, scenario);
     await browserMeasurement?.prepareAppend();
     const browserAppendObservation = browserMeasurement?.observeAppend();
-    await appendTurns(fixture, scenario);
+    await appendTurns(preparedAppends);
     await browserAppendObservation;
     await wait(config.server.appendObservationMs);
     const appendedDetailTargets = detailTargets.map((target, index) => ({
