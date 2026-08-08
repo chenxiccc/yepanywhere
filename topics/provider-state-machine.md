@@ -141,9 +141,11 @@ forcing silent state transitions.[^claude-queued-bug][^codex-queued-bug]
 
 ## Provider-specific capability notes
 
-- Claude does not expose provider steering (`supportsSteering=false`), so active
-  in-turn control is limited to existing stop/approval paths; queue behavior still
-  works for turn-end replay.[^claude]
+- Claude exposes provider steering (`supportsSteering=true`). YA sends active-turn
+  input through Claude's `now` lane by default, with `next` available through the
+  explicit **Steer now** preference. Matching foreground Bash calls may be made
+  resumable by exact tool ID after the steer enters Claude's input stream; this
+  preserves the command but permits concurrent agent action.[^claude]
 - OpenCode reports no slash commands or permission-mode/steering toggles in current
   provider metadata (`supportsSlashCommands=false`, `supportsPermissionMode=false`,
   `supportsSteering=false`), so state is mainly communicated through process/liveness
@@ -185,8 +187,8 @@ rather than widening a generic schema until the UI actually consumes it.
   production-safe control path across provider surfaces. The current default remains
   template-driven handoff as the validated recovery baseline.
 
-[^claude]: If a future Claude provider path adds steering, the above matrix should be
-re-evaluated for `in-turn`/`waiting-input`.
+[^claude]: Claude steering and foreground-Bash re-entry semantics are measured and
+  maintained in [steer-queue-provider-differences.md](steer-queue-provider-differences.md).
 [^opencode]: OpenCode tool-approval semantics are explicitly marked as experimental in
 provider metadata; avoid baking policy assumptions beyond current runtime signals.
 [^codex]: Codex is non-interruptible while compacting at the provider level; treat

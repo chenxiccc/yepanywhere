@@ -29,6 +29,7 @@ import {
   query,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
+  DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   HELPER_SIDE_MODEL_CHEAPEST,
   type ClaudeAdditionalModelSelection,
@@ -49,6 +50,7 @@ import {
   projectClaudeAdditionalModels,
 } from "./claude-additional-models.js";
 import { ClaudeProviderRetentionTracker } from "./claude-retention.js";
+import { ClaudeSteerBackgroundController } from "./claude-steer-background.js";
 import {
   checkRemotePath,
   createRemoteSpawn,
@@ -105,6 +107,35 @@ const CLAUDE_EFFORT_LEVELS: EffortLevel[] = [
 ];
 const execFileAsync = promisify(execFile);
 const SESSION_ID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+function waitForMessageYield(
+  queue: MessageQueue,
+  message: import("../types.js").UserMessage,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const finish = (yielded: boolean) => {
+      unsubscribeYielded();
+      unsubscribeRemoved();
+      signal.removeEventListener("abort", onAbort);
+      resolve(yielded);
+    };
+    const onAbort = () => finish(false);
+    const unsubscribeYielded = queue.subscribeYielded((messages) => {
+      if (messages.includes(message)) finish(true);
+    });
+    const unsubscribeRemoved = queue.subscribeRemoved((messages) => {
+      if (messages.includes(message)) finish(false);
+    });
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+}
+
+function nextEventLoopTurn(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 export function getClaudeAutoCompactOverrideEnv(
   percent: number | undefined,
@@ -1994,6 +2025,14 @@ export class ClaudeProvider implements AgentProvider {
       throw error;
     }
 
+    const steerBackgroundController = new ClaudeSteerBackgroundController({
+      settings:
+        options.claudeSteerBackgroundBash ??
+        DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
+      backgroundTask: (toolUseId) => sdkQuery.backgroundTasks(toolUseId),
+      signal: abortController.signal,
+    });
+
     // Wrap the iterator to convert SDK message types to our internal types
     // Pass executor info for session sync after result messages
     // Use effectiveCwd (the translated remote path) so sync uses the correct project dir
@@ -2002,6 +2041,7 @@ export class ClaudeProvider implements AgentProvider {
       cwd: effectiveCwd,
       remoteEnv,
       providerRetention,
+      onMessage: (message) => steerBackgroundController.observe(message),
     });
     const iterator = agentctlSessionEnvBridge
       ? withCleanup(wrappedIterator, () => agentctlSessionEnvBridge.cleanup())
@@ -2022,7 +2062,29 @@ export class ClaudeProvider implements AgentProvider {
         agentctlSessionEnvBridge?.cleanup();
       },
       steer: async (message) => {
+        const yielded = waitForMessageYield(
+          queue,
+          message,
+          abortController.signal,
+        );
         queue.push(message);
+        void yielded
+          .then(async (wasYielded) => {
+            if (!wasYielded) return;
+            // MessageQueue resolves the SDK's pending next() first. One event
+            // loop turn lets the SDK write that steer before the control call.
+            await nextEventLoopTurn();
+            await steerBackgroundController.backgroundEligible();
+          })
+          .catch((error) => {
+            log.warn(
+              {
+                event: "claude_steer_background_bash_failed",
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Failed to background a foreground Claude Bash after steering",
+            );
+          });
         return true;
       },
       isProcessAlive: isCapturedProcessAlive,
@@ -2085,6 +2147,7 @@ export class ClaudeProvider implements AgentProvider {
       cwd: string;
       remoteEnv?: Record<string, string>;
       providerRetention?: ClaudeProviderRetentionTracker;
+      onMessage?: (message: SDKMessage) => void;
     },
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
@@ -2099,6 +2162,7 @@ export class ClaudeProvider implements AgentProvider {
 
         const converted = this.convertMessage(message);
         remoteOptions?.providerRetention?.observeMessage(converted);
+        remoteOptions?.onMessage?.(converted);
         yield converted;
 
         // For remote sessions, sync session files after result messages

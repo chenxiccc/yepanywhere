@@ -3,6 +3,7 @@
 // Re-export PermissionMode from shared
 export type { PermissionMode } from "@yep-anywhere/shared";
 import type {
+  ClaudeSteerBackgroundBashSettings,
   PermissionMode,
   SlashCommand,
   SessionLivenessProbeStatus,
@@ -198,6 +199,8 @@ export interface StartSessionOptions {
    * window. Omitted leaves its environment/default unchanged.
    */
   launchCompactPercentOverride?: number;
+  /** Claude-only policy for making matching foreground Bash calls resumable. */
+  claudeSteerBackgroundBash?: ClaudeSteerBackgroundBashSettings;
   onToolApproval?: CanUseTool;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;

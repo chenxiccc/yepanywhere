@@ -12,6 +12,7 @@ import type {
   AgentContextHints,
   CacheMissBillingSettings,
   ClaudeAdditionalModelSelection,
+  ClaudeSteerBackgroundBashSettings,
   ClientDefaults,
   HelperTargetConfig,
   HostIdentity,
@@ -23,6 +24,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+  DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
   DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   clampProjectQueueQuietSeconds,
@@ -32,6 +34,7 @@ import {
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
   parseClaudeAdditionalModelSelections,
+  parseClaudeSteerBackgroundBashSettings,
 } from "@yep-anywhere/shared";
 import type { FileAccessSettings } from "../middleware/file-access.js";
 import { publishDeferredDeliverySettings } from "../supervisor/deferredDeliverySettings.js";
@@ -149,6 +152,8 @@ export interface ServerSettings {
    * auto-compaction window. Absent leaves Claude's environment unchanged.
    */
   claudeAutoCompactPercentOverride?: number;
+  /** Foreground Bash commands Claude may make resumable when a steer arrives. */
+  claudeSteerBackgroundBash: ClaudeSteerBackgroundBashSettings;
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
@@ -238,6 +243,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   grokBuildUseXaiApiKey: false,
   codexUpdatePolicy: "notify",
   codexReloadSafeSessions: false,
+  claudeSteerBackgroundBash: DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
   clientDefaults: DEFAULT_CLIENT_DEFAULTS,
   cacheMissBilling: DEFAULT_CACHE_MISS_BILLING_SETTINGS,
   projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
@@ -381,6 +387,10 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     settings.claudeAutoCompactPercentOverride <= 100
       ? settings.claudeAutoCompactPercentOverride
       : undefined;
+  normalized.claudeSteerBackgroundBash =
+    parseClaudeSteerBackgroundBashSettings(
+      settings.claudeSteerBackgroundBash,
+    ) ?? DEFAULT_CLAUDE_STEER_BACKGROUND_BASH;
   const gatewayStartCommand = settings.claudeGatewayStartCommand;
   normalized.claudeGatewayStartCommand =
     typeof gatewayStartCommand === "string" &&

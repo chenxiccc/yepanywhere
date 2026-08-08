@@ -4,6 +4,7 @@ import {
   DEFAULT_RECAP_AFTER_SECONDS,
   HELPER_SIDE_MODEL_CHEAPEST,
   type CacheMissBillingSettings,
+  type ClaudeSteerBackgroundBashSettings,
   type EffortLevel,
   type PermissionRules,
   type PromptSuggestionMode,
@@ -661,6 +662,10 @@ export interface SupervisorOptions {
   ) => PromptCacheKeepaliveSettings | undefined;
   /** Callback to read live cache-miss billing monitor settings. */
   getCacheMissBillingSettings?: () => CacheMissBillingSettings | undefined;
+  /** Current install-wide Claude Bash re-foregrounding policy. */
+  getClaudeSteerBackgroundBashSettings?: () =>
+    | ClaudeSteerBackgroundBashSettings
+    | undefined;
   /** Maximum time to wait for a graceful provider interrupt before hard abort. */
   interruptTimeoutMs?: number;
   /** Metadata service used to hide/archive server-owned helper forks. */
@@ -720,6 +725,9 @@ export class Supervisor {
   private getPromptCacheKeepaliveSettings?: (
     provider: ProviderName,
   ) => PromptCacheKeepaliveSettings | undefined;
+  private getClaudeSteerBackgroundBashSettings?: () =>
+    | ClaudeSteerBackgroundBashSettings
+    | undefined;
   private cacheMissBillingMonitor: CacheMissBillingMonitor;
   private heartbeatScheduler: HeartbeatSweepScheduler;
   /**
@@ -776,6 +784,8 @@ export class Supervisor {
     this.getHeartbeatWaitingSessionIds = options.getHeartbeatWaitingSessionIds;
     this.getPromptCacheKeepaliveSettings =
       options.getPromptCacheKeepaliveSettings;
+    this.getClaudeSteerBackgroundBashSettings =
+      options.getClaudeSteerBackgroundBashSettings;
     this.cacheMissBillingMonitor = new CacheMissBillingMonitor({
       eventBus: options.eventBus,
       sessionMetadataService: options.sessionMetadataService,
@@ -1486,6 +1496,7 @@ export class Supervisor {
       effort: modelSettings?.effort,
       launchCompactPercentOverride:
         modelSettings?.claudeAutoCompactPercentOverride,
+      claudeSteerBackgroundBash: this.getClaudeSteerBackgroundBashSettings?.(),
       clientName: modelSettings?.clientName,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
@@ -2043,6 +2054,7 @@ export class Supervisor {
       effort: modelSettings?.effort,
       launchCompactPercentOverride:
         modelSettings?.claudeAutoCompactPercentOverride,
+      claudeSteerBackgroundBash: this.getClaudeSteerBackgroundBashSettings?.(),
       clientName: modelSettings?.clientName,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
@@ -2233,6 +2245,7 @@ export class Supervisor {
       ...(launchCompactPercentOverride === undefined
         ? {}
         : { launchCompactPercentOverride }),
+      claudeSteerBackgroundBash: this.getClaudeSteerBackgroundBashSettings?.(),
       clientName: modelSettings?.clientName,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
@@ -2433,6 +2446,7 @@ export class Supervisor {
       ...(launchCompactPercentOverride === undefined
         ? {}
         : { launchCompactPercentOverride }),
+      claudeSteerBackgroundBash: this.getClaudeSteerBackgroundBashSettings?.(),
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,

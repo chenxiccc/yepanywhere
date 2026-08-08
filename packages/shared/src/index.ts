@@ -79,6 +79,14 @@ export {
 } from "./agent-context.js";
 
 export {
+  DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
+  MAX_CLAUDE_STEER_BACKGROUND_BASH_REGEX_LENGTH,
+  createClaudeSteerBackgroundBashMatcher,
+  parseClaudeSteerBackgroundBashSettings,
+  type ClaudeSteerBackgroundBashSettings,
+} from "./claude-steering.js";
+
+export {
   MAX_CLAUDE_ADDITIONAL_MODELS,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH,

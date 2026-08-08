@@ -1633,6 +1633,50 @@ describe("Settings Routes", () => {
       },
     );
 
+    it("accepts the Claude steer foreground-Bash policy", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+      const policy = {
+        allowRegex: ".*agentctl watch.*",
+        denyRegex: ".*--exclusive.*",
+      };
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeSteerBackgroundBash: policy }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenLastCalledWith(
+        { claudeSteerBackgroundBash: policy },
+      );
+    });
+
+    it.each([
+      { allowRegex: "[", denyRegex: "" },
+      { allowRegex: ".*" },
+      { allowRegex: ".*", denyRegex: "", extra: true },
+    ])("rejects invalid Claude steer Bash policy %j", async (policy) => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeSteerBackgroundBash: policy }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error:
+          "claudeSteerBackgroundBash must contain valid allowRegex and denyRegex strings",
+      });
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("rejects invalid provider-scoped helper model defaults", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

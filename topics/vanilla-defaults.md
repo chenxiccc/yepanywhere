@@ -141,6 +141,15 @@ tool call. The behavior reduces the correction race but does not make separately
 submitted steers atomic; the provider can still launch a tool before a later
 message arrives. Transparency for non-Bash tools remains unverified.
 
+The same topic defaults Claude foreground-Bash re-entry on for all main-turn
+commands, configurable through the server's whole-command allow/deny expressions.
+Authorized by graehl on 2026-08-08 after exact-ID SDK probes showed that Bash
+continued to completion while Claude received the already-enqueued correction and
+no forbidden follow-on command launched. This does not interrupt the command, but
+it lets Claude act concurrently with it; operators can deny expensive,
+side-effecting, or lock-holding commands. Other tool types, subagent-owned Bash,
+and the SDK's all-task background control remain excluded.
+
 [mic-button-speech-ui](mic-button-speech-ui.md) treats conservative
 mid-sentence capitalization smoothing as built-in speech-input behavior, with
 no preference. Some recognizers title-case every finalized phrase after a

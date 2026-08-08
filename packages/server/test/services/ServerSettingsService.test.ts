@@ -103,6 +103,39 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("codexReloadSafeSessions")).toBe(true);
   });
 
+  it("defaults Claude steer backgrounding to every Bash command", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("claudeSteerBackgroundBash")).toEqual({
+      allowRegex: ".*",
+      denyRegex: "",
+    });
+  });
+
+  it("normalizes an invalid persisted Claude steer policy to defaults", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          claudeSteerBackgroundBash: {
+            allowRegex: "[",
+            denyRegex: "",
+          },
+        },
+      }),
+    );
+
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("claudeSteerBackgroundBash")).toEqual({
+      allowRegex: ".*",
+      denyRegex: "",
+    });
+  });
+
   it("leaves idle-reap hours absent until explicitly saved", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

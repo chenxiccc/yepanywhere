@@ -6,6 +6,7 @@ import type {
   BrowserSettingsBackupResponse,
   BrowserSettingsBackupValues,
   ClaudeAdditionalModelSelection,
+  ClaudeSteerBackgroundBashSettings,
   ClientDefaults,
   ConnectionsResponse,
   CreateProjectWorkstreamRequest,
@@ -1821,6 +1822,8 @@ export interface ServerSettings {
    * window. Absent leaves Claude's environment/default unchanged.
    */
   claudeAutoCompactPercentOverride?: number;
+  /** Foreground Bash commands Claude may make resumable when a steer arrives. */
+  claudeSteerBackgroundBash?: ClaudeSteerBackgroundBashSettings;
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */

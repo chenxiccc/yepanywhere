@@ -123,7 +123,7 @@ Codex `turn/interrupt`) bracket the ladder but cancel work; they are not
 
 | Level | Claude mechanism | Codex mechanism | YA UI |
 |---|---|---|---|
-| 0. Inject now (abort in-flight *generation*, keep the turn) | `priority: "now"` on a streamed user message; while inference is active the CLI aborts sampling and re-calls the model with the message. In YA's SDK path, a live 2.1.223 probe found the message remained queued behind a foreground Bash call and was injected immediately after its result; it did not kill or background the command. | none as a single lane; TUI `Esc` on the pending-steer prompt composes interrupt+submit | Claude-only `Now` checkbox beside steer, default on when no preference is stored |
+| 0. Inject now (abort in-flight *generation*, keep the turn) | `priority: "now"` on a streamed user message; while inference is active the CLI aborts sampling and re-calls the model with the message. The priority itself stays queued behind foreground Bash. YA separately makes configured Bash calls resumable after writing the steer, as described below. | none as a single lane; TUI `Esc` on the pending-steer prompt composes interrupt+submit | Claude-only `Now` checkbox beside steer, default on when no preference is stored |
 | 1. After current tool call / tool batch | `priority: "next"`; the loop drains `getCommandsByMaxPriority("next")` at post-tool-batch boundaries (internal task notifications use this lane) | `turn/steer` RPC `{threadId, expectedTurnId, input}`; lands in the active turn's `pending_input`, consumed when the *next model request* is composed — it does NOT abort in-flight sampling, so during a long thinking/text stretch it waits for the whole current response (and its tool batch). Native TUI default for typed mid-turn input | ↗ steer |
 | 2. End of turn (the real queue) | `priority: "later"`; not consumed mid-turn, starts the next turn at turn end (cron/loop prompts use this lane) | no protocol lane — the native app holds the message client-side until `turn/completed`; YA holds it server-side (`deferred`) | → queue |
 | 3. End of turn + verified quiet window | not native | not native | Zz patient (`patienceSeconds`) |
@@ -170,13 +170,14 @@ During active inference, both abort sampling promptly; everything around that
 differs. Hard interrupt (Esc / `query.interrupt()`) ends the turn in a terminal
 "interrupted" state and may cancel the active tool. `priority: "now"` keeps the
 turn: the next model request includes the new message, with no hard-interrupt
-boundary. In the live YA SDK test below, `now` did not abort or background a
-foreground Bash command; the input stayed queued until the command completed.
+boundary. In the live YA SDK test below, `now` alone did not abort or background
+a foreground Bash command; the input stayed queued until the command completed.
 This supersedes the earlier inference that streamed `now` necessarily invokes
 the CLI's automatic task-backgrounding behavior. The installed SDK exposes
 `query.backgroundTasks(toolUseId)` as a separate imperative control for
 foreground Bash commands and subagents; it is not a state query and `now` does
-not implicitly call it in the observed YA path.
+not implicitly call it in the observed YA path. YA now calls that separate
+control for matching Bash commands only, after sending the steer.
 
 ### Residual correction race and banked grace gate
 
@@ -212,15 +213,40 @@ every tool and allows a newly arrived `now` message to cancel the pending call.
 Before adoption it must prove that CLI cancellation aborts a hook-pending tool,
 cover every provider tool class, and justify the latency paid on every action.
 
-A separate configurable safe-background policy remains viable for known
-wait-like Bash commands such as selected `agentctl` watches. It would match an
-explicit user allowlist, call `backgroundTasks(toolUseId)`, then steer; it must
-not hard-interrupt the command. This keeps the original process running but can
-let Claude act concurrently with it, so unknown, side-effecting, expensive, or
-lock-holding commands stay foreground by default. A built-in `agentctl` or
-command-text whitelist remains rejected; the operator owns the patterns and
-the concurrency risk. Both this policy and the grace gate are banked only; the
-default-on `now` change implements neither.
+A configurable Bash re-foregrounding policy is implemented separately from the
+`now` lane. Once a steer has been yielded into the SDK input stream, YA waits one
+event-loop turn and calls `backgroundTasks(toolUseId)` for each matching active
+main-turn Bash call. It never uses the all-task form, never targets Edit,
+subagent-owned Bash, or any other tool, and never hard-interrupts the provider.
+A successful call returns a synthetic "running in the background" tool result
+so Claude can consume the already-written steer while the original process
+continues.
+
+Claude has an early registration window: in controlled SDK 0.3.223 / Claude
+2.1.223 probes, the exact-ID control returned false one second after the command
+created its start marker, but succeeded at three and five seconds. YA therefore
+retries that exact ID once per second for at most twelve seconds while the same
+Bash tool remains foreground. A tool result, successful background request, or
+provider abort stops the retry; a miss leaves the steer in Claude's ordinary
+`now` lane. The bounded retry exists only after a steer and creates no idle
+session loop.
+
+The live success probes established the intended ordering and safety properties:
+the transcript enqueued the urgent correction before backgrounding; the Bash
+completion marker was written normally; Claude received the background result,
+waited on the same task with `TaskOutput`, emitted `FINAL`, and never launched
+the deliberately requested follow-on Bash. This proves process preservation and
+prompt re-entry for the tested Bash path, not atomic multi-message steering.
+
+The server setting `claudeSteerBackgroundBash` owns the concurrency policy for
+new Claude processes. Both expressions match the whole raw
+`Bash.input.command`, case-sensitively and with dot matching newlines. The
+default is `{ allowRegex: ".*", denyRegex: "" }`: allow every Bash command and
+deny none. Empty allow disables re-foregrounding; empty deny has the special
+meaning "deny nothing"; deny wins when both match. Invalid settings writes are
+rejected, and invalid programmatic values fail closed. Operators can deny
+expensive, side-effecting, or lock-holding commands when Claude must not act
+concurrently with them. YA carries no built-in `agentctl` or command whitelist.
 
 Claude's internal `cancel_async_message` control is narrower. SDK 0.3.223
 declares the control request and implements it at runtime, but omits it from the
@@ -263,10 +289,12 @@ supports both the
 ## Perceived responsiveness, explained
 
 - Codex steer lands within one tool call (seconds during tool-heavy work).
-- Claude steer in YA uses `now` by default. It interrupts active inference, but
-  in the verified SDK/Bash trace it waited for the foreground tool result. An
-  explicit disabled **Steer now** preference restores the post-tool-batch
-  `next` lane.
+- Claude steer in YA uses `now` by default. It interrupts active inference.
+  Matching foreground Bash commands are then made resumable by exact tool ID;
+  an unmatched or early-registration miss leaves the steer waiting for the
+  foreground result. An explicit disabled **Steer now** preference restores the
+  post-tool-batch `next` lane, while Bash re-foregrounding remains a separate
+  server policy.
 - Claude queue in YA is deliberately different: queued sends stay in YA's
   deferred queue until the turn-end `result` boundary, then enter Claude as
   `priority: "later"`.

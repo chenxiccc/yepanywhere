@@ -1,5 +1,6 @@
 // Provider abstraction types for multi-provider support
 import type {
+  ClaudeSteerBackgroundBashSettings,
   ModelInfo,
   PermissionMode,
   PromptCacheKeepaliveProviderInfo,
@@ -118,6 +119,8 @@ export interface StartSessionOptions {
    * window. Omitted means the provider's environment/default is unchanged.
    */
   launchCompactPercentOverride?: number;
+  /** Claude-only policy for making matching foreground Bash calls resumable. */
+  claudeSteerBackgroundBash?: ClaudeSteerBackgroundBashSettings;
   /** Tool approval callback */
   onToolApproval?: CanUseTool;
   /** SSH host for remote execution (undefined = local) */

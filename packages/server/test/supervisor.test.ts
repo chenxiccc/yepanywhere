@@ -607,7 +607,6 @@ describe("Supervisor", () => {
         session_id: "compact-threshold-session",
       });
       await waitFor(() => expect(started.state.type).toBe("idle"));
-
       const result = await supervisorWithProvider.queueMessageToSession(
         "compact-threshold-session",
         "/tmp/test",
@@ -666,9 +665,14 @@ describe("Supervisor", () => {
         getAvailableModels: async () => [],
         startSession,
       };
+      let steerBackgroundPolicy = {
+        allowRegex: ".*",
+        denyRegex: ".*exclusive.*",
+      };
       const supervisorWithProvider = new Supervisor({
         provider,
         idleTimeoutMs: 100,
+        getClaudeSteerBackgroundBashSettings: () => steerBackgroundPolicy,
       });
 
       const started = await supervisorWithProvider.resumeSession(
@@ -691,6 +695,10 @@ describe("Supervisor", () => {
         session_id: "claude-compact-override-session",
       });
       await waitFor(() => expect(started.state.type).toBe("idle"));
+      steerBackgroundPolicy = {
+        allowRegex: ".*agentctl watch.*",
+        denyRegex: "",
+      };
 
       const result = await supervisorWithProvider.queueMessageToSession(
         "claude-compact-override-session",
@@ -707,6 +715,18 @@ describe("Supervisor", () => {
       );
       expect(startSession.mock.calls[1]?.[0].launchCompactPercentOverride).toBe(
         50,
+      );
+      expect(startSession.mock.calls[0]?.[0].claudeSteerBackgroundBash).toEqual(
+        {
+          allowRegex: ".*",
+          denyRegex: ".*exclusive.*",
+        },
+      );
+      expect(startSession.mock.calls[1]?.[0].claudeSteerBackgroundBash).toEqual(
+        {
+          allowRegex: ".*agentctl watch.*",
+          denyRegex: "",
+        },
       );
 
       if (result.success) {

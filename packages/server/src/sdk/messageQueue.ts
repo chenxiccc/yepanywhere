@@ -176,6 +176,7 @@ export class MessageQueue
   private waiting: (() => void) | null = null;
   private depthListeners = new Set<(depth: number) => void>();
   private removalListeners = new Set<(messages: UserMessage[]) => void>();
+  private yieldedListeners = new Set<(messages: UserMessage[]) => void>();
   /** Set when concatDrain() is called to prevent generator from yielding stale data */
   private drainedByExternal = false;
 
@@ -324,6 +325,7 @@ export class MessageQueue
     }
     const drained = this.queue.splice(0, end);
     if (drained.length === 0) return null;
+    this.emitYielded(drained);
     this.emitRemoved(drained);
     this.emitDepth();
 
@@ -426,6 +428,12 @@ export class MessageQueue
     return () => this.removalListeners.delete(listener);
   }
 
+  /** Observe only messages yielded to the SDK input stream, not external drains. */
+  subscribeYielded(listener: (messages: UserMessage[]) => void): () => void {
+    this.yieldedListeners.add(listener);
+    return () => this.yieldedListeners.delete(listener);
+  }
+
   private emitDepth(): void {
     for (const listener of this.depthListeners) listener(this.queue.length);
   }
@@ -433,6 +441,11 @@ export class MessageQueue
   private emitRemoved(messages: UserMessage[]): void {
     if (messages.length === 0) return;
     for (const listener of this.removalListeners) listener(messages);
+  }
+
+  private emitYielded(messages: UserMessage[]): void {
+    if (messages.length === 0) return;
+    for (const listener of this.yieldedListeners) listener(messages);
   }
 
   /** Backward-compatible alias for the async iterator (used by existing callers). */

@@ -15,6 +15,7 @@ import {
   normalizeYaClientBaseUrlFromShareViewerUrl,
   normalizeIdleReapHours,
   parseClaudeAdditionalModelSelections,
+  parseClaudeSteerBackgroundBashSettings,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import {
@@ -642,6 +643,22 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
           );
         }
         updates.claudeAutoCompactPercentOverride = parsedOverride;
+      }
+
+      if ("claudeSteerBackgroundBash" in body) {
+        const parsedBackgroundPolicy = parseClaudeSteerBackgroundBashSettings(
+          body.claudeSteerBackgroundBash,
+        );
+        if (parsedBackgroundPolicy === null) {
+          return c.json(
+            {
+              error:
+                "claudeSteerBackgroundBash must contain valid allowRegex and denyRegex strings",
+            },
+            400,
+          );
+        }
+        updates.claudeSteerBackgroundBash = parsedBackgroundPolicy;
       }
 
       // Handle deviceBridgeEnabled boolean

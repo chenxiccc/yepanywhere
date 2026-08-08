@@ -1123,6 +1123,8 @@ export function createApp(options: AppOptions): AppResult {
     },
     getCacheMissBillingSettings: () =>
       options.serverSettingsService?.getSetting("cacheMissBilling"),
+    getClaudeSteerBackgroundBashSettings: () =>
+      options.serverSettingsService?.getSetting("claudeSteerBackgroundBash"),
   });
 
   // Create external session tracker if eventBus is available

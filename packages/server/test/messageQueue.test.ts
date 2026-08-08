@@ -58,6 +58,26 @@ describe("concatUserMessages", () => {
 });
 
 describe("MessageQueue", () => {
+  it("reports only SDK-yielded messages through subscribeYielded", async () => {
+    const queue = new MessageQueue();
+    const yielded: string[][] = [];
+    const events: string[] = [];
+    queue.subscribeYielded((messages) => {
+      yielded.push(messages.map((message) => message.text));
+      events.push("yielded");
+    });
+    queue.subscribeRemoved(() => events.push("removed"));
+    queue.push(msg("externally drained"));
+    queue.drain();
+    events.length = 0;
+    queue.push(msg("provider-bound"));
+
+    await queue[Symbol.asyncIterator]().next();
+
+    expect(yielded).toEqual([["provider-bound"]]);
+    expect(events).toEqual(["yielded", "removed"]);
+  });
+
   it("reports authoritative removals to remote queue mirrors", () => {
     const queue = new MessageQueue();
     const removed: string[][] = [];
