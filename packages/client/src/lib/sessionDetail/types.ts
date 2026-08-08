@@ -107,7 +107,7 @@ export type SessionDetailAction =
       type: "replaceTailWindow";
       messages: Message[];
       session: SessionMetadata;
-      pagination: PaginationInfo;
+      pagination?: PaginationInfo;
     }
   | {
       type: "trimLoadedWindow";

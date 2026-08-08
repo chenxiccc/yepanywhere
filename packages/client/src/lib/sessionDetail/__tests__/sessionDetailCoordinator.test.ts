@@ -744,6 +744,28 @@ describe("SessionDetailCoordinator", () => {
     ).toEqual(["current", "catchup"]);
   });
 
+  it("replaces stale state with one full-tail reconciliation", () => {
+    const detail = coordinator();
+    const tail = [
+      message("tail-user", "2026-07-04T00:00:01.000Z"),
+      message("tail-assistant", "2026-07-04T00:00:02.000Z"),
+    ];
+
+    detail.replaceRouteSnapshot(routeSnapshot("stale"));
+
+    expect(detail.applyFullTailReconciliation(sessionResponse(tail))).toEqual({
+      messageCount: 2,
+      pagination: undefined,
+      sourceMessageCount: 2,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["tail-user", "tail-assistant"]);
+    expect(
+      detail.readSelected(selectSessionDetailRuntimeSnapshot)?.pagination,
+    ).toBeUndefined();
+  });
+
   it("skips older-page requests when pagination has no older window", () => {
     const detail = coordinator();
 

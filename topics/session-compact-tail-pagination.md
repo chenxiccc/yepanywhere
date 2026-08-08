@@ -64,6 +64,16 @@ scope. If that cursor cannot be found, the route falls back to the default
 two-compaction tail. `beforeMessageId` remains the explicit older-page cursor
 and returns another compact-boundary-shaped page.
 
+If an `afterMessageId` request fails at transport, relay, decode, or server
+handling rather than returning a response, the mounted client performs one
+uncursored request with the same compact-tail bounds inside the existing
+per-session in-flight coordinator. A successful response atomically replaces
+the loaded tail window. If that reconciliation also fails, the attempt stops;
+it creates no timer or internal retry loop. Later external activity may start
+another coalesced attempt. Diagnostics are available in development or during
+explicit remote-log collection, limited to one report per route per 30
+seconds, and state how many failures were suppressed.
+
 ## Why This Matters
 
 The previous boundary condition used `totalCompactions <= tailCompactions` as

@@ -29,6 +29,7 @@ import {
   type SessionDetailLoadCompleteResult,
   type SessionDetailRevealSnapshotInput,
 } from "../lib/sessionDetail/sessionDetailCoordinator";
+import { isClientLogCollectionActive } from "../lib/diagnostics";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   getSessionActiveWindowTrimEnabled,
@@ -71,6 +72,7 @@ export type SessionLoadResult = SessionDetailLoadCompleteResult;
 export type { AgentContent, AgentContentMap } from "../lib/sessionDetail/types";
 
 const DEFAULT_INITIAL_TAIL_TURNS = 20;
+const INCREMENTAL_REFRESH_DIAGNOSTIC_INTERVAL_MS = 30_000;
 
 export type SessionMetadataUpdate =
   | SessionMetadata
@@ -175,6 +177,51 @@ function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+interface IncrementalRefreshDiagnosticState {
+  routeKey: string;
+  lastReportedAtMs: number;
+  suppressedCount: number;
+}
+
+function debugLogIncrementalRefreshDiagnostic(
+  state: IncrementalRefreshDiagnosticState,
+  input: {
+    projectId: string;
+    sessionId: string;
+    afterMessageId?: string;
+    incrementalError: Error;
+    reconciliationError?: Error;
+    outcome: "failed" | "recovered";
+  },
+): void {
+  if (!import.meta.env.DEV && !isClientLogCollectionActive()) {
+    return;
+  }
+
+  const nowMs = Date.now();
+  if (
+    nowMs - state.lastReportedAtMs <
+    INCREMENTAL_REFRESH_DIAGNOSTIC_INTERVAL_MS
+  ) {
+    state.suppressedCount += 1;
+    return;
+  }
+
+  const suppressedCount = state.suppressedCount;
+  state.lastReportedAtMs = nowMs;
+  state.suppressedCount = 0;
+  console.info("[SessionIncrementalRefresh]", {
+    event: "incremental-refresh-reconciliation",
+    outcome: input.outcome,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+    afterMessageId: input.afterMessageId,
+    incrementalError: input.incrementalError.message,
+    reconciliationError: input.reconciliationError?.message,
+    ...(suppressedCount > 0 && { suppressedCount }),
+  });
+}
+
 function yieldForSessionLoadingProgressPaint(
   enabled: boolean | undefined,
 ): Promise<void> {
@@ -238,6 +285,19 @@ export function useSessionMessages(
     load: SessionRouteSnapshot | undefined;
   } | null>(null);
   const incrementalFetchSequenceRef = useRef(0);
+  const incrementalRefreshDiagnosticRef =
+    useRef<IncrementalRefreshDiagnosticState>({
+      routeKey: snapshotKeyString,
+      lastReportedAtMs: Number.NEGATIVE_INFINITY,
+      suppressedCount: 0,
+    });
+  if (incrementalRefreshDiagnosticRef.current.routeKey !== snapshotKeyString) {
+    incrementalRefreshDiagnosticRef.current = {
+      routeKey: snapshotKeyString,
+      lastReportedAtMs: Number.NEGATIVE_INFINITY,
+      suppressedCount: 0,
+    };
+  }
   if (
     cachedLoadRef.current?.key !== snapshotKeyString ||
     cachedLoadRef.current.coordinator !== coordinator
@@ -887,6 +947,7 @@ export function useSessionMessages(
     (trigger?: IncrementalFetchTrigger) => {
       return coordinator.runExclusiveFetchNewMessages(async () => {
         const requestId = ++incrementalFetchSequenceRef.current;
+        let afterMessageId: string | undefined;
         const perfDetail = {
           ...trigger,
           projectId,
@@ -898,7 +959,7 @@ export function useSessionMessages(
           perfDetail,
         );
         try {
-          const afterMessageId = readStoreLastMessageId();
+          afterMessageId = readStoreLastMessageId();
           const data = await sourceApi.getSession(
             afterMessageId
               ? {
@@ -941,11 +1002,96 @@ export function useSessionMessages(
             sourceMessageCount: applied.sourceMessageCount,
           });
         } catch (error) {
+          const incrementalError = toError(error);
           markReloadPerfPhase("session_incremental_fetch_error", {
             ...perfDetail,
-            error: error instanceof Error ? error.message : String(error),
+            afterMessageId,
+            error: incrementalError.message,
           });
-          // Silent fail for incremental updates
+          if (!afterMessageId) {
+            debugLogIncrementalRefreshDiagnostic(
+              incrementalRefreshDiagnosticRef.current,
+              {
+                projectId,
+                sessionId,
+                incrementalError,
+                outcome: "failed",
+              },
+            );
+            return;
+          }
+
+          markReloadPerfPhase(
+            "session_incremental_reconciliation_request_start",
+            {
+              ...perfDetail,
+              afterMessageId,
+            },
+          );
+          try {
+            const data = await sourceApi.getSession({
+              projectId,
+              sessionId,
+              tailCompactions: 2,
+              tailTurns: effectiveTailTurns,
+              tailFrom,
+            });
+            markReloadPerfPhase(
+              "session_incremental_reconciliation_data_ready",
+              {
+                ...perfDetail,
+                afterMessageId,
+                sourceMessageCount: data.messages.length,
+              },
+            );
+            sourceSummary.reportProviderRuntimeStatusSnapshot(
+              coordinator.buildProviderRuntimeStatusSnapshot(data),
+            );
+            const applied = coordinator.applyFullTailReconciliation(data);
+            reportStoreDivergence("incremental-reconciliation", {
+              session: data.session,
+            });
+            updateSession((prev) =>
+              prev ? { ...prev, ...data.session } : data.session,
+            );
+            markReloadPerfPhase(
+              "session_incremental_reconciliation_state_queued",
+              {
+                ...perfDetail,
+                afterMessageId,
+                messageCount: applied.messageCount,
+                sourceMessageCount: applied.sourceMessageCount,
+              },
+            );
+            debugLogIncrementalRefreshDiagnostic(
+              incrementalRefreshDiagnosticRef.current,
+              {
+                projectId,
+                sessionId,
+                afterMessageId,
+                incrementalError,
+                outcome: "recovered",
+              },
+            );
+          } catch (reconciliationFailure) {
+            const reconciliationError = toError(reconciliationFailure);
+            markReloadPerfPhase("session_incremental_reconciliation_error", {
+              ...perfDetail,
+              afterMessageId,
+              error: reconciliationError.message,
+            });
+            debugLogIncrementalRefreshDiagnostic(
+              incrementalRefreshDiagnosticRef.current,
+              {
+                projectId,
+                sessionId,
+                afterMessageId,
+                incrementalError,
+                reconciliationError,
+                outcome: "failed",
+              },
+            );
+          }
         }
       });
     },

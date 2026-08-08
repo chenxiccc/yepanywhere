@@ -2707,6 +2707,128 @@ describe("useSessionMessages cache", () => {
     expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
   });
 
+  it("reconciles the bounded tail after an incremental refresh fails", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+    const diagnostic = vi.spyOn(console, "info").mockImplementation(() => {});
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    try {
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      apiMocks.getSession.mockClear();
+      apiMocks.getSession
+        .mockRejectedValueOnce(new Error("incremental anchor failed"))
+        .mockResolvedValueOnce(activeWindowSessionResponse(2));
+
+      await act(async () => {
+        await result.current.fetchNewMessages();
+      });
+
+      expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+        1,
+        "proj-1",
+        "sess-1",
+        "msg-1",
+      );
+      expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+        2,
+        "proj-1",
+        "sess-1",
+        undefined,
+        defaultInitialTailRequest(),
+      );
+      expect(result.current.messages.map((message) => message.uuid)).toEqual([
+        "user-0",
+        "user-1",
+      ]);
+      expect(diagnostic).toHaveBeenCalledWith(
+        "[SessionIncrementalRefresh]",
+        expect.objectContaining({
+          event: "incremental-refresh-reconciliation",
+          outcome: "recovered",
+          afterMessageId: "msg-1",
+          incrementalError: "incremental anchor failed",
+        }),
+      );
+    } finally {
+      diagnostic.mockRestore();
+    }
+  });
+
+  it("bounds failed reconciliation and rate-limits its diagnostic", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+    const diagnostic = vi.spyOn(console, "info").mockImplementation(() => {});
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    try {
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      apiMocks.getSession.mockClear();
+      apiMocks.getSession
+        .mockRejectedValueOnce(new Error("incremental failed 1"))
+        .mockRejectedValueOnce(new Error("reconciliation failed 1"))
+        .mockRejectedValueOnce(new Error("incremental failed 2"))
+        .mockRejectedValueOnce(new Error("reconciliation failed 2"))
+        .mockRejectedValueOnce(new Error("incremental failed 3"))
+        .mockRejectedValueOnce(new Error("reconciliation failed 3"));
+
+      await act(async () => {
+        await result.current.fetchNewMessages();
+      });
+      await act(async () => {
+        await result.current.fetchNewMessages();
+      });
+
+      expect(apiMocks.getSession).toHaveBeenCalledTimes(4);
+      expect(diagnostic).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(31_001);
+      await act(async () => {
+        await result.current.fetchNewMessages();
+      });
+
+      expect(apiMocks.getSession).toHaveBeenCalledTimes(6);
+      expect(diagnostic).toHaveBeenCalledTimes(2);
+      expect(diagnostic).toHaveBeenNthCalledWith(
+        1,
+        "[SessionIncrementalRefresh]",
+        expect.objectContaining({
+          event: "incremental-refresh-reconciliation",
+          outcome: "failed",
+          afterMessageId: "msg-1",
+          incrementalError: "incremental failed 1",
+          reconciliationError: "reconciliation failed 1",
+        }),
+      );
+      expect(diagnostic).toHaveBeenNthCalledWith(
+        2,
+        "[SessionIncrementalRefresh]",
+        expect.objectContaining({
+          event: "incremental-refresh-reconciliation",
+          outcome: "failed",
+          afterMessageId: "msg-1",
+          incrementalError: "incremental failed 3",
+          reconciliationError: "reconciliation failed 3",
+          suppressedCount: 1,
+        }),
+      );
+      expect(result.current.messages.map((message) => message.uuid)).toEqual([
+        "msg-1",
+      ]);
+    } finally {
+      now.mockRestore();
+      diagnostic.mockRestore();
+    }
+  });
+
   it("suppresses Codex live streaming messages when response streaming is disabled", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
