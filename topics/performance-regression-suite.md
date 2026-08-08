@@ -82,6 +82,49 @@ upload the result and JSONL accumulator, and register a new runner class without
 hard-coding its capacity. The complete result remains the evidence source;
 committing a capacity registration or tighter target remains a reviewed change.
 
+`.github/workflows/performance.yml` runs the server `fleet-small` ratchet for
+server, shared-package, and suite changes. It checks out the full YA history so
+the pinned fixture revision is available, and checks out `graehl/agents` at the
+reviewed full commit recorded in the workflow. The job uploads the result,
+history, and log even on failure and copies all four scrape records into its
+step summary. A previously unseen GitHub runner therefore uses portable
+ceilings while producing the exact capacity registration needed for a later
+reviewed ratchet change.
+
+Small cloud instances are acceptable measurement hosts when their baseline
+passes the same scenario-specific eligibility checks. Tag every instance and
+run with an owner and run marker, sweep its marked process trees on every exit
+path, and destroy temporary instances after artifacts are copied. An instance
+that outlives a completed run is resource debris and invalidates the run's
+cleanup result.
+
+## Provider-backed measurement tiers
+
+Routine shared-path ratchets should not execute a live provider. When a
+provider-backed path is required, prefer a simulated harness process that
+implements the provider process boundary: process startup, protocol events,
+transcript writes, controls, thinking blocks, and teardown. That level
+exercises YA's provider adapter, transcript ingestion, control routing,
+subscription behavior, and lifecycle ownership while keeping inputs and timing
+deterministic.
+
+A post-provider mock is acceptable when simulating the harness process is not
+yet practical. Its result must name the bypassed boundary and must not support
+claims about provider startup, protocol parsing, transcript production, or
+process cleanup. Before using either mock as a ratchet, compare a small live
+sample with the mocked sample and record the provider-execution share and any
+event-shape differences. Recalibrate when the provider adapter, model behavior,
+or mocked boundary changes materially.
+
+Live provider runs are reserved for that calibration and for behavior that
+cannot be reproduced below the provider boundary. Use the provider under test's
+lowest-cost model and effort level that still emits thinking blocks; a mode that
+omits thinking does not exercise the required event path. Record provider,
+model, effort, cost/token facts when available, and host capacity alongside the
+result. Start provider-agnostic investigations at the shared YA owner, but label
+a conclusion provider-specific or unresolved unless the owning path is shared
+or the behavior is reproduced across provider adapters.
+
 ## 2026-08-08 historical survey
 
 The final comparable survey used three repetitions per non-smoke point on one
@@ -338,8 +381,9 @@ exact positive path anchors and absent-path, MIME-type, and version-shaped
 negative controls. Automatic path linking has no saved enable switch; C0/C1
 lack generalized bare-prose support and C2 onward provide it automatically.
 
-The family also does not synthesize an owned provider process, so it does not
-isolate raw provider activity from its later enriched same-id replacement in
+The current family does not yet synthesize the owned provider process described
+in the provider-backed measurement tiers, so it does not isolate raw provider
+activity from its later enriched same-id replacement in
 `createSessionSubscription`. It does not create public-share records or hold
 owned sessions through long idle-reap deadlines. Those specialized paths
 retain their focused correctness and relay tests; claims about their token-rate,

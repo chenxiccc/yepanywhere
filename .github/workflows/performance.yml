@@ -1,0 +1,114 @@
+name: Performance Ratchet
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/server/**'
+      - 'packages/shared/**'
+      - 'scripts/perf-suite/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/performance.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/server/**'
+      - 'packages/shared/**'
+      - 'scripts/perf-suite/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/performance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-fleet-small:
+    name: Server fleet-small ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout YA
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Checkout reviewed performance helpers
+        uses: actions/checkout@v6
+        with:
+          repository: graehl/agents
+          ref: 496159563aafd1f5abd15e4315bf502187d2e9d1
+          path: .perf-tools/agents
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20.12'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run capacity-keyed server ratchet
+        env:
+          YA_PERF_SWEEP: ${{ github.workspace }}/.perf-tools/agents/scripts/perf-sweep
+        run: |
+          set -o pipefail
+          mkdir -p .perf-artifacts
+          node scripts/perf-suite/run.mjs \
+            --checkout "$GITHUB_WORKSPACE" \
+            --driver server \
+            --scenario fleet-small \
+            --label "github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output .perf-artifacts/result.json \
+            --history .perf-artifacts/history.jsonl \
+            2>&1 | tee .perf-artifacts/run.log
+
+      - name: Summarize capacity and artifacts
+        if: always()
+        run: |
+          {
+            echo '### YA server performance ratchet'
+            echo
+            echo 'Scrapeable host, history, capacity-registration, and result records:'
+            echo '```text'
+            if [ -f .perf-artifacts/run.log ]; then
+              grep -E '^YA_PERF_(HOST|HISTORY|CAPACITY_RATCHET|RESULT)_JSON ' \
+                .perf-artifacts/run.log || true
+            else
+              echo 'Performance run did not produce a log.'
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-fleet-small-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: .perf-artifacts/**
+
+      - name: Verify no performance process debris remains
+        if: always()
+        env:
+          YA_PERF_SWEEP: ${{ github.workspace }}/.perf-tools/agents/scripts/perf-sweep
+        run: |
+          "$YA_PERF_SWEEP" 'ya-perf-suite-' --kill --kill-group

@@ -128,9 +128,9 @@ Raw result JSON is written under `results/`; both directories are ignored when
 the suite is landed.
 
 `perf-sweep` is a run precondition and the authoritative post-run survivor
-check. Local runs resolve it from `PATH` or `YA_PERF_SWEEP`; CI should check out
-`github.com/graehl/agents` at full commit
-`496159563aafd1f5abd15e4315bf502187d2e9d1` and point `YA_PERF_SWEEP` at
+check. Local runs resolve it from `PATH` or `YA_PERF_SWEEP`. The GitHub
+performance workflow checks out `github.com/graehl/agents` at full commit
+`496159563aafd1f5abd15e4315bf502187d2e9d1` and points `YA_PERF_SWEEP` at
 `scripts/perf-sweep`. The harness refuses to start while another
 `ya-perf-suite-` marker exists. Every isolated server has a unique marker in
 argv and `PERF_RUN_ID`, a PID/PGID/port manifest, and a detached process group;
@@ -165,6 +165,23 @@ for a previously unseen runner class. A host need not be fully idle, but its
 baseline must show the configured CPU and effective-memory headroom. Treat a
 diagnostic-grade result as a sampling lead and rerun before changing history or
 a ratchet.
+
+The GitHub workflow runs server `fleet-small` on relevant server/shared/suite
+changes. It uploads `result.json`, `history.jsonl`, and the complete run log on
+success or failure, and copies the four `YA_PERF_*_JSON` records into the job
+summary. The checkout uses full history because the deterministic fixture is
+pinned to an older revision.
+
+Future provider-backed drivers should prefer a simulated harness process over
+a post-provider mock so process startup, adapter protocol, transcript writes,
+controls, thinking blocks, and teardown still cross YA's real boundary. A
+post-provider mock must identify the omitted boundary. Calibrate either mock
+with a small live sample that records the provider-execution share. Live runs
+use the tested provider's lowest-cost model and effort that still emits
+thinking blocks, and record provider/model/effort with the capacity-keyed
+result. Shared YA defects are often provider-agnostic, but a result is labelled
+provider-specific or unresolved until its owning path is known to be shared or
+the behavior is reproduced across adapters.
 
 The real-browser driver intentionally uses the measured checkout's dev client
 so one suite revision can run against old source checkouts. Its cold final-
