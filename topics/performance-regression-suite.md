@@ -38,7 +38,13 @@ cached final transcript is usable before network completion while a zero budget
 remains blank. The artificial hold is excluded from ordinary timings. Cold,
 warm, and append results separately record readable text, glossary annotation,
 project-path anchors, and the latest supported final display. Server and
-browser measurements are distinct ratchet universes.
+browser measurements are distinct ratchet universes. Per-page Chrome DevTools
+Protocol snapshots count live-plus-detached nodes, documents, event listeners,
+and layout objects. Browser-wide snapshots inventory processes at startup,
+after each cache mode loads, and after append. Linux results add per-process and
+per-type RSS, PSS, and private bytes from `/proc`; a total is absent unless
+every process in that snapshot was readable. Other platforms retain process
+identity and type without claiming native byte totals.
 
 The `focused-append` scale point is the selected-session critical-path
 contrast: one project, one session, one cache-disabled browser page, and one
@@ -131,6 +137,10 @@ the boundary. The broad checked-in maxima remain portable safety ceilings.
 individual targets while inheriting omitted portable checks. An unseen class
 uses the portable target key until its emitted registration is reviewed and
 committed; passing there does not establish a same-machine improvement.
+Native browser-process byte targets are capacity-specific because operating-
+system accounting and process topology are not portable. CDP object-count
+ceilings may remain portable when the browser dependency and fixture are
+content-addressed with the harness.
 
 For CI collection, the harness emits one-line `YA_PERF_HOST_JSON` before work
 and `YA_PERF_HISTORY_JSON`, `YA_PERF_CAPACITY_RATCHET_JSON`, and
@@ -490,6 +500,38 @@ The broad activity subscription still forwards every file event to every
 subscriber. Filtering that protocol on the server remains a separate
 client/server compatibility change and is not claimed by this slice.
 
+### 2026-08-08 browser-native memory attribution
+
+The browser driver now records its complete CDP process inventory and, on
+Linux, reads RSS, PSS, and private bytes for every PID from `/proc`. Fleet-wide
+process totals live in a separate `browserProcessAggregate`; they are not
+duplicated under cache budgets. Per-page CDP counters expose live and detached
+DOM state that `document.getElementsByTagName("*")` and
+`performance.memory` omit. Missing per-PID accounting removes that sample's
+total rather than silently undercounting it.
+
+A passing three-repetition Node 20 `fleet-small` run on capacity key
+`host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835` measured 2,807–2,855 MiB
+appended browser PSS, including 2,462–2,503 MiB in renderer processes. Median
+startup-to-appended PSS growth was 2,774 MiB across 11 Chromium processes.
+Cache-off/cache-on maxima were 8,587/9,048 CDP nodes, 7,041/7,084 event
+listeners, and 4,934/4,876 layout objects. Capacity-specific ceilings cover
+process count, total and renderer PSS, and retained PSS; portable ceilings cover
+the CDP object counts. The host baseline showed 16.2% CPU busy, 13.4 idle
+logical CPU equivalents, at least 107 GiB available RAM, and no baseline swap
+growth. All repetition and final process sweeps were clean.
+
+That identity-complete verification repeated cache-on navigation-to-load-start
+at 184–187 ms in two of three clear-host repetitions while complete warm final
+display remained about 487 ms. The portable child ceiling therefore moved from
+180 to 250 ms, matching the cache-off sibling; the 900 ms user-facing final-
+display ceiling is unchanged.
+
+This closes the process-level native-allocation blind spot but does not assign
+Blink or renderer bytes to individual YA components. Source-byte cache charges,
+JS heap, native process PSS, and CDP object counts remain complementary signals,
+not an additive per-component decomposition.
+
 ## Ratchet interpretation
 
 The current maximums use broad margins over the three-repetition survey and the
@@ -498,7 +540,8 @@ code with at least 99.9% probability; this is an engineering estimate, not a
 claim based on 1,000 trials. Browser warm and appended final-display targets
 remain at or below the one-second user-concern threshold. Independent targets
 cover significant server/browser phases, response volume, named cache charges,
-heap residuals, transcript entries/bytes, DOM nodes, and rendered message rows.
+heap residuals, transcript entries/bytes, DOM and layout objects, browser-
+process PSS on registered capacity, and rendered message rows.
 
 Working-set identity, held-refresh behavior, zero-budget behavior, exact fixture
 counts, negative link controls, and the configured browser-cache byte budget

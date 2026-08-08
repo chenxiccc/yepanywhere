@@ -16,6 +16,7 @@ const ratchets = {
             latency: { max: 100 },
             memory: { max: 200 },
           },
+          browserProcess: { pss: { max: 300 } },
           browser: {},
         },
       },
@@ -28,6 +29,7 @@ const ratchets = {
           scenarios: {
             fleet: {
               server: { latency: { max: 75 } },
+              browserProcess: { pss: { max: 250 } },
             },
           },
         },
@@ -61,6 +63,7 @@ test("overlays exact-capacity targets without dropping portable checks", () => {
   assert.equal(selected.selection.capacityRegistered, true);
   assert.equal(selected.targets.server.latency.max, 75);
   assert.equal(selected.targets.server.memory.max, 200);
+  assert.equal(selected.targets.browserProcess.pss.max, 250);
 });
 
 test("keys inherited portable targets to a registered capacity", () => {
@@ -166,4 +169,31 @@ test("ratchets one-target append separately from fleet contention", () => {
     ].max,
     100,
   );
+});
+
+test("keeps native process memory capacity-specific", () => {
+  const capacityKey = "host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835";
+  const local = selectRatchetTargets(productionRatchets, {
+    capacityKey,
+    driver: "browser",
+    scenario: "fleet-small",
+  });
+  const portable = selectRatchetTargets(productionRatchets, {
+    capacityKey: "host-v1-unregistered-test",
+    driver: "browser",
+    scenario: "fleet-small",
+  });
+
+  assert.equal(
+    local.targets.browserProcess["processMemory.maxTotalPssMiB"].max,
+    3600,
+  );
+  assert.deepEqual(portable.targets.browserProcess, {});
+  for (const budget of ["0", "24"]) {
+    assert.equal(local.targets.browser[budget]["dom.maxCdpNodes"].max, 12000);
+    assert.equal(
+      portable.targets.browser[budget]["dom.maxCdpNodes"].max,
+      12000,
+    );
+  }
 });

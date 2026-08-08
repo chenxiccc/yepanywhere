@@ -2,7 +2,33 @@
   "schemaVersion": 1,
   "capacityOverrides": {
     "host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835": {
-      "rationale": "The 2026-08-08 local survey and recovery measurements used this capacity class. It currently inherits the portable ceilings."
+      "rationale": "The 2026-08-08 local survey and recovery measurements used this capacity class.",
+      "drivers": {
+        "browser": {
+          "scenarios": {
+            "fleet-small": {
+              "browserProcess": {
+                "processMemory.maxProcessCount": {
+                  "max": 12,
+                  "rationale": "Three measured fleet repetitions used 11 Chromium processes."
+                },
+                "processMemory.maxTotalPssMiB": {
+                  "max": 3600,
+                  "rationale": "Three complete Linux process samples peaked at 2,989 MiB proportional set size."
+                },
+                "processMemory.maxRendererPssMiB": {
+                  "max": 3200,
+                  "rationale": "Three complete Linux process samples peaked at 2,647 MiB renderer proportional set size."
+                },
+                "processMemory.retainedPssMiB": {
+                  "max": 3500,
+                  "rationale": "Median startup-to-appended proportional set growth was 2,895 MiB."
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "drivers": {
@@ -349,6 +375,22 @@
                 "max": 960,
                 "rationale": "C2 and later consistently observed 939 nodes."
               },
+              "dom.maxCdpNodes": {
+                "max": 12000,
+                "rationale": "Three fleet repetitions observed at most 8,607 live and detached DOM nodes."
+              },
+              "dom.maxDocuments": {
+                "max": 4,
+                "rationale": "Three fleet repetitions observed at most three live and detached documents."
+              },
+              "dom.maxEventListeners": {
+                "max": 9500,
+                "rationale": "Three fleet repetitions observed at most 7,095 event listeners."
+              },
+              "dom.maxLayoutObjects": {
+                "max": 6500,
+                "rationale": "Three fleet repetitions observed at most 4,973 layout objects."
+              },
               "dom.maxMessageRows": {
                 "max": 16,
                 "rationale": "The fleet browser fixture renders 16 message rows."
@@ -419,13 +461,29 @@
                 "max": 960,
                 "rationale": "C2 and later consistently observed 939 nodes."
               },
+              "dom.maxCdpNodes": {
+                "max": 12000,
+                "rationale": "Three fleet repetitions observed at most 9,048 live and detached DOM nodes."
+              },
+              "dom.maxDocuments": {
+                "max": 4,
+                "rationale": "Three fleet repetitions observed at most three live and detached documents."
+              },
+              "dom.maxEventListeners": {
+                "max": 9500,
+                "rationale": "Three fleet repetitions observed at most 7,130 event listeners."
+              },
+              "dom.maxLayoutObjects": {
+                "max": 6500,
+                "rationale": "Three fleet repetitions observed at most 4,936 layout objects."
+              },
               "dom.maxMessageRows": {
                 "max": 16,
                 "rationale": "The fleet browser fixture renders 16 message rows."
               },
               "profiles.warmNavigation.nonOverlappingPhases.navigationToLoadStartMs.p95Ms": {
-                "max": 180,
-                "rationale": "Profiled p95 was 69 ms."
+                "max": 250,
+                "rationale": "Two clear-host verification repetitions reached 184-187 ms while complete warm final display remained about 487 ms; this matches the cache-off navigation ceiling."
               },
               "profiles.warmNavigation.nonOverlappingPhases.loadStartToStateQueuedMs.p95Ms": {
                 "max": 150,

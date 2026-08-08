@@ -19,6 +19,7 @@ import path from "node:path";
 import process from "node:process";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { sampleChromiumProcessMemory } from "./browser-memory.mjs";
 import {
   assessHostEligibility,
   readHostCapacity,
@@ -27,13 +28,15 @@ import {
 } from "./host-profile.mjs";
 import { selectRatchetTargets } from "./ratchet-targets.mjs";
 
-const SUITE_VERSION = 6;
+const SUITE_VERSION = 7;
 const PERF_RUN_MARKER_PREFIX = "ya-perf-suite-";
 const GENERALIZED_PROJECT_PATHS_BASE =
   "61cb5f358b9ccb56549d0515ded703ec534996a6";
 const DEFAULT_CONFIG_PATH = new URL("./config.json", import.meta.url);
 const DEFAULT_RATCHETS_PATH = new URL("./ratchets.json", import.meta.url);
+const BROWSER_MEMORY_PATH = new URL("./browser-memory.mjs", import.meta.url);
 const HOST_PROFILE_PATH = new URL("./host-profile.mjs", import.meta.url);
+const RATCHET_TARGETS_PATH = new URL("./ratchet-targets.mjs", import.meta.url);
 const requireServerDependency = createRequire(
   new URL("../../packages/server/package.json", import.meta.url),
 );
@@ -878,10 +881,14 @@ function repositoryRelativePath(repository, file) {
 
 async function harnessIdentity(repository, options, config, ratchets) {
   const runner = fileURLToPath(import.meta.url);
+  const browserMemory = fileURLToPath(BROWSER_MEMORY_PATH);
   const hostProfile = fileURLToPath(HOST_PROFILE_PATH);
+  const ratchetTargets = fileURLToPath(RATCHET_TARGETS_PATH);
   const repositoryPaths = [
     runner,
+    browserMemory,
     hostProfile,
+    ratchetTargets,
     options.config,
     options.ratchets,
   ]
@@ -902,8 +909,12 @@ async function harnessIdentity(repository, options, config, ratchets) {
   content.update(await readFile(runner));
   content.update("\0inspector-websocket-version\0");
   content.update(INSPECTOR_WEBSOCKET_VERSION);
+  content.update("\0browser-memory\0");
+  content.update(await readFile(browserMemory));
   content.update("\0host-profile\0");
   content.update(await readFile(hostProfile));
+  content.update("\0ratchet-targets\0");
+  content.update(await readFile(ratchetTargets));
   content.update("\0config\0");
   content.update(JSON.stringify(config));
   content.update("\0ratchets\0");
@@ -1356,29 +1367,53 @@ function summarizeRequestProfiles(profiles) {
   };
 }
 
-function clientTelemetry(page) {
-  return page.evaluate(async () => {
-    const memory = performance.memory;
-    const detailStore = await import(
-      "/src/lib/sessionDetail/sessionDetailStore.ts"
+async function clientTelemetry(page) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Performance.enable");
+    const [client, nativeDom, performanceMetrics] = await Promise.all([
+      page.evaluate(async () => {
+        const memory = performance.memory;
+        const detailStore = await import(
+          "/src/lib/sessionDetail/sessionDetailStore.ts"
+        );
+        return {
+          memory: memory
+            ? {
+                usedJSHeapMiB: memory.usedJSHeapSize / (1024 * 1024),
+                totalJSHeapMiB: memory.totalJSHeapSize / (1024 * 1024),
+                limitMiB: memory.jsHeapSizeLimit / (1024 * 1024),
+              }
+            : null,
+          dom: {
+            nodes: document.getElementsByTagName("*").length,
+            messageRows: document.querySelectorAll(".message-render-row")
+              .length,
+            streamingBlocks:
+              document.querySelectorAll(".streaming-block").length,
+            toolRows: document.querySelectorAll(".tool-row").length,
+          },
+          transcriptMemory: detailStore.getSessionTranscriptMemoryStats(),
+        };
+      }),
+      cdp.send("Memory.getDOMCounters"),
+      cdp.send("Performance.getMetrics"),
+    ]);
+    const metrics = Object.fromEntries(
+      performanceMetrics.metrics.map(({ name, value }) => [name, value]),
     );
     return {
-      memory: memory
-        ? {
-            usedJSHeapMiB: memory.usedJSHeapSize / (1024 * 1024),
-            totalJSHeapMiB: memory.totalJSHeapSize / (1024 * 1024),
-            limitMiB: memory.jsHeapSizeLimit / (1024 * 1024),
-          }
-        : null,
-      dom: {
-        nodes: document.getElementsByTagName("*").length,
-        messageRows: document.querySelectorAll(".message-render-row").length,
-        streamingBlocks: document.querySelectorAll(".streaming-block").length,
-        toolRows: document.querySelectorAll(".tool-row").length,
+      ...client,
+      browserNative: {
+        documents: nativeDom.documents,
+        eventListeners: nativeDom.jsEventListeners,
+        layoutObjects: metrics.LayoutObjects ?? null,
+        nodes: nativeDom.nodes,
       },
-      transcriptMemory: detailStore.getSessionTranscriptMemoryStats(),
     };
-  });
+  } finally {
+    await cdp.detach();
+  }
 }
 
 const EXPECTED_GLOSSARY_TITLE =
@@ -2570,6 +2605,16 @@ async function measureBrowserMode({
     env: { ...process.env, PERF_RUN_ID: runMarker },
     headless: true,
   });
+  const browserCdp = await browser.newBrowserCDPSession();
+  const processMemory = { samples: [] };
+  const captureProcessMemory = async (phase) => {
+    processMemory.samples.push({
+      phase,
+      sampledAt: new Date().toISOString(),
+      ...(await sampleChromiumProcessMemory(browserCdp)),
+    });
+  };
+  await captureProcessMemory("startup");
   await appendFile(
     server.processManifestPath,
     `${JSON.stringify({
@@ -2820,6 +2865,7 @@ async function measureBrowserMode({
         await wait(250);
       }
       const directTelemetry = await Promise.all(pages.map(clientTelemetry));
+      await captureProcessMemory(`cache-${cacheBudgetMiB}-loaded`);
       const milestoneSummary = (samples, field) =>
         summarize(
           samples
@@ -2883,6 +2929,7 @@ async function measureBrowserMode({
     return {
       modes,
       livePages,
+      processMemory,
       async prepareAppend() {
         await Promise.all(
           livePages.flatMap(({ appendTargets, pages }) =>
@@ -2956,14 +3003,17 @@ async function measureBrowserMode({
           delete mode.liveMilestones;
           delete mode.liveProfiles;
         }
+        await captureProcessMemory("appended");
       },
       async close() {
         await Promise.all(livePages.map(({ context }) => context.close()));
+        await browserCdp.detach();
         await browser.close();
       },
     };
   } catch (error) {
     await Promise.all(livePages.map(({ context }) => context.close()));
+    await browserCdp.detach();
     await browser.close();
     throw error;
   }
@@ -3675,6 +3725,7 @@ async function measureRepetition({
       browser: browserMeasurement
         ? {
             modes: browserMeasurement.modes,
+            processMemory: browserMeasurement.processMemory,
           }
         : null,
       responseMiB: {
@@ -3838,6 +3889,72 @@ function aggregateRuns(runs) {
   );
 }
 
+function aggregateBrowserProcessMemory(runs) {
+  const samples = runs.flatMap(
+    (run) => run.browser?.processMemory?.samples ?? [],
+  );
+  const maximumMiB = (metricPath, eligible = () => true) => {
+    const eligibleSamples = samples.filter(eligible);
+    const values = eligibleSamples.map((sample) =>
+      getMetric(sample, metricPath),
+    );
+    return values.length > 0 &&
+      values.every(
+        (value) => typeof value === "number" && Number.isFinite(value),
+      )
+      ? bytesToMiB(Math.max(...values))
+      : null;
+  };
+  const maximumCount = (metricPath) => {
+    const values = samples
+      .map((sample) => getMetric(sample, metricPath))
+      .filter((value) => typeof value === "number" && Number.isFinite(value));
+    return values.length > 0 ? Math.max(...values) : null;
+  };
+  const retainedMiB = (metricPath) => {
+    const values = runs.map((run) => {
+      const runSamples = run.browser?.processMemory?.samples ?? [];
+      const startup = runSamples.find((sample) => sample.phase === "startup");
+      const appended = runSamples.find((sample) => sample.phase === "appended");
+      const startValue = getMetric(startup, metricPath);
+      const appendedValue = getMetric(appended, metricPath);
+      return typeof startValue === "number" &&
+        Number.isFinite(startValue) &&
+        typeof appendedValue === "number" &&
+        Number.isFinite(appendedValue)
+        ? appendedValue - startValue
+        : null;
+    });
+    return values.length > 0 && values.every((value) => value !== null)
+      ? bytesToMiB(percentile(values, 0.5))
+      : null;
+  };
+  return Object.fromEntries(
+    [
+      ["processMemory.maxProcessCount", maximumCount("totals.processCount")],
+      ["processMemory.maxTotalRssMiB", maximumMiB("totals.rssBytes")],
+      ["processMemory.maxTotalPssMiB", maximumMiB("totals.pssBytes")],
+      ["processMemory.maxTotalPrivateMiB", maximumMiB("totals.privateBytes")],
+      [
+        "processMemory.maxRendererRssMiB",
+        maximumMiB(
+          "byType.renderer.rssBytes",
+          (sample) => sample.byType.renderer !== undefined,
+        ),
+      ],
+      [
+        "processMemory.maxRendererPssMiB",
+        maximumMiB(
+          "byType.renderer.pssBytes",
+          (sample) => sample.byType.renderer !== undefined,
+        ),
+      ],
+      ["processMemory.retainedRssMiB", retainedMiB("totals.rssBytes")],
+      ["processMemory.retainedPssMiB", retainedMiB("totals.pssBytes")],
+    ].filter(([, value]) => typeof value === "number"),
+  );
+}
+
 function aggregateBrowserRuns(runs) {
   const budgets = [
     ...new Set(
@@ -3968,6 +4085,21 @@ function aggregateBrowserRuns(runs) {
           "dom.maxNodes": Math.max(
             ...pageTelemetry.map((entry) => entry.dom.nodes),
           ),
+          "dom.maxCdpNodes": Math.max(
+            ...pageTelemetry.map((entry) => entry.browserNative.nodes),
+          ),
+          "dom.maxDocuments": Math.max(
+            ...pageTelemetry.map((entry) => entry.browserNative.documents),
+          ),
+          "dom.maxEventListeners": Math.max(
+            ...pageTelemetry.map((entry) => entry.browserNative.eventListeners),
+          ),
+          "dom.maxLayoutObjects": Math.max(
+            ...pageTelemetry
+              .map((entry) => entry.browserNative.layoutObjects)
+              .filter((value) => typeof value === "number"),
+            0,
+          ),
           "dom.maxMessageRows": Math.max(
             ...pageTelemetry.map((entry) => entry.dom.messageRows),
           ),
@@ -4001,11 +4133,23 @@ function evaluateMetricTargets(aggregate, targets, universe) {
   return checks;
 }
 
-function evaluateRatchets(serverAggregate, browserAggregate, targets) {
+function evaluateRatchets(
+  serverAggregate,
+  browserAggregate,
+  browserProcessAggregate,
+  targets,
+) {
   const checks = evaluateMetricTargets(
     serverAggregate,
     targets?.server,
     "server",
+  );
+  checks.push(
+    ...evaluateMetricTargets(
+      browserProcessAggregate,
+      targets?.browserProcess,
+      "browser.processes",
+    ),
   );
   for (const [cacheBudgetMiB, browserTargets] of Object.entries(
     targets?.browser ?? {},
@@ -4265,6 +4409,8 @@ async function main() {
     const aggregate = aggregateRuns(runs);
     const browserAggregate =
       options.driver === "browser" ? aggregateBrowserRuns(runs) : null;
+    const browserProcessAggregate =
+      options.driver === "browser" ? aggregateBrowserProcessMemory(runs) : null;
     const selectedTargets = selectRatchetTargets(ratchets, {
       capacityKey: hostCapacity.capacityKey,
       driver: options.driver,
@@ -4273,6 +4419,7 @@ async function main() {
     const ratchetEvaluation = evaluateRatchets(
       aggregate,
       browserAggregate,
+      browserProcessAggregate,
       selectedTargets.targets,
     );
     const finalCleanup = await reapPerfRun(runMarker, "SWEEP-FINAL");
@@ -4326,6 +4473,7 @@ async function main() {
       cleanup,
       aggregate,
       browserAggregate,
+      browserProcessAggregate,
       ratchet,
       runs,
     };

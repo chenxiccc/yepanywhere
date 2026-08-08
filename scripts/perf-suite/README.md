@@ -7,9 +7,9 @@ starts one isolated YA instance from the named execution checkout, drives
 public interfaces, proves fixture-derived correctness, and records raw JSON
 results. Every result distinguishes the measured execution revision, fixture
 revision, and exact harness inputs. Harness identity includes the latest commit
-touching runner/host-profiler/config/ratchets, path-scoped dirty state, and a
-content SHA-256, so unrelated shared-worktree changes do not relabel the
-measurement.
+touching the runner, browser-memory helper, host profiler, ratchet selector,
+config, or ratchets, path-scoped dirty state, and a content SHA-256, so
+unrelated shared-worktree changes do not relabel the measurement.
 
 Results also include an automatic host capacity key. The key covers platform,
 architecture, CPU model, visible/effective CPU capacity, and bucketed physical
@@ -60,9 +60,16 @@ the transcript-cache budget in browser storage; cache budgets run in separate
 browser contexts. It records cold, warm-working-set, and file-observed append
 latency through readable text, glossary annotation, automatic project-path
 anchors, and the latest supported final display. It also records
-`performance.memory`, DOM/message/tool/streaming-block counts, YA's own live and
-warm transcript-retention accounting, and contemporaneous server memory.
-Server-only and browser-driven results are separate ratchet universes.
+`performance.memory`, YA's own live and warm transcript-retention accounting,
+and contemporaneous server memory. Per-page Chrome DevTools Protocol (CDP)
+snapshots add live-plus-detached DOM nodes, documents, event listeners, and
+layout objects. Browser-wide CDP process inventories are sampled at startup,
+after each cache mode loads, and after append. On Linux, `/proc` adds resident
+set size (RSS), proportional set size (PSS), and private bytes for each process
+and process type. A byte total is omitted unless every process in that sample
+was readable, so a vanished PID cannot become a partial total. Non-Linux
+results retain the process inventory without native byte totals. Server,
+browser-page, and browser-process measurements are separate ratchet universes.
 
 The `focused-append` scale point reduces that browser workload to one project,
 one session, one page, one cache-disabled mode, and one newly appended turn.
@@ -156,7 +163,9 @@ node scripts/perf-suite/run.mjs \
 per-scenario maximums. `capacityOverrides` registers measured host classes and
 may replace individual targets without dropping the portable checks it omits.
 An unregistered class uses `portable-default`; a registered class is keyed to
-its capacity even while inheriting every portable ceiling. Targets use
+its capacity even while inheriting every portable ceiling. Native process-byte
+targets belong to exact capacity overrides; portable browser targets may cover
+CDP object counts. Targets use
 deliberately broad margins over repeated observations, estimated to pass an
 unchanged implementation with at least 99.9% probability. That is an
 engineering estimate, not a claim of 1,000-run statistical verification.

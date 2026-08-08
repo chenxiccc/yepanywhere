@@ -8,6 +8,10 @@ function mergeScenarioTargets(portable, capacityOverride) {
       ...portable?.server,
       ...capacityOverride?.server,
     },
+    browserProcess: {
+      ...portable?.browserProcess,
+      ...capacityOverride?.browserProcess,
+    },
     browser: Object.fromEntries(
       [...browserBudgets].map((budget) => [
         budget,
