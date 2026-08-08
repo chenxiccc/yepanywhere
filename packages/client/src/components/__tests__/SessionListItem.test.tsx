@@ -17,6 +17,7 @@ import { I18nProvider } from "../../i18n";
 import { activityBus } from "../../lib/activityBus";
 import { UI_KEYS } from "../../lib/storageKeys";
 import "../../../test/pointerEventShim";
+import styles from "../SessionListItem.module.css";
 import { SessionListItem } from "../SessionListItem";
 
 const mockWindowOpen = vi.fn();
@@ -936,5 +937,72 @@ describe("SessionListItem links", () => {
 
     expect(screen.getByText("Audit the child-session API")).toBeTruthy();
     expect(screen.getByText("general-purpose")).toBeTruthy();
+  });
+
+  it("shows number-only child counts with read and unread emphasis", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-parent"
+              projectId="project-1"
+              projectName="yepanywhere"
+              showProjectName
+              title="Parent session"
+              provider="claude"
+              mode="compact"
+              providerChildren={[
+                {
+                  id: "child-native-1",
+                  parentSessionId: "session-parent",
+                  title: "First delegated task",
+                  updatedAt: "2026-07-19T12:00:00.000Z",
+                },
+                {
+                  id: "child-native-2",
+                  parentSessionId: "session-parent",
+                  title: "Second delegated task",
+                  updatedAt: "2026-07-19T12:01:00.000Z",
+                },
+              ]}
+            />
+            <SessionListItem
+              sessionId="session-unread"
+              projectId="project-1"
+              projectName="another-project"
+              showProjectName
+              hasUnread
+              title="Unread parent session"
+              provider="claude"
+              mode="compact"
+              providerChildren={[
+                {
+                  id: "child-native-3",
+                  parentSessionId: "session-unread",
+                  title: "New delegated task",
+                  updatedAt: "2026-07-19T12:02:00.000Z",
+                },
+              ]}
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const readBadge = screen.getByRole("img", {
+      name: "2 provider subagents",
+    });
+    const unreadBadge = screen.getByRole("img", {
+      name: "1 provider subagent",
+    });
+
+    expect(readBadge.textContent).toBe("2");
+    expect(readBadge.className).not.toContain(
+      styles.providerChildrenBadgeUnread,
+    );
+    expect(unreadBadge.textContent).toBe("1");
+    expect(unreadBadge.className).toContain(styles.providerChildrenBadgeUnread);
+    expect(screen.getByText("yepanywhere")).toBeTruthy();
   });
 });

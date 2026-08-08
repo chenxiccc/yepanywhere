@@ -28,6 +28,7 @@ import { SessionMenu } from "./SessionMenu";
 import { LegacySessionShareModal } from "./SessionShareModal";
 import { SessionStatusBadge } from "./StatusBadge";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import styles from "./SessionListItem.module.css";
 
 interface SessionListItemProps {
   // Core (required)
@@ -675,7 +676,9 @@ export function SessionListItem({
           onClick={handleSessionClick}
           onMouseDown={handleSessionMouseDown}
           onAuxClick={handleSessionAuxClick}
-          className="session-list-item__link"
+          className={`session-list-item__link ${
+            mode === "compact" ? styles.compactLink : ""
+          }`}
         >
           {mode === "card" ? (
             // Card mode: title on one line, meta on second line
@@ -845,7 +848,9 @@ export function SessionListItem({
                 )}
                 {providerChildren.length > 0 && (
                   <span
-                    className="session-provider-children-badge"
+                    className={`${styles.providerChildrenBadge} ${
+                      hasUnread ? styles.providerChildrenBadgeUnread : ""
+                    }`}
                     role="img"
                     title={providerChildren
                       .map(
@@ -864,7 +869,7 @@ export function SessionListItem({
                       },
                     )}
                   >
-                    ↳{providerChildren.length}
+                    {providerChildren.length}
                   </span>
                 )}
               </span>

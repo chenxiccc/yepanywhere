@@ -14358,13 +14358,6 @@ a.linkified-url:hover {
   flex-shrink: 0;
 }
 
-.session-provider-children-badge {
-  flex-shrink: 0;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-}
-
 /* Archived badge */
 .session-archived-badge {
   font-size: var(--font-size-xs);
