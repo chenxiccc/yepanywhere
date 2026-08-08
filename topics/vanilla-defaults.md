@@ -130,6 +130,17 @@ explicit product decision: Agents is already the process-inventory surface,
 and standard process metrics plus independently launched agent processes make
 that purpose useful without changing session or provider behavior elsewhere.
 
+[steer-queue-provider-differences](steer-queue-provider-differences.md)
+promotes Claude's existing **Steer now** preference to default-on when no stored
+preference exists. An explicit false remains authoritative and restores the
+`next` lane. Authorized by graehl on 2026-08-08 after live Claude 2.1.223 probes
+showed that `now` stayed queued behind a foreground Bash command without
+interrupting or backgrounding it, while a second correction delivered 112 ms
+after the first boundary correction prevented the first correction's proposed
+tool call. The behavior reduces the correction race but does not make separately
+submitted steers atomic; the provider can still launch a tool before a later
+message arrives. Transparency for non-Bash tools remains unverified.
+
 [mic-button-speech-ui](mic-button-speech-ui.md) treats conservative
 mid-sentence capitalization smoothing as built-in speech-input behavior, with
 no preference. Some recognizers title-case every finalized phrase after a

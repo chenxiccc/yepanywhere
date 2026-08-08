@@ -578,6 +578,7 @@ export type CollapsedComposerButtonPreference =
   | "microphone";
 
 export const DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED = true;
+export const DEFAULT_STEER_NOW_ENABLED = true;
 
 export interface ClientDefaults {
   /** Defaults used by browser clients when local storage has no explicit value. */
@@ -599,7 +600,8 @@ export interface ClientDefaults {
   collapsedComposerButton?: CollapsedComposerButtonPreference;
   /**
    * Initial state of the per-turn "now" steering toggle for providers with a
-   * "now" lane (currently Claude). The toggle itself stays per-turn.
+   * "now" lane (currently Claude). The toggle itself stays per-turn. When
+   * absent, clients use DEFAULT_STEER_NOW_ENABLED.
    */
   steerNowDefault?: boolean;
   /**

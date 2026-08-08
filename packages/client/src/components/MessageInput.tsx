@@ -1,6 +1,7 @@
 import {
   DEFAULT_PATIENT_QUEUE_PATIENCE_SECONDS,
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
+  DEFAULT_STEER_NOW_ENABLED,
   type BusyComposerDefaultAction,
   clampPatientPatienceSeconds,
   commandMatchesInvocationQuery,
@@ -751,7 +752,8 @@ export function MessageInput({
   // Per-turn "now" steering toggle. The server-learned client default sets
   // its initial state (Message Delivery settings); the toggle stays per-turn
   // and a user click overrides the default for this composer.
-  const steerNowDefault = version?.clientDefaults?.steerNowDefault ?? false;
+  const steerNowDefault =
+    version?.clientDefaults?.steerNowDefault ?? DEFAULT_STEER_NOW_ENABLED;
   // Patient queue intent is a global preference (Message Delivery settings):
   // when on, a queued message waits for verified-idle before delivery instead
   // of promoting at the next end of turn.

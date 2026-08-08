@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BANG_COMMANDS_CAPABILITY,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
+  DEFAULT_STEER_NOW_ENABLED,
   PROJECT_QUEUE_CAPABILITY,
 } from "@yep-anywhere/shared";
 import type { ServerSettings } from "../../../api/client";
@@ -162,6 +163,16 @@ describe("MessageDeliverySettings", () => {
     });
   });
 
+  it("defaults urgent steering on when no preference is stored", () => {
+    render(<MessageDeliverySettings />);
+
+    expect(
+      screen.getByLabelText<HTMLInputElement>(
+        "messageDeliverySteerNowDefaultTitle",
+      ).checked,
+    ).toBe(DEFAULT_STEER_NOW_ENABLED);
+  });
+
   it("saves the Project Queue Ctrl+Enter preference immediately", () => {
     render(<MessageDeliverySettings />);
 
@@ -246,7 +257,7 @@ describe("MessageDeliverySettings", () => {
       turnTimestamps: "off",
       clientDefaults: {
         busyComposerDefaultAction: "steer",
-        steerNowDefault: false,
+        steerNowDefault: DEFAULT_STEER_NOW_ENABLED,
         patientQueueDefault: false,
         projectQueueCtrlEnterEnabled: true,
       },

@@ -91,12 +91,13 @@ after the single in-flight tool call. Same lane, coarser tick.
 
 Consequence for YA: `claude.ts` now advertises steering and implements
 `steer` by pushing the user message into YA's `MessageQueue` immediately.
-`Process` stamps Claude steer messages with `priority: "next"` by default,
-or `priority: "now"` when the Claude-only steer-now checkbox set
-`metadata.steerNow`. YA-held queued (`deferred`) and patient messages are
-still kept out of `MessageQueue` until their turn-end / verified-quiet
-criteria pass; when they finally enter Claude, YA stamps `priority: "later"`
-as a wire-level guard.
+`Process` stamps Claude steer messages with `priority: "now"` when the
+browser sets `metadata.steerNow`, otherwise `priority: "next"`. Browser clients
+default the existing **Steer now** preference on when no stored
+`steerNowDefault` exists; an explicit false remains authoritative and selects
+`next`. YA-held queued (`deferred`) and patient messages are still kept out of
+`MessageQueue` until their turn-end / verified-quiet criteria pass; when they
+finally enter Claude, YA stamps `priority: "later"` as a wire-level guard.
 
 The full YA→Claude send path, naming both queue layers:
 
@@ -122,7 +123,7 @@ Codex `turn/interrupt`) bracket the ladder but cancel work; they are not
 
 | Level | Claude mechanism | Codex mechanism | YA UI |
 |---|---|---|---|
-| 0. Inject now (abort in-flight *generation*, keep the turn) | `priority: "now"` on a streamed user message; CLI fires `abort("interrupt")` on the turn's controller — sampling stops immediately, but running tools are NOT killed: the abort reason `"interrupt"` is threaded to tool executors, which auto-background running commands (subprocess kill is skipped for this reason; per-tool `interruptBehavior` may opt into `cancel`), and the model is re-called at once with the message | none as a single lane; TUI `Esc` on the pending-steer prompt composes interrupt+submit | Claude-only `Now` checkbox beside steer, default off |
+| 0. Inject now (abort in-flight *generation*, keep the turn) | `priority: "now"` on a streamed user message; while inference is active the CLI aborts sampling and re-calls the model with the message. In YA's SDK path, a live 2.1.223 probe found the message remained queued behind a foreground Bash call and was injected immediately after its result; it did not kill or background the command. | none as a single lane; TUI `Esc` on the pending-steer prompt composes interrupt+submit | Claude-only `Now` checkbox beside steer, default on when no preference is stored |
 | 1. After current tool call / tool batch | `priority: "next"`; the loop drains `getCommandsByMaxPriority("next")` at post-tool-batch boundaries (internal task notifications use this lane) | `turn/steer` RPC `{threadId, expectedTurnId, input}`; lands in the active turn's `pending_input`, consumed when the *next model request* is composed — it does NOT abort in-flight sampling, so during a long thinking/text stretch it waits for the whole current response (and its tool batch). Native TUI default for typed mid-turn input | ↗ steer |
 | 2. End of turn (the real queue) | `priority: "later"`; not consumed mid-turn, starts the next turn at turn end (cron/loop prompts use this lane) | no protocol lane — the native app holds the message client-side until `turn/completed`; YA holds it server-side (`deferred`) | → queue |
 | 3. End of turn + verified quiet window | not native | not native | Zz patient (`patienceSeconds`) |
@@ -165,19 +166,68 @@ lane latency (similar) with model compliance (varies).
 
 ### `now` vs hard-interrupt+send
 
-Both abort in-flight sampling instantly; everything around that differs.
-Hard interrupt (Esc / `query.interrupt()`) ends the turn in a terminal
-"interrupted" state, kills running tools (kill-class abort reasons such
-as `user-cancel`), closes pending `tool_use` blocks as cancelled, and
-the follow-up message starts a fresh turn against a model that was told
-to stop. `priority: "now"` uses the distinct soft abort reason
-`"interrupt"`: the loop never exits, running tools are auto-backgrounded
-instead of killed (executors skip the kill for this reason; per-tool
-`interruptBehavior` may opt into cancel), and the next model request is
-composed immediately with the new message inside the same turn — the
-model experiences mid-task steering, not a stop. Codex has no soft
-variant: TUI `Esc` on the pending-steer prompt is literally
-interrupt-then-submit, with the running tool killed.
+During active inference, both abort sampling promptly; everything around that
+differs. Hard interrupt (Esc / `query.interrupt()`) ends the turn in a terminal
+"interrupted" state and may cancel the active tool. `priority: "now"` keeps the
+turn: the next model request includes the new message, with no hard-interrupt
+boundary. In the live YA SDK test below, `now` did not abort or background a
+foreground Bash command; the input stayed queued until the command completed.
+This supersedes the earlier inference that streamed `now` necessarily invokes
+the CLI's automatic task-backgrounding behavior. The installed SDK exposes
+`query.backgroundTasks(toolUseId)` as a separate imperative control for
+foreground Bash commands and subagents; it is not a state query and `now` does
+not implicitly call it in the observed YA path.
+
+### Residual correction race and banked grace gate
+
+Live Claude 2.1.223 / Agent SDK 0.3.223 probes on 2026-08-08 established the
+current YA behavior:
+
+- A forced `now` steer enqueued at `07:11:51.118Z` while foreground Bash slept
+  for 120 seconds. Bash completed normally at `07:13:36.774Z`; only then did
+  the command queue dequeue the steer at `07:13:36.777Z`. There was no process
+  interruption, background result, or interrupted transcript boundary.
+- In a boundary-race probe, the first correction was delivered at
+  `07:20:22.054Z`. A second `now` correction enqueued 112 ms later and dequeued
+  2 ms after that. Claude emitted only the second correction's `FINAL`; the
+  harmless Bash action requested by the first correction never launched.
+- In the motivating session, three ordinary `next` steers enqueued over 34
+  minutes were all removed at the same post-Bash boundary before Claude's next
+  tool call. That trace demonstrates provider-side burst draining, not a
+  one-steer-at-a-time failure.
+
+This makes `now` the useful default: it remains patient across the observed
+foreground Bash phase, then can replace a just-delivered correction while the
+next inference is still running. It does **not** make separately submitted
+messages atomic. Claude can still finish inference and launch a side-effecting
+tool in the interval before a later correction arrives. Transparency for
+non-Bash foreground tools remains unverified; do not generalize the Bash result
+to Edit, MCP, or other tool executors without a matching probe or upstream
+contract.
+
+A general guarantee therefore needs a grace period before tool execution, not
+a guessed list of interruptible commands. A future YA implementation could
+investigate a configurable asynchronous `PreToolUse` hook that briefly holds
+every tool and allows a newly arrived `now` message to cancel the pending call.
+Before adoption it must prove that CLI cancellation aborts a hook-pending tool,
+cover every provider tool class, and justify the latency paid on every action.
+
+A separate configurable safe-background policy remains viable for known
+wait-like Bash commands such as selected `agentctl` watches. It would match an
+explicit user allowlist, call `backgroundTasks(toolUseId)`, then steer; it must
+not hard-interrupt the command. This keeps the original process running but can
+let Claude act concurrently with it, so unknown, side-effecting, expensive, or
+lock-holding commands stay foreground by default. A built-in `agentctl` or
+command-text whitelist remains rejected; the operator owns the patterns and
+the concurrency risk. Both this policy and the grace gate are banked only; the
+default-on `now` change implements neither.
+
+Claude's internal `cancel_async_message` control is narrower. SDK 0.3.223
+declares the control request and implements it at runtime, but omits it from the
+public `Query` interface. It can drop one UUID-stamped message only while that
+message is still resident in Claude's command queue; after dequeue/coalescing
+it is a no-op. It could eventually improve YA's existing **Cancel unacted
+steer** path, but it cannot close the post-dequeue correction race.
 
 ## Is the patient lane redundant?
 
@@ -204,18 +254,19 @@ act on the running turn: a provider-native *queued follow-up prompt* is not
 steering, whatever the call site is named. As of 2026-06-11, the Claude half
 is also no longer true in YA:
 Claude advertises `supportsSteering`, steer sends enter `MessageQueue`
-immediately with `priority: "next"`, and the optional `Now` checkbox uses
-`priority: "now"`. The Claude platform itself always supported both the
+immediately with `priority: "now"` by default, and an explicit disabled
+**Steer now** preference selects `priority: "next"`. The Claude platform itself
+supports both the
 "after next tool batch" semantics (`next`) and the stronger immediate mode
-(`now`); YA now exposes both, with `now` default-off.
+(`now`); YA exposes both without inventing another delivery lane.
 
 ## Perceived responsiveness, explained
 
 - Codex steer lands within one tool call (seconds during tool-heavy work).
-- Claude steer in YA lands at Claude's post-tool-batch boundary (`next`).
-  This is the same conceptual lane as Codex steer but can feel coarser
-  because one Claude loop tick may bundle extended thinking and several tool
-  executions before the next model request.
+- Claude steer in YA uses `now` by default. It interrupts active inference, but
+  in the verified SDK/Bash trace it waited for the foreground tool result. An
+  explicit disabled **Steer now** preference restores the post-tool-batch
+  `next` lane.
 - Claude queue in YA is deliberately different: queued sends stay in YA's
   deferred queue until the turn-end `result` boundary, then enter Claude as
   `priority: "later"`.

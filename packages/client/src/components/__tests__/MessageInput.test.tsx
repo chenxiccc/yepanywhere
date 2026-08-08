@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import {
+  DEFAULT_STEER_NOW_ENABLED,
   PROJECT_QUEUE_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   type ClientDefaults,
@@ -4248,7 +4249,7 @@ describe("MessageInput", () => {
     expectSubmission(onQueue, "follow up later", "deferred");
   });
 
-  it("stamps steer-now metadata when the Claude now checkbox is enabled", () => {
+  it("stamps steer-now metadata by default for capable providers", () => {
     const restoreMatchMedia = installDesktopMatchMedia();
     const onSend = vi.fn();
     const textarea = renderMessageInput(
@@ -4262,7 +4263,10 @@ describe("MessageInput", () => {
     );
 
     try {
-      fireEvent.click(screen.getByRole("checkbox", { name: "Steer now" }));
+      expect(
+        screen.getByRole<HTMLInputElement>("checkbox", { name: "Steer now" })
+          .checked,
+      ).toBe(DEFAULT_STEER_NOW_ENABLED);
       fireEvent.change(textarea, { target: { value: "interrupt softly" } });
       fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -4270,6 +4274,38 @@ describe("MessageInput", () => {
       expect(onSend.mock.calls.at(-1)?.[1]).toMatchObject({
         steerNow: true,
       });
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("honors an explicit steer-now default override", () => {
+    versionState.version = {
+      ...versionState.version,
+      clientDefaults: { steerNowDefault: false },
+    };
+    const restoreMatchMedia = installDesktopMatchMedia();
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onSend,
+        supportsSteering: true,
+        supportsSteerNow: true,
+        onQueue: vi.fn(),
+      },
+    );
+
+    try {
+      expect(
+        screen.getByRole<HTMLInputElement>("checkbox", { name: "Steer now" })
+          .checked,
+      ).toBe(false);
+      fireEvent.change(textarea, { target: { value: "wait for boundary" } });
+      fireEvent.keyDown(textarea, { key: "Enter" });
+
+      expectSubmission(onSend, "wait for boundary", "steer");
+      expect(onSend.mock.calls.at(-1)?.[1]).not.toHaveProperty("steerNow");
     } finally {
       restoreMatchMedia();
     }

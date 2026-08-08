@@ -2,6 +2,7 @@ import {
   type BusyComposerDefaultAction,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
+  DEFAULT_STEER_NOW_ENABLED,
   MAX_PROJECT_QUEUE_QUIET_SECONDS,
   clampProjectQueueQuietSeconds,
 } from "@yep-anywhere/shared";
@@ -106,7 +107,7 @@ export function MessageDeliverySettings() {
   const serverBusyDefaultAction =
     settings?.clientDefaults?.busyComposerDefaultAction ?? "steer";
   const serverSteerNowDefault =
-    settings?.clientDefaults?.steerNowDefault ?? false;
+    settings?.clientDefaults?.steerNowDefault ?? DEFAULT_STEER_NOW_ENABLED;
   const serverPatientQueueDefault =
     settings?.clientDefaults?.patientQueueDefault ?? false;
   const serverProjectQueueCtrlEnterEnabled =
@@ -126,7 +127,8 @@ export function MessageDeliverySettings() {
           settings.clientDefaults?.bangCommandsEnabled ?? false,
         busyComposerDefaultAction:
           settings.clientDefaults?.busyComposerDefaultAction ?? "steer",
-        steerNowDefault: settings.clientDefaults?.steerNowDefault ?? false,
+        steerNowDefault:
+          settings.clientDefaults?.steerNowDefault ?? DEFAULT_STEER_NOW_ENABLED,
         patientQueueDefault:
           settings.clientDefaults?.patientQueueDefault ?? false,
         projectQueueCtrlEnterEnabled:
