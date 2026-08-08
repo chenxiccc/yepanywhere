@@ -12,11 +12,39 @@ heap/DOM counts, YA transcript-cache statistics, and server memory. Every
 accepted sample first proves exact project, session, message, capability-gated
 rendering, and negative-link controls against one pinned repository revision.
 
+## Immutable lost-ground ledger
+
+The comparable survey used harness
+`79fbeeb2d245672a471986c18be26ab580e2dc64`, fixture and surveyed source
+`2f5e403e20fc5b96d5634a4b8f5a57704023d8da`, and profiled source
+`cab8184a01d4ce737432966e8e4b4730e00720a5`. Historical rows report black-box
+totals; only the profiled source has owner clocks. “Surveyed” below means the
+immutable `2f5e403e` result, not a mutable checkout tip.
+
+| scenario / metric | baseline → first worse | surveyed / profiled vs baseline | recovery and classification | countermetric / variance | ratchet |
+|---|---|---|---|---|---|
+| fleet server cold detail | C1 141 ms → C2 156 ms (+15 ms, +11%) | 177 / 169 ms (+26% / +20%) | C4–C5 do not recover C1: persistent | response volume +4.8%; augmentation is the current dominant owner | 300 ms total; owner and response limits |
+| fleet server warm detail | C1 21.8 ms → C2 29.7 ms (+7.9 ms, +36%) | 29.1 / 29.3 ms (+34% / +34%) | C4 partially recovers C3 but not C1: persistent | C4 adds about 9.9 MiB retained heap versus C3 | 75 ms total; owner limits |
+| fleet server appended detail | C1 32.3 ms → C2 51.4 ms (+19.1 ms, +59%) | 50.8 / 48.4 ms (+57% / +50%) | C4–C5 partially recover C3 but not C1: persistent | append response volume +5.1%; current owners are augmentation and transport | 100 ms total; owner and response limits |
+| large server cold detail | C1 272 ms → C2 526 ms (+254 ms, +94%) | 312 / 317 ms (+15% / +17%) | C3 repairs most of C2; C1 floor remains lost: partial recovery | C4 cache worsens cold 5.2% versus C3 while retaining 31.8 MiB more heap | 500 ms total; owner and response limits |
+| large server warm detail | C1 123 ms → C2 260 ms (+137 ms, +112%) | 164 / 146 ms (+33% / +19%) | C3 repairs most of C2; C4 gains 5.4% versus C3 but not C1: partial recovery / trade-off | retained heap is 41.2 MiB profiled versus 9.2 MiB at C3 | 300 ms total; owner limits |
+| large server appended detail | C1 169 ms → C2 329 ms (+160 ms, +94%) | 203 / 211 ms (+20% / +24%) | C3 repairs most of C2; C4 is 2.0% slower than C3: partial recovery | retained heap rises sharply at C4 without an append gain | 400 ms total; owner limits |
+| large browser cached warm final | C2 670 ms → C3 781 ms (+111 ms, +17%) | 773–798 / 780 ms (+15–19% / +17%) | no later recovery to C2: persistent | cache still improves profiled cache-off warm return by 13%; same-SHA range is 25 ms | 1,000 ms final; warm phase limits |
+| large browser append final | C3 751 ms → C4 696 ms (−56 ms, −7%) | 682–693 / 696 ms | the C4 gain survives; the proposed “gain lost” finding is rejected | cache on/off differ by at most about 11 ms in the repeated surveyed batches | 1,000 ms final; append phase limits |
+| fleet browser append final | C1 1,218–1,230 ms → C2 394–401 ms | 382–396 / 391–393 ms | concerning pre-arc latency repaired at C2 and retained | both cache modes tell the same trajectory | 800 ms final |
+| fleet DOM nodes | C0 873 → C1 921 → C2 939 (+7.6% from C0) | 939 / 939 | persistent capability/rendering change, not unbounded growth | message rows remain 16; response volume rises about 4.8% at C2 | 960 nodes / 16 rows |
+| large browser JS heap | surveyed batch 1 → batch 2 | cache off 124–188 MiB; cache on 133–157 MiB | same-SHA variance, not a revision claim | YA cache accounting is stable at 0 or 3 entries / about 14.34 MB | broad heap residual plus exact cache invariants |
+
+The broad total limits are stability tripwires, not declarations that the
+persistent losses are acceptable. Recovery work should compare against the
+historical floor in this ledger and use the owner-phase ratchets to prevent an
+improvement in one component from hiding growth in another.
+
 ## Cold project enumeration exceeds one second before and after the arc
 
 At both pre-sprint `adaa804b` and surveyed `2f5e403e`, the first concurrent
-per-project session-list pass at `fleet-small` takes about 1.33 s p95. An
-immediate replay takes only 4–6 ms p95. Forced-GC pre-sprint memory is 92.2 MiB
+per-project session-list pass at `fleet-small` takes about 1.44 s p95. An
+immediate replay takes only 4–5 ms p95. Forced-GC pre-sprint memory is 92.4 MiB
 settled heap with 8.6 MiB retained over startup, not the much larger uncollected
 figures from the exploratory runs.
 
@@ -28,45 +56,52 @@ from the ordinary warm list path rather than accepting 1.3 s for both.
 
 ## Browser live append crossed one second until the measured perf arc
 
-With four real browser clients at `fleet-small`, file-observed appended text
-reached the rendered tail in 1.29 s p95 at C0 `adaa804b` and C1 `3c0f70df`.
-That fell to 387 ms at C2 `61cb5f35` and remained 378–403 ms through C3, C4,
-C5, and surveyed `2f5e403e`. This concerning pre-arc behavior was repaired
-during the measured performance sequence and was not reintroduced by
-harsh-review work.
+With four real browser clients at `fleet-small`, file-observed appended final
+display took 1.18–1.23 s p95 at C0 `adaa804b` and C1 `3c0f70df`. That fell to
+394–401 ms at C2 `61cb5f35` and remained 382–421 ms through C3, C4, C5,
+surveyed `2f5e403e`, and profiled `cab8184a`. This concerning pre-arc behavior
+was repaired during the measured performance sequence and was not reintroduced
+by harsh-review work.
 
 A fresh dev-client boot plus first session render remains about 4.2–5.1 s at
 every checkpoint. This includes Vite/module startup and is not a production
-bundle or session-route-only number; warm in-app reopen is 494–569 ms. Keep the
-cold browser observation separate from production user-facing ratchets until a
-built-client driver isolates application boot from development transforms.
+bundle or session-route-only number; warm in-app final display is 456–766 ms
+across the historical checkpoints. Keep the cold browser observation separate
+from production user-facing ratchets until a built-client driver isolates
+application boot from development transforms.
 
 ## Parsed-server cache exchanges retained heap for repeat-read latency
 
 At the `large-session-cache` scale point (2 projects × 4 sessions × 16 final
 turns, 3 concurrent clients, 64 KiB per message), commit `6024cff1` changes the
-forced-GC server results as follows:
+forced-GC server results relative to C3 as follows:
 
-- retained heap: 8.4 MiB before to 32.8 MiB after;
-- settled heap: 94.1 MiB before to 118.6 MiB after;
-- cold readable-tail p95: 263 ms before to 268 ms after;
-- warm readable-tail p95: 145 ms before to 125 ms after; and
-- appended readable-tail p95: 200 ms before to 189 ms after.
+- retained heap: 9.2 MiB before to 41.1 MiB after;
+- settled heap: 95.2 MiB before to 127.0 MiB after;
+- cold readable-tail p95: 308 ms before to 324 ms after;
+- warm readable-tail p95: 157 ms before to 149 ms after; and
+- appended readable-tail p95: 204 ms before to 208 ms after.
 
-The roughly 24.4 MiB retained-heap increase buys about 14% faster warm detail
-and 5% faster appended detail at this scale. This matches the cache's purpose;
-it is a measured memory/latency trade-off, not a confirmed regression.
+The 31.8 MiB retained-heap increase buys about 5.4% faster warm detail while
+cold worsens 5.2% and append worsens 2.0%. The cache is an intentional
+memory/repeat-read trade-off, but the complete working set provides materially
+less benefit than the earlier one-session fixture suggested. Retained source
+bytes, files, total heap, residual heap, and the three detail legs now have
+independent ratchets.
 
 ## Browser transcript caching is also an explicit memory/latency trade-off
 
-At surveyed `2f5e403e` with `large-session-cache`, a 24 MiB browser
-transcript-cache budget versus zero changed warm in-app readable-tail p95 from
-847 ms to 677 ms
-(about 20% faster) and retained one approximately 4.75 MiB transcript in YA's
-warm-cache accounting. The maximum observed browser JS heap was 130.9 MiB with
-the cache versus 112.3 MiB without it; browser heap has higher run-to-run noise
-than forced-GC server heap, so use the YA byte accounting as the cache-specific
-ratchet. Appended live-tail p95 was 785 ms with caching and 827 ms without.
+At surveyed `2f5e403e` with `large-session-cache`, two independent browser
+batches measured 24 MiB caching versus zero at 773–798 ms versus 882–903 ms
+warm final-display p95. The cache retains the complete three-session ring:
+three entries totaling about 14.34 MB, rather than one transcript. Appended
+final-display ranges overlap at 682–693 ms cached and 675–685 ms uncached.
+
+Maximum observed browser JS heap varied from 124 to 188 MiB uncached and 133 to
+157 MiB cached, so it does not support a directional memory claim. Use YA's
+stable cache entry/byte accounting as the cache-specific ratchet and keep the
+noisy JS heap plus heap-minus-transcript approximation as broad independent
+limits.
 
 ## Current phase ownership exposes recovery targets
 
@@ -136,7 +171,7 @@ exhausted.
 
 | ID | item | current evidence | disposition / recovery target |
 |---|---|---|---|
-| P01 | Correct append-marker semantics | The marker originally preceded synchronous fixture generation and bulk-write preparation, inflating the dominant append phase. | Fixed in the current harness by precomputing every body before marking; complete the stable historical rerun and commit the correction. |
+| P01 | Correct append-marker semantics | The marker originally preceded synchronous fixture generation and bulk-write preparation, inflating the dominant append phase. | Fixed: every body is precomputed before marking, and the complete content-addressed historical rerun uses the corrected boundary. |
 | P02 | Separate focused latency from bulk-fanout stress | Current scale points append every fixture session while several pages are open, so host contention is intentionally part of the result. | Add a single-target append leg if diagnosis needs the selected-session critical path independently of fleet stress. |
 | P03 | Remove the focused watcher’s fixed 200 ms floor | The normal `fs.watch` path uses a 200 ms trailing debounce before stat/read; polling fallback is phase-dependent up to 1.5 s. | Try an immediate leading stat/read with trailing validation for burst or torn-write safety; preserve polling fallback and measure both event sources. |
 | P04 | Preserve append-path event-source timing | Browser output begins at write submission and cannot currently distinguish `fs-watch` from poll, watcher event time, client receipt, request send, decode, reducer completion, and queued React state. | Carry a change version/source and timestamp marks through the focused subscription and browser profile. |
@@ -153,15 +188,15 @@ exhausted.
 | P15 | Measure useful cold readiness | Generic startup currently proves maintenance health plus `/api/projects`; cold dev-client final display includes Vite transforms. Neither is a production selected-session useful-ready contract. | Add a built-client cold-start driver and a server startup-to-selected-session-readable leg before making production startup claims. |
 | P16 | Expand component memory attribution | Named source charges cover Claude transcripts and project paths, while browser `performance.memory` omits Blink/layout/native allocations. | Add cheap owner gauges only where they are bounded and contract-owned; keep residual labels honest rather than pretending an additive heap decomposition. |
 | P17 | Preserve final-display semantics | Readable completion is DOM text, not first paint. Project-path completion is observed after the glossary wait, so its timestamp is sequential harness observation. | Keep these caveats in suite/topic docs; add independent marks only if separate glossary/path latency becomes a decision metric. |
-| P18 | Complete immutable lost-ground and variance evidence | The initial report compressed several worsened server/browser scenarios and used mutable `HEAD` wording. | Finish the C0–C5, surveyed `2f5e403e`, and profiled `cab8184a` rerun; add a second surveyed browser batch, concrete deltas/recoveries, and broad unchanged-run ratchets. |
+| P18 | Complete immutable lost-ground and variance evidence | The initial report compressed several worsened server/browser scenarios and used mutable checkout-tip wording. | Complete: the ledger above records C0–C5, surveyed `2f5e403e`, profiled `cab8184a`, a second surveyed browser batch, concrete deltas/recoveries, and broad unchanged-run ratchets. |
 | P19 | Add specialized black-box fixtures | Owned provider streaming, public-share herds, and long-idle ownership/reap remain outside this family. | Add focused public-contract fixtures before citing this suite as performance evidence for those paths. |
 | P20 | Detach context-specific augmentation from cached normalized messages | `normalizeSession` caches messages by stable raw-array identity, while private detail augmentation mutates text blocks with working-project `_html`; the public-share branch skips that rendering and may observe prior context-specific fields. Concurrent requests can also race on shared blocks. | Before retained HTML caching, make route augmentation a detached/copy-on-write response projection or store cached HTML outside normalized objects. Add private→public, public→private, concurrent, and two-working-project-context non-leakage tests. |
 | P21 | Expose a fenced project-path membership revision | `ProjectPathIndex` has private watcher/attachment generations but no public source revision suitable for `SourceVersionedSingleFlight`; safe-Markdown fallback can use unversioned `statSync`. | Increment a public monotonic revision on named invalidation, uncertain watcher state, disposal/replacement, and membership-changing events. Fence cache admission against it; never retain fallback-stat answers without a version. |
 | P22 | Decide malformed-JSON compatibility for raw relay envelopes | Current relay parsing maps invalid/empty JSON bodies to `body: null`; raw byte splicing would instead invalidate the complete relay frame. | Restrict the fast path to trusted internal JSON responses, validate before preserving bytes, or deliberately revise the producer contract with compatibility tests. |
 | P23 | Keep relay buffering and frame limits explicit | Raw JSON preservation removes body parse/re-stringify but still buffers the Hono body and one authenticated envelope; chunking occurs only after application encoding/encryption and reassembly is capped at 64 MiB. | Treat zero-copy/streaming as a separate protocol project. Preserve text/binary, compression, encryption, chunk ordering, and the pre-auth frame-mode snapshot. |
 | P24 | Measure augmentation and relay reuse directly | Totals can improve while cache misses, fallback traffic, or encrypted transport regress independently. | Add augmentation join/hit/retained-byte/stale-discard gauges plus relay raw-fast-path hits, bytes saved, and fallbacks; benchmark plaintext and encrypted paths separately. |
-| P25 | Make harness identity independent of unrelated shared-worktree changes | Whole-repository `HEAD` and dirty state changed as peers committed or edited unrelated files even though the harness/config/ratchets were unchanged, giving identical measurements different apparent identities. | Record the latest commit touching actual harness inputs, path-scoped dirty state, and a SHA-256 of runner plus parsed config/ratchets. This is fixed in the current harness and must be verified across every accepted result. |
-| P26 | Prevent stale results from masking crashed runs | The ad-hoc sweep reused output paths; one browser crashed before writing, but the wrapper saw an older nonempty result and mislabeled the crash as an expected ratchet failure. | Every orchestrated invocation must remove its generated output first or use a unique path, and accept ratchet nonzero only when that invocation produced a fresh result. Keep runner failure strict rather than synthesizing partial output. |
+| P25 | Make harness identity independent of unrelated shared-worktree changes | Whole-repository tip and dirty state changed as peers committed or edited unrelated files even though the harness/config/ratchets were unchanged, giving identical measurements different apparent identities. | Fixed and verified: all 32 comparable results report harness `79fbeeb2`, dirty false, and content SHA-256 `c2f050df…`. |
+| P26 | Prevent stale results from masking crashed runs | The ad-hoc sweep reused output paths; one browser crashed before writing, but the wrapper saw an older nonempty result and mislabeled the crash as an expected ratchet failure. | Fixed in the survey wrapper by removing each generated output before invocation; the complete rerun produced every expected fresh result. Keep this precondition in future orchestration. |
 
 Primary fix and evidence sites:
 
