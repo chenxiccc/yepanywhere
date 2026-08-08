@@ -375,6 +375,8 @@ export interface AppResult {
   disposeSessionReaders: () => Promise<void>;
   /** Shared resolver used by the artifact route and glossary subscriptions. */
   glossaryIndexService: GlossaryIndexService;
+  /** Global external-session observer and its bounded background diagnostics. */
+  externalTracker?: ExternalSessionTracker;
 }
 
 function getMessageContentBlocks(message: Message): AppContentBlock[] {
@@ -2313,6 +2315,7 @@ export function createApp(options: AppOptions): AppResult {
     readerFactory,
     disposeSessionReaders,
     glossaryIndexService,
+    externalTracker,
   };
 }
 

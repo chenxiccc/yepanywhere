@@ -226,4 +226,75 @@ describe("BatchProcessor", () => {
       expect(processor.isProcessing).toBe(false);
     });
   });
+
+  describe("diagnostics", () => {
+    it("reports queue deduplication and bounded batch timing events", async () => {
+      const processor = new BatchProcessor<string>({
+        batchMs: 100,
+        concurrency: 2,
+      });
+
+      processor.enqueue("same", async () => "first");
+      processor.enqueue("same", async () => "replacement");
+      processor.enqueue("other", async () => "other");
+
+      expect(processor.getDiagnostics()).toMatchObject({
+        pendingTasks: 2,
+        processing: false,
+        flushScheduled: true,
+        counters: {
+          enqueuedTasks: 3,
+          deduplicatedTasks: 1,
+          batchesStarted: 0,
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      const diagnostics = processor.getDiagnostics();
+      expect(diagnostics).toMatchObject({
+        pendingTasks: 0,
+        processing: false,
+        inFlightTasks: 0,
+        flushScheduled: false,
+        lastBatchSequence: 1,
+        counters: {
+          batchesStarted: 1,
+          batchesCompleted: 1,
+          tasksStarted: 2,
+          tasksSucceeded: 2,
+          tasksFailed: 0,
+          maxInFlightTasks: 2,
+        },
+      });
+      expect(diagnostics.recentBatches).toHaveLength(1);
+      expect(diagnostics.recentBatches[0]).toMatchObject({
+        sequence: 1,
+        taskCount: 2,
+        succeededTasks: 2,
+        failedTasks: 0,
+      });
+      expect(diagnostics.recentBatches[0]?.queueDelayMs).toBeGreaterThanOrEqual(
+        0,
+      );
+      expect(diagnostics.recentBatches[0]?.durationMs).toBeGreaterThanOrEqual(
+        0,
+      );
+    });
+
+    it("retains only the latest sixteen batch events", async () => {
+      const processor = new BatchProcessor<string>({ batchMs: 100 });
+
+      for (let sequence = 1; sequence <= 17; sequence += 1) {
+        processor.enqueue(String(sequence), async () => String(sequence));
+        await processor.flush();
+      }
+
+      const diagnostics = processor.getDiagnostics();
+      expect(diagnostics.lastBatchSequence).toBe(17);
+      expect(diagnostics.recentBatches).toHaveLength(16);
+      expect(diagnostics.recentBatches[0]?.sequence).toBe(2);
+      expect(diagnostics.recentBatches.at(-1)?.sequence).toBe(17);
+    });
+  });
 });

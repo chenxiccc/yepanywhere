@@ -156,6 +156,14 @@ source has no dependable event stream only if it has one process-wide owner,
 fixed/bounded cost per pass, explicit cadence and teardown, and changed-result
 targeting.
 
+External-session file activity updates ownership promptly. Complete summary
+derivation remains lower-priority batched work: equal session keys coalesce for
+300 ms, at most five summaries run concurrently, and results publish only
+changed fields. Maintenance diagnostics for that batch processor are fixed-cost
+snapshots with cumulative queue/outcome counters and the latest 16 timing
+events. Scheduling changes require mutation-time foreground evidence; a
+headless polling wake-up correlated with a summary event is not such evidence.
+
 A same-user operating-system process inventory satisfies that shape: its cost
 is bounded by the host process table, it can be diffed against the prior
 snapshot, and only changed recognized harness roots need catalog work. It is a

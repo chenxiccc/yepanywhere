@@ -27,7 +27,7 @@ import {
 } from "./host-profile.mjs";
 import { selectRatchetTargets } from "./ratchet-targets.mjs";
 
-const SUITE_VERSION = 4;
+const SUITE_VERSION = 5;
 const PERF_RUN_MARKER_PREFIX = "ya-perf-suite-";
 const GENERALIZED_PROJECT_PATHS_BASE =
   "61cb5f358b9ccb56549d0515ded703ec534996a6";
@@ -885,6 +885,22 @@ async function startServer({
 }) {
   const logPath = path.join(root, "server.log");
   const log = createWriteStream(logPath, { flags: "a" });
+  const dataDir = path.join(root, "data");
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(
+    path.join(dataDir, "install.json"),
+    `${JSON.stringify(
+      {
+        version: 2,
+        installId: "00000000-0000-4000-8000-000000000001",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        catalogFamilies: config.fixture.providerCatalogFamilies,
+        catalogMetadataMigrationComplete: true,
+      },
+      null,
+      2,
+    )}\n`,
+  );
   const env = {
     ...process.env,
     AUTH_DISABLED: "true",
@@ -903,7 +919,7 @@ async function startServer({
     PERF_RUN_ID: runMarker,
     VITE_PORT: String(port + 2),
     VOICE_INPUT: "false",
-    YEP_DATA_DIR: path.join(root, "data"),
+    YEP_DATA_DIR: dataDir,
     YEP_PROFILE: `perf-${process.pid}`,
   };
   const child = spawn(
@@ -1121,6 +1137,7 @@ function memoryView(sample) {
     arrayBuffersMiB: bytesToMiB(sample.arrayBuffersBytes),
     knownCaches: caches,
     relay: sample.diagnostics?.relay ?? null,
+    background: sample.diagnostics?.background ?? null,
     residuals: {
       heapUsedLessKnownCacheSourceMiB:
         knownCacheSourceBytes === null
@@ -1128,6 +1145,80 @@ function memoryView(sample) {
           : bytesToMiB(sample.heapUsedBytes - knownCacheSourceBytes),
     },
     v8: sample.v8,
+  };
+}
+
+const EXTERNAL_SUMMARY_COUNTER_FIELDS = [
+  "enqueuedTasks",
+  "deduplicatedTasks",
+  "clearedTasks",
+  "batchesStarted",
+  "batchesCompleted",
+  "tasksStarted",
+  "tasksSucceeded",
+  "tasksFailed",
+  "totalTaskDurationMs",
+  "totalBatchDurationMs",
+];
+
+function externalSessionSummaryDiagnostics(sample) {
+  return sample.diagnostics?.background?.externalSessionTracker
+    ?.sessionSummaryBatch;
+}
+
+function batchProcessorWindowState(diagnostics) {
+  return {
+    pendingTasks: diagnostics.pendingTasks,
+    processing: diagnostics.processing,
+    inFlightTasks: diagnostics.inFlightTasks,
+    flushScheduled: diagnostics.flushScheduled,
+    oldestPendingAgeMs: diagnostics.oldestPendingAgeMs,
+  };
+}
+
+function summarizeExternalSessionSummaryWindow(
+  beforeSample,
+  afterSample,
+  window,
+) {
+  const before = externalSessionSummaryDiagnostics(beforeSample);
+  const after = externalSessionSummaryDiagnostics(afterSample);
+  if (!before || !after) {
+    return { available: false, window };
+  }
+
+  const counters = Object.fromEntries(
+    EXTERNAL_SUMMARY_COUNTER_FIELDS.map((field) => [
+      field,
+      round(
+        Math.max(
+          0,
+          (after.counters?.[field] ?? 0) - (before.counters?.[field] ?? 0),
+        ),
+      ),
+    ]),
+  );
+  const recentBatches = (after.recentBatches ?? []).filter(
+    (batch) => batch.sequence > (before.lastBatchSequence ?? 0),
+  );
+  const summarizeBatchField = (field) =>
+    summarize(
+      recentBatches
+        .map((batch) => batch[field])
+        .filter((value) => typeof value === "number"),
+    );
+
+  return {
+    available: true,
+    window,
+    start: batchProcessorWindowState(before),
+    end: batchProcessorWindowState(after),
+    counters,
+    recentBatchesTruncated: counters.batchesCompleted > recentBatches.length,
+    queueDelay: summarizeBatchField("queueDelayMs"),
+    batchDuration: summarizeBatchField("durationMs"),
+    maxTaskDuration: summarizeBatchField("maxTaskDurationMs"),
+    recentBatches,
   };
 }
 
@@ -1232,7 +1323,13 @@ async function waitForReadableTail(page, marker, timeoutMs) {
 async function waitForFinalDisplay(
   page,
   target,
-  { glossarySupported, projectPathsSupported, started, timeoutMs },
+  {
+    glossarySupported,
+    preparedAppendObservation = false,
+    projectPathsSupported,
+    started,
+    timeoutMs,
+  },
 ) {
   await waitForReadableTail(page, target.marker, timeoutMs);
   const browserTiming = {
@@ -1347,6 +1444,49 @@ async function waitForFinalDisplay(
     browserTiming.projectPathHighlightAtMs ??
     browserTiming.glossaryHighlightAtMs ??
     browserTiming.readableTailAtMs;
+  if (preparedAppendObservation) {
+    const observed = await page.evaluate((marker) => {
+      const state = window.__yaPerfAppendDisplay;
+      if (!state || state.marker !== marker) return null;
+      window.__yaPerfAppendDisplayObserver?.disconnect();
+      return {
+        glossaryHighlightAtMs: state.glossaryHighlightAtMs,
+        projectPathHighlightAtMs: state.projectPathHighlightAtMs,
+        readableTailAtMs: state.readableTailAtMs,
+        startedAtMs: state.startedAtMs,
+      };
+    }, target.marker);
+    if (
+      !observed ||
+      typeof observed.readableTailAtMs !== "number" ||
+      (glossarySupported &&
+        typeof observed.glossaryHighlightAtMs !== "number") ||
+      (projectPathsSupported &&
+        typeof observed.projectPathHighlightAtMs !== "number")
+    ) {
+      throw new Error("prepared append display observer missed a milestone");
+    }
+    browserTiming.readableTailAtMs = observed.readableTailAtMs;
+    browserTiming.glossaryHighlightAtMs = observed.glossaryHighlightAtMs;
+    browserTiming.projectPathHighlightAtMs = observed.projectPathHighlightAtMs;
+    browserTiming.finalDisplayAtMs = Math.max(
+      observed.readableTailAtMs,
+      observed.glossaryHighlightAtMs ?? 0,
+      observed.projectPathHighlightAtMs ?? 0,
+    );
+    milestones.readableTailMs =
+      observed.readableTailAtMs - observed.startedAtMs;
+    milestones.glossaryHighlightMs =
+      observed.glossaryHighlightAtMs === null
+        ? null
+        : observed.glossaryHighlightAtMs - observed.startedAtMs;
+    milestones.projectPathHighlightMs =
+      observed.projectPathHighlightAtMs === null
+        ? null
+        : observed.projectPathHighlightAtMs - observed.startedAtMs;
+    milestones.finalHighlightMs =
+      browserTiming.finalDisplayAtMs - observed.startedAtMs;
+  }
   return milestones;
 }
 
@@ -1646,11 +1786,81 @@ async function collectClientNavigationProfile(
   };
 }
 
-async function prepareClientAppendProfile(page) {
-  await page.evaluate(() => {
-    window.__yaPerfAppendStartMs = performance.now();
-    window.__yaPerfMarks = [];
-  });
+async function prepareClientAppendProfile(
+  page,
+  target,
+  { glossarySupported, projectPathsSupported },
+) {
+  await page.evaluate(
+    ({ expectedPaths, glossaryTitle, marker, needsGlossary, needsPaths }) => {
+      window.__yaPerfAppendDisplayObserver?.disconnect();
+      const startedAtMs = performance.now();
+      window.__yaPerfAppendStartMs = startedAtMs;
+      const state = {
+        glossaryHighlightAtMs: null,
+        marker,
+        projectPathHighlightAtMs: null,
+        readableTailAtMs: null,
+        startedAtMs,
+      };
+      window.__yaPerfAppendDisplay = state;
+      const check = () => {
+        const row = [...document.querySelectorAll(".message-render-row")].find(
+          (candidate) => candidate.textContent?.includes(marker),
+        );
+        if (!row) return;
+        const nowMs = performance.now();
+        state.readableTailAtMs ??= nowMs;
+        if (needsGlossary && state.glossaryHighlightAtMs === null) {
+          const highlighted = [
+            ...row.querySelectorAll("[data-glossary-term]"),
+          ].some(
+            (term) =>
+              (term.getAttribute("data-tooltip") ||
+                term.getAttribute("title")) === glossaryTitle,
+          );
+          if (highlighted) state.glossaryHighlightAtMs = nowMs;
+        }
+        if (needsPaths && state.projectPathHighlightAtMs === null) {
+          const paths = [
+            ...row.querySelectorAll('a[data-ya-resource="local-file"]'),
+          ].map((anchor) => anchor.getAttribute("data-ya-path") ?? "");
+          if (
+            expectedPaths.every((expected) =>
+              paths.some(
+                (actual) =>
+                  actual === expected || actual.endsWith(`/${expected}`),
+              ),
+            )
+          ) {
+            state.projectPathHighlightAtMs = nowMs;
+          }
+        }
+        if (
+          (!needsGlossary || state.glossaryHighlightAtMs !== null) &&
+          (!needsPaths || state.projectPathHighlightAtMs !== null)
+        ) {
+          window.__yaPerfAppendDisplayObserver?.disconnect();
+        }
+      };
+      const observer = new MutationObserver(check);
+      window.__yaPerfAppendDisplayObserver = observer;
+      observer.observe(document.body, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+      });
+      window.__yaPerfMarks = [];
+      check();
+    },
+    {
+      expectedPaths: EXPECTED_PROJECT_PATHS,
+      glossaryTitle: EXPECTED_GLOSSARY_TITLE,
+      marker: target.marker,
+      needsGlossary: glossarySupported,
+      needsPaths: projectPathsSupported,
+    },
+  );
 }
 
 async function collectClientAppendProfile(page, milestones) {
@@ -2431,8 +2641,21 @@ async function measureBrowserMode({
       livePages,
       async prepareAppend() {
         await Promise.all(
-          livePages.flatMap(({ pages }) =>
-            pages.map((page) => prepareClientAppendProfile(page)),
+          livePages.flatMap(({ appendTargets, pages }) =>
+            pages.map((page, index) =>
+              prepareClientAppendProfile(
+                page,
+                sessionBrowserTarget(
+                  server,
+                  appendTargets[index].detail,
+                  scenario.initialTurns + scenario.newTurns - 1,
+                ),
+                {
+                  glossarySupported,
+                  projectPathsSupported: generalizedProjectPathsSupported,
+                },
+              ),
+            ),
           ),
         );
       },
@@ -2448,6 +2671,7 @@ async function measureBrowserMode({
               );
               const milestones = await waitForFinalDisplay(page, target, {
                 glossarySupported,
+                preparedAppendObservation: true,
                 projectPathsSupported: generalizedProjectPathsSupported,
                 started,
                 timeoutMs: config.server.requestTimeoutMs,
@@ -2752,6 +2976,7 @@ async function measureRepetition({
     );
 
     const preparedAppends = prepareAppendedTurns(fixture, scenario);
+    const appendWindowStartedAt = new Date().toISOString();
     await browserMeasurement?.prepareAppend();
     const browserAppendObservation = browserMeasurement?.observeAppend();
     await appendTurns(preparedAppends);
@@ -2783,6 +3008,14 @@ async function measureRepetition({
       server.inspectorUrl,
       server.maintenanceUrl,
       config.server.requestTimeoutMs,
+    );
+    const externalSessionSummaryAppend = summarizeExternalSessionSummaryWindow(
+      detailMemory,
+      appendedMemory,
+      {
+        startedAt: appendWindowStartedAt,
+        endedAt: new Date().toISOString(),
+      },
     );
 
     await wait(scenario.settleMs);
@@ -2831,6 +3064,7 @@ async function measureRepetition({
         generalizedProjectPathsSupported,
         projectFileLinkNeedle: "README.md",
         fixtureRevision: fixture.fixtureRevision,
+        providerCatalogFamilies: config.fixture.providerCatalogFamilies,
       },
       latency: {
         version: summarize([versionResponse.ms]),
@@ -2858,6 +3092,9 @@ async function measureRepetition({
           cold: summarizeRequestProfiles(coldDetails.profiles),
           warm: summarizeRequestProfiles(warmDetails.profiles),
           appended: summarizeRequestProfiles(appendedDetails.profiles),
+        },
+        background: {
+          externalSessionSummaryAppend,
         },
       },
       browser: browserMeasurement
@@ -2966,6 +3203,18 @@ function aggregateRuns(runs) {
     "memory.settled.residuals.heapUsedLessKnownCacheSourceMiB",
     "memory.settled.v8.heapSpaces.old_space.usedBytes",
     "memory.settled.v8.heapSpaces.large_object_space.usedBytes",
+    "profiles.background.externalSessionSummaryAppend.counters.enqueuedTasks",
+    "profiles.background.externalSessionSummaryAppend.counters.deduplicatedTasks",
+    "profiles.background.externalSessionSummaryAppend.counters.batchesStarted",
+    "profiles.background.externalSessionSummaryAppend.counters.batchesCompleted",
+    "profiles.background.externalSessionSummaryAppend.counters.tasksStarted",
+    "profiles.background.externalSessionSummaryAppend.counters.tasksSucceeded",
+    "profiles.background.externalSessionSummaryAppend.counters.tasksFailed",
+    "profiles.background.externalSessionSummaryAppend.counters.totalTaskDurationMs",
+    "profiles.background.externalSessionSummaryAppend.counters.totalBatchDurationMs",
+    "profiles.background.externalSessionSummaryAppend.queueDelay.p95Ms",
+    "profiles.background.externalSessionSummaryAppend.batchDuration.p95Ms",
+    "profiles.background.externalSessionSummaryAppend.maxTaskDuration.p95Ms",
     ...["cold", "warm", "appended"].flatMap((kind) => [
       `profiles.serverDetail.${kind}.server.project.p95Ms`,
       `profiles.serverDetail.${kind}.server.read.p95Ms`,
@@ -3274,6 +3523,14 @@ async function main() {
     fixtureConfig.cacheDisabledObservationMs,
     "fixture.cacheDisabledObservationMs",
   );
+  if (
+    !Array.isArray(fixtureConfig.providerCatalogFamilies) ||
+    fixtureConfig.providerCatalogFamilies.some(
+      (family) => typeof family !== "string" || family.length === 0,
+    )
+  ) {
+    throw new Error("fixture.providerCatalogFamilies must be a string array");
+  }
   if (fixtureConfig.workingSetSessions > scenario.sessionsPerProject) {
     throw new Error(
       "fixture.workingSetSessions must not exceed sessionsPerProject",

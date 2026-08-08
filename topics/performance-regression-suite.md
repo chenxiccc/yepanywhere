@@ -40,6 +40,22 @@ warm, and append results separately record readable text, glossary annotation,
 project-path anchors, and the latest supported final display. Server and
 browser measurements are distinct ratchet universes.
 
+Before an append write, each page arms a `MutationObserver` for the expected
+tail row. Readable text, glossary annotation, and project-path anchors receive
+independent `performance.now()` marks at the mutations that make them true.
+Playwright waits still enforce the final DOM invariants, but their wake-up time
+is not a performance timestamp: `requestAnimationFrame` polling in throttled
+headless background pages can otherwise charge an unrelated later WebSocket
+event for DOM work that had already completed. Cold and warm navigation retain
+their sequential observation semantics; only append milestones are independent.
+
+The generated app-data install record seeds the provider catalog families in
+`fixture.providerCatalogFamilies`, `claude` by default. This activates the
+eligible global provider watcher and external-session summary path while the
+provider transcript store remains simulated. A watcher-disabled contrast may
+set the list empty, but it changes harness identity and writes to isolated
+diagnostic history rather than a normal ratchet history.
+
 Scale points and repetition counts live in `scripts/perf-suite/config.json`.
 Targets live in `scripts/perf-suite/ratchets.json`; code contains no scenario-
 specific thresholds. Generated work and raw results are local artifacts under
@@ -124,6 +140,25 @@ model, effort, cost/token facts when available, and host capacity alongside the
 result. Start provider-agnostic investigations at the shared YA owner, but label
 a conclusion provider-specific or unresolved unless the owning path is shared
 or the behavior is reproduced across provider adapters.
+
+## Background summary telemetry
+
+Maintenance status exposes the external-session summary queue without starting
+new work: pending and in-flight counts, deduplication and outcome counters, and
+the latest 16 batches with queue, batch, aggregate-task, and maximum-task
+durations. Durations use one process-monotonic clock. ISO wall timestamps align
+events to a run window only and are never subtracted from browser marks.
+
+The suite snapshots this state around every append window and records counter
+deltas plus only batches newer than the opening sequence. Its default simulated
+Claude install therefore verifies that summary work happened instead of treating
+a watcher-disabled run as evidence about contention. At `large-session-cache`,
+three watcher-enabled repetitions queued eight distinct summaries in one batch:
+the queue delay was about 300 ms and batch duration 45–62 ms. With mutation-time
+DOM marks, append final display was 417 ms uncached and 435 ms cached, versus
+466/473 ms in the watcher-disabled contrast. The earlier 967/1,030 ms result
+followed background-page observation wake-ups and does not justify changing the
+summary schedule.
 
 ## 2026-08-08 historical survey
 

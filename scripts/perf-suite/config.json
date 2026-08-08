@@ -18,6 +18,7 @@
   },
   "fixture": {
     "revision": "2f5e403e20fc5b96d5634a4b8f5a57704023d8da",
+    "providerCatalogFamilies": ["claude"],
     "workingSetSessions": 3,
     "cacheProofTimeoutMs": 1000,
     "cacheDisabledObservationMs": 250

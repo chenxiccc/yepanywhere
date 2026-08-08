@@ -920,6 +920,7 @@ async function startServer() {
     scanner,
     disposeSessionReaders,
     glossaryIndexService,
+    externalTracker,
   } = createApp({
     provider: mockProvider,
     realSdk,
@@ -1687,6 +1688,9 @@ async function startServer() {
         },
         relay: {
           responseSerialization: relayResponseSerializationDiagnostics(),
+        },
+        background: {
+          externalSessionTracker: externalTracker?.getDiagnostics() ?? null,
         },
       }),
     });

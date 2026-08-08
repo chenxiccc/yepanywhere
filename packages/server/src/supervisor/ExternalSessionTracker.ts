@@ -13,7 +13,10 @@ import {
 import type { SessionListSummary } from "../sessions/types.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { readFirstLine } from "../utils/jsonl.js";
-import { BatchProcessor } from "../watcher/BatchProcessor.js";
+import {
+  BatchProcessor,
+  type BatchProcessorDiagnostics,
+} from "../watcher/BatchProcessor.js";
 import type {
   BusEvent,
   EventBus,
@@ -71,6 +74,10 @@ export interface ExternalSessionTrackerOptions {
     sessionId: string,
     projectId: UrlProjectId,
   ) => Promise<SessionListSummary | null>;
+}
+
+export interface ExternalSessionTrackerDiagnostics {
+  sessionSummaryBatch: BatchProcessorDiagnostics;
 }
 
 /**
@@ -361,6 +368,12 @@ export class ExternalSessionTracker {
    */
   getExternalSessions(): string[] {
     return Array.from(this.externalSessions.keys());
+  }
+
+  getDiagnostics(): ExternalSessionTrackerDiagnostics {
+    return {
+      sessionSummaryBatch: this.sessionParser.getDiagnostics(),
+    };
   }
 
   /**
