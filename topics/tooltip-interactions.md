@@ -120,6 +120,12 @@ pointer-interactive. Boundary motion accumulates from the last point inside
 the active hover region; up to four CSS pixels is treated as hand/sensor jitter
 rather than an intent to switch targets or dismiss.
 
+An explicit tooltip target nested inside another tooltip target owns the hover
+at its own text. Entering that child switches immediately from the enclosing
+hint even within the boundary-jitter allowance. This lets glossary definitions,
+file paths, and other annotated output remain discoverable when the enclosing
+output block also exposes a hidden-tail hint.
+
 Pointer transparency, not early dismissal, is the mechanism here. WCAG 2.2
 success criterion 1.4.13 requires author-rendered hover content to stay
 hoverable, persistent, and dismissible, so closing a tooltip the moment the
@@ -284,7 +290,8 @@ not the surface into a card.
 - At most one delegated, rich, or session-preview tooltip is visible, and warm
   handoff changes ownership without a blank or dual-tooltip frame.
 - Boundary jitter within four CSS pixels neither switches tooltip content nor
-  starts departure dismissal.
+  starts departure dismissal, except that entering a nested explicit target
+  immediately gives that child ownership over its enclosing target.
 - A passive visible tooltip is pointer-transparent but geometrically remains
   part of its active hover region. Native activation passes through only to its
   own trigger; unrelated obscured controls are blocked without synthesized

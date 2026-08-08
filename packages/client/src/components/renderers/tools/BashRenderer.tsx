@@ -36,6 +36,7 @@ import {
   OutputCopyButton,
   truncateOutput,
 } from "./outputPreview";
+import styles from "./BashRenderer.module.css";
 import type { BashInput, BashResult, ToolRenderer } from "./types";
 
 const MAX_LINES_COLLAPSED = 20;
@@ -64,12 +65,15 @@ function normalizeBashResult(
     return { stdout: "", stderr: "", interrupted: false, isImage: false };
   }
   if (typeof result === "string") {
-    const parsed = parseShellToolOutput(result);
+    const parsed = parseShellToolOutput(result, {
+      bareExitCodeIsEnvelope: isError,
+    });
     const output = parsed.hasEnvelope ? parsed.output : result;
-    // Plain string result - put in stderr if error, stdout otherwise
+    // A recognized provider envelope carries combined command output. A raw
+    // error string without that metadata remains stderr.
     return {
-      stdout: isError ? "" : output,
-      stderr: isError ? output : "",
+      stdout: !isError || parsed.hasEnvelope ? output : "",
+      stderr: isError && !parsed.hasEnvelope ? output : "",
       interrupted: false,
       isImage: false,
       ...(parsed.exitCode !== undefined ? { exitCode: parsed.exitCode } : {}),
@@ -108,7 +112,7 @@ function renderFixedFontMathPanel(html: string, className = "code-block") {
   return (
     <div className={`${className} fixed-font-rendered-panel`}>
       <div
-        className="fixed-font-rendered__content"
+        className={`fixed-font-rendered__content ${styles.fixedWidthOutput}`}
         // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -506,8 +510,9 @@ function BashCollapsedPreview({
   const showValidationWarning =
     enabled && validationErrors && !isToolIgnored("Bash");
   const sessionMetadata = useOptionalSessionMetadata();
+  const previewIsStderr = !!result?.stderr;
   const output = sanitizeOutputForPreview(
-    result?.stdout || result?.stderr || "",
+    (previewIsStderr ? result?.stderr : result?.stdout) || "",
     provider,
   );
   const fullRichPreview = useMemo(
@@ -587,7 +592,7 @@ function BashCollapsedPreview({
         {hasOutput && (
           <div className="bash-preview-row bash-preview-output-row">
             <div
-              className={`bash-preview-output ${truncated ? "bash-preview-truncated" : ""} ${isError || result?.stderr ? "bash-preview-error" : ""}`}
+              className={`bash-preview-output ${truncated ? "bash-preview-truncated" : ""} ${previewIsStderr ? "bash-preview-error" : ""}`}
               style={
                 {
                   "--bash-preview-line-count": String(
@@ -607,7 +612,7 @@ function BashCollapsedPreview({
                 renderRenderedView={(html) => (
                   <pre>
                     <div
-                      className="fixed-font-rendered__content"
+                      className={`fixed-font-rendered__content ${styles.fixedWidthOutput}`}
                       // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
                       dangerouslySetInnerHTML={{ __html: html }}
                     />
@@ -618,7 +623,7 @@ function BashCollapsedPreview({
             </div>
             <OutputCopyButton
               text={output}
-              label={result?.stderr ? "Copy stderr" : "Copy output"}
+              label={previewIsStderr ? "Copy stderr" : "Copy output"}
             />
             {hiddenOutputLineCount > 0 && (
               <HiddenContentBadge

@@ -697,6 +697,57 @@ describe("ToolCallRow", () => {
     ).toBe("false");
   });
 
+  it("shows failed Bash output normally with return code in the header", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-bash-output-error"
+        toolName="Bash"
+        toolInput={{ command: "node scripts/perf-suite/run.mjs" }}
+        toolResult={{
+          structured: {
+            stdout: "amended-working-tree/smoke: repetition 1/1",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+            exitCode: 1,
+          },
+          content: "Exit code 1\namended-working-tree/smoke: repetition 1/1",
+          isError: true,
+        }}
+        status="error"
+        sessionProvider="claude"
+      />,
+    );
+
+    expect(screen.getByText("rc=1")).toBeDefined();
+    expect(
+      screen.getByText("amended-working-tree/smoke: repetition 1/1"),
+    ).toBeDefined();
+    expect(container.textContent).not.toContain("Error: Exit code 1");
+    expect(container.querySelector(".bash-preview-error")).toBeNull();
+  });
+
+  it("does not infer an exit code from successful command output text", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-bash-output-error-text"
+        toolName="Bash"
+        toolInput={{ command: "printf 'Error: Exit code 1'" }}
+        toolResult={{
+          structured: "Error: Exit code 1\nreported by the command",
+          content: "Error: Exit code 1\nreported by the command",
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="claude"
+      />,
+    );
+
+    expect(container.textContent).toContain("Error: Exit code 1");
+    expect(screen.queryByText("rc=1")).toBeNull();
+    expect(container.querySelector(".bash-preview-error")).toBeNull();
+  });
+
   it("expands Bash command text without toggling row details", () => {
     const command = `printf '${"x".repeat(180)}'`;
     const { container } = render(
@@ -1340,6 +1391,32 @@ describe("ToolCallRow", () => {
         8 * DEFERRED_PREVIEW_HEIGHT.outputLineHeightPx +
         DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
     );
+  });
+
+  it("unwraps Codex exit metadata before estimating preview height", () => {
+    const envelope = [
+      "Chunk ID: abc123",
+      "Wall time: 0.8 seconds",
+      "Process exited with code 2",
+      "Output:",
+      "one line of command output",
+    ].join("\n");
+    const fromEnvelope = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "false" },
+      result: envelope,
+      status: "error",
+      rowWidthPx: 760,
+    });
+    const fromStructuredOutput = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "false" },
+      result: { stdout: "one line of command output", stderr: "" },
+      status: "error",
+      rowWidthPx: 760,
+    });
+
+    expect(fromEnvelope).toBe(fromStructuredOutput);
   });
 
   it("scales deferred Bash preview height with output typography metrics", () => {

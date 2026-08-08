@@ -1047,7 +1047,7 @@ describe("Codex Normalization", () => {
           type: "function_call_output",
           call_id: "call-exec-fail",
           output:
-            "Chunk ID: abc123\nWall time: 0.8 seconds\nProcess exited with code 2\nOriginal token count: 100\nOutput:\n\nNo explicit error marker text.\n",
+            "Error: Exit code 2\nWall time: 0.8 seconds\nOutput:\n\nNo explicit error marker text.\n",
         },
       },
     ];
@@ -1076,6 +1076,12 @@ describe("Codex Normalization", () => {
       type: "tool_result",
       tool_use_id: "call-exec-fail",
       is_error: true,
+    });
+    expect(result.messages[1]?.toolUseResult).toMatchObject({
+      stdout: "No explicit error marker text.\n",
+      stderr: "",
+      exitCode: 2,
+      durationSeconds: 0.8,
     });
   });
 

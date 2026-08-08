@@ -447,6 +447,63 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").textContent).toBe("Send message\nEnter");
   });
 
+  it("gives nested glossary and file hints priority over a row hint", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <div data-testid="output" data-tooltip="Command output tail">
+          <span
+            data-glossary-term="true"
+            data-tooltip="oracle — Best published system."
+          >
+            oracle
+          </span>{" "}
+          <a
+            href="/files/run.mjs"
+            data-fixed-font-file-path="scripts/run.mjs"
+            data-tooltip="scripts/run.mjs"
+          >
+            run.mjs
+          </a>
+        </div>
+      </>,
+    );
+    const output = screen.getByTestId("output");
+    const term = screen.getByText("oracle");
+    const file = screen.getByText("run.mjs");
+
+    fireEvent.pointerOver(output, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toBe("Command output tail");
+
+    fireEvent.pointerOver(term, {
+      pointerType: "mouse",
+      clientX: 11,
+      clientY: 10,
+    });
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "oracle — Best published system.",
+    );
+
+    fireEvent.pointerOver(output, {
+      pointerType: "mouse",
+      clientX: 40,
+      clientY: 10,
+    });
+    expect(screen.getByRole("tooltip").textContent).toBe("Command output tail");
+
+    fireEvent.pointerOver(file, {
+      pointerType: "mouse",
+      clientX: 41,
+      clientY: 10,
+    });
+    expect(screen.getByRole("tooltip").textContent).toBe("scripts/run.mjs");
+  });
+
   it("suppresses an exact-content tooltip while the full text is visible", () => {
     render(
       <>

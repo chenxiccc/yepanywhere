@@ -105,6 +105,30 @@ describe("BashRenderer", () => {
     expect(badge.getAttribute("title")).toBeNull();
   });
 
+  it("uses red only when the collapsed preview is showing stderr", () => {
+    const { container } = render(
+      <div>
+        {bashRenderer.renderCollapsedPreview?.(
+          { command: "writes both channels" },
+          {
+            stdout: "ordinary stdout",
+            stderr: "authenticated stderr",
+            interrupted: false,
+            isImage: false,
+            exitCode: 1,
+          } as BashResult,
+          true,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText("authenticated stderr")).toBeDefined();
+    expect(screen.queryByText("ordinary stdout")).toBeNull();
+    expect(container.querySelector(".bash-preview-error")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Copy stderr" })).toBeDefined();
+  });
+
   it("renders ANSI-colored git diff markdown tables in expanded output", () => {
     const output = [
       "\u001b[1mdiff --git a/notes.md b/notes.md\u001b[0m",

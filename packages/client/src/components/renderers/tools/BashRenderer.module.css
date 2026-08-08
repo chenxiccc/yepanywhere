@@ -1,0 +1,7 @@
+.fixedWidthOutput:global(.fixed-font-rendered__content) {
+  font-family: inherit;
+  font-optical-sizing: inherit;
+  font-variation-settings: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}

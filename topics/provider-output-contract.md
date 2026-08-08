@@ -147,14 +147,26 @@ tool output — the chunk's `output` becomes the result text, raw chunk fields
 pass through structured per the pass-through rule, and a `stdout` alias
 rides alongside so renderers need no chunk knowledge), and Codex shell text
 envelopes (`Wall time[:] N seconds`, `Process exited with code N`,
-`Exit code: N`). Claude SDK Bash results already carry `exitCode`.
+`Exit code[:] N`). Claude SDK Bash successes carry structured output, while
+failures may carry `is_error: true` plus a string beginning `Error: Exit code
+N`; transcript projection normalizes that authoritative failure envelope into
+combined output and `exitCode`. Without `is_error: true`, identical text
+remains command output.
 
 Display rules (client, `getCommandResultMeta`/`formatCommandDuration` in
 `packages/client/src/lib/shellToolOutput.ts`):
 
 - **Exit code 0 is never shown** — success is the default; a visible exit
-  code always means failure (`rc=N`, matching the tool-row suffix chip
-  vocabulary).
+  code always means failure. Every nonzero command result shows `rc=N` in the
+  collapsed row header, whether or not the command produced output.
+- **Failure state does not recolor combined output** — the row's error-status
+  dot and `rc=N` carry command failure. Known stderr remains error-colored;
+  its foreground must retain strong contrast in dark and light themes.
+  Combined provider output uses the normal output color.
+- **Command output remains fixed-width** — source and enriched renderings of
+  stdout, stderr, and combined output use the same fixed-width metrics. File
+  links, glossary terms, and other annotations may change color or decoration,
+  but do not switch the surrounding output to the prose face.
 - **Runtime is a detail-view fact**: shown in the command detail surfaces —
   the Bash output modal, the expanded result body — not in collapsed row
   summaries, except alongside a nonzero exit code (`rc=1 in 12.5s`).

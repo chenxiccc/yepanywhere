@@ -73,9 +73,20 @@ function tooltipTargetFromNode(
   activeTarget: Element | null,
 ): Element | null {
   if (!(node instanceof Element)) return null;
-  if (activeTarget?.contains(node)) return activeTarget;
   if (activeTarget && node.closest(`#${TOOLTIP_ID}`)) return activeTarget;
-  return node.closest("[data-tooltip], [title]");
+  return (
+    node.closest("[data-tooltip], [title]") ??
+    (activeTarget?.contains(node) ? activeTarget : null)
+  );
+}
+
+function isNestedTooltipTarget(
+  target: Element,
+  activeTarget: Element | null,
+): boolean {
+  return (
+    !!activeTarget && activeTarget !== target && activeTarget.contains(target)
+  );
 }
 
 function isPointerJitter(
@@ -692,6 +703,7 @@ export function TooltipLayer() {
       if (
         visibleRef.current &&
         target !== activeTargetRef.current &&
+        !isNestedTooltipTarget(target, activeTargetRef.current) &&
         isPointerJitter(event, lastPointerPositionRef.current)
       ) {
         return;
@@ -729,6 +741,7 @@ export function TooltipLayer() {
       if (
         visibleRef.current &&
         target !== activeTargetRef.current &&
+        !isNestedTooltipTarget(target, activeTargetRef.current) &&
         isPointerJitter(event, lastPointerPositionRef.current)
       ) {
         return;

@@ -288,7 +288,10 @@ export function estimateDeferredPreviewHeightPx(params: {
     return null;
   }
 
-  const output = getBashResultOutputForRichPreview(params.result).trimEnd();
+  const output = getBashResultOutputForRichPreview(
+    params.result,
+    params.status === "error",
+  ).trimEnd();
   if (params.result === undefined && !output) {
     return null;
   }
@@ -595,6 +598,10 @@ export const ToolCallRow = memo(function ToolCallRow({
   const isEditTool = rendererToolName === "Edit";
   const isReadTool = rendererToolName === "Read";
   const isBashTool = rendererToolName === "Bash";
+  const bashExitCode = isBashTool
+    ? getBashExitCode(structuredResult, toolResult?.content, status === "error")
+    : undefined;
+  const showBashExitCode = bashExitCode !== undefined && bashExitCode !== 0;
   const isGrepTool = rendererToolName === "Grep";
   const handleToolNamePointerEnter = useCallback(
     (event: React.PointerEvent<HTMLSpanElement>) => {
@@ -912,8 +919,10 @@ export const ToolCallRow = memo(function ToolCallRow({
       if (!isBashTool) {
         return;
       }
-      const output =
-        getBashResultOutputForRichPreview(structuredResult).trimEnd();
+      const output = getBashResultOutputForRichPreview(
+        structuredResult,
+        status === "error",
+      ).trimEnd();
       const elapsed = computeCommandElapsed({
         toolInput,
         structuredResult,
@@ -1056,7 +1065,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           "tool-row-header",
           isNonExpandable ? "non-expandable" : "",
           showBashCommandTarget ? "has-command-preview" : "",
-          noOutputBashResult ? "has-result-suffix" : "",
+          noOutputBashResult || showBashExitCode ? "has-result-suffix" : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -1223,15 +1232,12 @@ export const ToolCallRow = memo(function ToolCallRow({
         )}
 
         {noOutputBashResult && (
-          <>
-            <span className="tool-result-suffix">(no output)</span>
-            {noOutputBashResult.exitCode !== undefined &&
-              noOutputBashResult.exitCode !== 0 && (
-                <span className="tool-result-suffix tool-result-suffix-rc">
-                  rc={noOutputBashResult.exitCode}
-                </span>
-              )}
-          </>
+          <span className="tool-result-suffix">(no output)</span>
+        )}
+        {showBashExitCode && (
+          <span className="tool-result-suffix tool-result-suffix-rc">
+            rc={bashExitCode}
+          </span>
         )}
 
         {headerCommand && (
@@ -1386,24 +1392,37 @@ function getNoOutputBashResult(
   if (result === undefined) {
     return null;
   }
-  if (getBashResultOutputForRichPreview(result).trim().length > 0) {
+  const bareExitCodeIsEnvelope = status === "error";
+  if (
+    getBashResultOutputForRichPreview(result, bareExitCodeIsEnvelope).trim()
+      .length > 0
+  ) {
     return null;
   }
   if (!isRecord(result)) {
-    return { exitCode: getBashExitCode(result, fallbackContent) };
+    return {
+      exitCode: getBashExitCode(
+        result,
+        fallbackContent,
+        bareExitCodeIsEnvelope,
+      ),
+    };
   }
   if (result.interrupted === true || result.backgroundTaskId !== undefined) {
     return null;
   }
-  return { exitCode: getBashExitCode(result, fallbackContent) };
+  return {
+    exitCode: getBashExitCode(result, fallbackContent, bareExitCodeIsEnvelope),
+  };
 }
 
 function getBashExitCode(
   result: unknown,
   fallbackContent?: string,
+  bareExitCodeIsEnvelope = false,
 ): number | undefined {
   if (typeof result === "string") {
-    return parseShellToolOutput(result).exitCode;
+    return parseShellToolOutput(result, { bareExitCodeIsEnvelope }).exitCode;
   }
 
   if (isRecord(result)) {
@@ -1418,7 +1437,9 @@ function getBashExitCode(
       return direct;
     }
     if (typeof result.content === "string") {
-      const parsed = parseShellToolOutput(result.content).exitCode;
+      const parsed = parseShellToolOutput(result.content, {
+        bareExitCodeIsEnvelope,
+      }).exitCode;
       if (parsed !== undefined) {
         return parsed;
       }
@@ -1426,7 +1447,7 @@ function getBashExitCode(
   }
 
   return fallbackContent
-    ? parseShellToolOutput(fallbackContent).exitCode
+    ? parseShellToolOutput(fallbackContent, { bareExitCodeIsEnvelope }).exitCode
     : undefined;
 }
 
@@ -1454,9 +1475,12 @@ function hasBashPreviewResult(input: unknown): boolean {
   return isRecord(input) && input._previewResult !== undefined;
 }
 
-function getBashResultOutputForRichPreview(result: unknown): string {
+function getBashResultOutputForRichPreview(
+  result: unknown,
+  bareExitCodeIsEnvelope = false,
+): string {
   if (typeof result === "string") {
-    const parsed = parseShellToolOutput(result);
+    const parsed = parseShellToolOutput(result, { bareExitCodeIsEnvelope });
     return parsed.hasEnvelope ? parsed.output : result;
   }
 
@@ -1471,7 +1495,9 @@ function getBashResultOutputForRichPreview(result: unknown): string {
   }
 
   if (typeof result.content === "string") {
-    const parsed = parseShellToolOutput(result.content);
+    const parsed = parseShellToolOutput(result.content, {
+      bareExitCodeIsEnvelope,
+    });
     return parsed.hasEnvelope ? parsed.output : result.content;
   }
 

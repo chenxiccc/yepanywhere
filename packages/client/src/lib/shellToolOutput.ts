@@ -7,7 +7,7 @@ export interface ParsedShellToolOutput {
 
 function extractExitCode(text: string): number | undefined {
   const match = text.match(
-    /(?:^|\n)\s*(?:Process exited with code|Exit code:)\s*(-?\d+)\b/i,
+    /(?:^|\n)\s*(?:Error:\s*)?(?:Process exited with code|Exit code:?)\s*(-?\d+)\b/i,
   );
   if (!match?.[1]) {
     return undefined;
@@ -33,14 +33,30 @@ export function extractDetachedCellId(text: string): string | undefined {
   return DETACHED_CELL_ID_RE.exec(text)?.[1];
 }
 
-export function parseShellToolOutput(text: string): ParsedShellToolOutput {
+export function parseShellToolOutput(
+  text: string,
+  options: { bareExitCodeIsEnvelope?: boolean } = {},
+): ParsedShellToolOutput {
   const outputMatch = text.match(/(?:^|\n)\s*Output:\s*\n([\s\S]*)$/i);
-  const hasEnvelope = !!outputMatch;
-  const output = (outputMatch?.[1] ?? text).trimEnd();
+  const bareExitCodeMatch = options.bareExitCodeIsEnvelope
+    ? text.match(
+        /^\s*(?:Error:\s*)?(?:Process exited with code|Exit code:?)\s*(-?\d+)\b[^\n]*(?:\n|$)/i,
+      )
+    : null;
+  const hasEnvelope = !!outputMatch || !!bareExitCodeMatch;
+  const output = (
+    outputMatch?.[1] ??
+    (bareExitCodeMatch ? text.slice(bareExitCodeMatch[0].length) : text)
+  ).trimEnd();
+  const exitCode = outputMatch
+    ? extractExitCode(text)
+    : bareExitCodeMatch?.[1]
+      ? Number.parseInt(bareExitCodeMatch[1], 10)
+      : undefined;
 
   return {
     output,
-    exitCode: extractExitCode(text),
+    exitCode,
     wallTime: extractWallTime(text),
     hasEnvelope,
   };

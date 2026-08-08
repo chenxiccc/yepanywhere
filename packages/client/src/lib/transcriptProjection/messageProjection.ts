@@ -17,6 +17,7 @@ import {
   isTaskNotificationMessage,
   parseTaskNotification,
 } from "../parseTaskNotification";
+import { parseShellToolOutput } from "../shellToolOutput";
 import { parseAgentResultFromText } from "./agentResults";
 import { contentBlocksText } from "./slashCommandBodies";
 import type { TranscriptProjectionAugments } from "./types";
@@ -695,6 +696,7 @@ function attachToolResult(
   if (!structured && (item.toolName === "Agent" || item.toolName === "Task")) {
     structured = parseAgentResultFromText(block);
   }
+  structured = normalizeBashFailureResult(item, block, structured);
 
   const resultData: ToolResultData = {
     content: typeof block.content === "string" ? block.content : "",
@@ -745,6 +747,35 @@ function attachToolResult(
   if (!isBackgroundProcessResult && !isInterruptedProcessResult) {
     pendingToolCalls.delete(toolUseId);
   }
+}
+
+function normalizeBashFailureResult(
+  item: ToolCallItem,
+  block: ContentBlock,
+  structured: unknown,
+): unknown {
+  if (item.toolName !== "Bash" || block.is_error !== true) {
+    return structured;
+  }
+  const resultText =
+    typeof structured === "string"
+      ? structured
+      : typeof block.content === "string"
+        ? block.content
+        : "";
+  const parsed = parseShellToolOutput(resultText, {
+    bareExitCodeIsEnvelope: true,
+  });
+  if (!parsed.hasEnvelope || parsed.exitCode === undefined) {
+    return structured;
+  }
+  return {
+    stdout: parsed.output,
+    stderr: "",
+    interrupted: false,
+    isImage: false,
+    exitCode: parsed.exitCode,
+  };
 }
 
 function isBackgroundProcessToolResult(

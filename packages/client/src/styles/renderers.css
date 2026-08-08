@@ -1612,7 +1612,7 @@ details[open] .collapsible__icon {
 }
 
 .bash-preview-output.bash-preview-error pre {
-  color: var(--error-color);
+  color: color-mix(in srgb, var(--error-color) 70%, var(--text-primary));
 }
 
 .bash-preview-more {

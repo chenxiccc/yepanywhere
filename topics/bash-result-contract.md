@@ -56,7 +56,12 @@ Accepted provider input variants should be provider-local, but common cases are:
 - `exitCode`, `exit_code`, `returnCode`, `return_code`, or `rc` → `exitCode`.
 - `Wall time: ...` / provider duration fields → `wallTime`.
 - `Output:\n...` envelope sections → stdout/stderr content without the envelope.
-- `Process exited with code N` / `Exit code: N` in legacy strings → `exitCode`.
+- `Process exited with code N` / `Exit code[:] N` in legacy strings →
+  `exitCode`.
+- Claude failure strings may prefix that status with `Error:`. A bare status
+  line is envelope metadata only when the tool result independently carries
+  `is_error: true`; successful command output is never promoted to an exit
+  code from text alone.
 
 Each provider decides whether non-zero output belongs in `stderr`, `stdout`, or
 both according to its harness semantics. The canonical `exitCode` is the fact

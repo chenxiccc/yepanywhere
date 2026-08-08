@@ -1775,6 +1775,54 @@ describe("compileTranscriptProjection", () => {
     });
   });
 
+  it("normalizes Claude Bash failure envelopes into command metadata", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-1",
+            name: "Bash",
+            input: { command: "node scripts/perf-suite/run.mjs" },
+          },
+        ],
+      },
+      {
+        id: "msg-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tool-1",
+            content: "Exit code 1\namended-working-tree/smoke: repetition 1/1",
+            is_error: true,
+          },
+        ],
+        toolUseResult:
+          "Error: Exit code 1\namended-working-tree/smoke: repetition 1/1",
+      },
+    ];
+
+    const items = compileTranscriptProjection(messages);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "tool_call",
+      status: "error",
+      toolResult: {
+        content: "Exit code 1\namended-working-tree/smoke: repetition 1/1",
+        isError: true,
+        structured: {
+          stdout: "amended-working-tree/smoke: repetition 1/1",
+          stderr: "",
+          exitCode: 1,
+        },
+      },
+    });
+  });
+
   it("skips empty text blocks", () => {
     const messages: Message[] = [
       {
