@@ -482,6 +482,41 @@ describe("Sessions API", () => {
       });
     });
 
+    it("reports additive detail phases through Server-Timing", async () => {
+      await writeCompactedSession("sess-timed");
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/sessions/sess-timed`,
+        { headers: { "X-Yep-Anywhere": "true" } },
+      );
+
+      expect(res.status).toBe(200);
+      const entries = Object.fromEntries(
+        (res.headers.get("Server-Timing") ?? "").split(", ").map((entry) => {
+          const match = /^(ya-[a-z]+);dur=([0-9.]+)$/.exec(entry);
+          expect(match).not.toBeNull();
+          return [match?.[1], Number(match?.[2])];
+        }),
+      );
+      expect(Object.keys(entries)).toEqual([
+        "ya-augment",
+        "ya-normalize",
+        "ya-project",
+        "ya-read",
+        "ya-route",
+        "ya-total",
+      ]);
+      expect(entries["ya-total"]).toBeGreaterThanOrEqual(
+        entries["ya-project"] +
+          entries["ya-read"] +
+          entries["ya-normalize"] +
+          entries["ya-route"] +
+          entries["ya-augment"] -
+          0.5,
+      );
+    });
+
     it("returns full transcript only when fullHistory=1 is explicit", async () => {
       await writeCompactedSession("sess-compact-full");
       const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });

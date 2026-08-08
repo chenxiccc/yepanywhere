@@ -66,6 +66,23 @@ describe("ClaudeTranscriptCache", () => {
     expect(second?.entries).toBe(first?.entries);
   });
 
+  it("reports bounded process-level cache diagnostics", async () => {
+    await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
+
+    expect(cache.getStats()).toMatchObject({
+      inFlightLoads: 0,
+      retainedFiles: 0,
+      retainedSourceBytes: 0,
+    });
+    expect(cache.getStats().budgetBytes).toBeGreaterThan(0);
+
+    await cache.load(filePath);
+    const stats = cache.getStats();
+    expect(stats.inFlightLoads).toBe(0);
+    expect(stats.retainedFiles).toBe(1);
+    expect(stats.retainedSourceBytes).toBeGreaterThan(0);
+  });
+
   it("extends the same array in place when the file grows", async () => {
     await writeFile(filePath, `${userLine("u1", null, "hello")}\n`);
     const first = await cache.load(filePath);

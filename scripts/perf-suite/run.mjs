@@ -18,7 +18,9 @@ import process from "node:process";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
-const SUITE_VERSION = 1;
+const SUITE_VERSION = 2;
+const GENERALIZED_PROJECT_PATHS_BASE =
+  "61cb5f358b9ccb56549d0515ded703ec534996a6";
 const DEFAULT_CONFIG_PATH = new URL("./config.json", import.meta.url);
 const DEFAULT_RATCHETS_PATH = new URL("./ratchets.json", import.meta.url);
 
@@ -27,6 +29,7 @@ function parseArgs(argv) {
     checkout: null,
     config: DEFAULT_CONFIG_PATH,
     driver: "server",
+    "fixture-repository": null,
     label: "working-tree",
     output: null,
     ratchets: DEFAULT_RATCHETS_PATH,
@@ -37,7 +40,8 @@ function parseArgs(argv) {
     if (name === "--help") {
       console.log(
         "Usage: node run.mjs --checkout PATH --scenario NAME [--driver server|browser] " +
-          "[--label LABEL] [--config FILE] [--ratchets FILE] [--output FILE]",
+          "[--fixture-repository PATH] [--label LABEL] [--config FILE] " +
+          "[--ratchets FILE] [--output FILE]",
       );
       process.exit(0);
     }
@@ -136,8 +140,17 @@ function encodeProjectPath(projectPath) {
 }
 
 function deterministicPayload(bytes, seed) {
-  const prefix = `[${seed}] PerfTerm README.md `;
-  if (bytes <= prefix.length) return prefix.slice(0, bytes);
+  const prefix =
+    `[${seed}]\n` +
+    "glossary-tooltips governs rendered hints.\n" +
+    "Inspect topics/glossary-tooltips.md, " +
+    "packages/server/src/augments/project-path-links.ts, and README.md.\n" +
+    "Negative controls: runs/perf-absent.jsonl text/plain v2.1.223.\n";
+  if (bytes < prefix.length) {
+    throw new Error(
+      `payloadBytes ${bytes} cannot fit semantic fixture (${prefix.length})`,
+    );
+  }
   const alphabet =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let state = 2166136261;
@@ -231,12 +244,55 @@ function transcriptRows({
   return `${rows.join("\n")}\n`;
 }
 
-async function createFixture(root, scenario) {
+async function runProcess(command, args, { cwd }) {
+  const child = spawn(command, args, {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout = [];
+  const stderr = [];
+  child.stdout.on("data", (chunk) => stdout.push(chunk));
+  child.stderr.on("data", (chunk) => stderr.push(chunk));
+  const code = await new Promise((resolve) => child.once("exit", resolve));
+  const output = Buffer.concat(stdout).toString("utf8").trim();
+  if (code !== 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} exited ${code}: ` +
+        Buffer.concat(stderr).toString("utf8").trim(),
+    );
+  }
+  return output;
+}
+
+const REQUIRED_FIXTURE_PATHS = [
+  "GLOSSARY.md",
+  "README.md",
+  "topics/glossary-tooltips.md",
+  "packages/server/src/augments/project-path-links.ts",
+];
+
+async function createFixture(root, scenario, fixtureConfig) {
   const configDir = path.join(root, "claude");
   const sourceRoot = path.join(root, "projects");
+  const fixtureGitDir = path.join(root, "fixture.git");
   const sessionFiles = [];
   await mkdir(path.join(configDir, "projects"), { recursive: true });
   await mkdir(sourceRoot, { recursive: true });
+  await runProcess(
+    "git",
+    ["clone", "--shared", "--bare", fixtureConfig.repository, fixtureGitDir],
+    { cwd: root },
+  );
+  const resolvedRevision = await runProcess(
+    "git",
+    [`--git-dir=${fixtureGitDir}`, "rev-parse", fixtureConfig.revision],
+    { cwd: root },
+  );
+  if (resolvedRevision !== fixtureConfig.revision) {
+    throw new Error(
+      `fixture revision resolved to ${resolvedRevision}, expected ${fixtureConfig.revision}`,
+    );
+  }
 
   for (
     let projectIndex = 0;
@@ -244,22 +300,34 @@ async function createFixture(root, scenario) {
     projectIndex += 1
   ) {
     const projectPath = path.join(sourceRoot, `project-${projectIndex}`);
+    await runProcess(
+      "git",
+      [
+        `--git-dir=${fixtureGitDir}`,
+        "worktree",
+        "add",
+        "--detach",
+        projectPath,
+        resolvedRevision,
+      ],
+      { cwd: root },
+    );
+    for (const relativePath of REQUIRED_FIXTURE_PATHS) {
+      const fixturePath = path.join(projectPath, relativePath);
+      const fixtureStats = await stat(fixturePath).catch(() => null);
+      if (!fixtureStats?.isFile()) {
+        throw new Error(
+          `fixture ${resolvedRevision} lacks required file ${relativePath}`,
+        );
+      }
+    }
+
     const sessionDir = path.join(
       configDir,
       "projects",
       encodeProjectPath(projectPath),
     );
-    await mkdir(projectPath, { recursive: true });
     await mkdir(sessionDir, { recursive: true });
-    await writeFile(
-      path.join(projectPath, "README.md"),
-      `project ${projectIndex}\n`,
-    );
-    await writeFile(
-      path.join(projectPath, "GLOSSARY.md"),
-      "# Glossary\n\n| term | definition |\n|---|---|\n" +
-        "| **PerfTerm** | Deterministic performance fixture term. |\n",
-    );
 
     for (
       let sessionIndex = 0;
@@ -282,7 +350,12 @@ async function createFixture(root, scenario) {
     }
   }
 
-  return { configDir, sessionFiles, sourceRoot };
+  return {
+    configDir,
+    fixtureRevision: resolvedRevision,
+    sessionFiles,
+    sourceRoot,
+  };
 }
 
 async function appendTurns(fixture, scenario) {
@@ -366,6 +439,7 @@ async function requestJson(
           }
         });
         response.on("end", () => {
+          const bodyReceivedMs = performance.now() - started;
           const body = Buffer.concat(chunks).toString("utf8");
           if (
             !response.statusCode ||
@@ -380,10 +454,19 @@ async function requestJson(
             return;
           }
           try {
+            const parseStarted = performance.now();
+            const parsedBody = body.length === 0 ? null : JSON.parse(body);
+            const jsonParseMs = performance.now() - parseStarted;
+            const measuredFirstByteMs =
+              firstByteMs ?? performance.now() - started;
             resolve({
-              body: body.length === 0 ? null : JSON.parse(body),
+              body: parsedBody,
+              bodyReceivedMs,
+              bodyTransferMs: Math.max(0, bodyReceivedMs - measuredFirstByteMs),
               bytes: Buffer.byteLength(body),
-              firstByteMs: firstByteMs ?? performance.now() - started,
+              firstByteMs: measuredFirstByteMs,
+              headers: response.headers,
+              jsonParseMs,
               ms: performance.now() - started,
               needleMs,
             });
@@ -399,6 +482,45 @@ async function requestJson(
     request.once("error", reject);
     request.end(encodedBody ?? undefined);
   });
+}
+
+function requestProfile(response) {
+  const header = response.headers?.["server-timing"];
+  const serverTimings = {};
+  if (typeof header === "string") {
+    for (const entry of header.split(",")) {
+      const match = /^\s*([^;\s]+);dur=([0-9.]+)\s*$/.exec(entry);
+      if (match) serverTimings[match[1]] = Number(match[2]);
+    }
+  }
+  const owners = [
+    "ya-project",
+    "ya-read",
+    "ya-normalize",
+    "ya-route",
+    "ya-augment",
+  ];
+  const serverTotalMs = serverTimings["ya-total"];
+  const ownerValues = owners.map((name) => serverTimings[name]);
+  const hasServerProfile =
+    typeof serverTotalMs === "number" &&
+    ownerValues.every((value) => typeof value === "number");
+  const markedServerMs = hasServerProfile
+    ? ownerValues.reduce((sum, value) => sum + value, 0)
+    : null;
+  return {
+    available: hasServerProfile,
+    bodyTransferMs: response.bodyTransferMs,
+    frameworkSerializeLoopbackMs: hasServerProfile
+      ? Math.max(0, response.firstByteMs - serverTotalMs)
+      : null,
+    jsonParseMs: response.jsonParseMs,
+    markedServerMs,
+    serverPhaseResidualMs: hasServerProfile
+      ? Math.max(0, serverTotalMs - markedServerMs)
+      : null,
+    serverTimings,
+  };
 }
 
 async function waitForReady({ baseUrl, maintenanceUrl, timeoutMs, child }) {
@@ -488,38 +610,46 @@ async function sampleMemory(inspectorUrl, maintenanceUrl, timeoutMs) {
     ) {
       throw new Error("Maintenance /status lacks memory.raw.heapUsed/rss");
     }
-    samples.push(raw);
+    samples.push({
+      diagnostics: body.diagnostics ?? null,
+      raw,
+      v8: body.memory.v8 ?? null,
+    });
     if (index < 6) await wait(150);
   }
   const minimumHeap = samples.reduce((best, sample) =>
-    sample.heapUsed < best.heapUsed ? sample : best,
+    sample.raw.heapUsed < best.raw.heapUsed ? sample : best,
   );
   return {
-    heapUsedBytes: minimumHeap.heapUsed,
-    heapTotalBytes: minimumHeap.heapTotal,
+    heapUsedBytes: minimumHeap.raw.heapUsed,
+    heapTotalBytes: minimumHeap.raw.heapTotal,
     rssBytes: percentile(
-      samples.map((sample) => sample.rss),
+      samples.map((sample) => sample.raw.rss),
       0.5,
     ),
-    externalBytes: minimumHeap.external,
-    arrayBuffersBytes: minimumHeap.arrayBuffers ?? 0,
+    externalBytes: minimumHeap.raw.external,
+    arrayBuffersBytes: minimumHeap.raw.arrayBuffers ?? 0,
+    diagnostics: minimumHeap.diagnostics,
+    v8: minimumHeap.v8,
   };
 }
 
-async function gitRevision(checkout) {
-  const child = spawn("git", ["rev-parse", "HEAD"], {
-    cwd: checkout,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const stdout = [];
-  const stderr = [];
-  child.stdout.on("data", (chunk) => stdout.push(chunk));
-  child.stderr.on("data", (chunk) => stderr.push(chunk));
+function gitRevision(checkout) {
+  return runProcess("git", ["rev-parse", "HEAD"], { cwd: checkout });
+}
+
+async function gitIsAncestor(checkout, ancestor, descendant) {
+  const child = spawn(
+    "git",
+    ["merge-base", "--is-ancestor", ancestor, descendant],
+    { cwd: checkout, stdio: "ignore" },
+  );
   const code = await new Promise((resolve) => child.once("exit", resolve));
-  if (code !== 0) {
-    throw new Error(Buffer.concat(stderr).toString("utf8"));
-  }
-  return Buffer.concat(stdout).toString("utf8").trim();
+  if (code === 0) return true;
+  if (code === 1) return false;
+  throw new Error(
+    `git merge-base --is-ancestor ${ancestor} ${descendant} exited ${code}`,
+  );
 }
 
 async function startServer({ checkout, driver, fixture, port, root, config }) {
@@ -634,6 +764,7 @@ async function runClientBatch(agents, targets, timeoutMs) {
   const firstByteLatencies = [];
   const readableTextLatencies = [];
   const bytes = [];
+  const profiles = [];
   const bodies = Array.from({ length: targets.length });
   let next = 0;
   await Promise.all(
@@ -658,6 +789,7 @@ async function runClientBatch(agents, targets, timeoutMs) {
           readableTextLatencies.push(response.needleMs);
         }
         bytes.push(response.bytes);
+        profiles.push(requestProfile(response));
       }
     }),
   );
@@ -666,6 +798,7 @@ async function runClientBatch(agents, targets, timeoutMs) {
     bytes,
     firstByteLatencies,
     latencies,
+    profiles,
     readableTextLatencies,
   };
 }
@@ -676,6 +809,7 @@ async function runHerd(agents, targets, timeoutMs) {
   const readableTextLatencies = [];
   const bytes = [];
   const bodies = [];
+  const profiles = [];
   await Promise.all(
     agents.map(async (agent) => {
       for (const rawTarget of targets) {
@@ -695,6 +829,7 @@ async function runHerd(agents, targets, timeoutMs) {
         }
         bytes.push(response.bytes);
         bodies.push(response.body);
+        profiles.push(requestProfile(response));
       }
     }),
   );
@@ -703,17 +838,72 @@ async function runHerd(agents, targets, timeoutMs) {
     bytes,
     firstByteLatencies,
     latencies,
+    profiles,
     readableTextLatencies,
   };
 }
 
 function memoryView(sample) {
+  const caches = sample.diagnostics?.caches ?? null;
+  const knownCacheSourceBytes = caches
+    ? (caches.claudeTranscript?.retainedSourceBytes ?? 0) +
+      (caches.projectPaths?.retainedBytes ?? 0)
+    : null;
   return {
     heapUsedMiB: bytesToMiB(sample.heapUsedBytes),
     heapTotalMiB: bytesToMiB(sample.heapTotalBytes),
     rssMiB: bytesToMiB(sample.rssBytes),
     externalMiB: bytesToMiB(sample.externalBytes),
     arrayBuffersMiB: bytesToMiB(sample.arrayBuffersBytes),
+    knownCaches: caches,
+    residuals: {
+      heapUsedLessKnownCacheSourceMiB:
+        knownCacheSourceBytes === null
+          ? null
+          : bytesToMiB(sample.heapUsedBytes - knownCacheSourceBytes),
+    },
+    v8: sample.v8,
+  };
+}
+
+function summarizeRequestProfiles(profiles) {
+  const available = profiles.filter((profile) => profile.available);
+  const values = (selector, source = profiles) =>
+    source
+      .map(selector)
+      .filter((value) => typeof value === "number" && Number.isFinite(value));
+  return {
+    availableCount: available.length,
+    sampleCount: profiles.length,
+    bodyTransfer: summarize(values((profile) => profile.bodyTransferMs)),
+    jsonParse: summarize(values((profile) => profile.jsonParseMs)),
+    server: {
+      project: summarize(
+        values((profile) => profile.serverTimings["ya-project"], available),
+      ),
+      read: summarize(
+        values((profile) => profile.serverTimings["ya-read"], available),
+      ),
+      normalize: summarize(
+        values((profile) => profile.serverTimings["ya-normalize"], available),
+      ),
+      route: summarize(
+        values((profile) => profile.serverTimings["ya-route"], available),
+      ),
+      augment: summarize(
+        values((profile) => profile.serverTimings["ya-augment"], available),
+      ),
+      total: summarize(
+        values((profile) => profile.serverTimings["ya-total"], available),
+      ),
+      marked: summarize(values((profile) => profile.markedServerMs, available)),
+      residual: summarize(
+        values((profile) => profile.serverPhaseResidualMs, available),
+      ),
+    },
+    frameworkSerializeLoopback: summarize(
+      values((profile) => profile.frameworkSerializeLoopbackMs, available),
+    ),
   };
 }
 
@@ -742,12 +932,156 @@ function clientTelemetry(page) {
   });
 }
 
+const EXPECTED_GLOSSARY_TITLE =
+  "glossary-tooltips: Glossary tooltips enrich every Markdown-render-eligible view with subtle, copyable definition hints from one governing current GLOSSARY.md and its project-contained include graph, using an in-memory compiled phrase automaton to keep matching linear in rendered text.";
+const EXPECTED_PROJECT_PATHS = [
+  "topics/glossary-tooltips.md",
+  "packages/server/src/augments/project-path-links.ts",
+  "README.md",
+];
+const NEGATIVE_PROJECT_PATHS = [
+  "runs/perf-absent.jsonl",
+  "text/plain",
+  "v2.1.223",
+];
+
+function sessionBrowserTarget(server, detail, turn) {
+  return {
+    detail,
+    marker: `[${detail.sessionId}:assistant:${turn}]`,
+    url:
+      `${server.baseUrl}/projects/${encodeURIComponent(detail.projectId)}` +
+      `/sessions/${encodeURIComponent(detail.sessionId)}`,
+  };
+}
+
 async function waitForReadableTail(page, marker, timeoutMs) {
   await page.waitForFunction(
     (needle) => document.body?.innerText.includes(needle),
     marker,
     { timeout: timeoutMs },
   );
+}
+
+async function waitForFinalDisplay(
+  page,
+  target,
+  { glossarySupported, projectPathsSupported, started, timeoutMs },
+) {
+  await waitForReadableTail(page, target.marker, timeoutMs);
+  const browserTiming = {
+    readableTailAtMs: await page.evaluate(() => performance.now()),
+    glossaryHighlightAtMs: null,
+    projectPathHighlightAtMs: null,
+    finalDisplayAtMs: null,
+  };
+  const milestones = {
+    readableTailMs: performance.now() - started,
+    glossaryHighlightMs: null,
+    projectPathHighlightMs: null,
+  };
+  Object.defineProperty(milestones, "browserTiming", {
+    enumerable: false,
+    value: browserTiming,
+  });
+  if (glossarySupported) {
+    try {
+      await page.waitForFunction(
+        ({ marker, title }) => {
+          const row = [
+            ...document.querySelectorAll(".message-render-row"),
+          ].find((candidate) => candidate.textContent?.includes(marker));
+          return [
+            ...(row?.querySelectorAll("[data-glossary-term]") ?? []),
+          ].some(
+            (term) =>
+              (term.getAttribute("data-tooltip") ||
+                term.getAttribute("title")) === title,
+          );
+        },
+        { marker: target.marker, title: EXPECTED_GLOSSARY_TITLE },
+        { timeout: timeoutMs },
+      );
+    } catch (error) {
+      const diagnosis = await page.evaluate((marker) => {
+        const row = [...document.querySelectorAll(".message-render-row")].find(
+          (candidate) => candidate.textContent?.includes(marker),
+        );
+        return {
+          enabled: localStorage.getItem("yep-anywhere-glossary-hints-enabled"),
+          rowGlossaryTitles: [
+            ...(row?.querySelectorAll("[data-glossary-term]") ?? []),
+          ].map((term) => ({
+            themed: term.getAttribute("data-tooltip"),
+            title: term.getAttribute("title"),
+          })),
+          rowText: row?.textContent?.slice(0, 500) ?? null,
+        };
+      }, target.marker);
+      throw new Error(
+        `glossary final display missing: ${JSON.stringify(diagnosis)}`,
+        { cause: error },
+      );
+    }
+    milestones.glossaryHighlightMs = performance.now() - started;
+    browserTiming.glossaryHighlightAtMs = await page.evaluate(() =>
+      performance.now(),
+    );
+  }
+  if (projectPathsSupported) {
+    await page.waitForFunction(
+      ({ expectedPaths, marker }) => {
+        const row = [...document.querySelectorAll(".message-render-row")].find(
+          (candidate) => candidate.textContent?.includes(marker),
+        );
+        if (!row) return false;
+        const paths = [
+          ...row.querySelectorAll('a[data-ya-resource="local-file"]'),
+        ].map((anchor) => anchor.getAttribute("data-ya-path") ?? "");
+        return expectedPaths.every((expected) =>
+          paths.some(
+            (actual) => actual === expected || actual.endsWith(`/${expected}`),
+          ),
+        );
+      },
+      { expectedPaths: EXPECTED_PROJECT_PATHS, marker: target.marker },
+      { timeout: timeoutMs },
+    );
+    milestones.projectPathHighlightMs = performance.now() - started;
+    browserTiming.projectPathHighlightAtMs = await page.evaluate(() =>
+      performance.now(),
+    );
+    const wronglyLinked = await page.evaluate(
+      ({ marker, negativePaths }) => {
+        const row = [...document.querySelectorAll(".message-render-row")].find(
+          (candidate) => candidate.textContent?.includes(marker),
+        );
+        if (!row) return negativePaths;
+        const linkedText = [
+          ...row.querySelectorAll('a[data-ya-resource="local-file"]'),
+        ].map((anchor) => anchor.textContent ?? "");
+        return negativePaths.filter((negative) =>
+          linkedText.some((text) => text.includes(negative)),
+        );
+      },
+      { marker: target.marker, negativePaths: NEGATIVE_PROJECT_PATHS },
+    );
+    if (wronglyLinked.length > 0) {
+      throw new Error(
+        `project-path negative controls were linked: ${wronglyLinked.join(", ")}`,
+      );
+    }
+  }
+  milestones.finalHighlightMs = Math.max(
+    milestones.readableTailMs,
+    milestones.glossaryHighlightMs ?? 0,
+    milestones.projectPathHighlightMs ?? 0,
+  );
+  browserTiming.finalDisplayAtMs =
+    browserTiming.projectPathHighlightAtMs ??
+    browserTiming.glossaryHighlightAtMs ??
+    browserTiming.readableTailAtMs;
+  return milestones;
 }
 
 async function navigateSpa(page, url) {
@@ -757,10 +1091,600 @@ async function navigateSpa(page, url) {
   }, url);
 }
 
+async function navigateProfiledSpa(page, url) {
+  await page.evaluate((nextUrl) => {
+    window.__yaPerfMarks = [];
+    window.__yaPerfNavigationStartMs = performance.now();
+    performance.clearResourceTimings();
+    history.pushState(null, "", nextUrl);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, url);
+}
+
+function phaseDuration(start, end) {
+  if (typeof start !== "number" || typeof end !== "number" || end < start) {
+    return null;
+  }
+  return round(end - start);
+}
+
+function sumAvailablePhases(phases) {
+  const values = Object.values(phases);
+  return values.every((value) => typeof value === "number")
+    ? round(values.reduce((sum, value) => sum + value, 0))
+    : null;
+}
+
+async function collectClientNavigationProfile(
+  page,
+  target,
+  milestones,
+  timeoutMs,
+) {
+  const expectedPath =
+    `/api/projects/${encodeURIComponent(target.detail.projectId)}` +
+    `/sessions/${encodeURIComponent(target.detail.sessionId)}`;
+  try {
+    await page.waitForFunction(
+      (path) =>
+        performance
+          .getEntriesByType("resource")
+          .some((entry) => new URL(entry.name).pathname === path),
+      expectedPath,
+      { timeout: timeoutMs },
+    );
+  } catch (error) {
+    const diagnosis = await page.evaluate(() => ({
+      marks: window.__yaPerfMarks ?? [],
+      resources: performance
+        .getEntriesByType("resource")
+        .map((entry) => entry.name),
+    }));
+    throw new Error(
+      `session detail Resource Timing missing for ${expectedPath}: ${JSON.stringify(diagnosis)}`,
+      { cause: error },
+    );
+  }
+  const observed = await page.evaluate(
+    ({ path, sessionId }) => {
+      const marks = window.__yaPerfMarks ?? [];
+      const resource = performance
+        .getEntriesByType("resource")
+        .find((entry) => new URL(entry.name).pathname === path);
+      return {
+        marks,
+        navigationStartAtMs: window.__yaPerfNavigationStartMs ?? 0,
+        resource: resource
+          ? {
+              responseEnd: resource.responseEnd,
+              responseStart: resource.responseStart,
+              startTime: resource.startTime,
+            }
+          : null,
+        sessionId,
+      };
+    },
+    { path: expectedPath, sessionId: target.detail.sessionId },
+  );
+  const browserTiming = milestones.browserTiming;
+  if (typeof browserTiming?.finalDisplayAtMs !== "number") {
+    return {
+      available: false,
+      reason: "final-display browser timestamp unavailable",
+    };
+  }
+  const start = observed.marks.find(
+    (mark) =>
+      mark.name === "session_initial_load_start" &&
+      mark.detail?.sessionId === observed.sessionId,
+  );
+  if (!start || !observed.resource) {
+    return {
+      available: false,
+      reason: !start
+        ? "session load marks unavailable"
+        : "session detail resource timing unavailable",
+    };
+  }
+  const marksAfterStart = observed.marks.filter(
+    (mark) => mark.atMs >= start.atMs,
+  );
+  const dataReady = marksAfterStart.find(
+    (mark) => mark.name === "session_initial_load_data_ready",
+  );
+  const stateQueued = marksAfterStart.find(
+    (mark) => mark.name === "session_initial_messages_state_queued",
+  );
+  const commit = stateQueued
+    ? marksAfterStart.find(
+        (mark) =>
+          mark.name === "message_list_commit_effect" &&
+          mark.atMs >= stateQueued.atMs,
+      )
+    : null;
+  if (!stateQueued || !commit) {
+    return {
+      available: false,
+      reason: !stateQueued
+        ? "session state-queued mark unavailable"
+        : "MessageList commit mark unavailable",
+    };
+  }
+  const restoredFromSnapshot = start.detail?.restoredFromSnapshot === true;
+  const resource = observed.resource;
+  const requestPhases = {
+    loadStartToRequestStartMs: phaseDuration(start.atMs, resource.startTime),
+    requestToResponseStartMs: phaseDuration(
+      resource.startTime,
+      resource.responseStart,
+    ),
+    responseTransferMs: phaseDuration(
+      resource.responseStart,
+      resource.responseEnd,
+    ),
+    responseEndToDataReadyMs: phaseDuration(
+      resource.responseEnd,
+      dataReady?.atMs,
+    ),
+    dataReadyToStateQueuedMs: phaseDuration(dataReady?.atMs, stateQueued.atMs),
+  };
+  const finalDisplayPhases = {
+    commitToReadableTailMs: phaseDuration(
+      commit.atMs,
+      browserTiming.readableTailAtMs,
+    ),
+    ...(typeof browserTiming.glossaryHighlightAtMs === "number"
+      ? {
+          readableTailToGlossaryHighlightMs: phaseDuration(
+            browserTiming.readableTailAtMs,
+            browserTiming.glossaryHighlightAtMs,
+          ),
+        }
+      : {}),
+    ...(typeof browserTiming.projectPathHighlightAtMs === "number"
+      ? {
+          [typeof browserTiming.glossaryHighlightAtMs === "number"
+            ? "glossaryToProjectPathHighlightMs"
+            : "readableTailToProjectPathHighlightMs"]: phaseDuration(
+            browserTiming.glossaryHighlightAtMs ??
+              browserTiming.readableTailAtMs,
+            browserTiming.projectPathHighlightAtMs,
+          ),
+        }
+      : {}),
+  };
+  const revealPhases = {
+    navigationToLoadStartMs: phaseDuration(
+      observed.navigationStartAtMs,
+      start.atMs,
+    ),
+    ...(restoredFromSnapshot
+      ? {
+          loadStartToStateQueuedMs: phaseDuration(start.atMs, stateQueued.atMs),
+        }
+      : requestPhases),
+    stateQueuedToCommitMs: phaseDuration(stateQueued.atMs, commit.atMs),
+    ...finalDisplayPhases,
+  };
+  const preprocessEnd = marksAfterStart
+    .filter(
+      (mark) =>
+        mark.name === "message_list_preprocess_end" &&
+        mark.atMs >= stateQueued.atMs &&
+        mark.atMs <= commit.atMs,
+    )
+    .at(-1);
+  const groupEnd = marksAfterStart
+    .filter(
+      (mark) =>
+        mark.name === "message_list_group_end" &&
+        mark.atMs >= stateQueued.atMs &&
+        mark.atMs <= commit.atMs,
+    )
+    .at(-1);
+  const preprocessMs =
+    typeof preprocessEnd?.detail?.durationMs === "number"
+      ? round(preprocessEnd.detail.durationMs)
+      : null;
+  const groupMs =
+    typeof groupEnd?.detail?.durationMs === "number"
+      ? round(groupEnd.detail.durationMs)
+      : null;
+  const queuedToCommitMs = revealPhases.stateQueuedToCommitMs;
+  const renderOtherMs =
+    typeof queuedToCommitMs === "number" &&
+    typeof preprocessMs === "number" &&
+    typeof groupMs === "number"
+      ? round(Math.max(0, queuedToCommitMs - preprocessMs - groupMs))
+      : null;
+  const phaseTotalMs = sumAvailablePhases(revealPhases);
+  const navigationToFinalDisplayMs = phaseDuration(
+    observed.navigationStartAtMs,
+    browserTiming.finalDisplayAtMs,
+  );
+  return {
+    available: phaseTotalMs !== null,
+    branch: restoredFromSnapshot
+      ? "warm-cache-reveal-with-overlapping-refresh"
+      : "network-before-reveal",
+    coverage:
+      phaseTotalMs !== null && navigationToFinalDisplayMs > 0
+        ? {
+            coveredMs: phaseTotalMs,
+            fraction: round(phaseTotalMs / navigationToFinalDisplayMs),
+            totalMs: navigationToFinalDisplayMs,
+          }
+        : null,
+    messageListWithinQueuedToCommit: {
+      groupMs,
+      preprocessMs,
+      renderOtherMs,
+    },
+    nonOverlappingPhases: revealPhases,
+    refresh: {
+      completedAfterFinalDisplay:
+        resource.responseEnd > browserTiming.finalDisplayAtMs,
+      phases: requestPhases,
+      responseEndRelativeToFinalDisplayMs: round(
+        resource.responseEnd - browserTiming.finalDisplayAtMs,
+      ),
+    },
+  };
+}
+
+async function prepareClientAppendProfile(page) {
+  await page.evaluate(() => {
+    window.__yaPerfAppendStartMs = performance.now();
+    window.__yaPerfMarks = [];
+  });
+}
+
+async function collectClientAppendProfile(page, milestones) {
+  const observed = await page.evaluate(() => ({
+    appendStartAtMs: window.__yaPerfAppendStartMs,
+    marks: window.__yaPerfMarks ?? [],
+  }));
+  const browserTiming = milestones.browserTiming;
+  const preprocessStart = observed.marks.find(
+    (mark) => mark.name === "message_list_preprocess_start",
+  );
+  const preprocessEnd = observed.marks.find(
+    (mark) =>
+      mark.name === "message_list_preprocess_end" &&
+      mark.atMs >= (preprocessStart?.atMs ?? Number.POSITIVE_INFINITY),
+  );
+  const groupEnd = observed.marks.find(
+    (mark) =>
+      mark.name === "message_list_group_end" &&
+      mark.atMs >= (preprocessEnd?.atMs ?? Number.POSITIVE_INFINITY),
+  );
+  const commit = observed.marks.find(
+    (mark) =>
+      mark.name === "message_list_commit_effect" &&
+      mark.atMs >= (groupEnd?.atMs ?? Number.POSITIVE_INFINITY),
+  );
+  if (
+    typeof observed.appendStartAtMs !== "number" ||
+    !preprocessStart ||
+    !preprocessEnd ||
+    !groupEnd ||
+    !commit ||
+    typeof browserTiming?.finalDisplayAtMs !== "number"
+  ) {
+    return {
+      available: false,
+      reason: "append MessageList phase marks unavailable",
+    };
+  }
+  const groupDurationMs =
+    typeof groupEnd.detail?.durationMs === "number"
+      ? groupEnd.detail.durationMs
+      : 0;
+  const groupStartAtMs = groupEnd.atMs - groupDurationMs;
+  const phases = {
+    appendStartToPreprocessMs: phaseDuration(
+      observed.appendStartAtMs,
+      preprocessStart.atMs,
+    ),
+    preprocessMs: phaseDuration(preprocessStart.atMs, preprocessEnd.atMs),
+    preprocessToGroupMs: phaseDuration(preprocessEnd.atMs, groupStartAtMs),
+    groupMs: phaseDuration(groupStartAtMs, groupEnd.atMs),
+    groupToCommitMs: phaseDuration(groupEnd.atMs, commit.atMs),
+    commitToReadableTailMs: phaseDuration(
+      commit.atMs,
+      browserTiming.readableTailAtMs,
+    ),
+    ...(typeof browserTiming.glossaryHighlightAtMs === "number"
+      ? {
+          readableTailToGlossaryHighlightMs: phaseDuration(
+            browserTiming.readableTailAtMs,
+            browserTiming.glossaryHighlightAtMs,
+          ),
+        }
+      : {}),
+    ...(typeof browserTiming.projectPathHighlightAtMs === "number"
+      ? {
+          [typeof browserTiming.glossaryHighlightAtMs === "number"
+            ? "glossaryToProjectPathHighlightMs"
+            : "readableTailToProjectPathHighlightMs"]: phaseDuration(
+            browserTiming.glossaryHighlightAtMs ??
+              browserTiming.readableTailAtMs,
+            browserTiming.projectPathHighlightAtMs,
+          ),
+        }
+      : {}),
+  };
+  const coveredMs = sumAvailablePhases(phases);
+  const totalMs = phaseDuration(
+    observed.appendStartAtMs,
+    browserTiming.finalDisplayAtMs,
+  );
+  return {
+    available: coveredMs !== null,
+    coverage:
+      coveredMs !== null && totalMs > 0
+        ? { coveredMs, fraction: round(coveredMs / totalMs), totalMs }
+        : null,
+    nonOverlappingPhases: phases,
+  };
+}
+
+function summarizeClientAppendProfiles(profiles) {
+  const available = profiles.filter((profile) => profile.available);
+  const names = [
+    ...new Set(
+      available.flatMap((profile) =>
+        Object.keys(profile.nonOverlappingPhases ?? {}),
+      ),
+    ),
+  ];
+  return {
+    availableCount: available.length,
+    coverage: {
+      minimumFraction:
+        available.length > 0
+          ? round(
+              Math.min(
+                ...available.map((profile) => profile.coverage?.fraction ?? 0),
+              ),
+            )
+          : null,
+      medianFraction:
+        available.length > 0
+          ? round(
+              percentile(
+                available.map((profile) => profile.coverage?.fraction ?? 0),
+                0.5,
+              ),
+            )
+          : null,
+    },
+    nonOverlappingPhases: Object.fromEntries(
+      names.map((name) => [
+        name,
+        summarize(
+          available
+            .map((profile) => profile.nonOverlappingPhases[name])
+            .filter((value) => typeof value === "number"),
+        ),
+      ]),
+    ),
+    sampleCount: profiles.length,
+    unavailableCount: profiles.length - available.length,
+  };
+}
+
+function summarizeClientNavigationProfiles(profiles) {
+  const available = profiles.filter((profile) => profile.available);
+  const phaseSummary = (path) =>
+    summarize(
+      available
+        .map((profile) => getMetric(profile, path))
+        .filter((value) => typeof value === "number"),
+    );
+  const branches = Object.fromEntries(
+    [...new Set(available.map((profile) => profile.branch))].map((branch) => [
+      branch,
+      available.filter((profile) => profile.branch === branch).length,
+    ]),
+  );
+  const phaseNames = [
+    ...new Set(
+      available.flatMap((profile) =>
+        Object.keys(profile.nonOverlappingPhases ?? {}),
+      ),
+    ),
+  ];
+  const refreshPhaseNames = [
+    ...new Set(
+      available.flatMap((profile) =>
+        Object.keys(profile.refresh?.phases ?? {}),
+      ),
+    ),
+  ];
+  return {
+    availableCount: available.length,
+    branches,
+    coverage: {
+      minimumFraction:
+        available.length > 0
+          ? round(
+              Math.min(
+                ...available.map((profile) => profile.coverage?.fraction ?? 0),
+              ),
+            )
+          : null,
+      medianFraction:
+        available.length > 0
+          ? round(
+              percentile(
+                available.map((profile) => profile.coverage?.fraction ?? 0),
+                0.5,
+              ),
+            )
+          : null,
+    },
+    messageListWithinQueuedToCommit: Object.fromEntries(
+      ["groupMs", "preprocessMs", "renderOtherMs"].map((name) => [
+        name,
+        phaseSummary(`messageListWithinQueuedToCommit.${name}`),
+      ]),
+    ),
+    nonOverlappingPhases: Object.fromEntries(
+      phaseNames.map((name) => [
+        name,
+        phaseSummary(`nonOverlappingPhases.${name}`),
+      ]),
+    ),
+    refresh: {
+      completedAfterFinalDisplayCount: available.filter(
+        (profile) => profile.refresh.completedAfterFinalDisplay,
+      ).length,
+      phases: Object.fromEntries(
+        refreshPhaseNames.map((name) => [
+          name,
+          phaseSummary(`refresh.phases.${name}`),
+        ]),
+      ),
+      responseEndRelativeToFinalDisplayMs: phaseSummary(
+        "refresh.responseEndRelativeToFinalDisplayMs",
+      ),
+    },
+    sampleCount: profiles.length,
+    unavailableReasons: Object.fromEntries(
+      [
+        ...new Set(
+          profiles
+            .filter((profile) => !profile.available)
+            .map((profile) => profile.reason),
+        ),
+      ].map((reason) => [
+        reason,
+        profiles.filter((profile) => profile.reason === reason).length,
+      ]),
+    ),
+  };
+}
+
+function waitWithTimeout(promise, timeoutMs, description) {
+  return Promise.race([
+    promise,
+    wait(timeoutMs).then(() => {
+      throw new Error(`${description} timed out after ${timeoutMs} ms`);
+    }),
+  ]);
+}
+
+async function runCacheRefreshProof({
+  cacheBudgetMiB,
+  config,
+  page,
+  target,
+  glossarySupported,
+  projectPathsSupported,
+}) {
+  const expectedPath =
+    `/api/projects/${encodeURIComponent(target.detail.projectId)}` +
+    `/sessions/${encodeURIComponent(target.detail.sessionId)}`;
+  let interceptedUrl = null;
+  let releaseRequest;
+  let requestSeen;
+  let requestContinued;
+  const releasePromise = new Promise((resolve) => {
+    releaseRequest = resolve;
+  });
+  const requestSeenPromise = new Promise((resolve) => {
+    requestSeen = resolve;
+  });
+  const requestContinuedPromise = new Promise((resolve) => {
+    requestContinued = resolve;
+  });
+  const routePattern = "**/api/projects/**/sessions/**";
+  const handler = async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== expectedPath || interceptedUrl) {
+      await route.continue();
+      return;
+    }
+    interceptedUrl = url;
+    requestSeen();
+    await releasePromise;
+    await route.continue();
+    requestContinued();
+  };
+  await page.route(routePattern, handler);
+  try {
+    const started = performance.now();
+    let milestones = null;
+    let visibleBeforeRelease = false;
+    await navigateSpa(page, target.url);
+    await waitWithTimeout(
+      requestSeenPromise,
+      config.fixture.cacheProofTimeoutMs,
+      "cache proof detail request",
+    );
+    if (cacheBudgetMiB > 0) {
+      milestones = await waitForFinalDisplay(page, target, {
+        glossarySupported,
+        projectPathsSupported,
+        started,
+        timeoutMs: config.fixture.cacheProofTimeoutMs,
+      });
+      visibleBeforeRelease = true;
+    } else {
+      await wait(config.fixture.cacheDisabledObservationMs);
+      visibleBeforeRelease = await page.evaluate(
+        (marker) => document.body?.innerText.includes(marker) ?? false,
+        target.marker,
+      );
+      if (visibleBeforeRelease) {
+        throw new Error(
+          "cache-disabled revisit rendered transcript before refresh release",
+        );
+      }
+    }
+    releaseRequest();
+    await waitWithTimeout(
+      requestContinuedPromise,
+      config.server.requestTimeoutMs,
+      "cache proof request release",
+    );
+    if (!milestones) {
+      milestones = await waitForFinalDisplay(page, target, {
+        glossarySupported,
+        projectPathsSupported,
+        started,
+        timeoutMs: config.server.requestTimeoutMs,
+      });
+    }
+    const requestHadCursor = interceptedUrl.searchParams.has("afterMessageId");
+    if (cacheBudgetMiB > 0 && !requestHadCursor) {
+      throw new Error(
+        "cache-enabled revisit made a cursorless refresh request",
+      );
+    }
+    if (cacheBudgetMiB === 0 && requestHadCursor) {
+      throw new Error(
+        "cache-disabled revisit unexpectedly sent a cache cursor",
+      );
+    }
+    return {
+      milestones,
+      readableBeforeRefresh: visibleBeforeRelease,
+      requestHadCursor,
+      requestWasHeld: true,
+    };
+  } finally {
+    releaseRequest();
+    await page.unroute(routePattern, handler);
+  }
+}
+
 async function measureBrowserMode({
   checkout,
   config,
   details,
+  generalizedProjectPathsSupported,
   glossarySupported,
   repetition,
   scenario,
@@ -781,6 +1705,27 @@ async function measureBrowserMode({
   );
   const modes = [];
   const livePages = [];
+  const detailsByProjectMap = new Map();
+  for (const detail of details) {
+    const projectDetails = detailsByProjectMap.get(detail.projectId) ?? [];
+    projectDetails.push(detail);
+    detailsByProjectMap.set(detail.projectId, projectDetails);
+  }
+  const detailsByProject = [...detailsByProjectMap.values()];
+  const workingSets = Array.from(
+    { length: scenario.concurrentClients },
+    (_, pageIndex) => {
+      const projectDetails =
+        detailsByProject[pageIndex % detailsByProject.length];
+      return Array.from(
+        { length: config.fixture.workingSetSessions },
+        (_, offset) =>
+          projectDetails[(pageIndex + offset) % projectDetails.length],
+      ).map((detail) =>
+        sessionBrowserTarget(server, detail, scenario.initialTurns - 1),
+      );
+    },
+  );
 
   try {
     for (const cacheBudgetMiB of orderedBudgets) {
@@ -803,6 +1748,18 @@ async function measureBrowserMode({
             JSON.stringify({ remoteLogCollectionEnabled: true }),
           );
           window.__yaPerfTelemetry = [];
+          window.__yaPerfMarks = [];
+          window.__yaPerfNavigationStartMs = 0;
+          performance.setResourceTimingBufferSize(5000);
+          window.__YA_RELOAD_PERF_PROBE__ = {
+            mark(name, detail) {
+              window.__yaPerfMarks.push({
+                atMs: performance.now(),
+                detail,
+                name,
+              });
+            },
+          };
           const originalFetch = window.fetch.bind(window);
           window.fetch = async (input, init) => {
             const url = typeof input === "string" ? input : input.url;
@@ -833,86 +1790,120 @@ async function measureBrowserMode({
       );
 
       const pages = [];
-      const coldTailMs = [];
-      const warmTailMs = [];
+      const coldMilestones = [];
+      const coldProfiles = [];
+      const warmMilestones = [];
+      const warmProfiles = [];
       const warmCacheTelemetry = [];
+      const cacheProofs = [];
+      const appendTargets = [];
       for (let index = 0; index < scenario.concurrentClients; index += 1) {
         pages.push(await context.newPage());
       }
 
       await Promise.all(
         pages.map(async (page, index) => {
-          const detail = details[index % details.length];
-          const marker = `[${detail.sessionId}:assistant:${scenario.initialTurns - 1}]`;
-          const sessionUrl =
-            `${server.baseUrl}/projects/${encodeURIComponent(detail.projectId)}` +
-            `/sessions/${encodeURIComponent(detail.sessionId)}`;
-          const started = performance.now();
-          await page.goto(sessionUrl, { waitUntil: "domcontentloaded" });
-          await waitForReadableTail(
-            page,
-            marker,
-            config.server.requestTimeoutMs,
-          );
-          const readableTailMs = performance.now() - started;
-          if (glossarySupported) {
-            await page.waitForFunction(
-              () =>
-                document.querySelectorAll("[data-glossary-term]").length > 0,
-              undefined,
-              { timeout: config.server.requestTimeoutMs },
+          const workingSet = workingSets[index];
+          for (
+            let targetIndex = 0;
+            targetIndex < workingSet.length;
+            targetIndex += 1
+          ) {
+            const target = workingSet[targetIndex];
+            const started = performance.now();
+            if (targetIndex === 0) {
+              await page.goto(target.url, { waitUntil: "domcontentloaded" });
+            } else {
+              await navigateProfiledSpa(page, target.url);
+            }
+            const milestones = await waitForFinalDisplay(page, target, {
+              glossarySupported,
+              projectPathsSupported: generalizedProjectPathsSupported,
+              started,
+              timeoutMs: config.server.requestTimeoutMs,
+            });
+            coldMilestones.push(milestones);
+            coldProfiles.push(
+              await collectClientNavigationProfile(
+                page,
+                target,
+                milestones,
+                config.server.requestTimeoutMs,
+              ),
             );
           }
-          coldTailMs.push(readableTailMs);
-        }),
-      );
 
-      await Promise.all(
-        pages.map(async (page, index) => {
-          const detail = details[index % details.length];
-          const marker = `[${detail.sessionId}:assistant:${scenario.initialTurns - 1}]`;
-          const sessionUrl =
-            `${server.baseUrl}/projects/${encodeURIComponent(detail.projectId)}` +
-            `/sessions/${encodeURIComponent(detail.sessionId)}`;
           await navigateSpa(page, `${server.baseUrl}/projects`);
           await page.waitForFunction(
             () => !document.querySelector(".message-list"),
             undefined,
             { timeout: config.server.requestTimeoutMs },
           );
-          warmCacheTelemetry.push(await clientTelemetry(page));
-          const started = performance.now();
-          await navigateSpa(page, sessionUrl);
-          await waitForReadableTail(
-            page,
-            marker,
-            config.server.requestTimeoutMs,
+          const cacheTelemetry = await clientTelemetry(page);
+          warmCacheTelemetry.push(cacheTelemetry);
+          const expectedWarmEntries =
+            cacheBudgetMiB === 0 ? 0 : workingSet.length;
+          assertCount(
+            cacheTelemetry.transcriptMemory.warmCacheEntryCount,
+            expectedWarmEntries,
+            `${cacheBudgetMiB} MiB browser working-set cache entries`,
           );
-          warmTailMs.push(performance.now() - started);
+          if (cacheBudgetMiB === 0) {
+            assertCount(
+              cacheTelemetry.transcriptMemory.warmCacheBytes,
+              0,
+              "disabled browser transcript-cache warm bytes",
+            );
+          } else {
+            if (cacheTelemetry.transcriptMemory.warmCacheBytes < 1) {
+              throw new Error(
+                `browser transcript cache ${cacheBudgetMiB} MiB retained no bytes`,
+              );
+            }
+            if (
+              cacheTelemetry.transcriptMemory.warmCacheBytes >
+              cacheBudgetMiB * 1024 * 1024
+            ) {
+              throw new Error(
+                `browser transcript cache exceeded ${cacheBudgetMiB} MiB budget`,
+              );
+            }
+          }
+
+          for (const target of workingSet) {
+            const started = performance.now();
+            await navigateProfiledSpa(page, target.url);
+            const milestones = await waitForFinalDisplay(page, target, {
+              glossarySupported,
+              projectPathsSupported: generalizedProjectPathsSupported,
+              started,
+              timeoutMs: config.server.requestTimeoutMs,
+            });
+            warmMilestones.push(milestones);
+            warmProfiles.push(
+              await collectClientNavigationProfile(
+                page,
+                target,
+                milestones,
+                config.server.requestTimeoutMs,
+              ),
+            );
+          }
+
+          const proofTarget = workingSet[0];
+          cacheProofs.push(
+            await runCacheRefreshProof({
+              cacheBudgetMiB,
+              config,
+              glossarySupported,
+              page,
+              projectPathsSupported: generalizedProjectPathsSupported,
+              target: proofTarget,
+            }),
+          );
+          appendTargets[index] = proofTarget;
         }),
       );
-
-      for (const entry of warmCacheTelemetry) {
-        if (cacheBudgetMiB === 0) {
-          assertCount(
-            entry.transcriptMemory.warmCacheEntryCount,
-            0,
-            "disabled browser transcript-cache warm entries",
-          );
-          assertCount(
-            entry.transcriptMemory.warmCacheBytes,
-            0,
-            "disabled browser transcript-cache warm bytes",
-          );
-        } else if (
-          entry.transcriptMemory.warmCacheEntryCount < 1 ||
-          entry.transcriptMemory.warmCacheBytes < 1
-        ) {
-          throw new Error(
-            `browser transcript cache ${cacheBudgetMiB} MiB retained no warm transcript`,
-          );
-        }
-      }
 
       const telemetryDeadline = performance.now() + 17_000;
       let yaTelemetry = [];
@@ -930,47 +1921,127 @@ async function measureBrowserMode({
         await wait(250);
       }
       const directTelemetry = await Promise.all(pages.map(clientTelemetry));
+      const milestoneSummary = (samples, field) =>
+        summarize(
+          samples
+            .map((sample) => sample[field])
+            .filter((value) => typeof value === "number"),
+        );
       modes.push({
         cacheBudgetMiB,
         correctness: {
+          cacheProofs,
           glossaryHintsRendered: glossarySupported,
+          projectPathsRendered: generalizedProjectPathsSupported,
+          workingSetSessions: config.fixture.workingSetSessions,
         },
         latency: {
-          coldTail: summarize(coldTailMs),
-          warmTail: summarize(warmTailMs),
+          coldTail: milestoneSummary(coldMilestones, "readableTailMs"),
+          coldGlossaryHighlight: milestoneSummary(
+            coldMilestones,
+            "glossaryHighlightMs",
+          ),
+          coldProjectPathHighlight: milestoneSummary(
+            coldMilestones,
+            "projectPathHighlightMs",
+          ),
+          coldFinalHighlight: milestoneSummary(
+            coldMilestones,
+            "finalHighlightMs",
+          ),
+          warmTail: milestoneSummary(warmMilestones, "readableTailMs"),
+          warmGlossaryHighlight: milestoneSummary(
+            warmMilestones,
+            "glossaryHighlightMs",
+          ),
+          warmProjectPathHighlight: milestoneSummary(
+            warmMilestones,
+            "projectPathHighlightMs",
+          ),
+          warmFinalHighlight: milestoneSummary(
+            warmMilestones,
+            "finalHighlightMs",
+          ),
+        },
+        profiles: {
+          coldNavigation: summarizeClientNavigationProfiles(coldProfiles),
+          warmNavigation: summarizeClientNavigationProfiles(warmProfiles),
         },
         telemetry: directTelemetry,
         warmCacheTelemetry,
         yaTelemetry,
-        liveTailMs: [],
+        liveMilestones: [],
+        liveProfiles: [],
       });
-      livePages.push({ context, mode: modes.at(-1), pages });
+      livePages.push({
+        appendTargets,
+        context,
+        mode: modes.at(-1),
+        pages,
+      });
     }
 
     return {
       modes,
       livePages,
+      async prepareAppend() {
+        await Promise.all(
+          livePages.flatMap(({ pages }) =>
+            pages.map((page) => prepareClientAppendProfile(page)),
+          ),
+        );
+      },
       async observeAppend() {
         const started = performance.now();
         await Promise.all(
-          livePages.flatMap(({ mode, pages }) =>
+          livePages.flatMap(({ appendTargets, mode, pages }) =>
             pages.map(async (page, index) => {
-              const detail = details[index % details.length];
-              const marker =
-                `[${detail.sessionId}:assistant:` +
-                `${scenario.initialTurns + scenario.newTurns - 1}]`;
-              await waitForReadableTail(
-                page,
-                marker,
-                config.server.requestTimeoutMs,
+              const target = sessionBrowserTarget(
+                server,
+                appendTargets[index].detail,
+                scenario.initialTurns + scenario.newTurns - 1,
               );
-              mode.liveTailMs.push(performance.now() - started);
+              const milestones = await waitForFinalDisplay(page, target, {
+                glossarySupported,
+                projectPathsSupported: generalizedProjectPathsSupported,
+                started,
+                timeoutMs: config.server.requestTimeoutMs,
+              });
+              mode.liveMilestones.push(milestones);
+              mode.liveProfiles.push(
+                await collectClientAppendProfile(page, milestones),
+              );
             }),
           ),
         );
+        const milestoneSummary = (samples, field) =>
+          summarize(
+            samples
+              .map((sample) => sample[field])
+              .filter((value) => typeof value === "number"),
+          );
         for (const mode of modes) {
-          mode.latency.appendedLiveTail = summarize(mode.liveTailMs);
-          delete mode.liveTailMs;
+          mode.latency.appendedLiveTail = milestoneSummary(
+            mode.liveMilestones,
+            "readableTailMs",
+          );
+          mode.latency.appendedLiveGlossaryHighlight = milestoneSummary(
+            mode.liveMilestones,
+            "glossaryHighlightMs",
+          );
+          mode.latency.appendedLiveProjectPathHighlight = milestoneSummary(
+            mode.liveMilestones,
+            "projectPathHighlightMs",
+          );
+          mode.latency.appendedLiveFinalHighlight = milestoneSummary(
+            mode.liveMilestones,
+            "finalHighlightMs",
+          );
+          mode.profiles.append = summarizeClientAppendProfiles(
+            mode.liveProfiles,
+          );
+          delete mode.liveMilestones;
+          delete mode.liveProfiles;
         }
       },
       async close() {
@@ -989,6 +2060,9 @@ async function measureRepetition({
   checkout,
   config,
   driver,
+  executionRevision,
+  fixtureConfig,
+  generalizedProjectPathsSupported,
   label,
   repetition,
   scenario,
@@ -997,7 +2071,7 @@ async function measureRepetition({
 }) {
   const repetitionRoot = path.join(workRoot, `rep-${repetition}`);
   await mkdir(repetitionRoot, { recursive: true });
-  const fixture = await createFixture(repetitionRoot, scenario);
+  const fixture = await createFixture(repetitionRoot, scenario, fixtureConfig);
   const port = await findPortPair(config.server.portBase + repetition * 3);
   const server = await startServer({
     checkout,
@@ -1169,6 +2243,7 @@ async function measureRepetition({
         checkout,
         config,
         details,
+        generalizedProjectPathsSupported,
         glossarySupported,
         repetition,
         scenario,
@@ -1228,6 +2303,7 @@ async function measureRepetition({
       config.server.requestTimeoutMs,
     );
 
+    await browserMeasurement?.prepareAppend();
     const browserAppendObservation = browserMeasurement?.observeAppend();
     await appendTurns(fixture, scenario);
     await browserAppendObservation;
@@ -1273,8 +2349,12 @@ async function measureRepetition({
       expectedSessions * (scenario.initialTurns + scenario.newTurns);
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       suiteVersion: SUITE_VERSION,
+      identity: {
+        executionRevision,
+        fixtureRevision: fixture.fixtureRevision,
+      },
       label,
       repetition,
       scenario: scenarioName,
@@ -1298,7 +2378,9 @@ async function measureRepetition({
         appendedMessagesPerSession: appendedMessages,
         glossarySupported,
         glossaryArtifacts: glossaryBatch.bodies.length,
+        generalizedProjectPathsSupported,
         projectFileLinkNeedle: "README.md",
+        fixtureRevision: fixture.fixtureRevision,
       },
       latency: {
         version: summarize([versionResponse.ms]),
@@ -1320,6 +2402,13 @@ async function measureRepetition({
         detailAppendedHerdTailText: summarize(
           appendedDetails.readableTextLatencies,
         ),
+      },
+      profiles: {
+        serverDetail: {
+          cold: summarizeRequestProfiles(coldDetails.profiles),
+          warm: summarizeRequestProfiles(warmDetails.profiles),
+          appended: summarizeRequestProfiles(appendedDetails.profiles),
+        },
       },
       browser: browserMeasurement
         ? {
@@ -1399,17 +2488,51 @@ function aggregateRuns(runs) {
     "memory.retainedHeapKiBPerSession",
     "memory.retainedHeapKiBPerTurn",
     "memory.retainedHeapKiBPerClient",
+    "memory.settled.knownCaches.claudeTranscript.retainedSourceBytes",
+    "memory.settled.knownCaches.claudeTranscript.retainedFiles",
+    "memory.settled.knownCaches.projectPaths.retainedBytes",
+    "memory.settled.knownCaches.projectPaths.projects",
+    "memory.settled.knownCaches.projectPaths.watchers",
+    "memory.settled.residuals.heapUsedLessKnownCacheSourceMiB",
+    "memory.settled.v8.heapSpaces.old_space.usedBytes",
+    "memory.settled.v8.heapSpaces.large_object_space.usedBytes",
+    ...["cold", "warm", "appended"].flatMap((kind) => [
+      `profiles.serverDetail.${kind}.server.project.p95Ms`,
+      `profiles.serverDetail.${kind}.server.read.p95Ms`,
+      `profiles.serverDetail.${kind}.server.normalize.p95Ms`,
+      `profiles.serverDetail.${kind}.server.route.p95Ms`,
+      `profiles.serverDetail.${kind}.server.augment.p95Ms`,
+      `profiles.serverDetail.${kind}.server.total.p95Ms`,
+      `profiles.serverDetail.${kind}.server.residual.p95Ms`,
+      `profiles.serverDetail.${kind}.frameworkSerializeLoopback.p95Ms`,
+      `profiles.serverDetail.${kind}.bodyTransfer.p95Ms`,
+      `profiles.serverDetail.${kind}.jsonParse.p95Ms`,
+    ]),
   ];
   return Object.fromEntries(
-    paths.map((metricPath) => [
-      metricPath,
-      round(
-        percentile(
-          runs.map((run) => getMetric(run, metricPath)),
-          0.5,
-        ),
-      ),
-    ]),
+    paths.flatMap((metricPath) => {
+      const profileKind = metricPath.match(
+        /^profiles\.serverDetail\.(cold|warm|appended)\./,
+      )?.[1];
+      if (
+        profileKind &&
+        runs.every(
+          (run) =>
+            getMetric(
+              run,
+              `profiles.serverDetail.${profileKind}.availableCount`,
+            ) === 0,
+        )
+      ) {
+        return [];
+      }
+      const values = runs
+        .map((run) => getMetric(run, metricPath))
+        .filter((value) => typeof value === "number" && Number.isFinite(value));
+      return values.length > 0
+        ? [[metricPath, round(percentile(values, 0.5))]]
+        : [];
+    }),
   );
 }
 
@@ -1433,9 +2556,33 @@ function aggregateBrowserRuns(runs) {
       }
       const pageTelemetry = modes.flatMap((mode) => mode.telemetry);
       const cacheTelemetry = modes.flatMap((mode) => mode.warmCacheTelemetry);
+      const clientProfileMetrics = {};
+      for (const kind of ["coldNavigation", "warmNavigation", "append"]) {
+        for (const group of [
+          "nonOverlappingPhases",
+          "messageListWithinQueuedToCommit",
+        ]) {
+          const names = [
+            ...new Set(
+              modes.flatMap((mode) =>
+                Object.keys(mode.profiles?.[kind]?.[group] ?? {}),
+              ),
+            ),
+          ];
+          for (const name of names) {
+            const values = modes
+              .map((mode) => mode.profiles?.[kind]?.[group]?.[name]?.p95Ms)
+              .filter((value) => typeof value === "number");
+            if (values.length === 0) continue;
+            clientProfileMetrics[`profiles.${kind}.${group}.${name}.p95Ms`] =
+              round(percentile(values, 0.5));
+          }
+        }
+      }
       return [
         String(cacheBudgetMiB),
         {
+          ...clientProfileMetrics,
           "latency.coldTail.p95Ms": round(
             percentile(
               modes.map((mode) => mode.latency.coldTail.p95Ms),
@@ -1454,9 +2601,39 @@ function aggregateBrowserRuns(runs) {
               0.5,
             ),
           ),
+          "latency.coldFinalHighlight.p95Ms": round(
+            percentile(
+              modes.map((mode) => mode.latency.coldFinalHighlight.p95Ms),
+              0.5,
+            ),
+          ),
+          "latency.warmFinalHighlight.p95Ms": round(
+            percentile(
+              modes.map((mode) => mode.latency.warmFinalHighlight.p95Ms),
+              0.5,
+            ),
+          ),
+          "latency.appendedLiveFinalHighlight.p95Ms": round(
+            percentile(
+              modes.map(
+                (mode) => mode.latency.appendedLiveFinalHighlight.p95Ms,
+              ),
+              0.5,
+            ),
+          ),
           "memory.maxUsedJSHeapMiB": round(
             Math.max(
               ...pageTelemetry.map((entry) => entry.memory?.usedJSHeapMiB ?? 0),
+            ),
+          ),
+          "memory.maxJSHeapLessTranscriptApproxMiB": round(
+            Math.max(
+              ...pageTelemetry.map((entry) =>
+                entry.memory
+                  ? entry.memory.usedJSHeapMiB -
+                    entry.transcriptMemory.totalBytes / (1024 * 1024)
+                  : 0,
+              ),
             ),
           ),
           "transcriptCache.maxWarmBytes": Math.max(
@@ -1468,6 +2645,18 @@ function aggregateBrowserRuns(runs) {
           "transcriptCache.maxWarmEntries": Math.max(
             ...cacheTelemetry.map(
               (entry) => entry.transcriptMemory.warmCacheEntryCount,
+            ),
+            0,
+          ),
+          "transcriptCache.maxLiveBytes": Math.max(
+            ...pageTelemetry.map(
+              (entry) => entry.transcriptMemory.liveRetainedBytes,
+            ),
+            0,
+          ),
+          "transcriptCache.maxLiveEntries": Math.max(
+            ...pageTelemetry.map(
+              (entry) => entry.transcriptMemory.liveRetainedEntryCount,
             ),
             0,
           ),
@@ -1529,6 +2718,10 @@ function evaluateRatchets(serverAggregate, browserAggregate, targets) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const suiteRoot = path.dirname(new URL(import.meta.url).pathname);
+  const suiteRepository = path.resolve(
+    options["fixture-repository"] ?? path.join(suiteRoot, "..", ".."),
+  );
   const checkout = path.resolve(options.checkout);
   const checkoutStats = await stat(checkout);
   if (!checkoutStats.isDirectory())
@@ -1539,6 +2732,30 @@ async function main() {
   const scenario = config.scenarios?.[options.scenario];
   if (!scenario) throw new Error(`Unknown scenario: ${options.scenario}`);
   validateScenario(scenario, options.scenario);
+  const fixtureConfig = {
+    ...config.fixture,
+    repository: suiteRepository,
+  };
+  if (!/^[0-9a-f]{40}$/.test(fixtureConfig.revision ?? "")) {
+    throw new Error("fixture.revision must be a full 40-character SHA");
+  }
+  requirePositiveInteger(
+    fixtureConfig.workingSetSessions,
+    "fixture.workingSetSessions",
+  );
+  requirePositiveInteger(
+    fixtureConfig.cacheProofTimeoutMs,
+    "fixture.cacheProofTimeoutMs",
+  );
+  requirePositiveInteger(
+    fixtureConfig.cacheDisabledObservationMs,
+    "fixture.cacheDisabledObservationMs",
+  );
+  if (fixtureConfig.workingSetSessions > scenario.sessionsPerProject) {
+    throw new Error(
+      "fixture.workingSetSessions must not exceed sessionsPerProject",
+    );
+  }
   const ratchets = await readJson(options.ratchets).catch((error) => {
     if (error.code === "ENOENT") return { schemaVersion: 1, scenarios: {} };
     throw error;
@@ -1547,10 +2764,19 @@ async function main() {
     throw new Error("Unsupported ratchet schemaVersion");
 
   const revision = await gitRevision(checkout);
+  const harnessRevision = await gitRevision(suiteRepository);
+  const harnessDirty =
+    (await runProcess("git", ["status", "--porcelain"], {
+      cwd: suiteRepository,
+    })) !== "";
+  const generalizedProjectPathsSupported = await gitIsAncestor(
+    checkout,
+    GENERALIZED_PROJECT_PATHS_BASE,
+    revision,
+  );
   const runName =
     `${options.label}-${options.driver}-${options.scenario}-` +
     revision.slice(0, 8);
-  const suiteRoot = path.dirname(new URL(import.meta.url).pathname);
   const workRoot = path.join(suiteRoot, "work", runName);
   await rm(workRoot, { recursive: true, force: true });
   await mkdir(workRoot, { recursive: true });
@@ -1573,6 +2799,9 @@ async function main() {
         checkout,
         config,
         driver: options.driver,
+        executionRevision: revision,
+        fixtureConfig,
+        generalizedProjectPathsSupported,
         label: options.label,
         repetition,
         scenario,
@@ -1597,9 +2826,15 @@ async function main() {
       ratchets.drivers?.[options.driver]?.scenarios?.[options.scenario],
     );
     const result = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       suiteVersion: SUITE_VERSION,
       driver: options.driver,
+      identity: {
+        executionRevision: revision,
+        fixtureRevision: fixtureConfig.revision,
+        harnessDirty,
+        harnessRevision,
+      },
       label: options.label,
       revision,
       scenario: options.scenario,

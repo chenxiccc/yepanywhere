@@ -3131,6 +3131,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const { messages: _messages, ...sessionMetadata } = session;
     const totalMs = performance.now() - requestStartMs;
+    const detailTimings = {
+      augment: roundedMs(augmentEndMs - sliceEndMs),
+      normalize: roundedMs(normalizeEndMs - readEndMs),
+      project: roundedMs(projectResolvedMs - requestStartMs),
+      read: roundedMs(readEndMs - projectResolvedMs),
+      route: roundedMs(sliceEndMs - normalizeEndMs),
+      total: roundedMs(totalMs),
+    };
+    c.header(
+      "Server-Timing",
+      Object.entries(detailTimings)
+        .map(([name, duration]) => `ya-${name};dur=${duration}`)
+        .join(", "),
+    );
     if (
       unboundedRequestDefaultedToCompactTail &&
       normalizedMessageCount >= LARGE_FULL_HISTORY_MESSAGE_THRESHOLD

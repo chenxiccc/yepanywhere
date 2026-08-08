@@ -55,6 +55,7 @@ import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
 import { ProjectGlossarySubscriptionManager } from "./projects/projectGlossarySubscriptionManager.js";
+import { projectPathCacheDiagnostics } from "./projects/projectPathIndex.js";
 import { ProjectStoragePolicy } from "./projects/projectStoragePolicy.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
@@ -113,8 +114,9 @@ import {
   getRequestedSpeechBackendIds,
   registerSpeechBackends,
 } from "./services/voice/registry.js";
-import { ClaudeSessionReader } from "./sessions/reader.js";
+import { claudeTranscriptCache } from "./sessions/claude-transcript-cache.js";
 import { providerCatalogFamily } from "./sessions/provider-catalog-family.js";
+import { ClaudeSessionReader } from "./sessions/reader.js";
 import { AttachmentStagingService } from "./uploads/AttachmentStagingService.js";
 import { UploadManager } from "./uploads/manager.js";
 import {
@@ -1675,6 +1677,12 @@ async function startServer() {
       portFile: config.maintenancePortFile,
       host: "127.0.0.1", // Maintenance always on localhost
       mainServerPort: effectivePort,
+      getDiagnostics: () => ({
+        caches: {
+          claudeTranscript: claudeTranscriptCache.getStats(),
+          projectPaths: projectPathCacheDiagnostics(),
+        },
+      }),
     });
     markStartup("maintenance server started");
   }

@@ -11,7 +11,11 @@ describe("Maintenance Server", () => {
   let server: ReturnType<typeof startMaintenanceServer> | undefined;
 
   beforeAll(async () => {
-    server = startMaintenanceServer({ port: 0, mainServerPort: 3400 });
+    server = startMaintenanceServer({
+      port: 0,
+      mainServerPort: 3400,
+      getDiagnostics: () => ({ caches: { fixture: { retainedBytes: 42 } } }),
+    });
     await once(server.server, "listening");
     const address = server.server.address();
     if (!address || typeof address === "string") {
@@ -21,11 +25,12 @@ describe("Maintenance Server", () => {
   });
 
   afterAll(async () => {
-    if (!server) {
+    const activeServer = server;
+    if (!activeServer) {
       return;
     }
     await new Promise<void>((resolve, reject) => {
-      server.server.close((error) => {
+      activeServer.server.close((error) => {
         if (error) {
           reject(error);
           return;
@@ -92,6 +97,12 @@ describe("Maintenance Server", () => {
       expect(body.uptime).toBeDefined();
       expect(body.memory).toBeDefined();
       expect(body.memory.rss).toBeDefined();
+      expect(body.memory.raw.arrayBuffers).toEqual(expect.any(Number));
+      expect(body.memory.v8.heapSizeLimitBytes).toBeGreaterThan(0);
+      expect(body.memory.v8.heapSpaces.old_space.usedBytes).toEqual(
+        expect.any(Number),
+      );
+      expect(body.diagnostics.caches.fixture.retainedBytes).toBe(42);
       expect(body.connections.activeHttpConnections).toBe(5);
       expect(body.mainServerPort).toBe(3400);
     });

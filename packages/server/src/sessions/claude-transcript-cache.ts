@@ -70,6 +70,13 @@ export interface ClaudeTranscriptCacheOptions {
   maxSourceBytes?: number;
 }
 
+export interface ClaudeTranscriptCacheStats {
+  budgetBytes: number;
+  inFlightLoads: number;
+  retainedFiles: number;
+  retainedSourceBytes: number;
+}
+
 interface ParseAccumulator {
   entries: ClaudeSessionEntry[];
   summaryState: ClaudeSummaryParseState;
@@ -188,6 +195,16 @@ export class ClaudeTranscriptCache {
       return null;
     }
     return this.loadInternal(filePath, { populate: false });
+  }
+
+  /** Fixed-cost process diagnostics without exposing retained file identities. */
+  getStats(): ClaudeTranscriptCacheStats {
+    return {
+      budgetBytes: this.maxSourceBytes,
+      inFlightLoads: this.inFlight.size,
+      retainedFiles: this.entriesByPath.size,
+      retainedSourceBytes: this.retainedSourceBytes,
+    };
   }
 
   /** Drop one file, or everything. Exposed for tests and invalidation. */

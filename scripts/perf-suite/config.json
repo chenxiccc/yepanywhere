@@ -1,6 +1,12 @@
 {
   "schemaVersion": 1,
   "keepWorkDirectories": false,
+  "fixture": {
+    "revision": "2f5e403e20fc5b96d5634a4b8f5a57704023d8da",
+    "workingSetSessions": 3,
+    "cacheProofTimeoutMs": 1000,
+    "cacheDisabledObservationMs": 250
+  },
   "server": {
     "portBase": 4400,
     "startupTimeoutMs": 60000,
@@ -10,12 +16,12 @@
   "scenarios": {
     "smoke": {
       "projects": 1,
-      "sessionsPerProject": 2,
+      "sessionsPerProject": 3,
       "initialTurns": 2,
       "newTurns": 1,
       "concurrentClients": 2,
       "browserCacheBudgetsMiB": [0, 24],
-      "payloadBytes": 256,
+      "payloadBytes": 512,
       "repetitions": 1,
       "settleMs": 250
     },
