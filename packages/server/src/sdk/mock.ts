@@ -191,6 +191,7 @@ export function createToolApprovalScenario(
           id: `req-${Date.now()}`,
           type: "tool-approval",
           prompt: `Allow ${toolName}?`,
+          toolName,
         },
       },
     ],

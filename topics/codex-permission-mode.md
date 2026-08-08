@@ -1,15 +1,16 @@
 # Codex Permission Mode
 
-> Codex permission mode is a per-turn contract: YA's effective mode must select
-> the matching Codex approval policy and native sandbox policy together, without
-> restarting the app-server between completed turns or silently widening access.
+> Codex permission mode has two clocks: YA's selected standing approval policy
+> applies immediately, while the matching Codex approval and native sandbox
+> policies apply together at a turn boundary without restarting app-server.
 
 Topic: codex-permission-mode
 
-Status: **implemented and covered (2026-07-30).** Thread start/resume and every
+Status: **implemented and covered (2026-08-08).** Thread start/resume and every
 real turn map the effective mode to matching Codex approval and sandbox
 settings. Live Ask/Bypass switching uses the next `turn/start` on the existing
-app-server process.
+app-server process for native policy, while YA applies the selected approval
+policy immediately.
 
 See also:
 
@@ -84,9 +85,10 @@ and a profile must not weaken the table above.
 
 - `approvalPolicy` and the native sandbox selection are one atomic value at
   every Codex turn boundary. YA must never update only one half.
-- For each newly started turn, the UI-selected effective mode, `Process` mode
-  for the delivered message, `turn/start` parameters, approval callbacks for
-  that turn, and the resulting provider-reported turn context must agree.
+- For each newly started turn, the mode stamped on the delivered message,
+  `turn/start` parameters, and resulting provider-reported turn context must
+  agree. A later UI selection may change YA's approval response while those
+  provider-native turn settings remain fixed.
 - A tightening transition is at least as important as a loosening transition.
   Bypass to Ask must not leave danger-full-access active behind an Ask label.
 - Ask to Bypass must not leave workspace-write active with
@@ -96,8 +98,9 @@ and a profile must not weaken the table above.
   An explicit deny remains a deny in Bypass.
 - Provider-native interviews and user questions are not permission prompts.
   Bypass and allow rules must not silently answer them.
-- Approval handlers must consult the effective mode of the requesting turn.
-  They must not use a mode captured when the provider process was launched.
+- Approval handlers must consult the current selected standing mode. The
+  request turn's frozen mode remains evidence of provider-native policy, not an
+  override of a newer user selection.
 - A one-off UI approval uses the narrowest provider scope that satisfies the
   request, normally the current turn. A session-scoped grant requires an
   explicit persistent user choice and must not survive a later tightening
@@ -116,7 +119,9 @@ It does not accept those overrides on `turn/steer`. Therefore:
   `turn/start` on the existing app-server process. It must not require process
   teardown, Kill, resume, reactivation, or a new public session id.
 - Changing mode while a turn is active does not retroactively change that
-  turn's sandbox. The selected value is pending for the next real turn.
+  turn's sandbox or Codex approval policy. The selected value is pending for
+  those provider-native settings at the next real turn, but YA applies it
+  immediately to any approval request Codex does emit.
 - The closed mode selector remains the normal compact control while a turn is
   active. Its tooltip and the timing note at the top of the opened menu explain
   that a selection applies to the next turn. After a selection actually
@@ -143,10 +148,13 @@ It does not accept those overrides on `turn/steer`. Therefore:
   performs no model turn. A mode changed after reactivation must still apply at
   the next `turn/start` without another process restart.
 
-The mode selector is standing policy, not a response to an approval already on
-screen. A pending one-off approval belongs to the active request and must be
-explicitly allowed or denied. Changing the selector neither approves nor
-denies it. Interrupting the turn cancels the old request.
+The mode selector is standing policy and also governs approvals already on
+screen. Selecting Accept edits resolves pending edit/write approvals but leaves
+command approvals waiting. Selecting Bypass resolves every pending permission
+approval. Questions and interviews remain explicit user-input requests.
+Changing the selector cannot retroactively widen or tighten the active Codex
+sandbox; interrupting and starting a new turn remains the immediate boundary
+for that provider-native change.
 
 ## Approval And Elevation
 
@@ -192,7 +200,7 @@ sandbox failure must not be reported as failure of the optional YA feature.
 
 ## As Built
 
-As of 2026-07-30:
+As of 2026-08-08:
 
 - `CodexProvider.mapPermissionModeToThreadPolicy` computes the intended pair:
   ordinary modes use `on-request` plus workspace-write, Plan uses
@@ -209,20 +217,23 @@ As of 2026-07-30:
   thread start/resume reports an effective workspace-write policy, Codex caches
   and reuses that complete structure so configured network, writable-root, and
   temporary-path behavior survives Ask to Bypass to Ask switching.
-- `Process.setPermissionMode` updates YA state and multi-tab versioning only;
-  it does not itself mutate an active app-server turn. The complete pair is
-  sent at the next real `turn/start`, while steering inherits the active turn.
+- `Process.setPermissionMode` updates YA state, multi-tab versioning, and the
+  live approval bridge. It does not mutate an active app-server turn. The
+  complete native pair is sent at the next real `turn/start`, while steering
+  inherits the active turn.
 - `Process.appliedPermissionMode` starts with the successful Codex thread
   start/resume policy and then records each successful `turn/start`, separately
   from the standing selector value. Ownership status, stream connection state,
   and `mode-applied` events expose it as an optional field, allowing new
   clients to render `(pending)` while remaining compatible with older servers.
-- Codex freezes the effective mode before `turn/start` and passes it through
-  every approval callback. `Process.handleToolApproval` uses that request mode
-  instead of a later toolbar value.
+- Codex freezes the provider-native mode before `turn/start` and passes it
+  through every approval callback as turn context. `Process.handleToolApproval`
+  uses the current selected standing mode for YA's decision. A mode change
+  re-evaluates queued approvals immediately: Accept edits grants recognized
+  edits and Bypass grants every non-question permission request.
 - Accepted `item/permissions/requestApproval` grants use turn scope. Bypass
-  auto-granting and Ask prompting both consult the requesting turn's effective
-  mode rather than launch-time options.
+  auto-granting and Ask prompting consult the current selected standing mode;
+  neither relies on launch-time options.
 - Codex `item/tool/requestUserInput` is surfaced through YA's question panel
   and returned to app-server by question id. Secret free-form answers use a
   password input and remain in component memory rather than persisted drafts.
@@ -275,10 +286,12 @@ The implementation has deterministic coverage for:
   absent against an older server that supplies no applied-mode evidence;
 - deferred messages retaining their submission mode until the turn they
   create;
-- pending approvals remaining explicit decisions rather than being resolved by
-  a selector change;
-- permissions-profile approval consulting the requesting turn's effective mode,
-  especially after Bypass to Ask;
+- Accept edits resolving queued edit/write approvals while leaving commands
+  pending, and Bypass resolving all queued permission approvals while leaving
+  provider questions pending;
+- newly arriving approvals consulting the selected standing mode even when the
+  requesting turn's provider-native mode differs, especially after Bypass to
+  Ask;
 - one-off permission grants defaulting to turn scope and a stricter later mode
   not inheriting an undeclared session-wide grant;
 - deny rules and provider-native user questions retaining precedence over

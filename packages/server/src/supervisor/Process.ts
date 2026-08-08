@@ -225,6 +225,18 @@ function patientPatienceMsForEntry(entry: DeferredQueueEntry): number {
 }
 
 const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
+const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit"]);
+const READ_ONLY_TOOLS = new Set([
+  "Read",
+  "Glob",
+  "Grep",
+  "LSP",
+  "WebFetch",
+  "WebSearch",
+  "Task", // Subagent exploration (legacy)
+  "Agent", // Subagent exploration (SDK 0.2.76+)
+  "TaskOutput", // Reading subagent results
+]);
 const PROMPT_CACHE_KEEPALIVE_RECHECK_MS = 30_000;
 const PROMPT_CACHE_KEEPALIVE_MIN_DELAY_MS = 1_000;
 const IDLE_REAP_ELIGIBILITY_RECHECK_MS = 60_000;
@@ -234,6 +246,40 @@ const RUNTIME_VIEWER_PRESENCE_DETACH_GRACE_MS = 500;
 
 function isAskUserQuestionTool(toolName: string): boolean {
   return toolName === ASK_USER_QUESTION_TOOL_NAME;
+}
+
+function getModeBasedToolApproval(
+  mode: PermissionMode,
+  toolName: string,
+  input: unknown,
+  requiresUserResponse: boolean,
+): ToolApprovalResult | undefined {
+  if (requiresUserResponse) {
+    return undefined;
+  }
+
+  switch (mode) {
+    case "bypassPermissions":
+      return { behavior: "allow" };
+    case "plan": {
+      if (READ_ONLY_TOOLS.has(toolName)) {
+        return { behavior: "allow" };
+      }
+      if (toolName === "Write") {
+        const filePath = (input as { file_path?: string })?.file_path ?? "";
+        if (filePath.includes(".claude/plans/")) {
+          return { behavior: "allow" };
+        }
+      }
+      return undefined;
+    }
+    case "acceptEdits":
+      return EDIT_TOOLS.has(toolName) || READ_ONLY_TOOLS.has(toolName)
+        ? { behavior: "allow" }
+        : undefined;
+    default:
+      return READ_ONLY_TOOLS.has(toolName) ? { behavior: "allow" } : undefined;
+  }
 }
 
 function buildAskUserQuestionPrompt(input: unknown): string {
@@ -2163,13 +2209,15 @@ export class Process {
   }
 
   /**
-   * Update the permission mode for this process.
-   * Increments modeVersion and emits a mode-change event for multi-tab sync.
+   * Update the standing permission mode for this process.
+   * Increments modeVersion, emits for multi-tab sync, and applies the selected
+   * approval policy to requests already waiting for user input.
    */
   setPermissionMode(mode: PermissionMode): void {
     this._permissionMode = mode;
     this._modeVersion++;
     this.emit({ type: "mode-change", mode, version: this._modeVersion });
+    this.applySelectedModeToPendingApprovals();
   }
 
   /**
@@ -3605,10 +3653,8 @@ export class Process {
       permissionMode?: PermissionMode;
     },
   ): Promise<ToolApprovalResult> {
-    const effectivePermissionMode =
-      options.permissionMode ?? this._permissionMode;
     console.log(
-      `[handleToolApproval] toolName=${toolName}, permissionMode=${effectivePermissionMode}`,
+      `[handleToolApproval] toolName=${toolName}, permissionMode=${this._permissionMode}, providerPermissionMode=${options.permissionMode ?? this._permissionMode}`,
     );
 
     // Check if aborted
@@ -3632,101 +3678,16 @@ export class Process {
       }
     }
 
-    // Handle based on permission mode
-    switch (effectivePermissionMode) {
-      case "bypassPermissions": {
-        // Questions require the user's answer; plan completion does not weaken
-        // the user's standing Bypass choice or add another approval boundary.
-        if (isUserQuestion) {
-          break; // Fall through to ask user
-        }
-        return { behavior: "allow" };
-      }
-
-      case "plan": {
-        // Read-only tools are auto-allowed - essential for creating good plans
-        const readOnlyTools = [
-          "Read",
-          "Glob",
-          "Grep",
-          "LSP",
-          "WebFetch",
-          "WebSearch",
-          "Task", // Subagent exploration (legacy)
-          "Agent", // Subagent exploration (SDK 0.2.76+)
-          "TaskOutput", // Reading subagent results
-        ];
-        if (readOnlyTools.includes(toolName)) {
-          return { behavior: "allow" };
-        }
-
-        // Allow Write to .claude/plans/ directory for saving plans
-        if (toolName === "Write") {
-          const filePath = (input as { file_path?: string })?.file_path ?? "";
-          if (filePath.includes(".claude/plans/")) {
-            return { behavior: "allow" };
-          }
-        }
-
-        // ExitPlanMode and AskUserQuestion should prompt the user
-        // ExitPlanMode: user must approve the plan before exiting plan mode
-        // AskUserQuestion: clarifying questions are valid during planning
-        if (toolName === "ExitPlanMode" || isUserQuestion) {
-          break; // Fall through to ask user for approval
-        }
-
-        // Other tools (Bash, Edit, Write to non-plan files, etc.) - prompt user
-        // Agent typically won't use these in plan mode, but if they have a good
-        // reason (e.g., checking git log, verifying dependencies), let them ask
-        break; // Fall through to ask user for approval
-      }
-
-      case "acceptEdits": {
-        // Auto-approve file editing tools AND read-only tools
-        // acceptEdits should be strictly more permissive than default mode
-        const editTools = ["Edit", "Write", "NotebookEdit"];
-        if (editTools.includes(toolName)) {
-          return { behavior: "allow" };
-        }
-        // Read-only tools are also auto-allowed (same as default mode)
-        const readOnlyTools = [
-          "Read",
-          "Glob",
-          "Grep",
-          "LSP",
-          "WebFetch",
-          "WebSearch",
-          "Task", // Subagent exploration (legacy)
-          "Agent", // Subagent exploration (SDK 0.2.76+)
-          "TaskOutput", // Reading subagent results
-        ];
-        if (readOnlyTools.includes(toolName)) {
-          return { behavior: "allow" };
-        }
-        // Fall through to ask user for other tools (Bash, etc.)
-        break;
-      }
-
-      default: {
-        // Read-only tools are auto-allowed - no need to prompt for reads
-        // "Ask before edits" means ask before WRITES, not reads
-        const readOnlyTools = [
-          "Read",
-          "Glob",
-          "Grep",
-          "LSP",
-          "WebFetch",
-          "WebSearch",
-          "Task", // Subagent exploration (legacy)
-          "Agent", // Subagent exploration (SDK 0.2.76+)
-          "TaskOutput", // Reading subagent results
-        ];
-        if (readOnlyTools.includes(toolName)) {
-          return { behavior: "allow" };
-        }
-        // Fall through to ask user for mutating tools
-        break;
-      }
+    // The provider may keep its sandbox/policy fixed for the active turn, but
+    // YA's approval bridge follows the selected standing mode immediately.
+    const modeApproval = getModeBasedToolApproval(
+      this._permissionMode,
+      toolName,
+      input,
+      isUserQuestion,
+    );
+    if (modeApproval) {
+      return modeApproval;
     }
 
     // Default behavior: ask user for approval or an interview answer.
@@ -3794,6 +3755,53 @@ export class Process {
     }
     // No more pending approvals
     this.transitionToInTurnForWake("tool-approval-resolved");
+  }
+
+  /** Apply a newly selected standing mode to approvals already awaiting input. */
+  private applySelectedModeToPendingApprovals(): void {
+    let resolvedAny = false;
+    for (const requestId of this.pendingToolApprovalQueue) {
+      const pending = this.pendingToolApprovals.get(requestId);
+      if (!pending) {
+        continue;
+      }
+      const request = pending.request;
+      const result = getModeBasedToolApproval(
+        this._permissionMode,
+        request.toolName ?? "",
+        request.toolInput,
+        request.type !== "tool-approval",
+      );
+      if (!result) {
+        continue;
+      }
+      pending.resolve(result);
+      this.pendingToolApprovals.delete(requestId);
+      resolvedAny = true;
+    }
+
+    if (resolvedAny) {
+      this.pendingToolApprovalQueue = this.pendingToolApprovalQueue.filter(
+        (requestId) => this.pendingToolApprovals.has(requestId),
+      );
+      this.emitNextPendingApproval();
+      return;
+    }
+
+    // Legacy mock harness requests do not install a callback promise. They
+    // still obey Bypass, and obey Accept edits when the mock names its tool.
+    if (
+      this.pendingToolApprovals.size === 0 &&
+      this._state.type === "waiting-input" &&
+      getModeBasedToolApproval(
+        this._permissionMode,
+        this._state.request.toolName ?? "",
+        this._state.request.toolInput,
+        this._state.request.type !== "tool-approval",
+      )
+    ) {
+      this.transitionToInTurnForWake("tool-approval-resolved");
+    }
   }
 
   /**
@@ -4403,8 +4411,21 @@ export class Process {
       type: message.input_request.type as InputRequest["type"],
       prompt: message.input_request.prompt,
       options: message.input_request.options,
+      toolName: message.input_request.toolName,
+      toolInput: message.input_request.toolInput,
       timestamp: new Date().toISOString(),
     };
+
+    if (
+      getModeBasedToolApproval(
+        this._permissionMode,
+        request.toolName ?? "",
+        request.toolInput,
+        request.type !== "tool-approval",
+      )
+    ) {
+      return;
+    }
 
     this.setState({ type: "waiting-input", request });
   }

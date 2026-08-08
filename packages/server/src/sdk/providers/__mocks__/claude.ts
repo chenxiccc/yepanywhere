@@ -186,6 +186,7 @@ export function createClaudeApprovalScenario(
           id: `req-${Date.now()}`,
           type: "tool-approval",
           prompt: `Allow ${toolName}?`,
+          toolName,
         },
       },
     ],

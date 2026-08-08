@@ -73,6 +73,8 @@ export interface SDKMessage {
     type: "tool-approval" | "question" | "choice";
     prompt: string;
     options?: string[];
+    toolName?: string;
+    toolInput?: unknown;
   };
   // Result metadata
   duration_ms?: number;

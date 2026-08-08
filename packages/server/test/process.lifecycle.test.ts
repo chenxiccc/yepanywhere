@@ -803,5 +803,90 @@ describe("Process", () => {
         expect(process.state.request.prompt).toBe("Allow file write?");
       }
     });
+
+    it("applies pending Edit and Bypass modes to mock harness requests", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "input_request",
+        input_request: {
+          id: "req-edit",
+          type: "tool-approval",
+          prompt: "Allow Edit?",
+          toolName: "Edit",
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(process.state.type).toBe("waiting-input");
+
+      process.setPermissionMode("acceptEdits");
+      expect(process.state.type).toBe("in-turn");
+
+      controller.push({
+        type: "system",
+        subtype: "input_request",
+        input_request: {
+          id: "req-next-edit",
+          type: "tool-approval",
+          prompt: "Allow another Edit?",
+          toolName: "Edit",
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(process.state.type).toBe("in-turn");
+
+      controller.push({
+        type: "system",
+        subtype: "input_request",
+        input_request: {
+          id: "req-command",
+          type: "tool-approval",
+          prompt: "Allow Bash?",
+          toolName: "Bash",
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(process.state.type).toBe("waiting-input");
+
+      process.setPermissionMode("bypassPermissions");
+      expect(process.state.type).toBe("in-turn");
+
+      controller.push({
+        type: "system",
+        subtype: "input_request",
+        input_request: {
+          id: "req-next-command",
+          type: "tool-approval",
+          prompt: "Allow another Bash?",
+          toolName: "Bash",
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(process.state.type).toBe("in-turn");
+
+      controller.push({
+        type: "system",
+        subtype: "input_request",
+        input_request: {
+          id: "req-question",
+          type: "question",
+          prompt: "Which option?",
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(process.getPendingInputRequest()?.id).toBe("req-question");
+      process.respondToInput("req-question", "approve");
+
+      controller.finish();
+      await process.abort();
+    });
   });
 });

@@ -6618,8 +6618,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid request ID or no pending request" }, 400);
     }
 
-    // If approve_accept_edits, switch the permission mode
-    if (isApproveAcceptEdits) {
+    // Preserve a concurrently selected Bypass policy: this narrower legacy
+    // combined action must not overwrite the user's newer standing choice.
+    if (
+      isApproveAcceptEdits &&
+      process.permissionMode !== "bypassPermissions"
+    ) {
       process.setPermissionMode("acceptEdits");
     }
 

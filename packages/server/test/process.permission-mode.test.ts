@@ -219,7 +219,7 @@ describe("Process", () => {
       expect(process.permissionMode).toBe("bypassPermissions");
     });
 
-    it("uses a provider-frozen Ask mode after the toolbar changes", async () => {
+    it("applies a pending Bypass selection to the active approval bridge", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
@@ -227,9 +227,10 @@ describe("Process", () => {
         sessionId: "sess-1",
         provider: "codex",
         idleTimeoutMs: 100,
-        permissionMode: "bypassPermissions",
+        permissionMode: "default",
       });
       const abortController = new AbortController();
+      process.setAppliedPermissionMode("default");
 
       const approvalPromise = process.handleToolApproval(
         "Bash",
@@ -242,16 +243,13 @@ describe("Process", () => {
       expect(process.state.type).toBe("waiting-input");
 
       process.setPermissionMode("bypassPermissions");
-      expect(process.state.type).toBe("waiting-input");
-
-      const pendingRequest = process.getPendingInputRequest();
-      process.respondToInput(pendingRequest?.id ?? "", "deny");
-      await expect(approvalPromise).resolves.toMatchObject({
-        behavior: "deny",
-      });
+      expect(process.appliedPermissionMode).toBe("default");
+      expect(process.state.type).toBe("in-turn");
+      expect(process.getPendingInputRequest()).toBeNull();
+      await expect(approvalPromise).resolves.toEqual({ behavior: "allow" });
     });
 
-    it("uses a provider-frozen Bypass mode after Ask launch", async () => {
+    it("uses selected Ask when the provider turn was frozen in Bypass", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
@@ -262,17 +260,98 @@ describe("Process", () => {
         permissionMode: "default",
       });
 
-      await expect(
-        process.handleToolApproval(
-          "Bash",
-          { command: "touch bypass-mode" },
-          {
-            signal: new AbortController().signal,
-            permissionMode: "bypassPermissions",
-          },
-        ),
-      ).resolves.toEqual({ behavior: "allow" });
-      expect(process.getPendingInputRequest()).toBeNull();
+      const approval = process.handleToolApproval(
+        "Bash",
+        { command: "touch bypass-mode" },
+        {
+          signal: new AbortController().signal,
+          permissionMode: "bypassPermissions",
+        },
+      );
+
+      expect(process.getPendingInputRequest()?.toolName).toBe("Bash");
+      process.respondToInput(
+        process.getPendingInputRequest()?.id ?? "",
+        "deny",
+      );
+      await expect(approval).resolves.toMatchObject({ behavior: "deny" });
+    });
+
+    it("auto-approves only edits when Accept edits becomes pending", async () => {
+      const process = new Process(createMockIterator([]), {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+        permissionMode: "default",
+      });
+      const signal = new AbortController().signal;
+      const editApproval = process.handleToolApproval(
+        "Edit",
+        { file: "test.ts" },
+        { signal, permissionMode: "default" },
+      );
+      const commandApproval = process.handleToolApproval(
+        "Bash",
+        { command: "pnpm test" },
+        { signal, permissionMode: "default" },
+      );
+
+      process.setPermissionMode("acceptEdits");
+
+      await expect(editApproval).resolves.toEqual({ behavior: "allow" });
+      expect(process.getPendingInputRequest()?.toolName).toBe("Bash");
+      process.respondToInput(
+        process.getPendingInputRequest()?.id ?? "",
+        "deny",
+      );
+      await expect(commandApproval).resolves.toMatchObject({
+        behavior: "deny",
+      });
+    });
+
+    it("auto-approves every queued permission when Bypass becomes pending", async () => {
+      const process = new Process(createMockIterator([]), {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+        permissionMode: "default",
+      });
+      const signal = new AbortController().signal;
+      const commandApproval = process.handleToolApproval(
+        "Bash",
+        { command: "pnpm test" },
+        { signal, permissionMode: "default" },
+      );
+      const editApproval = process.handleToolApproval(
+        "Edit",
+        { file: "test.ts" },
+        { signal, permissionMode: "default" },
+      );
+      const question = process.handleToolApproval(
+        "AskUserQuestion",
+        {
+          questions: [
+            { question: "Continue?", header: "Continue", options: [] },
+          ],
+        },
+        { signal, permissionMode: "default" },
+      );
+
+      process.setPermissionMode("bypassPermissions");
+
+      await expect(commandApproval).resolves.toEqual({ behavior: "allow" });
+      await expect(editApproval).resolves.toEqual({ behavior: "allow" });
+      expect(process.getPendingInputRequest()?.type).toBe("question");
+      process.respondToInput(
+        process.getPendingInputRequest()?.id ?? "",
+        "approve",
+        { "Continue?": "Yes" },
+      );
+      await expect(question).resolves.toMatchObject({ behavior: "allow" });
     });
 
     it("handleToolApproval auto-allows read-only tools in plan mode", async () => {

@@ -55,14 +55,21 @@ equivalent is `Ask`, not `Bypass` and not a hidden provider-specific setting.
 - A provider adapter must translate the effective YA mode into every
   provider-native field needed to preserve its meaning. If approval and
   confinement are separate native fields, they must be updated atomically.
-- A live mode change applies without replacing the provider process when the
-  provider exposes an appropriate next-turn boundary. It need not and must not
-  be forced into an already active turn whose provider cannot change policy
-  in-flight.
+- A live mode change has two application clocks. Provider-native policy changes
+  use the provider's next-turn boundary and must not be forced into an active
+  turn whose sandbox or approval policy cannot change in-flight. YA's approval
+  bridge follows the selected standing mode immediately.
 - While a turn is active, the UI must distinguish its current effective mode
   from a different mode selected for the next turn.
-- Approval callbacks must use the effective mode of the request's turn, not a
-  launch-time mode captured by a long-lived provider process.
+- Selecting `Accept edits` immediately allows pending and newly arriving Edit,
+  Write, and NotebookEdit permission requests. Selecting `Bypass` immediately
+  allows every pending and newly arriving permission request. Provider
+  interviews, choices, and questions still require the user's answer in every
+  mode.
+- Approval callbacks may retain the request turn's provider-native mode for
+  diagnostics, but YA's decision must use the current selected standing mode,
+  not a launch-time or turn-frozen mode captured by a long-lived provider
+  process.
 - Plan completion follows the standing permission choice. In `Bypass`,
   `ExitPlanMode` is already authorized and must complete without a prompt or a
   transition to `Edit`; `AskUserQuestion` still surfaces because it requires the

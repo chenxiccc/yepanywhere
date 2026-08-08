@@ -139,6 +139,7 @@ import {
   thinkingOptionFromProcess,
   thinkingOptionFromSelection,
 } from "../lib/liveThinkingConfig";
+import { getPersistentEditApprovalResponse } from "../lib/permissionModes";
 import { getCachedWebTranscriptProjection } from "../lib/webTranscriptProjection";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
@@ -3579,15 +3580,16 @@ function SessionPageContent({
   const handleApproveAcceptEdits = useCallback(async () => {
     if (pendingInputRequest) {
       try {
-        // Approve and switch to acceptEdits mode
+        const response = getPersistentEditApprovalResponse(permissionMode);
         const result = await api.respondToInput(
           sessionId,
           pendingInputRequest.id,
-          "approve_accept_edits",
+          response,
         );
         setPendingInputRequest(result.pendingInputRequest ?? null);
-        // Update local permission mode
-        setPermissionMode("acceptEdits");
+        if (response === "approve_accept_edits") {
+          setPermissionMode("acceptEdits");
+        }
       } catch (err) {
         await handleInputResponseError(err, t("sessionApproveFailed"));
       }
@@ -3595,6 +3597,7 @@ function SessionPageContent({
   }, [
     sessionId,
     pendingInputRequest,
+    permissionMode,
     setPendingInputRequest,
     setPermissionMode,
     handleInputResponseError,

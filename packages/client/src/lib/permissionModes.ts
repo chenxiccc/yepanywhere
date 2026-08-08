@@ -9,6 +9,14 @@ export const BASE_PERMISSION_MODE_ORDER: readonly PermissionMode[] = [
 
 export const AUTO_PERMISSION_MODE: PermissionMode = "auto";
 
+export type PersistentEditApprovalResponse = "approve" | "approve_accept_edits";
+
+export function getPersistentEditApprovalResponse(
+  mode: PermissionMode,
+): PersistentEditApprovalResponse {
+  return mode === "bypassPermissions" ? "approve" : "approve_accept_edits";
+}
+
 export function modelSupportsAutoPermissionMode(
   model?: ModelInfo | null,
 ): boolean {
