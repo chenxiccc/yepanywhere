@@ -1,6 +1,9 @@
 import type { PaginationInfo } from "../api/client";
-import type { AgentContentMap } from "../hooks/useSessionMessages";
 import type { Message, SessionMetadata } from "../types";
+import type {
+  AgentContentMap,
+  MarkdownAugmentMap,
+} from "./sessionDetail/types";
 
 /**
  * Serializable transcript-window DTOs for warm route reveals; runtime
@@ -26,6 +29,7 @@ export interface SessionRouteSnapshot {
   session: SessionMetadata;
   pagination?: PaginationInfo;
   agentContent: AgentContentMap;
+  markdownAugments?: MarkdownAugmentMap;
   toolUseToAgentEntries: Array<[string, string]>;
   lastMessageId?: string;
   maxPersistedTimestampMs: number;

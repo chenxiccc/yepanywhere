@@ -1,13 +1,19 @@
 import type { PaginationInfo } from "../../api/client";
 import type { Message, SessionMetadata } from "../../types";
-import type { AgentContentMap, SessionDetailState } from "./types";
+import type {
+  AgentContentMap,
+  MarkdownAugmentMap,
+  SessionDetailState,
+} from "./types";
 
 const EMPTY_RETURNED_MESSAGES: Message[] = [];
 const EMPTY_RETURNED_AGENT_CONTENT: AgentContentMap = {};
+const EMPTY_RETURNED_MARKDOWN_AUGMENTS: MarkdownAugmentMap = {};
 
 export interface ReturnedDetailStoreState {
   messages: Message[];
   agentContent: AgentContentMap;
+  markdownAugments: MarkdownAugmentMap;
   toolUseToAgentEntries: Array<[string, string]>;
   activeWindowTrimRevision: number;
 }
@@ -54,6 +60,7 @@ export function createStoreBackedSessionDetailSelector(
         previousRevealed &&
         previousRevealed.messages === state.messages &&
         previousRevealed.agentContent === state.agentContent &&
+        previousRevealed.markdownAugments === state.markdownAugments &&
         previousRevealed.toolUseToAgentEntries ===
           state.toolUseToAgentEntries &&
         previousRevealed.activeWindowTrimRevision ===
@@ -62,6 +69,7 @@ export function createStoreBackedSessionDetailSelector(
           : {
               messages: state.messages,
               agentContent: state.agentContent,
+              markdownAugments: state.markdownAugments,
               toolUseToAgentEntries: state.toolUseToAgentEntries,
               activeWindowTrimRevision: state.activeWindowTrimRevision,
             };
@@ -91,6 +99,12 @@ export function getReturnedAgentContent(
   detail: StoreBackedSessionDetail | undefined,
 ): AgentContentMap {
   return detail?.revealed?.agentContent ?? EMPTY_RETURNED_AGENT_CONTENT;
+}
+
+export function getReturnedMarkdownAugments(
+  detail: StoreBackedSessionDetail | undefined,
+): MarkdownAugmentMap {
+  return detail?.revealed?.markdownAugments ?? EMPTY_RETURNED_MARKDOWN_AUGMENTS;
 }
 
 export function buildReturnedToolUseToAgent(

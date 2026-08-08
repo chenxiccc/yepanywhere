@@ -7,6 +7,7 @@ import {
   canRevealReturnedSessionDetail,
   createStoreBackedSessionDetailSelector,
   getReturnedAgentContent,
+  getReturnedMarkdownAugments,
   getReturnedSessionMessages,
 } from "../returnedDetail";
 import { createInitialSessionDetailState } from "../transcriptReducer";
@@ -99,8 +100,12 @@ describe("returned session detail helpers", () => {
     const agentContent: AgentContentMap = {
       "agent-1": { status: "completed", messages: [assistantMessage()] },
     };
+    const markdownAugments = {
+      "assistant-1": { html: "<p>hello</p>" },
+    };
     const state = detailState({
       agentContent,
+      markdownAugments,
       toolUseToAgentEntries: [["tool-1", "agent-1"]],
     });
 
@@ -110,6 +115,7 @@ describe("returned session detail helpers", () => {
     expect(selected?.pagination).toBe(state.pagination);
     expect(selected?.revealed?.messages).toBe(state.messages);
     expect(selected?.revealed?.agentContent).toBe(agentContent);
+    expect(selected?.revealed?.markdownAugments).toBe(markdownAugments);
     expect(selected?.revealed?.toolUseToAgentEntries).toBe(
       state.toolUseToAgentEntries,
     );
@@ -125,6 +131,10 @@ describe("returned session detail helpers", () => {
       ...state,
       maxPersistedTimestampMs: 123,
     });
+    const augmentUpdate = selector({
+      ...state,
+      markdownAugments: { "assistant-1": { html: "<p>hello</p>" } },
+    });
     const trimUpdate = selector({
       ...state,
       activeWindowTrimRevision: 1,
@@ -132,6 +142,7 @@ describe("returned session detail helpers", () => {
 
     expect(second).toBe(first);
     expect(metadataOnlyUpdate).toBe(first);
+    expect(augmentUpdate).not.toBe(first);
     expect(trimUpdate).not.toBe(first);
     expect(trimUpdate?.revealed?.activeWindowTrimRevision).toBe(1);
   });
@@ -142,9 +153,11 @@ describe("returned session detail helpers", () => {
     );
     const emptyMessages = getReturnedSessionMessages(undefined);
     const emptyAgentContent = getReturnedAgentContent(undefined);
+    const emptyMarkdownAugments = getReturnedMarkdownAugments(undefined);
 
     expect(getReturnedSessionMessages(unrevealed)).toBe(emptyMessages);
     expect(getReturnedAgentContent(unrevealed)).toBe(emptyAgentContent);
+    expect(getReturnedMarkdownAugments(unrevealed)).toBe(emptyMarkdownAugments);
     expect(
       buildReturnedToolUseToAgent(unrevealed?.revealed?.toolUseToAgentEntries),
     ).toEqual(new Map());

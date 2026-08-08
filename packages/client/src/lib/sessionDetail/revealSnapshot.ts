@@ -41,6 +41,7 @@ export function buildSessionDetailRevealSnapshot({
         session: fallback.session,
         pagination: fallback.pagination,
         agentContent: {},
+        markdownAugments: {},
         toolUseToAgentEntries: [],
         lastMessageId: fallback.lastMessageId,
         maxPersistedTimestampMs: fallback.maxPersistedTimestampMs,
@@ -57,6 +58,7 @@ export function buildSessionDetailRevealSnapshot({
       session: selected.session,
       pagination: selected.pagination,
       agentContent: selected.agentContent,
+      markdownAugments: selected.markdownAugments,
       toolUseToAgentEntries: selected.toolUseToAgentEntries.map(
         ([toolUseId, agentId]) => [toolUseId, agentId],
       ),

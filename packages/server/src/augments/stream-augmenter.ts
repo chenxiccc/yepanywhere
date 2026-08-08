@@ -21,24 +21,17 @@
  */
 
 import {
-  computeEditAugment,
-  computeStructuredPatchDiffHtml,
-} from "./edit-augments.js";
-import {
-  extractRawPatchFromEditInput,
-  parseRawEditPatch,
-} from "./edit-raw-patch.js";
-import { renderMarkdownToHtml } from "./markdown-augments.js";
+  augmentFinalizedMessage,
+  getFinalMarkdownHtml,
+} from "./finalized-message-augmenter.js";
 import {
   extractIdFromAssistant,
   extractMessageIdFromStart,
   extractTextDelta,
-  extractTextForFinalRender,
   extractTextFromAssistant,
-  getMessageContent,
   isStreamingComplete,
 } from "./message-utils.js";
-import { computeReadAugment } from "./read-augments.js";
+import type { SafeMarkdownRenderOptions } from "./safe-markdown.js";
 import {
   type StreamCoordinator,
   createStreamCoordinator,
@@ -47,15 +40,6 @@ import {
   createTaskListAugmenter,
   type TaskListAugmenter,
 } from "./task-list-augments.js";
-import type { SafeMarkdownRenderOptions } from "./safe-markdown.js";
-import type {
-  EditInputWithAugment,
-  ExitPlanModeInput,
-  ExitPlanModeResult,
-  ReadResultWithAugment,
-  WriteInputWithAugment,
-} from "./types.js";
-import { computeWriteAugment } from "./write-augments.js";
 
 /** Markdown augment event data */
 export interface MarkdownAugmentData {
@@ -97,6 +81,14 @@ export interface StreamAugmenter {
    * event with the fully rendered HTML.
    */
   processMessage(message: Record<string, unknown>): Promise<void>;
+
+  /** Compute finalized per-message fields without touching coordinator state. */
+  processFinalizedMessage(
+    message: Record<string, unknown>,
+  ): Promise<MarkdownAugmentData | null>;
+
+  /** Process one provider message through the ordered streaming coordinator. */
+  processStreamingMessage(message: Record<string, unknown>): Promise<void>;
 
   /**
    * Process text through the streaming coordinator.
@@ -169,236 +161,6 @@ export async function createStreamAugmenter(
   };
 
   /**
-   * Augment Edit tool_use inputs with diff data.
-   */
-  const augmentEditInputs = async (
-    message: Record<string, unknown>,
-  ): Promise<void> => {
-    if (message.type !== "assistant") return;
-
-    const content = getMessageContent(message);
-    if (!content) return;
-
-    for (const block of content) {
-      if (
-        typeof block === "object" &&
-        block !== null &&
-        (block as Record<string, unknown>).type === "tool_use" &&
-        (block as Record<string, unknown>).name === "Edit"
-      ) {
-        const toolUseBlock = block as Record<string, unknown>;
-        const rawInput = toolUseBlock.input;
-        const input =
-          typeof rawInput === "object" &&
-          rawInput !== null &&
-          !Array.isArray(rawInput)
-            ? (rawInput as EditInputWithAugment)
-            : undefined;
-
-        if (
-          typeof toolUseBlock.id === "string" &&
-          typeof input?.file_path === "string" &&
-          typeof input?.old_string === "string" &&
-          typeof input?.new_string === "string" &&
-          !input._structuredPatch
-        ) {
-          try {
-            const augment = await computeEditAugment(toolUseBlock.id, {
-              file_path: input.file_path,
-              old_string: input.old_string,
-              new_string: input.new_string,
-            });
-            input._structuredPatch = augment.structuredPatch;
-            input._diffHtml = augment.diffHtml;
-          } catch (err) {
-            handleError(err, "Failed to compute edit augment");
-          }
-          continue;
-        }
-
-        const rawPatch = extractRawPatchFromEditInput(rawInput);
-        if (!rawPatch) {
-          continue;
-        }
-
-        const targetInput =
-          input ??
-          ({
-            file_path: "",
-            old_string: "",
-            new_string: "",
-          } as EditInputWithAugment);
-
-        if (!input) {
-          toolUseBlock.input = targetInput;
-        }
-
-        if (!targetInput._rawPatch) {
-          targetInput._rawPatch = rawPatch;
-        }
-
-        const parsedPatch = parseRawEditPatch(rawPatch);
-        if (!parsedPatch) {
-          continue;
-        }
-
-        if (!targetInput.file_path && parsedPatch.filePath) {
-          targetInput.file_path = parsedPatch.filePath;
-        }
-
-        if (
-          !targetInput._structuredPatch &&
-          parsedPatch.structuredPatch.length > 0
-        ) {
-          targetInput._structuredPatch = parsedPatch.structuredPatch;
-        }
-
-        if (
-          !targetInput._diffHtml &&
-          targetInput._structuredPatch &&
-          targetInput._structuredPatch.length > 0
-        ) {
-          try {
-            const diffHtml = await computeStructuredPatchDiffHtml(
-              targetInput.file_path || parsedPatch.filePath || "",
-              targetInput._structuredPatch,
-            );
-            if (diffHtml) {
-              targetInput._diffHtml = diffHtml;
-            }
-          } catch (err) {
-            handleError(err, "Failed to compute raw patch edit augment");
-          }
-        }
-      }
-    }
-  };
-
-  /**
-   * Augment Write tool_use inputs with syntax highlighting.
-   */
-  const augmentWriteInputs = async (
-    message: Record<string, unknown>,
-  ): Promise<void> => {
-    if (message.type !== "assistant") return;
-
-    const content = getMessageContent(message);
-    if (!content) return;
-
-    for (const block of content) {
-      if (
-        typeof block === "object" &&
-        block !== null &&
-        (block as Record<string, unknown>).type === "tool_use" &&
-        (block as Record<string, unknown>).name === "Write"
-      ) {
-        const toolUseBlock = block as Record<string, unknown>;
-        const input = toolUseBlock.input as WriteInputWithAugment;
-
-        if (
-          typeof input?.file_path === "string" &&
-          typeof input?.content === "string" &&
-          !input._highlightedContentHtml
-        ) {
-          try {
-            const augment = await computeWriteAugment({
-              file_path: input.file_path,
-              content: input.content,
-            });
-            if (augment) {
-              input._highlightedContentHtml = augment.highlightedHtml;
-              input._highlightedLanguage = augment.language;
-              input._highlightedTruncated = augment.truncated;
-              if (augment.renderedMarkdownHtml) {
-                input._renderedMarkdownHtml = augment.renderedMarkdownHtml;
-              }
-            }
-          } catch (err) {
-            handleError(err, "Failed to compute write augment");
-          }
-        }
-      }
-    }
-  };
-
-  /**
-   * Augment ExitPlanMode with rendered HTML.
-   * Also handles Read tool_result augmentation.
-   */
-  const augmentExitPlanMode = async (
-    message: Record<string, unknown>,
-  ): Promise<void> => {
-    // Check for assistant message with ExitPlanMode tool_use
-    if (message.type === "assistant") {
-      const content = getMessageContent(message);
-      if (!content) return;
-
-      for (const block of content) {
-        if (
-          typeof block === "object" &&
-          block !== null &&
-          (block as Record<string, unknown>).type === "tool_use" &&
-          (block as Record<string, unknown>).name === "ExitPlanMode"
-        ) {
-          const input = (block as Record<string, unknown>)
-            .input as ExitPlanModeInput;
-          if (input?.plan && !input._renderedHtml) {
-            try {
-              input._renderedHtml = await renderMarkdownToHtml(input.plan);
-            } catch (err) {
-              handleError(err, "Failed to render ExitPlanMode plan HTML");
-            }
-          }
-        }
-      }
-    }
-
-    // Check for user message with tool_result and structured tool result payload.
-    // Support both snake_case and camelCase keys across provider stream formats.
-    if (message.type === "user") {
-      const toolUseResult = (message.tool_use_result ??
-        message.toolUseResult) as ExitPlanModeResult | undefined;
-      if (toolUseResult?.plan && !toolUseResult._renderedHtml) {
-        try {
-          toolUseResult._renderedHtml = await renderMarkdownToHtml(
-            toolUseResult.plan,
-          );
-        } catch (err) {
-          handleError(err, "Failed to render ExitPlanMode result plan HTML");
-        }
-      }
-
-      // Check for Read tool_result and augment with syntax highlighting
-      const readResult = (message.tool_use_result ?? message.toolUseResult) as
-        | ReadResultWithAugment
-        | undefined;
-      if (
-        readResult?.type === "text" &&
-        readResult.file?.filePath &&
-        readResult.file?.content &&
-        !readResult._highlightedContentHtml
-      ) {
-        try {
-          const augment = await computeReadAugment({
-            file_path: readResult.file.filePath,
-            content: readResult.file.content,
-          });
-          if (augment) {
-            readResult._highlightedContentHtml = augment.highlightedHtml;
-            readResult._highlightedLanguage = augment.language;
-            readResult._highlightedTruncated = augment.truncated;
-            if (augment.renderedMarkdownHtml) {
-              readResult._renderedMarkdownHtml = augment.renderedMarkdownHtml;
-            }
-          }
-        } catch (err) {
-          handleError(err, "Failed to compute read augment");
-        }
-      }
-    }
-  };
-
-  /**
    * Process text through the streaming coordinator.
    */
   const processTextChunk = async (text: string): Promise<void> => {
@@ -449,66 +211,60 @@ export async function createStreamAugmenter(
     }
   };
 
-  /**
-   * Render final markdown augment for completed assistant messages.
-   * This sends a markdown-augment event with the complete rendered HTML,
-   * keyed by the message's uuid so it survives component remounts.
-   */
-  const renderFinalMarkdown = async (
+  const getFinalMarkdownAugment = (
+    message: Record<string, unknown>,
+  ): MarkdownAugmentData | null => {
+    if (message.type !== "assistant" || typeof message.uuid !== "string") {
+      return null;
+    }
+    const html = getFinalMarkdownHtml(message);
+    return html ? { messageId: message.uuid, html } : null;
+  };
+
+  const processFinalizedMessage = async (
+    message: Record<string, unknown>,
+  ): Promise<MarkdownAugmentData | null> => {
+    await augmentFinalizedMessage(message, {
+      safeMarkdownOptions,
+      onError: handleError,
+    });
+    return getFinalMarkdownAugment(message);
+  };
+
+  const processStreamingMessage = async (
     message: Record<string, unknown>,
   ): Promise<void> => {
-    // Only for assistant messages with uuid (final messages)
-    if (message.type !== "assistant" || !message.uuid) return;
+    const messageId =
+      extractMessageIdFromStart(message) ?? extractIdFromAssistant(message);
+    if (messageId) {
+      currentStreamingMessageId = messageId;
+    }
 
-    const textToRender = extractTextForFinalRender(message);
-    if (!textToRender) return;
+    const textDelta =
+      extractTextDelta(message) ?? extractTextFromAssistant(message);
+    if (textDelta) {
+      await processTextChunk(textDelta);
+    }
 
-    try {
-      const html = await renderMarkdownToHtml(
-        textToRender,
-        safeMarkdownOptions,
-      );
-      onMarkdownAugment({
-        messageId: message.uuid as string,
-        html,
-      });
-    } catch (err) {
-      handleError(err, "Failed to render final markdown augment");
+    if (isStreamingComplete(message)) {
+      await flush();
+      currentStreamingMessageId = null;
     }
   };
 
   return {
     async processMessage(message: Record<string, unknown>): Promise<void> {
-      // Track message ID from message_start or assistant messages
-      const messageId =
-        extractMessageIdFromStart(message) ?? extractIdFromAssistant(message);
-      if (messageId) {
-        currentStreamingMessageId = messageId;
+      const finalMarkdown = await processFinalizedMessage(message);
+      if (finalMarkdown) {
+        onMarkdownAugment(finalMarkdown);
       }
-
-      // Render final markdown before the enriched message update is sent.
-      // Low-latency transports may already have delivered the raw message.
-      await renderFinalMarkdown(message);
-
-      // Compute augments for Edit, Write, Read, ExitPlanMode
-      await augmentEditInputs(message);
-      await augmentWriteInputs(message);
-      await augmentExitPlanMode(message);
       taskListAugmenter.processMessage(message);
-
-      // Process text deltas for streaming markdown
-      const textDelta =
-        extractTextDelta(message) ?? extractTextFromAssistant(message);
-      if (textDelta) {
-        await processTextChunk(textDelta);
-      }
-
-      // Flush coordinator when message stream ends
-      if (isStreamingComplete(message)) {
-        await flush();
-        currentStreamingMessageId = null;
-      }
+      await processStreamingMessage(message);
     },
+
+    processFinalizedMessage,
+
+    processStreamingMessage,
 
     async processTextChunk(text: string): Promise<void> {
       await processTextChunk(text);

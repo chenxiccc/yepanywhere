@@ -36,6 +36,7 @@ const mergeLoadedAgentContent = vi.fn();
 const updateAgentContextUsage = vi.fn();
 const clearAgentStreamingPlaceholders = vi.fn();
 const clearStreamingPlaceholders = vi.fn();
+const applyFinalMarkdownAugment = vi.fn();
 const updateSession = vi.fn();
 
 let fileActivityOptions:
@@ -149,6 +150,8 @@ vi.mock("../useSessionMessages", () => ({
       messages: sessionMessagesMock.messages,
       agentContent: {},
       toolUseToAgent: new Map(),
+      markdownAugments: {},
+      applyFinalMarkdownAugment,
       loading: false,
       sessionLoadProgress: {
         stage: "complete",
@@ -1312,9 +1315,11 @@ describe("useSession completion reconciliation", () => {
 
     expect(streamingMarkdownCallbacks.onAugment).not.toHaveBeenCalled();
     expect(streamingMarkdownCallbacks.onPending).not.toHaveBeenCalled();
-    expect(result.current.markdownAugments).toEqual({
-      "assistant-1": { html: "<p>complete</p>" },
-    });
+    expect(applyFinalMarkdownAugment).toHaveBeenCalledWith(
+      "assistant-1",
+      "<p>complete</p>",
+    );
+    expect(result.current.markdownAugments).toEqual({});
   });
 
   it("does not load permission mode from localStorage on session view mount", () => {

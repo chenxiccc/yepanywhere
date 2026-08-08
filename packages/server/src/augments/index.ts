@@ -61,7 +61,6 @@ export {
   extractIdFromAssistant,
   extractMessageIdFromStart,
   extractTextDelta,
-  extractTextForFinalRender,
   extractTextFromAssistant,
   getMessageContent,
   isMessageStop,

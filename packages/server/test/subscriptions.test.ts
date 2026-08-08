@@ -137,6 +137,11 @@ function stubAugmenter(
 ): StreamAugmenter {
   return {
     processMessage,
+    processFinalizedMessage: async (message) => {
+      await processMessage(message);
+      return null;
+    },
+    processStreamingMessage: async () => {},
     processTextChunk: async () => {},
     flush: async () => {},
     reset: () => {},
@@ -404,6 +409,45 @@ describe("createSessionSubscription", () => {
     ).toBe(true);
   });
 
+  it("enriches replay clones without mutating process history", async () => {
+    const historyMessage = {
+      type: "assistant",
+      uuid: "replay-assistant-1",
+      message: { role: "assistant", content: "replayed" },
+    };
+    const { process } = createMockProcess({
+      getMessageHistory: vi.fn(() => [historyMessage]),
+    });
+    const { emit, events } = collectEmit();
+    const augmenter = stubAugmenter(async () => {});
+    augmenter.processFinalizedMessage = async (message) => {
+      message.enriched = true;
+      return null;
+    };
+
+    const subscription = createSessionSubscription(process, emit, {
+      createAugmenter: async () => augmenter,
+    });
+
+    await vi.waitFor(() =>
+      expect(events.filter(([type]) => type === "message")).toHaveLength(2),
+    );
+    const messageEvents = events.filter(([type]) => type === "message");
+    expect(messageEvents[0]?.[1]).toMatchObject({
+      uuid: "replay-assistant-1",
+      isReplay: true,
+    });
+    expect(messageEvents[0]?.[1]).not.toHaveProperty("enriched");
+    expect(messageEvents[1]?.[1]).toMatchObject({
+      uuid: "replay-assistant-1",
+      isReplay: true,
+      enriched: true,
+    });
+    expect(historyMessage).not.toHaveProperty("enriched");
+    expect(historyMessage).not.toHaveProperty("isReplay");
+    subscription.cleanup();
+  });
+
   it("emits plain user echoes synchronously before augmentation", async () => {
     const { process, fireEvent } = createMockProcess();
     const { emit, events } = collectEmit();
@@ -426,7 +470,7 @@ describe("createSessionSubscription", () => {
     await delivered;
   });
 
-  it("does not let Claude Gateway augmentation delay or reorder finalized messages", async () => {
+  it("does not let slow Claude Gateway enrichment block another finalized item", async () => {
     const { process, fireEvent } = createMockProcess({
       provider: "claude-gateway",
     });
@@ -479,7 +523,17 @@ describe("createSessionSubscription", () => {
     ]);
 
     await vi.waitFor(() => expect(releaseFirst).toBeTypeOf("function"));
-    expect(processMessage).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(processMessage).toHaveBeenCalledTimes(2));
+    expect(
+      events
+        .filter(([type]) => type === "message")
+        .map(([, data]) => (data as { uuid?: string }).uuid),
+    ).toEqual([
+      "gateway-assistant-1",
+      "gateway-assistant-2",
+      "gateway-assistant-2",
+    ]);
+
     releaseFirst?.();
     await Promise.all([first, second]);
 
@@ -493,9 +547,109 @@ describe("createSessionSubscription", () => {
     expect(allMessageIds).toEqual([
       "gateway-assistant-1",
       "gateway-assistant-2",
-      "gateway-assistant-1",
       "gateway-assistant-2",
+      "gateway-assistant-1",
     ]);
+  });
+
+  it("publishes only the latest enrichment generation for a stable message id", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+    let releaseFirst: (() => void) | undefined;
+    const processMessage = vi.fn(
+      async (message: Record<string, unknown>): Promise<void> => {
+        const content = (message.message as { content?: string } | undefined)
+          ?.content;
+        if (content === "first") {
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve;
+          });
+        }
+        message.enrichedContent = content;
+      },
+    );
+
+    createSessionSubscription(process, emit, {
+      createAugmenter: async () => stubAugmenter(processMessage),
+    });
+
+    const firstMessage = {
+      type: "assistant",
+      uuid: "assistant-revision",
+      message: { role: "assistant", content: "first" },
+    };
+    const secondMessage = {
+      type: "assistant",
+      uuid: "assistant-revision",
+      message: { role: "assistant", content: "second" },
+    };
+    const first = fireEvent({
+      type: "message",
+      message: firstMessage,
+    } as ProcessEvent);
+    const second = fireEvent({
+      type: "message",
+      message: secondMessage,
+    } as ProcessEvent);
+
+    await vi.waitFor(() => expect(processMessage).toHaveBeenCalledTimes(2));
+    await second;
+    const beforeFirstFinishes = events.filter(
+      ([type, payload]) =>
+        type === "message" &&
+        (payload as { uuid?: string }).uuid === "assistant-revision",
+    );
+    expect(beforeFirstFinishes).toHaveLength(3);
+    expect(beforeFirstFinishes.at(-1)?.[1]).toMatchObject({
+      enrichedContent: "second",
+    });
+    expect(firstMessage).not.toHaveProperty("enrichedContent");
+    expect(secondMessage).not.toHaveProperty("enrichedContent");
+
+    releaseFirst?.();
+    await first;
+    expect(
+      events.filter(
+        ([type, payload]) =>
+          type === "message" &&
+          (payload as { uuid?: string }).uuid === "assistant-revision",
+      ),
+    ).toHaveLength(3);
+  });
+
+  it("publishes the atomic message replacement before its compatibility augment", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+    const augmenter = stubAugmenter(async () => {});
+    augmenter.processFinalizedMessage = async (message) => {
+      message.enriched = true;
+      return {
+        messageId: message.uuid as string,
+        html: "<p>rendered</p>",
+      };
+    };
+
+    createSessionSubscription(process, emit, {
+      createAugmenter: async () => augmenter,
+    });
+
+    await fireEvent({
+      type: "message",
+      message: {
+        type: "assistant",
+        uuid: "assistant-atomic",
+        message: { role: "assistant", content: "rendered" },
+      },
+    } as ProcessEvent);
+
+    expect(
+      events
+        .filter(([type]) => type === "message" || type === "markdown-augment")
+        .map(([type]) => type),
+    ).toEqual(["message", "message", "markdown-augment"]);
+    expect(
+      events.filter(([type]) => type === "message").at(-1)?.[1],
+    ).toMatchObject({ enriched: true });
   });
 
   it("does not duplicate an enriched message without a stable provider id", async () => {
@@ -783,14 +937,20 @@ describe("createSessionSubscription", () => {
       },
     } as ProcessEvent);
 
-    const messageEvent = events.find(
+    const messageEvents = events.filter(
       ([type, payload]) =>
         type === "message" &&
         (payload as { uuid?: string })?.uuid === "msg-file-change-1",
     );
-    expect(messageEvent).toBeDefined();
+    expect(messageEvents).toHaveLength(2);
+    const rawPayload = messageEvents[0]?.[1] as
+      | {
+          message?: { content?: Array<{ input?: { _rawPatch?: string } }> };
+        }
+      | undefined;
+    expect(rawPayload?.message?.content?.[0]?.input?._rawPatch).toBeUndefined();
 
-    const payload = messageEvent?.[1] as {
+    const payload = messageEvents.at(-1)?.[1] as {
       message?: {
         content?: Array<{
           type?: string;

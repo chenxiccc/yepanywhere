@@ -9,12 +9,14 @@ import {
 import type { PaginationInfo } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
+import { createFinalMarkdownAugmentAction } from "../lib/sessionDetail/actionAdapters";
 import type { SessionDetailRevealSnapshotResult } from "../lib/sessionDetail/revealSnapshot";
 import {
   buildReturnedToolUseToAgent,
   canRevealReturnedSessionDetail,
   createStoreBackedSessionDetailSelector,
   getReturnedAgentContent,
+  getReturnedMarkdownAugments,
   getReturnedSessionMessages,
 } from "../lib/sessionDetail/returnedDetail";
 import type {
@@ -56,6 +58,7 @@ import type {
   AgentContent,
   AgentContentMap,
   AgentContextUsage,
+  MarkdownAugmentMap,
   SessionDetailAction,
 } from "../lib/sessionDetail/types";
 import type {
@@ -98,6 +101,10 @@ export interface UseSessionMessagesResult {
   agentContent: AgentContentMap;
   /** Mapping from Task tool_use_id → agentId */
   toolUseToAgent: Map<string, string>;
+  /** Final server-rendered Markdown keyed by stable message ID. */
+  markdownAugments: MarkdownAugmentMap;
+  /** Store a final server-rendered Markdown replacement. */
+  applyFinalMarkdownAugment: (messageId: string, html: string) => void;
   /** Whether initial load is in progress */
   loading: boolean;
   /** Fine-grained initial load progress for opt-in display */
@@ -262,6 +269,14 @@ export function useSessionMessages(
     },
     [coordinator],
   );
+  const applyFinalMarkdownAugment = useCallback(
+    (messageId: string, html: string) => {
+      dispatchSessionDetailAction(
+        createFinalMarkdownAugmentAction({ messageId, html }),
+      );
+    },
+    [dispatchSessionDetailAction],
+  );
 
   const readStoreSession = useCallback(
     () => coordinator.readSelected(selectSessionDetailSession) ?? null,
@@ -402,6 +417,8 @@ export function useSessionMessages(
   );
   const returnedMessages = getReturnedSessionMessages(storeBackedDetail);
   const returnedAgentContent = getReturnedAgentContent(storeBackedDetail);
+  const returnedMarkdownAugments =
+    getReturnedMarkdownAugments(storeBackedDetail);
   const returnedToolUseToAgentEntries =
     storeBackedDetail?.revealed?.toolUseToAgentEntries;
   const returnedToolUseToAgent = useMemo(
@@ -993,6 +1010,8 @@ export function useSessionMessages(
     messages: returnedMessages,
     agentContent: returnedAgentContent,
     toolUseToAgent: returnedToolUseToAgent,
+    markdownAugments: returnedMarkdownAugments,
+    applyFinalMarkdownAugment,
     loading,
     sessionLoadProgress,
     session: storeBackedDetail?.session ?? null,

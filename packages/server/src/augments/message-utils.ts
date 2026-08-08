@@ -133,35 +133,6 @@ export function markSubagent<
 }
 
 /**
- * Extract the text content from a final assistant message for markdown rendering.
- * Returns the text content to render, or null if not applicable.
- */
-export function extractTextForFinalRender(
-  message: Record<string, unknown>,
-): string | null {
-  if (message.type !== "assistant") return null;
-
-  const innerMessage = message.message as { content?: unknown } | undefined;
-  const content = innerMessage?.content ?? message.content;
-
-  if (typeof content === "string") {
-    return content.trim() ? content : null;
-  }
-
-  if (Array.isArray(content)) {
-    const textBlock = content.find(
-      (b): b is { type: "text"; text: string } =>
-        b?.type === "text" &&
-        typeof b.text === "string" &&
-        b.text.trim() !== "",
-    );
-    return textBlock?.text ?? null;
-  }
-
-  return null;
-}
-
-/**
  * Get the content array from a message, handling nested SDK message structure.
  * Returns null if content is not an array.
  */

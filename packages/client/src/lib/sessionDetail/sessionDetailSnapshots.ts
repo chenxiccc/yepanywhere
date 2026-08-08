@@ -40,6 +40,7 @@ export function stateToRouteSnapshot(
     session: state.session,
     pagination: state.pagination,
     agentContent: state.agentContent,
+    markdownAugments: state.markdownAugments,
     toolUseToAgentEntries: state.toolUseToAgentEntries,
     lastMessageId: state.lastMessageId,
     maxPersistedTimestampMs: state.maxPersistedTimestampMs,

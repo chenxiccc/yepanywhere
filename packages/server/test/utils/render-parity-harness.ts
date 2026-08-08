@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { getMessageId } from "../../../client/src/lib/mergeMessages.ts";
 import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
 import type { TranscriptProjectionAugments } from "../../../client/src/lib/transcriptProjection/types.ts";
 import type { Message as ClientMessage } from "../../../client/src/types.ts";
@@ -21,16 +22,21 @@ export interface StreamPipelineResult {
 }
 
 const NON_SEMANTIC_KEYS = new Set([
-  "id",
-  "uuid",
   "timestamp",
   "session_id",
   "sessionId",
   "_source",
-  "parentUuid",
-  "parent_tool_use_id",
-  "parentToolUseId",
 ]);
+
+export interface RenderParityNormalizationOptions {
+  idAliases?: Readonly<Record<string, string>>;
+  includeSourceRelationships?: boolean;
+}
+
+export interface RenderParityAssertionOptions {
+  persisted?: RenderParityNormalizationOptions;
+  stream?: RenderParityNormalizationOptions;
+}
 
 const HTML_PRESENCE_KEYS = new Set([
   "_diffHtml",
@@ -95,13 +101,57 @@ function normalizeUserPromptContent(content: unknown): unknown {
   return normalizeUnknown(content);
 }
 
+function normalizeId(
+  id: string,
+  aliases: Readonly<Record<string, string>> | undefined,
+): string {
+  return aliases?.[id] ?? id;
+}
+
+function normalizeSourceRelationships(
+  item: RenderItem,
+  aliases: Readonly<Record<string, string>> | undefined,
+): unknown[] {
+  return item.sourceMessages.map((message) => {
+    const record = message as unknown as Record<string, unknown>;
+    const parentUuid = record.parentUuid;
+    const parentToolUseId = record.parentToolUseId ?? record.parent_tool_use_id;
+    return {
+      id: normalizeId(getMessageId(message), aliases),
+      parentUuid:
+        typeof parentUuid === "string"
+          ? normalizeId(parentUuid, aliases)
+          : (parentUuid ?? undefined),
+      parentToolUseId:
+        typeof parentToolUseId === "string"
+          ? normalizeId(parentToolUseId, aliases)
+          : (parentToolUseId ?? undefined),
+    };
+  });
+}
+
 export function normalizeRenderItemsForComparison(
   items: RenderItem[],
+  options: RenderParityNormalizationOptions = {},
 ): unknown[] {
   return items.map((item) => {
+    const base = {
+      type: item.type,
+      id: normalizeId(item.id, options.idAliases),
+      isSubagent: item.isSubagent ?? false,
+      ...(options.includeSourceRelationships
+        ? {
+            sourceRelationships: normalizeSourceRelationships(
+              item,
+              options.idAliases,
+            ),
+          }
+        : {}),
+    };
+
     if (item.type === "tool_call") {
       return {
-        type: item.type,
+        ...base,
         status: item.status,
         toolName: item.toolName,
         toolInput: normalizeUnknown(item.toolInput),
@@ -111,6 +161,7 @@ export function normalizeRenderItemsForComparison(
               content: item.toolResult.content,
               isError: item.toolResult.isError,
               structured: normalizeUnknown(item.toolResult.structured),
+              media: normalizeUnknown(item.toolResult.media),
             }
           : null,
       };
@@ -118,7 +169,7 @@ export function normalizeRenderItemsForComparison(
 
     if (item.type === "text") {
       return {
-        type: item.type,
+        ...base,
         text: item.text,
         isStreaming: item.isStreaming ?? false,
         hasAugmentHtml: Boolean(item.augmentHtml),
@@ -128,32 +179,68 @@ export function normalizeRenderItemsForComparison(
 
     if (item.type === "thinking") {
       return {
-        type: item.type,
+        ...base,
         thinking: item.thinking,
+        signature: item.signature,
         status: item.status,
       };
     }
 
     if (item.type === "user_prompt") {
       return {
-        type: item.type,
+        ...base,
         content: normalizeUserPromptContent(item.content),
       };
     }
 
     if (item.type === "session_setup") {
       return {
-        type: item.type,
+        ...base,
         title: item.title,
         prompts: normalizeUnknown(item.prompts),
       };
     }
 
+    if (item.type === "transcript_display_object") {
+      return {
+        ...base,
+        object: normalizeUnknown(item.object),
+      };
+    }
+
+    if (item.type === "system") {
+      return {
+        ...base,
+        subtype: item.subtype,
+        content: item.content,
+        details: normalizeUnknown(item.details),
+        status: item.status ?? null,
+        configChanged: item.configChanged,
+      };
+    }
+
+    if (item.type === "task_notification") {
+      return {
+        ...base,
+        raw: item.raw,
+        taskId: item.taskId,
+        toolUseId: item.toolUseId,
+        outputFile: item.outputFile,
+        status: item.status,
+        summary: item.summary,
+        event: item.event,
+      };
+    }
+
     return {
-      type: item.type,
-      subtype: item.subtype,
-      content: item.content,
-      status: item.status ?? null,
+      ...base,
+      activityCount: item.activityCount,
+      active: item.active,
+      expanded: item.expanded,
+      thinkingPreviews: normalizeUnknown(item.thinkingPreviews),
+      recentActivities: normalizeUnknown(item.recentActivities),
+      startedAtMs: item.startedAtMs,
+      endedAtMs: item.endedAtMs,
     };
   });
 }
@@ -231,9 +318,9 @@ function mergeProjectionAugments(
     return base;
   }
   return {
-    ...(base ?? {}),
+    ...base,
     markdown: {
-      ...(base?.markdown ?? {}),
+      ...base?.markdown,
       ...markdown,
     },
   };
@@ -313,9 +400,16 @@ export function assertRenderParity(
   fixtureName: string,
   persistedItems: RenderItem[],
   streamItems: RenderItem[],
+  options: RenderParityAssertionOptions = {},
 ): void {
-  const persistedComparable = normalizeRenderItemsForComparison(persistedItems);
-  const streamComparable = normalizeRenderItemsForComparison(streamItems);
+  const persistedComparable = normalizeRenderItemsForComparison(
+    persistedItems,
+    options.persisted,
+  );
+  const streamComparable = normalizeRenderItemsForComparison(
+    streamItems,
+    options.stream,
+  );
   const diff = findFirstDifference(persistedComparable, streamComparable);
 
   if (!diff) return;

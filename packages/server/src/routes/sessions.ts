@@ -2882,10 +2882,31 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!session) {
       // Session file doesn't exist yet - only valid if we own the process
       if (process) {
-        // Get raw messages from process memory
+        // Keep Process history as provider-owned replay state. Presentation fields
+        // are computed on a detached client projection, as on file-backed reads.
         const sdkMessages = process.getMessageHistory();
-        // Convert to client format
-        const processMessages = sdkMessagesToClientMessages(sdkMessages);
+        const processMessages = sdkMessagesToClientMessages(
+          structuredClone(sdkMessages),
+        );
+        if (isClaudeSdkProviderName(process.provider)) {
+          augmentTaskListSnapshots(processMessages);
+        }
+        if (publicShare) {
+          await augmentEditToolUses(processMessages);
+        } else {
+          const pathIndex = await tryClaimProjectPathIndex(project.path);
+          try {
+            await augmentPersistedSessionMessages(processMessages, {
+              projectFileLinks: {
+                projectId: effectiveProjectId,
+                projectPath: project.path,
+                ...(pathIndex ? { index: pathIndex } : {}),
+              },
+            });
+          } finally {
+            pathIndex?.release();
+          }
+        }
         // Extract context usage from raw SDK messages (has usage field)
         // Use process.contextWindow (captured from result messages) as primary source
         const mis = deps.modelInfoService;

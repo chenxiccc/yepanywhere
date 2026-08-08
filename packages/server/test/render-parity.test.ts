@@ -240,6 +240,12 @@ function codexPersistedEntries(): CodexSessionEntry[] {
   ];
 }
 
+const CODEX_PERSISTED_ID_ALIASES = {
+  "codex-0-2026-03-05T12:00:00.000Z": "codex-user-1",
+  "codex-10-2026-03-05T12:00:09.000Z": "agent-final-turn-parity-1",
+  "codex-10-2026-03-05T12:00:09.000Z-0": "agent-final-turn-parity-1",
+} as const;
+
 function codexStreamMessages(): Array<Record<string, unknown>> {
   const provider = new CodexProvider() as unknown as CodexProviderBridge;
   const sessionId = "codex-render-parity-stream";
@@ -362,6 +368,27 @@ const CLAUDE_FIXTURE: ClaudeSessionEntry[] = [
     message: {
       role: "assistant",
       content: "Done.\n\n```md\n# hello\n```",
+    },
+  },
+];
+
+const CLAUDE_MULTI_TEXT_FIXTURE: ClaudeSessionEntry[] = [
+  {
+    type: "user",
+    uuid: "claude-multi-user-1",
+    parentUuid: null,
+    message: { role: "user", content: "Show two separately rendered blocks." },
+  },
+  {
+    type: "assistant",
+    uuid: "claude-multi-assistant-1",
+    parentUuid: "claude-multi-user-1",
+    message: {
+      role: "assistant",
+      content: [
+        { type: "text", text: "First **block**." },
+        { type: "text", text: "Second block:\n\n```ts\nconst two = 2;\n```" },
+      ],
     },
   },
 ];
@@ -735,7 +762,13 @@ describe("Render Parity Harness", () => {
     );
     const stream = await runStreamPipeline(codexStreamMessages());
 
-    assertRenderParity("codex", persisted.renderItems, stream.renderItems);
+    assertRenderParity("codex", persisted.renderItems, stream.renderItems, {
+      persisted: {
+        idAliases: CODEX_PERSISTED_ID_ALIASES,
+        includeSourceRelationships: true,
+      },
+      stream: { includeSourceRelationships: true },
+    });
 
     const comparable = normalizeRenderItemsForComparison(
       persisted.renderItems,
@@ -877,7 +910,10 @@ describe("Render Parity Harness", () => {
       CLAUDE_FIXTURE as unknown as Array<Record<string, unknown>>,
     );
 
-    assertRenderParity("claude", persisted.renderItems, stream.renderItems);
+    assertRenderParity("claude", persisted.renderItems, stream.renderItems, {
+      persisted: { includeSourceRelationships: true },
+      stream: { includeSourceRelationships: true },
+    });
 
     const comparable = normalizeRenderItemsForComparison(
       persisted.renderItems,
@@ -907,6 +943,36 @@ describe("Render Parity Harness", () => {
     ).toBe(true);
   });
 
+  it("renders every Claude assistant text block identically live and persisted", async () => {
+    const persisted = await runPersistedPipeline(
+      buildLoadedClaudeSession(CLAUDE_MULTI_TEXT_FIXTURE),
+    );
+    const stream = await runStreamPipeline(
+      CLAUDE_MULTI_TEXT_FIXTURE as unknown as Array<Record<string, unknown>>,
+    );
+
+    assertRenderParity(
+      "claude-multi-text",
+      persisted.renderItems,
+      stream.renderItems,
+      {
+        persisted: { includeSourceRelationships: true },
+        stream: { includeSourceRelationships: true },
+      },
+    );
+
+    const textItems = normalizeRenderItemsForComparison(
+      persisted.renderItems,
+    ).filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" && item !== null && item.type === "text",
+    );
+    expect(textItems).toHaveLength(2);
+    expect(textItems[0]?.augmentHtml).toContain("<strong>block</strong>");
+    expect(textItems[1]?.augmentHtml).toContain("<p>Second block:</p>");
+    expect(textItems[1]?.augmentHtml).toContain('class="shiki css-variables"');
+  });
+
   it("keeps chained Claude Edit branches visible after persisted reload", async () => {
     const persisted = await runPersistedPipeline(
       buildLoadedClaudeSession(CLAUDE_EDIT_CHAIN_FIXTURE),
@@ -919,6 +985,10 @@ describe("Render Parity Harness", () => {
       "claude-edit-chain",
       persisted.renderItems,
       stream.renderItems,
+      {
+        persisted: { includeSourceRelationships: true },
+        stream: { includeSourceRelationships: true },
+      },
     );
 
     const comparable = normalizeRenderItemsForComparison(

@@ -82,31 +82,57 @@ observable order was nondeterministic async completion.
   could keep showing activity decoration while transcript rows were blocked,
   but changing liveness caching would not release those rows.
 
-## Current repair boundary
+## Implemented repair boundary
 
-`packages/server/src/subscriptions.ts` now establishes provider order before any
+`packages/server/src/subscriptions.ts` establishes provider order before any
 optional await:
 
 - perform bounded synchronous preparation, including task-list correlation;
 - emit every raw provider message immediately;
 - clear streaming bookkeeping synchronously on stream completion;
-- serialize shared async augmentation state through one FIFO promise tail;
-- emit finalized enrichment only as a same-id update;
+- retain one FIFO lane only for mutable streaming-coordinator state;
+- run finalized-message work independently with at most four active and 128
+  queued items;
+- coalesce queued same-id snapshots and publish only the latest generation;
+- publish one atomic same-id enriched message, followed by the equivalent
+  compatibility `markdown-augment` event;
 - keep an unidentified message as one raw representation rather than generating
   two unrelated client IDs; and
 - emit turn completion without waiting for optional enrichment, allowing the
   client to become idle and fetch the durable transcript.
 
-`task-list-augments.ts` accepts the same message object in the synchronous and
-async stages idempotently. `stream-augmenter.ts` accepts that shared correlator;
-all existing batch callers retain their previous one-stage behavior.
+Queued state is cleared on completion and cleanup. Running work receives a
+cloned message and cannot publish after teardown or after a newer generation
+supersedes it. Cleanup also releases viewer presence, live-delta demand, and the
+project path-index claim. `Process.emit` deliberately does not await subscription
+promises, so optional presentation work cannot backpressure provider ingestion.
 
-The focused regressions in `packages/server/test/subscriptions.test.ts` hold the
-first Claude Gateway enrichment unresolved while proving immediate raw order,
-ordered enriched replacements after release, one representation for an
-unidentified message, pre-delivery task correlation, and immediate completion.
-`packages/server/test/augments/task-list-augments.test.ts` prevents the shared
-message from replaying task correlation.
+`finalized-message-augmenter.ts` is the single per-message implementation for
+Markdown, Edit, Write, Read, and ExitPlanMode presentation. Both the persisted
+batch facade and live finalizer call it. Every assistant text block receives its
+own `_html`; the compatibility event carries the first block only for older
+clients, while current compilation prefers each block's inline HTML.
+
+Late-join replay and the active-process/no-session-file REST fallback augment
+detached copies of `Process` history. Provider-owned replay state is never
+mutated. File-backed reads, active-process reads, and live finalization use the
+same private-session augmentation boundary and project-file-link context.
+
+Final Markdown ownership now lives in `SessionDetailState.markdownAugments`.
+WebSocket events dispatch through the session-detail reducer, and warm reveal
+and route snapshots retain the map. Duplicate updates remain no-ops, live IDs
+can migrate to durable IDs, and active-window pruning removes stale entries.
+Token-rate pending/block Markdown remains on the ref-backed streaming path.
+
+Focused regressions in `packages/server/test/subscriptions.test.ts` prove raw
+order while the first finalizer is blocked, independent later finalization,
+latest-generation suppression, atomic enriched-message/event order, immediate
+completion, replay cloning, cleanup, and no post-teardown publication.
+`packages/server/test/render-parity.test.ts` covers multiple text blocks as well
+as provider render parity. Session-detail reducer, selector, snapshot, and hook
+tests cover final-Markdown ownership and restoration. The active-process route
+regression proves canonical multi-block rendering without mutating process
+history.
 
 ## The convergence contract
 
@@ -148,47 +174,40 @@ the sole durable source of truth. In particular, Codex rollout files are the
 canonical durable transcript; YA must not create a second durable message or
 metadata record to preserve live-only shape.
 
-## Draft-first augmentation plan
+## Draft-first augmentation decision
 
-The first repair establishes the transport boundary: perform bounded,
-order-sensitive synchronous preparation (identity, subagent marking, task
-correlation, streaming-text bookkeeping), insert the raw provider item in
-provider order, and serialize optional asynchronous enrichment as same-id
-updates. A message without stable provider identity gets no second message
-representation, and unfinished enrichment cannot postpone turn completion.
+The implementation has two publication phases per identified finalized item:
 
-Further render-phase work should proceed in this order:
+1. bounded, order-sensitive synchronous preparation followed by immediate raw
+   insertion in provider order; and
+2. one atomic same-id replacement after all finalized Markdown, diff, preview,
+   highlighting, glossary, and project-link work for that item settles.
 
-1. **Freeze representative output.** Keep current-output assertions for
-   Markdown structure, syntax-highlighted code, Edit/Read/Write previews,
-   inline project-file links, and glossary annotations. A changed baseline is
-   allowed when reviewed as an improvement, but never as an unnoticed effect
-   of phase reordering.
-2. **Measure the two useful latencies.** On representative short prose,
-   code-heavy, large tool, and path-heavy items, record raw arrival to draft
-   insertion and raw arrival to the fully enriched replacement. In a browser at
-   desktop and phone widths, record draft and final height plus scroll-anchor
-   movement.
-3. **Classify enrichment by geometry.** Markdown block structure and the
-   presence, truncation, or expansion of diffs, plans, task panels, and file
-   previews set geometry. Syntax-color spans, glossary spans, and file-link
-   anchors are intended to preserve visible text, line structure, font, and
-   height; property tests should enforce that contract and browser measurements
-   should catch CSS or whitespace exceptions.
-4. **Buffer per item.** Keep the raw draft visible while one per-item buffer
-   collects geometry-setting enrichment, then publish one atomic same-id
-   replacement. Do not wait for the subscription-wide queue. Split a later
-   geometry-neutral update only when measured latency justifies the extra paint;
-   otherwise fold it into the atomic replacement to avoid flicker.
-5. **Exercise the real stack.** Use an isolated YA server and client with Claude
-   Gateway bursts, intentionally slow first enrichment, compaction-adjacent
-   output, steering plus deferred input, and reconnect/persisted catch-up. Raw
-   items must remain ordered and visible while enrichment is blocked, and the
-   durable replay must converge without duplicate rows.
+There is no subscription-wide finalization tail and no separate
+"geometry-neutral" paint. Markdown block structure and the presence,
+truncation, or expansion of diffs, plans, task panels, and file previews set
+geometry. Syntax-color spans, glossary spans, and file-link anchors are intended
+to preserve visible text and line structure, but splitting them out would add a
+third render and a new ordering surface. They therefore remain bundled until a
+future change demonstrates a material raw-to-final latency reduction and proves
+at desktop and phone widths that row height and scroll anchors do not move.
+Project-file index hydration remains bundled for the same reason.
 
-The initial transport repair is intentionally narrower than this plan. In
-particular, project-file index hydration remains bundled with final Markdown
-rendering until the output and height baselines above make that split safe.
+Representative output is pinned by augment and parity tests for Markdown
+structure, syntax-highlighted code, multi-block assistant output, Edit/Read/
+Write/plan previews, project-file links, and glossary annotations. Subscription
+tests use controlled promises rather than sleeps: while one item is blocked,
+raw drafts remain ordered and visible, later item finalization can publish, and
+completion remains immediate. The deterministic transcript Playwright specimen
+continues to enforce stable top-level render identity, no horizontal overflow,
+and final layout at desktop and phone widths.
+
+For incident reproduction, the high-value operator scenario remains an isolated
+YA profile with Claude Gateway bursts, intentionally slow enrichment,
+compaction-adjacent output, steering plus deferred input, reconnect, and durable
+catch-up. It exercises deployment/provider timing beyond the deterministic
+contract tests; it is not a reason to restore serialized enrichment or a
+YA-owned shadow transcript.
 
 For durable-corresponding items, "converge" is stronger than "eventually show
 similar text." Structured fields are latent UI, and item count/order/grouping
@@ -204,7 +223,11 @@ stream)` normalizes both render-item arrays and reports the first structural
 difference by path (e.g. `$[3].toolResult.structured.exitCode`). The
 `runPersistedPipeline` / `runStreamPipeline` pair build the two sides from the
 same logical session; keep the two fixtures representing the *same* commands so
-a drift means a real asymmetry, not two different sessions.
+a drift means a real asymmetry, not two different sessions. The comparison
+retains render-item IDs, source-message IDs and parent/tool relationships,
+block HTML, media, and structured fields. Provider-specific identity aliases
+must be declared at the assertion; the Codex fixture declares only its known
+positional durable IDs for the user prompt and final assistant text.
 
 The harness intentionally enforces strict equality for facts and items that
 the fixture declares paired. That is a conservative test for the

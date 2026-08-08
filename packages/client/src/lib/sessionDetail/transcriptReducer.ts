@@ -547,7 +547,7 @@ export function reduceSessionDetailState(
         session: action.snapshot.session,
         pagination: action.snapshot.pagination,
         agentContent: action.snapshot.agentContent,
-        markdownAugments: {},
+        markdownAugments: action.snapshot.markdownAugments ?? {},
         toolUseToAgentEntries: action.snapshot.toolUseToAgentEntries,
         deferredMessages: [],
         lastMessageId:

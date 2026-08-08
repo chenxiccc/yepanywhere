@@ -1,5 +1,13 @@
 # Server-Side Rendering for Mobile Performance
 
+> **Current implementation (2026-08-08):** This document began as the design
+> proposal. YA now carries reviewed presentation fields inline on message
+> blocks, uses WebSocket session events for live delivery, and emits raw provider
+> messages before optional finalization. The durable and live paths share the
+> finalized-message augmenter. See
+> [`stream-persisted-render-parity.md`](../../topics/stream-persisted-render-parity.md)
+> for the ordering and convergence contract.
+
 ## Problem
 
 The mobile client has performance issues that degrade the user experience:
@@ -52,47 +60,73 @@ scripted SVG, and executable applications.
 
 ### Data Flow
 
-#### Live Streaming (SSE)
+#### Live session stream (WebSocket)
 
-Augments are sent **before** the SDK message they augment, so rendering data is ready when the message arrives:
+The session subscription sends each raw provider message immediately, before
+optional presentation work. Identified finalized messages may then receive one
+same-id enriched replacement. A final `markdown-augment` event follows for
+compatibility with older clients; current clients prefer inline block HTML and
+reduce the compatibility event to an idempotent update.
 
+```text
+WebSocket: message(raw provider item)
+WebSocket: message(same id, all finalized presentation fields)
+WebSocket: markdown-augment(equivalent final Markdown, compatibility)
 ```
-SSE: { event: "augment", data: { toolUseId: "abc", type: "edit", ... } }
-SSE: { event: "message", data: <SDK tool_use message> }
-```
 
-Client merges augments by `toolUseId`. If augment arrives late, client can re-render.
+Mutable incremental-Markdown coordinator state stays on one FIFO lane. Finalized
+items use bounded independent work, so slow highlighting for one item cannot
+hide or reorder another raw provider record.
 
 #### Persisted Sessions (REST)
 
-Augments are included in the session response:
+The REST response carries the same presentation fields inline on detached
+message blocks. For example, text blocks carry `_html`; Edit inputs carry
+`_structuredPatch`, `_rawPatch`, and `_diffHtml`; Read/Write/plan results carry
+their renderer-specific fields. There is no separate persisted augment map.
 
 ```json
 {
-  "session": { ... },
-  "messages": [ ... ],
-  "augments": {
-    "toolUseId1": { "type": "edit", "structuredPatch": [...], "html": "..." },
-    "toolUseId2": { "type": "read", "html": "..." }
-  }
+  "session": { "id": "..." },
+  "messages": [
+    {
+      "uuid": "assistant-1",
+      "message": {
+        "content": [
+          { "type": "text", "text": "Hello", "_html": "<p>Hello</p>" }
+        ]
+      }
+    }
+  ]
 }
 ```
 
 ### Client Changes
 
-1. **Consume augments**: Store in context/state, keyed by `toolUseId`
-2. **Render HTML directly**: Use `dangerouslySetInnerHTML` for pre-rendered content
-3. **Remove client libraries**: Eventually remove `react-syntax-highlighter`, `diff` from client
-4. **Fallback**: If augment missing, render plain text (no client-side processing)
+1. **Consume inline presentation fields** through the canonical transcript
+   compiler and tool renderers.
+2. **Render reviewed HTML directly** with the sanitization boundary above.
+3. **Retain final Markdown compatibility state** in the session-detail reducer,
+   keyed by stable message ID and preserved through warm route snapshots.
+4. **Keep token-rate pending Markdown outside React state** on the ref-backed
+   streaming path.
+5. **Fall back to raw content** when optional presentation work is absent or
+   fails.
 
 ### Server Changes
 
-1. **Augment service**: Computes diffs, syntax highlighting, markdown rendering
-2. **stream.ts**: Intercept messages, compute augments, send augment before message
-3. **sessions.ts**: Compute augments for all messages in GET response
-4. **Caching**: Cache augments for persisted sessions (optional optimization)
+1. **Canonical finalized-message augmenter** computes diffs, previews, syntax
+   highlighting, and Markdown for both live and persisted paths.
+2. **Session subscriptions** send raw provider activity first, then bounded
+   same-id finalized replacements without delaying completion.
+3. **Session reads** augment detached file-backed or active-process messages.
+4. **Provider persistence remains authoritative**; YA does not cache a shadow
+   transcript to retain live presentation shape.
 
 ## Implementation Phases
+
+These headings preserve the original delivery sequence. The core phases are
+implemented; current behavior is described in **Data Flow** above.
 
 ### Phase 1: Edit Tool Diffs
 

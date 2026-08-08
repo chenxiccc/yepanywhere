@@ -78,7 +78,7 @@ async function attachTranscriptScreenshots(
 }
 
 for (const specimen of [
-  { name: "desktop", width: 1440, height: 900 },
+  { name: "desktop", width: 1920, height: 1080 },
   { name: "mobile", width: 375, height: 812 },
 ] as const) {
   test(`renders the deterministic transcript projection at ${specimen.name} width`, async ({

@@ -90,8 +90,11 @@ function isLiveDeltaMessage(message: Record<string, unknown>): boolean {
   return message.type === "stream_event" || message._isStreaming === true;
 }
 
-function hasStableMessageIdentity(message: Record<string, unknown>): boolean {
-  return typeof message.uuid === "string" || typeof message.id === "string";
+function getStableMessageIdentity(
+  message: Record<string, unknown>,
+): string | null {
+  if (typeof message.uuid === "string") return message.uuid;
+  return typeof message.id === "string" ? message.id : null;
 }
 
 /**
@@ -162,20 +165,125 @@ export function createSessionSubscription(
     return augmenter;
   };
 
-  // Process emits without awaiting listeners, so independently awaiting each
-  // augmentation lets later messages overtake earlier ones and concurrently
-  // mutates the augmenter's streaming coordinator. Keep enrichment ordered;
-  // raw message delivery below remains immediate.
-  let augmentationTail: Promise<void> = Promise.resolve();
-  const processAugmentsInOrder = (
+  // Coordinator state is mutable across deltas, so it retains one FIFO lane.
+  // Finalized-message rendering is independent and runs through the bounded
+  // per-item queue below instead of waiting behind unrelated messages.
+  let coordinatorTail: Promise<void> = Promise.resolve();
+  const processCoordinatorInOrder = (
     message: Record<string, unknown>,
   ): Promise<void> => {
-    const next = augmentationTail.then(async () => {
+    const next = coordinatorTail.then(async () => {
+      if (completed) return;
       const aug = await getAugmenter();
-      await aug.processMessage(message);
+      await aug.processStreamingMessage(message);
     });
-    augmentationTail = next.catch(() => {});
+    coordinatorTail = next.catch(() => {});
     return next;
+  };
+
+  interface FinalizationJob {
+    id: string;
+    generation: number;
+    message: Record<string, unknown>;
+    resolve: () => void;
+  }
+
+  const maxConcurrentFinalizations = 4;
+  const maxQueuedFinalizations = 128;
+  let activeFinalizations = 0;
+  const finalizationGenerations = new Map<string, number>();
+  const finalizationQueue: FinalizationJob[] = [];
+
+  const settleDroppedFinalization = (job: FinalizationJob): void => {
+    if (finalizationGenerations.get(job.id) === job.generation) {
+      finalizationGenerations.delete(job.id);
+    }
+    job.resolve();
+  };
+
+  const drainFinalizations = (): void => {
+    while (
+      !completed &&
+      activeFinalizations < maxConcurrentFinalizations &&
+      finalizationQueue.length > 0
+    ) {
+      const job = finalizationQueue.shift();
+      if (!job) break;
+      if (finalizationGenerations.get(job.id) !== job.generation) {
+        job.resolve();
+        continue;
+      }
+
+      activeFinalizations += 1;
+      void getAugmenter()
+        .then(async (aug) => {
+          if (completed) return;
+          const finalMarkdown = await aug.processFinalizedMessage(job.message);
+          if (
+            completed ||
+            finalizationGenerations.get(job.id) !== job.generation
+          ) {
+            return;
+          }
+          emit("message", markSubagent(job.message));
+          if (!completed && finalMarkdown) {
+            emit("markdown-augment", finalMarkdown);
+          }
+        })
+        .catch((error) => {
+          options?.onError?.(error);
+        })
+        .finally(() => {
+          activeFinalizations -= 1;
+          if (finalizationGenerations.get(job.id) === job.generation) {
+            finalizationGenerations.delete(job.id);
+          }
+          job.resolve();
+          drainFinalizations();
+        });
+    }
+  };
+
+  const scheduleFinalization = (
+    message: Record<string, unknown>,
+  ): Promise<void> => {
+    const id = getStableMessageIdentity(message);
+    if (!id || completed) return Promise.resolve();
+
+    const generation = (finalizationGenerations.get(id) ?? 0) + 1;
+    finalizationGenerations.set(id, generation);
+    const queuedIndex = finalizationQueue.findIndex((job) => job.id === id);
+    if (queuedIndex >= 0) {
+      finalizationQueue.splice(queuedIndex, 1)[0]?.resolve();
+    }
+
+    return new Promise((resolve) => {
+      if (finalizationQueue.length >= maxQueuedFinalizations) {
+        const dropped = finalizationQueue.shift();
+        if (dropped) {
+          settleDroppedFinalization(dropped);
+          options?.onError?.(
+            new Error(
+              `Finalized-message augmentation queue exceeded ${maxQueuedFinalizations} items`,
+            ),
+          );
+        }
+      }
+      finalizationQueue.push({
+        id,
+        generation,
+        message: structuredClone(message),
+        resolve,
+      });
+      drainFinalizations();
+    });
+  };
+
+  const clearQueuedFinalizations = (): void => {
+    for (const job of finalizationQueue.splice(0)) {
+      settleDroppedFinalization(job);
+    }
+    finalizationGenerations.clear();
   };
 
   const emitStatus = (state: Process["state"]) => {
@@ -219,7 +327,6 @@ export function createSessionSubscription(
             break;
           }
           taskListAugmenter.processMessage(message);
-          const isStreamEvent = message.type === "stream_event";
 
           const startMessageId =
             extractMessageIdFromStart(message) ??
@@ -246,15 +353,11 @@ export function createSessionSubscription(
             process.clearStreamingText();
           }
 
-          if (isStreamEvent || isPlainUserEcho(message)) {
-            void processAugmentsInOrder(message).catch((err) => {
-              options?.onError?.(err);
-            });
-          } else {
-            await processAugmentsInOrder(message);
-            if (!completed && hasStableMessageIdentity(message)) {
-              emit("message", markSubagent(message));
-            }
+          void processCoordinatorInOrder(message).catch((error) => {
+            options?.onError?.(error);
+          });
+          if (!isLiveDeltaMessage(message) && !isPlainUserEcho(message)) {
+            await scheduleFinalization(message);
           }
           break;
         }
@@ -325,6 +428,7 @@ export function createSessionSubscription(
             providerRuntimeStatus: process.getProviderRuntimeStatus(),
           });
           completed = true;
+          clearQueuedFinalizations();
           clearInterval(heartbeatInterval);
           break;
       }
@@ -359,15 +463,18 @@ export function createSessionSubscription(
     ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
   });
 
-  // Replay buffered messages for late-joining clients
-  for (const message of process.getMessageHistory()) {
-    emit(
-      "message",
-      markSubagent({
-        ...message,
-        isReplay: true,
-      }),
-    );
+  // Replay buffered messages for late-joining clients. Prepare clones so task
+  // correlation and optional presentation fields never mutate Process history.
+  for (const historyMessage of process.getMessageHistory()) {
+    const message = normalizeStreamMessage({
+      ...structuredClone(historyMessage),
+      isReplay: true,
+    });
+    taskListAugmenter.processMessage(message);
+    emit("message", markSubagent(message));
+    if (!isLiveDeltaMessage(message) && !isPlainUserEcho(message)) {
+      void scheduleFinalization(message);
+    }
   }
 
   // Catch-up: send accumulated streaming text as pending HTML
@@ -393,6 +500,7 @@ export function createSessionSubscription(
   return {
     cleanup: () => {
       completed = true;
+      clearQueuedFinalizations();
       clearInterval(heartbeatInterval);
       unsubscribe();
       unregisterLiveDeltaSubscriber?.();

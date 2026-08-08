@@ -1,5 +1,4 @@
 import {
-  type MarkdownAugment,
   type ContextUsage,
   type ProviderName,
   type ProviderRuntimeStatus,
@@ -655,11 +654,6 @@ export function useSession(
   const [sessionLiveness, setSessionLiveness] =
     useState<SessionLivenessSnapshot | null>(null);
 
-  // Markdown augments loaded from REST response (keyed by message ID)
-  const [markdownAugments, setMarkdownAugments] = useState<
-    Record<string, MarkdownAugment>
-  >({});
-
   // Permission mode state: localMode is UI-selected, serverMode is confirmed by server.
   // A live process's mode (from initialStatus) stays authoritative; only when there
   // is no live-process mode do we restore the user's last choice from storage instead
@@ -912,6 +906,8 @@ export function useSession(
     messages,
     agentContent,
     toolUseToAgent,
+    markdownAugments,
+    applyFinalMarkdownAugment,
     loading,
     sessionLoadProgress,
     session,
@@ -2042,11 +2038,7 @@ export function useSession(
           augmentData.blockIndex === undefined &&
           augmentData.html
         ) {
-          // Final message augment - store in markdownAugments
-          setMarkdownAugments((prev) => ({
-            ...prev,
-            [augmentData.messageId as string]: { html: augmentData.html },
-          }));
+          applyFinalMarkdownAugment(augmentData.messageId, augmentData.html);
         } else if (
           augmentData.blockIndex !== undefined &&
           getStreamingEnabled()
@@ -2093,6 +2085,7 @@ export function useSession(
       }
     },
     [
+      applyFinalMarkdownAugment,
       applyServerModeUpdate,
       sessionId,
       handleStreamEvent,

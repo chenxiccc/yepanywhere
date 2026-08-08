@@ -5,13 +5,18 @@ import type {
   ActiveToolApproval,
   TranscriptProjectionAugments,
 } from "../transcriptProjection/types";
-import type { AgentContentMap, SessionDetailState } from "./types";
+import type {
+  AgentContentMap,
+  MarkdownAugmentMap,
+  SessionDetailState,
+} from "./types";
 
 export interface SessionDetailRuntimeSnapshot {
   messages: readonly Message[];
   session: SessionMetadata | null;
   pagination?: PaginationInfo;
   agentContent: AgentContentMap;
+  markdownAugments: MarkdownAugmentMap;
   toolUseToAgentEntries: Array<[string, string]>;
   lastMessageId?: string;
   maxPersistedTimestampMs: number;
@@ -26,6 +31,7 @@ export function selectSessionDetailRuntimeSnapshot(
     session: state.session,
     pagination: state.pagination,
     agentContent: state.agentContent,
+    markdownAugments: state.markdownAugments,
     toolUseToAgentEntries: state.toolUseToAgentEntries,
     lastMessageId: state.lastMessageId,
     maxPersistedTimestampMs: state.maxPersistedTimestampMs,

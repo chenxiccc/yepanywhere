@@ -97,6 +97,9 @@ describe("transcriptReducer", () => {
       ],
       session: sessionMetadata(),
       agentContent: {},
+      markdownAugments: {
+        "jsonl-assistant-1": { html: "<p>persisted</p>" },
+      },
       toolUseToAgentEntries: [],
       lastMessageId: "jsonl-assistant-1",
       maxPersistedTimestampMs: Date.parse("2026-07-01T12:00:01.000Z"),
@@ -111,6 +114,9 @@ describe("transcriptReducer", () => {
       "jsonl",
     ]);
     expect(state.lastMessageId).toBe("jsonl-assistant-1");
+    expect(state.markdownAugments).toEqual({
+      "jsonl-assistant-1": { html: "<p>persisted</p>" },
+    });
     expect(state.maxPersistedTimestampMs).toBe(
       Date.parse("2026-07-01T12:00:01.000Z"),
     );

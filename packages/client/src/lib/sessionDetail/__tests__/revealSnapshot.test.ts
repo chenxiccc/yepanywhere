@@ -62,6 +62,7 @@ function runtimeSnapshot(
     session: session(),
     pagination: pagination(1),
     agentContent: {},
+    markdownAugments: {},
     toolUseToAgentEntries: [["tool-1", "agent-1"]],
     maxPersistedTimestampMs: 100,
     scrollSnapshot: scrollSnapshot(1),
@@ -100,6 +101,7 @@ describe("session detail reveal snapshot", () => {
       session: fallback.session,
       pagination: fallback.pagination,
       agentContent: {},
+      markdownAugments: {},
       toolUseToAgentEntries: [],
       lastMessageId: "fallback-last",
       maxPersistedTimestampMs: 50,
@@ -112,9 +114,13 @@ describe("session detail reveal snapshot", () => {
     const agentContent = {
       "agent-1": { status: "running" as const, messages: [message("agent-1")] },
     };
+    const markdownAugments = {
+      "msg-1": { html: "<p>rendered</p>" },
+    };
     const selected = runtimeSnapshot({
       messages: selectedMessages,
       agentContent,
+      markdownAugments,
       lastMessageId: "selected-last",
       maxPersistedTimestampMs: 200,
     });
@@ -129,6 +135,7 @@ describe("session detail reveal snapshot", () => {
       session: selected.session,
       pagination: selected.pagination,
       agentContent,
+      markdownAugments,
       toolUseToAgentEntries: [["tool-1", "agent-1"]],
       lastMessageId: "selected-last",
       maxPersistedTimestampMs: 200,

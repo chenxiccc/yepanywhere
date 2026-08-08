@@ -1692,6 +1692,79 @@ describe("Sessions metadata route", () => {
     }
   });
 
+  it("augments detached process history before a session file exists", async () => {
+    const project = createProject();
+    const history = [
+      {
+        type: "assistant",
+        uuid: "assistant-1",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "First **block**." },
+            { type: "text", text: "Second `block`." },
+          ],
+        },
+      },
+    ];
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-1",
+          permissionMode: "default",
+          appliedPermissionMode: "default",
+          modeVersion: 0,
+          recapAfterSeconds: undefined,
+          state: { type: "idle", since: new Date("2026-03-10T09:47:00.000Z") },
+          provider: "claude",
+          resolvedModel: "claude-sonnet-4-6",
+          supportsDynamicCommands: false,
+          contextWindow: undefined,
+          getMessageHistory: vi.fn(() => history),
+          getDeferredQueueSummary: vi.fn(() => []),
+          getProviderRuntimeStatus: vi.fn(() => null),
+        })),
+        wasEverOwned: vi.fn(() => true),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSession: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+        getProvider: vi.fn(() => "claude"),
+        getRecapMessages: vi.fn(() => []),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1`,
+    );
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.messages[0].message.content).toMatchObject([
+      {
+        text: "First **block**.",
+        _html: expect.stringContaining("<strong>block</strong>"),
+      },
+      {
+        text: "Second `block`.",
+        _html: expect.stringContaining("<code>block</code>"),
+      },
+    ]);
+    expect(history[0]?.message.content).toEqual([
+      { type: "text", text: "First **block**." },
+      { type: "text", text: "Second `block`." },
+    ]);
+  });
+
   it("keeps persisted provider when metadata refresh misses the session summary", async () => {
     const project = createProject();
 
