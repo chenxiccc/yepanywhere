@@ -36,6 +36,10 @@ interface Props {
   children: ReactNode;
 }
 
+const disableOnboarding = import.meta.env.VITE_DISABLE_ONBOARDING === "true";
+const disableCliUpdateNotifications =
+  import.meta.env.VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS === "true";
+
 /**
  * Inner component that uses hooks requiring InboxContext.
  */
@@ -146,10 +150,12 @@ export function App({ children }: Props) {
               <InboxProvider>
                 <SchemaValidationProvider>
                   <AppContent>{children}</AppContent>
-                  {!isLoading && showWizard && (
+                  {!disableOnboarding && !isLoading && showWizard && (
                     <OnboardingWizard onComplete={completeOnboarding} />
                   )}
-                  {!isLoading && !showWizard && <CodexUpdatePrompt />}
+                  {!disableCliUpdateNotifications &&
+                    !isLoading &&
+                    (disableOnboarding || !showWizard) && <CodexUpdatePrompt />}
                 </SchemaValidationProvider>
               </InboxProvider>
             </HostIdentityProvider>

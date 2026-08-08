@@ -124,6 +124,12 @@ value, because the child has no other way to express one.
 | `YEP_DATA_DIR` | Full data-dir path override. |
 | `CLAUDE_CONFIG_DIR` | Claude Code config dir (sessions scanned from `<dir>/projects/`). |
 
+### Development & UI testing
+| Var | Meaning |
+|-----|---------|
+| `VITE_DISABLE_ONBOARDING` | `true` suppresses the first-run onboarding dialog in the standard client build. Intended for fresh dev and screenshot servers; evaluated by Vite at build/dev-server startup. |
+| `VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS` | `true` suppresses CLI update dialogs in the standard client build (currently the Codex CLI prompt). Intended for dev and screenshot servers; evaluated by Vite at build/dev-server startup. |
+
 ### Providers & features
 | Var | Meaning |
 |-----|---------|

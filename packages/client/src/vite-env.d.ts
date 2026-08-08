@@ -9,6 +9,10 @@ interface ImportMetaEnv {
   readonly VITE_DEFAULT_RELAY_URL?: string;
   /** Enables Playwright-only source transport smoke helpers. */
   readonly VITE_E2E_SOURCE_TRANSPORT_SMOKE?: string;
+  /** Suppress the first-run onboarding dialog in test/dev builds. */
+  readonly VITE_DISABLE_ONBOARDING?: string;
+  /** Suppress CLI update dialogs in test/dev builds. */
+  readonly VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS?: string;
 }
 
 interface ImportMeta {

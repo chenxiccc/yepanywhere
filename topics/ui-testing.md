@@ -55,7 +55,10 @@ build. When there is no explicit handoff, use the default capture workflow.
 2. Start a fresh dev-server process from the current worktree on an unused
    port; do not reuse an already-running process. Use a disposable data
    directory when isolation is needed to avoid disturbing the user's live
-   server. Complete or dismiss first-run/setup overlays before capture.
+   server. When launching that server, set `VITE_DISABLE_ONBOARDING=true` and
+   `VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS=true` so first-run and CLI-update
+   dialogs cannot obscure the surface under test. These are Vite startup
+   inputs; setting them only on the later screenshot command has no effect.
 3. Navigate to the affected view (page, panel, or control).
 4. Take screenshots at:
    - desktop width `1920x1080`,
@@ -82,6 +85,16 @@ Use the browser control tool listed in `CLAUDE.md` when it has an
 available backend. If setup or discovery reports no browser, or the
 browser inventory is empty, immediately fall back to the repository's
 installed Playwright command:
+
+Launch the fresh dev server in its own shell with the overlay suppressions:
+
+```bash
+VITE_DISABLE_ONBOARDING=true \
+VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS=true \
+pnpm dev
+```
+
+Once that server is ready, capture from another shell:
 
 ```bash
 ARTIFACT_DIR=".artifacts/ui-testing/$(date +%F)-topic"
