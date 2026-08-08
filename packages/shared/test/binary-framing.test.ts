@@ -26,6 +26,7 @@ import {
   decodeUploadChunkFrame,
   decodeUploadChunkPayload,
   encodeCompressedJsonFrame,
+  encodeJsonBytesFrame,
   encodeJsonFrame,
   encodeTransportChunkFrame,
   encodeTransportChunkFrames,
@@ -41,6 +42,17 @@ import {
 
 describe("binary-framing", () => {
   describe("encodeJsonFrame", () => {
+    it("preserves pre-serialized JSON bytes exactly", () => {
+      const json = '{ "spaced": true, "value": "日本語" }';
+      const jsonBytes = new TextEncoder().encode(json);
+      const result = encodeJsonBytesFrame(jsonBytes);
+      const bytes = new Uint8Array(result);
+
+      expect(bytes[0]).toBe(BinaryFormat.JSON);
+      expect(bytes.slice(1)).toEqual(jsonBytes);
+      expect(new TextDecoder().decode(bytes.slice(1))).toBe(json);
+    });
+
     it("encodes a simple object", () => {
       const msg = { type: "request", id: "123" };
       const result = encodeJsonFrame(msg);

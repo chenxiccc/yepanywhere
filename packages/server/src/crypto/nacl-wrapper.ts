@@ -271,8 +271,7 @@ export function decryptBinaryEnvelopeRaw(
  * @returns Compressed bytes
  */
 export function compressGzip(input: string): Uint8Array {
-  const inputBytes = Buffer.from(input, "utf-8");
-  const compressed = gzipSync(inputBytes);
+  const compressed = gzipSync(Buffer.from(input, "utf-8"));
   return new Uint8Array(compressed);
 }
 
@@ -302,12 +301,22 @@ export function encryptToBinaryEnvelopeWithCompression(
   key: Uint8Array,
   supportsCompression: boolean,
 ): ArrayBuffer {
+  return encryptBytesToBinaryEnvelopeWithCompression(
+    Buffer.from(plaintext, "utf-8"),
+    key,
+    supportsCompression,
+  );
+}
+
+/** Encrypt already-serialized JSON bytes with the negotiated compression. */
+export function encryptBytesToBinaryEnvelopeWithCompression(
+  plaintext: Uint8Array,
+  key: Uint8Array,
+  supportsCompression: boolean,
+): ArrayBuffer {
   if (key.length !== KEY_LENGTH) {
     throw new Error(`Key must be ${KEY_LENGTH} bytes, got ${key.length}`);
   }
-
-  const nonce = generateNonce();
-  const messageBytes = Buffer.from(plaintext, "utf-8");
 
   // Compression-before-encryption security note (reviewed 2026-02-21):
   // This can theoretically enable CRIME/BREACH-style length-oracle attacks.
@@ -317,25 +326,16 @@ export function encryptToBinaryEnvelopeWithCompression(
   // If the threat model changes, prefer ciphertext length bucketing/padding
   // for sensitive message classes rather than removing compression globally.
   // Check if we should compress
-  let innerPayload: Uint8Array;
-  if (supportsCompression && messageBytes.length > COMPRESSION_THRESHOLD) {
-    const compressed = compressGzip(plaintext);
+  if (supportsCompression && plaintext.length > COMPRESSION_THRESHOLD) {
+    const compressed = new Uint8Array(gzipSync(plaintext));
     // Only use compression if it actually reduces size
-    if (compressed.length < messageBytes.length) {
-      innerPayload = prependFormatByte(
-        BinaryFormat.COMPRESSED_JSON,
+    if (compressed.length < plaintext.length) {
+      return encryptBytesToBinaryEnvelope(
         compressed,
+        BinaryFormat.COMPRESSED_JSON,
+        key,
       );
-    } else {
-      innerPayload = prependFormatByte(BinaryFormat.JSON, messageBytes);
     }
-  } else {
-    innerPayload = prependFormatByte(BinaryFormat.JSON, messageBytes);
   }
-
-  // Encrypt the inner payload
-  const ciphertext = nacl.secretbox(innerPayload, nonce, key);
-
-  // Create the binary envelope
-  return createBinaryEnvelope(nonce, ciphertext);
+  return encryptBytesToBinaryEnvelope(plaintext, BinaryFormat.JSON, key);
 }

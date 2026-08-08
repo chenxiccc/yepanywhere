@@ -952,6 +952,7 @@ function memoryView(sample) {
     externalMiB: bytesToMiB(sample.externalBytes),
     arrayBuffersMiB: bytesToMiB(sample.arrayBuffersBytes),
     knownCaches: caches,
+    relay: sample.diagnostics?.relay ?? null,
     residuals: {
       heapUsedLessKnownCacheSourceMiB:
         knownCacheSourceBytes === null
@@ -2654,6 +2655,13 @@ function aggregateRuns(runs) {
     "memory.settled.knownCaches.projectPaths.retainedBytes",
     "memory.settled.knownCaches.projectPaths.projects",
     "memory.settled.knownCaches.projectPaths.watchers",
+    "memory.settled.relay.responseSerialization.eligibleJsonResponses",
+    "memory.settled.relay.responseSerialization.rawFastPathHits",
+    "memory.settled.relay.responseSerialization.rawBodyBytes",
+    "memory.settled.relay.responseSerialization.fallbackResponses",
+    "memory.settled.relay.responseSerialization.invalidJsonFallbacks",
+    "memory.settled.relay.responseSerialization.unsupportedSenderFallbacks",
+    "memory.settled.relay.responseSerialization.rawSendFailures",
     "memory.settled.residuals.heapUsedLessKnownCacheSourceMiB",
     "memory.settled.v8.heapSpaces.old_space.usedBytes",
     "memory.settled.v8.heapSpaces.large_object_space.usedBytes",

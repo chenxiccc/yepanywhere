@@ -69,6 +69,7 @@ import { createUploadRoutes } from "./routes/upload.js";
 import { getServerCompatibilityInfo } from "./routes/version.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
+import { relayResponseSerializationDiagnostics } from "./routes/ws-relay-handlers.js";
 import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
 import { MockServerClaudeProvider } from "./sdk/mock.js";
@@ -1683,6 +1684,9 @@ async function startServer() {
           claudeTranscript: claudeTranscriptCache.getStats(),
           markdownAugments: markdownAugmentCacheDiagnostics(),
           projectPaths: projectPathCacheDiagnostics(),
+        },
+        relay: {
+          responseSerialization: relayResponseSerializationDiagnostics(),
         },
       }),
     });

@@ -32,6 +32,7 @@ import {
   TRANSPORT_CHUNK_PAYLOAD_MAX_BYTES,
   UploadChunkError,
   decodeUploadChunkPayload,
+  encodeJsonBytesFrame,
   encodeJsonFrame,
   encodeTransportChunkFrames,
   isUrlProjectId,
@@ -41,7 +42,10 @@ import {
   isSrpSessionResumeInit,
 } from "@yep-anywhere/shared";
 import type { Hono } from "hono";
-import { encryptToBinaryEnvelopeWithCompression } from "../crypto/index.js";
+import {
+  encryptBytesToBinaryEnvelopeWithCompression,
+  encryptToBinaryEnvelopeWithCompression,
+} from "../crypto/index.js";
 import type { SrpServerSession } from "../crypto/index.js";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { getLogger } from "../logging/logger.js";
@@ -107,6 +111,19 @@ export { LEGACY_PUBLIC_SHARE_RESPONSE_CHUNK_MAX_BYTES };
 function isJsonMediaType(contentType: string): boolean {
   const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   return mediaType === "application/json" || mediaType.endsWith("+json");
+}
+
+const relayJsonDecoder = new TextDecoder("utf-8", { fatal: true });
+
+function parseRelayJsonBody(
+  bytes: Uint8Array,
+): { valid: true; text: string; value: unknown } | { valid: false } {
+  try {
+    const text = relayJsonDecoder.decode(bytes);
+    return { valid: true, text, value: JSON.parse(text) };
+  } catch {
+    return { valid: false };
+  }
 }
 
 /** Connection authentication state */
@@ -229,10 +246,57 @@ export type RequestResponseFrameMode =
   | { kind: "plaintext"; useBinaryFrames: boolean }
   | { kind: "srp_encrypted" };
 
-export type SendFn = (
-  msg: YepMessage,
-  frameMode?: RequestResponseFrameMode,
-) => void;
+export interface ValidatedJsonRelayResponse {
+  type: "response";
+  id: string;
+  status: number;
+  headers?: Record<string, string>;
+  bodyBytes: Uint8Array;
+  bodyText: string;
+}
+
+export interface SendFn {
+  (msg: YepMessage, frameMode?: RequestResponseFrameMode): void;
+  /** Internal fast path; the public relay message shape stays unchanged. */
+  sendValidatedJsonResponse?: (
+    response: ValidatedJsonRelayResponse,
+    frameMode?: RequestResponseFrameMode,
+  ) => void;
+}
+
+export interface RelayResponseSerializationStats {
+  eligibleJsonResponses: number;
+  rawFastPathHits: number;
+  rawBodyBytes: number;
+  fallbackResponses: number;
+  invalidJsonFallbacks: number;
+  unsupportedSenderFallbacks: number;
+  rawSendFailures: number;
+}
+
+const relayResponseSerializationStats: RelayResponseSerializationStats = {
+  eligibleJsonResponses: 0,
+  rawFastPathHits: 0,
+  rawBodyBytes: 0,
+  fallbackResponses: 0,
+  invalidJsonFallbacks: 0,
+  unsupportedSenderFallbacks: 0,
+  rawSendFailures: 0,
+};
+
+export function relayResponseSerializationDiagnostics(): RelayResponseSerializationStats {
+  return { ...relayResponseSerializationStats };
+}
+
+export const __relayResponseSerializationTest = {
+  reset(): void {
+    for (const key of Object.keys(relayResponseSerializationStats) as Array<
+      keyof RelayResponseSerializationStats
+    >) {
+      relayResponseSerializationStats[key] = 0;
+    }
+  },
+};
 
 function relayUploadErrorCode(error: unknown): string | undefined {
   if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOSPC") {
@@ -363,6 +427,43 @@ function sendBinaryMessage(
   }
 }
 
+const relayJsonEncoder = new TextEncoder();
+
+function relayResponseJsonPrefix(response: ValidatedJsonRelayResponse): string {
+  const headers = response.headers
+    ? `,"headers":${JSON.stringify(response.headers)}`
+    : "";
+  return (
+    `{"type":"response","id":${JSON.stringify(response.id)},` +
+    `"status":${response.status}${headers},"body":`
+  );
+}
+
+function concatenateJsonBytes(
+  prefix: string,
+  body: Uint8Array,
+  suffix: string,
+): Uint8Array {
+  const prefixBytes = relayJsonEncoder.encode(prefix);
+  const suffixBytes = relayJsonEncoder.encode(suffix);
+  const result = new Uint8Array(
+    prefixBytes.byteLength + body.byteLength + suffixBytes.byteLength,
+  );
+  result.set(prefixBytes, 0);
+  result.set(body, prefixBytes.byteLength);
+  result.set(suffixBytes, prefixBytes.byteLength + body.byteLength);
+  return result;
+}
+
+function reportSendFailure(ws: WSAdapter, error: unknown): void {
+  console.warn("[WS Relay] Failed to send message, closing socket:", error);
+  try {
+    ws.close(1011, "Send failed");
+  } catch {
+    // Socket already closing/closed
+  }
+}
+
 /**
  * Create an encryption-aware send function for a connection.
  * Automatically encrypts messages when the connection is authenticated with a session key.
@@ -374,7 +475,10 @@ export function createSendFn(
   ws: WSAdapter,
   connState: ConnectionState,
 ): SendFn {
-  return (msg: YepMessage, frameMode?: RequestResponseFrameMode) => {
+  const send: SendFn = (
+    msg: YepMessage,
+    frameMode?: RequestResponseFrameMode,
+  ) => {
     try {
       const encryptResponse =
         frameMode?.kind === "srp_encrypted" ||
@@ -412,14 +516,64 @@ export function createSendFn(
         ws.send(JSON.stringify(msg));
       }
     } catch (err) {
-      console.warn("[WS Relay] Failed to send message, closing socket:", err);
-      try {
-        ws.close(1011, "Send failed");
-      } catch {
-        // Socket already closing/closed
-      }
+      reportSendFailure(ws, err);
     }
   };
+
+  send.sendValidatedJsonResponse = (
+    response: ValidatedJsonRelayResponse,
+    frameMode?: RequestResponseFrameMode,
+  ): void => {
+    try {
+      const encryptResponse =
+        frameMode?.kind === "srp_encrypted" ||
+        (frameMode === undefined && hasEstablishedSrpTransport(connState));
+      const responsePrefix = relayResponseJsonPrefix(response);
+      if (encryptResponse) {
+        if (!hasEstablishedSrpTransport(connState)) {
+          ws.close(1011, "SRP response key unavailable");
+          return;
+        }
+        const seq = connState.nextOutboundSeq;
+        connState.nextOutboundSeq += 1;
+        const plaintext = concatenateJsonBytes(
+          `{"seq":${seq},"msg":${responsePrefix}`,
+          response.bodyBytes,
+          "}}",
+        );
+        const supportsCompression = connState.supportedFormats.has(
+          BinaryFormat.COMPRESSED_JSON,
+        );
+        const envelope = encryptBytesToBinaryEnvelopeWithCompression(
+          plaintext,
+          connState.sessionKey,
+          supportsCompression,
+        );
+        sendBinaryMessage(ws, connState, envelope);
+        return;
+      }
+
+      const useBinaryFrames =
+        frameMode?.kind === "plaintext"
+          ? frameMode.useBinaryFrames
+          : connState.useBinaryFrames;
+      if (useBinaryFrames) {
+        const serialized = concatenateJsonBytes(
+          responsePrefix,
+          response.bodyBytes,
+          "}",
+        );
+        sendBinaryMessage(ws, connState, encodeJsonBytesFrame(serialized));
+      } else {
+        ws.send(`${responsePrefix}${response.bodyText}}`);
+      }
+    } catch (error) {
+      relayResponseSerializationStats.rawSendFailures += 1;
+      reportSendFailure(ws, error);
+    }
+  };
+
+  return send;
 }
 
 function isLegacyPublicShareSessionRequest(request: RelayRequest): boolean {
@@ -584,17 +738,17 @@ export async function handleRequest(
 
   try {
     const url = new URL(request.path, baseUrl);
-    const headers = new Headers(request.headers);
-    headers.delete("Accept-Encoding");
-    headers.set("X-Yep-Anywhere", "true");
-    headers.set("X-Ws-Relay", "true");
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.delete("Accept-Encoding");
+    requestHeaders.set("X-Yep-Anywhere", "true");
+    requestHeaders.set("X-Ws-Relay", "true");
     if (request.body !== undefined) {
-      headers.set("Content-Type", "application/json");
+      requestHeaders.set("Content-Type", "application/json");
     }
 
     const fetchInit: RequestInit = {
       method: request.method,
-      headers,
+      headers: requestHeaders,
       ...(preauthController ? { signal: preauthController.signal } : {}),
     };
 
@@ -649,6 +803,7 @@ export async function handleRequest(
 
     let responseStatus = response.status;
     let body: unknown;
+    let validatedJsonBody: { bytes: Uint8Array; text: string } | undefined;
     const contentType = response.headers.get("Content-Type") ?? "";
     const jsonResponse = isJsonMediaType(contentType);
     const declaredOverflow =
@@ -700,10 +855,21 @@ export async function handleRequest(
       const text = new TextDecoder().decode(responseBody.bytes);
       body = text || null;
     } else if (jsonResponse) {
-      try {
-        body = JSON.parse(new TextDecoder().decode(responseBody.bytes));
-      } catch {
+      relayResponseSerializationStats.eligibleJsonResponses += 1;
+      const parsed = parseRelayJsonBody(responseBody.bytes);
+      if (!parsed.valid) {
+        relayResponseSerializationStats.fallbackResponses += 1;
+        relayResponseSerializationStats.invalidJsonFallbacks += 1;
         body = null;
+      } else if (send.sendValidatedJsonResponse) {
+        validatedJsonBody = {
+          bytes: responseBody.bytes,
+          text: parsed.text,
+        };
+      } else {
+        relayResponseSerializationStats.fallbackResponses += 1;
+        relayResponseSerializationStats.unsupportedSenderFallbacks += 1;
+        body = parsed.value;
       }
     } else if (
       contentType.startsWith("image/") ||
@@ -723,11 +889,13 @@ export async function handleRequest(
 
     const responseHeaders: Record<string, string> = {};
     for (const [key, value] of response.headers.entries()) {
+      const normalizedKey = key.toLowerCase();
       if (
-        key.toLowerCase().startsWith("x-") ||
-        key.toLowerCase() === "content-type" ||
-        key.toLowerCase() === "etag" ||
-        key.toLowerCase() === "location"
+        normalizedKey.startsWith("x-") ||
+        normalizedKey === "content-type" ||
+        normalizedKey === "etag" ||
+        normalizedKey === "location" ||
+        normalizedKey === "server-timing"
       ) {
         responseHeaders[key] = value;
       }
@@ -736,17 +904,35 @@ export async function handleRequest(
       responseHeaders["content-type"] = "application/json; charset=UTF-8";
     }
 
-    send(
-      {
-        type: "response",
-        id: request.id,
-        status: responseStatus,
-        headers:
-          Object.keys(responseHeaders).length > 0 ? responseHeaders : undefined,
-        body,
-      },
-      responseFrameMode,
-    );
+    const relayHeaders =
+      Object.keys(responseHeaders).length > 0 ? responseHeaders : undefined;
+    if (validatedJsonBody && send.sendValidatedJsonResponse) {
+      relayResponseSerializationStats.rawFastPathHits += 1;
+      relayResponseSerializationStats.rawBodyBytes +=
+        validatedJsonBody.bytes.byteLength;
+      send.sendValidatedJsonResponse(
+        {
+          type: "response",
+          id: request.id,
+          status: responseStatus,
+          headers: relayHeaders,
+          bodyBytes: validatedJsonBody.bytes,
+          bodyText: validatedJsonBody.text,
+        },
+        responseFrameMode,
+      );
+    } else {
+      send(
+        {
+          type: "response",
+          id: request.id,
+          status: responseStatus,
+          headers: relayHeaders,
+          body,
+        },
+        responseFrameMode,
+      );
+    }
     for (const task of afterResponseTasks) {
       try {
         await task();

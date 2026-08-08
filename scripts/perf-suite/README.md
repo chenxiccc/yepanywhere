@@ -117,6 +117,17 @@ metric subtracts all three known source charges; Markdown cache hit, join,
 retention, stale-completion, and unretained-completion counters remain in both
 raw repetitions and the aggregate.
 
+Current execution revisions also expose cumulative relay JSON serialization
+counters: eligible responses, validated raw-body fast-path hits and bytes,
+invalid or unsupported fallbacks, and send failures. A zero eligible count means
+the selected driver did not traverse that relay path; compare hit/fallback rates
+only when the eligible count is nonzero. For a focused plaintext and encrypted
+comparison with the same automatic host record, run:
+
+```bash
+pnpm --filter @yep-anywhere/server benchmark:relay-json
+```
+
 CI log collectors may scrape `YA_PERF_HOST_JSON` before the run and
 `YA_PERF_RESULT_JSON` after it. The latter names the result path, revision,
 capacity-keyed history tuple, and pass/fail outcome; upload the referenced JSON

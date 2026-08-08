@@ -112,8 +112,8 @@ retrospective owner clocks.
 
 | phase | service and boundary | reuse / size shape | concern and recovery target |
 |---|---|---|---|
-| Session-detail augmentation | Converts sliced persisted messages into client-ready Markdown, media, recap, and project-path output. It consumes normalized messages plus project context and returns augmented response messages. Glossary highlighting is client-side and is not an input to this server phase. | The project-path index is shared, but Markdown/path traversal still runs for each returned text block and concurrent request. Cost grows with returned text bytes and block complexity. | This dominates current server-owned detail time. Cache/coalesce only the immutable Markdown result by content/scope and a fenced project-index revision; do not cache the whole mutating finalized-message operation. |
-| Framework / serialization / loopback | Carries the Hono response through the direct WebSocket relay and back to the browser-facing request abstraction. | The relay accumulates the body, decodes and parses JSON, wraps it, serializes it again, chunks large frames, then the browser reassembles and parses it. Cost grows with augmented response bytes. | Preserve response bytes or use a typed internal handler rather than decode/re-encode. Forward `Server-Timing` through the relay so browser-driven profiles retain server attribution. |
+| Session-detail augmentation | Converts sliced persisted messages into client-ready Markdown, media, recap, and project-path output. It consumes normalized messages plus project context and returns augmented response messages. Glossary highlighting is client-side and is not an input to this server phase. | At the profiled revision, the project-path index was shared but Markdown/path traversal still ran for each returned text block and concurrent request. Cost grew with returned text bytes and block complexity. | Recovered by caching/coalescing only immutable Markdown results by exact content/scope and a fenced project-index revision; the mutating finalized-message operation stays outside the cache. |
+| Framework / serialization / loopback | Carries the Hono response through the direct WebSocket relay and back to the browser-facing request abstraction. | At the profiled revision, the relay accumulated the body, decoded and parsed JSON, wrapped it, serialized it again, chunked large frames, then the browser reassembled and parsed it. Cost grew with augmented response bytes. | Partially recovered by preserving validated response bytes and forwarding `Server-Timing`; the validation parse and full-response buffering remain. |
 | Append trigger to MessageList preprocess | Detects an external JSONL append, publishes a focused session-watch event, performs the incremental detail request, merges client state, and schedules React. | The normal focused watcher has a fixed 200 ms trailing debounce; parsing scales with appended bytes, augmentation/transport with response bytes, and client merge with the loaded window. | Measure after precomputing fixture payloads, then reduce the floor with an immediate leading stat/read plus trailing validation. Deduplicate broad and focused change signals to avoid the second throttled refresh. |
 | React commit to readable text | Commits the merged transcript and exposes the final assistant text in the DOM. | Projection has array-identity caching, but an append creates a new message array; grouping and commit work scale with the loaded window and rendered rows. | Keep this separate from the later glossary/path milestones and from browser first paint. Ratchet the final supported display rather than treating commit as completion. |
 
@@ -124,44 +124,41 @@ latency. A separate single-target append measurement would further distinguish
 focused-session critical path from bulk-fanout stress; the current scale points
 deliberately retain the latter.
 
-### Investigated recovery seams
+### Recovery seams and decisions
 
-**Markdown/project-path augmentation.** The narrow cacheable seam is the
+**Markdown/project-path augmentation.** The implemented cacheable seam is the
 immutable HTML returned by `renderMarkdownToHtml` in
 `packages/server/src/augments/markdown-augments.ts`, with `augmentTextBlocks`
 as its caller. Caching `augmentFinalizedMessage` wholesale would be wrong: that
 operation mutates messages and combines Edit/Write/Read/ExitPlan transforms with
 separate filesystem and failure contracts; media materialization also occurs
-outside it. The existing `SourceVersionedSingleFlight` primitive already owns
+outside it. The `SourceVersionedSingleFlight` primitive owns
 same-version joins, stale-completion fencing, failure retry, invalidation,
 bounded LRU retention, and statistics.
 
-A retained HTML key needs a collision-safe Markdown identity, render-scope
-options, project identity/path, and any local-file-base or inline-image options.
-Its source version needs a public monotonic project-path membership revision.
-`ProjectPathIndex` does not currently expose one, and safe-Markdown fallback may
-use unversioned `statSync` results; those fallback results may be joined in
-flight but must not be retained. Observe the revision before work and verify it
-again before admission so a watcher event during rendering cannot publish stale
-HTML. Bound retention by output bytes because HTML can exceed Markdown source
-size.
+A retained HTML key includes exact Markdown, render scope, project identity and
+path, local-file base, and inline-image options. `ProjectPathIndex` now exposes
+the process-monotonic membership revision used at admission. Safe-Markdown
+fallback may still use unversioned `statSync` results; those results may join in
+flight but are never retained. Admission rechecks the revision so a watcher
+event during rendering cannot publish stale HTML. Retention is bounded by HTML
+output bytes because output can exceed Markdown source size.
 
-**Relay JSON transport.** The public relay wire can preserve its existing
-parsed `RelayResponse` semantics while avoiding body decode/parse/re-stringify:
-construct an internal pre-encoded JSON envelope around the already-valid Hono
-JSON bytes. This remains an implementation capability of the send path, not a
-new public relay message type. Plain text/binary, encrypted/compressed, and
-transport-chunked frames must retain their current ordering: application JSON
-encoding, then compression/encryption, then chunking. Pre-auth requests must
-also keep the frame mode captured at admission.
+**Relay JSON transport.** The public relay wire preserves its existing parsed
+`RelayResponse` semantics through an internal pre-encoded JSON send capability,
+not a new public relay message type. The handler performs a fatal UTF-8 decode
+and syntax parse, then inserts valid Hono JSON body bytes into the envelope
+without serializing the parsed value again. Plain text/binary,
+encrypted/compressed, and transport-chunked frames retain application JSON
+encoding, then compression/encryption, then chunking. Pre-auth requests keep
+the frame mode captured at admission.
 
-This optimization cannot remove full-response buffering: one relay response and
-one authenticated encrypted envelope remain protocol units, with the existing
-64 MiB reassembly boundary. Malformed or empty JSON also needs an explicit
-compatibility decision because raw splicing malformed bytes would invalidate the
-whole relay frame, whereas current code yields `body: null`. Start with trusted
-internal JSON producers or validate before splicing, expose fast-path hit/bytes-
-saved/fallback counters, and benchmark plaintext and encrypted paths separately.
+This optimization does not remove full-response buffering: one relay response
+and one authenticated encrypted envelope remain protocol units, with the
+existing 64 MiB reassembly boundary. Malformed, empty, and invalid UTF-8 JSON
+continues to yield `body: null`. Maintenance and suite diagnostics expose
+eligible response, raw-hit, preserved-byte, fallback, and failure counters; the
+focused benchmark compares plaintext and encrypted+compressed paths separately.
 
 ## Follow-up inventory
 
@@ -179,8 +176,8 @@ Recovery updates dated 2026-08-08 — Contributing-model: 5.6-Sol.
 | P04 | Preserve append-path event-source timing | Browser output begins at write submission and cannot currently distinguish `fs-watch` from poll, watcher event time, client receipt, request send, decode, reducer completion, and queued React state. | Carry a change version/source and timestamp marks through the focused subscription and browser profile. |
 | P05 | Deduplicate broad and focused change signals | The global `file-change` and focused `session-watch-change` paths can report the same append. The first refresh is immediate, while the second can schedule a trailing refresh through the 500 ms throttle. | Suppress or version-deduplicate the redundant current-session signal without weakening global activity updates. |
 | P06 | Coalesce finalized persisted augmentation | Markdown/project-path rendering dominated server-owned detail time and ran independently for duplicate browser requests. | Fixed 2026-08-08: exact content/render-scope keys now coalesce immutable HTML behind a 32 MiB source-versioned cache. Same-host fleet warm/appended augmentation fell from 14.7/27.1 ms to 1.3/6.1 ms; inline images and every unversioned fallback stay outside retention. |
-| P07 | Avoid relay JSON decode/re-encode | The direct WebSocket relay accumulates Hono bytes, parses JSON, wraps the value, serializes/chunks it, then the browser parses it again. Cost rises sharply with augmented response bytes. | Preserve response bytes or use a typed internal handler; compare response size, serialization time, and memory before/after. |
-| P08 | Preserve server phase headers over WebSocket | The relay response-header allowlist drops `Server-Timing`, so browser append profiles cannot attribute focused requests to server owner phases. | Forward the header (or equivalent structured timings) through the relay and add a browser-path contract test. |
+| P07 | Avoid relay JSON decode/re-encode | The direct WebSocket relay accumulated Hono bytes, parsed JSON, wrapped the value, serialized/chunked it, then the browser parsed it again. Cost rose sharply with augmented response bytes. | Partially fixed 2026-08-08: valid UTF-8 JSON body bytes now enter the existing envelope unchanged, removing the second body serialization. A 4,143,404-byte, seven-sample comparison improved plaintext 7.96→3.67 ms (2.17x) and gzip+NaCl 21.49→16.05 ms (1.34x). One validation parse and full buffering remain; removing that parse requires a proven typed producer boundary. |
+| P08 | Preserve server phase headers over WebSocket | The relay response-header allowlist dropped `Server-Timing`, so browser append profiles could not attribute focused requests to server owner phases. | Fixed 2026-08-08: `Server-Timing` is forwarded, and an actual Hono-to-relay response test proves the header and original JSON spelling arrive together. |
 | P09 | Bound global file-activity fanout and rescan work | Every activity subscriber receives every changed file and filters client-side. Missing-filename fallback performs a synchronous recursive rescan, and focused targets in one directory each own a watcher. | Filter on the server, share directory watches where appropriate, and replace synchronous fallback traversal with bounded asynchronous batches. |
 | P10 | Strengthen transcript-cache rewrite invalidation | `packages/server/src/sessions/claude-transcript-cache.ts` can treat same-size or earlier in-place rewrites as unchanged when the final 1,024-byte boundary probe still matches, returning stale parsed entries. | Require strict growth for incremental parse and full-parse changed same-size files; consider inode/ctime or stronger fingerprints only if real writers replace files in place. |
 | P11 | Recover from incremental refresh failures | `packages/client/src/hooks/useSessionMessages.ts` silently discards relay, parse, anchor, and server errors from the incremental `afterMessageId` path, leaving the open view stale. | Emit rate-limited diagnostics and perform one bounded full-tail reconciliation through the existing coordinator without creating an unbounded retry loop. |
@@ -194,9 +191,9 @@ Recovery updates dated 2026-08-08 — Contributing-model: 5.6-Sol.
 | P19 | Add specialized black-box fixtures | Owned provider streaming, public-share herds, and long-idle ownership/reap remain outside this family. | Add focused public-contract fixtures before citing this suite as performance evidence for those paths. |
 | P20 | Detach context-specific augmentation from cached normalized messages | `normalizeSession` caches messages by stable raw-array identity, while route augmentation previously mutated those shared blocks. | Fixed 2026-08-08: task snapshots use copy-on-write over the full fold, then the selected response window is deep-detached before route-specific mutation. Public/private ordering and concurrent two-project-context tests prove the source projection remains unchanged. |
 | P21 | Expose a fenced project-path membership revision | `ProjectPathIndex` had private watcher/attachment generations but no public source revision; safe-Markdown fallback can use unversioned `statSync`. | Fixed 2026-08-08: a process-monotonic public revision advances on invalidation, uncertainty, membership change, disposal/replacement, and loss of a fact-owning watcher. Admission rechecks it; fallback answers may coalesce but never retain HTML. |
-| P22 | Decide malformed-JSON compatibility for raw relay envelopes | Current relay parsing maps invalid/empty JSON bodies to `body: null`; raw byte splicing would instead invalidate the complete relay frame. | Restrict the fast path to trusted internal JSON responses, validate before preserving bytes, or deliberately revise the producer contract with compatibility tests. |
-| P23 | Keep relay buffering and frame limits explicit | Raw JSON preservation removes body parse/re-stringify but still buffers the Hono body and one authenticated envelope; chunking occurs only after application encoding/encryption and reassembly is capped at 64 MiB. | Treat zero-copy/streaming as a separate protocol project. Preserve text/binary, compression, encryption, chunk ordering, and the pre-auth frame-mode snapshot. |
-| P24 | Measure augmentation and relay reuse directly | Totals can improve while cache misses, fallback traffic, or encrypted transport regress independently. | Augmentation half fixed 2026-08-08: join/hit/work/stale/unretained/retained-byte gauges are in maintenance and suite output. Relay raw-fast-path hits, bytes saved, fallbacks, and plaintext/encrypted comparisons remain open with P07–P08 and P22–P23. |
+| P22 | Decide malformed-JSON compatibility for raw relay envelopes | Existing relay parsing maps invalid/empty JSON bodies to `body: null`; raw byte splicing would instead invalidate the complete relay frame. | Fixed 2026-08-08: a fatal UTF-8 decode and syntax parse admit the raw path; empty, malformed, and invalid UTF-8 bodies retain `body: null`, with fallback counters and a compatibility test. |
+| P23 | Keep relay buffering and frame limits explicit | Raw JSON preservation removes body re-stringification but still buffers the Hono body and one authenticated envelope; chunking occurs only after application encoding/encryption and reassembly is capped at 64 MiB. | Fixed as an explicit contract 2026-08-08: zero-copy/streaming remains a separate protocol project. Text/binary, compression-before-encryption, sequence, chunk ordering, the 64 MiB boundary, and the pre-auth frame-mode snapshot are unchanged and covered by focused framing tests. |
+| P24 | Measure augmentation and relay reuse directly | Totals can improve while cache misses, fallback traffic, or encrypted transport regress independently. | Fixed 2026-08-08: augmentation join/hit/work/stale/unretained/retained-byte gauges and relay eligible/hit/raw-byte/fallback/failure counters are in maintenance and suite output. The focused relay benchmark records its host-capacity window and compares plaintext and encrypted+compressed arms separately. |
 | P25 | Make harness identity independent of unrelated shared-worktree changes | Whole-repository tip and dirty state changed as peers committed or edited unrelated files even though the harness/config/ratchets were unchanged, giving identical measurements different apparent identities. | Fixed and verified: all 32 comparable results report harness `79fbeeb2`, dirty false, and content SHA-256 `c2f050df…`. |
 | P26 | Prevent stale results from masking crashed runs | The ad-hoc sweep reused output paths; one browser crashed before writing, but the wrapper saw an older nonempty result and mislabeled the crash as an expected ratchet failure. | Fixed in the survey wrapper by removing each generated output before invocation; the complete rerun produced every expected fresh result. Keep this precondition in future orchestration. |
 
@@ -218,8 +215,9 @@ Primary fix and evidence sites:
   `packages/server/src/augments/finalized-message-augmenter.ts`,
   `packages/server/src/augments/markdown-augments.ts`, and
   `packages/server/src/lib/sourceVersionedSingleFlight.ts`.
-- P07–P08: `packages/server/src/routes/ws-relay-handlers.ts` and
-  `packages/shared/src/binary-framing.ts`.
+- P07–P08: `packages/server/src/routes/ws-relay-handlers.ts`,
+  `packages/shared/src/binary-framing.ts`, and
+  `packages/server/scripts/benchmark-relay-json.ts`.
 - P10: `packages/server/src/sessions/claude-transcript-cache.ts`.
 - P11: `packages/client/src/hooks/useSessionMessages.ts` and
   `packages/client/src/lib/sessionDetail/sessionDetailCoordinator.ts`.

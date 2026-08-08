@@ -83,6 +83,16 @@ their existing behavior. The chunk capability avoids materializing a complete
 session through sequential, application-paced transactions; it does not add
 push framing, an outbound queue, or general file chunking.
 
+For a valid JSON response, the relay validates the complete UTF-8 body once and
+then inserts its original bytes into the existing `RelayResponse` envelope. It
+does not serialize the parsed body a second time. Empty, malformed, or invalid
+UTF-8 JSON keeps the established `body: null` behavior. This optimization does
+not change the public message type, full-response buffering, the 64 MiB
+authenticated reassembly boundary, or the text/binary and
+compression/encryption/chunk ordering. `Server-Timing` is forwarded with the
+other allowed response headers so browser-side profiles retain server phase
+attribution.
+
 ## Late-join replay
 
 When `createSessionSubscription()` subscribes a new client to an active

@@ -952,6 +952,7 @@ export {
   BinaryFormat,
   type BinaryFormatValue,
   BinaryFrameError,
+  encodeJsonBytesFrame,
   encodeJsonFrame,
   decodeBinaryFrame,
   decodeJsonFrame,

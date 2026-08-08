@@ -58,6 +58,14 @@ export function encodeJsonFrame(message: unknown): ArrayBuffer {
   const encoder = new TextEncoder();
   const jsonBytes = encoder.encode(json);
 
+  return encodeJsonBytesFrame(jsonBytes);
+}
+
+/**
+ * Frame already-serialized JSON bytes without parsing or re-encoding them.
+ * The caller owns JSON validation; this function changes only wire framing.
+ */
+export function encodeJsonBytesFrame(jsonBytes: Uint8Array): ArrayBuffer {
   // Create buffer with format byte + JSON payload
   const buffer = new ArrayBuffer(1 + jsonBytes.length);
   const view = new Uint8Array(buffer);

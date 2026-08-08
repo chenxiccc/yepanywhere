@@ -177,13 +177,14 @@ owner clocks.
 
 Augmentation consumes normalized persisted messages and project context and
 produces Markdown/media/project-path-enriched response messages. Its shared
-path index is reused, but Markdown and path traversal rerun per returned text
-block and request. Framework/serialization/loopback carries those response
-bytes through Hono and the direct WebSocket relay; the relay currently decodes,
-parses, wraps, re-encodes, chunks, reassembles, and parses JSON. Browser append
-trigger-to-preprocess includes file observation, focused refresh, state merge,
-and scheduling and has a fixed 200 ms watcher debounce. React commit-to-readable
-covers the rendered transcript projection after state is queued.
+path index is reused, but Markdown and path traversal reran per returned text
+block and request at the profiled revision. Framework/serialization/loopback
+carries those response bytes through Hono and the direct WebSocket relay; at the
+profiled revision the relay decoded, parsed, wrapped, re-encoded, chunked,
+reassembled, and parsed JSON. Browser append trigger-to-preprocess includes file
+observation, focused refresh, state merge, and scheduling and has a fixed 200 ms
+watcher debounce. React commit-to-readable covers the rendered transcript
+projection after state is queued.
 
 The significant phases, their cache/invalidation contracts, and concrete
 recovery seams are maintained in `gaps/perf-regressions-survey.md`. Ratchets
@@ -218,6 +219,32 @@ observed 6% whole-host CPU occupancy, load/effective-CPU at or below 0.049,
 at least 121,322,082,304 effective available bytes, and no swap-use change.
 This supports the improvement and exposes its bounded memory price without
 reclassifying the immutable historical rows.
+
+### 2026-08-08 relay serialization recovery
+
+Valid UTF-8 JSON responses now keep their original body bytes through the
+existing `RelayResponse` envelope. The adapter still performs one syntax parse
+to enforce the established invalid/empty `body: null` behavior, and it still
+buffers a complete response. It no longer serializes the parsed body a second
+time. The internal send capability preserves the public message shape and the
+existing text/binary, compression, encryption, transport-chunk, sequence, and
+pre-auth frame-mode contracts. `Server-Timing` now crosses the relay.
+
+Maintenance and suite output report eligible JSON responses, raw fast-path
+hits, preserved body bytes, invalid/unsupported fallbacks, and raw-send
+failures. These are fixed-cost process counters. A zero eligible count means a
+driver did not exercise this path; compare hit and fallback rates only within
+an execution whose eligible count is nonzero.
+
+The focused seven-sample benchmark used a 4,143,404-byte JSON body and alternated
+the parsed/re-encoded and validated/raw arms. Median plaintext serialization
+fell from 7.96 ms to 3.67 ms (2.17x); gzip-plus-NaCl serialization fell from
+21.49 ms to 16.05 ms (1.34x). Capacity key
+`host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835` recorded 12% whole-host CPU
+occupancy, maximum load/effective-CPU 0.044, at least 121,307,148,288 effective
+available bytes, and no swap-use change during the 0.5-second comparison.
+Removing the remaining validation parse would require a separately proven typed
+producer boundary; this recovery does not assume one.
 
 ## Ratchet interpretation
 

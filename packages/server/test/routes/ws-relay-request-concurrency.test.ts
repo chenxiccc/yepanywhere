@@ -5,18 +5,24 @@ import {
   type YepMessage,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getLogger } from "../../src/logging/logger.js";
 import type { RelayHandlerDeps } from "../../src/routes/ws-relay-handlers.js";
 import {
   LEGACY_PUBLIC_SHARE_RELAY_MAX_BYTES,
   LEGACY_PUBLIC_SHARE_RESPONSE_CHUNK_MAX_BYTES,
+  __relayResponseSerializationTest,
   cleanupConnectionState,
   createConnectionState,
   createSendFn,
   handleMessage,
   handleRequest,
+  relayResponseSerializationDiagnostics,
 } from "../../src/routes/ws-relay-handlers.js";
+
+beforeEach(() => {
+  __relayResponseSerializationTest.reset();
+});
 
 /**
  * Tunneled HTTP requests must not head-of-line block one another: the
@@ -25,6 +31,112 @@ import {
  * queue before its response is ready, exactly as it would over plain HTTP.
  */
 describe("WS relay request concurrency", () => {
+  it("preserves validated JSON bytes and Server-Timing", async () => {
+    const rawBody = '{ "nested": [1, 2], "unicode": "雪" }\n';
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    app.get(
+      "/api/profiled",
+      () =>
+        new Response(rawBody, {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Server-Timing": "route;dur=12.3, augment;dur=4.2",
+          },
+        }),
+    );
+    const state = createConnectionState();
+    state.connectionPolicy = "local_unrestricted";
+    state.authState = "authenticated";
+    const ws = { send: vi.fn(), close: vi.fn() };
+
+    await handleRequest(
+      {
+        type: "request",
+        id: "profiled-request",
+        method: "GET",
+        path: "/api/profiled",
+      },
+      createSendFn(ws, state),
+      ws,
+      app,
+      "http://localhost",
+      state,
+    );
+
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    const frame = ws.send.mock.calls[0]?.[0];
+    expect(typeof frame).toBe("string");
+    expect(frame).toContain(`,"body":${rawBody}}`);
+    expect(JSON.parse(frame as string)).toEqual({
+      type: "response",
+      id: "profiled-request",
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "server-timing": "route;dur=12.3, augment;dur=4.2",
+      },
+      body: { nested: [1, 2], unicode: "雪" },
+    });
+    expect(relayResponseSerializationDiagnostics()).toEqual({
+      eligibleJsonResponses: 1,
+      rawFastPathHits: 1,
+      rawBodyBytes: new TextEncoder().encode(rawBody).byteLength,
+      fallbackResponses: 0,
+      invalidJsonFallbacks: 0,
+      unsupportedSenderFallbacks: 0,
+      rawSendFailures: 0,
+    });
+  });
+
+  it.each([
+    { name: "malformed JSON", body: '{"incomplete":' },
+    { name: "empty JSON", body: "" },
+    { name: "invalid UTF-8 JSON", body: new Uint8Array([0xc3, 0x28]) },
+  ] as const)(
+    "keeps $name compatibility on the parsed fallback",
+    async ({ body }) => {
+      const app = new Hono<{ Bindings: HttpBindings }>();
+      app.get(
+        "/api/invalid-json",
+        () =>
+          new Response(body, {
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+      const state = createConnectionState();
+      state.connectionPolicy = "local_unrestricted";
+      state.authState = "authenticated";
+      const ws = { send: vi.fn(), close: vi.fn() };
+
+      await handleRequest(
+        {
+          type: "request",
+          id: "invalid-request",
+          method: "GET",
+          path: "/api/invalid-json",
+        },
+        createSendFn(ws, state),
+        ws,
+        app,
+        "http://localhost",
+        state,
+      );
+
+      expect(JSON.parse(ws.send.mock.calls[0]?.[0] as string)).toMatchObject({
+        type: "response",
+        id: "invalid-request",
+        status: 200,
+        body: null,
+      });
+      expect(relayResponseSerializationDiagnostics()).toMatchObject({
+        eligibleJsonResponses: 1,
+        rawFastPathHits: 0,
+        fallbackResponses: 1,
+        invalidJsonFallbacks: 1,
+      });
+    },
+  );
+
   it("answers a fast request while an earlier slow request is in flight", async () => {
     let releaseSlow: (() => void) | undefined;
     const slowGate = new Promise<void>((resolve) => {
