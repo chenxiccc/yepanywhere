@@ -2,48 +2,11 @@
   overflow: hidden;
 }
 
-/* Full-pane editing is keyboard-only here so it cannot be mistaken for the
-   existing one-line chevron. The session title stays outside .session-split;
-   the ordinary composer toolbar remains the bottom edge of this pane. */
-:global(.session-split):has(.fullPane) {
-  display: flex;
-  flex-direction: column;
-}
-
-:global(.session-split):has(.fullPane) > :not(:global(.session-input)) {
-  display: none;
-}
-
-:global(.session-split):has(.fullPane) > :global(.session-input) {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-:global(.session-input-inner):has(.fullPane) {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
+/* The normal session split remains the allocator: as this composer grows, its
+   transcript sibling gives up only the corresponding height and keeps scrolling. */
+.fullPane {
   min-height: 0;
   width: 100%;
-}
-
-:global(.session-input-inner):has(.fullPane)
-  > :not(.fullPane):not(:has(.fullPane)) {
-  display: none;
-}
-
-.fullPane {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  justify-content: flex-end;
-  min-height: 0;
-}
-
-.fullPane :global(.message-input) {
-  max-height: 100%;
-  min-height: 0;
 }
 
 .keyboardSpeechSlotWithWaveform.keyboardSpeechSlotWithWaveform {

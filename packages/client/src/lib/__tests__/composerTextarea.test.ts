@@ -206,6 +206,55 @@ describe("composer textarea sizing", () => {
     expect(textarea.style.overflowY).toBe("auto");
   });
 
+  it("uses the session split as the in-session growth limit", () => {
+    const split = document.createElement("div");
+    split.className = "session-split";
+    const input = document.createElement("div");
+    input.className = "session-input";
+    const host = document.createElement("div");
+    host.dataset.composerFullPane = "true";
+    const composer = document.createElement("div");
+    composer.dataset.composerShell = "true";
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    composer.append(textarea);
+    host.append(composer);
+    input.append(host);
+    split.append(input);
+    document.body.append(split);
+
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      borderBottomWidth: "0px",
+      borderTopWidth: "0px",
+      fontSize: "10px",
+      lineHeight: "20px",
+      paddingBottom: "0px",
+      paddingTop: "0px",
+    } as CSSStyleDeclaration);
+    let scrollHeight = 120;
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    vi.spyOn(split, "getBoundingClientRect").mockReturnValue(rect(400));
+    vi.spyOn(input, "getBoundingClientRect").mockReturnValue(rect(150));
+    vi.spyOn(host, "getBoundingClientRect").mockReturnValue(rect(120));
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(rect(100));
+    vi.spyOn(textarea, "getBoundingClientRect").mockReturnValue(rect(80));
+
+    expect(resizeComposerTextarea(textarea, false, true)).toEqual({
+      overflowed: false,
+    });
+    expect(textarea.style.height).toBe("200px");
+
+    scrollHeight = 330;
+    expect(resizeComposerTextarea(textarea, false, true)).toEqual({
+      overflowed: true,
+    });
+    expect(textarea.style.height).toBe("350px");
+    expect(textarea.style.overflowY).toBe("auto");
+  });
+
   it("scrolls a collapsed textarea to the cursor line", () => {
     const textarea = makeTextarea("one\ntwo\nthree\nfour\nfive");
     vi.spyOn(window, "getComputedStyle").mockReturnValue({

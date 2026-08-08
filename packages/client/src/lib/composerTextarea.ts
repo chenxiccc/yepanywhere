@@ -121,17 +121,38 @@ function getFullPaneComposerMaxTextareaHeight(
   minimumHeight: number,
 ): number {
   const host = textarea.closest('[data-composer-full-pane="true"]');
-  const hostHeight =
-    host instanceof HTMLElement ? host.getBoundingClientRect().height : 0;
+  const sessionSplit = textarea.closest(".session-split");
+  const layoutHost = sessionSplit ?? host;
+  const layoutHeight =
+    layoutHost instanceof HTMLElement
+      ? layoutHost.getBoundingClientRect().height
+      : 0;
   const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
   const availableHeight =
-    Number.isFinite(hostHeight) && hostHeight > 0 ? hostHeight : viewportHeight;
+    Number.isFinite(layoutHeight) && layoutHeight > 0
+      ? layoutHeight
+      : viewportHeight;
   if (!Number.isFinite(availableHeight) || availableHeight <= 0) {
     return Number.POSITIVE_INFINITY;
   }
+  const sessionInput = textarea.closest(".session-input");
+  const surroundingChromeHeight =
+    sessionSplit instanceof HTMLElement &&
+    sessionInput instanceof HTMLElement &&
+    host instanceof HTMLElement
+      ? Math.max(
+          0,
+          sessionInput.getBoundingClientRect().height -
+            host.getBoundingClientRect().height,
+        )
+      : 0;
   return Math.max(
     minimumHeight,
-    Math.floor(availableHeight - getComposerChromeHeight(textarea)),
+    Math.floor(
+      availableHeight -
+        getComposerChromeHeight(textarea) -
+        surroundingChromeHeight,
+    ),
   );
 }
 

@@ -23,10 +23,21 @@ Topic: composer-full-pane-editing
   Enter/Ctrl+Enter setting and any queue shortcut. `Ctrl+Enter` performs the
   direct send or start action. The ordinary tappable send/start control remains
   available.
-- In a session, the session title bar and ordinary bottom composer bar remain
-  visible while transcript and auxiliary pane content yield the editing area.
-  On New Session and handoff surfaces, the containing page or modal header
-  remains visible while launch settings yield the editing area.
+- In a session, the session title bar, transcript, auxiliary pane content, and
+  ordinary bottom composer bar remain rendered. The existing split point moves
+  upward as the textarea grows, shrinking the content scroll region only by the
+  height the composer actually needs. On New Session and handoff surfaces, the
+  containing page or modal header remains visible while launch settings yield
+  the editing area.
+
+## Deferred UI Design
+
+Keeping the New Session and handoff project, provider, thinking, and related
+launch controls visible in full-pane mode requires a deliberately compact
+launch-controls layout. Until that layout is designed and evaluated, those
+controls yield to the editing area and return unchanged when full-pane mode is
+restored; do not improvise a partial compact toolbar as part of the current
+interaction.
 
 ## Verification Boundary
 
