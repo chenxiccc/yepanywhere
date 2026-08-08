@@ -22,6 +22,7 @@ export interface SourceVersionedSingleFlightStats {
   joinedCalls: number;
   workStarts: number;
   staleCompletions: number;
+  unretainedCompletions: number;
   failures: number;
   evictions: number;
   trackedKeys: number;
@@ -33,6 +34,16 @@ export interface SourceVersionedSingleFlightStats {
 export interface SourceVersionedSingleFlightOptions<Value> {
   maxRetainedBytes: number;
   estimateBytes(value: Value): number;
+  /**
+   * Allow current-version work to satisfy and coalesce callers without keeping
+   * the result after the in-flight request settles.
+   */
+  shouldRetain?(value: Value): boolean;
+  /**
+   * Return an unretained best-effort result even when its source fence moved
+   * during work. The value is never admitted to the cache.
+   */
+  acceptUnretainedWhenStale?: boolean;
 }
 
 export interface SourceVersionedWorkOptions<Key, Value> {
@@ -74,6 +85,8 @@ export class SourceVersionedSingleFlight<Key, Value> {
   private readonly entries = new Map<Key, WorkEntry<Value>>();
   private readonly maxRetainedBytes: number;
   private readonly estimateBytes: (value: Value) => number;
+  private readonly shouldRetain: (value: Value) => boolean;
+  private readonly acceptUnretainedWhenStale: boolean;
   private accessSequence = 0;
   private retainedBytes = 0;
   private cacheHits = 0;
@@ -81,6 +94,7 @@ export class SourceVersionedSingleFlight<Key, Value> {
   private joinedCalls = 0;
   private workStarts = 0;
   private staleCompletions = 0;
+  private unretainedCompletions = 0;
   private failures = 0;
   private evictions = 0;
 
@@ -95,6 +109,8 @@ export class SourceVersionedSingleFlight<Key, Value> {
     }
     this.maxRetainedBytes = options.maxRetainedBytes;
     this.estimateBytes = options.estimateBytes;
+    this.shouldRetain = options.shouldRetain ?? (() => true);
+    this.acceptUnretainedWhenStale = options.acceptUnretainedWhenStale ?? false;
   }
 
   run(
@@ -162,13 +178,33 @@ export class SourceVersionedSingleFlight<Key, Value> {
       .then(() => options.compute(previous))
       .then(async (value): Promise<SourceVersionedWorkResult<Value>> => {
         computeSucceeded = true;
+        const shouldRetain = this.shouldRetain(value);
         if (await isStale()) {
+          if (!shouldRetain && this.acceptUnretainedWhenStale) {
+            this.unretainedCompletions += 1;
+            return {
+              status: "computed",
+              sourceVersion: options.sourceVersion,
+              value,
+              retained: false,
+            };
+          }
           this.staleCompletions += 1;
           return staleResult();
         }
 
+        if (entry.retained) this.releaseRetained(entry);
+        if (!shouldRetain) {
+          this.unretainedCompletions += 1;
+          return {
+            status: "computed",
+            sourceVersion: options.sourceVersion,
+            value,
+            retained: false,
+          };
+        }
+
         const bytes = this.measureValue(value);
-        if (entry.retained) this.retainedBytes -= entry.retained.bytes;
         const retained: RetainedValue<Value> = {
           sourceVersion: options.sourceVersion,
           value,
@@ -256,6 +292,7 @@ export class SourceVersionedSingleFlight<Key, Value> {
       joinedCalls: this.joinedCalls,
       workStarts: this.workStarts,
       staleCompletions: this.staleCompletions,
+      unretainedCompletions: this.unretainedCompletions,
       failures: this.failures,
       evictions: this.evictions,
       trackedKeys: this.entries.size,

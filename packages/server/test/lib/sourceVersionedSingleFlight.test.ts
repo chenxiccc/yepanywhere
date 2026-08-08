@@ -96,6 +96,131 @@ describe("SourceVersionedSingleFlight", () => {
     expect(workStarts).toBe(1);
   });
 
+  it("coalesces current work that is deliberately not retained", async () => {
+    const gate = deferred<string>();
+    let workStarts = 0;
+    const work = new SourceVersionedSingleFlight<string, string>({
+      maxRetainedBytes: 1024,
+      estimateBytes: (value) => value.length,
+      shouldRetain: () => false,
+    });
+    const run = () =>
+      work.run({
+        key: "session-1:children",
+        sourceVersion: "v1",
+        compute: async () => {
+          workStarts += 1;
+          return gate.promise;
+        },
+        isCurrent: async () => true,
+      });
+
+    const first = run();
+    const second = run();
+    await Promise.resolve();
+    expect(workStarts).toBe(1);
+    gate.resolve("projection");
+
+    expect(await first).toMatchObject({
+      status: "computed",
+      retained: false,
+      value: "projection",
+    });
+    expect(await second).toMatchObject({
+      status: "joined",
+      retained: false,
+      value: "projection",
+    });
+    expect(work.getStats()).toMatchObject({
+      joinedCalls: 1,
+      retainedBytes: 0,
+      retainedEntries: 0,
+      trackedKeys: 0,
+      unretainedCompletions: 1,
+      workStarts: 1,
+    });
+
+    const third = run();
+    await Promise.resolve();
+    expect(workStarts).toBe(2);
+    gate.resolve("projection");
+    await third;
+  });
+
+  it("can return an unretained result after its source fence moves", async () => {
+    const gate = deferred<string>();
+    let currentVersion = "v1";
+    const work = new SourceVersionedSingleFlight<string, string>({
+      acceptUnretainedWhenStale: true,
+      maxRetainedBytes: 1024,
+      estimateBytes: (value) => value.length,
+      shouldRetain: () => false,
+    });
+    const pending = work.run({
+      key: "session-1:children",
+      sourceVersion: "v1",
+      compute: async () => gate.promise,
+      isCurrent: async (version) => currentVersion === version,
+    });
+
+    currentVersion = "v2";
+    gate.resolve("best effort");
+
+    await expect(pending).resolves.toMatchObject({
+      status: "computed",
+      retained: false,
+      value: "best effort",
+    });
+    expect(work.getStats()).toMatchObject({
+      retainedEntries: 0,
+      staleCompletions: 0,
+      unretainedCompletions: 1,
+    });
+  });
+
+  it("does not let stale unretained work evict a newer retained value", async () => {
+    const oldGate = deferred<string>();
+    const newGate = deferred<string>();
+    let currentVersion = "v1";
+    const work = new SourceVersionedSingleFlight<string, string>({
+      acceptUnretainedWhenStale: true,
+      maxRetainedBytes: 1024,
+      estimateBytes: (value) => value.length,
+      shouldRetain: (value) => value !== "old best effort",
+    });
+    const oldRun = work.run({
+      key: "session-1:children",
+      sourceVersion: "v1",
+      compute: async () => oldGate.promise,
+      isCurrent: async (version) => currentVersion === version,
+    });
+
+    currentVersion = "v2";
+    const newRun = work.run({
+      key: "session-1:children",
+      sourceVersion: "v2",
+      compute: async () => newGate.promise,
+      isCurrent: async (version) => currentVersion === version,
+    });
+    newGate.resolve("new retained");
+    await expect(newRun).resolves.toMatchObject({
+      status: "computed",
+      retained: true,
+      value: "new retained",
+    });
+
+    oldGate.resolve("old best effort");
+    await expect(oldRun).resolves.toMatchObject({
+      status: "computed",
+      retained: false,
+      value: "old best effort",
+    });
+    expect(work.getAccepted("session-1:children")).toMatchObject({
+      sourceVersion: "v2",
+      value: "new retained",
+    });
+  });
+
   it("exposes the latest accepted value without a freshness claim", async () => {
     const work = new SourceVersionedSingleFlight<string, string>({
       maxRetainedBytes: 1024,

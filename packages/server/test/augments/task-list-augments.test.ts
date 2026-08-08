@@ -3,6 +3,7 @@ import {
   TASK_SNAPSHOT_FIELD,
   augmentTaskListSnapshots,
   createTaskListAugmenter,
+  projectTaskListSnapshots,
   pruneTaskListSnapshotsToLatest,
   type TaskListSnapshot,
 } from "../../src/augments/task-list-augments.js";
@@ -67,6 +68,31 @@ function snapshotFromResult(message: Message): TaskListSnapshot | undefined {
 }
 
 describe("task-list augments", () => {
+  it("projects snapshots without mutating shared source messages", () => {
+    const ordinary = assistantToolUse("ordinary", "Read", {
+      file_path: "README.md",
+    });
+    const create = assistantToolUse("tool-create-1", "TaskCreate", {
+      subject: "Review the renderer",
+    });
+    const result = userToolResult(
+      "tool-create-1",
+      "Task #1 created successfully: Review the renderer",
+    );
+    const source = [ordinary, create, result];
+
+    const projected = projectTaskListSnapshots(source);
+
+    expect(projected).not.toBe(source);
+    expect(projected[0]).toBe(ordinary);
+    expect(projected[1]).not.toBe(create);
+    expect(projected[2]).not.toBe(result);
+    expect(snapshotFromInput(projected[1]!)).toBeDefined();
+    expect(snapshotFromResult(projected[2]!)).toBeDefined();
+    expect(snapshotFromInput(create)).toBeUndefined();
+    expect(snapshotFromResult(result)).toBeUndefined();
+  });
+
   it("folds TaskCreate and TaskUpdate ids into snapshots", () => {
     const create = assistantToolUse("tool-create-1", "TaskCreate", {
       subject: "Review the renderer",

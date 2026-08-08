@@ -175,6 +175,16 @@ watchers, and evicted projects; per-index counters cover cached answers, exact p
 directory listings, oversized listings, watcher invalidations, uncertain
 generations, and evicted directories. Reading either scans no tree.
 
+`sourceRevision()` exposes one process-monotonic identity for rendered-output
+fencing. A new or replacement index starts with a fresh identity. Named watcher
+invalidation, uncertain watcher state, a probe that changes an already-observed
+membership fact, disposal, and loss of a watcher that owned retained facts all
+advance it. Render work observes the identity before filesystem-dependent work
+and verifies it again before retaining output. A direct answer from an
+unwatchable directory or synchronous `stat` fallback is deliberately marked
+unversioned: callers may use and coalesce that answer, but must not retain
+rendered output derived from it.
+
 **Completion is an explicit request, not a side effect.** The replacement plan
 sketched an optional `listDirectory()` on the interface; it is deliberately
 unbuilt, because no product surface asks for a complete inventory. A surface
@@ -262,6 +272,14 @@ not the filesystem I/O that is the actual cost.
 Turn text and the file viewer's highlighted source run this. Other viewers
 showing project content — diff panes, tool-result bodies — would use the same
 `linkifyProjectPaths` seam.
+
+Completed Markdown HTML is retained behind a 32 MiB source-versioned
+single-flight cache. Its exact key includes Markdown text, local-file scope,
+inline-image mode, project identity/path, and custom membership-callback
+identity. Only immutable HTML is retained; response messages are detached
+before route-specific augmentation. Inline local images stay outside retained
+HTML because their file bytes have no content revision fence. A project-path
+revision change discards late work and forces a render under the new identity.
 
 **Server annotation, not a client corpus.** Turn text raised the option of
 shipping the path set to the client and matching there, the way glossary

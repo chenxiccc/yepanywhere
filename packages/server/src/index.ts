@@ -14,6 +14,7 @@ import {
   isClaudeProviderName,
 } from "@yep-anywhere/shared";
 import { createApp } from "./app.js";
+import { markdownAugmentCacheDiagnostics } from "./augments/markdown-augments.js";
 import { AuthService } from "./auth/AuthService.js";
 import {
   closeCodexCorrelationDebugLogger,
@@ -1680,6 +1681,7 @@ async function startServer() {
       getDiagnostics: () => ({
         caches: {
           claudeTranscript: claudeTranscriptCache.getStats(),
+          markdownAugments: markdownAugmentCacheDiagnostics(),
           projectPaths: projectPathCacheDiagnostics(),
         },
       }),

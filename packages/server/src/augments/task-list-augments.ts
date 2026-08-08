@@ -513,6 +513,44 @@ export function augmentTaskListSnapshots(messages: Message[]): void {
   }
 }
 
+/**
+ * Build task snapshots without mutating cache-shared normalized messages.
+ *
+ * Task state still folds over the complete transcript, but only messages that
+ * can receive a task snapshot are cloned. The response window is detached as
+ * a whole later, after pagination has selected it.
+ */
+export function projectTaskListSnapshots(messages: Message[]): Message[] {
+  const taskToolUseIds = new Set<string>();
+  for (const message of messages) {
+    for (const block of contentBlocks(message as Record<string, unknown>)) {
+      if (
+        block.type === "tool_use" &&
+        (block.name === "TaskCreate" || block.name === "TaskUpdate") &&
+        typeof block.id === "string"
+      ) {
+        taskToolUseIds.add(block.id);
+      }
+    }
+  }
+  if (taskToolUseIds.size === 0) return messages;
+
+  const projected = messages.map((message) => {
+    const touchesTask = contentBlocks(message as Record<string, unknown>).some(
+      (block) =>
+        (block.type === "tool_use" &&
+          typeof block.id === "string" &&
+          taskToolUseIds.has(block.id)) ||
+        (block.type === "tool_result" &&
+          typeof block.tool_use_id === "string" &&
+          taskToolUseIds.has(block.tool_use_id)),
+    );
+    return touchesTask ? structuredClone(message) : message;
+  });
+  augmentTaskListSnapshots(projected);
+  return projected;
+}
+
 export function pruneTaskListSnapshotsToLatest(messages: Message[]): void {
   const holders = collectSnapshotHolders(messages);
   const latestToolUseId = holders.at(-1)?.toolUseId;

@@ -58,6 +58,7 @@ import { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import { extractLastAgentExcerpt } from "../sessions/agent-excerpt.js";
 import {
+  detachSessionMessageProjection,
   getCodexProviderForkTurnId,
   normalizeSession,
 } from "../sessions/normalization.js";
@@ -78,6 +79,7 @@ import {
 } from "../sessions/pagination.js";
 import {
   augmentTaskListSnapshots,
+  projectTaskListSnapshots,
   pruneTaskListSnapshotsToLatest,
 } from "../augments/task-list-augments.js";
 import {
@@ -2828,7 +2830,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const normalizedMessageCount = session?.messages.length ?? 0;
     const normalizeEndMs = performance.now();
     if (session && isClaudeSdkProviderName(session.provider)) {
-      augmentTaskListSnapshots(session.messages);
+      session = {
+        ...session,
+        messages: projectTaskListSnapshots(session.messages),
+      };
     }
     let incrementalAnchorFound = false;
     if (session && providerAfterMessageId) {
@@ -3044,11 +3049,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
     }
-    if (isClaudeSdkProviderName(session.provider)) {
-      pruneTaskListSnapshotsToLatest(session.messages);
-    }
-    const sliceEndMs = performance.now();
-
     // Codex normalized IDs can drift between stream and JSONL. If an
     // incremental request misses its anchor, never return the full historical
     // session into a compact-tail client; bound the fallback to the same tail
@@ -3058,6 +3058,19 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
     }
+
+    // Normalized messages may be shared by the parsed-transcript cache, and
+    // several provider readers expose stable message objects directly.
+    // Route-specific HTML, tool, media, and pruning fields belong only to this
+    // response projection.
+    session = {
+      ...session,
+      messages: detachSessionMessageProjection(session.messages),
+    };
+    if (isClaudeSdkProviderName(session.provider)) {
+      pruneTaskListSnapshotsToLatest(session.messages);
+    }
+    const sliceEndMs = performance.now();
 
     if (!publicShare && deps.toolResultMediaStore) {
       session = {

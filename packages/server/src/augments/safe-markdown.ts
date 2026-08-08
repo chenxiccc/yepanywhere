@@ -70,6 +70,8 @@ export interface ProjectFileLinkOptions {
    */
   index?: ProjectPathIndex;
   fileExists?: (absolutePath: string, relativePath: string) => boolean;
+  /** Marks a synchronous filesystem fallback that cannot back retained HTML. */
+  onUnversionedLookup?: () => void;
 }
 
 interface LocalPathReference {
@@ -524,6 +526,7 @@ function projectFileExists(
 ): boolean {
   const known = options.index?.knownFile(relativePath);
   if (known !== undefined) return known;
+  options.onUnversionedLookup?.();
   return options.fileExists
     ? options.fileExists(absolutePath, relativePath)
     : defaultProjectFileExists(absolutePath);

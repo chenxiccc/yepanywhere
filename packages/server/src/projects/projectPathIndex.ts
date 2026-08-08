@@ -230,6 +230,13 @@ async function forEachConcurrent<T>(
   await Promise.all(workers);
 }
 
+let membershipRevisionClock = 0;
+
+function nextMembershipRevision(): number {
+  membershipRevisionClock += 1;
+  return membershipRevisionClock;
+}
+
 class SparseProjectPathIndex implements ProjectPathIndex {
   private readonly io: PathIndexIo;
   private readonly maxIndexBytes: number;
@@ -259,6 +266,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
   private activeBatches = 0;
   private completeDirectories = 0;
   private disposed = false;
+  private membershipRevision = nextMembershipRevision();
   /** Whether the registry currently has at least one owning claim. */
   private registryActive = true;
   /** Fences reconciliation that was already reading when the last claim left. */
@@ -286,6 +294,10 @@ class SparseProjectPathIndex implements ProjectPathIndex {
 
   get watcherCount(): number {
     return this.watchers;
+  }
+
+  sourceRevision(): number {
+    return this.membershipRevision;
   }
 
   rootChildCountForTest(): number {
@@ -400,6 +412,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.markMembershipChanged();
     this.cancelAllReconciliations();
     for (const node of Array.from(this.hydrated.keys())) {
       if (this.hydrated.has(node)) this.evict(node);
@@ -778,7 +791,10 @@ class SparseProjectPathIndex implements ProjectPathIndex {
     this.withRetentionMutation(() => {
       const existing = parent.children?.get(name);
       if (existing) {
-        if (existing.state !== state) this.invalidateSubtree(existing, false);
+        if (existing.state !== state) {
+          this.markMembershipChanged();
+          this.invalidateSubtree(existing, false);
+        }
         existing.state = state;
         return;
       }
@@ -1006,6 +1022,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
       }
       const name =
         typeof filename === "string" ? filename : filename.toString("utf8");
+      this.markMembershipChanged();
       node.watcherGeneration += 1;
       this.stats.watcherInvalidations += 1;
       const child = node.children?.get(name);
@@ -1033,6 +1050,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
   ): void {
     this.withRetentionMutation(() => {
       if (node.watcher !== watcher) return;
+      this.markMembershipChanged();
       node.watcherGeneration += 1;
       this.stats.uncertainGenerations += 1;
       getLogger().debug(
@@ -1164,18 +1182,23 @@ class SparseProjectPathIndex implements ProjectPathIndex {
    */
   private invalidateSubtree(node: PathNode, detached: boolean): void {
     this.withRetentionMutation(() => {
+      const hadRetainedFacts = this.hasRetainedFacts(node);
       node.attachmentGeneration += 1;
       if (detached) node.attached = false;
       this.cancelReconcile(node);
       this.detachChildren(node);
       this.resetNodeFacts(node);
-      this.closeWatcher(node);
+      this.closeWatcher(node, hadRetainedFacts);
       this.hydrated.delete(node);
     });
   }
 
-  private closeWatcher(node: PathNode): void {
+  private closeWatcher(node: PathNode, invalidatesMembership: boolean): void {
     if (!node.watcher) return;
+    // Retained rendered output may depend on facts this watcher made current.
+    // Losing the observer fences that output even when no named event preceded
+    // the eviction.
+    if (invalidatesMembership) this.markMembershipChanged();
     const watcher = node.watcher;
     node.watcher = undefined;
     this.changeWatcherCount(-1);
@@ -1188,6 +1211,10 @@ class SparseProjectPathIndex implements ProjectPathIndex {
 
   private evict(node: PathNode): void {
     this.invalidateSubtree(node, false);
+  }
+
+  private markMembershipChanged(): void {
+    this.membershipRevision = nextMembershipRevision();
   }
 
   /** Drop least-recently-used subtrees until this project fits its ceiling. */
@@ -1218,6 +1245,8 @@ export interface ProjectPathIndex {
    * rather than to a wrong one.
    */
   knownFile(path: string): boolean | undefined;
+  /** Monotonic source identity fencing retained render output. */
+  sourceRevision(): number;
   /** Give up this caller's claim on the project's cache. */
   release(): void;
 }
@@ -1262,6 +1291,10 @@ class ProjectPathIndexHandle implements ProjectPathIndex {
   knownFile(path: string): boolean | undefined {
     touchRegistryEntry(this.entry);
     return this.entry.index.knownFile(path);
+  }
+
+  sourceRevision(): number {
+    return this.entry.index.sourceRevision();
   }
 
   release(): void {
@@ -1419,6 +1452,7 @@ export const __test__ = {
     registry.clear();
     accessClock = 0;
     evictedProjects = 0;
+    membershipRevisionClock = 0;
   },
   resetDiagnostics: (index: SparseProjectPathIndex) => index.resetDiagnostics(),
 };

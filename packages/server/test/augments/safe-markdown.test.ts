@@ -175,6 +175,7 @@ x \\] + y
               return path === "topics/security.md";
             },
             release: () => undefined,
+            sourceRevision: () => 1,
           },
         },
       },
@@ -202,6 +203,7 @@ x \\] + y
           has: async () => false,
           knownFile: () => undefined,
           release: () => undefined,
+          sourceRevision: () => 1,
         },
         fileExists: (_absolutePath, relativePath) =>
           relativePath === "topics/unproven.md",

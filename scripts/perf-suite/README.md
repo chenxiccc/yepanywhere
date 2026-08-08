@@ -7,8 +7,17 @@ starts one isolated YA instance from the named execution checkout, drives
 public interfaces, proves fixture-derived correctness, and records raw JSON
 results. Every result distinguishes the measured execution revision, fixture
 revision, and exact harness inputs. Harness identity includes the latest commit
-touching runner/config/ratchets, path-scoped dirty state, and a content SHA-256,
-so unrelated shared-worktree changes do not relabel the measurement.
+touching runner/host-profiler/config/ratchets, path-scoped dirty state, and a
+content SHA-256, so unrelated shared-worktree changes do not relabel the
+measurement.
+
+Results also include an automatic host capacity key. The key covers platform,
+architecture, CPU model, visible/effective CPU capacity, and bucketed physical
+and effective RAM; exact capacity, runtime, CI identity, and start/end resource
+samples remain in the result. Historical series use `historyKey` (capacity key,
+driver, scenario), so CI or cloud results never silently join a different
+runner class. The checked-in ratchets are portable safety ceilings, not a
+license to compare historical timing across capacity keys.
 
 The JSON scenario dimensions are:
 
@@ -30,10 +39,11 @@ JSON parsing, and harness residual. Forced GC uses the isolated server's
 inspector endpoint; the suite never attaches to another process.
 
 Server memory samples include process gauges, fixed V8 heap-space gauges,
-Claude parsed-transcript retained source bytes/files, and project-path retained
-bytes/projects/watchers. Named cache bytes are accountable source charges, not
-an additive decomposition of V8 object memory; the heap-minus-known-source
-value is labelled as a residual rather than exact cache overhead.
+Claude parsed-transcript retained source bytes/files, Markdown-render cache
+bytes/entries/reuse counters, and project-path retained bytes/projects/watchers.
+Named cache bytes are accountable source charges, not an additive decomposition
+of V8 object memory; the heap-minus-known-source value is labelled as a residual
+rather than exact cache overhead.
 
 The optional browser driver starts the measured checkout's real React dev
 client and performs the same server workload plus one browser page per
@@ -100,6 +110,20 @@ The suite never uses port 3400 and never restarts the shared YA server.
 Generated fixtures and isolated app data live under `work/` only for a run.
 Raw result JSON is written under `results/`; both directories are ignored when
 the suite is landed.
+
+Settled server memory diagnostics account separately for retained transcript
+source, rendered Markdown HTML, and project-path indexes. The residual heap
+metric subtracts all three known source charges; Markdown cache hit, join,
+retention, stale-completion, and unretained-completion counters remain in both
+raw repetitions and the aggregate.
+
+CI log collectors may scrape `YA_PERF_HOST_JSON` before the run and
+`YA_PERF_RESULT_JSON` after it. The latter names the result path, revision,
+capacity-keyed history tuple, and pass/fail outcome; upload the referenced JSON
+as the complete artifact. A host need not be fully idle, but start/end load,
+available host/cgroup memory, swap, and pressure evidence must show enough
+headroom for the scenario. Treat uncertain contention as exploratory and rerun
+a small sample before changing history or a ratchet.
 
 The real-browser driver intentionally uses the measured checkout's dev client
 so one suite revision can run against old source checkouts. Its cold final-

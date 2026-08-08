@@ -119,6 +119,8 @@ export interface ProjectPathLinkOptions {
    * one batch groups them by directory anyway.
    */
   gateLookupsByShape?: boolean;
+  /** Marks direct filesystem answers that no live watcher versions. */
+  onUnversionedLookup?: () => void;
 }
 
 /**
@@ -132,7 +134,7 @@ export interface ProjectPathLinkOptions {
 export async function resolveShapedPaths(
   text: string,
   index: ProjectPathIndex,
-): Promise<void> {
+): Promise<boolean> {
   const shaped = new Set<string>();
   PATH_TOKEN.lastIndex = 0;
   let match: RegExpExecArray | null = PATH_TOKEN.exec(text);
@@ -141,7 +143,10 @@ export async function resolveShapedPaths(
     if (trimmed && mayCostLookup(trimmed)) shaped.add(trimmed);
     match = PATH_TOKEN.exec(text);
   }
-  if (shaped.size > 0) await index.findExisting(Array.from(shaped));
+  if (shaped.size === 0) return true;
+  const paths = Array.from(shaped);
+  await index.findExisting(paths);
+  return paths.every((path) => index.knownFile(path) !== undefined);
 }
 
 function collectCandidatePaths(
@@ -174,6 +179,7 @@ export async function linkifyProjectPaths(
     index,
     selfRelativePath,
     gateLookupsByShape,
+    onUnversionedLookup,
   }: ProjectPathLinkOptions,
 ): Promise<string> {
   if (!html) return html;
@@ -191,7 +197,11 @@ export async function linkifyProjectPaths(
   } catch {
     // Link discovery is advisory. An unavailable index must not fail the file
     // view that owns the highlighted source.
+    onUnversionedLookup?.();
     return html;
+  }
+  if (worthLookup.some((path) => index.knownFile(path) === undefined)) {
+    onUnversionedLookup?.();
   }
   if (gateLookupsByShape) {
     // A token not worth a lookup is still worth an answer the cache already

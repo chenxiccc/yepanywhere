@@ -1692,6 +1692,164 @@ describe("Sessions metadata route", () => {
     }
   });
 
+  it("isolates public and private Markdown projections in either order", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "ya-detached-augment-"));
+    const project: Project = {
+      ...createProject(),
+      path: tempDir,
+      provider: "grok",
+      sessionDir: join(tempDir, ".grok-sessions"),
+    };
+    await writeFile(join(tempDir, "README.md"), "# Project\n");
+    const sourceMessage: Message = {
+      uuid: "assistant-1",
+      type: "assistant",
+      timestamp: "2026-03-10T09:46:00.000Z",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "See `README.md`." }],
+      },
+    };
+    const loaded = createLoadedGrokSession({}, [sourceMessage]);
+    const reader = {
+      getSession: vi.fn(async () => loaded),
+    } as unknown as ISessionReader;
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+    });
+
+    try {
+      const firstPublicResponse = await routes.request(
+        `/projects/${project.id}/sessions/sess-1?publicShare=1`,
+      );
+      const firstPublicBody = await firstPublicResponse.json();
+      expect(
+        firstPublicBody.messages[0].message.content[0]._html,
+      ).toBeUndefined();
+
+      const privateResponse = await routes.request(
+        `/projects/${project.id}/sessions/sess-1`,
+      );
+      const privateBody = await privateResponse.json();
+      expect(privateBody.messages[0].message.content[0]._html).toContain(
+        `data-ya-project-id="${project.id}"`,
+      );
+
+      const secondPublicResponse = await routes.request(
+        `/projects/${project.id}/sessions/sess-1?publicShare=1`,
+      );
+      const secondPublicBody = await secondPublicResponse.json();
+      expect(
+        secondPublicBody.messages[0].message.content[0]._html,
+      ).toBeUndefined();
+      expect(
+        (
+          sourceMessage.message?.content as
+            | Array<Record<string, unknown>>
+            | undefined
+        )?.[0]?._html,
+      ).toBeUndefined();
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("isolates concurrent augmentation for two working-project contexts", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "ya-augment-contexts-"));
+    const firstPath = join(tempDir, "first");
+    const secondPath = join(tempDir, "second");
+    await Promise.all([
+      mkdir(firstPath, { recursive: true }),
+      mkdir(secondPath, { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(join(firstPath, "README.md"), "# First\n"),
+      writeFile(join(secondPath, "README.md"), "# Second\n"),
+    ]);
+    const firstProject: Project = {
+      ...createProject(),
+      id: "proj-first" as UrlProjectId,
+      path: firstPath,
+      provider: "grok",
+      sessionDir: join(firstPath, ".grok-sessions"),
+    };
+    const secondProject: Project = {
+      ...createProject(),
+      id: "proj-second" as UrlProjectId,
+      path: secondPath,
+      provider: "grok",
+      sessionDir: join(secondPath, ".grok-sessions"),
+    };
+    const sourceMessage: Message = {
+      uuid: "assistant-1",
+      type: "assistant",
+      timestamp: "2026-03-10T09:46:00.000Z",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "See `README.md`." }],
+      },
+    };
+    const loaded = createLoadedGrokSession({}, [sourceMessage]);
+    const reader = {
+      getSession: vi.fn(async () => loaded),
+    } as unknown as ISessionReader;
+    const projects = new Map([
+      [firstProject.id, firstProject],
+      [secondProject.id, secondProject],
+    ]);
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async (projectId: UrlProjectId) =>
+          projects.get(projectId),
+        ),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+    });
+
+    try {
+      const [firstResponse, secondResponse] = await Promise.all([
+        routes.request(`/projects/${firstProject.id}/sessions/sess-1`),
+        routes.request(`/projects/${secondProject.id}/sessions/sess-1`),
+      ]);
+      const [firstBody, secondBody] = await Promise.all([
+        firstResponse.json(),
+        secondResponse.json(),
+      ]);
+      const firstHtml = firstBody.messages[0].message.content[0]
+        ._html as string;
+      const secondHtml = secondBody.messages[0].message.content[0]
+        ._html as string;
+      expect(firstHtml).toContain(`data-ya-project-id="${firstProject.id}"`);
+      expect(firstHtml).not.toContain(
+        `data-ya-project-id="${secondProject.id}"`,
+      );
+      expect(secondHtml).toContain(`data-ya-project-id="${secondProject.id}"`);
+      expect(secondHtml).not.toContain(
+        `data-ya-project-id="${firstProject.id}"`,
+      );
+      expect(
+        (
+          sourceMessage.message?.content as
+            | Array<Record<string, unknown>>
+            | undefined
+        )?.[0]?._html,
+      ).toBeUndefined();
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("augments detached process history before a session file exists", async () => {
     const project = createProject();
     const history = [

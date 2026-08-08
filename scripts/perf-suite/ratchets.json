@@ -61,6 +61,10 @@
               "max": 24,
               "rationale": "The fleet fixture contains 24 retained transcript files."
             },
+            "memory.settled.knownCaches.markdownAugments.retainedBytes": {
+              "max": 33554432,
+              "rationale": "The rendered-Markdown cache has an exact 32 MiB source-byte ceiling."
+            },
             "memory.settled.knownCaches.projectPaths.retainedBytes": {
               "max": 8192,
               "rationale": "Profiled project-path source charge was 5,024 bytes."
@@ -157,6 +161,10 @@
               "max": 8,
               "rationale": "The large fixture contains eight retained transcript files."
             },
+            "memory.settled.knownCaches.markdownAugments.retainedBytes": {
+              "max": 33554432,
+              "rationale": "The rendered-Markdown cache has an exact 32 MiB source-byte ceiling."
+            },
             "memory.settled.knownCaches.projectPaths.retainedBytes": {
               "max": 4096,
               "rationale": "Profiled project-path source charge was 2,512 bytes."
@@ -224,6 +232,10 @@
             "memory.settled.knownCaches.claudeTranscript.retainedFiles": {
               "max": 24,
               "rationale": "The fleet fixture contains 24 retained transcript files."
+            },
+            "memory.settled.knownCaches.markdownAugments.retainedBytes": {
+              "max": 33554432,
+              "rationale": "The rendered-Markdown cache has an exact 32 MiB source-byte ceiling."
             },
             "memory.settled.knownCaches.projectPaths.retainedBytes": {
               "max": 8192,
@@ -390,6 +402,10 @@
             "memory.settled.knownCaches.claudeTranscript.retainedFiles": {
               "max": 8,
               "rationale": "The large fixture contains eight retained transcript files."
+            },
+            "memory.settled.knownCaches.markdownAugments.retainedBytes": {
+              "max": 33554432,
+              "rationale": "The rendered-Markdown cache has an exact 32 MiB source-byte ceiling."
             },
             "memory.settled.knownCaches.projectPaths.retainedBytes": {
               "max": 4096,

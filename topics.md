@@ -258,6 +258,8 @@
   Codex-first Linux proposal.
 - project-path-links - Filesystem-authoritative project path membership and
   highlighted-source linkification.
+- performance-regression-suite - Capacity-keyed black-box latency, memory,
+  correctness, and historical-regression evidence.
 - public-share-persistence - Independent per-session share state, compact
   bearer-link grants, frozen revisions, and aggregate-store migration.
 - project-directory-storage - App-data-only default for YA-managed state,

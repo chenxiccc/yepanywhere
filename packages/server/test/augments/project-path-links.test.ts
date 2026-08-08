@@ -168,6 +168,20 @@ describe("project path index", () => {
     expect(io.watched).toEqual([]);
   });
 
+  it("advances the public source revision when membership becomes uncertain", async () => {
+    const repo = await createRepo();
+    await writeFile(join(repo, "one.json"), "{}\n");
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("one.json")).toBe(true);
+    const observedRevision = index.sourceRevision();
+    io.emitEvent(".", "one.json");
+
+    expect(index.sourceRevision()).toBeGreaterThan(observedRevision);
+    expect(index.knownFile("one.json")).toBeUndefined();
+  });
+
   it("reads only the component chain a candidate uses", async () => {
     const repo = await createRepo();
     await mkdir(join(repo, "src/deep/nested"), { recursive: true });
@@ -1382,6 +1396,7 @@ describe("linkifyProjectPaths", () => {
     has: async (path: string) => existsInFake(path),
     knownFile: (path: string) => existsInFake(path),
     release: () => undefined,
+    sourceRevision: () => 1,
   };
 
   function existsInFake(path: string): boolean {
@@ -1447,6 +1462,7 @@ describe("linkifyProjectPaths", () => {
       has: async () => false,
       knownFile: () => false,
       release: () => undefined,
+      sourceRevision: () => 1,
     };
 
     expect(
@@ -1482,6 +1498,7 @@ describe("linkifyProjectPaths", () => {
       has: async (path: string) => existsInFake(path),
       knownFile: () => undefined,
       release: () => undefined,
+      sourceRevision: () => 1,
     };
     const html =
       "<p>The run wrote scripts/run.py after reading config, which the " +
@@ -1513,6 +1530,7 @@ describe("linkifyProjectPaths", () => {
       knownFile: (path: string) =>
         path === "Makefile" ? true : path === "LICENSE" ? false : undefined,
       release: () => undefined,
+      sourceRevision: () => 1,
     };
     const html = "<p>Run Makefile, not LICENSE.</p>";
 

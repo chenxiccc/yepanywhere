@@ -18,12 +18,18 @@ import path from "node:path";
 import process from "node:process";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  readHostCapacity,
+  readHostSample,
+  summarizeHostWindow,
+} from "./host-profile.mjs";
 
-const SUITE_VERSION = 2;
+const SUITE_VERSION = 3;
 const GENERALIZED_PROJECT_PATHS_BASE =
   "61cb5f358b9ccb56549d0515ded703ec534996a6";
 const DEFAULT_CONFIG_PATH = new URL("./config.json", import.meta.url);
 const DEFAULT_RATCHETS_PATH = new URL("./ratchets.json", import.meta.url);
+const HOST_PROFILE_PATH = new URL("./host-profile.mjs", import.meta.url);
 
 function parseArgs(argv) {
   const options = {
@@ -692,7 +698,13 @@ function repositoryRelativePath(repository, file) {
 
 async function harnessIdentity(repository, options, config, ratchets) {
   const runner = fileURLToPath(import.meta.url);
-  const repositoryPaths = [runner, options.config, options.ratchets]
+  const hostProfile = fileURLToPath(HOST_PROFILE_PATH);
+  const repositoryPaths = [
+    runner,
+    hostProfile,
+    options.config,
+    options.ratchets,
+  ]
     .map((file) => repositoryRelativePath(repository, file))
     .filter(Boolean);
   const revision = await runProcess(
@@ -708,6 +720,8 @@ async function harnessIdentity(repository, options, config, ratchets) {
     )) !== "";
   const content = createHash("sha256");
   content.update(await readFile(runner));
+  content.update("\0host-profile\0");
+  content.update(await readFile(hostProfile));
   content.update("\0config\0");
   content.update(JSON.stringify(config));
   content.update("\0ratchets\0");
@@ -759,8 +773,8 @@ async function startServer({ checkout, driver, fixture, port, root, config }) {
   const child = spawn(
     "pnpm",
     driver === "browser"
-      ? ["dev", "--no-frontend-reload"]
-      : ["--filter", "@yep-anywhere/server", "dev"],
+      ? ["--dir", ".", "run", "dev", "--no-frontend-reload"]
+      : ["--dir", "packages/server", "run", "dev"],
     {
       cwd: checkout,
       detached: true,
@@ -928,6 +942,7 @@ function memoryView(sample) {
   const caches = sample.diagnostics?.caches ?? null;
   const knownCacheSourceBytes = caches
     ? (caches.claudeTranscript?.retainedSourceBytes ?? 0) +
+      (caches.markdownAugments?.retainedBytes ?? 0) +
       (caches.projectPaths?.retainedBytes ?? 0)
     : null;
   return {
@@ -2626,6 +2641,16 @@ function aggregateRuns(runs) {
     "memory.retainedHeapKiBPerClient",
     "memory.settled.knownCaches.claudeTranscript.retainedSourceBytes",
     "memory.settled.knownCaches.claudeTranscript.retainedFiles",
+    "memory.settled.knownCaches.markdownAugments.retainedBytes",
+    "memory.settled.knownCaches.markdownAugments.retainedEntries",
+    "memory.settled.knownCaches.markdownAugments.cacheHits",
+    "memory.settled.knownCaches.markdownAugments.joinedCalls",
+    "memory.settled.knownCaches.markdownAugments.workStarts",
+    "memory.settled.knownCaches.markdownAugments.staleCompletions",
+    "memory.settled.knownCaches.markdownAugments.unretainedCompletions",
+    "memory.settled.knownCaches.markdownAugments.evictions",
+    "memory.settled.knownCaches.markdownAugments.failures",
+    "memory.settled.knownCaches.markdownAugments.inFlight",
     "memory.settled.knownCaches.projectPaths.retainedBytes",
     "memory.settled.knownCaches.projectPaths.projects",
     "memory.settled.knownCaches.projectPaths.watchers",
@@ -2916,6 +2941,14 @@ async function main() {
     GENERALIZED_PROJECT_PATHS_BASE,
     revision,
   );
+  const hostCapacity = await readHostCapacity();
+  const hostStart = await readHostSample(hostCapacity);
+  console.log(
+    `YA_PERF_HOST_JSON ${JSON.stringify({
+      capacity: hostCapacity,
+      start: hostStart,
+    })}`,
+  );
   const runName =
     `${options.label}-${options.driver}-${options.scenario}-` +
     revision.slice(0, 8);
@@ -2937,6 +2970,7 @@ async function main() {
       console.log(
         `${options.label}/${options.scenario}: repetition ${repetition + 1}/${scenario.repetitions}`,
       );
+      const repetitionHostStart = await readHostSample(hostCapacity);
       const run = await measureRepetition({
         checkout,
         config,
@@ -2950,7 +2984,18 @@ async function main() {
         scenarioName: options.scenario,
         workRoot,
       });
+      const repetitionHostEnd = await readHostSample(hostCapacity);
       run.revision = revision;
+      run.host = {
+        capacityKey: hostCapacity.capacityKey,
+        start: repetitionHostStart,
+        end: repetitionHostEnd,
+        window: summarizeHostWindow(
+          hostCapacity,
+          repetitionHostStart,
+          repetitionHostEnd,
+        ),
+      };
       runs.push(run);
       console.log(
         `  heap ${run.memory.settled.heapUsedMiB} MiB ` +
@@ -2962,11 +3007,21 @@ async function main() {
     const aggregate = aggregateRuns(runs);
     const browserAggregate =
       options.driver === "browser" ? aggregateBrowserRuns(runs) : null;
-    const ratchet = evaluateRatchets(
+    const ratchetEvaluation = evaluateRatchets(
       aggregate,
       browserAggregate,
       ratchets.drivers?.[options.driver]?.scenarios?.[options.scenario],
     );
+    const hostEnd = await readHostSample(hostCapacity);
+    const historyKey = {
+      capacityKey: hostCapacity.capacityKey,
+      driver: options.driver,
+      scenario: options.scenario,
+    };
+    const ratchet = {
+      ...ratchetEvaluation,
+      historyKey,
+    };
     const result = {
       schemaVersion: 2,
       suiteVersion: SUITE_VERSION,
@@ -2982,6 +3037,13 @@ async function main() {
       revision,
       scenario: options.scenario,
       parameters: scenario,
+      host: {
+        capacity: hostCapacity,
+        start: hostStart,
+        end: hostEnd,
+        window: summarizeHostWindow(hostCapacity, hostStart, hostEnd),
+      },
+      historyKey,
       aggregate,
       browserAggregate,
       ratchet,
@@ -2995,6 +3057,15 @@ async function main() {
           `${check.metric}: ${check.actual} <= ${check.max}`,
       );
     }
+    console.log(
+      `YA_PERF_RESULT_JSON ${JSON.stringify({
+        schemaVersion: 1,
+        output,
+        revision,
+        historyKey,
+        pass: ratchet.pass,
+      })}`,
+    );
     if (!ratchet.pass) process.exitCode = 1;
   } finally {
     if (!config.keepWorkDirectories) {

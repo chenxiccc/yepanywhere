@@ -116,6 +116,7 @@ async function createHarness(
       findExisting: async () => new Set<string>(),
       has: async () => false,
       knownFile: () => false,
+      sourceRevision: () => 1,
       release: () => {
         if (released) return;
         released = true;
@@ -185,6 +186,7 @@ function claimedPathIndex() {
     has: async () => false,
     knownFile: () => false,
     release,
+    sourceRevision: () => 1,
   };
   return { index, release };
 }

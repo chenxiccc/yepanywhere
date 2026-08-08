@@ -37,6 +37,35 @@ Targets live in `scripts/perf-suite/ratchets.json`; code contains no scenario-
 specific thresholds. Generated work and raw results are local artifacts under
 the suite directory and are not committed.
 
+## Host capacity and CI history
+
+Every suite result carries a `host.capacity.capacityKey` derived from platform,
+architecture, CPU model, visible and effective CPU counts, cgroup quota/cpuset,
+and 256 MiB-bucketed physical and effective memory. Exact capacity fields,
+Node/V8 versions, CI runner metadata, and start/end host samples remain beside
+the key. Host samples include load averages, host and cgroup-available memory,
+swap, Linux pressure-stall data where available, and whole-run CPU occupancy.
+Each repetition records the same start/end window so one noisy repetition can
+be separated from a stable batch.
+
+A benchmark host does not need to be otherwise idle. It needs enough effective
+CPU and memory headroom for the selected scenario, without material load,
+available-memory, swap, or pressure drift across the batch. A questionable run
+remains exploratory evidence: rerun a small sample before expanding the matrix
+or changing a baseline.
+
+Capacity-keyed history uses the tuple in `historyKey`: capacity key, driver,
+and scenario. Historical baselines and tightened machine-specific ratchets
+must not cross that boundary. The broad checked-in maxima remain portable
+safety ceilings; passing one on a different capacity key does not establish a
+same-machine improvement or recovery.
+
+For CI collection, the harness emits one-line `YA_PERF_HOST_JSON` before work
+and `YA_PERF_RESULT_JSON` after writing the result. A CI job can scrape those
+lines and upload the named JSON artifact without hard-coding its runner class.
+Capacity-keyed trend storage is a prerequisite for a scheduled or blocking
+performance job; adding such a job remains a separate CI policy decision.
+
 ## 2026-08-08 historical survey
 
 The final comparable survey used three repetitions per non-smoke point on one
@@ -160,6 +189,35 @@ The significant phases, their cache/invalidation contracts, and concrete
 recovery seams are maintained in `gaps/perf-regressions-survey.md`. Ratchets
 cover the current major phase values without treating nested MessageList spans
 as additive peers of their queued-to-commit parent.
+
+### 2026-08-08 augmentation recovery
+
+The first recovery slice detaches the selected response window before any
+context-specific HTML, tool, media, or pruning mutation. Claude task state is
+still folded over the complete transcript, but only task-bearing messages are
+copied before pagination. Persisted Markdown HTML then uses a 32 MiB
+source-versioned single-flight cache keyed by exact content and render scope.
+Project-path membership supplies the monotonic admission fence; unwatchable or
+synchronous-stat fallback answers may coalesce in flight but are not retained.
+Inline local images remain outside retained HTML because their file bytes have
+no content revision.
+
+A clean same-host `fleet-small` comparison against `a16b6c4a` reduced warm
+augmentation p95 from 14.7 ms to 1.3 ms and appended augmentation from 27.1 ms
+to 6.1 ms. Warm readable-tail p95 fell from 28.105 ms to 13.244 ms and appended
+tail from 46.033 ms to 20.013 ms. Forced-GC retained heap rose from 21.293 MiB
+to 23.733 MiB. The cache retained 5,196,384 bytes across 288 entries, with
+1,744–1,768 hits and 56–80 joined calls per repetition.
+
+The larger speculative sample retained 17,007,616 Markdown bytes across 128
+entries. Warm augmentation was 9.0 ms and appended augmentation 39.2 ms, versus
+89.9 ms and 126.1 ms in the historical profiled row. Retained heap was 49.544
+MiB versus 41.163 MiB historically. That sample used capacity key
+`host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835`; its 45.4-second window
+observed 6% whole-host CPU occupancy, load/effective-CPU at or below 0.049,
+at least 121,322,082,304 effective available bytes, and no swap-use change.
+This supports the improvement and exposes its bounded memory price without
+reclassifying the immutable historical rows.
 
 ## Ratchet interpretation
 

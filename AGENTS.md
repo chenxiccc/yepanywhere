@@ -7,6 +7,25 @@ constraints. A clone without the file loses nothing.
 
 Before fielding a user request to improve **stability**, **performance**, or **security**, read `ARCHITECTURE.md` first. Check whether the issue is already addressed in the large-scope refactor proposals or the per-doc cleanup tables, and whether a relevant trigger condition has now been met. If the proposed work would touch a load-bearing piece named in `ARCHITECTURE.md` (fan-out, replay buffer, streaming throttle, transport framing, auth state), prefer reading the linked detailed doc and surfacing the existing trade-off to the user before writing code.
 
+## Performance Measurement Hosts
+
+Before treating benchmark output as regression evidence, read
+`topics/performance-regression-suite.md`. The host need not be fully
+uncontended, but the run must record its automatic capacity key plus start/end
+CPU pressure, load, available physical/effective RAM, and swap evidence, with
+enough headroom for the scenario. If contention is uncertain, run a small
+speculative sample first and expand only when it reproduces. Compare historical
+baselines and machine-specific ratchets only within one capacity key; portable
+checked-in ceilings may run on any host whose samples show enough headroom, but
+they are not same-machine historical evidence.
+
+Small low-cost cloud instances may be created for performance verification
+without a separate permission question. The launch still gets the normal
+big-effect gate record and must install an external TTL or cleanup guard before
+the instance starts. Record provider, region, instance class, and instance ID;
+verify deletion after success or failure, including attached disks, reserved
+addresses, and other paid resources.
+
 ## Architecture Mandates
 
 Before modifying background loops, watchers, polling, retry timers, heartbeat

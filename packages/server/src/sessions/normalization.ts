@@ -219,6 +219,14 @@ export function normalizeSession(loaded: LoadedSession): Session {
   }
 }
 
+/**
+ * Detach the selected response window from provider-reader and normalization
+ * caches before route-specific augmentation mutates nested message blocks.
+ */
+export function detachSessionMessageProjection(messages: Message[]): Message[] {
+  return structuredClone(messages);
+}
+
 // --- Claude Conversion Logic ---
 
 function convertClaudeMessage(
