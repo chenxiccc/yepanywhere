@@ -236,6 +236,42 @@
     },
     "browser": {
       "scenarios": {
+        "focused-append": {
+          "server": {
+            "latency.detailAppendedHerdTailText.p95Ms": {
+              "max": 50,
+              "rationale": "Three Node 20 single-session repetitions measured 4.4-5.0 ms without fleet request contention."
+            },
+            "profiles.serverDetail.appended.server.normalize.p95Ms": {
+              "max": 2,
+              "rationale": "Focused append normalization measured at or below timer resolution; retain the shared early-warning ceiling."
+            },
+            "profiles.serverDetail.appended.server.route.p95Ms": {
+              "max": 5,
+              "rationale": "Focused append slicing and anchor search measured 0.3 ms."
+            }
+          },
+          "browser": {
+            "0": {
+              "latency.appendedLiveFinalHighlight.p95Ms": {
+                "max": 200,
+                "rationale": "Three Node 20 one-page repetitions measured 51-54 ms; this ceiling preserves margin while catching restoration of a debounce-scale delay."
+              },
+              "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
+                "max": 100,
+                "rationale": "The single-target file-write-to-preprocess path measured 21-23 ms."
+              },
+              "profiles.append.nonOverlappingPhases.preprocessMs.p95Ms": {
+                "max": 5,
+                "rationale": "Focused projection preprocessing measured 0.3-0.4 ms."
+              },
+              "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
+                "max": 100,
+                "rationale": "Focused React scheduling measured 29-30 ms."
+              }
+            }
+          }
+        },
         "fleet-small": {
           "server": {
             "memory.settled.heapUsedMiB": {

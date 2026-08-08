@@ -40,6 +40,15 @@ warm, and append results separately record readable text, glossary annotation,
 project-path anchors, and the latest supported final display. Server and
 browser measurements are distinct ratchet universes.
 
+The `focused-append` scale point is the selected-session critical-path
+contrast: one project, one session, one cache-disabled browser page, and one
+newly appended turn. It uses the same file watcher, incremental request,
+MessageList, server-detail, and mutation-mark clocks as the fleet scenarios,
+but its separate history key excludes their multi-file, multi-page fan-out
+contention. The browser working-set size is an explicit scenario dimension;
+the cache proof always leaves the selected route before testing refresh, so a
+one-session ring cannot turn same-route navigation into a false timeout.
+
 The `built-client` driver prepares one production build before host sampling and
 records its command, elapsed time, revision, and clean marker sweep without
 charging it to a timed leg. Each repetition uses two fresh production servers.
@@ -130,15 +139,16 @@ upload the result and JSONL accumulator, and register a new runner class without
 hard-coding its capacity. The complete result remains the evidence source;
 committing a capacity registration or tighter target remains a reviewed change.
 
-`.github/workflows/performance.yml` runs separate server and built-client
-`fleet-small` matrix arms on fresh runners for client, server, shared-package,
-and suite changes; the built-client arm installs Chromium. It checks out the
-full YA history so the pinned fixture revision is available, and checks out
-`graehl/agents` at the reviewed full commit recorded in the workflow. Each arm
-uploads its driver-keyed result, history, and log even on failure and copies all
-four scrape records into its step summary. A previously unseen GitHub runner
-therefore uses portable ceilings while producing the exact capacity
-registration needed for a later reviewed ratchet change.
+`.github/workflows/performance.yml` runs server and built-client `fleet-small`
+arms plus a browser `focused-append` arm on fresh runners for client, server,
+shared-package, and suite changes. Browser-capable arms install Chromium. The
+workflow checks out the full YA history so the pinned fixture revision is
+available, and checks out `graehl/agents` at the reviewed full commit recorded
+in the workflow. Each arm uploads its driver/scenario-keyed result, history,
+and log even on failure and copies all four scrape records into its step
+summary. A previously unseen GitHub runner therefore uses portable ceilings
+while producing the exact capacity registration needed for a later reviewed
+ratchet change.
 
 Small cloud instances are acceptable measurement hosts when their baseline
 passes the same scenario-specific eligibility checks. Tag every instance and
@@ -267,6 +277,21 @@ Current source now routes explicit provider overrides through discovery, and
 the browser harness also disables discovery so historical checkouts cannot
 cross that live boundary. Clean replacement fleet and large-session batches
 produced the ranges above.
+
+### Focused append critical path
+
+Three Node 20 `focused-append` browser repetitions measured 4.4–5.0 ms for the
+single selected-session server response and 51–54 ms from file-write submission
+to final browser display. File submission through MessageList preprocessing was
+21–23 ms; React grouping through commit was 29–30 ms. The host baseline was
+19.6% CPU busy with 12.864 idle logical CPUs, 104.7 GiB available RAM, and no
+swap growth, and every repetition/final marker sweep was clean.
+
+The portable ceilings are 50 ms for the selected server response and 200 ms
+for final browser display, with 100 ms child ceilings on file submission to
+preprocessing and grouping to commit. The corresponding `fleet-small` append
+still measures deliberate multi-file, multi-page fan-out; its larger result is
+not substituted for this critical-path series.
 
 ## Cache trade-offs
 

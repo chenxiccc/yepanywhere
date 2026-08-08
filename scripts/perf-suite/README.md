@@ -64,6 +64,12 @@ anchors, and the latest supported final display. It also records
 warm transcript-retention accounting, and contemporaneous server memory.
 Server-only and browser-driven results are separate ratchet universes.
 
+The `focused-append` scale point reduces that browser workload to one project,
+one session, one page, one cache-disabled mode, and one newly appended turn.
+It reports the same server detail and browser event/DOM phase clocks under a
+separate capacity/driver/scenario history key, so selected-session critical-
+path latency can be compared with the intentionally contended fleet result.
+
 The `built-client` driver builds the measured checkout once before host
 sampling, records that preparation and its cleanup, and excludes it from every
 timed leg. Each repetition then uses two fresh production-server processes.
@@ -83,11 +89,13 @@ transcript production, or provider teardown. The real provider catalog is not
 queried during routine browser ratchets.
 
 Every accepted sample checks project, session, message, and capability-gated
-rendering invariants against the pinned fixture. Browser runs warm a configured
-three-session ring, leave the session route, verify the expected cache entries,
-and revisit all three sessions. A held-refresh proof separately establishes
-that cached final content is usable before a slow refresh completes, while a
-zero budget remains blank until the request is released. That artificial hold
+rendering invariants against the pinned fixture. Browser runs warm the
+configured working-set ring, leave the session route, verify the expected cache
+entries, and revisit the ring. The default is three sessions; a scenario may
+set a smaller explicit count when it also supplies enough fixture sessions. A
+held-refresh proof separately establishes that cached final content is usable
+before a slow refresh completes, while a zero budget remains blank until the
+request is released. The proof explicitly leaves the selected route first and
 never enters ordinary latency measurements. A zero cache budget must retain no
 warm entries or bytes; a fitting nonzero budget must retain the complete ring
 within its configured byte limit.
@@ -126,6 +134,13 @@ node scripts/perf-suite/run.mjs \
   --checkout /path/to/measured-yepanywhere \
   --fixture-repository /path/to/fixture-yepanywhere \
   --scenario large-session-cache \
+  --driver browser \
+  --label measured-sha
+
+node scripts/perf-suite/run.mjs \
+  --checkout /path/to/measured-yepanywhere \
+  --fixture-repository /path/to/fixture-yepanywhere \
+  --scenario focused-append \
   --driver browser \
   --label measured-sha
 
@@ -196,14 +211,13 @@ baseline must show the configured CPU and effective-memory headroom. Treat a
 diagnostic-grade result as a sampling lead and rerun before changing history or
 a ratchet.
 
-The GitHub workflow runs separate server and built-client `fleet-small` matrix
-arms on relevant client/server/shared/suite changes. The built-client arm
-installs Chromium; each arm receives a fresh runner and its own driver-keyed
-history. It uploads `result.json`, `history.jsonl`, and the complete run log on
-success or failure, and copies the four `YA_PERF_*_JSON` records into the job
-summary. The
-checkout uses full history because the deterministic fixture is pinned to an
-older revision.
+The GitHub workflow runs server and built-client `fleet-small` arms plus a
+browser `focused-append` arm on relevant client/server/shared/suite changes.
+Browser-capable arms install Chromium; every matrix arm receives a fresh runner
+and its own driver/scenario-keyed history. It uploads `result.json`,
+`history.jsonl`, and the complete run log on success or failure, and copies the
+four `YA_PERF_*_JSON` records into the job summary. The checkout uses full
+history because the deterministic fixture is pinned to an older revision.
 
 Provider-backed drivers should prefer a simulated harness process over the
 browser drivers' post-provider mock so process startup, adapter protocol,

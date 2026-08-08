@@ -45,10 +45,17 @@ jobs:
       matrix:
         include:
           - driver: server
+            scenario: fleet-small
             name: Server fleet-small ratchet
             artifact: server-fleet-small
             summary: server
+          - driver: browser
+            scenario: focused-append
+            name: Browser focused-append ratchet
+            artifact: browser-focused-append
+            summary: browser focused-append
           - driver: built-client
+            scenario: fleet-small
             name: Built client fleet-small ratchet
             artifact: built-client-fleet-small
             summary: built-client
@@ -80,7 +87,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Chromium
-        if: matrix.driver == 'built-client'
+        if: matrix.driver != 'server'
         run: pnpm -F @yep-anywhere/client exec playwright install chromium
 
       - name: Run capacity-keyed ${{ matrix.summary }} ratchet
@@ -92,7 +99,7 @@ jobs:
           node scripts/perf-suite/run.mjs \
             --checkout "$GITHUB_WORKSPACE" \
             --driver "${{ matrix.driver }}" \
-            --scenario fleet-small \
+            --scenario "${{ matrix.scenario }}" \
             --label "github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output .perf-artifacts/result.json \
             --history .perf-artifacts/history.jsonl \

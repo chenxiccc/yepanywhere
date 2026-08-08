@@ -142,3 +142,28 @@ test("ratchets production selected-session readiness by scale", () => {
     assert.deepEqual(selected.targets.browser, {});
   }
 });
+
+test("ratchets one-target append separately from fleet contention", () => {
+  const selected = selectRatchetTargets(productionRatchets, {
+    capacityKey: "host-v1-unregistered-test",
+    driver: "browser",
+    scenario: "focused-append",
+  });
+
+  assert.equal(
+    selected.targets.server["latency.detailAppendedHerdTailText.p95Ms"].max,
+    50,
+  );
+  assert.deepEqual(Object.keys(selected.targets.browser), ["0"]);
+  assert.equal(
+    selected.targets.browser["0"]["latency.appendedLiveFinalHighlight.p95Ms"]
+      .max,
+    200,
+  );
+  assert.equal(
+    selected.targets.browser["0"][
+      "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms"
+    ].max,
+    100,
+  );
+});

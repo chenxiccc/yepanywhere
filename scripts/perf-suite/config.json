@@ -43,6 +43,18 @@
       "repetitions": 1,
       "settleMs": 250
     },
+    "focused-append": {
+      "projects": 1,
+      "sessionsPerProject": 1,
+      "initialTurns": 8,
+      "newTurns": 1,
+      "concurrentClients": 1,
+      "browserCacheBudgetsMiB": [0],
+      "browserWorkingSetSessions": 1,
+      "payloadBytes": 8192,
+      "repetitions": 3,
+      "settleMs": 750
+    },
     "fleet-small": {
       "projects": 4,
       "sessionsPerProject": 6,

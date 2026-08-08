@@ -122,6 +122,12 @@ function validateScenario(scenario, name) {
       );
     }
   }
+  if (scenario.browserWorkingSetSessions !== undefined) {
+    requirePositiveInteger(
+      scenario.browserWorkingSetSessions,
+      `scenarios.${name}.browserWorkingSetSessions`,
+    );
+  }
 }
 
 function percentile(values, fraction) {
@@ -2581,6 +2587,8 @@ async function measureBrowserMode({
   );
   const modes = [];
   const livePages = [];
+  const workingSetSessionCount =
+    scenario.browserWorkingSetSessions ?? config.fixture.workingSetSessions;
   const detailsByProjectMap = new Map();
   for (const detail of details) {
     const projectDetails = detailsByProjectMap.get(detail.projectId) ?? [];
@@ -2588,13 +2596,22 @@ async function measureBrowserMode({
     detailsByProjectMap.set(detail.projectId, projectDetails);
   }
   const detailsByProject = [...detailsByProjectMap.values()];
+  if (
+    detailsByProject.some(
+      (projectDetails) => projectDetails.length < workingSetSessionCount,
+    )
+  ) {
+    throw new Error(
+      `browser working set requires ${workingSetSessionCount} sessions per project`,
+    );
+  }
   const workingSets = Array.from(
     { length: scenario.concurrentClients },
     (_, pageIndex) => {
       const projectDetails =
         detailsByProject[pageIndex % detailsByProject.length];
       return Array.from(
-        { length: config.fixture.workingSetSessions },
+        { length: workingSetSessionCount },
         (_, offset) =>
           projectDetails[(pageIndex + offset) % projectDetails.length],
       ).map((detail) =>
@@ -2767,6 +2784,12 @@ async function measureBrowserMode({
           }
 
           const proofTarget = workingSet[0];
+          await navigateSpa(page, `${server.baseUrl}/projects`);
+          await page.waitForFunction(
+            () => !document.querySelector(".message-list"),
+            undefined,
+            { timeout: config.server.requestTimeoutMs },
+          );
           cacheProofs.push(
             await runCacheRefreshProof({
               cacheBudgetMiB,
@@ -2809,7 +2832,7 @@ async function measureBrowserMode({
           cacheProofs,
           glossaryHintsRendered: glossarySupported,
           projectPathsRendered: generalizedProjectPathsSupported,
-          workingSetSessions: config.fixture.workingSetSessions,
+          workingSetSessions: workingSetSessionCount,
         },
         latency: {
           coldTail: milestoneSummary(coldMilestones, "readableTailMs"),
@@ -4091,9 +4114,11 @@ async function main() {
   ) {
     throw new Error("fixture.providerCatalogFamilies must be a string array");
   }
-  if (fixtureConfig.workingSetSessions > scenario.sessionsPerProject) {
+  const browserWorkingSetSessions =
+    scenario.browserWorkingSetSessions ?? fixtureConfig.workingSetSessions;
+  if (browserWorkingSetSessions > scenario.sessionsPerProject) {
     throw new Error(
-      "fixture.workingSetSessions must not exceed sessionsPerProject",
+      "browser working-set sessions must not exceed sessionsPerProject",
     );
   }
   const ratchets = await readJson(options.ratchets).catch((error) => {
