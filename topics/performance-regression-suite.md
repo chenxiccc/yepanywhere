@@ -158,6 +158,22 @@ ms to 696 ms. Fleet-scale warm return does not materially improve. Browser heap
 is much noisier than forced-GC server heap, so YA's entry/byte accounting is the
 cache-specific limit; the heap residual retains a broad independent ratchet.
 
+### Transcript-cache source identity
+
+A retained Claude transcript is a cache hit only when device, inode, ctime,
+mtime, and size all match. Incremental parsing is reserved for strict growth
+of that same file identity and still verifies the 1 KiB boundary immediately
+before the previous parse offset. A changed same-size file, shrink, or replaced
+inode receives a full parse, so an atomic provider rewrite cannot extend stale
+cached state.
+
+The bounded boundary probe does not prove that an arbitrary writer left every
+earlier byte unchanged. A same-inode prefix rewrite followed by growth can
+evade it when the final probe still matches. Current provider transcript
+writers are treated as append-only; detecting a writer that violates that
+contract would require a stronger source revision or full-file hashing before
+incremental reuse.
+
 ## Current phase ownership
 
 Every profiled sample explains at least 80% of each important total with named,

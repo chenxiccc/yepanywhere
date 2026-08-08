@@ -16,10 +16,10 @@ import {
  * Session-detail requests previously re-read and re-parsed the entire jsonl
  * on every GET (twice: once for the summary, once for the messages), which
  * measured ~3.3s per request for a 94 MB live session. This cache retains
- * parsed entries per file, revalidates by mtime+size, and parses only the
- * appended byte range when a live session grows, verifying the append-only
- * assumption with a boundary probe of the bytes just before the previously
- * parsed offset.
+ * parsed entries per file, revalidates by file identity+ctime+mtime+size, and
+ * parses only the appended byte range when the same file strictly grows,
+ * verifying the append-only assumption with a boundary probe of the bytes just
+ * before the previously parsed offset.
  *
  * Heap discipline (see topics/server-performance-observability.md):
  * - retained bytes are bounded by an LRU budget measured in source bytes;
@@ -136,6 +136,19 @@ function probeFor(buffer: Buffer, parsedBytes: number): Buffer | null {
   const start = Math.max(0, parsedBytes - BOUNDARY_PROBE_BYTES);
   // Copy so the probe does not retain the full file buffer.
   return Buffer.from(buffer.subarray(start, parsedBytes));
+}
+
+function sameFileIdentity(left: Stats, right: Stats): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function sameFileSnapshot(left: Stats, right: Stats): boolean {
+  return (
+    sameFileIdentity(left, right) &&
+    left.ctimeMs === right.ctimeMs &&
+    left.mtimeMs === right.mtimeMs &&
+    left.size === right.size
+  );
 }
 
 async function readByteRange(
@@ -257,15 +270,15 @@ export class ClaudeTranscriptCache {
 
     const cached = this.entriesByPath.get(filePath);
     if (cached) {
-      if (
-        cached.stats.mtimeMs === stats.mtimeMs &&
-        cached.stats.size === stats.size
-      ) {
+      if (sameFileSnapshot(cached.stats, stats)) {
         this.touch(cached);
         this.logOutcome("hit", filePath, stats, 0);
         return cached;
       }
-      if (stats.size >= cached.parsedBytes) {
+      if (
+        sameFileIdentity(cached.stats, stats) &&
+        stats.size > cached.stats.size
+      ) {
         const incremental = await this.tryIncremental(cached, stats);
         if (incremental) return incremental;
       }

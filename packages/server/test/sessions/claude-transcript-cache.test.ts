@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  rename,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
@@ -129,6 +136,39 @@ describe("ClaudeTranscriptCache", () => {
     const second = await cache.load(filePath);
     expect(second?.entries).not.toBe(first?.entries);
     expect(uuids(second?.entries)).toEqual(["u2"]);
+  });
+
+  it("re-parses fully when a changed file keeps the same size", async () => {
+    const original = `${userLine("u1", null, "hello")}`;
+    const replacement = `${userLine("u9", null, "hellp")}`;
+    expect(Buffer.byteLength(replacement)).toBe(Buffer.byteLength(original));
+    await writeFile(filePath, `${original}\n`);
+    const first = await cache.load(filePath);
+
+    await writeFile(filePath, `${replacement}\n`);
+    const forcedMtime = new Date((first?.stats.mtimeMs ?? Date.now()) + 1000);
+    await utimes(filePath, forcedMtime, forcedMtime);
+    const second = await cache.load(filePath);
+
+    expect(second?.entries).not.toBe(first?.entries);
+    expect(uuids(second?.entries)).toEqual(["u9"]);
+  });
+
+  it("re-parses a replaced inode instead of extending cached state", async () => {
+    const original = `${userLine("u1", null, "hello")}\n`;
+    await writeFile(filePath, original);
+    const first = await cache.load(filePath);
+
+    const replacementPath = join(testDir, "replacement.jsonl");
+    await writeFile(
+      replacementPath,
+      `${original}${assistantLine("a1", "u1", "hi")}\n`,
+    );
+    await rename(replacementPath, filePath);
+    const second = await cache.load(filePath);
+
+    expect(second?.entries).not.toBe(first?.entries);
+    expect(uuids(second?.entries)).toEqual(["u1", "a1"]);
   });
 
   it("re-parses fully when bytes before the parse offset changed", async () => {
