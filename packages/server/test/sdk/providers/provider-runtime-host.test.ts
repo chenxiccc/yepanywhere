@@ -5,7 +5,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 // @ts-expect-error The wrapper lifecycle host intentionally runs as plain ESM.
-import { ProviderRuntimeHost } from "../../../../../scripts/provider-runtime-host.mjs";
+import {
+  ProviderRuntimeHost,
+  resolveProviderRuntimeWorkerPath,
+} from "../../../../../scripts/provider-runtime-host.mjs";
 import {
   closeProviderRuntimeHostRegistration,
   initializeProviderRuntimeHost,
@@ -17,6 +20,22 @@ const fixtureWorker = join(
   dirname(fileURLToPath(import.meta.url)),
   "fixtures/fake-provider-runtime-worker.mjs",
 );
+
+describe("resolveProviderRuntimeWorkerPath", () => {
+  it("uses an explicit absolute worker path for harness-controlled runtimes", () => {
+    expect(
+      resolveProviderRuntimeWorkerPath({
+        YEP_PROVIDER_RUNTIME_WORKER_PATH: fixtureWorker,
+      }),
+    ).toBe(fixtureWorker);
+  });
+
+  it("keeps the production worker as the default", () => {
+    expect(resolveProviderRuntimeWorkerPath({})).toMatch(
+      /provider-runtime-worker\.ts$/,
+    );
+  });
+});
 
 async function waitUntil(
   predicate: () => boolean,

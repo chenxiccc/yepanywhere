@@ -35,7 +35,9 @@ The JSON scenario dimensions are:
 - deterministic per-message payload bytes;
 - named scale points, repetitions, and settling time;
 - browser transcript-cache budgets; and
-- the browser working-set session count.
+- the browser working-set session count;
+- simulated provider stream count, size, and delay; and
+- the time-compressed idle-reap deadline.
 
 The default server driver uses public HTTP routes plus the maintenance
 listener. It measures server startup, cold and warm project/session lists,
@@ -88,12 +90,24 @@ as independently mutation-marked correctness milestones. Browser-process
 launch is excluded. Separate server processes prevent the direct readiness
 probe from warming the client leg's YA caches.
 
-Every driver uses YA's in-process mock for any session launch, and browser
-drivers additionally suppress provider discovery. This is an explicit post-
-provider mock boundary: the drivers exercise provider-neutral client/server/
-session paths, but make no claim about provider startup, protocol parsing,
-transcript production, or provider teardown. The real provider catalog is not
-queried during routine browser ratchets.
+The `specialized` driver runs two fresh server legs. Its owned-session leg
+selects an out-of-process simulated provider-runtime worker while retaining
+YA's real provider host, proxy, supervisor, subscription, augmentation, and
+idle-reap paths. A deterministic thinking-capable stream must arrive as raw
+deltas and a raw final assistant message before the same-id enriched
+replacement; after verified idle and final unsubscribe, ownership must be
+released. Its public-share leg creates a real frozen share against a local
+simulated relay, validates bounded chunk metadata, then drives a concurrent
+herd through the legacy full-response route while sampling forced-GC server
+memory. The provider adapter, SDK/harness execution, and provider transcript
+writes remain outside this simulated boundary.
+
+The server, browser, and built-client drivers use YA's in-process mock for any
+session launch, and browser drivers additionally suppress provider discovery.
+This is an explicit post-provider mock boundary: those drivers exercise
+provider-neutral client/server/session paths, but make no claim about provider
+startup, protocol parsing, transcript production, or provider teardown. The
+real provider catalog is not queried during routine browser ratchets.
 
 Every accepted sample checks project, session, message, and capability-gated
 rendering invariants against the pinned fixture. Browser runs warm the
@@ -156,6 +170,13 @@ node scripts/perf-suite/run.mjs \
   --fixture-repository /path/to/fixture-yepanywhere \
   --scenario fleet-small \
   --driver built-client \
+  --label measured-sha
+
+node scripts/perf-suite/run.mjs \
+  --checkout /path/to/measured-yepanywhere \
+  --fixture-repository /path/to/fixture-yepanywhere \
+  --scenario specialized-contracts \
+  --driver specialized \
   --label measured-sha
 ```
 
@@ -220,13 +241,14 @@ baseline must show the configured CPU and effective-memory headroom. Treat a
 diagnostic-grade result as a sampling lead and rerun before changing history or
 a ratchet.
 
-The GitHub workflow runs server and built-client `fleet-small` arms plus a
-browser `focused-append` arm on relevant client/server/shared/suite changes.
-Browser-capable arms install Chromium; every matrix arm receives a fresh runner
-and its own driver/scenario-keyed history. It uploads `result.json`,
-`history.jsonl`, and the complete run log on success or failure, and copies the
-four `YA_PERF_*_JSON` records into the job summary. The checkout uses full
-history because the deterministic fixture is pinned to an older revision.
+The GitHub workflow runs server and built-client `fleet-small` arms, a browser
+`focused-append` arm, and the `specialized-contracts` arm on relevant client,
+server, shared-package, or suite changes. Only browser-capable arms install
+Chromium; every matrix arm receives a fresh runner and its own driver/scenario-
+keyed history. It uploads `result.json`, `history.jsonl`, and the complete run
+log on success or failure, and copies the four `YA_PERF_*_JSON` records into the
+job summary. The checkout uses full history because the deterministic fixture
+is pinned to an older revision.
 
 Provider-backed drivers should prefer a simulated harness process over the
 browser drivers' post-provider mock so process startup, adapter protocol,

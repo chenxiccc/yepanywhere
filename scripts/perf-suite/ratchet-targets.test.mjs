@@ -146,6 +146,28 @@ test("ratchets production selected-session readiness by scale", () => {
   }
 });
 
+test("ratchets specialized provider and public-share contracts", () => {
+  const selected = selectRatchetTargets(productionRatchets, {
+    capacityKey: "host-v1-unregistered-test",
+    driver: "specialized",
+    scenario: "specialized-contracts",
+  });
+
+  assert.equal(
+    selected.targets.server["latency.providerFinalEnriched.p95Ms"].max,
+    1500,
+  );
+  assert.equal(
+    selected.targets.server["latency.idleOwnershipRelease.p95Ms"].max,
+    4000,
+  );
+  assert.equal(
+    selected.targets.server["latency.publicShareHerdReadableText.p95Ms"].max,
+    1500,
+  );
+  assert.equal(selected.targets.server["responseMiB.publicShareHerd"].max, 16);
+});
+
 test("ratchets one-target append separately from fleet contention", () => {
   const selected = selectRatchetTargets(productionRatchets, {
     capacityKey: "host-v1-unregistered-test",

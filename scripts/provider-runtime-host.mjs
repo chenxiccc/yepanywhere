@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HOST_PROTOCOL_VERSION = 1;
@@ -20,6 +20,11 @@ const workerEntrypoint = join(
   rootDir,
   "packages/server/src/sdk/providers/provider-runtime-worker.ts",
 );
+
+export function resolveProviderRuntimeWorkerPath(env = process.env) {
+  const override = env.YEP_PROVIDER_RUNTIME_WORKER_PATH?.trim();
+  return override ? resolve(override) : workerEntrypoint;
+}
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -910,6 +915,7 @@ async function main() {
     runtimeDir,
     controlSocketPath,
     token,
+    workerPath: resolveProviderRuntimeWorkerPath(),
     notifyWrapper(message) {
       if (typeof process.send === "function" && process.connected) {
         process.send(message);

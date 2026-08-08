@@ -31,6 +31,7 @@
     "console:volume": "node scripts/report-client-log-volume.mjs",
     "perf:regression:server": "node scripts/perf-suite/run.mjs --checkout . --scenario fleet-small --driver server --label working-tree",
     "perf:regression:browser": "node scripts/perf-suite/run.mjs --checkout . --scenario fleet-small --driver browser --label working-tree",
+    "perf:regression:specialized": "node scripts/perf-suite/run.mjs --checkout . --scenario specialized-contracts --driver specialized --label working-tree",
     "dev": "node scripts/dev.js",
     "staging": "node scripts/staging.js",
     "dev:auto": "pnpm --filter server dev & pnpm --filter client dev",

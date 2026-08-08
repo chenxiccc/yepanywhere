@@ -188,7 +188,7 @@ Recovery updates dated 2026-08-08 — Contributing-model: 5.6-Sol.
 | P16 | Expand component memory attribution | Named source charges covered Claude transcripts and project paths, while browser `performance.memory` omits Blink/layout/native allocations. | Substantially improved 2026-08-08: bounded Markdown accounting remains, and browser runs now add complete CDP process inventories, Linux per-process/type RSS/PSS/private bytes, and live-plus-detached DOM/document/listener/layout counts. A passing fleet run measured 2,807–2,855 MiB appended PSS, 2,462–2,503 MiB in renderers, and 2,774 MiB median retained PSS; capacity-specific PSS and portable CDP object ratchets now guard it. Per-component Blink byte attribution remains unavailable. |
 | P17 | Preserve final-display semantics | Readable completion is DOM text, not first paint. Append observations previously checked glossary and project paths sequentially and could inherit a background page's next animation-frame wake-up. Dev-client cold/warm navigation still has sequential observation semantics. | Partially fixed 2026-08-08: append and production built-client cold milestones now receive independent mutation-time browser-clock marks, while Playwright waits only validate correctness. Keep the DOM-not-paint caveat and dev-client cold/warm sequential caveat; extend independent marks there only when those subphase times become decision metrics. |
 | P18 | Complete immutable lost-ground and variance evidence | The initial report compressed several worsened server/browser scenarios and used mutable checkout-tip wording. | Complete: the ledger above records C0–C5, surveyed `2f5e403e`, profiled `cab8184a`, a second surveyed browser batch, concrete deltas/recoveries, and broad unchanged-run ratchets. |
-| P19 | Add specialized black-box fixtures | Owned provider streaming, public-share herds, and long-idle ownership/reap remain outside this family. | Add focused public-contract fixtures before citing this suite as performance evidence for those paths. |
+| P19 | Add specialized black-box fixtures | The new `specialized-contracts` driver runs a thinking-capable provider-runtime child, asserts raw-before-enriched ordering, releases verified-idle ownership on a compressed deadline, creates a frozen share, validates chunk metadata, and drives an eight-client legacy full-response herd. | Complete 2026-08-08 for YA-owned runtime/subscription/share paths: a clean three-repetition baseline measured 121.7 ms enriched final, 1.039 s idle release, and 85.2 ms share-herd readable-text p95. The provider adapter/SDK/harness, transcript writer, multi-hour timer drift, and internet relay remain explicit calibration boundaries. |
 | P20 | Detach context-specific augmentation from cached normalized messages | `normalizeSession` caches messages by stable raw-array identity, while route augmentation previously mutated those shared blocks. | Fixed 2026-08-08: task snapshots use copy-on-write over the full fold, then the selected response window is deep-detached before route-specific mutation. Public/private ordering and concurrent two-project-context tests prove the source projection remains unchanged. |
 | P21 | Expose a fenced project-path membership revision | `ProjectPathIndex` had private watcher/attachment generations but no public source revision; safe-Markdown fallback can use unversioned `statSync`. | Fixed 2026-08-08: a process-monotonic public revision advances on invalidation, uncertainty, membership change, disposal/replacement, and loss of a fact-owning watcher. Admission rechecks it; fallback answers may coalesce but never retain HTML. |
 | P22 | Decide malformed-JSON compatibility for raw relay envelopes | Existing relay parsing maps invalid/empty JSON bodies to `body: null`; raw byte splicing would instead invalidate the complete relay frame. | Fixed 2026-08-08: a fatal UTF-8 decode and syntax parse admit the raw path; empty, malformed, and invalid UTF-8 bodies retain `body: null`, with fallback counters and a compatibility test. |
@@ -230,9 +230,9 @@ Primary fix and evidence sites:
   `packages/server/src/sessions/claude-transcript-cache.ts`,
   `scripts/perf-suite/browser-memory.mjs`, and browser CDP/`performance.memory`
   collection in `scripts/perf-suite/run.mjs`.
-- P19: `packages/server/src/subscriptions.ts`, public-share routes/services,
-  and supervisor idle-reap tests, with a new black-box fixture before code
-  optimization.
+- P19: `scripts/perf-suite/simulated-provider-worker.mjs`, the `specialized`
+  path in `scripts/perf-suite/run.mjs`, public-share routes/services, and the
+  provider-runtime host/proxy plus supervisor idle-reap boundary.
 - P20: `packages/server/src/sessions/normalization.ts` and the augmentation
   branches in `packages/server/src/routes/sessions.ts`.
 - P21: `packages/server/src/projects/projectPathIndex.ts`,
@@ -257,7 +257,7 @@ Validation anchors for the two investigated recovery seams:
   `packages/server/test/e2e/ws-secure.e2e.test.ts`, and
   `packages/server/test/routes/ws-relay-local-file.test.ts`.
 
-## Remaining specialized black-box coverage
+## Specialized black-box coverage
 
 The revised browser driver now waits for exact automatic bare project-path
 anchors and negative controls against the pinned real-project fixture. This
@@ -266,13 +266,22 @@ while C2 `61cb5f35` and descendants support it automatically when project
 context is available. Glossary hints remain the separate default-off feature
 that the harness explicitly enables in browser storage.
 
-The shared family also cannot yet synthesize an owned provider process, create
-a public-share record without operator relay settings, or hold owned sessions
-through long idle-reap deadlines. It therefore must not be cited as direct
-performance evidence for raw-provider-versus-enriched replacement ordering,
-public-share serialization herds, or long-idle owned-session retention. Add
-focused black-box fixtures before those paths receive ratchets; the existing
-correctness and relay tests remain the current evidence.
+The `specialized-contracts` driver now starts a real YA provider-runtime host
+with an out-of-process simulated worker. It proves thinking-capable stream
+counts and bytes, raw final provider output before same-id enrichment,
+verified-idle ownership release after final unsubscribe, frozen-share creation,
+bounded chunk metadata, and an eight-client legacy full-response herd. Those
+paths have portable ceilings and a clean capacity-keyed three-repetition
+baseline.
+
+The worker replaces the provider adapter and SDK/harness, and it does not write
+a provider transcript. Its one-second reap deadline compresses the ownership
+state transition without proving multi-hour timer stability. The public-share
+fixture uses real local storage and routes against a simulated local relay, so
+internet transport is also omitted. Provider execution share, adapter event
+parsing, transcript writes, long-duration drift, and remote-network effects
+remain live-calibration or lower-level simulator work; no current ratchet is
+cited for those omitted boundaries.
 
 Found and reconciled 2026-08-08 while running the independent
 performance-regression survey.

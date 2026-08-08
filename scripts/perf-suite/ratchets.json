@@ -731,6 +731,54 @@
           }
         }
       }
+    },
+    "specialized": {
+      "scenarios": {
+        "specialized-contracts": {
+          "server": {
+            "runtime.ownedProviderServerStartupMs": {
+              "max": 10000,
+              "rationale": "Three local out-of-process provider-runtime repetitions had a 2.64 s median startup; this portable ceiling leaves substantial CI runner margin."
+            },
+            "runtime.publicShareServerStartupMs": {
+              "max": 10000,
+              "rationale": "Three local public-share repetitions had a 2.63 s median startup; this portable ceiling leaves substantial CI runner margin."
+            },
+            "latency.providerFirstTextDelta.p95Ms": {
+              "max": 500,
+              "rationale": "Three deterministic 24-chunk repetitions measured 9.0 ms median time to first text delta."
+            },
+            "latency.providerFinalEnriched.p95Ms": {
+              "max": 1500,
+              "rationale": "Three complete raw-to-enriched provider streams measured 118.8 ms median final enrichment."
+            },
+            "latency.idleOwnershipRelease.p95Ms": {
+              "max": 4000,
+              "rationale": "The one-second time-compressed deadline released ownership in 1.048 s across the median of three repetitions."
+            },
+            "latency.publicShareMetadata.p95Ms": {
+              "max": 250,
+              "rationale": "Three frozen-share chunk metadata requests measured 2.0 ms at the aggregate median."
+            },
+            "latency.publicShareHerdReadableText.p95Ms": {
+              "max": 1500,
+              "rationale": "Three eight-client full-response herds exposed their transcript marker in 69.8 ms aggregate p95."
+            },
+            "responseMiB.publicShareHerd": {
+              "max": 16,
+              "rationale": "Eight legacy full-share responses totalled 13.107 MiB in each repetition for the pinned 64 KiB fixture."
+            },
+            "memory.settled.heapUsedMiB": {
+              "max": 160,
+              "rationale": "Three public-share herd repetitions settled at 90.5 MiB aggregate after forced GC."
+            },
+            "memory.retainedHeapMiB": {
+              "max": 60,
+              "rationale": "Three public-share herd repetitions retained 3.7 MiB aggregate after forced GC; the broad ceiling covers runtime variance while catching unbounded retention."
+            }
+          }
+        }
+      }
     }
   }
 }

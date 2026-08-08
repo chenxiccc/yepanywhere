@@ -10,12 +10,14 @@
     "minimumIdleLogicalCpuCount": {
       "server": 1,
       "browser": 1,
-      "built-client": 1
+      "built-client": 1,
+      "specialized": 1
     },
     "minimumEffectiveAvailableMemoryMiB": {
       "server": 1024,
       "browser": 2048,
-      "built-client": 2048
+      "built-client": 2048,
+      "specialized": 2048
     }
   },
   "fixture": {
@@ -54,6 +56,21 @@
       "payloadBytes": 8192,
       "repetitions": 3,
       "settleMs": 750
+    },
+    "specialized-contracts": {
+      "projects": 1,
+      "sessionsPerProject": 1,
+      "initialTurns": 12,
+      "newTurns": 1,
+      "concurrentClients": 8,
+      "browserWorkingSetSessions": 1,
+      "payloadBytes": 65536,
+      "repetitions": 3,
+      "settleMs": 250,
+      "streamChunks": 24,
+      "streamChunkBytes": 2048,
+      "streamDelayMs": 2,
+      "idleReapSeconds": 1
     },
     "fleet-small": {
       "projects": 4,

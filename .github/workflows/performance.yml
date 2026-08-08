@@ -59,6 +59,11 @@ jobs:
             name: Built client fleet-small ratchet
             artifact: built-client-fleet-small
             summary: built-client
+          - driver: specialized
+            scenario: specialized-contracts
+            name: Specialized lifecycle and sharing ratchet
+            artifact: specialized-contracts
+            summary: specialized contracts
 
     steps:
       - name: Checkout YA
@@ -87,7 +92,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Chromium
-        if: matrix.driver != 'server'
+        if: matrix.driver == 'browser' || matrix.driver == 'built-client'
         run: pnpm -F @yep-anywhere/client exec playwright install chromium
 
       - name: Run capacity-keyed ${{ matrix.summary }} ratchet

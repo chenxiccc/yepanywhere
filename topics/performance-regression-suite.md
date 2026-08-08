@@ -66,13 +66,27 @@ project-path anchors during the first selected-session navigation. Direct and
 browser legs do not share a server process, so the direct probe cannot warm the
 browser leg's YA caches. These are DOM-readiness clocks, not paint timestamps.
 
-Routine suite runs do not execute a live provider. Every server receives the
-in-process mock for session launch. Browser drivers also disable provider
-discovery so the same harness cannot trigger a real model probe when measuring
-an older checkout whose explicit provider override did not yet own
-`/api/providers`. This is a post-provider mock boundary and cannot support
-claims about provider startup, protocol parsing, transcript production, or
-provider teardown.
+The `specialized` driver covers owned-provider and public-share contracts in
+two fresh server legs. The owned leg selects an out-of-process simulated
+provider-runtime worker while retaining YA's real runtime host, proxy,
+supervisor, subscription, augmentation, and idle-reap paths. Its deterministic
+thinking-capable stream must publish the configured chunk count and bytes, a
+raw final assistant message, and then the same-id enriched replacement. Once
+the process reports verified idle and its final viewer unsubscribes, the
+time-compressed idle deadline must release ownership. The public-share leg
+creates a real frozen share against a local simulated relay, validates its
+bounded chunk metadata, drives the configured concurrent herd through the
+legacy full-response route, and samples forced-GC server memory. The provider
+adapter, SDK/harness execution, and provider transcript writes remain outside
+the worker simulation.
+
+Routine server, browser, and built-client runs do not execute a live provider.
+Those servers receive the in-process mock for session launch. Browser drivers
+also disable provider discovery so the same harness cannot trigger a real model
+probe when measuring an older checkout whose explicit provider override did
+not yet own `/api/providers`. This is a post-provider mock boundary and cannot
+support claims about provider startup, protocol parsing, transcript production,
+or provider teardown.
 
 Before an append write, each page arms a `MutationObserver` for the expected
 tail row. Readable text, glossary annotation, and project-path anchors receive
@@ -150,15 +164,15 @@ hard-coding its capacity. The complete result remains the evidence source;
 committing a capacity registration or tighter target remains a reviewed change.
 
 `.github/workflows/performance.yml` runs server and built-client `fleet-small`
-arms plus a browser `focused-append` arm on fresh runners for client, server,
-shared-package, and suite changes. Browser-capable arms install Chromium. The
-workflow checks out the full YA history so the pinned fixture revision is
-available, and checks out `graehl/agents` at the reviewed full commit recorded
-in the workflow. Each arm uploads its driver/scenario-keyed result, history,
-and log even on failure and copies all four scrape records into its step
-summary. A previously unseen GitHub runner therefore uses portable ceilings
-while producing the exact capacity registration needed for a later reviewed
-ratchet change.
+arms, a browser `focused-append` arm, and the `specialized-contracts` arm on
+fresh runners for client, server, shared-package, and suite changes. Only the
+browser-capable arms install Chromium. The workflow checks out the full YA
+history so the pinned fixture revision is available, and checks out
+`graehl/agents` at the reviewed full commit recorded in the workflow. Each arm
+uploads its driver/scenario-keyed result, history, and log even on failure and
+copies all four scrape records into its step summary. A previously unseen
+GitHub runner therefore uses portable ceilings while producing the exact
+capacity registration needed for a later reviewed ratchet change.
 
 Small cloud instances are acceptable measurement hosts when their baseline
 passes the same scenario-specific eligibility checks. Tag every instance and
@@ -193,6 +207,15 @@ model, effort, cost/token facts when available, and host capacity alongside the
 result. Start provider-agnostic investigations at the shared YA owner, but label
 a conclusion provider-specific or unresolved unless the owning path is shared
 or the behavior is reproduced across provider adapters.
+
+The current `specialized` fixture is one intermediate tier: its worker is a
+real child process speaking YA's runtime protocol, but it replaces the provider
+adapter and SDK/harness rather than impersonating a first-party harness below
+that adapter. It therefore supports runtime-host, subscription, enrichment,
+ownership, and teardown claims, but not provider parsing or transcript-writer
+claims. A future harness-level simulator may move the boundary outward without
+changing the public fixture contract. A small live calibration remains required
+before interpreting the simulated timing as provider-backed end-to-end timing.
 
 ## Background summary telemetry
 
@@ -532,6 +555,36 @@ Blink or renderer bytes to individual YA components. Source-byte cache charges,
 JS heap, native process PSS, and CDP object counts remain complementary signals,
 not an additive per-component decomposition.
 
+### 2026-08-08 specialized contract baseline
+
+A clear-host three-repetition Node 24 `specialized-contracts` run exercised a
+24-chunk, 48 KiB thinking-capable provider stream, a one-second idle deadline,
+and eight concurrent frozen-share readers over a 64 KiB/message fixture. The
+median-of-repetition aggregate measured 8.4 ms to first text delta, 78.0 ms to
+the raw final assistant message, 121.7 ms to its enriched same-id replacement,
+and 1.039 seconds from final unsubscribe to ownership release. Frozen-share
+metadata took 3.6 ms; readable-text p95 for the eight-client full-response herd
+was 85.2 ms, with 13.106 MiB transferred in aggregate. Forced-GC settled heap
+was 90.5 MiB and retained heap was 3.7 MiB.
+
+The capacity key was
+`host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835`. Its three-second baseline
+was 25.5% CPU busy with 11.920 idle logical CPU equivalents, at least
+114,609,823,744 bytes effective available memory, and no swap growth. The
+51.2-second run window was 28.6% CPU busy, reached load/effective-CPU 1.016,
+retained at least 114,110,087,168 bytes effective available memory, and grew
+swap use by 25,952,256 bytes. The available physical memory and idle CPU
+headroom remained ample; every repetition and final marker sweep was clean.
+
+Portable ceilings intentionally leave CI margin: 500 ms to first delta, 1.5
+seconds to enriched final, 4 seconds to idle release, 250 ms for share metadata,
+1.5 seconds for herd readable text, 16 MiB total herd response, 160 MiB settled
+heap, and 60 MiB retained heap. Server startup for each fresh leg is capped at
+10 seconds. Correct chunk counts and bytes, thinking presence, raw-before-
+enriched ordering, frozen/chunk metadata, full-response counts, verified-idle
+release, and clean process teardown are hard correctness failures rather than
+timing ratchets.
+
 ## Ratchet interpretation
 
 The current maximums use broad margins over the three-repetition survey and the
@@ -554,16 +607,18 @@ because it fits below a broad current maximum.
 This family covers static provider-file discovery, public project/session and
 collection reads, file-observed live append, glossary artifacts and hints,
 automatic generalized bare project-path links where supported, browser
-transcript retention, and server/browser memory. The pinned fixture requires
-exact positive path anchors and absent-path, MIME-type, and version-shaped
-negative controls. Automatic path linking has no saved enable switch; C0/C1
-lack generalized bare-prose support and C2 onward provide it automatically.
+transcript retention, server/browser memory, runtime-hosted simulated provider
+streaming, time-compressed verified-idle ownership release, and concurrent
+frozen public-share reads. The pinned fixture requires exact positive path
+anchors and absent-path, MIME-type, and version-shaped negative controls.
+Automatic path linking has no saved enable switch; C0/C1 lack generalized bare-
+prose support and C2 onward provide it automatically.
 
-The current family does not yet synthesize the owned provider process described
-in the provider-backed measurement tiers, so it does not isolate raw provider
-activity from its later enriched same-id replacement in
-`createSessionSubscription`. It does not create public-share records or hold
-owned sessions through long idle-reap deadlines. Those specialized paths
-retain their focused correctness and relay tests; claims about their token-rate,
-share-herd, or long-idle performance require dedicated black-box fixtures
-rather than being inferred from this suite.
+The specialized worker does not execute a real provider adapter, SDK/harness,
+or provider transcript writer. Its token-rate metric is deterministic simulated
+throughput, not provider execution speed. The one-second reap scenario covers
+deadline ownership logic without establishing multi-hour timer stability, and
+the local relay keeps public-share storage/routing real while omitting internet
+transport. Provider-backed end-to-end timing, adapter-specific parsing,
+transcript-write behavior, long-duration timer drift, and remote-relay network
+effects still require live calibration or a lower harness-level simulator.
