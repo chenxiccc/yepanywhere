@@ -76,6 +76,13 @@ Current browser profiles derive non-overlapping cold/warm navigation and append
 phase trees from Resource Timing and MessageList marks. Appended transcript
 bodies are generated before the browser append marker; that marker is set
 immediately before write submission, so fixture payload generation is excluded.
+Current clients also expose an append event path from accepted file-change
+receipt through incremental request, data readiness, state queueing, and
+MessageList preprocessing. Those durations share the browser's
+`performance.now()` clock. Focused watcher source/version/path/mtime/size and
+server observation/emission timestamps remain alongside the phases as source
+facts; server wall-clock timestamps must not be subtracted from browser marks.
+Older checkpoints report this event path as unavailable.
 For each important total, output ranks phases, names every phase contributing
 at least 10%, and reports the smallest set explaining at least 80%. Historical
 revisions without these clocks retain black-box totals and explicitly report

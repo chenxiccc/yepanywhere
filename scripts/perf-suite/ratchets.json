@@ -301,8 +301,8 @@
                 "rationale": "Profiled p95 was 314 ms and this phase dominates warm final display."
               },
               "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
-                "max": 450,
-                "rationale": "Profiled p95 was 266 ms and this phase dominates appended final display."
+                "max": 200,
+                "rationale": "Leading-edge focused watch measured 59.9 ms p95; 200 ms catches restoration of the former 262 ms debounce floor."
               },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 150,
@@ -371,8 +371,8 @@
                 "rationale": "Profiled p95 was 357 ms and this phase dominates warm final display."
               },
               "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
-                "max": 450,
-                "rationale": "Profiled p95 was 265 ms and this phase dominates appended final display."
+                "max": 200,
+                "rationale": "Leading-edge focused watch measured 59.2 ms p95; 200 ms catches restoration of the former 262 ms debounce floor."
               },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 150,
@@ -475,8 +475,8 @@
                 "rationale": "Profiled p95 was 607 ms and this phase dominates warm final display."
               },
               "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
-                "max": 600,
-                "rationale": "Profiled p95 was 397 ms and this phase dominates appended final display."
+                "max": 300,
+                "rationale": "Leading-edge focused watch measured 181.6 ms p95; 300 ms catches restoration of the former 397 ms profiled path."
               },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 350,
@@ -541,8 +541,8 @@
                 "rationale": "Profiled p95 was 631 ms and this phase dominates warm final display."
               },
               "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
-                "max": 600,
-                "rationale": "Profiled p95 was 396 ms and this phase dominates appended final display."
+                "max": 300,
+                "rationale": "Leading-edge focused watch measured 175.9 ms p95; 300 ms catches restoration of the former 396 ms profiled path."
               },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 350,

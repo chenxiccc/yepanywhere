@@ -9,10 +9,55 @@ export interface SessionWatchTarget {
   provider?: string;
 }
 
+export interface SessionWatchChangeEvent {
+  type: "session-watch-change";
+  sessionId?: string;
+  projectId?: string;
+  provider?: string;
+  path?: string;
+  source?: "fs-watch" | "poll";
+  changeVersion?: number;
+  sourceObservedAt?: string;
+  mtimeMs?: number;
+  size?: number;
+  timestamp?: string;
+}
+
 interface UseSessionWatchStreamOptions {
-  onChange: () => void;
+  onChange: (event: SessionWatchChangeEvent) => void;
   onError?: (error: Event) => void;
   onOpen?: () => void;
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asOptionalFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function normalizeSessionWatchChangeEvent(
+  data: unknown,
+): SessionWatchChangeEvent {
+  const value =
+    data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const source = value.source;
+  return {
+    type: "session-watch-change",
+    sessionId: asOptionalString(value.sessionId),
+    projectId: asOptionalString(value.projectId),
+    provider: asOptionalString(value.provider),
+    path: asOptionalString(value.path),
+    source: source === "fs-watch" || source === "poll" ? source : undefined,
+    changeVersion: asOptionalFiniteNumber(value.changeVersion),
+    sourceObservedAt: asOptionalString(value.sourceObservedAt),
+    mtimeMs: asOptionalFiniteNumber(value.mtimeMs),
+    size: asOptionalFiniteNumber(value.size),
+    timestamp: asOptionalString(value.timestamp),
+  };
 }
 
 function getSessionWatchTargetKey(
@@ -61,7 +106,9 @@ export function useSessionWatchStream(
           return;
         }
         if (event.eventType === "session-watch-change") {
-          optionsRef.current.onChange();
+          optionsRef.current.onChange(
+            normalizeSessionWatchChangeEvent(event.data),
+          );
         }
       },
       onOpen: () => {

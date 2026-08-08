@@ -31,6 +31,9 @@ export interface FileChangeEvent {
   relativePath: string;
   changeType: FileChangeType;
   timestamp: string;
+  /** Exact source-file facts when the watcher observed an existing file. */
+  mtimeMs?: number;
+  size?: number;
   /** Parsed file type based on path */
   fileType:
     | "session"

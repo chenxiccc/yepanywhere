@@ -7,6 +7,16 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-08 session file-change facts — releases `v0.5.2`, `v0.6.0`,
+`v0.6.1`, `v0.6.2`, and `v0.7.0` expose the existing activity and focused
+session-watch streams but omit exact path/mtime/size correlation facts,
+focused change versions, and source-observation timestamps. Add those fields
+optionally without a new capability or request: they optimize duplicate
+notifications but do not change either event's meaning. A new client
+deduplicates only exact cross-route facts within a bounded window. When the
+fields are absent, it preserves the existing leading/trailing refresh behavior
+and makes no unsupported request; older clients ignore the additive fields.
+
 2026-08-06 frozen public-share relay transport — releases `v0.5.2`, `v0.6.0`,
 `v0.6.1`, `v0.6.2`, and `v0.7.0` expose only a materialized one-response
 public-share relay path. Add the exact secret-authorized metadata capability

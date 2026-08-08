@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { hasUnconfirmedSelfSends } from "../lib/deliveryState";
 import { getMessageId } from "../lib/mergeMessages";
@@ -41,12 +42,16 @@ import {
   useFileActivity,
 } from "./useFileActivity";
 import {
+  type IncrementalFetchTrigger,
   type SessionLoadResult,
   useSessionMessages,
 } from "./useSessionMessages";
 import { useSessionStream } from "./useSessionStream";
 import { stripQueuedTurnMarkers } from "../lib/queuedTurnMarkers";
-import { useSessionWatchStream } from "./useSessionWatchStream";
+import {
+  type SessionWatchChangeEvent,
+  useSessionWatchStream,
+} from "./useSessionWatchStream";
 import {
   type StreamingMarkdownCallbacks,
   useStreamingContent,
@@ -59,6 +64,7 @@ export type ProcessState = "idle" | "in-turn" | "waiting-input";
 export type { AgentContent, AgentContentMap } from "./useSessionMessages";
 
 const THROTTLE_MS = 500;
+const FILE_CHANGE_FACT_DEDUPE_MS = 1000;
 const STREAM_ACTIVITY_TOKEN_UPDATE_MS = 500;
 const STREAM_LIVENESS_UPDATE_MS = 500;
 const FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS = 300_000;
@@ -72,6 +78,47 @@ const FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS = 300_000;
 // live processId is only a weak proxy for the provider context still being
 // warm, but it is the cheap, simple guard.)
 const awayRecapTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+interface SessionFileChangeFact {
+  path?: string;
+  mtimeMs?: number;
+  size?: number;
+}
+
+type SessionFileChangeRoute = "broad-file-watch" | "focused-session-watch";
+
+function getSessionFileChangeFactKey(
+  event: SessionFileChangeFact,
+): string | null {
+  if (
+    typeof event.path !== "string" ||
+    typeof event.mtimeMs !== "number" ||
+    !Number.isFinite(event.mtimeMs) ||
+    typeof event.size !== "number" ||
+    !Number.isFinite(event.size)
+  ) {
+    return null;
+  }
+  return `${event.path}\0${event.mtimeMs}\0${event.size}`;
+}
+
+function buildSessionFileChangePerfDetail(
+  route: SessionFileChangeRoute,
+  event: FileChangeEvent | SessionWatchChangeEvent,
+): IncrementalFetchTrigger {
+  return {
+    route,
+    path: event.path,
+    mtimeMs: event.mtimeMs,
+    size: event.size,
+    eventTimestamp: event.timestamp,
+    ...(event.type === "session-watch-change" && {
+      eventSource: event.source,
+      changeVersion: event.changeVersion,
+      sourceObservedAt: event.sourceObservedAt,
+    }),
+  };
+}
 
 function scheduleAwayRecap(
   projectId: string,
@@ -1074,7 +1121,34 @@ export function useSession(
   const throttleRef = useRef<{
     timer: ReturnType<typeof setTimeout> | null;
     pending: boolean;
+    pendingTrigger?: IncrementalFetchTrigger;
   }>({ timer: null, pending: false });
+  const recentSessionFileFactsRef = useRef(
+    new Map<string, { recordedAtMs: number; route: SessionFileChangeRoute }>(),
+  );
+
+  const recordSessionFileChangeFact = useCallback(
+    (event: SessionFileChangeFact, route: SessionFileChangeRoute): boolean => {
+      const key = getSessionFileChangeFactKey(event);
+      if (!key) return false;
+
+      const observedAtMs = Date.now();
+      const recentFacts = recentSessionFileFactsRef.current;
+      for (const [candidate, fact] of recentFacts) {
+        if (observedAtMs - fact.recordedAtMs > FILE_CHANGE_FACT_DEDUPE_MS) {
+          recentFacts.delete(candidate);
+        }
+      }
+      const previousFact = recentFacts.get(key);
+      recentFacts.set(key, { recordedAtMs: observedAtMs, route });
+      return (
+        previousFact !== undefined &&
+        previousFact.route !== route &&
+        observedAtMs - previousFact.recordedAtMs <= FILE_CHANGE_FACT_DEDUPE_MS
+      );
+    },
+    [],
+  );
 
   // Add a message to the pending queue
   // Generates a tempId that will be sent to the server and echoed back in stream
@@ -1207,24 +1281,31 @@ export function useSession(
   // - Leading: fires immediately on first call
   // - Trailing: fires again after timeout if events came during window
   // This ensures no updates are lost
-  const throttledFetch = useCallback(() => {
-    const ref = throttleRef.current;
+  const throttledFetch = useCallback(
+    (trigger?: IncrementalFetchTrigger) => {
+      const ref = throttleRef.current;
 
-    if (!ref.timer) {
-      // No active throttle - fire immediately (LEADING EDGE)
-      fetchNewMessages();
-      ref.timer = setTimeout(() => {
-        ref.timer = null;
-        if (ref.pending) {
-          ref.pending = false;
-          throttledFetch(); // Fire again (TRAILING EDGE)
-        }
-      }, THROTTLE_MS);
-    } else {
-      // Throttled - mark as pending for trailing edge
-      ref.pending = true;
-    }
-  }, [fetchNewMessages]);
+      if (!ref.timer) {
+        // No active throttle - fire immediately (LEADING EDGE)
+        markReloadPerfPhase("session_incremental_fetch_requested", trigger);
+        void fetchNewMessages(trigger);
+        ref.timer = setTimeout(() => {
+          ref.timer = null;
+          if (ref.pending) {
+            const pendingTrigger = ref.pendingTrigger;
+            ref.pending = false;
+            ref.pendingTrigger = undefined;
+            throttledFetch(pendingTrigger); // Fire again (TRAILING EDGE)
+          }
+        }, THROTTLE_MS);
+      } else {
+        // Throttled - mark as pending for trailing edge
+        ref.pending = true;
+        ref.pendingTrigger = trigger;
+      }
+    },
+    [fetchNewMessages],
+  );
 
   // Handle file changes - for non-owned sessions only
   // For owned sessions, stream provides real-time messages and session-updated events
@@ -1266,10 +1347,27 @@ export function useSession(
         return;
       }
 
+      const perfDetail = buildSessionFileChangePerfDetail(
+        "broad-file-watch",
+        event,
+      );
+      const deduped = recordSessionFileChangeFact(event, "broad-file-watch");
+      markReloadPerfPhase("session_file_change_received", {
+        ...perfDetail,
+        deduped,
+      });
+      if (deduped) return;
+
       // For external/idle sessions: fetch both messages and metadata via API
-      throttledFetch();
+      throttledFetch(perfDetail);
     },
-    [loadPendingAgents, sessionId, status.owner, throttledFetch],
+    [
+      loadPendingAgents,
+      recordSessionFileChangeFact,
+      sessionId,
+      status.owner,
+      throttledFetch,
+    ],
   );
 
   // Handle session content updates via stream (title, messageCount, updatedAt, contextUsage)
@@ -1470,10 +1568,26 @@ export function useSession(
   // Focused watch stream for non-owned sessions.
   // This is a targeted server-side watch of the currently viewed session file,
   // independent from broad global activity-tree watch behavior.
-  const handleSessionWatchChange = useCallback(() => {
-    if (status.owner === "self") return;
-    throttledFetch();
-  }, [status.owner, throttledFetch]);
+  const handleSessionWatchChange = useCallback(
+    (event: SessionWatchChangeEvent) => {
+      if (status.owner === "self") return;
+      const perfDetail = buildSessionFileChangePerfDetail(
+        "focused-session-watch",
+        event,
+      );
+      const deduped = recordSessionFileChangeFact(
+        event,
+        "focused-session-watch",
+      );
+      markReloadPerfPhase("session_file_change_received", {
+        ...perfDetail,
+        deduped,
+      });
+      if (deduped) return;
+      throttledFetch(perfDetail);
+    },
+    [recordSessionFileChangeFact, status.owner, throttledFetch],
+  );
 
   const { connected: sessionWatchConnected } = useSessionWatchStream(
     status.owner !== "self"

@@ -458,6 +458,7 @@ export class FileWatcher {
   ): void {
     // Determine change type
     let changeType: FileChangeType;
+    let fingerprint: { mtimeMs: number; size: number } | undefined;
     const fileExists = fs.existsSync(fullPath);
 
     if (!fileExists) {
@@ -473,7 +474,9 @@ export class FileWatcher {
     } else {
       let mtimeMs = Date.now();
       try {
-        mtimeMs = fs.statSync(fullPath).mtimeMs;
+        const stats = fs.statSync(fullPath);
+        mtimeMs = stats.mtimeMs;
+        fingerprint = { mtimeMs, size: stats.size };
       } catch {
         // File disappeared between existsSync and statSync
         return;
@@ -497,13 +500,14 @@ export class FileWatcher {
       this.knownFileMtimes.set(fullPath, mtimeMs);
     }
 
-    this.emitFileChangeEvent(fullPath, changeType);
+    this.emitFileChangeEvent(fullPath, changeType, undefined, fingerprint);
   }
 
   private emitFileChangeEvent(
     fullPath: string,
     changeType: FileChangeType,
     metrics?: FileWatcherRescanMetrics,
+    fingerprint?: { mtimeMs: number; size: number },
   ): void {
     const relativePath = path.relative(this.watchDir, fullPath);
 
@@ -514,6 +518,7 @@ export class FileWatcher {
       relativePath,
       changeType,
       timestamp: new Date().toISOString(),
+      ...fingerprint,
       fileType: this.parseFileType(relativePath),
     };
 

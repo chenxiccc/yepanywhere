@@ -44,6 +44,8 @@ export interface FileChangeEvent {
   relativePath: string;
   changeType: FileChangeType;
   timestamp: string;
+  mtimeMs?: number;
+  size?: number;
   fileType: FileType;
 }
 

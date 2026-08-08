@@ -50,6 +50,62 @@ describe("FocusedSessionWatchManager", () => {
     tempDirs.length = 0;
   });
 
+  it("checks on the leading edge and keeps a trailing validation", () => {
+    vi.useFakeTimers();
+    try {
+      const manager = new FocusedSessionWatchManager({
+        scanner: {
+          getProject: async () => null,
+          getOrCreateProject: async () => null,
+        },
+        codexScanner: {
+          getSessionsForProject: async () => [],
+        },
+        geminiScanner: {
+          getSessionsForProject: async () => [],
+        },
+        debounceMs: 200,
+      });
+      const internals = manager as unknown as {
+        createTarget(request: {
+          sessionId: string;
+          projectId: UrlProjectId;
+        }): unknown;
+        requestCheck(target: unknown, source: "fs-watch" | "poll"): void;
+        scheduleDebouncedCheck(
+          target: unknown,
+          source: "fs-watch" | "poll",
+        ): void;
+        checkForChanges(
+          target: unknown,
+          request: {
+            source: "fs-watch" | "poll";
+            sourceObservedAtMs: number;
+          },
+        ): Promise<void>;
+      };
+      const target = internals.createTarget({
+        sessionId: "session-leading",
+        projectId: "project-leading" as UrlProjectId,
+      }) as {
+        subscribers: Map<number, (event: FocusedSessionWatchEvent) => void>;
+      };
+      target.subscribers.set(1, vi.fn());
+      const check = vi.spyOn(internals, "checkForChanges").mockResolvedValue();
+
+      internals.requestCheck(target, "fs-watch");
+      internals.scheduleDebouncedCheck(target, "fs-watch");
+
+      expect(check).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(199);
+      expect(check).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      expect(check).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["claude", "claude-gateway"] as const)(
     "emits change events for a watched %s session file",
     async (provider) => {
@@ -104,6 +160,10 @@ describe("FocusedSessionWatchManager", () => {
       expect(event.projectId).toBe(projectId);
       expect(event.provider).toBe("claude");
       expect(event.path).toBe(filePath);
+      expect(event.changeVersion).toBeGreaterThan(0);
+      expect(event.sourceObservedAt).toEqual(expect.any(String));
+      expect(event.mtimeMs).toEqual(expect.any(Number));
+      expect(event.size).toBeGreaterThan(0);
 
       unsubscribe();
       manager.dispose();

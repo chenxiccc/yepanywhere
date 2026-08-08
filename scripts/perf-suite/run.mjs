@@ -1494,6 +1494,32 @@ async function collectClientAppendProfile(page, milestones) {
   const preprocessStart = observed.marks.find(
     (mark) => mark.name === "message_list_preprocess_start",
   );
+  const changeReceived = observed.marks.find(
+    (mark) =>
+      mark.name === "session_file_change_received" &&
+      mark.detail?.deduped !== true,
+  );
+  const fetchRequested = observed.marks.find(
+    (mark) =>
+      mark.name === "session_incremental_fetch_requested" &&
+      mark.atMs >= (changeReceived?.atMs ?? Number.POSITIVE_INFINITY),
+  );
+  const requestStart = observed.marks.find(
+    (mark) =>
+      mark.name === "session_incremental_fetch_request_start" &&
+      mark.atMs >= (fetchRequested?.atMs ?? Number.POSITIVE_INFINITY),
+  );
+  const requestId = requestStart?.detail?.requestId;
+  const dataReady = observed.marks.find(
+    (mark) =>
+      mark.name === "session_incremental_fetch_data_ready" &&
+      mark.detail?.requestId === requestId,
+  );
+  const stateQueued = observed.marks.find(
+    (mark) =>
+      mark.name === "session_incremental_fetch_state_queued" &&
+      mark.detail?.requestId === requestId,
+  );
   const preprocessEnd = observed.marks.find(
     (mark) =>
       mark.name === "message_list_preprocess_end" &&
@@ -1509,6 +1535,55 @@ async function collectClientAppendProfile(page, milestones) {
       mark.name === "message_list_commit_effect" &&
       mark.atMs >= (groupEnd?.atMs ?? Number.POSITIVE_INFINITY),
   );
+  const eventPathAvailable = Boolean(
+    changeReceived &&
+      fetchRequested &&
+      requestStart &&
+      dataReady &&
+      stateQueued &&
+      preprocessStart,
+  );
+  const eventPath = eventPathAvailable
+    ? {
+        available: true,
+        browserClock: "performance.now",
+        nonOverlappingPhases: {
+          receivedToFetchRequestedMs: phaseDuration(
+            changeReceived.atMs,
+            fetchRequested.atMs,
+          ),
+          fetchRequestedToRequestStartMs: phaseDuration(
+            fetchRequested.atMs,
+            requestStart.atMs,
+          ),
+          requestToDataReadyMs: phaseDuration(
+            requestStart.atMs,
+            dataReady.atMs,
+          ),
+          dataReadyToStateQueuedMs: phaseDuration(
+            dataReady.atMs,
+            stateQueued.atMs,
+          ),
+          stateQueuedToPreprocessMs: phaseDuration(
+            stateQueued.atMs,
+            preprocessStart.atMs,
+          ),
+        },
+        sourceFacts: {
+          route: changeReceived.detail?.route,
+          eventSource: changeReceived.detail?.eventSource,
+          changeVersion: changeReceived.detail?.changeVersion,
+          sourceObservedAt: changeReceived.detail?.sourceObservedAt,
+          eventTimestamp: changeReceived.detail?.eventTimestamp,
+          mtimeMs: changeReceived.detail?.mtimeMs,
+          size: changeReceived.detail?.size,
+          wallClock: "server-wall-clock; do not subtract from browser marks",
+        },
+      }
+    : {
+        available: false,
+        reason: "append file-change/fetch phase marks unavailable",
+      };
   if (
     typeof observed.appendStartAtMs !== "number" ||
     !preprocessStart ||
@@ -1519,6 +1594,7 @@ async function collectClientAppendProfile(page, milestones) {
   ) {
     return {
       available: false,
+      eventPath,
       reason: "append MessageList phase marks unavailable",
     };
   }
@@ -1572,15 +1648,26 @@ async function collectClientAppendProfile(page, milestones) {
         ? { coveredMs, fraction: round(coveredMs / totalMs), totalMs }
         : null,
     nonOverlappingPhases: phases,
+    eventPath,
   };
 }
 
 function summarizeClientAppendProfiles(profiles) {
   const available = profiles.filter((profile) => profile.available);
+  const eventPathAvailable = profiles.filter(
+    (profile) => profile.eventPath?.available,
+  );
   const names = [
     ...new Set(
       available.flatMap((profile) =>
         Object.keys(profile.nonOverlappingPhases ?? {}),
+      ),
+    ),
+  ];
+  const eventPathPhaseNames = [
+    ...new Set(
+      eventPathAvailable.flatMap((profile) =>
+        Object.keys(profile.eventPath.nonOverlappingPhases ?? {}),
       ),
     ),
   ];
@@ -1615,6 +1702,35 @@ function summarizeClientAppendProfiles(profiles) {
         ),
       ]),
     ),
+    eventPath: {
+      availableCount: eventPathAvailable.length,
+      nonOverlappingPhases: Object.fromEntries(
+        eventPathPhaseNames.map((name) => [
+          name,
+          summarize(
+            eventPathAvailable
+              .map((profile) => profile.eventPath.nonOverlappingPhases[name])
+              .filter((value) => typeof value === "number"),
+          ),
+        ]),
+      ),
+      routeCounts: Object.fromEntries(
+        [
+          ...new Set(
+            eventPathAvailable.map(
+              (profile) => profile.eventPath.sourceFacts.route,
+            ),
+          ),
+        ].map((route) => [
+          route ?? "unknown",
+          eventPathAvailable.filter(
+            (profile) => profile.eventPath.sourceFacts.route === route,
+          ).length,
+        ]),
+      ),
+      sampleCount: profiles.length,
+      unavailableCount: profiles.length - eventPathAvailable.length,
+    },
     phaseCoverage: phaseCoverageReport(available),
     sampleCount: profiles.length,
     unavailableCount: profiles.length - available.length,
@@ -2730,17 +2846,20 @@ function aggregateBrowserRuns(runs) {
         for (const group of [
           "nonOverlappingPhases",
           "messageListWithinQueuedToCommit",
+          ...(kind === "append" ? ["eventPath.nonOverlappingPhases"] : []),
         ]) {
           const names = [
             ...new Set(
               modes.flatMap((mode) =>
-                Object.keys(mode.profiles?.[kind]?.[group] ?? {}),
+                Object.keys(getMetric(mode.profiles?.[kind], group) ?? {}),
               ),
             ),
           ];
           for (const name of names) {
             const values = modes
-              .map((mode) => mode.profiles?.[kind]?.[group]?.[name]?.p95Ms)
+              .map((mode) =>
+                getMetric(mode.profiles?.[kind], `${group}.${name}.p95Ms`),
+              )
               .filter((value) => typeof value === "number");
             if (values.length === 0) continue;
             clientProfileMetrics[`profiles.${kind}.${group}.${name}.p95Ms`] =

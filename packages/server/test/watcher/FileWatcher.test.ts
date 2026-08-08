@@ -93,6 +93,8 @@ describe("FileWatcher", () => {
       expect(events.at(-1)).toMatchObject({
         path: filePath,
         changeType: "modify",
+        mtimeMs: expect.any(Number),
+        size: Buffer.byteLength('{"changed":true}\n'),
       });
     } finally {
       watcher.stop();

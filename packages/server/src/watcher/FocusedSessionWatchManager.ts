@@ -7,6 +7,11 @@ import type { Project } from "../supervisor/types.js";
 type WatchProvider = "claude" | "codex" | "gemini";
 type ChangeSource = "fs-watch" | "poll";
 
+interface ChangeCheckRequest {
+  source: ChangeSource;
+  sourceObservedAtMs: number;
+}
+
 interface CodexSessionInfo {
   id: string;
   filePath: string;
@@ -34,6 +39,7 @@ interface SessionWatchTarget {
   resolveRetryTimer: NodeJS.Timeout | null;
   resolving: boolean;
   checkInProgress: boolean;
+  pendingCheck: ChangeCheckRequest | null;
 }
 
 export interface FocusedSessionWatchRequest {
@@ -49,6 +55,10 @@ export interface FocusedSessionWatchEvent {
   provider: WatchProvider;
   path: string;
   source: ChangeSource;
+  changeVersion: number;
+  sourceObservedAt: string;
+  mtimeMs: number;
+  size: number;
   timestamp: string;
 }
 
@@ -88,6 +98,7 @@ export class FocusedSessionWatchManager {
   private readonly debounceMs: number;
   private readonly targets = new Map<string, SessionWatchTarget>();
   private nextSubscriberId = 1;
+  private nextChangeVersion = 1;
 
   constructor(options: FocusedSessionWatchManagerOptions) {
     this.scanner = options.scanner;
@@ -157,6 +168,7 @@ export class FocusedSessionWatchManager {
       resolveRetryTimer: null,
       resolving: false,
       checkInProgress: false,
+      pendingCheck: null,
     };
   }
 
@@ -226,10 +238,14 @@ export class FocusedSessionWatchManager {
           const changedName = filename.toString();
           if (changedName !== target.fileName) return;
         }
-        this.scheduleDebouncedCheck(target, "fs-watch");
+        const sourceObservedAtMs = Date.now();
+        this.requestCheck(target, "fs-watch", sourceObservedAtMs);
+        this.scheduleDebouncedCheck(target, "fs-watch", sourceObservedAtMs);
       });
       target.watcher.on("error", () => {
-        this.scheduleDebouncedCheck(target, "fs-watch");
+        const sourceObservedAtMs = Date.now();
+        this.requestCheck(target, "fs-watch", sourceObservedAtMs);
+        this.scheduleDebouncedCheck(target, "fs-watch", sourceObservedAtMs);
       });
     } catch (error) {
       console.warn(
@@ -239,7 +255,7 @@ export class FocusedSessionWatchManager {
     }
 
     target.pollTimer = setInterval(() => {
-      void this.checkForChanges(target, "poll");
+      this.requestCheck(target, "poll", Date.now());
     }, this.pollMs);
 
     if (FocusedSessionWatchManager.LOG_EVENTS) {
@@ -252,21 +268,60 @@ export class FocusedSessionWatchManager {
   private scheduleDebouncedCheck(
     target: SessionWatchTarget,
     source: ChangeSource,
+    sourceObservedAtMs = Date.now(),
   ): void {
     if (target.debounceTimer) {
       clearTimeout(target.debounceTimer);
     }
     target.debounceTimer = setTimeout(() => {
       target.debounceTimer = null;
-      void this.checkForChanges(target, source);
+      this.requestCheck(target, source, sourceObservedAtMs);
     }, this.debounceMs);
+  }
+
+  private requestCheck(
+    target: SessionWatchTarget,
+    source: ChangeSource,
+    sourceObservedAtMs = Date.now(),
+  ): void {
+    if (target.subscribers.size === 0) return;
+    const request = { source, sourceObservedAtMs };
+    if (target.checkInProgress) {
+      this.queuePendingCheck(target, request);
+      return;
+    }
+    void this.checkForChanges(target, request);
+  }
+
+  private queuePendingCheck(
+    target: SessionWatchTarget,
+    request: ChangeCheckRequest,
+  ): void {
+    const pending = target.pendingCheck;
+    if (
+      !pending ||
+      (pending.source === "poll" && request.source === "fs-watch")
+    ) {
+      target.pendingCheck = request;
+      return;
+    }
+    if (pending.source === request.source) {
+      pending.sourceObservedAtMs = Math.min(
+        pending.sourceObservedAtMs,
+        request.sourceObservedAtMs,
+      );
+    }
   }
 
   private async checkForChanges(
     target: SessionWatchTarget,
-    source: ChangeSource,
+    request: ChangeCheckRequest,
   ): Promise<void> {
-    if (target.checkInProgress || target.subscribers.size === 0) {
+    if (target.subscribers.size === 0) {
+      return;
+    }
+    if (target.checkInProgress) {
+      this.queuePendingCheck(target, request);
       return;
     }
     target.checkInProgress = true;
@@ -310,7 +365,11 @@ export class FocusedSessionWatchManager {
         projectId: target.projectId,
         provider: target.provider,
         path: filePath,
-        source,
+        source: request.source,
+        changeVersion: this.nextChangeVersion++,
+        sourceObservedAt: new Date(request.sourceObservedAtMs).toISOString(),
+        mtimeMs: nextMtimeMs,
+        size: nextSize,
         timestamp: new Date().toISOString(),
       };
 
@@ -332,6 +391,17 @@ export class FocusedSessionWatchManager {
       }
     } finally {
       target.checkInProgress = false;
+      const pendingCheck = target.pendingCheck;
+      target.pendingCheck = null;
+      if (pendingCheck && target.subscribers.size > 0) {
+        queueMicrotask(() =>
+          this.requestCheck(
+            target,
+            pendingCheck.source,
+            pendingCheck.sourceObservedAtMs,
+          ),
+        );
+      }
     }
   }
 
@@ -444,6 +514,7 @@ export class FocusedSessionWatchManager {
       clearTimeout(target.debounceTimer);
       target.debounceTimer = null;
     }
+    target.pendingCheck = null;
   }
 
   private teardownTarget(target: SessionWatchTarget): void {

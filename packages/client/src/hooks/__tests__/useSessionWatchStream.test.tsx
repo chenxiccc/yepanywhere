@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
@@ -46,6 +46,61 @@ afterEach(() => {
 });
 
 describe("useSessionWatchStream", () => {
+  it("passes optional change facts to the subscriber", () => {
+    const transport = new FakeSourceTransport();
+    const wrapper = createWrapper(createRuntime(transport));
+    const onChange = vi.fn();
+
+    renderHook(
+      () =>
+        useSessionWatchStream(
+          {
+            projectId: "project-1",
+            provider: "claude",
+            sessionId: "session-1",
+          },
+          { onChange },
+        ),
+      { wrapper },
+    );
+
+    const subscription = transport.getSubscriptions("session-watch")[0];
+    expect(subscription).toBeDefined();
+    act(() => {
+      transport.emitSubscriptionEvent(
+        subscription!.id,
+        "session-watch-change",
+        {
+          type: "session-watch-change",
+          sessionId: "session-1",
+          projectId: "project-1",
+          provider: "claude",
+          path: "/tmp/session-1.jsonl",
+          source: "fs-watch",
+          changeVersion: 7,
+          sourceObservedAt: "2026-08-08T17:00:00.000Z",
+          mtimeMs: 1234.5,
+          size: 456,
+          timestamp: "2026-08-08T17:00:00.010Z",
+        },
+      );
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      type: "session-watch-change",
+      sessionId: "session-1",
+      projectId: "project-1",
+      provider: "claude",
+      path: "/tmp/session-1.jsonl",
+      source: "fs-watch",
+      changeVersion: 7,
+      sourceObservedAt: "2026-08-08T17:00:00.000Z",
+      mtimeMs: 1234.5,
+      size: 456,
+      timestamp: "2026-08-08T17:00:00.010Z",
+    });
+  });
+
   it("does not resubscribe for a new target object with the same values", () => {
     const transport = new FakeSourceTransport();
     const wrapper = createWrapper(createRuntime(transport));

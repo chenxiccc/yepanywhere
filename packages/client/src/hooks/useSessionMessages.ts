@@ -79,6 +79,8 @@ export type SessionMetadataUpdate =
 
 export type { SessionLoadProgress, SessionLoadProgressStage };
 
+export type IncrementalFetchTrigger = Record<string, unknown>;
+
 /** Options for useSessionMessages */
 export interface UseSessionMessagesOptions {
   projectId: string;
@@ -135,7 +137,7 @@ export interface UseSessionMessagesResult {
   /** Remove a local optimistic self-send that the server accepted cancelling */
   removeUnconfirmedSelfSend: (tempId: string) => void;
   /** Fetch new messages incrementally (for file change events) */
-  fetchNewMessages: () => Promise<void>;
+  fetchNewMessages: (trigger?: IncrementalFetchTrigger) => Promise<void>;
   /** Fetch session metadata only */
   fetchSessionMetadata: () => Promise<void>;
   /** Pagination info from compact-boundary-based loading */
@@ -235,6 +237,7 @@ export function useSessionMessages(
     coordinator: SessionDetailCoordinator;
     load: SessionRouteSnapshot | undefined;
   } | null>(null);
+  const incrementalFetchSequenceRef = useRef(0);
   if (
     cachedLoadRef.current?.key !== snapshotKeyString ||
     cachedLoadRef.current.coordinator !== coordinator
@@ -880,55 +883,85 @@ export function useSessionMessages(
   );
 
   // Fetch new messages incrementally (for file change events)
-  const fetchNewMessages = useCallback(() => {
-    return coordinator.runExclusiveFetchNewMessages(async () => {
-      try {
-        const afterMessageId = readStoreLastMessageId();
-        const data = await sourceApi.getSession(
-          afterMessageId
-            ? {
-                projectId,
-                sessionId,
-                afterMessageId,
-              }
-            : {
-                projectId,
-                sessionId,
-                tailCompactions: 2,
-                tailTurns: effectiveTailTurns,
-                tailFrom,
-              },
+  const fetchNewMessages = useCallback(
+    (trigger?: IncrementalFetchTrigger) => {
+      return coordinator.runExclusiveFetchNewMessages(async () => {
+        const requestId = ++incrementalFetchSequenceRef.current;
+        const perfDetail = {
+          ...trigger,
+          projectId,
+          sessionId,
+          requestId,
+        };
+        markReloadPerfPhase(
+          "session_incremental_fetch_request_start",
+          perfDetail,
         );
-        sourceSummary.reportProviderRuntimeStatusSnapshot(
-          coordinator.buildProviderRuntimeStatusSnapshot(data),
-        );
-        const applied = coordinator.applyIncrementalRefresh(data, {
-          afterMessageId,
-        });
-        if (applied.applied) {
-          reportStoreDivergence("catchup", { session: data.session });
+        try {
+          const afterMessageId = readStoreLastMessageId();
+          const data = await sourceApi.getSession(
+            afterMessageId
+              ? {
+                  projectId,
+                  sessionId,
+                  afterMessageId,
+                }
+              : {
+                  projectId,
+                  sessionId,
+                  tailCompactions: 2,
+                  tailTurns: effectiveTailTurns,
+                  tailFrom,
+                },
+          );
+          markReloadPerfPhase("session_incremental_fetch_data_ready", {
+            ...perfDetail,
+            afterMessageId,
+            sourceMessageCount: data.messages.length,
+          });
+          sourceSummary.reportProviderRuntimeStatusSnapshot(
+            coordinator.buildProviderRuntimeStatusSnapshot(data),
+          );
+          const applied = coordinator.applyIncrementalRefresh(data, {
+            afterMessageId,
+          });
+          if (applied.applied) {
+            reportStoreDivergence("catchup", { session: data.session });
+          }
+          // Update session metadata (including title, model, contextUsage) which may have changed
+          // For new sessions, prev may be null if JSONL didn't exist on initial load
+          updateSession((prev) =>
+            prev ? { ...prev, ...data.session } : data.session,
+          );
+          markReloadPerfPhase("session_incremental_fetch_state_queued", {
+            ...perfDetail,
+            afterMessageId,
+            applied: applied.applied,
+            messageCount: applied.messageCount,
+            sourceMessageCount: applied.sourceMessageCount,
+          });
+        } catch (error) {
+          markReloadPerfPhase("session_incremental_fetch_error", {
+            ...perfDetail,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Silent fail for incremental updates
         }
-        // Update session metadata (including title, model, contextUsage) which may have changed
-        // For new sessions, prev may be null if JSONL didn't exist on initial load
-        updateSession((prev) =>
-          prev ? { ...prev, ...data.session } : data.session,
-        );
-      } catch {
-        // Silent fail for incremental updates
-      }
-    });
-  }, [
-    coordinator,
-    effectiveTailTurns,
-    projectId,
-    sessionId,
-    tailFrom,
-    readStoreLastMessageId,
-    reportStoreDivergence,
-    sourceApi,
-    sourceSummary,
-    updateSession,
-  ]);
+      });
+    },
+    [
+      coordinator,
+      effectiveTailTurns,
+      projectId,
+      sessionId,
+      tailFrom,
+      readStoreLastMessageId,
+      reportStoreDivergence,
+      sourceApi,
+      sourceSummary,
+      updateSession,
+    ],
+  );
 
   // Load older messages (previous chunk before the current truncation point)
   const loadOlderMessages = useCallback(async () => {

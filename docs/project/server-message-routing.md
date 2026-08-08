@@ -123,6 +123,21 @@ same synchronous emit shape as Process, broadcasting cross-session events:
 subscribe via `handleActivitySubscribe()`; the inbox UI uses this to refresh
 tier ordering without polling.
 
+An open non-owned session also subscribes to a focused session-file watch. Its
+`fs.watch` notification requests an immediate stat check and schedules a 200 ms
+trailing validation; polling remains the fallback, and an overlapping check
+preserves one pending request. A focused change includes its source, a
+process-monotonic change version, source-observation and emission timestamps,
+and the exact path/mtime/size fact. Direct global file events include the same
+optional fact for an existing file; fallback rescans and deletes may omit it.
+
+The client correlates the broad and focused routes without changing global
+activity delivery. It suppresses a refresh only when different routes report
+the same path/mtime/size within one second. Missing facts, repeats from one
+route, and later file growth retain the leading/trailing 500 ms refresh
+behavior. These correlation fields are additive: clients connected to older
+servers receive no fact and keep the existing duplicate-safe throttle.
+
 ## Backpressure / coalescing — what's there and what isn't
 
 | Where | Mechanism | Why |

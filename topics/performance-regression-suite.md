@@ -182,9 +182,10 @@ block and request at the profiled revision. Framework/serialization/loopback
 carries those response bytes through Hono and the direct WebSocket relay; at the
 profiled revision the relay decoded, parsed, wrapped, re-encoded, chunked,
 reassembled, and parsed JSON. Browser append trigger-to-preprocess includes file
-observation, focused refresh, state merge, and scheduling and has a fixed 200 ms
-watcher debounce. React commit-to-readable covers the rendered transcript
-projection after state is queued.
+observation, focused refresh, state merge, and scheduling. The profiled revision
+had a fixed 200 ms watcher debounce; current source checks on the leading edge
+and keeps the delayed check as validation. React commit-to-readable covers the
+rendered transcript projection after state is queued.
 
 The significant phases, their cache/invalidation contracts, and concrete
 recovery seams are maintained in `gaps/perf-regressions-survey.md`. Ratchets
@@ -245,6 +246,39 @@ occupancy, maximum load/effective-CPU 0.044, at least 121,307,148,288 effective
 available bytes, and no swap-use change during the 0.5-second comparison.
 Removing the remaining validation parse would require a separately proven typed
 producer boundary; this recovery does not assume one.
+
+### 2026-08-08 focused append observation recovery
+
+The focused `fs.watch` path now requests a stat check immediately and retains
+the 200 ms debounced check as trailing validation. Polling remains the fallback.
+If a check is already running, one pending check is preserved rather than
+dropped, with an observed filesystem event taking priority over a poll. Each
+focused change carries a process-monotonic version, observation source and
+wall-clock timestamp, emission timestamp, and exact path/mtime/size fact.
+Direct global file events carry the same optional fact; fallback rescans and
+deletes may omit it.
+
+The client deduplicates only an exact path/mtime/size fact reported through the
+broad and focused routes within one second. A missing fact or a repeat from the
+same route keeps the existing leading/trailing fetch behavior, preserving a
+bounded recovery opportunity. Older servers omit the additive fields and keep
+that same pre-deduplication behavior. Browser profiles now split receipt,
+request launch, data readiness, state queueing, and MessageList preprocessing
+on the browser's `performance.now()` clock. Server wall-clock timestamps are
+retained as source facts and are never subtracted from browser marks.
+
+In a final three-repetition `fleet-small` browser run, append-start to
+preprocess was 59.3 ms p95 with both zero and 24 MiB transcript-cache budgets,
+down from the earlier 261.8–262.2 ms fixed-floor observation. Final display was
+187.5 and 188.4 ms p95. The browser-clock path was at most 0.1 ms from receipt
+to fetch request, 0.2 ms to request start, 47.1 ms to data readiness, 1.4 ms to
+state queueing, and 7.5 ms to preprocess. The capacity-keyed 99.2-second window
+used 25.1% whole-host CPU, reached load/effective-CPU 0.293, retained at least
+117,738,115,072 effective available bytes, and had no swap-use change. The
+earlier three-repetition large-session sample improved append-start to
+preprocess from the historical 396–397 ms to 175.9–181.6 ms. Ratchets now cap
+this phase at 200 ms for `fleet-small` and 300 ms for
+`large-session-cache`.
 
 ## Ratchet interpretation
 

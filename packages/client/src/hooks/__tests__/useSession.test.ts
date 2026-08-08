@@ -6,6 +6,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type {
+  FileChangeEvent,
   SessionStatusEvent,
   SessionUpdatedEvent,
 } from "../../lib/activityBus";
@@ -13,6 +14,7 @@ import { sessionModelPick } from "../../lib/sessionPickStorage";
 import type { SessionStatus } from "../../types";
 import { __resetAwayRecapTimersForTest, useSession } from "../useSession";
 import type { SessionLoadResult } from "../useSessionMessages";
+import type { SessionWatchChangeEvent } from "../useSessionWatchStream";
 
 const apiMocks = vi.hoisted(() => ({
   getAgentMappings: vi.fn(),
@@ -43,7 +45,14 @@ let fileActivityOptions:
   | {
       onSessionStatusChange?: (event: SessionStatusEvent) => void;
       onSessionUpdated?: (event: SessionUpdatedEvent) => void;
+      onFileChange?: (event: FileChangeEvent) => void;
       onReconnect?: () => void | Promise<void>;
+    }
+  | undefined;
+
+let sessionWatchOptions:
+  | {
+      onChange?: (event: SessionWatchChangeEvent) => void;
     }
   | undefined;
 
@@ -201,7 +210,10 @@ vi.mock("../useSessionStream", () => ({
 }));
 
 vi.mock("../useSessionWatchStream", () => ({
-  useSessionWatchStream: vi.fn(() => ({ connected: false })),
+  useSessionWatchStream: vi.fn((_target, options) => {
+    sessionWatchOptions = options;
+    return { connected: false };
+  }),
 }));
 
 vi.mock("../useStreamingContent", () => ({
@@ -240,6 +252,7 @@ describe("useSession completion reconciliation", () => {
     });
     installLocalStorageMock();
     fileActivityOptions = undefined;
+    sessionWatchOptions = undefined;
     sessionMessagesOptions = undefined;
     sessionStreamHandler = null;
     streamingContentOptions = undefined;
@@ -268,6 +281,64 @@ describe("useSession completion reconciliation", () => {
     expect(result.current.processState).toBe("idle");
     expect(result.current.status).toEqual({ owner: "none" });
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("deduplicates exact broad and focused file facts", () => {
+    renderHook(() => useSession(PROJECT_ID, "sess-1", undefined));
+
+    const path = "/tmp/sess-1.jsonl";
+    act(() => {
+      fileActivityOptions?.onFileChange?.({
+        type: "file-change",
+        provider: "codex",
+        path,
+        relativePath: "sess-1.jsonl",
+        changeType: "modify",
+        timestamp: "2026-08-08T17:00:00.010Z",
+        mtimeMs: 1234.5,
+        size: 100,
+        fileType: "session",
+      });
+      sessionWatchOptions?.onChange?.({
+        type: "session-watch-change",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        provider: "codex",
+        path,
+        source: "fs-watch",
+        changeVersion: 7,
+        sourceObservedAt: "2026-08-08T17:00:00.000Z",
+        mtimeMs: 1234.5,
+        size: 100,
+        timestamp: "2026-08-08T17:00:00.012Z",
+      });
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+      sessionWatchOptions?.onChange?.({
+        type: "session-watch-change",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        provider: "codex",
+        path,
+        source: "fs-watch",
+        changeVersion: 8,
+        sourceObservedAt: "2026-08-08T17:00:00.100Z",
+        mtimeMs: 1235.5,
+        size: 120,
+        timestamp: "2026-08-08T17:00:00.112Z",
+      });
+      vi.advanceTimersByTime(400);
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(2);
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(fetchNewMessages).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces deferred effort configuration failures", () => {
