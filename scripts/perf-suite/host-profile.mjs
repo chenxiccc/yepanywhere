@@ -274,3 +274,75 @@ export function summarizeHostWindow(capacity, start, end) {
         : end.memory.swapTotalBytes - end.memory.swapFreeBytes,
   };
 }
+
+export function assessHostEligibility(capacity, baseline, policy) {
+  const minimumAvailableBytes = policy.minimumEffectiveAvailableMemoryMiB * MIB;
+  const checks = [
+    {
+      metric: "effectiveLogicalCpuCount",
+      actual: capacity.cpu.effectiveLogicalCpuCount,
+      minimum: policy.minimumEffectiveLogicalCpuCount,
+      pass:
+        capacity.cpu.effectiveLogicalCpuCount >=
+        policy.minimumEffectiveLogicalCpuCount,
+    },
+    {
+      metric: "baselineCpuBusyFraction",
+      actual: baseline.cpuBusyFraction,
+      maximum: policy.maximumBaselineCpuBusyFraction,
+      pass:
+        baseline.cpuBusyFraction !== null &&
+        baseline.cpuBusyFraction <= policy.maximumBaselineCpuBusyFraction,
+    },
+    {
+      metric: "baselineIdleLogicalCpuCount",
+      actual:
+        baseline.cpuBusyFraction === null
+          ? null
+          : round(
+              capacity.cpu.effectiveLogicalCpuCount *
+                (1 - baseline.cpuBusyFraction),
+            ),
+      minimum: policy.minimumIdleLogicalCpuCount,
+      pass:
+        baseline.cpuBusyFraction !== null &&
+        capacity.cpu.effectiveLogicalCpuCount *
+          (1 - baseline.cpuBusyFraction) >=
+          policy.minimumIdleLogicalCpuCount,
+    },
+    {
+      metric: "baselineLoadPerEffectiveCpu",
+      actual: baseline.maximumLoadPerEffectiveCpu,
+      maximum: policy.maximumBaselineLoadPerEffectiveCpu,
+      pass:
+        baseline.maximumLoadPerEffectiveCpu <=
+        policy.maximumBaselineLoadPerEffectiveCpu,
+    },
+    {
+      metric: "minimumEffectiveAvailableMemoryBytes",
+      actual: baseline.minimumEffectiveAvailableMemoryBytes,
+      minimum: minimumAvailableBytes,
+      pass:
+        baseline.minimumEffectiveAvailableMemoryBytes >= minimumAvailableBytes,
+    },
+    {
+      metric: "baselineSwapGrowthBytes",
+      actual:
+        baseline.swapUsedBytesAtStart === null ||
+        baseline.swapUsedBytesAtEnd === null
+          ? null
+          : baseline.swapUsedBytesAtEnd - baseline.swapUsedBytesAtStart,
+      maximum: policy.maximumBaselineSwapGrowthMiB * MIB,
+      pass:
+        baseline.swapUsedBytesAtStart !== null &&
+        baseline.swapUsedBytesAtEnd !== null &&
+        baseline.swapUsedBytesAtEnd - baseline.swapUsedBytesAtStart <=
+          policy.maximumBaselineSwapGrowthMiB * MIB,
+    },
+  ];
+  return {
+    checks,
+    pass: checks.every((check) => check.pass),
+    grade: checks.every((check) => check.pass) ? "ratchet" : "diagnostic",
+  };
+}

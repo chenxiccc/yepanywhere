@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "capacityOverrides": {
+    "host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835": {
+      "rationale": "The 2026-08-08 local survey and recovery measurements used this capacity class. It currently inherits the portable ceilings."
+    }
+  },
   "drivers": {
     "server": {
       "scenarios": {

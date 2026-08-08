@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import {
@@ -19,12 +19,15 @@ import process from "node:process";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  assessHostEligibility,
   readHostCapacity,
   readHostSample,
   summarizeHostWindow,
 } from "./host-profile.mjs";
+import { selectRatchetTargets } from "./ratchet-targets.mjs";
 
-const SUITE_VERSION = 3;
+const SUITE_VERSION = 4;
+const PERF_RUN_MARKER_PREFIX = "ya-perf-suite-";
 const GENERALIZED_PROJECT_PATHS_BASE =
   "61cb5f358b9ccb56549d0515ded703ec534996a6";
 const DEFAULT_CONFIG_PATH = new URL("./config.json", import.meta.url);
@@ -37,6 +40,7 @@ function parseArgs(argv) {
     config: DEFAULT_CONFIG_PATH,
     driver: "server",
     "fixture-repository": null,
+    history: null,
     label: "working-tree",
     output: null,
     ratchets: DEFAULT_RATCHETS_PATH,
@@ -48,7 +52,7 @@ function parseArgs(argv) {
       console.log(
         "Usage: node run.mjs --checkout PATH --scenario NAME [--driver server|browser] " +
           "[--fixture-repository PATH] [--label LABEL] [--config FILE] " +
-          "[--ratchets FILE] [--output FILE]",
+          "[--ratchets FILE] [--output FILE] [--history FILE]",
       );
       process.exit(0);
     }
@@ -254,6 +258,9 @@ function transcriptRows({
 async function runProcess(command, args, { cwd }) {
   const child = spawn(command, args, {
     cwd,
+    env: activePerfRunMarker
+      ? { ...process.env, PERF_RUN_ID: activePerfRunMarker }
+      : process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   const stdout = [];
@@ -269,6 +276,117 @@ async function runProcess(command, args, { cwd }) {
     );
   }
   return output;
+}
+
+let activePerfRunMarker = null;
+
+function perfSweepExecutable() {
+  return process.env.YA_PERF_SWEEP || "perf-sweep";
+}
+
+async function runPerfSweep(marker, { kill = false } = {}) {
+  const args = [marker];
+  if (kill) args.push("--kill", "--kill-group");
+  const executable = perfSweepExecutable();
+  const child = spawn(executable, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout = [];
+  const stderr = [];
+  child.stdout.on("data", (chunk) => stdout.push(chunk));
+  child.stderr.on("data", (chunk) => stderr.push(chunk));
+  const outcome = await new Promise((resolve, reject) => {
+    child.once("error", (error) => reject(error));
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  }).catch((error) => {
+    if (error?.code === "ENOENT") {
+      throw new Error(
+        `${executable} is required; install perf-sweep or set YA_PERF_SWEEP`,
+      );
+    }
+    throw error;
+  });
+  return {
+    ...outcome,
+    command: [executable, ...args],
+    stdout: Buffer.concat(stdout).toString("utf8").trim(),
+    stderr: Buffer.concat(stderr).toString("utf8").trim(),
+  };
+}
+
+function reportSweep(stage, result) {
+  for (const output of [result.stdout, result.stderr]) {
+    if (output)
+      console.log(`${stage}: ${output.replaceAll("\n", `\n${stage}: `)}`);
+  }
+}
+
+function validateSweepExit(result, stage) {
+  if (![0, 10, 11].includes(result.code) || result.signal) {
+    throw new Error(
+      `${stage}: perf-sweep exited ${result.code ?? result.signal}`,
+    );
+  }
+}
+
+async function requireCleanPerfHost() {
+  const result = await runPerfSweep(PERF_RUN_MARKER_PREFIX);
+  reportSweep("SWEEP-PREFLIGHT", result);
+  validateSweepExit(result, "SWEEP-PREFLIGHT");
+  if (result.code !== 0) {
+    throw new Error(
+      "Another YA perf run or its debris is present; inspect it before measuring",
+    );
+  }
+}
+
+async function reapPerfRun(marker, stage) {
+  const initial = await runPerfSweep(marker, { kill: true });
+  reportSweep(stage, initial);
+  validateSweepExit(initial, stage);
+  const verification = await runPerfSweep(marker);
+  reportSweep(`${stage}-VERIFY`, verification);
+  validateSweepExit(verification, `${stage}-VERIFY`);
+  if (verification.code !== 0) {
+    throw new Error(`${stage}: marked processes survived cleanup`);
+  }
+  return {
+    marker,
+    debrisFound: initial.code !== 0,
+    initialExitCode: initial.code,
+    pass: initial.code === 0 && verification.code === 0,
+    verifiedClean: verification.code === 0,
+  };
+}
+
+function installSignalSweep(marker) {
+  let handling = false;
+  const handlers = new Map();
+  for (const [signal, exitCode] of [
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ]) {
+    const handler = () => {
+      if (handling) return;
+      handling = true;
+      const result = spawnSync(
+        perfSweepExecutable(),
+        [marker, "--kill", "--kill-group"],
+        { encoding: "utf8" },
+      );
+      for (const output of [result.stdout, result.stderr]) {
+        if (output?.trim()) process.stderr.write(`${output.trim()}\n`);
+      }
+      process.exit(exitCode);
+    };
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+  return () => {
+    for (const [signal, handler] of handlers) {
+      process.off(signal, handler);
+    }
+  };
 }
 
 const REQUIRED_FIXTURE_PATHS = [
@@ -747,7 +865,15 @@ async function gitIsAncestor(checkout, ancestor, descendant) {
   );
 }
 
-async function startServer({ checkout, driver, fixture, port, root, config }) {
+async function startServer({
+  checkout,
+  driver,
+  fixture,
+  port,
+  root,
+  config,
+  runMarker,
+}) {
   const logPath = path.join(root, "server.log");
   const log = createWriteStream(logPath, { flags: "a" });
   const env = {
@@ -765,6 +891,7 @@ async function startServer({ checkout, driver, fixture, port, root, config }) {
     NO_BACKEND_RELOAD: "true",
     PI_SESSIONS_DIR: path.join(root, "empty-pi"),
     PORT: String(port),
+    PERF_RUN_ID: runMarker,
     VITE_PORT: String(port + 2),
     VOICE_INPUT: "false",
     YEP_DATA_DIR: path.join(root, "data"),
@@ -773,8 +900,16 @@ async function startServer({ checkout, driver, fixture, port, root, config }) {
   const child = spawn(
     "pnpm",
     driver === "browser"
-      ? ["--dir", ".", "run", "dev", "--no-frontend-reload"]
-      : ["--dir", "packages/server", "run", "dev"],
+      ? [
+          "--dir",
+          ".",
+          "run",
+          "dev",
+          "--no-frontend-reload",
+          "--perf-run-id",
+          runMarker,
+        ]
+      : ["--dir", "packages/server", "run", "dev", "--perf-run-id", runMarker],
     {
       cwd: checkout,
       detached: true,
@@ -787,6 +922,18 @@ async function startServer({ checkout, driver, fixture, port, root, config }) {
   const baseUrl = `http://127.0.0.1:${port}`;
   const maintenanceUrl = `http://127.0.0.1:${port + 1}`;
   try {
+    const processManifestPath = path.join(root, "process-manifest.jsonl");
+    await appendFile(
+      processManifestPath,
+      `${JSON.stringify({
+        recordedAt: new Date().toISOString(),
+        role: driver === "browser" ? "YA dev server" : "YA server",
+        pid: child.pid,
+        pgid: child.pid,
+        ports: [port, port + 1, ...(driver === "browser" ? [port + 2] : [])],
+        marker: runMarker,
+      })}\n`,
+    );
     const startupMs = await waitForReady({
       baseUrl,
       maintenanceUrl,
@@ -806,6 +953,7 @@ async function startServer({ checkout, driver, fixture, port, root, config }) {
       log,
       logPath,
       maintenanceUrl,
+      processManifestPath,
       startupMs,
     };
   } catch (error) {
@@ -848,6 +996,17 @@ function bodyArray(body, field, description) {
     throw new Error(`${description} response lacks ${field}[]`);
   }
   return value;
+}
+
+async function readProcessManifest(file) {
+  const contents = await readFile(file, "utf8").catch((error) => {
+    if (error?.code === "ENOENT") return "";
+    throw error;
+  });
+  return contents
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 function requestTarget(target) {
@@ -1951,6 +2110,7 @@ async function measureBrowserMode({
   generalizedProjectPathsSupported,
   glossarySupported,
   repetition,
+  runMarker,
   scenario,
   server,
 }) {
@@ -1961,8 +2121,20 @@ async function measureBrowserMode({
   const { chromium } = await import(pathToFileURL(playwrightPath).href);
   const browser = await chromium.launch({
     args: ["--enable-precise-memory-info"],
+    env: { ...process.env, PERF_RUN_ID: runMarker },
     headless: true,
   });
+  await appendFile(
+    server.processManifestPath,
+    `${JSON.stringify({
+      recordedAt: new Date().toISOString(),
+      role: "Playwright Chromium process tree",
+      pid: null,
+      pgid: null,
+      marker: runMarker,
+      tracking: "PERF_RUN_ID environment; perf-sweep is authoritative",
+    })}\n`,
+  );
   const budgets = scenario.browserCacheBudgetsMiB ?? [0, 24];
   const orderedBudgets = budgets.map(
     (_, index) => budgets[(index + repetition) % budgets.length],
@@ -2329,6 +2501,7 @@ async function measureRepetition({
   generalizedProjectPathsSupported,
   label,
   repetition,
+  runMarker,
   scenario,
   scenarioName,
   workRoot,
@@ -2344,6 +2517,7 @@ async function measureRepetition({
     port,
     root: repetitionRoot,
     config,
+    runMarker,
   });
   let browserMeasurement = null;
   const agents = Array.from(
@@ -2510,6 +2684,7 @@ async function measureRepetition({
         generalizedProjectPathsSupported,
         glossarySupported,
         repetition,
+        runMarker,
         scenario,
         server,
       });
@@ -2633,6 +2808,7 @@ async function measureRepetition({
       runtime: {
         driver,
         node: process.version,
+        processManifest: await readProcessManifest(server.processManifestPath),
         serverStartupMs: round(server.startupMs),
         serverLog: server.logPath,
       },
@@ -3004,6 +3180,47 @@ function evaluateRatchets(serverAggregate, browserAggregate, targets) {
   return { checks, pass: checks.every((check) => check.pass) };
 }
 
+function resolveHostEligibilityPolicy(config, driver) {
+  const policy = config.hostEligibility;
+  if (!policy || typeof policy !== "object") {
+    throw new Error("config.hostEligibility is required");
+  }
+  requirePositiveInteger(
+    policy.baselineSampleMs,
+    "hostEligibility.baselineSampleMs",
+  );
+  requirePositiveInteger(
+    policy.minimumEffectiveLogicalCpuCount,
+    "hostEligibility.minimumEffectiveLogicalCpuCount",
+  );
+  const minimumIdleLogicalCpuCount =
+    policy.minimumIdleLogicalCpuCount?.[driver];
+  requirePositiveInteger(
+    minimumIdleLogicalCpuCount,
+    `hostEligibility.minimumIdleLogicalCpuCount.${driver}`,
+  );
+  for (const field of [
+    "maximumBaselineCpuBusyFraction",
+    "maximumBaselineLoadPerEffectiveCpu",
+    "maximumBaselineSwapGrowthMiB",
+  ]) {
+    if (typeof policy[field] !== "number" || policy[field] < 0) {
+      throw new Error(`hostEligibility.${field} must be nonnegative`);
+    }
+  }
+  const minimumEffectiveAvailableMemoryMiB =
+    policy.minimumEffectiveAvailableMemoryMiB?.[driver];
+  requirePositiveInteger(
+    minimumEffectiveAvailableMemoryMiB,
+    `hostEligibility.minimumEffectiveAvailableMemoryMiB.${driver}`,
+  );
+  return {
+    ...policy,
+    minimumEffectiveAvailableMemoryMiB,
+    minimumIdleLogicalCpuCount,
+  };
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const suiteRoot = path.dirname(fileURLToPath(import.meta.url));
@@ -3025,6 +3242,10 @@ async function main() {
   const scenario = config.scenarios?.[options.scenario];
   if (!scenario) throw new Error(`Unknown scenario: ${options.scenario}`);
   validateScenario(scenario, options.scenario);
+  const hostEligibilityPolicy = resolveHostEligibilityPolicy(
+    config,
+    options.driver,
+  );
   const fixtureConfig = {
     ...config.fixture,
     repository: fixtureRepository,
@@ -3056,6 +3277,8 @@ async function main() {
   if (ratchets.schemaVersion !== 1)
     throw new Error("Unsupported ratchet schemaVersion");
 
+  await requireCleanPerfHost();
+
   const revision = await gitRevision(checkout);
   const harness = await harnessIdentity(
     harnessRepository,
@@ -3068,11 +3291,38 @@ async function main() {
     GENERALIZED_PROJECT_PATHS_BASE,
     revision,
   );
+  const runMarker =
+    `${PERF_RUN_MARKER_PREFIX}${process.pid}-${Date.now()}-` +
+    createHash("sha256")
+      .update(`${options.driver}:${options.scenario}:${revision}`)
+      .digest("hex")
+      .slice(0, 8);
+  activePerfRunMarker = runMarker;
+  const removeSignalSweep = installSignalSweep(runMarker);
   const hostCapacity = await readHostCapacity();
-  const hostStart = await readHostSample(hostCapacity);
+  const baselineStart = await readHostSample(hostCapacity);
+  await wait(hostEligibilityPolicy.baselineSampleMs);
+  const baselineEnd = await readHostSample(hostCapacity);
+  const baselineWindow = summarizeHostWindow(
+    hostCapacity,
+    baselineStart,
+    baselineEnd,
+  );
+  const hostEligibility = assessHostEligibility(
+    hostCapacity,
+    baselineWindow,
+    hostEligibilityPolicy,
+  );
+  const hostStart = baselineEnd;
   console.log(
     `YA_PERF_HOST_JSON ${JSON.stringify({
       capacity: hostCapacity,
+      baseline: {
+        start: baselineStart,
+        end: baselineEnd,
+        window: baselineWindow,
+      },
+      eligibility: hostEligibility,
       start: hostStart,
     })}`,
   );
@@ -3086,8 +3336,14 @@ async function main() {
     ? path.resolve(options.output)
     : path.join(suiteRoot, "results", `${runName}.json`);
   await mkdir(path.dirname(output), { recursive: true });
+  const history = options.history
+    ? path.resolve(options.history)
+    : path.join(suiteRoot, "results", "history.jsonl");
+  await mkdir(path.dirname(history), { recursive: true });
 
   const runs = [];
+  const cleanup = [];
+  let finalSweepComplete = false;
   try {
     for (
       let repetition = 0;
@@ -3098,21 +3354,33 @@ async function main() {
         `${options.label}/${options.scenario}: repetition ${repetition + 1}/${scenario.repetitions}`,
       );
       const repetitionHostStart = await readHostSample(hostCapacity);
-      const run = await measureRepetition({
-        checkout,
-        config,
-        driver: options.driver,
-        executionRevision: revision,
-        fixtureConfig,
-        generalizedProjectPathsSupported,
-        label: options.label,
-        repetition,
-        scenario,
-        scenarioName: options.scenario,
-        workRoot,
-      });
+      let run;
+      let repetitionCleanup;
+      try {
+        run = await measureRepetition({
+          checkout,
+          config,
+          driver: options.driver,
+          executionRevision: revision,
+          fixtureConfig,
+          generalizedProjectPathsSupported,
+          label: options.label,
+          repetition,
+          runMarker,
+          scenario,
+          scenarioName: options.scenario,
+          workRoot,
+        });
+      } finally {
+        repetitionCleanup = await reapPerfRun(
+          runMarker,
+          `SWEEP-REP-${repetition + 1}`,
+        );
+        cleanup.push({ repetition, ...repetitionCleanup });
+      }
       const repetitionHostEnd = await readHostSample(hostCapacity);
       run.revision = revision;
+      run.cleanup = repetitionCleanup;
       run.host = {
         capacityKey: hostCapacity.capacityKey,
         start: repetitionHostStart,
@@ -3134,11 +3402,19 @@ async function main() {
     const aggregate = aggregateRuns(runs);
     const browserAggregate =
       options.driver === "browser" ? aggregateBrowserRuns(runs) : null;
+    const selectedTargets = selectRatchetTargets(ratchets, {
+      capacityKey: hostCapacity.capacityKey,
+      driver: options.driver,
+      scenario: options.scenario,
+    });
     const ratchetEvaluation = evaluateRatchets(
       aggregate,
       browserAggregate,
-      ratchets.drivers?.[options.driver]?.scenarios?.[options.scenario],
+      selectedTargets.targets,
     );
+    const finalCleanup = await reapPerfRun(runMarker, "SWEEP-FINAL");
+    cleanup.push({ repetition: null, ...finalCleanup });
+    finalSweepComplete = true;
     const hostEnd = await readHostSample(hostCapacity);
     const historyKey = {
       capacityKey: hostCapacity.capacityKey,
@@ -3147,7 +3423,13 @@ async function main() {
     };
     const ratchet = {
       ...ratchetEvaluation,
+      pass:
+        ratchetEvaluation.pass &&
+        hostEligibility.pass &&
+        cleanup.every((entry) => entry.pass),
+      hostEligibility,
       historyKey,
+      targetSelection: selectedTargets.selection,
     };
     const result = {
       schemaVersion: 2,
@@ -3166,17 +3448,39 @@ async function main() {
       parameters: scenario,
       host: {
         capacity: hostCapacity,
+        baseline: {
+          start: baselineStart,
+          end: baselineEnd,
+          window: baselineWindow,
+        },
+        eligibility: hostEligibility,
         start: hostStart,
         end: hostEnd,
         window: summarizeHostWindow(hostCapacity, hostStart, hostEnd),
       },
       historyKey,
+      cleanup,
       aggregate,
       browserAggregate,
       ratchet,
       runs,
     };
     await writeFile(output, `${JSON.stringify(result, null, 2)}\n`);
+    const historyRecord = {
+      schemaVersion: 1,
+      recordedAt: new Date().toISOString(),
+      historyKey,
+      identity: result.identity,
+      label: result.label,
+      output,
+      host: {
+        capacity: hostCapacity,
+        eligibility: hostEligibility,
+        window: result.host.window,
+      },
+      ratchet,
+    };
+    await appendFile(history, `${JSON.stringify(historyRecord)}\n`);
     console.log(`wrote ${output}`);
     for (const check of ratchet.checks) {
       console.log(
@@ -3185,16 +3489,42 @@ async function main() {
       );
     }
     console.log(
+      `YA_PERF_HISTORY_JSON ${JSON.stringify({
+        schemaVersion: 1,
+        history,
+        historyKey,
+        targetSelection: selectedTargets.selection,
+      })}`,
+    );
+    console.log(
+      `YA_PERF_CAPACITY_RATCHET_JSON ${JSON.stringify({
+        capacityOverrides: {
+          [hostCapacity.capacityKey]: {
+            rationale:
+              "Registered from capacity-keyed perf history; inherits portable ceilings until measured overrides are accepted.",
+          },
+        },
+      })}`,
+    );
+    console.log(
       `YA_PERF_RESULT_JSON ${JSON.stringify({
         schemaVersion: 1,
         output,
         revision,
         historyKey,
+        hostEligible: hostEligibility.pass,
         pass: ratchet.pass,
+        targetSelection: selectedTargets.selection,
       })}`,
     );
     if (!ratchet.pass) process.exitCode = 1;
   } finally {
+    if (!finalSweepComplete) {
+      const emergencyCleanup = await reapPerfRun(runMarker, "SWEEP-EMERGENCY");
+      if (!emergencyCleanup.pass) process.exitCode = 1;
+    }
+    removeSignalSweep();
+    activePerfRunMarker = null;
     if (!config.keepWorkDirectories) {
       await rm(workRoot, { recursive: true, force: true });
     }

@@ -15,6 +15,14 @@ JSON result. Execution, fixture, and harness identities remain distinct. The
 harness identity is content-addressed and path-scoped so unrelated shared-
 worktree commits or edits cannot relabel a measurement.
 
+Every spawned YA process carries a unique `ya-perf-suite-` marker in argv and
+`PERF_RUN_ID`, starts in its own process group, and enters a run-local
+PID/PGID/port manifest. Browser helpers inherit the environment marker. A
+marker-family sweep must be clean before measurement. After every repetition
+and on failure or signal paths, `perf-sweep --kill --kill-group` is followed by
+a report-only verification. Surviving debris fails the run even when reaping
+succeeds, because it is evidence of a harness or measured-lifecycle defect.
+
 The server driver uses public HTTP routes and the maintenance listener. Heap
 ratchets use an inspector-requested full garbage collection followed by the
 minimum of seven heap samples; RSS uses their median. Current execution source
@@ -48,23 +56,31 @@ swap, Linux pressure-stall data where available, and whole-run CPU occupancy.
 Each repetition records the same start/end window so one noisy repetition can
 be separated from a stable batch.
 
-A benchmark host does not need to be otherwise idle. It needs enough effective
-CPU and memory headroom for the selected scenario, without material load,
-available-memory, swap, or pressure drift across the batch. A questionable run
-remains exploratory evidence: rerun a small sample before expanding the matrix
-or changing a baseline.
+A benchmark host does not need to be otherwise idle. Before fixture work, the
+suite samples a one-second baseline and checks effective CPU count, idle logical
+CPU equivalents, CPU busy fraction, load per effective CPU, effective available
+memory (host and cgroup), and swap growth against `config.json`. Missing CPU or
+swap measurements are not treated as clean. A failed baseline makes the
+completed result diagnostic-grade and prevents a ratchet pass. Run-window
+resource and pressure evidence remains recorded for interpretation. A
+questionable run is sampling evidence: rerun before expanding the matrix or
+changing a baseline.
 
 Capacity-keyed history uses the tuple in `historyKey`: capacity key, driver,
-and scenario. Historical baselines and tightened machine-specific ratchets
-must not cross that boundary. The broad checked-in maxima remain portable
-safety ceilings; passing one on a different capacity key does not establish a
-same-machine improvement or recovery.
+and scenario. Every run appends a compact JSONL record under that tuple.
+Historical baselines and tightened machine-specific ratchets must not cross
+the boundary. The broad checked-in maxima remain portable safety ceilings.
+`ratchets.json.capacityOverrides` registers exact classes and may replace
+individual targets while inheriting omitted portable checks. An unseen class
+uses the portable target key until its emitted registration is reviewed and
+committed; passing there does not establish a same-machine improvement.
 
 For CI collection, the harness emits one-line `YA_PERF_HOST_JSON` before work
-and `YA_PERF_RESULT_JSON` after writing the result. A CI job can scrape those
-lines and upload the named JSON artifact without hard-coding its runner class.
-Capacity-keyed trend storage is a prerequisite for a scheduled or blocking
-performance job; adding such a job remains a separate CI policy decision.
+and `YA_PERF_HISTORY_JSON`, `YA_PERF_CAPACITY_RATCHET_JSON`, and
+`YA_PERF_RESULT_JSON` after writing artifacts. A CI job can scrape those lines,
+upload the result and JSONL accumulator, and register a new runner class without
+hard-coding its capacity. The complete result remains the evidence source;
+committing a capacity registration or tighter target remains a reviewed change.
 
 ## 2026-08-08 historical survey
 

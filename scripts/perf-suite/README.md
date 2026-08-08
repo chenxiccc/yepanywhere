@@ -16,8 +16,13 @@ architecture, CPU model, visible/effective CPU capacity, and bucketed physical
 and effective RAM; exact capacity, runtime, CI identity, and start/end resource
 samples remain in the result. Historical series use `historyKey` (capacity key,
 driver, scenario), so CI or cloud results never silently join a different
-runner class. The checked-in ratchets are portable safety ceilings, not a
-license to compare historical timing across capacity keys.
+runner class. A one-second pre-run baseline classifies CPU, load, effective
+available memory, and swap headroom against `config.json`. Diagnostic-grade
+runs still produce evidence but cannot pass the ratchet. CPU checks require
+both the configured total capacity and at least one idle logical CPU
+equivalent; missing CPU or swap samples are diagnostic rather than implicitly
+clean. The checked-in ratchets are portable safety ceilings, not a license to
+compare historical timing across capacity keys.
 
 The JSON scenario dimensions are:
 
@@ -105,18 +110,33 @@ node scripts/perf-suite/run.mjs \
 ```
 
 `config.json` owns scale points. `ratchets.json` owns independent per-driver,
-per-scenario maximums. Targets use deliberately broad margins over repeated
-observations, estimated to pass an unchanged implementation with at least 99.9%
-probability. That is an engineering estimate, not a claim of 1,000-run
-statistical verification. Browser warm and appended final-display ratchets
-remain at or below the one-second user-concern threshold. Working-set identity,
-zero-budget behavior, delayed-refresh behavior, and the configured cache byte
-budget remain hard correctness checks rather than probabilistic ratchets.
+per-scenario maximums. `capacityOverrides` registers measured host classes and
+may replace individual targets without dropping the portable checks it omits.
+An unregistered class uses `portable-default`; a registered class is keyed to
+its capacity even while inheriting every portable ceiling. Targets use
+deliberately broad margins over repeated observations, estimated to pass an
+unchanged implementation with at least 99.9% probability. That is an
+engineering estimate, not a claim of 1,000-run statistical verification.
+Browser warm and appended final-display ratchets remain at or below the
+one-second user-concern threshold. Working-set identity, zero-budget behavior,
+delayed-refresh behavior, and the configured cache byte budget remain hard
+correctness checks rather than probabilistic ratchets.
 
 The suite never uses port 3400 and never restarts the shared YA server.
 Generated fixtures and isolated app data live under `work/` only for a run.
 Raw result JSON is written under `results/`; both directories are ignored when
 the suite is landed.
+
+`perf-sweep` is a run precondition and the authoritative post-run survivor
+check. Local runs resolve it from `PATH` or `YA_PERF_SWEEP`; CI should check out
+`github.com/graehl/agents` at full commit
+`496159563aafd1f5abd15e4315bf502187d2e9d1` and point `YA_PERF_SWEEP` at
+`scripts/perf-sweep`. The harness refuses to start while another
+`ya-perf-suite-` marker exists. Every isolated server has a unique marker in
+argv and `PERF_RUN_ID`, a PID/PGID/port manifest, and a detached process group;
+Chromium inherits the environment marker. Each repetition and failure path
+uses `perf-sweep --kill --kill-group`, verifies a second clean scan, and marks
+the run failed if debris existed even when it was successfully reaped.
 
 Settled server memory diagnostics account separately for retained transcript
 source, rendered Markdown HTML, and project-path indexes. The residual heap
@@ -135,13 +155,16 @@ comparison with the same automatic host record, run:
 pnpm --filter @yep-anywhere/server benchmark:relay-json
 ```
 
-CI log collectors may scrape `YA_PERF_HOST_JSON` before the run and
-`YA_PERF_RESULT_JSON` after it. The latter names the result path, revision,
-capacity-keyed history tuple, and pass/fail outcome; upload the referenced JSON
-as the complete artifact. A host need not be fully idle, but start/end load,
-available host/cgroup memory, swap, and pressure evidence must show enough
-headroom for the scenario. Treat uncertain contention as exploratory and rerun
-a small sample before changing history or a ratchet.
+Every run appends a compact record to `results/history.jsonl` (or `--history`)
+under its capacity/driver/scenario tuple. CI log collectors may scrape
+`YA_PERF_HOST_JSON` before the run and `YA_PERF_HISTORY_JSON`,
+`YA_PERF_CAPACITY_RATCHET_JSON`, and `YA_PERF_RESULT_JSON` after it. The result
+marker names the complete JSON artifact and pass/fail outcome; the history
+marker names the accumulator; the capacity marker is a pasteable registration
+for a previously unseen runner class. A host need not be fully idle, but its
+baseline must show the configured CPU and effective-memory headroom. Treat a
+diagnostic-grade result as a sampling lead and rerun before changing history or
+a ratchet.
 
 The real-browser driver intentionally uses the measured checkout's dev client
 so one suite revision can run against old source checkouts. Its cold final-

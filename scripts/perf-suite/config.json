@@ -1,6 +1,21 @@
 {
   "schemaVersion": 1,
   "keepWorkDirectories": false,
+  "hostEligibility": {
+    "baselineSampleMs": 1000,
+    "maximumBaselineCpuBusyFraction": 0.8,
+    "maximumBaselineLoadPerEffectiveCpu": 1,
+    "maximumBaselineSwapGrowthMiB": 0,
+    "minimumEffectiveLogicalCpuCount": 2,
+    "minimumIdleLogicalCpuCount": {
+      "server": 1,
+      "browser": 1
+    },
+    "minimumEffectiveAvailableMemoryMiB": {
+      "server": 1024,
+      "browser": 2048
+    }
+  },
   "fixture": {
     "revision": "2f5e403e20fc5b96d5634a4b8f5a57704023d8da",
     "workingSetSessions": 3,
