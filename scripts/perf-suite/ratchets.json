@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "drivers": {
+    "server": {
+      "scenarios": {
+        "fleet-small": {
+          "server": {
+            "runtime.serverStartupMs": {
+              "max": 3500,
+              "rationale": "Observed median about 2.14 s; margin covers host startup variance."
+            },
+            "latency.projectSessions.p95Ms": {
+              "max": 1800,
+              "rationale": "Cold first-index construction is tracked separately from the warm path."
+            },
+            "latency.projectSessionsWarm.p95Ms": {
+              "max": 20,
+              "rationale": "Observed 4-6 ms; broad margin targets persistent warm-list regressions."
+            },
+            "latency.collectionHerd.p95Ms": {
+              "max": 50,
+              "rationale": "Observed about 15 ms at HEAD."
+            },
+            "latency.detailColdTailText.p95Ms": {
+              "max": 300,
+              "rationale": "Observed about 141 ms at HEAD."
+            },
+            "latency.detailWarmHerdTailText.p95Ms": {
+              "max": 75,
+              "rationale": "Observed about 23 ms at HEAD."
+            },
+            "latency.detailAppendedHerdTailText.p95Ms": {
+              "max": 100,
+              "rationale": "Observed about 39 ms at HEAD."
+            },
+            "memory.settled.heapUsedMiB": {
+              "max": 115,
+              "rationale": "Forced-GC samples were stable around 102.1 MiB."
+            },
+            "memory.retainedHeapMiB": {
+              "max": 22,
+              "rationale": "Forced-GC samples were stable around 16.3 MiB."
+            }
+          }
+        },
+        "large-session-cache": {
+          "server": {
+            "latency.detailColdTailText.p95Ms": {
+              "max": 500,
+              "rationale": "Observed about 268 ms after the parsed-transcript cache landed."
+            },
+            "latency.detailWarmHerdTailText.p95Ms": {
+              "max": 300,
+              "rationale": "Observed about 125 ms after the parsed-transcript cache landed."
+            },
+            "latency.detailAppendedHerdTailText.p95Ms": {
+              "max": 400,
+              "rationale": "Observed about 189 ms after the parsed-transcript cache landed."
+            },
+            "memory.settled.heapUsedMiB": {
+              "max": 135,
+              "rationale": "Forced-GC samples were stable around 118.6 MiB."
+            },
+            "memory.retainedHeapMiB": {
+              "max": 40,
+              "rationale": "The parsed-transcript cache retained about 32.8 MiB at this scale."
+            }
+          }
+        }
+      }
+    },
+    "browser": {
+      "scenarios": {
+        "fleet-small": {
+          "server": {
+            "memory.settled.heapUsedMiB": {
+              "max": 125,
+              "rationale": "Observed about 104.6 MiB with eight real browser pages across both cache modes."
+            },
+            "memory.retainedHeapMiB": {
+              "max": 25,
+              "rationale": "Observed about 18.7 MiB with browser subscriptions active."
+            }
+          },
+          "browser": {
+            "0": {
+              "latency.warmTail.p95Ms": {
+                "max": 900,
+                "rationale": "Observed about 465 ms and remains below the one-second concern threshold."
+              },
+              "latency.appendedLiveTail.p95Ms": {
+                "max": 800,
+                "rationale": "Observed about 383 ms after the measured performance arc."
+              },
+              "memory.maxUsedJSHeapMiB": {
+                "max": 160,
+                "rationale": "Observed maxima were below 90 MiB; browser heap is noisier than forced-GC server heap."
+              },
+              "transcriptCache.maxWarmBytes": {
+                "max": 0,
+                "rationale": "A zero budget must retain no warm transcript bytes."
+              }
+            },
+            "24": {
+              "latency.warmTail.p95Ms": {
+                "max": 900,
+                "rationale": "Observed about 503 ms and remains below the one-second concern threshold."
+              },
+              "latency.appendedLiveTail.p95Ms": {
+                "max": 800,
+                "rationale": "Observed about 378 ms with transcript caching enabled."
+              },
+              "memory.maxUsedJSHeapMiB": {
+                "max": 170,
+                "rationale": "Observed maxima were below 95 MiB with the 24 MiB budget."
+              },
+              "transcriptCache.maxWarmBytes": {
+                "max": 1048576,
+                "rationale": "The fixture retained about 0.40 MiB for one warm transcript."
+              }
+            }
+          }
+        },
+        "large-session-cache": {
+          "server": {
+            "memory.settled.heapUsedMiB": {
+              "max": 145,
+              "rationale": "Observed about 121.3 MiB with six browser pages across both cache modes."
+            },
+            "memory.retainedHeapMiB": {
+              "max": 45,
+              "rationale": "Observed about 35.5 MiB with browser subscriptions active."
+            }
+          },
+          "browser": {
+            "0": {
+              "latency.warmTail.p95Ms": {
+                "max": 1000,
+                "rationale": "Observed about 847 ms; the ratchet keeps the warm user-facing leg below one second."
+              },
+              "latency.appendedLiveTail.p95Ms": {
+                "max": 1000,
+                "rationale": "Observed about 827 ms; the ratchet keeps appended readable text below one second."
+              },
+              "memory.maxUsedJSHeapMiB": {
+                "max": 220,
+                "rationale": "Observed maximum about 112 MiB without transcript caching."
+              },
+              "transcriptCache.maxWarmBytes": {
+                "max": 0,
+                "rationale": "A zero budget must retain no warm transcript bytes."
+              }
+            },
+            "24": {
+              "latency.warmTail.p95Ms": {
+                "max": 1000,
+                "rationale": "Observed about 677 ms with transcript caching enabled."
+              },
+              "latency.appendedLiveTail.p95Ms": {
+                "max": 1000,
+                "rationale": "Observed about 785 ms with transcript caching enabled."
+              },
+              "memory.maxUsedJSHeapMiB": {
+                "max": 240,
+                "rationale": "Observed maximum about 131 MiB with the 24 MiB budget."
+              },
+              "transcriptCache.maxWarmBytes": {
+                "max": 8388608,
+                "rationale": "The fixture retained about 4.54 MiB for one warm transcript."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

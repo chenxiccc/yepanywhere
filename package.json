@@ -29,6 +29,8 @@
     "capabilities:audit": "tsx scripts/audit-server-capabilities.ts",
     "console:scan": "node scripts/find-console-chatter.mjs",
     "console:volume": "node scripts/report-client-log-volume.mjs",
+    "perf:regression:server": "node scripts/perf-suite/run.mjs --checkout . --scenario fleet-small --driver server --label working-tree",
+    "perf:regression:browser": "node scripts/perf-suite/run.mjs --checkout . --scenario fleet-small --driver browser --label working-tree",
     "dev": "node scripts/dev.js",
     "staging": "node scripts/staging.js",
     "dev:auto": "pnpm --filter server dev & pnpm --filter client dev",

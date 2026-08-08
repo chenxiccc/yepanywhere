@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "keepWorkDirectories": false,
+  "server": {
+    "portBase": 4400,
+    "startupTimeoutMs": 60000,
+    "requestTimeoutMs": 30000,
+    "appendObservationMs": 1000
+  },
+  "scenarios": {
+    "smoke": {
+      "projects": 1,
+      "sessionsPerProject": 2,
+      "initialTurns": 2,
+      "newTurns": 1,
+      "concurrentClients": 2,
+      "browserCacheBudgetsMiB": [0, 24],
+      "payloadBytes": 256,
+      "repetitions": 1,
+      "settleMs": 250
+    },
+    "fleet-small": {
+      "projects": 4,
+      "sessionsPerProject": 6,
+      "initialTurns": 8,
+      "newTurns": 4,
+      "concurrentClients": 4,
+      "browserCacheBudgetsMiB": [0, 24],
+      "payloadBytes": 8192,
+      "repetitions": 3,
+      "settleMs": 750
+    },
+    "large-session-cache": {
+      "projects": 2,
+      "sessionsPerProject": 4,
+      "initialTurns": 12,
+      "newTurns": 4,
+      "concurrentClients": 3,
+      "browserCacheBudgetsMiB": [0, 24],
+      "payloadBytes": 65536,
+      "repetitions": 3,
+      "settleMs": 1000
+    }
+  }
+}

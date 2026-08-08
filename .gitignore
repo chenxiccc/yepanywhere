@@ -36,6 +36,8 @@ coverage/
 # Test artifacts
 test-results/
 .playwright-artifacts-*/
+scripts/perf-suite/results/
+scripts/perf-suite/work/
 
 # Temp files
 .tmp/
