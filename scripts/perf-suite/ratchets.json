@@ -609,6 +609,34 @@
           }
         }
       }
+    },
+    "built-client": {
+      "scenarios": {
+        "fleet-small": {
+          "server": {
+            "runtime.serverStartupToSelectedSessionReadableMs": {
+              "max": 2500,
+              "rationale": "Three Node 20 production-process repetitions measured 1.18-1.25 s; this broad ceiling covers startup variance while requiring an actually readable selected transcript."
+            },
+            "latency.builtClientColdTail.p95Ms": {
+              "max": 1500,
+              "rationale": "Three Node 20 production-bundle repetitions measured 776-822 ms from navigation to independently marked readable text."
+            }
+          }
+        },
+        "large-session-cache": {
+          "server": {
+            "runtime.serverStartupToSelectedSessionReadableMs": {
+              "max": 3000,
+              "rationale": "Three Node 20 production-process repetitions measured 1.24-1.26 s with the large transcript fixture."
+            },
+            "latency.builtClientColdTail.p95Ms": {
+              "max": 2500,
+              "rationale": "Three Node 20 production-bundle repetitions measured 1.16-1.19 s with independently marked readable text."
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -16,13 +16,16 @@ architecture, CPU model, visible/effective CPU capacity, and bucketed physical
 and effective RAM; exact capacity, runtime, CI identity, and start/end resource
 samples remain in the result. Historical series use `historyKey` (capacity key,
 driver, scenario), so CI or cloud results never silently join a different
-runner class. A one-second pre-run baseline classifies CPU, load, effective
+runner class. A three-second pre-run baseline classifies CPU, load, effective
 available memory, and swap headroom against `config.json`. Diagnostic-grade
 runs still produce evidence but cannot pass the ratchet. CPU checks require
 both the configured total capacity and at least one idle logical CPU
 equivalent; missing CPU or swap samples are diagnostic rather than implicitly
-clean. The checked-in ratchets are portable safety ceilings, not a license to
-compare historical timing across capacity keys.
+clean. The portable baseline tolerates a decaying one-minute load average up to
+two tasks per effective CPU and up to 16 MiB of swap growth, while current CPU,
+idle-core, and available-memory checks remain independent hard gates. The
+checked-in ratchets are portable safety ceilings, not a license to compare
+historical timing across capacity keys.
 
 The JSON scenario dimensions are:
 
@@ -60,6 +63,24 @@ anchors, and the latest supported final display. It also records
 `performance.memory`, DOM/message/tool/streaming-block counts, YA's own live and
 warm transcript-retention accounting, and contemporaneous server memory.
 Server-only and browser-driven results are separate ratchet universes.
+
+The `built-client` driver builds the measured checkout once before host
+sampling, records that preparation and its cleanup, and excludes it from every
+timed leg. Each repetition then uses two fresh production-server processes.
+The first measures process spawn through `/api/projects` readiness to the
+expected selected-session transcript needle on the public detail route. The
+second serves `packages/client/dist` and measures a cold page navigation to
+selected-session readable text, with glossary and project-path completion kept
+as independently mutation-marked correctness milestones. Browser-process
+launch is excluded. Separate server processes prevent the direct readiness
+probe from warming the client leg's YA caches.
+
+Every driver uses YA's in-process mock for any session launch, and browser
+drivers additionally suppress provider discovery. This is an explicit post-
+provider mock boundary: the drivers exercise provider-neutral client/server/
+session paths, but make no claim about provider startup, protocol parsing,
+transcript production, or provider teardown. The real provider catalog is not
+queried during routine browser ratchets.
 
 Every accepted sample checks project, session, message, and capability-gated
 rendering invariants against the pinned fixture. Browser runs warm a configured
@@ -107,6 +128,13 @@ node scripts/perf-suite/run.mjs \
   --scenario large-session-cache \
   --driver browser \
   --label measured-sha
+
+node scripts/perf-suite/run.mjs \
+  --checkout /path/to/measured-yepanywhere \
+  --fixture-repository /path/to/fixture-yepanywhere \
+  --scenario fleet-small \
+  --driver built-client \
+  --label measured-sha
 ```
 
 `config.json` owns scale points. `ratchets.json` owns independent per-driver,
@@ -136,7 +164,9 @@ performance workflow checks out `github.com/graehl/agents` at full commit
 argv and `PERF_RUN_ID`, a PID/PGID/port manifest, and a detached process group;
 Chromium inherits the environment marker. Each repetition and failure path
 uses `perf-sweep --kill --kill-group`, verifies a second clean scan, and marks
-the run failed if debris existed even when it was successfully reaped.
+the run failed if debris existed even when it was successfully reaped. A
+`built-client` preparation build uses its own marker and the same report/reap/
+verify contract before host sampling.
 
 Settled server memory diagnostics account separately for retained transcript
 source, rendered Markdown HTML, and project-path indexes. The residual heap
@@ -166,28 +196,32 @@ baseline must show the configured CPU and effective-memory headroom. Treat a
 diagnostic-grade result as a sampling lead and rerun before changing history or
 a ratchet.
 
-The GitHub workflow runs server `fleet-small` on relevant server/shared/suite
-changes. It uploads `result.json`, `history.jsonl`, and the complete run log on
+The GitHub workflow runs separate server and built-client `fleet-small` matrix
+arms on relevant client/server/shared/suite changes. The built-client arm
+installs Chromium; each arm receives a fresh runner and its own driver-keyed
+history. It uploads `result.json`, `history.jsonl`, and the complete run log on
 success or failure, and copies the four `YA_PERF_*_JSON` records into the job
-summary. The checkout uses full history because the deterministic fixture is
-pinned to an older revision.
+summary. The
+checkout uses full history because the deterministic fixture is pinned to an
+older revision.
 
-Future provider-backed drivers should prefer a simulated harness process over
-a post-provider mock so process startup, adapter protocol, transcript writes,
-controls, thinking blocks, and teardown still cross YA's real boundary. A
-post-provider mock must identify the omitted boundary. Calibrate either mock
-with a small live sample that records the provider-execution share. Live runs
-use the tested provider's lowest-cost model and effort that still emits
-thinking blocks, and record provider/model/effort with the capacity-keyed
-result. Shared YA defects are often provider-agnostic, but a result is labelled
-provider-specific or unresolved until its owning path is known to be shared or
-the behavior is reproduced across adapters.
+Provider-backed drivers should prefer a simulated harness process over the
+browser drivers' post-provider mock so process startup, adapter protocol,
+transcript writes, controls, thinking blocks, and teardown still cross YA's
+real boundary. A post-provider mock must identify the omitted boundary.
+Calibrate either mock with a small live sample that records the provider-
+execution share. Live runs use the tested provider's lowest-cost model and
+effort that still emits thinking blocks, and record provider/model/effort with
+the capacity-keyed result. Shared YA defects are often provider-agnostic, but a
+result is labelled provider-specific or unresolved until its owning path is
+known to be shared or the behavior is reproduced across adapters.
 
-The real-browser driver intentionally uses the measured checkout's dev client
+The `browser` driver intentionally uses the measured checkout's dev client
 so one suite revision can run against old source checkouts. Its cold final-
 display value includes Vite/module boot and is observational, not a production-
-bundle ratchet. Warm in-app navigation and appended live final display are the
-user-facing browser ratchets. “Readable” is DOM-text availability, not a browser
-first-paint timestamp; project-path completion is observed after the glossary
-wait and is therefore a sequential harness milestone rather than an independent
-path-link timestamp.
+bundle ratchet. Warm in-app navigation and appended live final display remain
+that driver's user-facing browser ratchets. The `built-client` driver's cold
+selected-session value is the production-bundle contract. “Readable” is DOM-
+text availability, not a browser first-paint timestamp. Append milestones and
+built-client cold milestones use independent mutation-time marks; dev-client
+cold and warm navigation retain sequential Playwright observation semantics.

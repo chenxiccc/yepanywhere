@@ -117,3 +117,28 @@ test("keeps small append owner phases independently ratcheted", () => {
     }
   }
 });
+
+test("ratchets production selected-session readiness by scale", () => {
+  for (const [scenario, serverMaximum, clientMaximum] of [
+    ["fleet-small", 2500, 1500],
+    ["large-session-cache", 3000, 2500],
+  ]) {
+    const selected = selectRatchetTargets(productionRatchets, {
+      capacityKey: "host-v1-unregistered-test",
+      driver: "built-client",
+      scenario,
+    });
+
+    assert.equal(
+      selected.targets.server[
+        "runtime.serverStartupToSelectedSessionReadableMs"
+      ].max,
+      serverMaximum,
+    );
+    assert.equal(
+      selected.targets.server["latency.builtClientColdTail.p95Ms"].max,
+      clientMaximum,
+    );
+    assert.deepEqual(selected.targets.browser, {});
+  }
+});

@@ -9,11 +9,13 @@
     "minimumEffectiveLogicalCpuCount": 2,
     "minimumIdleLogicalCpuCount": {
       "server": 1,
-      "browser": 1
+      "browser": 1,
+      "built-client": 1
     },
     "minimumEffectiveAvailableMemoryMiB": {
       "server": 1024,
-      "browser": 2048
+      "browser": 2048,
+      "built-client": 2048
     }
   },
   "fixture": {

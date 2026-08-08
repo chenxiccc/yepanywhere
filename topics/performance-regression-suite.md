@@ -40,6 +40,25 @@ warm, and append results separately record readable text, glossary annotation,
 project-path anchors, and the latest supported final display. Server and
 browser measurements are distinct ratchet universes.
 
+The `built-client` driver prepares one production build before host sampling and
+records its command, elapsed time, revision, and clean marker sweep without
+charging it to a timed leg. Each repetition uses two fresh production servers.
+The server leg measures process spawn through `/api/projects` readiness to the
+expected transcript needle in a selected-session response. The browser leg
+serves `packages/client/dist`; browser launch is excluded, and an init-script
+`MutationObserver` independently marks readable text, glossary annotation, and
+project-path anchors during the first selected-session navigation. Direct and
+browser legs do not share a server process, so the direct probe cannot warm the
+browser leg's YA caches. These are DOM-readiness clocks, not paint timestamps.
+
+Routine suite runs do not execute a live provider. Every server receives the
+in-process mock for session launch. Browser drivers also disable provider
+discovery so the same harness cannot trigger a real model probe when measuring
+an older checkout whose explicit provider override did not yet own
+`/api/providers`. This is a post-provider mock boundary and cannot support
+claims about provider startup, protocol parsing, transcript production, or
+provider teardown.
+
 Before an append write, each page arms a `MutationObserver` for the expected
 tail row. Readable text, glossary annotation, and project-path anchors receive
 independent `performance.now()` marks at the mutations that make them true.
@@ -47,7 +66,8 @@ Playwright waits still enforce the final DOM invariants, but their wake-up time
 is not a performance timestamp: `requestAnimationFrame` polling in throttled
 headless background pages can otherwise charge an unrelated later WebSocket
 event for DOM work that had already completed. Cold and warm navigation retain
-their sequential observation semantics; only append milestones are independent.
+their sequential observation semantics in the dev-client driver. Append and
+built-client cold milestones are independently marked.
 
 The generated app-data install record seeds the provider catalog families in
 `fixture.providerCatalogFamilies`, `claude` by default. This activates the
@@ -110,14 +130,15 @@ upload the result and JSONL accumulator, and register a new runner class without
 hard-coding its capacity. The complete result remains the evidence source;
 committing a capacity registration or tighter target remains a reviewed change.
 
-`.github/workflows/performance.yml` runs the server `fleet-small` ratchet for
-server, shared-package, and suite changes. It checks out the full YA history so
-the pinned fixture revision is available, and checks out `graehl/agents` at the
-reviewed full commit recorded in the workflow. The job uploads the result,
-history, and log even on failure and copies all four scrape records into its
-step summary. A previously unseen GitHub runner therefore uses portable
-ceilings while producing the exact capacity registration needed for a later
-reviewed ratchet change.
+`.github/workflows/performance.yml` runs separate server and built-client
+`fleet-small` matrix arms on fresh runners for client, server, shared-package,
+and suite changes; the built-client arm installs Chromium. It checks out the
+full YA history so the pinned fixture revision is available, and checks out
+`graehl/agents` at the reviewed full commit recorded in the workflow. Each arm
+uploads its driver-keyed result, history, and log even on failure and copies all
+four scrape records into its step summary. A previously unseen GitHub runner
+therefore uses portable ceilings while producing the exact capacity
+registration needed for a later reviewed ratchet change.
 
 Small cloud instances are acceptable measurement hosts when their baseline
 passes the same scenario-specific eligibility checks. Tag every instance and
@@ -228,6 +249,24 @@ A fresh browser plus dev-client module boot took about 4.2–5.1 seconds at ever
 checkpoint. That observational number includes Vite transforms, so it is not a
 production startup ratchet. Warm in-app navigation and appended final display
 are ratcheted.
+
+### Production useful readiness
+
+Three Node 20 current-source `built-client` repetitions at `fleet-small`
+measured 1.18–1.25 seconds from production-server process start to selected-
+session transcript text and 776–822 ms from cold page navigation to readable
+text. At `large-session-cache`, the respective ranges were 1.24–1.26 seconds
+and 1.16–1.19 seconds. Portable ceilings are deliberately broader: 2.5/1.5
+seconds for fleet server/client readiness and 3/2.5 seconds for large-session
+readiness.
+
+The first large-session attempt was invalid. `perf-sweep` found a real Claude
+model-probe and plugin-clone process tree after the run, exposing that the old
+explicit mock provider controlled session execution but not `/api/providers`.
+Current source now routes explicit provider overrides through discovery, and
+the browser harness also disables discovery so historical checkouts cannot
+cross that live boundary. Clean replacement fleet and large-session batches
+produced the ranges above.
 
 ## Cache trade-offs
 

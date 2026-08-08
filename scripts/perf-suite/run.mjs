@@ -27,7 +27,7 @@ import {
 } from "./host-profile.mjs";
 import { selectRatchetTargets } from "./ratchet-targets.mjs";
 
-const SUITE_VERSION = 5;
+const SUITE_VERSION = 6;
 const PERF_RUN_MARKER_PREFIX = "ya-perf-suite-";
 const GENERALIZED_PROJECT_PATHS_BASE =
   "61cb5f358b9ccb56549d0515ded703ec534996a6";
@@ -57,7 +57,8 @@ function parseArgs(argv) {
     const name = argv[index];
     if (name === "--help") {
       console.log(
-        "Usage: node run.mjs --checkout PATH --scenario NAME [--driver server|browser] " +
+        "Usage: node run.mjs --checkout PATH --scenario NAME " +
+          "[--driver server|browser|built-client] " +
           "[--fixture-repository PATH] [--label LABEL] [--config FILE] " +
           "[--ratchets FILE] [--output FILE] [--history FILE]",
       );
@@ -79,8 +80,8 @@ function parseArgs(argv) {
   }
   if (!options.checkout) throw new Error("--checkout is required");
   if (!options.scenario) throw new Error("--scenario is required");
-  if (options.driver !== "server" && options.driver !== "browser") {
-    throw new Error("--driver must be server or browser");
+  if (!["server", "browser", "built-client"].includes(options.driver)) {
+    throw new Error("--driver must be server, browser, or built-client");
   }
   return options;
 }
@@ -277,9 +278,11 @@ async function runProcess(command, args, { cwd }) {
   const code = await new Promise((resolve) => child.once("exit", resolve));
   const output = Buffer.concat(stdout).toString("utf8").trim();
   if (code !== 0) {
+    const errorOutput = [output, Buffer.concat(stderr).toString("utf8").trim()]
+      .filter(Boolean)
+      .join("\n");
     throw new Error(
-      `${command} ${args.join(" ")} exited ${code}: ` +
-        Buffer.concat(stderr).toString("utf8").trim(),
+      `${command} ${args.join(" ")} exited ${code}: ${errorOutput}`,
     );
   }
   return output;
@@ -702,8 +705,13 @@ async function waitForReady({ baseUrl, maintenanceUrl, timeoutMs, child }) {
       await requestJson(`${maintenanceUrl}/health`, {
         timeoutMs: 1_000,
       });
-      await requestJson(`${baseUrl}/api/projects`, { timeoutMs: 5_000 });
-      return performance.now() - started;
+      const projectResponse = await requestJson(`${baseUrl}/api/projects`, {
+        timeoutMs: 5_000,
+      });
+      return {
+        projectResponse,
+        startupMs: performance.now() - started,
+      };
     } catch (error) {
       lastError = error;
       await wait(100);
@@ -804,6 +812,47 @@ function gitRevision(checkout) {
   return runProcess("git", ["rev-parse", "HEAD"], { cwd: checkout });
 }
 
+async function prepareBuiltClientCheckout(checkout, executionRevision) {
+  const marker =
+    `${PERF_RUN_MARKER_PREFIX}build-${process.pid}-${Date.now()}-` +
+    executionRevision.slice(0, 8);
+  const previousMarker = activePerfRunMarker;
+  activePerfRunMarker = marker;
+  const removeSignalSweep = installSignalSweep(marker);
+  const started = performance.now();
+  let cleanup = null;
+  try {
+    await runProcess("pnpm", ["run", "build"], { cwd: checkout });
+    const requiredAssets = [
+      path.join(checkout, "packages/server/dist/index.js"),
+      path.join(checkout, "packages/client/dist/index.html"),
+    ];
+    for (const asset of requiredAssets) {
+      const assetStats = await stat(asset).catch(() => null);
+      if (!assetStats?.isFile()) {
+        throw new Error(`built-client preparation lacks ${asset}`);
+      }
+    }
+    cleanup = await reapPerfRun(marker, "SWEEP-BUILD");
+    if (!cleanup.pass) {
+      throw new Error("built-client preparation left marked process debris");
+    }
+    return {
+      command: ["pnpm", "run", "build"],
+      elapsedMs: round(performance.now() - started),
+      excludedFromMeasurement: true,
+      executionRevision,
+      cleanup,
+    };
+  } finally {
+    if (!cleanup) {
+      await reapPerfRun(marker, "SWEEP-BUILD-EMERGENCY");
+    }
+    removeSignalSweep();
+    activePerfRunMarker = previousMarker;
+  }
+}
+
 function absoluteFilePath(file) {
   return file instanceof URL ? fileURLToPath(file) : path.resolve(file);
 }
@@ -883,6 +932,8 @@ async function startServer({
   config,
   runMarker,
 }) {
+  const isDevBrowser = driver === "browser";
+  const isBuiltClient = driver === "built-client";
   const logPath = path.join(root, "server.log");
   const log = createWriteStream(logPath, { flags: "a" });
   const dataDir = path.join(root, "data");
@@ -907,7 +958,8 @@ async function startServer({
     CLAUDE_CONFIG_DIR: fixture.configDir,
     CLAUDE_SESSIONS_DIR: path.join(fixture.configDir, "projects"),
     CODEX_SESSIONS_DIR: path.join(root, "empty-codex"),
-    ENABLED_PROVIDERS: "claude",
+    ENABLED_PROVIDERS:
+      isDevBrowser || isBuiltClient ? "perf-fixture-none" : "claude",
     GEMINI_SESSIONS_DIR: path.join(root, "empty-gemini"),
     GROK_SESSIONS_DIR: path.join(root, "empty-grok"),
     LOG_LEVEL: "error",
@@ -919,22 +971,43 @@ async function startServer({
     PERF_RUN_ID: runMarker,
     VITE_PORT: String(port + 2),
     VOICE_INPUT: "false",
+    USE_MOCK_SDK: "true",
     YEP_DATA_DIR: dataDir,
     YEP_PROFILE: `perf-${process.pid}`,
+    ...(isBuiltClient
+      ? {
+          CLIENT_DIST_PATH: path.join(checkout, "packages/client/dist"),
+          NODE_ENV: "production",
+        }
+      : {}),
   };
+  const processStartedAtMs = performance.now();
   const child = spawn(
-    "pnpm",
-    driver === "browser"
+    isBuiltClient ? process.execPath : "pnpm",
+    isBuiltClient
       ? [
-          "--dir",
-          ".",
-          "run",
-          "dev",
-          "--no-frontend-reload",
+          path.join(checkout, "packages/server/dist/index.js"),
           "--perf-run-id",
           runMarker,
         ]
-      : ["--dir", "packages/server", "run", "dev", "--perf-run-id", runMarker],
+      : isDevBrowser
+        ? [
+            "--dir",
+            ".",
+            "run",
+            "dev",
+            "--no-frontend-reload",
+            "--perf-run-id",
+            runMarker,
+          ]
+        : [
+            "--dir",
+            "packages/server",
+            "run",
+            "dev",
+            "--perf-run-id",
+            runMarker,
+          ],
     {
       cwd: checkout,
       detached: true,
@@ -952,25 +1025,32 @@ async function startServer({
       processManifestPath,
       `${JSON.stringify({
         recordedAt: new Date().toISOString(),
-        role: driver === "browser" ? "YA dev server" : "YA server",
+        role: isDevBrowser
+          ? "YA dev server"
+          : isBuiltClient
+            ? "YA production server"
+            : "YA server",
         pid: child.pid,
         pgid: child.pid,
-        ports: [port, port + 1, ...(driver === "browser" ? [port + 2] : [])],
+        ports: [port, port + 1, ...(isDevBrowser ? [port + 2] : [])],
         marker: runMarker,
       })}\n`,
     );
-    const startupMs = await waitForReady({
+    const readiness = await waitForReady({
       baseUrl,
       maintenanceUrl,
       timeoutMs: config.server.startupTimeoutMs,
       child,
     });
-    const inspectorPort = await findPortPair(port + 1_000);
-    const inspectorUrl = await openInspector(
-      maintenanceUrl,
-      config.server.requestTimeoutMs,
-      inspectorPort,
-    );
+    let inspectorUrl = null;
+    if (!isBuiltClient) {
+      const inspectorPort = await findPortPair(port + 1_000);
+      inspectorUrl = await openInspector(
+        maintenanceUrl,
+        config.server.requestTimeoutMs,
+        inspectorPort,
+      );
+    }
     return {
       baseUrl,
       child,
@@ -978,8 +1058,14 @@ async function startServer({
       log,
       logPath,
       maintenanceUrl,
+      processStartedAtMs,
       processManifestPath,
-      startupMs,
+      readyProjects: bodyArray(
+        readiness.projectResponse.body,
+        "projects",
+        "readiness project list",
+      ),
+      startupMs: readiness.startupMs,
     };
   } catch (error) {
     log.end();
@@ -1310,6 +1396,141 @@ function sessionBrowserTarget(server, detail, turn) {
       `${server.baseUrl}/projects/${encodeURIComponent(detail.projectId)}` +
       `/sessions/${encodeURIComponent(detail.sessionId)}`,
   };
+}
+
+function selectedFixtureTarget(server, fixture, scenario) {
+  const fixtureSession = fixture.sessionFiles[0];
+  const project = server.readyProjects.find(
+    (candidate) => candidate.path === fixtureSession.projectPath,
+  );
+  if (!project || typeof project.id !== "string") {
+    throw new Error(
+      `readiness project list omitted fixture path ${fixtureSession.projectPath}`,
+    );
+  }
+  const detail = {
+    projectId: project.id,
+    sessionId: fixtureSession.sessionId,
+  };
+  return {
+    ...sessionBrowserTarget(server, detail, scenario.initialTurns - 1),
+    apiUrl:
+      `${server.baseUrl}/api/projects/${encodeURIComponent(project.id)}` +
+      `/sessions/${encodeURIComponent(fixtureSession.sessionId)}` +
+      "?fullHistory=1&fullHistoryReason=performance-useful-readiness",
+    projectPath: fixtureSession.projectPath,
+  };
+}
+
+async function addBuiltClientReadinessObserver(
+  context,
+  target,
+  { glossarySupported, projectPathsSupported },
+) {
+  await context.addInitScript(
+    ({
+      expectedPaths,
+      glossaryTitle,
+      marker,
+      observeGlossary,
+      observePaths,
+    }) => {
+      localStorage.setItem("yep-anywhere-glossary-hints-enabled", "true");
+      const state = {
+        glossaryHighlightAtMs: null,
+        marker,
+        projectPathHighlightAtMs: null,
+        readableTailAtMs: null,
+      };
+      window.__yaPerfBuiltClientReadiness = state;
+      const inspect = () => {
+        const row = [...document.querySelectorAll(".message-render-row")].find(
+          (candidate) => candidate.textContent?.includes(marker),
+        );
+        if (
+          state.readableTailAtMs === null &&
+          document.body?.innerText.includes(marker)
+        ) {
+          state.readableTailAtMs = performance.now();
+        }
+        if (
+          observeGlossary &&
+          state.glossaryHighlightAtMs === null &&
+          [...(row?.querySelectorAll("[data-glossary-term]") ?? [])].some(
+            (term) =>
+              (term.getAttribute("data-tooltip") ||
+                term.getAttribute("title")) === glossaryTitle,
+          )
+        ) {
+          state.glossaryHighlightAtMs = performance.now();
+        }
+        if (observePaths && state.projectPathHighlightAtMs === null && row) {
+          const actualPaths = [
+            ...row.querySelectorAll('a[data-ya-resource="local-file"]'),
+          ].map((anchor) => anchor.getAttribute("data-ya-path") ?? "");
+          if (
+            expectedPaths.every((expected) =>
+              actualPaths.some(
+                (actual) =>
+                  actual === expected || actual.endsWith(`/${expected}`),
+              ),
+            )
+          ) {
+            state.projectPathHighlightAtMs = performance.now();
+          }
+        }
+        if (
+          state.readableTailAtMs !== null &&
+          (!observeGlossary || state.glossaryHighlightAtMs !== null) &&
+          (!observePaths || state.projectPathHighlightAtMs !== null)
+        ) {
+          window.__yaPerfBuiltClientReadinessObserver?.disconnect();
+        }
+      };
+      const install = () => {
+        if (!document.documentElement) return false;
+        const observer = new MutationObserver(inspect);
+        observer.observe(document.documentElement, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+        });
+        window.__yaPerfBuiltClientReadinessObserver = observer;
+        inspect();
+        return true;
+      };
+      if (!install()) {
+        document.addEventListener("readystatechange", install, { once: true });
+      }
+    },
+    {
+      expectedPaths: EXPECTED_PROJECT_PATHS,
+      glossaryTitle: EXPECTED_GLOSSARY_TITLE,
+      marker: target.marker,
+      observeGlossary: glossarySupported,
+      observePaths: projectPathsSupported,
+    },
+  );
+}
+
+function browserMarkDuration(
+  observation,
+  field,
+  navigationStartedAtMs,
+  observationReadStartedAtMs,
+  observationReadEndedAtMs,
+) {
+  const mark = observation[field];
+  if (typeof mark !== "number") return null;
+  const browserNowAtNodeMidpointMs =
+    (observationReadStartedAtMs + observationReadEndedAtMs) / 2;
+  const markAtNodeMs =
+    browserNowAtNodeMidpointMs - (observation.browserNowMs - mark);
+  const duration = markAtNodeMs - navigationStartedAtMs;
+  if (duration < 0) {
+    throw new Error(`${field} preceded built-client navigation`);
+  }
+  return round(duration);
 }
 
 async function waitForReadableTail(page, marker, timeoutMs) {
@@ -2725,6 +2946,310 @@ async function measureBrowserMode({
   }
 }
 
+async function measureServerUsefulReadiness({
+  config,
+  expectedMessages,
+  server,
+  target,
+}) {
+  const requestStartedAtMs = performance.now();
+  const response = await requestJson(target.apiUrl, {
+    needle: target.marker,
+    timeoutMs: config.server.requestTimeoutMs,
+  });
+  if (typeof response.needleMs !== "number") {
+    throw new Error(
+      "selected-session response omitted the expected tail marker",
+    );
+  }
+  assertCount(
+    bodyArray(response.body, "messages", "useful-readiness detail").length,
+    expectedMessages,
+    "useful-readiness message count",
+  );
+  return {
+    requestMs: round(response.ms),
+    responseBytes: response.bytes,
+    responseNeedleMs: round(response.needleMs),
+    startupToReadableMs: round(
+      requestStartedAtMs + response.needleMs - server.processStartedAtMs,
+    ),
+  };
+}
+
+async function measureBuiltClientColdReadiness({
+  checkout,
+  config,
+  generalizedProjectPathsSupported,
+  runMarker,
+  server,
+  target,
+}) {
+  const versionResponse = await requestJson(`${server.baseUrl}/api/version`, {
+    timeoutMs: config.server.requestTimeoutMs,
+  });
+  const capabilities = Array.isArray(versionResponse.body?.capabilities)
+    ? versionResponse.body.capabilities
+    : [];
+  const glossarySupported = capabilities.includes("glossary-tooltips");
+  const playwrightPath = path.join(
+    checkout,
+    "packages/client/node_modules/@playwright/test/index.mjs",
+  );
+  const { chromium } = await import(pathToFileURL(playwrightPath).href);
+  const browser = await chromium.launch({
+    env: { ...process.env, PERF_RUN_ID: runMarker },
+    headless: true,
+  });
+  await appendFile(
+    server.processManifestPath,
+    `${JSON.stringify({
+      recordedAt: new Date().toISOString(),
+      role: "Playwright Chromium process tree",
+      pid: null,
+      pgid: null,
+      marker: runMarker,
+      tracking: "PERF_RUN_ID environment; perf-sweep is authoritative",
+    })}\n`,
+  );
+  let context = null;
+  try {
+    context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    await addBuiltClientReadinessObserver(context, target, {
+      glossarySupported,
+      projectPathsSupported: generalizedProjectPathsSupported,
+    });
+    const page = await context.newPage();
+    const navigationStartedAtMs = performance.now();
+    await page.goto(target.url, { waitUntil: "domcontentloaded" });
+    await waitForFinalDisplay(page, target, {
+      glossarySupported,
+      projectPathsSupported: generalizedProjectPathsSupported,
+      started: navigationStartedAtMs,
+      timeoutMs: config.server.requestTimeoutMs,
+    });
+    const observationReadStartedAtMs = performance.now();
+    const observation = await page.evaluate(() => ({
+      ...window.__yaPerfBuiltClientReadiness,
+      browserNowMs: performance.now(),
+    }));
+    const observationReadEndedAtMs = performance.now();
+    if (!observation || typeof observation.readableTailAtMs !== "number") {
+      throw new Error("built-client readiness observer missed readable tail");
+    }
+    if (
+      glossarySupported &&
+      typeof observation.glossaryHighlightAtMs !== "number"
+    ) {
+      throw new Error(
+        "built-client readiness observer missed glossary display",
+      );
+    }
+    if (
+      generalizedProjectPathsSupported &&
+      typeof observation.projectPathHighlightAtMs !== "number"
+    ) {
+      throw new Error(
+        "built-client readiness observer missed project-path display",
+      );
+    }
+    const milestones = {
+      readableTailMs: browserMarkDuration(
+        observation,
+        "readableTailAtMs",
+        navigationStartedAtMs,
+        observationReadStartedAtMs,
+        observationReadEndedAtMs,
+      ),
+      glossaryHighlightMs: browserMarkDuration(
+        observation,
+        "glossaryHighlightAtMs",
+        navigationStartedAtMs,
+        observationReadStartedAtMs,
+        observationReadEndedAtMs,
+      ),
+      projectPathHighlightMs: browserMarkDuration(
+        observation,
+        "projectPathHighlightAtMs",
+        navigationStartedAtMs,
+        observationReadStartedAtMs,
+        observationReadEndedAtMs,
+      ),
+    };
+    milestones.finalHighlightMs = Math.max(
+      milestones.readableTailMs,
+      milestones.glossaryHighlightMs ?? 0,
+      milestones.projectPathHighlightMs ?? 0,
+    );
+    return {
+      correctness: {
+        glossarySupported,
+        projectPathsRendered: generalizedProjectPathsSupported,
+        readableTail: true,
+      },
+      milestones,
+      observationClock: {
+        source: "browser-performance-now-mutation-observer",
+        nodeAlignment: "evaluate-midpoint-minus-browser-elapsed",
+      },
+    };
+  } finally {
+    try {
+      await context?.close();
+    } finally {
+      await browser.close();
+    }
+  }
+}
+
+async function measureBuiltClientRepetition({
+  checkout,
+  config,
+  executionRevision,
+  fixtureConfig,
+  generalizedProjectPathsSupported,
+  label,
+  repetition,
+  runMarker,
+  scenario,
+  scenarioName,
+  workRoot,
+}) {
+  const repetitionRoot = path.join(workRoot, `rep-${repetition}`);
+  await mkdir(repetitionRoot, { recursive: true });
+  const fixture = await createFixture(repetitionRoot, scenario, fixtureConfig);
+  const expectedMessages = scenario.initialTurns * 2;
+  const basePort = config.server.portBase + repetition * 6;
+
+  const serverLegRoot = path.join(repetitionRoot, "server-useful-readiness");
+  await mkdir(serverLegRoot, { recursive: true });
+  const serverLeg = await startServer({
+    checkout,
+    driver: "built-client",
+    fixture,
+    port: await findPortPair(basePort),
+    root: serverLegRoot,
+    config,
+    runMarker,
+  });
+  let serverReadiness;
+  let serverTarget;
+  let serverManifest;
+  try {
+    serverTarget = selectedFixtureTarget(serverLeg, fixture, scenario);
+    serverReadiness = await measureServerUsefulReadiness({
+      config,
+      expectedMessages,
+      server: serverLeg,
+      target: serverTarget,
+    });
+    serverManifest = await readProcessManifest(serverLeg.processManifestPath);
+  } finally {
+    serverLeg.log.end();
+    await stopServer(serverLeg.child);
+  }
+
+  const browserLegRoot = path.join(repetitionRoot, "built-client-cold");
+  await mkdir(browserLegRoot, { recursive: true });
+  const browserLeg = await startServer({
+    checkout,
+    driver: "built-client",
+    fixture,
+    port: await findPortPair(basePort + 3),
+    root: browserLegRoot,
+    config,
+    runMarker,
+  });
+  let browserReadiness;
+  let browserManifest;
+  try {
+    const browserTarget = selectedFixtureTarget(browserLeg, fixture, scenario);
+    browserReadiness = await measureBuiltClientColdReadiness({
+      checkout,
+      config,
+      generalizedProjectPathsSupported,
+      runMarker,
+      server: browserLeg,
+      target: browserTarget,
+    });
+    browserManifest = await readProcessManifest(browserLeg.processManifestPath);
+  } finally {
+    browserLeg.log.end();
+    await stopServer(browserLeg.child);
+  }
+
+  return {
+    schemaVersion: 2,
+    suiteVersion: SUITE_VERSION,
+    identity: {
+      executionRevision,
+      fixtureRevision: fixture.fixtureRevision,
+    },
+    label,
+    repetition,
+    scenario: scenarioName,
+    parameters: scenario,
+    runtime: {
+      driver: "built-client",
+      node: process.version,
+      providerExecutionBoundary: {
+        discovery: "disabled-by-enabled-providers-filter",
+        liveProviderAllowed: false,
+        sessionLaunch: "in-process-mock",
+      },
+      processManifest: {
+        builtClient: browserManifest,
+        serverUsefulReadiness: serverManifest,
+      },
+      serverLog: {
+        builtClient: browserLeg.logPath,
+        serverUsefulReadiness: serverLeg.logPath,
+      },
+      serverStartupMs: round(serverLeg.startupMs),
+      serverStartupToSelectedSessionReadableMs:
+        serverReadiness.startupToReadableMs,
+      builtClientServerStartupMs: round(browserLeg.startupMs),
+    },
+    correctness: {
+      initialMessagesPerSession: expectedMessages,
+      selectedProjectPath: serverTarget.projectPath,
+      selectedSessionId: serverTarget.detail.sessionId,
+      serverSelectedSessionReadable: true,
+      ...browserReadiness.correctness,
+      fixtureRevision: fixture.fixtureRevision,
+      providerCatalogFamilies: config.fixture.providerCatalogFamilies,
+    },
+    latency: {
+      serverSelectedSessionRequest: summarize([serverReadiness.requestMs]),
+      builtClientColdTail: summarize([
+        browserReadiness.milestones.readableTailMs,
+      ]),
+      builtClientColdGlossaryHighlight: summarize(
+        [browserReadiness.milestones.glossaryHighlightMs].filter(
+          (value) => typeof value === "number",
+        ),
+      ),
+      builtClientColdProjectPathHighlight: summarize(
+        [browserReadiness.milestones.projectPathHighlightMs].filter(
+          (value) => typeof value === "number",
+        ),
+      ),
+      builtClientColdFinalHighlight: summarize([
+        browserReadiness.milestones.finalHighlightMs,
+      ]),
+    },
+    browser: {
+      builtClientColdStart: browserReadiness,
+    },
+    responseMiB: {
+      serverSelectedSession: bytesToMiB(serverReadiness.responseBytes),
+    },
+    memory: null,
+  };
+}
+
 async function measureRepetition({
   checkout,
   config,
@@ -2739,6 +3264,21 @@ async function measureRepetition({
   scenarioName,
   workRoot,
 }) {
+  if (driver === "built-client") {
+    return measureBuiltClientRepetition({
+      checkout,
+      config,
+      executionRevision,
+      fixtureConfig,
+      generalizedProjectPathsSupported,
+      label,
+      repetition,
+      runMarker,
+      scenario,
+      scenarioName,
+      workRoot,
+    });
+  }
   const repetitionRoot = path.join(workRoot, `rep-${repetition}`);
   await mkdir(repetitionRoot, { recursive: true });
   const fixture = await createFixture(repetitionRoot, scenario, fixtureConfig);
@@ -3050,6 +3590,18 @@ async function measureRepetition({
       runtime: {
         driver,
         node: process.version,
+        providerExecutionBoundary:
+          driver === "browser"
+            ? {
+                discovery: "disabled-by-enabled-providers-filter",
+                liveProviderAllowed: false,
+                sessionLaunch: "in-process-mock",
+              }
+            : {
+                discovery: "not-requested",
+                liveProviderAllowed: false,
+                sessionLaunch: "in-process-mock",
+              },
         processManifest: await readProcessManifest(server.processManifestPath),
         serverStartupMs: round(server.startupMs),
         serverLog: server.logPath,
@@ -3154,6 +3706,14 @@ function getMetric(value, dottedPath) {
 function aggregateRuns(runs) {
   const paths = [
     "runtime.serverStartupMs",
+    "runtime.serverStartupToSelectedSessionReadableMs",
+    "runtime.builtClientServerStartupMs",
+    "latency.serverSelectedSessionRequest.p95Ms",
+    "latency.builtClientColdTail.p95Ms",
+    "latency.builtClientColdGlossaryHighlight.p95Ms",
+    "latency.builtClientColdProjectPathHighlight.p95Ms",
+    "latency.builtClientColdFinalHighlight.p95Ms",
+    "responseMiB.serverSelectedSession",
     "latency.glossaryArtifacts.p95Ms",
     "latency.projectSessions.p95Ms",
     "latency.projectSessionsWarm.p95Ms",
@@ -3557,6 +4117,10 @@ async function main() {
     GENERALIZED_PROJECT_PATHS_BASE,
     revision,
   );
+  const preparation =
+    options.driver === "built-client"
+      ? await prepareBuiltClientCheckout(checkout, revision)
+      : null;
   const runMarker =
     `${PERF_RUN_MARKER_PREFIX}${process.pid}-${Date.now()}-` +
     createHash("sha256")
@@ -3658,11 +4222,19 @@ async function main() {
         ),
       };
       runs.push(run);
-      console.log(
-        `  heap ${run.memory.settled.heapUsedMiB} MiB ` +
-          `(retained ${run.memory.retainedHeapMiB} MiB); ` +
-          `append p95 ${run.latency.detailAppendedHerd.p95Ms} ms`,
-      );
+      if (options.driver === "built-client") {
+        console.log(
+          `  server useful-ready ` +
+            `${run.runtime.serverStartupToSelectedSessionReadableMs} ms; ` +
+            `built-client readable ${run.latency.builtClientColdTail.p95Ms} ms`,
+        );
+      } else {
+        console.log(
+          `  heap ${run.memory.settled.heapUsedMiB} MiB ` +
+            `(retained ${run.memory.retainedHeapMiB} MiB); ` +
+            `append p95 ${run.latency.detailAppendedHerd.p95Ms} ms`,
+        );
+      }
     }
 
     const aggregate = aggregateRuns(runs);
@@ -3712,6 +4284,7 @@ async function main() {
       revision,
       scenario: options.scenario,
       parameters: scenario,
+      preparation,
       host: {
         capacity: hostCapacity,
         baseline: {
@@ -3744,6 +4317,7 @@ async function main() {
         eligibility: hostEligibility,
         window: result.host.window,
       },
+      preparation,
       ratchet,
     };
     await appendFile(history, `${JSON.stringify(historyRecord)}\n`);

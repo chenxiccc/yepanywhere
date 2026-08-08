@@ -1845,6 +1845,7 @@ export function createApp(options: AppOptions): AppResult {
     createProvidersRoutes({
       modelInfoService: options.modelInfoService,
       enabledProviders: options.enabledProviders,
+      providers: options.provider ? [options.provider] : undefined,
       desktopRuntime: options.desktopRuntime,
     }),
   );
