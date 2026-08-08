@@ -347,6 +347,7 @@ export interface TaskListAugmenter {
 }
 
 export function createTaskListAugmenter(): TaskListAugmenter {
+  const processedMessages = new WeakSet<Record<string, unknown>>();
   const pendingEvents = new Map<string, PendingTaskEvent>();
   const tasks = new Map<string, TaskState>();
   let nextOrder = 0;
@@ -486,6 +487,11 @@ export function createTaskListAugmenter(): TaskListAugmenter {
 
   return {
     processMessage(message) {
+      if (processedMessages.has(message)) {
+        return;
+      }
+      processedMessages.add(message);
+
       const role = messageRole(message);
       for (const block of contentBlocks(message)) {
         if (role === "assistant" && block.type === "tool_use") {

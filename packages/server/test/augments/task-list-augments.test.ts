@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TASK_SNAPSHOT_FIELD,
   augmentTaskListSnapshots,
+  createTaskListAugmenter,
   pruneTaskListSnapshotsToLatest,
   type TaskListSnapshot,
 } from "../../src/augments/task-list-augments.js";
@@ -96,6 +97,26 @@ describe("task-list augments", () => {
     expect(snapshotFromResult(updateResult)?.tasks).toMatchObject([
       { id: "1", subject: "Review the renderer", status: "in_progress" },
     ]);
+  });
+
+  it("does not replay correlation when a prepared message reaches async enrichment", () => {
+    const create = assistantToolUse("tool-create-1", "TaskCreate", {
+      subject: "Keep one ordered snapshot",
+    });
+    const result = userToolResult(
+      "tool-create-1",
+      "Task #1 created successfully: Keep one ordered snapshot",
+    );
+    const augmenter = createTaskListAugmenter();
+
+    augmenter.processMessage(create as Record<string, unknown>);
+    augmenter.processMessage(result as Record<string, unknown>);
+    const snapshot = snapshotFromResult(result);
+
+    augmenter.processMessage(create as Record<string, unknown>);
+    augmenter.processMessage(result as Record<string, unknown>);
+
+    expect(snapshotFromResult(result)).toBe(snapshot);
   });
 
   it("preserves off-window TaskCreate subjects before pruning to the latest returned event", () => {

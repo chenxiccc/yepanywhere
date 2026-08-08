@@ -15,6 +15,7 @@ import {
   isStreamingComplete,
   markSubagent,
 } from "./augments/index.js";
+import { createTaskListAugmenter } from "./augments/task-list-augments.js";
 import { getLogger } from "./logging/logger.js";
 import {
   sessionQueueSummaries,
@@ -37,6 +38,8 @@ export interface SubscriptionOptions extends SessionQueueSummaryDeps {
   logLabel?: string;
   /** Whether this subscriber wants live provider deltas and streaming augments. */
   wantsLiveDeltas?: boolean;
+  /** Injectable augmenter factory for deterministic transport tests. */
+  createAugmenter?: typeof createStreamAugmenter;
 }
 
 /**
@@ -87,6 +90,10 @@ function isLiveDeltaMessage(message: Record<string, unknown>): boolean {
   return message.type === "stream_event" || message._isStreaming === true;
 }
 
+function hasStableMessageIdentity(message: Record<string, unknown>): boolean {
+  return typeof message.uuid === "string" || typeof message.id === "string";
+}
+
 /**
  * Create a session subscription that forwards process events via `emit`.
  *
@@ -105,6 +112,10 @@ export function createSessionSubscription(
   const unregisterLiveDeltaSubscriber = wantsLiveDeltas
     ? process.registerLiveDeltaSubscriber()
     : null;
+
+  // Task correlation is synchronous and order-sensitive, so prepare it before
+  // raw delivery. The async augmenter shares this idempotent instance.
+  const taskListAugmenter = createTaskListAugmenter();
 
   // Lazy augmenter
   let augmenter: StreamAugmenter | null = null;
@@ -125,7 +136,7 @@ export function createSessionSubscription(
           pathIndex?.release();
           pathIndex = null;
         }
-        return createStreamAugmenter({
+        return (options?.createAugmenter ?? createStreamAugmenter)({
           safeMarkdownOptions: {
             projectFileLinks: {
               projectId: process.projectId,
@@ -133,6 +144,7 @@ export function createSessionSubscription(
               ...(pathIndex ? { index: pathIndex } : {}),
             },
           },
+          taskListAugmenter,
           onMarkdownAugment: (data) => {
             if (!completed) emit("markdown-augment", data);
           },
@@ -148,6 +160,22 @@ export function createSessionSubscription(
     }
     augmenter = await augmenterPromise;
     return augmenter;
+  };
+
+  // Process emits without awaiting listeners, so independently awaiting each
+  // augmentation lets later messages overtake earlier ones and concurrently
+  // mutates the augmenter's streaming coordinator. Keep enrichment ordered;
+  // raw message delivery below remains immediate.
+  let augmentationTail: Promise<void> = Promise.resolve();
+  const processAugmentsInOrder = (
+    message: Record<string, unknown>,
+  ): Promise<void> => {
+    const next = augmentationTail.then(async () => {
+      const aug = await getAugmenter();
+      await aug.processMessage(message);
+    });
+    augmentationTail = next.catch(() => {});
+    return next;
   };
 
   const emitStatus = (state: Process["state"]) => {
@@ -190,11 +218,8 @@ export function createSessionSubscription(
           if (!wantsLiveDeltas && isLiveDeltaMessage(message)) {
             break;
           }
+          taskListAugmenter.processMessage(message);
           const isStreamEvent = message.type === "stream_event";
-          const processAugments = async () => {
-            const aug = await getAugmenter();
-            await aug.processMessage(message);
-          };
 
           const startMessageId =
             extractMessageIdFromStart(message) ??
@@ -212,21 +237,24 @@ export function createSessionSubscription(
             );
           }
 
-          if (isStreamEvent || isPlainUserEcho(message)) {
-            // User echoes reconcile optimistic/deferred queue state; do not let
-            // markdown/tool augmentation delay that delivery signal.
-            emit("message", markSubagent(message));
-            void processAugments().catch((err) => {
-              options?.onError?.(err);
-            });
-          } else {
-            await processAugments();
-            emit("message", markSubagent(message));
-          }
-
+          // Raw provider messages are the ordered, user-visible activity path.
+          // Optional markdown/tool enrichment may follow as a same-id update,
+          // but must never delay or reorder the underlying transcript event.
+          emit("message", markSubagent(message));
           if (isStreamingComplete(message)) {
             currentStreamingMessageId = null;
             process.clearStreamingText();
+          }
+
+          if (isStreamEvent || isPlainUserEcho(message)) {
+            void processAugmentsInOrder(message).catch((err) => {
+              options?.onError?.(err);
+            });
+          } else {
+            await processAugmentsInOrder(message);
+            if (!completed && hasStableMessageIdentity(message)) {
+              emit("message", markSubagent(message));
+            }
           }
           break;
         }
@@ -287,9 +315,10 @@ export function createSessionSubscription(
           break;
 
         case "complete":
-          if (augmenter) {
-            await augmenter.flush();
-          }
+          // Optional enrichment must not hold the client in a processing state.
+          // Each completed stream message flushes its own coordinator work; any
+          // still-queued finalized enrichment is safely superseded by the
+          // durable transcript catch-up triggered by this event.
           emit("complete", {
             sessionId: process.sessionId,
             timestamp: new Date().toISOString(),

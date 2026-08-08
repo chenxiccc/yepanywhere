@@ -16,6 +16,98 @@ contract), [codex-sessions](codex-sessions.md),
 (the Codex 5.6 normalization/rendering plan). Dev-doc:
 `docs/project/multi-provider-integration.md`.
 
+## Hidden-activity incident (2026-08-07)
+
+A Claude Gateway turn appeared to stop updating for more than ten minutes after
+steering, deferred queue promotion, and a nearby compaction. The local rotating
+activity phrase continued, but the latest thinking and compact activity rows did
+not advance. Restarting YA revealed the missing assistant, tool-use, and
+tool-result activity.
+
+The provider transcript established that this was a projection failure rather
+than missing provider work:
+
+- deferred patient messages promoted at `23:17:12Z`;
+- a Claude `compact_boundary` persisted at `23:20:11Z`;
+- dozens of assistant, tool-use, and tool-result records persisted through
+  `23:34:20Z`;
+- the process reported idle immediately afterward; and
+- a later cold session read after restart returned the records the live view had
+  omitted.
+
+No augmentation or subscription error was logged during the interval. Client
+diagnostic collection was not enabled for a usable incident trace, so the
+server ordering fault is reproduced directly rather than inferred from browser
+logs.
+
+### Dispatch-order audit
+
+The path is FIFO until optional asynchronous presentation work enters it:
+
+1. `provider-runtime-host.ts` receives sequenced worker events and removes them
+   from `eventQueue` with `shift()`.
+2. `Process.emit` iterates its listener `Set` in insertion order, but deliberately
+   does not await listener promises.
+3. `createSessionSubscription` used to await Markdown, diff, highlighting, and
+   other augmentation before emitting each finalized message. Every provider
+   message therefore started an independent continuation. Completion order was
+   determined by augmentation duration: later messages could overtake an earlier
+   one, and one unresolved augmenter could hide its raw provider record.
+4. `handleSessionSubscribe` assigns event IDs synchronously in actual send order;
+   WebSocket frames preserve that order. `RelayProtocol`, `ManagedStream`, and
+   `useSession` forward received events synchronously. The client cannot recover
+   provider order from event IDs after the server has already sent a different
+   order.
+5. `mergeStreamMessage` can replace an existing SDK message by stable `uuid` or
+   `id`, which makes raw-first delivery followed by same-id enrichment possible
+   without changing row order.
+
+This is not deliberate LIFO dispatch. Listener invocation is ordered; the old
+observable order was nondeterministic async completion.
+
+### Ruled-out owning causes
+
+- The rotating activity phrase is client-local animation while
+  `isProcessing=true`; it does not prove fresh provider or server events.
+- Incremental Claude transcript parsing reuses one entries array, but the
+  normalization cache checks both array length and final-entry identity, so
+  append-only growth invalidates the cached projection.
+- A speculative client refetch on every owned-session update could recover from
+  several server faults, but it would add polling and duplicate durable reads
+  without fixing the ordering boundary. That experiment was removed.
+- Compaction, steering, deferred input, and warm transcript caching remain
+  important live-test scenarios, but none owns message dispatch. They increase
+  the chance and visibility of a slow-enrichment race.
+- Liveness/status events are separate `Process` events. They explain how a view
+  could keep showing activity decoration while transcript rows were blocked,
+  but changing liveness caching would not release those rows.
+
+## Current repair boundary
+
+`packages/server/src/subscriptions.ts` now establishes provider order before any
+optional await:
+
+- perform bounded synchronous preparation, including task-list correlation;
+- emit every raw provider message immediately;
+- clear streaming bookkeeping synchronously on stream completion;
+- serialize shared async augmentation state through one FIFO promise tail;
+- emit finalized enrichment only as a same-id update;
+- keep an unidentified message as one raw representation rather than generating
+  two unrelated client IDs; and
+- emit turn completion without waiting for optional enrichment, allowing the
+  client to become idle and fetch the durable transcript.
+
+`task-list-augments.ts` accepts the same message object in the synchronous and
+async stages idempotently. `stream-augmenter.ts` accepts that shared correlator;
+all existing batch callers retain their previous one-stage behavior.
+
+The focused regressions in `packages/server/test/subscriptions.test.ts` hold the
+first Claude Gateway enrichment unresolved while proving immediate raw order,
+ordered enriched replacements after release, one representation for an
+unidentified message, pre-delivery task correlation, and immediate completion.
+`packages/server/test/augments/task-list-augments.test.ts` prevents the shared
+message from replaying task correlation.
+
 ## The convergence contract
 
 A session reaches the UI two ways:
@@ -33,6 +125,12 @@ equality is graded by whether the live item has a durable counterpart:
   preserve semantic identity, ordering, grouping, parameters, and roughly the
   same layout. These are the highest-jank failures because a refresh can
   reorder several rows or replace one group with another.
+- **Live delivery precedes optional enrichment.** Forward raw provider messages
+  in provider order before asynchronous markdown, diff, highlighting, or other
+  augmentation. Enrichment work is serialized when it shares mutable stream
+  state and may follow as a same-id update; it must not delay or reorder the
+  underlying activity. A failed or stalled augmenter degrades presentation, not
+  transcript visibility.
 - **Live enrichment — update in place.** Streaming output, elapsed time,
   progress, provisional status, or a more timely label may enrich a durable
   item while it is active. Prefer changes that do not alter row count, group
@@ -49,6 +147,48 @@ bounded movement at the right edge is expected. Provider persistence remains
 the sole durable source of truth. In particular, Codex rollout files are the
 canonical durable transcript; YA must not create a second durable message or
 metadata record to preserve live-only shape.
+
+## Draft-first augmentation plan
+
+The first repair establishes the transport boundary: perform bounded,
+order-sensitive synchronous preparation (identity, subagent marking, task
+correlation, streaming-text bookkeeping), insert the raw provider item in
+provider order, and serialize optional asynchronous enrichment as same-id
+updates. A message without stable provider identity gets no second message
+representation, and unfinished enrichment cannot postpone turn completion.
+
+Further render-phase work should proceed in this order:
+
+1. **Freeze representative output.** Keep current-output assertions for
+   Markdown structure, syntax-highlighted code, Edit/Read/Write previews,
+   inline project-file links, and glossary annotations. A changed baseline is
+   allowed when reviewed as an improvement, but never as an unnoticed effect
+   of phase reordering.
+2. **Measure the two useful latencies.** On representative short prose,
+   code-heavy, large tool, and path-heavy items, record raw arrival to draft
+   insertion and raw arrival to the fully enriched replacement. In a browser at
+   desktop and phone widths, record draft and final height plus scroll-anchor
+   movement.
+3. **Classify enrichment by geometry.** Markdown block structure and the
+   presence, truncation, or expansion of diffs, plans, task panels, and file
+   previews set geometry. Syntax-color spans, glossary spans, and file-link
+   anchors are intended to preserve visible text, line structure, font, and
+   height; property tests should enforce that contract and browser measurements
+   should catch CSS or whitespace exceptions.
+4. **Buffer per item.** Keep the raw draft visible while one per-item buffer
+   collects geometry-setting enrichment, then publish one atomic same-id
+   replacement. Do not wait for the subscription-wide queue. Split a later
+   geometry-neutral update only when measured latency justifies the extra paint;
+   otherwise fold it into the atomic replacement to avoid flicker.
+5. **Exercise the real stack.** Use an isolated YA server and client with Claude
+   Gateway bursts, intentionally slow first enrichment, compaction-adjacent
+   output, steering plus deferred input, and reconnect/persisted catch-up. Raw
+   items must remain ordered and visible while enrichment is blocked, and the
+   durable replay must converge without duplicate rows.
+
+The initial transport repair is intentionally narrower than this plan. In
+particular, project-file index hydration remains bundled with final Markdown
+rendering until the output and height baselines above make that split safe.
 
 For durable-corresponding items, "converge" is stronger than "eventually show
 similar text." Structured fields are latent UI, and item count/order/grouping

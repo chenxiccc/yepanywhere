@@ -10,7 +10,9 @@
  *   onError: (err, context) => log.warn({ err }, context),
  * });
  *
- * // Process each message
+ * // Process each message before sending its enriched representation. A
+ * // low-latency transport may send the raw message first, then send the
+ * // mutated message as a same-id update after this resolves.
  * for (const event of events) {
  *   await augmenter.processMessage(event.message);
  *   emit('message', event.message); // message is mutated with augments
@@ -41,7 +43,10 @@ import {
   type StreamCoordinator,
   createStreamCoordinator,
 } from "./stream-coordinator.js";
-import { createTaskListAugmenter } from "./task-list-augments.js";
+import {
+  createTaskListAugmenter,
+  type TaskListAugmenter,
+} from "./task-list-augments.js";
 import type { SafeMarkdownRenderOptions } from "./safe-markdown.js";
 import type {
   EditInputWithAugment,
@@ -76,14 +81,17 @@ export interface StreamAugmenterConfig {
   onError?: (error: unknown, context: string) => void;
   /** Markdown renderer context for authenticated project-scoped links. */
   safeMarkdownOptions?: SafeMarkdownRenderOptions;
+  /** Ordered synchronous task correlation shared with the transport. */
+  taskListAugmenter?: TaskListAugmenter;
 }
 
 /** Stream augmenter instance */
 export interface StreamAugmenter {
   /**
    * Process a message, computing and embedding augments.
-   * This mutates the message object to add augment fields.
-   * Call this BEFORE sending the message to the client.
+   * This mutates the message object to add augment fields. Call it before
+   * sending the enriched representation; the raw message may already have
+   * been sent when the transport supports same-id updates.
    *
    * For final assistant messages (with uuid), this also emits a markdown-augment
    * event with the fully rendered HTML.
@@ -129,13 +137,20 @@ export interface StreamAugmenter {
 export async function createStreamAugmenter(
   config: StreamAugmenterConfig,
 ): Promise<StreamAugmenter> {
-  const { onMarkdownAugment, onPending, onError, safeMarkdownOptions } = config;
+  const {
+    onMarkdownAugment,
+    onPending,
+    onError,
+    safeMarkdownOptions,
+    taskListAugmenter: sharedTaskListAugmenter,
+  } = config;
 
   // Create StreamCoordinator lazily to avoid initialization overhead
   let coordinator: StreamCoordinator | null = null;
   let coordinatorInitPromise: Promise<StreamCoordinator> | null = null;
   let currentStreamingMessageId: string | null = null;
-  const taskListAugmenter = createTaskListAugmenter();
+  const taskListAugmenter =
+    sharedTaskListAugmenter ?? createTaskListAugmenter();
 
   const getCoordinator = async (): Promise<StreamCoordinator> => {
     if (coordinator) return coordinator;
@@ -471,8 +486,8 @@ export async function createStreamAugmenter(
         currentStreamingMessageId = messageId;
       }
 
-      // Render final markdown augment BEFORE the message is sent
-      // This ensures client has the complete HTML when the message arrives
+      // Render final markdown before the enriched message update is sent.
+      // Low-latency transports may already have delivered the raw message.
       await renderFinalMarkdown(message);
 
       // Compute augments for Edit, Write, Read, ExitPlanMode

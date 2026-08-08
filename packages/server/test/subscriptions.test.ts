@@ -12,6 +12,7 @@ import {
   createActivitySubscription,
   createSessionSubscription,
 } from "../src/subscriptions.js";
+import type { StreamAugmenter } from "../src/augments/index.js";
 import type { SessionQueuePersistenceService } from "../src/services/SessionQueuePersistenceService.js";
 import type { Process } from "../src/supervisor/Process.js";
 import type { ProcessEvent, ProcessState } from "../src/supervisor/types.js";
@@ -131,6 +132,19 @@ function collectEmit(): { emit: Emit; events: Array<[string, unknown]> } {
   return { emit, events };
 }
 
+function stubAugmenter(
+  processMessage: StreamAugmenter["processMessage"],
+): StreamAugmenter {
+  return {
+    processMessage,
+    processTextChunk: async () => {},
+    flush: async () => {},
+    reset: () => {},
+    getCurrentMessageId: () => null,
+    processCatchUp: async () => {},
+  };
+}
+
 // ── Session Subscription ─────────────────────────────────────────────
 
 describe("createSessionSubscription", () => {
@@ -226,8 +240,13 @@ describe("createSessionSubscription", () => {
     } as ProcessEvent);
 
     const messageEvents = events.filter(([type]) => type === "message");
-    expect(messageEvents).toHaveLength(1);
+    expect(messageEvents).toHaveLength(2);
     expect(messageEvents[0]?.[1]).toMatchObject({
+      type: "assistant",
+      uuid: "codex-live-1",
+      message: { content: "complete" },
+    });
+    expect(messageEvents[1]?.[1]).toMatchObject({
       type: "assistant",
       uuid: "codex-live-1",
       message: { content: "complete" },
@@ -407,6 +426,155 @@ describe("createSessionSubscription", () => {
     await delivered;
   });
 
+  it("does not let Claude Gateway augmentation delay or reorder finalized messages", async () => {
+    const { process, fireEvent } = createMockProcess({
+      provider: "claude-gateway",
+    });
+    const { emit, events } = collectEmit();
+    let releaseFirst: (() => void) | undefined;
+    const processMessage = vi.fn(
+      (message: Record<string, unknown>): Promise<void> => {
+        if (message.uuid !== "gateway-assistant-1") {
+          return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+          releaseFirst = resolve;
+        });
+      },
+    );
+
+    createSessionSubscription(process, emit, {
+      createAugmenter: async () => stubAugmenter(processMessage),
+    });
+
+    const first = fireEvent({
+      type: "message",
+      message: {
+        type: "assistant",
+        uuid: "gateway-assistant-1",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Visible before enrichment." }],
+        },
+      },
+    } as ProcessEvent);
+    const second = fireEvent({
+      type: "message",
+      message: {
+        type: "assistant",
+        uuid: "gateway-assistant-2",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Still in provider order." }],
+        },
+      },
+    } as ProcessEvent);
+
+    const immediateMessageIds = events
+      .filter(([type]) => type === "message")
+      .map(([, data]) => (data as { uuid?: string }).uuid);
+    expect(immediateMessageIds).toEqual([
+      "gateway-assistant-1",
+      "gateway-assistant-2",
+    ]);
+
+    await vi.waitFor(() => expect(releaseFirst).toBeTypeOf("function"));
+    expect(processMessage).toHaveBeenCalledTimes(1);
+    releaseFirst?.();
+    await Promise.all([first, second]);
+
+    expect(processMessage.mock.calls.map(([message]) => message.uuid)).toEqual([
+      "gateway-assistant-1",
+      "gateway-assistant-2",
+    ]);
+    const allMessageIds = events
+      .filter(([type]) => type === "message")
+      .map(([, data]) => (data as { uuid?: string }).uuid);
+    expect(allMessageIds).toEqual([
+      "gateway-assistant-1",
+      "gateway-assistant-2",
+      "gateway-assistant-1",
+      "gateway-assistant-2",
+    ]);
+  });
+
+  it("does not duplicate an enriched message without a stable provider id", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+
+    createSessionSubscription(process, emit, {
+      createAugmenter: async () => stubAugmenter(async () => {}),
+    });
+
+    await fireEvent({
+      type: "message",
+      message: {
+        type: "system",
+        subtype: "status",
+      },
+    } as ProcessEvent);
+
+    expect(events.filter(([type]) => type === "message")).toHaveLength(1);
+  });
+
+  it("attaches ordered task state before raw tool-result delivery", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+
+    createSessionSubscription(process, emit, {
+      createAugmenter: async () => stubAugmenter(async () => {}),
+    });
+
+    const create = fireEvent({
+      type: "message",
+      message: {
+        type: "assistant",
+        uuid: "assistant-task-create",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "task-create-1",
+              name: "TaskCreate",
+              input: { subject: "Preserve provider order" },
+            },
+          ],
+        },
+      },
+    } as ProcessEvent);
+    const result = fireEvent({
+      type: "message",
+      message: {
+        type: "user",
+        uuid: "user-task-create",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "task-create-1",
+              content: "Task #11 created successfully: Preserve provider order",
+            },
+          ],
+        },
+      },
+    } as ProcessEvent);
+
+    const rawResult = events.find(
+      ([type, data]) =>
+        type === "message" &&
+        (data as { uuid?: string }).uuid === "user-task-create",
+    )?.[1] as {
+      toolUseResult?: { _taskSnapshot?: { tasks?: unknown[] } };
+    };
+    expect(rawResult.toolUseResult?._taskSnapshot?.tasks).toMatchObject([
+      { id: "11", subject: "Preserve provider order", status: "pending" },
+    ]);
+
+    await Promise.all([create, result]);
+  });
+
   it("forwards state-change events", async () => {
     const { process, fireEvent } = createMockProcess();
     const { emit, events } = collectEmit();
@@ -552,8 +720,9 @@ describe("createSessionSubscription", () => {
       },
     } as ProcessEvent);
 
-    const messageEvent = events.find(([type]) => type === "message");
-    expect(messageEvent).toBeDefined();
+    const messageEvents = events.filter(([type]) => type === "message");
+    expect(messageEvents).toHaveLength(2);
+    const messageEvent = messageEvents.at(-1);
 
     const payload = messageEvent?.[1] as {
       message?: {
@@ -639,6 +808,29 @@ describe("createSessionSubscription", () => {
     expect(input?._rawPatch).toContain("diff --git a/src/example.ts");
     expect(Array.isArray(input?._structuredPatch)).toBe(true);
     expect(input?._structuredPatch?.length).toBeGreaterThan(0);
+  });
+
+  it("does not let unresolved optional enrichment delay completion", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+    const never = new Promise<void>(() => {});
+
+    const { cleanup } = createSessionSubscription(process, emit, {
+      createAugmenter: async () => stubAugmenter(async () => never),
+    });
+
+    void fireEvent({
+      type: "message",
+      message: {
+        type: "assistant",
+        uuid: "blocked-enrichment",
+        message: { role: "assistant", content: "raw remains visible" },
+      },
+    } as ProcessEvent);
+    await fireEvent({ type: "complete" } as ProcessEvent);
+
+    expect(events.some(([type]) => type === "complete")).toBe(true);
+    cleanup();
   });
 
   it("emits complete and stops further events", async () => {
