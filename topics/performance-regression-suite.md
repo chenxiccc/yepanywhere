@@ -355,6 +355,14 @@ preprocess from the historical 396–397 ms to 175.9–181.6 ms. Ratchets now ca
 this phase at 200 ms for `fleet-small` and 300 ms for
 `large-session-cache`.
 
+Smaller append owners remain independent guardrails rather than disappearing
+inside that end-to-end ceiling. Server normalization is capped at 2 ms p95,
+server route slicing and anchor search at 5 ms for `fleet-small` and 10 ms for
+`large-session-cache`, and MessageList preprocessing at 5 ms for both browser
+cache budgets and scenarios. These are regression tripwires, not claims that
+the current full-array work needs optimization: recent observed p95 values
+were 0.1–0.2 ms, 0.6–3.1 ms, and 0.3–0.8 ms respectively.
+
 ## Ratchet interpretation
 
 The current maximums use broad margins over the three-repetition survey and the

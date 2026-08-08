@@ -118,6 +118,14 @@
               "max": 30,
               "rationale": "Profiled p95 was 9 ms and remains visible near the 10% boundary."
             },
+            "profiles.serverDetail.appended.server.normalize.p95Ms": {
+              "max": 2,
+              "rationale": "Recent fleet append p95 was 0.1 ms; this broad ceiling catches full-array normalization growth before optimizing the current sub-millisecond path."
+            },
+            "profiles.serverDetail.appended.server.route.p95Ms": {
+              "max": 5,
+              "rationale": "Recent fleet append slicing and anchor-search p95 was 0.6-0.7 ms."
+            },
             "profiles.serverDetail.appended.frameworkSerializeLoopback.p95Ms": {
               "max": 60,
               "rationale": "Profiled p95 was 30 ms."
@@ -210,6 +218,14 @@
               "max": 200,
               "rationale": "Profiled p95 was 126 ms."
             },
+            "profiles.serverDetail.appended.server.normalize.p95Ms": {
+              "max": 2,
+              "rationale": "Recent large-session append p95 was 0.2 ms; this broad ceiling catches full-array normalization growth before optimizing the current path."
+            },
+            "profiles.serverDetail.appended.server.route.p95Ms": {
+              "max": 10,
+              "rationale": "Recent large-session append slicing and anchor-search p95 was 2.6-3.1 ms across three repetitions."
+            },
             "profiles.serverDetail.appended.frameworkSerializeLoopback.p95Ms": {
               "max": 200,
               "rationale": "Profiled p95 was 122 ms."
@@ -249,6 +265,14 @@
             "memory.settled.residuals.heapUsedLessKnownCacheSourceMiB": {
               "max": 120,
               "rationale": "Profiled forced-GC heap less accountable cache source bytes was 105.5 MiB."
+            },
+            "profiles.serverDetail.appended.server.normalize.p95Ms": {
+              "max": 2,
+              "rationale": "Recent fleet append p95 was 0.1 ms; this broad ceiling catches full-array normalization growth before optimizing the current sub-millisecond path."
+            },
+            "profiles.serverDetail.appended.server.route.p95Ms": {
+              "max": 5,
+              "rationale": "Recent fleet append slicing and anchor-search p95 was 0.6-0.7 ms."
             }
           },
           "browser": {
@@ -308,6 +332,10 @@
               "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
                 "max": 200,
                 "rationale": "Leading-edge focused watch measured 59.9 ms p95; 200 ms catches restoration of the former 262 ms debounce floor."
+              },
+              "profiles.append.nonOverlappingPhases.preprocessMs.p95Ms": {
+                "max": 5,
+                "rationale": "Recent uncached fleet append preprocessing p95 was 0.5 ms; this ceiling watches projection recompilation without optimizing it prematurely."
               },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 150,
@@ -379,6 +407,10 @@
                 "max": 200,
                 "rationale": "Leading-edge focused watch measured 59.2 ms p95; 200 ms catches restoration of the former 262 ms debounce floor."
               },
+              "profiles.append.nonOverlappingPhases.preprocessMs.p95Ms": {
+                "max": 5,
+                "rationale": "Recent cached fleet append preprocessing p95 was 0.3 ms; this ceiling watches projection recompilation without optimizing it prematurely."
+              },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 150,
                 "rationale": "Profiled p95 was 76 ms."
@@ -419,6 +451,14 @@
             "memory.settled.residuals.heapUsedLessKnownCacheSourceMiB": {
               "max": 135,
               "rationale": "Profiled forced-GC heap less accountable cache source bytes was 114.3 MiB."
+            },
+            "profiles.serverDetail.appended.server.normalize.p95Ms": {
+              "max": 2,
+              "rationale": "Recent large-session append p95 was 0.2 ms; this broad ceiling catches full-array normalization growth before optimizing the current path."
+            },
+            "profiles.serverDetail.appended.server.route.p95Ms": {
+              "max": 10,
+              "rationale": "Recent large-session append slicing and anchor-search p95 was 2.6-3.1 ms across three repetitions."
             }
           },
           "browser": {
@@ -482,6 +522,10 @@
               "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
                 "max": 300,
                 "rationale": "Leading-edge focused watch measured 181.6 ms p95; 300 ms catches restoration of the former 397 ms profiled path."
+              },
+              "profiles.append.nonOverlappingPhases.preprocessMs.p95Ms": {
+                "max": 5,
+                "rationale": "Recent uncached large-session append preprocessing p95 was 0.8 ms; this ceiling watches projection recompilation without optimizing it prematurely."
               },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 350,
@@ -548,6 +592,10 @@
               "profiles.append.nonOverlappingPhases.appendStartToPreprocessMs.p95Ms": {
                 "max": 300,
                 "rationale": "Leading-edge focused watch measured 175.9 ms p95; 300 ms catches restoration of the former 396 ms profiled path."
+              },
+              "profiles.append.nonOverlappingPhases.preprocessMs.p95Ms": {
+                "max": 5,
+                "rationale": "Recent cached large-session append preprocessing p95 was 0.5 ms; this ceiling watches projection recompilation without optimizing it prematurely."
               },
               "profiles.append.nonOverlappingPhases.groupToCommitMs.p95Ms": {
                 "max": 350,

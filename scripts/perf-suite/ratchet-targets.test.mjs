@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { selectRatchetTargets } from "./ratchet-targets.mjs";
+
+const productionRatchets = JSON.parse(
+  readFileSync(new URL("./ratchets.json", import.meta.url), "utf8"),
+);
 
 const ratchets = {
   drivers: {
@@ -73,4 +78,42 @@ test("keys inherited portable targets to a registered capacity", () => {
   assert.equal(selected.selection.capacityRegistered, true);
   assert.equal(selected.selection.capacityOverrideApplied, false);
   assert.equal(selected.targets.server.latency.max, 100);
+});
+
+test("keeps small append owner phases independently ratcheted", () => {
+  for (const driver of ["server", "browser"]) {
+    for (const [scenario, routeMaximum] of [
+      ["fleet-small", 5],
+      ["large-session-cache", 10],
+    ]) {
+      const selected = selectRatchetTargets(productionRatchets, {
+        capacityKey: "host-v1-unregistered-test",
+        driver,
+        scenario,
+      });
+
+      assert.equal(
+        selected.targets.server[
+          "profiles.serverDetail.appended.server.normalize.p95Ms"
+        ].max,
+        2,
+      );
+      assert.equal(
+        selected.targets.server[
+          "profiles.serverDetail.appended.server.route.p95Ms"
+        ].max,
+        routeMaximum,
+      );
+      if (driver === "browser") {
+        for (const budget of ["0", "24"]) {
+          assert.equal(
+            selected.targets.browser[budget][
+              "profiles.append.nonOverlappingPhases.preprocessMs.p95Ms"
+            ].max,
+            5,
+          );
+        }
+      }
+    }
+  }
 });
