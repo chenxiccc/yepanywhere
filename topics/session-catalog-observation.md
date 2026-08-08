@@ -63,6 +63,15 @@ baseline asynchronously; changes observed during that baseline win over the
 baseline snapshot, and a fallback rescan requested during the build runs once
 after publication.
 
+Fallback and periodic tree rescans use asynchronous directory reads and stat
+files in bounded batches. One rescan runs per watcher; overlapping requests
+coalesce into one trailing fallback pass. Exact file events observed during a
+scan own their paths, so a completed snapshot cannot overwrite newer state.
+Focused session targets in the same directory share one native watch while
+retaining per-target polling and trailing validation. Removing the final target
+closes that native watch, and an asynchronous file-resolution result arriving
+after the final unsubscribe must not recreate it.
+
 Staleness is nevertheless an allowed state. An old, offscreen, unowned session
 may remain at its last durable compact observation until a file/process event,
 bounded reconciliation, hover, viewport promotion, or click makes it relevant.
@@ -331,6 +340,12 @@ failover can still request the same work concurrently.
 - A never-used provider with an existing native directory receives zero
   directory probes or watcher starts; eligible watcher attachment and baseline
   work begin only after the server listener is ready.
+- Missing-filename and periodic rescans never recurse synchronously, overlapping
+  rescans produce at most one trailing pass, and a stop during a scan publishes
+  neither events nor completed-scan metrics.
+- Two focused sessions stored in one directory own one native directory watch;
+  removing both subscriptions closes it, including when file resolution
+  completes after the final unsubscribe.
 - A late computation for an obsolete source version cannot overwrite a newer
   row or mark the newer generation fresh.
 - A write to one project leaves every other shard's generation, retained rows,

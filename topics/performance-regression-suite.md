@@ -474,6 +474,22 @@ cache budgets and scenarios. These are regression tripwires, not claims that
 the current full-array work needs optimization: recent observed p95 values
 were 0.1–0.2 ms, 0.6–3.1 ms, and 0.3–0.8 ms respectively.
 
+### 2026-08-08 watcher work bounding
+
+The eligible provider watcher no longer performs synchronous recursive
+filesystem work when `fs.watch` omits a filename or periodic reconciliation
+fires. Those rescans use asynchronous directory reads and 64-file stat batches,
+coalesce overlap into one trailing pass, preserve exact events that arrive
+during a scan, and stop publishing when the watcher lifecycle ends. Focused
+sessions in one directory now share one native watch, which closes when its
+last target leaves; late asynchronous resolution cannot recreate a watch after
+unsubscribe.
+
+This recovers the rescan and focused-watch ownership legs of P09 structurally.
+The broad activity subscription still forwards every file event to every
+subscriber. Filtering that protocol on the server remains a separate
+client/server compatibility change and is not claimed by this slice.
+
 ## Ratchet interpretation
 
 The current maximums use broad margins over the three-repetition survey and the

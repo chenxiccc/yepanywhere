@@ -8,16 +8,22 @@ import { FileWatcher } from "../../src/watcher/FileWatcher.js";
 
 interface FileWatcherTestAccess {
   rescanInProgress: boolean;
-  rescanAndEmit(reason: "fallback" | "periodic"): void;
+  rescanAndEmit(reason: "fallback" | "periodic"): Promise<void>;
+  scanDirAsync(
+    root: string,
+    index: Map<string, number>,
+    metrics: unknown,
+    lifecycleGeneration: number | null,
+  ): Promise<boolean>;
   emitEvent(filePath: string, eventType: string): void;
   handleFileEvent(eventType: string, filename: string): void;
 }
 
-function forceRescan(
+async function forceRescan(
   watcher: FileWatcher,
   reason: "fallback" | "periodic" = "fallback",
-): void {
-  (watcher as unknown as FileWatcherTestAccess).rescanAndEmit(reason);
+): Promise<void> {
+  await (watcher as unknown as FileWatcherTestAccess).rescanAndEmit(reason);
 }
 
 describe("FileWatcher", () => {
@@ -208,7 +214,7 @@ describe("FileWatcher", () => {
       rescanSlowLogThresholdMs: 60_000,
     });
 
-    forceRescan(watcher);
+    await forceRescan(watcher);
     expect(events.map((event) => event.changeType).sort()).toEqual([
       "create",
       "create",
@@ -220,7 +226,7 @@ describe("FileWatcher", () => {
     await writeFile(createPath, "{}\n");
     await rm(deletePath);
 
-    forceRescan(watcher);
+    await forceRescan(watcher);
 
     expect(events.map((event) => event.changeType).sort()).toEqual([
       "create",
@@ -277,7 +283,7 @@ describe("FileWatcher", () => {
       rescanSlowLogThresholdMs: 60_000,
     });
 
-    forceRescan(watcher);
+    await forceRescan(watcher);
 
     expect(events).toHaveLength(2);
     expect(events.every((event) => event.fileType === "agent-session")).toBe(
@@ -301,10 +307,10 @@ describe("FileWatcher", () => {
     const internals = watcher as unknown as FileWatcherTestAccess;
 
     internals.rescanInProgress = true;
-    forceRescan(watcher, "periodic");
+    await forceRescan(watcher, "periodic");
     internals.rescanInProgress = false;
 
-    forceRescan(watcher, "periodic");
+    await forceRescan(watcher, "periodic");
 
     expect(watcher.getLastRescanMetrics()).toMatchObject({
       reason: "periodic",
@@ -315,6 +321,54 @@ describe("FileWatcher", () => {
       overlapSkipsTotal: 1,
     });
     expect(watcher.getPeriodicRescanDelayMs()).toBe(200);
+  });
+
+  it("does not publish a rescan that finishes after stop", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    await mkdir(watchDir, { recursive: true });
+
+    const events: FileChangeEvent[] = [];
+    const eventBus = new EventBus();
+    eventBus.subscribe((event) => {
+      if (event.type === "file-change") events.push(event);
+    });
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "claude",
+      eventBus,
+      debounceMs: 60_000,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+    const internals = watcher as unknown as FileWatcherTestAccess;
+    let releaseScan: (() => void) | undefined;
+    const scanGate = new Promise<void>((resolve) => {
+      releaseScan = resolve;
+    });
+
+    try {
+      watcher.start();
+      await watcher.waitForInitialBaseline();
+      const scan = vi
+        .spyOn(internals, "scanDirAsync")
+        .mockImplementation(async (_root, index) => {
+          index.set(join(watchDir, "late.jsonl"), 1);
+          await scanGate;
+          return true;
+        });
+
+      const rescan = forceRescan(watcher);
+      await vi.waitFor(() => expect(scan).toHaveBeenCalledOnce());
+      watcher.stop();
+      releaseScan?.();
+      await rescan;
+
+      expect(events).toEqual([]);
+      expect(watcher.getLastRescanMetrics()).toBeNull();
+    } finally {
+      releaseScan?.();
+      watcher.stop();
+    }
   });
 
   it("backs off and recovers periodic rescan delay from duration", async () => {
@@ -335,7 +389,7 @@ describe("FileWatcher", () => {
     try {
       dateNow.mockReturnValue(1060);
       dateNow.mockReturnValueOnce(1000).mockReturnValueOnce(1060);
-      forceRescan(watcher, "periodic");
+      await forceRescan(watcher, "periodic");
 
       expect(watcher.getLastRescanMetrics()).toMatchObject({
         durationMs: 60,
@@ -348,7 +402,7 @@ describe("FileWatcher", () => {
       dateNow.mockReset();
       dateNow.mockReturnValue(2005);
       dateNow.mockReturnValueOnce(2000).mockReturnValueOnce(2005);
-      forceRescan(watcher, "periodic");
+      await forceRescan(watcher, "periodic");
 
       expect(watcher.getLastRescanMetrics()).toMatchObject({
         durationMs: 5,

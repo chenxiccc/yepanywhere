@@ -33,13 +33,18 @@ interface SessionWatchTarget {
   provider: WatchProvider | null;
   knownMtimeMs: number | null;
   knownSize: number | null;
-  watcher: fs.FSWatcher | null;
+  watchDir: string | null;
   pollTimer: NodeJS.Timeout | null;
   debounceTimer: NodeJS.Timeout | null;
   resolveRetryTimer: NodeJS.Timeout | null;
   resolving: boolean;
   checkInProgress: boolean;
   pendingCheck: ChangeCheckRequest | null;
+}
+
+interface FocusedDirectoryWatch {
+  targets: Set<SessionWatchTarget>;
+  watcher: fs.FSWatcher;
 }
 
 export interface FocusedSessionWatchRequest {
@@ -97,6 +102,7 @@ export class FocusedSessionWatchManager {
   private readonly pollMs: number;
   private readonly debounceMs: number;
   private readonly targets = new Map<string, SessionWatchTarget>();
+  private readonly directoryWatches = new Map<string, FocusedDirectoryWatch>();
   private nextSubscriberId = 1;
   private nextChangeVersion = 1;
 
@@ -162,7 +168,7 @@ export class FocusedSessionWatchManager {
       provider: null,
       knownMtimeMs: null,
       knownSize: null,
-      watcher: null,
+      watchDir: null,
       pollTimer: null,
       debounceTimer: null,
       resolveRetryTimer: null,
@@ -180,13 +186,20 @@ export class FocusedSessionWatchManager {
     try {
       const resolved = await this.resolveSessionFile(target);
       if (!resolved) {
-        this.ensureResolveRetry(target);
+        if (this.isTargetActive(target)) {
+          this.ensureResolveRetry(target);
+        }
         return;
       }
+      if (!this.isTargetActive(target)) return;
 
       this.clearResolveRetry(target);
 
-      if (target.filePath === resolved.filePath && target.watcher) {
+      if (
+        target.filePath === resolved.filePath &&
+        target.watchDir &&
+        this.directoryWatches.get(target.watchDir)?.targets.has(target)
+      ) {
         return;
       }
 
@@ -230,29 +243,9 @@ export class FocusedSessionWatchManager {
       target.knownMtimeMs = null;
       target.knownSize = null;
     }
+    if (!this.isTargetActive(target)) return;
 
-    try {
-      const watchDir = dirname(resolved.filePath);
-      target.watcher = fs.watch(watchDir, (_eventType, filename) => {
-        if (filename) {
-          const changedName = filename.toString();
-          if (changedName !== target.fileName) return;
-        }
-        const sourceObservedAtMs = Date.now();
-        this.requestCheck(target, "fs-watch", sourceObservedAtMs);
-        this.scheduleDebouncedCheck(target, "fs-watch", sourceObservedAtMs);
-      });
-      target.watcher.on("error", () => {
-        const sourceObservedAtMs = Date.now();
-        this.requestCheck(target, "fs-watch", sourceObservedAtMs);
-        this.scheduleDebouncedCheck(target, "fs-watch", sourceObservedAtMs);
-      });
-    } catch (error) {
-      console.warn(
-        `[FocusedSessionWatch] Failed to start fs.watch for ${resolved.filePath}:`,
-        error,
-      );
-    }
+    this.attachDirectoryWatch(target, dirname(resolved.filePath));
 
     target.pollTimer = setInterval(() => {
       this.requestCheck(target, "poll", Date.now());
@@ -263,6 +256,63 @@ export class FocusedSessionWatchManager {
         `[FocusedSessionWatch] Watching session=${target.sessionId} project=${target.projectId} file=${resolved.filePath}`,
       );
     }
+  }
+
+  private isTargetActive(target: SessionWatchTarget): boolean {
+    return (
+      target.subscribers.size > 0 && this.targets.get(target.key) === target
+    );
+  }
+
+  private attachDirectoryWatch(
+    target: SessionWatchTarget,
+    watchDir: string,
+  ): void {
+    let directoryWatch = this.directoryWatches.get(watchDir);
+    if (!directoryWatch) {
+      try {
+        const watcher = fs.watch(watchDir, (_eventType, filename) => {
+          this.notifyDirectoryTargets(watchDir, filename?.toString());
+        });
+        directoryWatch = { targets: new Set(), watcher };
+        watcher.on("error", () => {
+          this.notifyDirectoryTargets(watchDir);
+        });
+        this.directoryWatches.set(watchDir, directoryWatch);
+      } catch (error) {
+        console.warn(
+          `[FocusedSessionWatch] Failed to start fs.watch for ${watchDir}:`,
+          error,
+        );
+        return;
+      }
+    }
+
+    directoryWatch.targets.add(target);
+    target.watchDir = watchDir;
+  }
+
+  private notifyDirectoryTargets(watchDir: string, changedName?: string): void {
+    const directoryWatch = this.directoryWatches.get(watchDir);
+    if (!directoryWatch) return;
+    const sourceObservedAtMs = Date.now();
+    for (const target of directoryWatch.targets) {
+      if (changedName && changedName !== target.fileName) continue;
+      this.requestCheck(target, "fs-watch", sourceObservedAtMs);
+      this.scheduleDebouncedCheck(target, "fs-watch", sourceObservedAtMs);
+    }
+  }
+
+  private releaseDirectoryWatch(target: SessionWatchTarget): void {
+    const watchDir = target.watchDir;
+    target.watchDir = null;
+    if (!watchDir) return;
+    const directoryWatch = this.directoryWatches.get(watchDir);
+    if (!directoryWatch) return;
+    directoryWatch.targets.delete(target);
+    if (directoryWatch.targets.size > 0) return;
+    directoryWatch.watcher.close();
+    this.directoryWatches.delete(watchDir);
   }
 
   private scheduleDebouncedCheck(
@@ -502,10 +552,7 @@ export class FocusedSessionWatchManager {
   }
 
   private teardownRuntime(target: SessionWatchTarget): void {
-    if (target.watcher) {
-      target.watcher.close();
-      target.watcher = null;
-    }
+    this.releaseDirectoryWatch(target);
     if (target.pollTimer) {
       clearInterval(target.pollTimer);
       target.pollTimer = null;

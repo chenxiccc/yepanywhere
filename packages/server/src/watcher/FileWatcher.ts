@@ -77,6 +77,13 @@ export interface FileWatcherBaselineMetrics {
   touchedPathsPreserved: number;
 }
 
+interface FileTreeScanMetrics {
+  directoriesVisited: number;
+  filesScanned: number;
+  directoryReadErrors: number;
+  statFailures: number;
+}
+
 export type FileWatcherBaselineState =
   | "idle"
   | "scheduled"
@@ -108,6 +115,8 @@ export class FileWatcher {
   private lastRescanMetrics: FileWatcherRescanMetrics | null = null;
   private rescanOverlapSkipsSinceLast = 0;
   private rescanOverlapSkipsTotal = 0;
+  private rescanRequestedDuringRun = false;
+  private rescanTouchedPaths = new Set<string>();
   private lifecycleGeneration = 0;
   private initialBaselineState: FileWatcherBaselineState = "idle";
   private initialBaselinePromise: Promise<FileWatcherBaselineMetrics | null> | null =
@@ -207,6 +216,8 @@ export class FileWatcher {
     this.knownFileMtimes.clear();
     this.initialBaselineTouchedPaths.clear();
     this.rescanRequestedDuringBaseline = false;
+    this.rescanRequestedDuringRun = false;
+    this.rescanTouchedPaths.clear();
     this.initialBaselineState = "stopped";
 
     getLogger().info("[FileWatcher] Stopped");
@@ -322,7 +333,7 @@ export class FileWatcher {
           this.rescanRequestedDuringBaseline = false;
           setImmediate(() => {
             if (this.isCurrentLifecycle(lifecycleGeneration)) {
-              this.rescanAndEmit("fallback");
+              this.runRescan("fallback");
             }
           });
         }
@@ -333,13 +344,18 @@ export class FileWatcher {
   private async scanDirAsync(
     root: string,
     index: Map<string, number>,
-    metrics: FileWatcherBaselineMetrics,
-    lifecycleGeneration: number,
+    metrics: FileTreeScanMetrics,
+    lifecycleGeneration: number | null,
   ): Promise<boolean> {
     const pendingDirectories = [root];
     const statBatchSize = 64;
     while (pendingDirectories.length > 0) {
-      if (!this.isCurrentLifecycle(lifecycleGeneration)) return false;
+      if (
+        lifecycleGeneration !== null &&
+        !this.isCurrentLifecycle(lifecycleGeneration)
+      ) {
+        return false;
+      }
       const dir = pendingDirectories.pop();
       if (!dir) break;
       metrics.directoriesVisited += 1;
@@ -360,7 +376,12 @@ export class FileWatcher {
       }
 
       for (let offset = 0; offset < files.length; offset += statBatchSize) {
-        if (!this.isCurrentLifecycle(lifecycleGeneration)) return false;
+        if (
+          lifecycleGeneration !== null &&
+          !this.isCurrentLifecycle(lifecycleGeneration)
+        ) {
+          return false;
+        }
         const batch = files.slice(offset, offset + statBatchSize);
         metrics.filesScanned += batch.length;
         await Promise.all(
@@ -395,35 +416,6 @@ export class FileWatcher {
     return false;
   }
 
-  private scanDir(
-    dir: string,
-    index: Map<string, number>,
-    metrics?: FileWatcherRescanMetrics,
-  ): void {
-    try {
-      if (metrics) metrics.directoriesVisited += 1;
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          this.scanDir(fullPath, index, metrics);
-        } else {
-          if (metrics) metrics.filesScanned += 1;
-          try {
-            const stats = fs.statSync(fullPath);
-            index.set(fullPath, stats.mtimeMs);
-          } catch {
-            if (metrics) metrics.statFailures += 1;
-            // File may have disappeared between readdir/stat
-          }
-        }
-      }
-    } catch {
-      if (metrics) metrics.directoryReadErrors += 1;
-      // Ignore errors (e.g., permission denied)
-    }
-  }
-
   private handleFileEvent(eventType: string, filename: string): void {
     const fullPath = path.join(this.watchDir, filename);
     const duringInitialBaseline =
@@ -431,6 +423,9 @@ export class FileWatcher {
       this.initialBaselineState === "running";
     if (duringInitialBaseline) {
       this.initialBaselineTouchedPaths.add(fullPath);
+    }
+    if (this.rescanInProgress) {
+      this.rescanTouchedPaths.add(fullPath);
     }
 
     getLogger().debug(
@@ -559,10 +554,25 @@ export class FileWatcher {
     this.rescanTimer = setTimeout(
       () => {
         this.rescanTimer = null;
-        this.rescanAndEmit("fallback");
+        void this.runRescan("fallback");
       },
       Math.max(this.debounceMs * 2, 400),
     );
+  }
+
+  private runRescan(reason: FileWatcherRescanReason): Promise<void> {
+    return this.rescanAndEmit(reason).catch((error) => {
+      getLogger().error(
+        {
+          event: "file_watcher_rescan_failed",
+          provider: this.provider,
+          watchDir: this.watchDir,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "FILE_WATCHER: rescan failed",
+      );
+    });
   }
 
   private scheduleNextPeriodicRescan(): void {
@@ -573,15 +583,13 @@ export class FileWatcher {
 
     this.periodicRescanTimer = setTimeout(() => {
       this.periodicRescanTimer = null;
-      try {
-        this.rescanAndEmit("periodic");
-      } finally {
+      void this.runRescan("periodic").finally(() => {
         this.scheduleNextPeriodicRescan();
-      }
+      });
     }, this.periodicRescanCurrentMs);
   }
 
-  private rescanAndEmit(reason: FileWatcherRescanReason): void {
+  private async rescanAndEmit(reason: FileWatcherRescanReason): Promise<void> {
     if (
       this.initialBaselineState === "scheduled" ||
       this.initialBaselineState === "running"
@@ -592,6 +600,7 @@ export class FileWatcher {
       return;
     }
     if (this.rescanInProgress) {
+      this.rescanRequestedDuringRun = true;
       this.rescanOverlapSkipsSinceLast += 1;
       this.rescanOverlapSkipsTotal += 1;
       getLogger().debug(
@@ -614,8 +623,12 @@ export class FileWatcher {
       return;
     }
     this.rescanInProgress = true;
+    this.rescanRequestedDuringRun = false;
+    this.rescanTouchedPaths.clear();
     const metrics = this.createRescanMetrics(reason);
     const startedAt = Date.now();
+    const lifecycleGeneration = this.watcher ? this.lifecycleGeneration : null;
+    let completed = false;
 
     try {
       getLogger().debug(
@@ -623,7 +636,30 @@ export class FileWatcher {
       );
       const current = new Map<string, number>();
       metrics.knownFilesBefore = this.knownFileMtimes.size;
-      this.scanDir(this.watchDir, current, metrics);
+      completed = await this.scanDirAsync(
+        this.watchDir,
+        current,
+        metrics,
+        lifecycleGeneration,
+      );
+      if (
+        lifecycleGeneration !== null &&
+        !this.isCurrentLifecycle(lifecycleGeneration)
+      ) {
+        completed = false;
+      }
+      if (!completed) return;
+
+      for (const filePath of current.keys()) {
+        if (this.wasTouchedDuringRescan(filePath)) {
+          current.delete(filePath);
+        }
+      }
+      for (const [filePath, mtimeMs] of this.knownFileMtimes) {
+        if (this.wasTouchedDuringRescan(filePath)) {
+          current.set(filePath, mtimeMs);
+        }
+      }
       metrics.currentFiles = current.size;
 
       // Create/modify events
@@ -648,13 +684,39 @@ export class FileWatcher {
       this.knownFileMtimes = current;
       metrics.knownFilesAfter = this.knownFileMtimes.size;
     } finally {
-      metrics.durationMs = Date.now() - startedAt;
-      this.updatePeriodicRescanBackoff(metrics);
-      this.lastRescanMetrics = { ...metrics };
-      this.logRescanMetrics(metrics);
-      this.rescanOverlapSkipsSinceLast = 0;
+      const runAgain = this.rescanRequestedDuringRun;
+      this.rescanRequestedDuringRun = false;
       this.rescanInProgress = false;
+      this.rescanTouchedPaths.clear();
+      if (completed) {
+        metrics.durationMs = Date.now() - startedAt;
+        metrics.overlapSkipsSinceLast = this.rescanOverlapSkipsSinceLast;
+        metrics.overlapSkipsTotal = this.rescanOverlapSkipsTotal;
+        this.updatePeriodicRescanBackoff(metrics);
+        this.lastRescanMetrics = { ...metrics };
+        this.logRescanMetrics(metrics);
+        this.rescanOverlapSkipsSinceLast = 0;
+      }
+      if (
+        runAgain &&
+        (lifecycleGeneration === null ||
+          this.isCurrentLifecycle(lifecycleGeneration))
+      ) {
+        setImmediate(() => void this.runRescan("fallback"));
+      }
     }
+  }
+
+  private wasTouchedDuringRescan(filePath: string): boolean {
+    for (const touchedPath of this.rescanTouchedPaths) {
+      if (
+        filePath === touchedPath ||
+        filePath.startsWith(`${touchedPath}${path.sep}`)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private createRescanMetrics(
