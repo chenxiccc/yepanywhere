@@ -1910,6 +1910,54 @@ describe("NewSessionForm", () => {
     expect(mockStartSession).not.toHaveBeenCalled();
   });
 
+  it("expands for long-form editing and makes Ctrl+Enter start", async () => {
+    toolbarVisibilityState.projectQueue = true;
+    inboxState.active = [
+      { sessionId: "session-active", projectId: "project-1" },
+    ];
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const composer = screen.getByPlaceholderText("newSessionPlaceholder");
+    const expandButton = screen.getByRole("button", {
+      name: "newSessionComposerExpand",
+    });
+    fireEvent.click(expandButton);
+    expect(expandButton.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.keyDown(composer, {
+      key: "f",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(expandButton.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.keyDown(composer, {
+      key: "f",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(expandButton.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.change(composer, { target: { value: "edit the handoff" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(mockStartSession).not.toHaveBeenCalled();
+    expect(mockCreateProjectQueueItem).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(composer, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledTimes(1);
+    });
+    expect(mockCreateProjectQueueItem).not.toHaveBeenCalled();
+  });
+
   it("queues staged new-session files through Project Queue", async () => {
     toolbarVisibilityState.projectQueue = true;
     inboxState.active = [

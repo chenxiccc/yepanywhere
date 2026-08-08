@@ -132,6 +132,11 @@ import {
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
+  FULL_PANE_COMPOSER_SHORTCUT,
+  isFullPaneComposerShortcut,
+  resizeComposerTextarea,
+} from "../lib/composerTextarea";
+import {
   clearNewSessionPrefill,
   getNewSessionPrefill,
 } from "../lib/newSessionPrefill";
@@ -380,6 +385,11 @@ export function NewSessionForm({
   >(new Map());
   const removedPendingUploadIdsRef = useRef<Set<string>>(new Set());
   const [isStarting, setIsStarting] = useState(false);
+  const [fullPane, setFullPane] = useState(false);
+  const [fullPaneWide, setFullPaneWide] = useState(false);
+  const [fullPaneBaseWidth, setFullPaneBaseWidth] = useState<number | null>(
+    null,
+  );
   const [uploadProgress, setUploadProgress] = useState<
     Record<string, { uploaded: number; total: number }>
   >({});
@@ -422,6 +432,7 @@ export function NewSessionForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projectChooserRef = useRef<HTMLDivElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
+  const mainStackRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   const speechTurnIdRef = useRef<string | null>(null);
@@ -1677,6 +1688,38 @@ export function NewSessionForm({
     pending.restore(textarea);
   }, [message]);
 
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    void message;
+    if (!fullPane) {
+      resizeComposerTextarea(textarea, true);
+      return;
+    }
+
+    const resize = () => {
+      const { overflowed } = resizeComposerTextarea(textarea, false, true);
+      if (overflowed && !fullPaneWide) setFullPaneWide(true);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("resize", resize);
+    return () => {
+      window.removeEventListener("resize", resize);
+      window.visualViewport?.removeEventListener("resize", resize);
+    };
+  }, [fullPane, fullPaneWide, message]);
+
+  const toggleFullPane = useCallback(() => {
+    if (compact || composerMuted) return;
+    if (!fullPane) {
+      const baseWidth = mainStackRef.current?.getBoundingClientRect().width;
+      setFullPaneBaseWidth(baseWidth && baseWidth > 0 ? baseWidth : null);
+      setFullPaneWide(false);
+    }
+    setFullPane((current) => !current);
+  }, [compact, composerMuted, fullPane]);
+
   // Check for opt-in new-session prefill on mount.
   useEffect(() => {
     const prefill = getNewSessionPrefill(clientSummarySourceKey);
@@ -2439,6 +2482,22 @@ export function NewSessionForm({
   }, []);
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (isFullPaneComposerShortcut(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFullPane();
+      return;
+    }
+
+    if (fullPane && e.key === "Enter") {
+      if (e.nativeEvent.isComposing) return;
+      if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        handleStartSession();
+      }
+      return;
+    }
+
     // Escape cancels a pending post-capture wait. Active listening still
     // finalizes on Escape below.
     if (
@@ -3029,6 +3088,56 @@ export function NewSessionForm({
       </div>
       <div className="new-session-form-toolbar">
         <div className="new-session-form-toolbar-left">
+          {!compact && !composerMuted && (
+            <button
+              type="button"
+              className={`toolbar-button ${styles.fullPaneToggle}`}
+              onClick={() => {
+                toggleFullPane();
+                textareaRef.current?.focus();
+              }}
+              aria-label={t(
+                fullPane
+                  ? "newSessionComposerRestore"
+                  : "newSessionComposerExpand",
+              )}
+              aria-pressed={fullPane}
+              title={t(
+                fullPane
+                  ? "newSessionComposerRestoreTitle"
+                  : "newSessionComposerExpandTitle",
+                { shortcut: FULL_PANE_COMPOSER_SHORTCUT },
+              )}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                {fullPane ? (
+                  <>
+                    <path d="M9 3v6H3" />
+                    <path d="m3 3 6 6" />
+                    <path d="M15 21v-6h6" />
+                    <path d="m21 21-6-6" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M8 3H3v5" />
+                    <path d="m3 3 6 6" />
+                    <path d="M16 21h5v-5" />
+                    <path d="m21 21-6-6" />
+                  </>
+                )}
+              </svg>
+            </button>
+          )}
           {allowAttachments && (
             <>
               <input
@@ -3638,8 +3747,16 @@ export function NewSessionForm({
   // Full mode: form with header, input area, and mode selector
   return (
     <div
-      className="new-session-form new-session-container"
+      className={`new-session-form new-session-container${
+        fullPane ? ` ${styles.fullPane}` : ""
+      }${fullPaneWide ? ` ${styles.fullPaneWide}` : ""}`}
+      data-composer-full-pane={fullPane ? "true" : undefined}
       onKeyDownCapture={handleComposerKeyDown}
+      style={
+        fullPane && !fullPaneWide && fullPaneBaseWidth
+          ? { width: `${fullPaneBaseWidth}px`, maxWidth: "100%" }
+          : undefined
+      }
     >
       {/* A launch is introduced by its own surface — the handoff dialog has a
           title — so the new-session prompt would only contradict it. */}
@@ -3652,11 +3769,12 @@ export function NewSessionForm({
       )}
 
       <div className="new-session-top-layout">
-        <div className="new-session-main-stack">
+        <div ref={mainStackRef} className="new-session-main-stack">
           <div
             className={`new-session-input-area${
               composerMuted ? ` ${styles.mutedComposer}` : ""
             }`}
+            data-composer-shell="true"
           >
             {inputArea}
           </div>

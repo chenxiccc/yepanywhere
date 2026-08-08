@@ -68,6 +68,13 @@ novelty must never be the out-of-the-box experience.
 
 ## Known Exceptions
 
+[composer-full-pane-editing](composer-full-pane-editing.md) adds a visible
+full-pane toggle to the New Session and editable handoff composers, while the
+in-session composer initially keeps the mode keyboard-only. Authorized by
+graehl on 2026-08-08 because handoffs are likely to need substantial editing
+and the mode remains entirely user-invoked; ordinary composer behavior and
+draft submission are unchanged until the user enters it.
+
 [tooltip-interactions](tooltip-interactions.md) Themed tooltips ship default-on
 for browsers without an explicit saved mode. Explicit Native and Themed choices
 remain authoritative. Authorized by graehl on 2026-08-04 after the

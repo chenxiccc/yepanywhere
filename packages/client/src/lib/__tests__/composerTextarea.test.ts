@@ -5,6 +5,7 @@ import {
   clearTextareaContentsUndoably,
   countDraftLines,
   getInsertedTextForEdit,
+  isFullPaneComposerShortcut,
   replaceTextareaRangeUndoably,
   resizeComposerTextarea,
   scrollCollapsedTextareaToCursor,
@@ -129,6 +130,82 @@ describe("composer textarea sizing", () => {
     expect(textarea.style.overflowY).toBe("");
   });
 
+  it("keeps four spare lines while a full-pane draft grows", () => {
+    const host = document.createElement("div");
+    host.dataset.composerFullPane = "true";
+    const composer = document.createElement("div");
+    composer.dataset.composerShell = "true";
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    composer.append(textarea);
+    host.append(composer);
+    document.body.append(host);
+
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      borderBottomWidth: "0px",
+      borderTopWidth: "0px",
+      fontSize: "10px",
+      lineHeight: "20px",
+      paddingBottom: "0px",
+      paddingTop: "0px",
+    } as CSSStyleDeclaration);
+    let scrollHeight = 100;
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    vi.spyOn(host, "getBoundingClientRect").mockReturnValue(rect(240));
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(rect(70));
+    vi.spyOn(textarea, "getBoundingClientRect").mockReturnValue(rect(60));
+
+    expect(resizeComposerTextarea(textarea, false, true)).toEqual({
+      overflowed: false,
+    });
+    expect(textarea.style.height).toBe("180px");
+    expect(textarea.style.overflowY).toBe("hidden");
+
+    scrollHeight = 120;
+    expect(resizeComposerTextarea(textarea, false, true)).toEqual({
+      overflowed: false,
+    });
+    expect(textarea.style.height).toBe("200px");
+    expect(textarea.style.overflowY).toBe("hidden");
+  });
+
+  it("caps a full-pane draft at its host and then scrolls", () => {
+    const host = document.createElement("div");
+    host.dataset.composerFullPane = "true";
+    const composer = document.createElement("div");
+    composer.dataset.composerShell = "true";
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    composer.append(textarea);
+    host.append(composer);
+    document.body.append(host);
+
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      borderBottomWidth: "0px",
+      borderTopWidth: "0px",
+      fontSize: "10px",
+      lineHeight: "20px",
+      paddingBottom: "0px",
+      paddingTop: "0px",
+    } as CSSStyleDeclaration);
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      value: 220,
+    });
+    vi.spyOn(host, "getBoundingClientRect").mockReturnValue(rect(180));
+    vi.spyOn(composer, "getBoundingClientRect").mockReturnValue(rect(90));
+    vi.spyOn(textarea, "getBoundingClientRect").mockReturnValue(rect(60));
+
+    expect(resizeComposerTextarea(textarea, false, true)).toEqual({
+      overflowed: true,
+    });
+    expect(textarea.style.height).toBe("150px");
+    expect(textarea.style.overflowY).toBe("auto");
+  });
+
   it("scrolls a collapsed textarea to the cursor line", () => {
     const textarea = makeTextarea("one\ntwo\nthree\nfour\nfive");
     vi.spyOn(window, "getComputedStyle").mockReturnValue({
@@ -149,5 +226,28 @@ describe("composer textarea sizing", () => {
 
     expect(textarea.scrollTop).toBe(152);
     expect(countDraftLines("one\r\ntwo\nthree")).toBe(3);
+  });
+});
+
+describe("full-pane composer shortcut", () => {
+  it("recognizes only Ctrl+Shift+F", () => {
+    expect(
+      isFullPaneComposerShortcut({
+        key: "F",
+        ctrlKey: true,
+        shiftKey: true,
+        metaKey: false,
+        altKey: false,
+      }),
+    ).toBe(true);
+    expect(
+      isFullPaneComposerShortcut({
+        key: "f",
+        ctrlKey: true,
+        shiftKey: false,
+        metaKey: false,
+        altKey: false,
+      }),
+    ).toBe(false);
   });
 });

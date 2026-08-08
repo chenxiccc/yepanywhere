@@ -280,3 +280,5 @@
   loop-until-done stop judge lives: forked same-model turn vs side session
   (small/same-tier/cross-vendor/tool-running) vs self-declaration, on
   false-complete/false-continue rates and real billed cost.
+- composer-full-pane-editing - Viewport-bounded long-form drafting with four
+  spare lines, direct Ctrl+Enter submission, and New Session/handoff entry.

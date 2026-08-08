@@ -9,3 +9,113 @@
 .mutedComposer textarea:focus {
   outline: none;
 }
+
+.fullPaneToggle[aria-pressed="true"] {
+  color: var(--app-yep-green);
+  border-color: color-mix(
+    in srgb,
+    var(--app-yep-green) 62%,
+    var(--border-input)
+  );
+  background: color-mix(in srgb, var(--app-yep-green) 10%, transparent);
+}
+
+/* The page or modal header remains visible. Everything below it yields to the
+   editing surface until this mode is restored. */
+:global(.page-scroll-container):has(.fullPane) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+:global(.page-content-inner):has(.fullPane) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  width: 100%;
+}
+
+:global(.modal):has(.fullPane) > :global(.modal-content) {
+  overflow: hidden;
+}
+
+:global(.modal):has(.fullPane) {
+  height: calc(100dvh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+}
+
+:global(.model-switch-content):has(.fullPane) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+:global(.model-switch-content):has(.fullPane) > :not(:has(.fullPane)) {
+  display: none;
+}
+
+:global(.model-switch-content):has(.fullPane) > :has(.fullPane) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+}
+
+.fullPane {
+  display: flex;
+  align-self: center;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.fullPane > :global(.new-session-header),
+.fullPane :global(.new-session-project-slot),
+.fullPane :global(.new-session-provider-slot),
+.fullPane :global(.new-session-thinking-controls) {
+  display: none;
+}
+
+.fullPane :global(.new-session-top-layout),
+.fullPane :global(.new-session-main-stack) {
+  display: block;
+  min-height: 0;
+  width: 100%;
+}
+
+.fullPane :global(.new-session-input-area) {
+  min-height: 0;
+}
+
+.fullPane :global(.speech-draft-field textarea) {
+  max-height: 100%;
+}
+
+.fullPaneWide {
+  width: 100%;
+  max-width: none;
+}
+
+:global(.main-content-constrained)
+  :global(.page-content-inner.new-session-page-shell):has(.fullPaneWide) {
+  max-width: none;
+}
+
+:global(.model-switch-content):has(.fullPaneWide) {
+  width: 100%;
+  max-width: none;
+}
+
+@media (max-width: 600px) {
+  :global(.modal):has(.fullPane) {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+}

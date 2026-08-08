@@ -50,6 +50,7 @@ import {
   clearTextareaContentsUndoably,
   countDraftLines,
   getInsertedTextForEdit,
+  isFullPaneComposerShortcut,
   replaceTextareaRangeUndoably,
   resizeComposerTextarea,
   scrollCollapsedTextareaToCursor,
@@ -482,6 +483,7 @@ export function MessageInput({
   const keyboardViewportBaselineRef = useRef<number | null>(null);
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
+  const [fullPane, setFullPane] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const interimTranscriptRef = useRef(interimTranscript);
   interimTranscriptRef.current = interimTranscript;
@@ -1090,7 +1092,7 @@ export function MessageInput({
     if (!textarea) return;
     void text;
 
-    resizeComposerTextarea(textarea, collapsed);
+    resizeComposerTextarea(textarea, collapsed, fullPane);
 
     if (collapsed) {
       revealCollapsedTextareaCursor();
@@ -1098,7 +1100,7 @@ export function MessageInput({
     }
 
     const handleViewportResize = () => {
-      resizeComposerTextarea(textarea, false);
+      resizeComposerTextarea(textarea, false, fullPane);
     };
     window.addEventListener("resize", handleViewportResize);
     window.visualViewport?.addEventListener("resize", handleViewportResize);
@@ -1109,7 +1111,11 @@ export function MessageInput({
         handleViewportResize,
       );
     };
-  }, [collapsed, revealCollapsedTextareaCursor, text]);
+  }, [collapsed, fullPane, revealCollapsedTextareaCursor, text]);
+
+  useEffect(() => {
+    if (externalCollapsed) setFullPane(false);
+  }, [externalCollapsed]);
 
   useEffect(() => {
     if (
@@ -2021,6 +2027,29 @@ export function MessageInput({
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (isFullPaneComposerShortcut(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!externalCollapsed) {
+        setUserCollapsed(false);
+        setFullPane((current) => !current);
+      }
+      return;
+    }
+
+    if (fullPane && e.key === "Enter") {
+      if (e.nativeEvent.isComposing) return;
+      if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        if (forkSummaryMode) {
+          handleForkSummarySubmit();
+        } else {
+          void handleSubmit(undefined, "send");
+        }
+      }
+      return;
+    }
+
     // Ctrl+↑/↓: shell-style recall of prior bang commands.
     if (
       e.key === "ArrowUp" &&
@@ -2998,7 +3027,8 @@ export function MessageInput({
 
   return (
     <div
-      className="message-input-wrapper"
+      className={`message-input-wrapper${fullPane ? ` ${styles.fullPane}` : ""}`}
+      data-composer-full-pane={fullPane ? "true" : undefined}
       onKeyDownCapture={handleComposerKeyDown}
     >
       {/* Floating toggle button - only show when user can control collapse (not externally collapsed) */}
@@ -3035,6 +3065,7 @@ export function MessageInput({
             ? "has-collapsed-side-actions"
             : ""
         }`}
+        data-composer-shell="true"
       >
         <div
           className={`speech-draft-field ${

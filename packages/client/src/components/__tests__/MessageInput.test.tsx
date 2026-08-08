@@ -4233,6 +4233,41 @@ describe("MessageInput", () => {
     expectSubmission(onQueue, "follow up later", "deferred");
   });
 
+  it("uses editing-first key semantics in full-pane mode", () => {
+    const onSend = vi.fn();
+    const onQueue = vi.fn();
+    const onProjectQueue = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onSend,
+        onQueue,
+        onProjectQueue,
+        primaryActionKind: "queue",
+        supportsSteering: true,
+      },
+    );
+
+    fireEvent.change(textarea, { target: { value: "long-form draft" } });
+    fireEvent.keyDown(textarea, {
+      key: "f",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(textarea.closest('[data-composer-full-pane="true"]')).toBeTruthy();
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onQueue).not.toHaveBeenCalled();
+    expect(onProjectQueue).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    expectSubmission(onSend, "long-form draft", "direct");
+    expect(onQueue).not.toHaveBeenCalled();
+    expect(onProjectQueue).not.toHaveBeenCalled();
+  });
+
   it("leaves a button-click queue unprefixed and deferred", () => {
     const onQueue = vi.fn();
     const textarea = renderMessageInput(
