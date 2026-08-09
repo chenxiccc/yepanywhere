@@ -11,9 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLogger } from "../../src/logging/logger.js";
 import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 import type { UserMessage } from "../../src/sdk/types.js";
-import type {
-  ModelSettings,
-  SessionLaunchOptions,
+import {
+  RetryableSessionLaunchError,
+  type ModelSettings,
+  type SessionLaunchOptions,
 } from "../../src/supervisor/Supervisor.js";
 import {
   ProjectQueueScheduler,
@@ -108,6 +109,8 @@ class FakeSupervisor implements ProjectQueueSupervisor {
   resumeBlocker: Promise<void> | null = null;
   queueNextStart = false;
   startLaunchOptions: SessionLaunchOptions | undefined;
+  createLaunchOptions: SessionLaunchOptions | undefined;
+  resumeLaunchOptions: SessionLaunchOptions | undefined;
 
   constructor(private projectId: UrlProjectId) {}
 
@@ -142,8 +145,12 @@ class FakeSupervisor implements ProjectQueueSupervisor {
 
   async createSession(
     projectPath: string,
+    _permissionMode?: PermissionMode,
+    _modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<ProjectQueueDispatchResult> {
     this.createCalls.push({ projectPath });
+    this.createLaunchOptions = launchOptions;
     if (this.createError) throw this.createError;
     const process = createProcess(this.projectId, {
       id: `created-${this.createCalls.length}`,
@@ -157,8 +164,12 @@ class FakeSupervisor implements ProjectQueueSupervisor {
     sessionId: string,
     projectPath: string,
     message: UserMessage,
+    _permissionMode?: PermissionMode,
+    _modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<ProjectQueueDispatchResult> {
     this.resumeCalls.push({ sessionId, projectPath, message });
+    this.resumeLaunchOptions = launchOptions;
     await this.resumeBlocker;
     if (this.resumeError) throw this.resumeError;
     const process = createProcess(this.projectId, { sessionId });
@@ -352,6 +363,94 @@ describe("ProjectQueueScheduler", () => {
     );
   });
 
+  it("requeues a deferred new session after transient provider startup failure", async () => {
+    supervisor.queueNextStart = true;
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "new-session", provider: "codex" },
+        message: { text: "retry after Codex starts" },
+      },
+    });
+
+    await waitFor(() => expect(supervisor.startCalls).toHaveLength(1));
+    expect(supervisor.startLaunchOptions).toMatchObject({
+      retryProviderStartupFailure: true,
+      requireProviderSessionId: true,
+    });
+    await scheduler.dispose();
+
+    await supervisor.startLaunchOptions?.onRetryableFailure?.(
+      "Codex app-server socket timed out",
+    );
+
+    expect(service.listProject(projectId).items).toEqual([
+      expect.objectContaining({
+        status: "queued",
+        messagePreview: "retry after Codex starts",
+      }),
+    ]);
+  });
+
+  it("requeues immediate startup failures and pauses the third attempt", async () => {
+    await scheduler.dispose();
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 10_000,
+      blockedRetryMs: 10_000,
+    });
+    supervisor.startError = new RetryableSessionLaunchError(
+      new Error("Codex app-server socket timed out"),
+    );
+    const item = await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "new-session", provider: "codex" },
+        message: { text: "keep this prompt durable" },
+      },
+    });
+
+    const firstResult = await scheduler.promoteNow(projectId, {
+      itemId: item.id,
+      force: true,
+    });
+
+    expect(firstResult).toMatchObject({
+      promoted: false,
+      reason: "blocked",
+      itemId: item.id,
+    });
+    expect(supervisor.startLaunchOptions).toMatchObject({
+      retryProviderStartupFailure: true,
+      requireProviderSessionId: true,
+    });
+    expect(service.listProject(projectId).items).toEqual([
+      expect.objectContaining({
+        id: item.id,
+        status: "queued",
+        messagePreview: "keep this prompt durable",
+      }),
+    ]);
+
+    await expect(
+      scheduler.promoteNow(projectId, { itemId: item.id, force: true }),
+    ).resolves.toMatchObject({ promoted: false, reason: "blocked" });
+    await expect(
+      scheduler.promoteNow(projectId, { itemId: item.id, force: true }),
+    ).resolves.toMatchObject({ promoted: false, reason: "failed" });
+    expect(service.listProject(projectId).items).toEqual([
+      expect.objectContaining({
+        id: item.id,
+        status: "failed",
+        lastError: expect.stringContaining("Codex app-server socket timed out"),
+      }),
+    ]);
+  });
+
   it("materializes staged attachments before promoting a queued new session", async () => {
     await scheduler.dispose();
     const projectPath = path.join(testDir, "project");
@@ -397,6 +496,12 @@ describe("ProjectQueueScheduler", () => {
 
     expect(supervisor.startCalls).toHaveLength(0);
     expect(supervisor.createCalls).toEqual([{ projectPath }]);
+    expect(supervisor.createLaunchOptions).toMatchObject({
+      retryProviderStartupFailure: true,
+    });
+    expect(supervisor.resumeLaunchOptions).toMatchObject({
+      requireProviderSessionId: true,
+    });
     expect(supervisor.resumeCalls[0]).toMatchObject({
       sessionId: "created-session-1",
       projectPath,

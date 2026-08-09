@@ -12,9 +12,10 @@ import {
 import { getLogger } from "../logging/logger.js";
 import type { UserMessage } from "../sdk/types.js";
 import type { BusEvent, EventBus } from "../watcher/EventBus.js";
-import type {
-  ModelSettings,
-  SessionLaunchOptions,
+import {
+  RetryableSessionLaunchError,
+  type ModelSettings,
+  type SessionLaunchOptions,
 } from "../supervisor/Supervisor.js";
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { ProjectQueueService } from "./ProjectQueueService.js";
@@ -71,6 +72,7 @@ export interface ProjectQueueSupervisor extends ProjectWorkSupervisor {
     projectPath: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<ProjectQueueDispatchResult>;
   resumeSession(
     sessionId: string,
@@ -78,6 +80,7 @@ export interface ProjectQueueSupervisor extends ProjectWorkSupervisor {
     message: UserMessage,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<ProjectQueueDispatchResult>;
 }
 
@@ -538,20 +541,47 @@ export class ProjectQueueScheduler {
       };
     } catch (error) {
       const message = errorMessage(error);
-      getLogger().warn(
-        { event: "project_queue_dispatch_failed", projectId, error: message },
-        "Project queue dispatch failed",
-      );
-      if (item) {
+      const retryable = error instanceof RetryableSessionLaunchError;
+      let retryScheduled = false;
+      if (item && retryable) {
+        const updated =
+          await this.projectQueueService.recordRetryableStartupFailure(
+            projectId,
+            item.id,
+            message,
+          );
+        retryScheduled = updated?.status === "queued";
+        retryBlockedProject = retryScheduled;
+      } else if (item) {
         await this.projectQueueService.failDispatch(
           projectId,
           item.id,
           message,
         );
       }
+      if (retryScheduled) {
+        getLogger().info(
+          { event: "project_queue_dispatch_retry", projectId, error: message },
+          "Project queue provider startup will retry",
+        );
+      } else if (retryable) {
+        getLogger().warn(
+          {
+            event: "project_queue_dispatch_retry_exhausted",
+            projectId,
+            error: message,
+          },
+          "Project queue item paused after repeated provider startup failures",
+        );
+      } else {
+        getLogger().warn(
+          { event: "project_queue_dispatch_failed", projectId, error: message },
+          "Project queue dispatch failed",
+        );
+      }
       return {
         promoted: false,
-        reason: "failed",
+        reason: retryScheduled ? "blocked" : "failed",
         ...(item ? { itemId: item.id } : {}),
         error: message,
       };
@@ -640,6 +670,16 @@ export class ProjectQueueScheduler {
               reason,
             );
           },
+          onRetryableFailure: async (reason) => {
+            if (!deferred) return;
+            await this.projectQueueService.recordRetryableStartupFailure(
+              item.projectId,
+              item.id,
+              reason,
+            );
+          },
+          retryProviderStartupFailure: true,
+          requireProviderSessionId: true,
         },
       );
       deferred = isQueuedResult(result);
@@ -650,6 +690,7 @@ export class ProjectQueueScheduler {
       item.projectPath,
       permissionMode,
       modelSettings,
+      { retryProviderStartupFailure: true },
     );
     if (isQueueFullResult(created)) {
       return created;
@@ -670,6 +711,7 @@ export class ProjectQueueScheduler {
       this.toUserMessage(item, stagedAttachments),
       permissionMode,
       modelSettings,
+      { requireProviderSessionId: true },
     );
   }
 

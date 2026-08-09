@@ -183,6 +183,25 @@ describe("ProjectsPage", () => {
     expect(screen.getByTitle("Project Queue items: 1").textContent).toBe("1");
   });
 
+  it("marks projects whose first queue item is paused", () => {
+    state.queueItems = [makeItem("failed")];
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTitle("Project Queue items: 1").textContent).toBe("1");
+    expect(
+      screen.getByLabelText(
+        "Project Queue item needs attention. Review or retry it in Project Queue.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("wires recovered queue actions through the Projects page", () => {
     state.queueItems = [];
     state.recoveredSessionQueues = [makeRecoveredItem()];

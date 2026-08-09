@@ -2335,6 +2335,82 @@ export class Process {
     });
   }
 
+  /**
+   * Wait for the provider's canonical session id, rejecting startup failures
+   * instead of accepting the temporary YA id used by interactive launches.
+   */
+  waitForProviderSessionId(timeoutMs = 60_000): Promise<string> {
+    if (this.sessionIdResolved) {
+      return Promise.resolve(this._sessionId);
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      let unsubscribe: (() => void) | undefined;
+
+      const finish = (result: { id: string } | { error: Error }) => {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        unsubscribe?.();
+        if ("id" in result) {
+          resolve(result.id);
+        } else {
+          reject(result.error);
+        }
+      };
+
+      unsubscribe = this.subscribe((event) => {
+        if (event.type === "session-id-changed") {
+          finish({ id: event.newSessionId });
+          return;
+        }
+        if (
+          event.type === "message" &&
+          event.message.type === "system" &&
+          event.message.subtype === "init" &&
+          event.message.session_id
+        ) {
+          finish({ id: event.message.session_id });
+          return;
+        }
+        if (event.type === "error") {
+          finish({ error: event.error });
+          return;
+        }
+        if (event.type === "terminated") {
+          finish({
+            error:
+              event.error ??
+              new Error(
+                `Provider session terminated during startup: ${event.reason}`,
+              ),
+          });
+          return;
+        }
+        if (event.type === "complete") {
+          finish({
+            error: new Error(
+              "Provider session completed before reporting a session id",
+            ),
+          });
+        }
+      });
+
+      timeout = setTimeout(
+        () =>
+          finish({
+            error: new Error(
+              `Timed out waiting ${timeoutMs}ms for provider session id`,
+            ),
+          }),
+        timeoutMs,
+      );
+      timeout.unref?.();
+    });
+  }
+
   getProviderRuntimeStatus(): ProviderRuntimeStatus {
     return this.providerRuntimeStatus;
   }

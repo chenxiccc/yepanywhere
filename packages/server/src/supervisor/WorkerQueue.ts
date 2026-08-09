@@ -29,6 +29,12 @@ export interface QueuedRequest {
   onStarted?: (sessionId: string) => void | Promise<void>;
   /** One-shot failure hook when deferred launch work cannot start. */
   onFailed?: (reason: string) => void | Promise<void>;
+  /** One-shot hook when a transient provider startup failure should retry. */
+  onRetryableFailure?: (reason: string) => void | Promise<void>;
+  /** Classify provider startup rejection as retryable for a durable caller. */
+  retryProviderStartupFailure?: boolean;
+  /** Wait for the provider's canonical id before accepting this launch. */
+  requireProviderSessionId?: boolean;
   /** Resolver to call when request is processed or cancelled */
   resolve: (result: QueuedRequestResult) => void;
 }
@@ -102,6 +108,9 @@ export class WorkerQueue {
     modelSettings?: ModelSettings;
     onStarted?: (sessionId: string) => void | Promise<void>;
     onFailed?: (reason: string) => void | Promise<void>;
+    onRetryableFailure?: (reason: string) => void | Promise<void>;
+    retryProviderStartupFailure?: boolean;
+    requireProviderSessionId?: boolean;
   }): EnqueueResult {
     // Check queue size limit
     if (this.maxQueueSize > 0 && this.queue.length >= this.maxQueueSize) {
@@ -128,6 +137,9 @@ export class WorkerQueue {
       modelSettings: params.modelSettings,
       onStarted: params.onStarted,
       onFailed: params.onFailed,
+      onRetryableFailure: params.onRetryableFailure,
+      retryProviderStartupFailure: params.retryProviderStartupFailure,
+      requireProviderSessionId: params.requireProviderSessionId,
       queuedAt: new Date(),
       resolve: resolvePromise,
     };

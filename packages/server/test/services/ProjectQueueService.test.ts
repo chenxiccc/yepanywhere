@@ -454,4 +454,57 @@ describe("ProjectQueueService", () => {
     await service.releaseDispatchingItem(projectId, created.id);
     expect(service.listProject(projectId).items[0]?.status).toBe("queued");
   });
+
+  it("returns transient startup failures to the head and pauses the third", async () => {
+    const service = await createService();
+    const first = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "new-session", provider: "codex" },
+        message: { text: "ordinary first item" },
+      },
+    });
+    const retrying = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "new-session", provider: "codex" },
+        message: { text: "provider startup keeps failing" },
+      },
+    });
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await service.claimDispatchableItem(projectId, retrying.id);
+      const updated = await service.recordRetryableStartupFailure(
+        projectId,
+        retrying.id,
+        `startup failure ${attempt}`,
+      );
+
+      expect(
+        service.listProject(projectId).items.map((item) => item.id),
+      ).toEqual([retrying.id, first.id]);
+      expect(updated).toMatchObject({
+        status: attempt === 3 ? "failed" : "queued",
+        lastError: `startup failure ${attempt}`,
+      });
+    }
+
+    expect(service.hasDispatchableItem(projectId)).toBe(false);
+    const persisted = JSON.parse(
+      await fs.readFile(service.getFilePath(), "utf-8"),
+    ) as { items: Array<{ id: string; startupFailureCount?: number }> };
+    expect(
+      persisted.items.find((item) => item.id === retrying.id)
+        ?.startupFailureCount,
+    ).toBe(3);
+
+    await service.retryItem(projectId, retrying.id);
+    expect(service.listProject(projectId).items[0]).toMatchObject({
+      id: retrying.id,
+      status: "queued",
+      lastError: undefined,
+    });
+  });
 });

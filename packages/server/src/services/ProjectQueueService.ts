@@ -28,13 +28,19 @@ import {
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { EventBus } from "../watcher/EventBus.js";
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 const MAX_MESSAGE_PREVIEW_LENGTH = 180;
+const MAX_AUTOMATIC_STARTUP_FAILURES = 3;
 const RUNNING_DISPATCH_STATE: ProjectQueueDispatchState = { status: "running" };
+
+interface StoredProjectQueueItem extends ProjectQueueItem {
+  /** Internal consecutive provider-startup failures for this exact item. */
+  startupFailureCount?: number;
+}
 
 interface ProjectQueueState {
   version: number;
-  items: ProjectQueueItem[];
+  items: StoredProjectQueueItem[];
   dispatchState: ProjectQueueDispatchState;
 }
 
@@ -62,6 +68,12 @@ function optionalString(value: unknown, field: string): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function optionalNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
 }
 
 function errorMessage(error: unknown): string {
@@ -421,7 +433,9 @@ function normalizeCreatedFrom(
   };
 }
 
-function normalizeProjectQueueItem(raw: unknown): ProjectQueueItem | null {
+function normalizeProjectQueueItem(
+  raw: unknown,
+): StoredProjectQueueItem | null {
   if (!isRecord(raw)) return null;
   try {
     const id = optionalString(raw.id, "id") ?? randomUUID();
@@ -453,6 +467,7 @@ function normalizeProjectQueueItem(raw: unknown): ProjectQueueItem | null {
       status,
       lastError: optionalString(raw.lastError, "lastError"),
       lastAttemptAt: optionalString(raw.lastAttemptAt, "lastAttemptAt"),
+      startupFailureCount: optionalNonNegativeInteger(raw.startupFailureCount),
     };
   } catch {
     return null;
@@ -714,7 +729,7 @@ export class ProjectQueueService {
           "Cannot update an item while it is dispatching",
         );
       }
-      const updated: ProjectQueueItem = {
+      const updated: StoredProjectQueueItem = {
         ...existing,
         ...(request.target !== undefined
           ? { target: normalizeTarget(request.target) }
@@ -730,6 +745,7 @@ export class ProjectQueueService {
           : {}),
         status: existing.status === "failed" ? "queued" : existing.status,
         lastError: undefined,
+        startupFailureCount: undefined,
         updatedAt: new Date().toISOString(),
       };
       const resumedDispatch = this.resumeDispatchForItemAction();
@@ -781,10 +797,11 @@ export class ProjectQueueService {
           "Cannot retry an item while it is dispatching",
         );
       }
-      const updated: ProjectQueueItem = {
+      const updated: StoredProjectQueueItem = {
         ...existing,
         status: "queued",
         lastError: undefined,
+        startupFailureCount: undefined,
         updatedAt: new Date().toISOString(),
       };
       const resumedDispatch = this.resumeDispatchForItemAction();
@@ -880,7 +897,7 @@ export class ProjectQueueService {
       const existing = this.state.items[index]!;
       if (existing.status !== "queued") return null;
       const now = new Date().toISOString();
-      const updated: ProjectQueueItem = {
+      const updated: StoredProjectQueueItem = {
         ...existing,
         status: "dispatching",
         lastError: undefined,
@@ -904,7 +921,7 @@ export class ProjectQueueService {
       if (index === -1) return null;
       const existing = this.state.items[index]!;
       if (existing.status !== "dispatching") return null;
-      const updated: ProjectQueueItem = {
+      const updated: StoredProjectQueueItem = {
         ...existing,
         status: "queued",
         lastError: undefined,
@@ -913,6 +930,57 @@ export class ProjectQueueService {
       this.state.items[index] = updated;
       await this.save();
       this.emitChange(projectId, "released", itemId);
+      return summarizeItem(updated);
+    });
+  }
+
+  async recordRetryableStartupFailure(
+    projectId: UrlProjectId,
+    itemId: string,
+    error: string,
+  ): Promise<ProjectQueueItemSummary | null> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      const index = this.findProjectItemIndex(projectId, itemId);
+      if (index === -1) return null;
+      const existing = this.state.items[index]!;
+      if (existing.status !== "dispatching") return null;
+
+      const now = new Date().toISOString();
+      const startupFailureCount = (existing.startupFailureCount ?? 0) + 1;
+      const status =
+        startupFailureCount >= MAX_AUTOMATIC_STARTUP_FAILURES
+          ? "failed"
+          : "queued";
+      const updated: StoredProjectQueueItem = {
+        ...existing,
+        status,
+        lastError: error,
+        lastAttemptAt: now,
+        startupFailureCount,
+        updatedAt: now,
+      };
+
+      const projectIndexes = this.getProjectItemIndexes(projectId);
+      const projectItems = projectIndexes.map(
+        (projectIndex) => this.state.items[projectIndex]!,
+      );
+      const projectItemIndex = projectItems.findIndex(
+        (item) => item.id === itemId,
+      );
+      if (projectItemIndex === -1) return null;
+      projectItems.splice(projectItemIndex, 1);
+      projectItems.unshift(updated);
+      for (const [position, projectIndex] of projectIndexes.entries()) {
+        this.state.items[projectIndex] = projectItems[position]!;
+      }
+
+      await this.save();
+      this.emitChange(
+        projectId,
+        status === "failed" ? "failed" : "released",
+        itemId,
+      );
       return summarizeItem(updated);
     });
   }
@@ -945,7 +1013,7 @@ export class ProjectQueueService {
       if (index === -1) return null;
       const existing = this.state.items[index]!;
       const now = new Date().toISOString();
-      const updated: ProjectQueueItem = {
+      const updated: StoredProjectQueueItem = {
         ...existing,
         status: "failed",
         lastError: error,

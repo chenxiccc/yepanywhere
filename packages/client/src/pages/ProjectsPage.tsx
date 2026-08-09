@@ -47,9 +47,11 @@ export function ProjectsPage() {
     ? projectIds
     : EMPTY_PROJECT_QUEUE_PROJECT_IDS;
   const projectQueues = useProjectQueues(projectQueueProjectIds);
-  const queueCountByProject = useMemo(() => {
-    if (!supportsProjectQueue) return new Map<string, number>();
-    const counts = new Map<string, number>();
+  const queueStateByProject = useMemo(() => {
+    if (!supportsProjectQueue) {
+      return new Map<string, { count: number; hasFailed: boolean }>();
+    }
+    const queueState = new Map<string, { count: number; hasFailed: boolean }>();
     for (const [projectId, items] of Object.entries(
       projectQueues.queuesByProject,
     )) {
@@ -57,10 +59,13 @@ export function ProjectsPage() {
         (item) => item.status === "queued" || item.status === "failed",
       ).length;
       if (visibleCount > 0) {
-        counts.set(projectId, visibleCount);
+        queueState.set(projectId, {
+          count: visibleCount,
+          hasFailed: items.some((item) => item.status === "failed"),
+        });
       }
     }
-    return counts;
+    return queueState;
   }, [projectQueues.queuesByProject, supportsProjectQueue]);
 
   // Sort projects: those needing attention first, then by recency
@@ -352,7 +357,10 @@ export function ProjectsPage() {
                   thinkingCount={
                     inboxCountsByProject.get(project.id)?.active ?? 0
                   }
-                  queueCount={queueCountByProject.get(project.id) ?? 0}
+                  queueCount={queueStateByProject.get(project.id)?.count ?? 0}
+                  hasQueueWarning={
+                    queueStateByProject.get(project.id)?.hasFailed ?? false
+                  }
                   basePath={basePath}
                   onDeleteProject={handleDeleteProject}
                   isDeleting={deletingProjectId === project.id}

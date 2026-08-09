@@ -70,6 +70,21 @@
   flex-shrink: 0;
 }
 
+.queueWarningBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--warning-color);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--warning-color) 14%, var(--bg-surface));
+  color: var(--warning-color);
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
 .actions {
   display: flex;
   flex-direction: column;

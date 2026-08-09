@@ -11,6 +11,7 @@ import type { AgentProvider } from "../src/sdk/providers/types.js";
 import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
 import { createControllableIterator, waitFor } from "./process.test-support.js";
 import {
+  RetryableSessionLaunchError,
   type ResumeCompactionError,
   SessionConfigurationConflictError,
   Supervisor,
@@ -188,6 +189,101 @@ describe("Supervisor", () => {
       );
       expect(getAvailableModels).toHaveBeenCalledTimes(3);
       expect(startSession).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects retryably when required provider startup fails before init", async () => {
+      const abort = vi.fn();
+      const consumedMessages: unknown[] = [];
+      const provider = testProvider(async () => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          for await (const message of queue) {
+            consumedMessages.push(message);
+            yield await Promise.reject(
+              new Error("Codex app-server socket timed out"),
+            );
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort,
+        };
+      });
+      const providerSupervisor = new Supervisor({ provider });
+
+      await expect(
+        providerSupervisor.startSession(
+          "/tmp/test",
+          { text: "keep this queued" },
+          undefined,
+          undefined,
+          { requireProviderSessionId: true },
+        ),
+      ).rejects.toEqual(
+        expect.objectContaining({
+          name: RetryableSessionLaunchError.name,
+          message: expect.stringContaining("Codex app-server socket timed out"),
+        }),
+      );
+
+      expect(consumedMessages).toHaveLength(1);
+      expect(abort).toHaveBeenCalledOnce();
+      expect(providerSupervisor.getAllProcesses()).toEqual([]);
+    });
+
+    it("settles a required launch on provider identity after queuing input", async () => {
+      const abort = vi.fn();
+      const consumedMessages: unknown[] = [];
+      const provider = testProvider(async () => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          for await (const message of queue) {
+            consumedMessages.push(message);
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: "provider-session-id",
+            };
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort,
+        };
+      });
+      const providerSupervisor = new Supervisor({ provider });
+
+      const process = await providerSupervisor.startSession(
+        "/tmp/test",
+        { text: "launch after input" },
+        undefined,
+        undefined,
+        { requireProviderSessionId: true },
+      );
+
+      expect(process).toMatchObject({ sessionId: "provider-session-id" });
+      expect(consumedMessages).toHaveLength(1);
+      expect(providerSupervisor.getAllProcesses()).toEqual([process]);
+    });
+
+    it("classifies create-only provider startup rejection as retryable", async () => {
+      const provider = testProvider(async () => {
+        throw new Error("Provider rejected this launch");
+      });
+      const providerSupervisor = new Supervisor({ provider });
+
+      await expect(
+        providerSupervisor.createSession("/tmp/test", undefined, undefined, {
+          retryProviderStartupFailure: true,
+        }),
+      ).rejects.toEqual(
+        expect.objectContaining({
+          name: RetryableSessionLaunchError.name,
+          message: expect.stringContaining("Provider rejected this launch"),
+        }),
+      );
     });
 
     it("encodes projectId correctly", async () => {

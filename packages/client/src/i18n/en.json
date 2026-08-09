@@ -442,6 +442,7 @@
   "projectQueueAgeHours": "{count}h ago",
   "projectQueueAgeDays": "{count}d ago",
   "projectCardQueueCount": "Project Queue items: {count}",
+  "projectCardQueueWarning": "Project Queue item needs attention. Review or retry it in Project Queue.",
   "inboxTitle": "Inbox",
   "inboxTitleWithProject": "{project} Inbox",
   "inboxFilterProject": "Project",

@@ -23,8 +23,14 @@ instead of waiting for the whole project.
   new-session process creation; enqueue-time UI validation cannot remain launch
   authority across an arbitrary queue delay. If promotion hands a new session
   to the internal worker queue, the durable item stays `dispatching` until that
-  worker launch settles. Successful start removes it; validation or launch
-  failure moves it to `failed` with the reason, preserving the prompt for retry.
+  worker launch settles. Successful start removes it. Authoritative validation
+  or a non-retryable launch failure moves it to `failed` with the reason,
+  preserving the prompt for retry. A transient provider-startup failure before
+  the provider reports its canonical session id returns the same item to the
+  head of its project queue. The third consecutive startup failure pauses that
+  item as `failed`; Retry resets its startup-failure count. This item-local
+  pause does not set the global dispatch pause, although a failed head item
+  continues to block later work in that project by ordinary queue ordering.
   A direct Gateway caller without this durable settlement channel receives the
   existing `queue_full` response at worker capacity instead of an acceptance
   whose deferred validation failure it cannot observe.
@@ -212,6 +218,27 @@ Project Queue action. It does not activate the active-session composer's
 additional new-session action. Each binding is intentionally conditioned on
 the availability of the button it mirrors, so hiding or disabling Project
 Queue cannot silently steal Ctrl+Enter from regular queue/steer behavior.
+
+### Deferred startup-incident presentation
+
+The basic surface is deliberately small: a project card shows a separate
+warning badge in addition to its queue count whenever that project has a
+`failed` item, and the existing Project Queue row carries the error and Retry
+action. The badge is attention state, not another count. Automatic startup
+attempts do not produce repeated browser toasts.
+
+A richer state-apparent presentation is worthwhile only if field evidence says
+this intermittent edge case is common enough to justify it. A future design
+could keep the project card badge stable while expanding the queue row into a
+compact incident summary: `startup attempt 2 of 3`, last-attempt time, next
+automatic-attempt time, provider/runtime identity, and the last distinct error.
+On the third failure it would switch in place to `Paused after 3 startup
+failures` with Retry, Edit, Copy, and diagnostic-detail actions. The detail
+view could retain the three timestamped errors and whether each failure
+happened before provider session identity, making transient host trouble easy
+to distinguish from an item-specific launch configuration or provider
+rejection. It should remain item-local and avoid a modal, global banner, or
+global Project Queue pause.
 
 ## Inline Rendering
 

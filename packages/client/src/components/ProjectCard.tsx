@@ -13,6 +13,8 @@ interface ProjectCardProps {
   thinkingCount: number;
   /** Number of queued/failed Project Queue items in this project */
   queueCount?: number;
+  /** Whether a Project Queue item is paused for explicit retry */
+  hasQueueWarning?: boolean;
   /** Base path prefix for relay mode (e.g., "/remote/my-server") */
   basePath?: string;
   /** Called when the user asks to remove the project from YA lists */
@@ -48,6 +50,7 @@ export function ProjectCard({
   needsAttentionCount,
   thinkingCount,
   queueCount = 0,
+  hasQueueWarning = false,
   basePath = "",
   onDeleteProject,
   isDeleting = false,
@@ -87,6 +90,16 @@ export function ProjectCard({
                 title={t("projectCardQueueCount", { count: queueCount })}
               >
                 {queueCount}
+              </span>
+            )}
+            {hasQueueWarning && (
+              <span
+                className={styles.queueWarningBadge}
+                role="img"
+                title={t("projectCardQueueWarning")}
+                aria-label={t("projectCardQueueWarning")}
+              >
+                !
               </span>
             )}
             {project.name}

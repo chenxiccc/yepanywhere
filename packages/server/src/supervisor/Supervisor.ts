@@ -535,6 +535,17 @@ export class SessionConfigurationConflictError extends Error {
   }
 }
 
+export class RetryableSessionLaunchError extends Error {
+  readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`Provider session startup did not settle: ${detail}`);
+    this.name = "RetryableSessionLaunchError";
+    this.cause = cause;
+  }
+}
+
 interface ProcessModelConfiguration {
   nextModel: string | undefined;
   nextRequestedModel: string | null;
@@ -562,6 +573,12 @@ export interface SessionLaunchOptions {
   onStarted?: (sessionId: string) => void | Promise<void>;
   /** One-shot callback when a deferred launch cannot start. */
   onFailed?: (reason: string) => void | Promise<void>;
+  /** One-shot callback when transient provider startup should be retried. */
+  onRetryableFailure?: (reason: string) => void | Promise<void>;
+  /** Classify provider startup rejection as retryable for a durable caller. */
+  retryProviderStartupFailure?: boolean;
+  /** Do not accept a temporary YA id as successful provider startup. */
+  requireProviderSessionId?: boolean;
 }
 
 /** Error response when queue is full */
@@ -1174,6 +1191,10 @@ export class Supervisor {
           modelSettings,
           onStarted: launchOptions?.onStarted,
           onFailed: launchOptions?.onFailed,
+          onRetryableFailure: launchOptions?.onRetryableFailure,
+          retryProviderStartupFailure:
+            launchOptions?.retryProviderStartupFailure,
+          requireProviderSessionId: launchOptions?.requireProviderSessionId,
         });
         if (isQueueFullError(result)) {
           return result;
@@ -1197,6 +1218,8 @@ export class Supervisor {
         permissionMode,
         modelSettings,
         provider,
+        launchOptions?.retryProviderStartupFailure,
+        launchOptions?.requireProviderSessionId,
       );
     } else if (this.realSdk) {
       // Use real SDK if available
@@ -1272,6 +1295,10 @@ export class Supervisor {
           modelSettings,
           onStarted: launchOptions?.onStarted,
           onFailed: launchOptions?.onFailed,
+          onRetryableFailure: launchOptions?.onRetryableFailure,
+          retryProviderStartupFailure:
+            launchOptions?.retryProviderStartupFailure,
+          requireProviderSessionId: launchOptions?.requireProviderSessionId,
         });
         if (isQueueFullError(result)) {
           return result;
@@ -1292,6 +1319,9 @@ export class Supervisor {
         permissionMode,
         modelSettings,
         provider,
+        undefined,
+        launchOptions?.retryProviderStartupFailure,
+        launchOptions?.requireProviderSessionId,
       );
     }
 
@@ -1614,6 +1644,53 @@ export class Supervisor {
     this.registerProcess(process, !resumeSessionId);
 
     return process;
+  }
+
+  private async settleProviderStart<T>(
+    start: Promise<T>,
+    required: boolean,
+  ): Promise<T> {
+    try {
+      return await start;
+    } catch (error) {
+      if (required) {
+        throw new RetryableSessionLaunchError(error);
+      }
+      throw error;
+    }
+  }
+
+  private async settleProviderSessionId(
+    process: Process,
+    required: boolean,
+  ): Promise<void> {
+    if (!required) {
+      await process.waitForSessionId();
+      return;
+    }
+
+    try {
+      await process.waitForProviderSessionId();
+    } catch (error) {
+      try {
+        await process.abort();
+      } catch (abortError) {
+        getLogger().warn(
+          {
+            event: "provider_startup_abort_failed",
+            processId: process.id,
+            sessionId: process.sessionId,
+            projectId: process.projectId,
+            error:
+              abortError instanceof Error
+                ? abortError.message
+                : String(abortError),
+          },
+          "Provider startup failed and its temporary process could not be cleanly aborted",
+        );
+      }
+      throw new RetryableSessionLaunchError(error);
+    }
   }
 
   private async queueProcessMessage(
@@ -2199,6 +2276,8 @@ export class Supervisor {
     modelSettings?: ModelSettings,
     provider?: AgentProvider,
     resumeSessionId?: string,
+    retryProviderStartupFailure = false,
+    requireProviderSessionId = false,
   ): Promise<Process> {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
@@ -2246,7 +2325,7 @@ export class Supervisor {
     } as const;
 
     // Start session WITHOUT an initial message - agent will wait
-    const result = await activeProvider.startSession({
+    const start = activeProvider.startSession({
       cwd: projectPath,
       // No initialMessage - queue will block until one is pushed
       resumeSessionId,
@@ -2286,6 +2365,10 @@ export class Supervisor {
         return processHolder.process.handleToolApproval(toolName, input, opts);
       },
     });
+    const result = await this.settleProviderStart(
+      start,
+      retryProviderStartupFailure || requireProviderSessionId,
+    );
 
     const {
       iterator,
@@ -2376,7 +2459,7 @@ export class Supervisor {
 
     // Wait for the real session ID from the provider
     if (!resumeSessionId) {
-      await process.waitForSessionId();
+      await this.settleProviderSessionId(process, requireProviderSessionId);
     }
     if (sessionSandbox) {
       await this.persistProcessSandboxOrAbort(process);
@@ -2400,6 +2483,8 @@ export class Supervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
     provider?: AgentProvider,
+    retryProviderStartupFailure = false,
+    requireProviderSessionId = false,
   ): Promise<Process> {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
@@ -2449,7 +2534,7 @@ export class Supervisor {
       stateRoot: this.sandboxStateRoot,
     } as const;
 
-    const result = await activeProvider.startSession({
+    const start = activeProvider.startSession({
       cwd: projectPath,
       resumeSessionId,
       resumeSessionAt: resumeSessionId
@@ -2490,6 +2575,10 @@ export class Supervisor {
         return processHolder.process.handleToolApproval(toolName, input, opts);
       },
     });
+    const result = await this.settleProviderStart(
+      start,
+      retryProviderStartupFailure || requireProviderSessionId,
+    );
 
     const {
       iterator,
@@ -2577,20 +2666,35 @@ export class Supervisor {
     this.observeProcessEvents(process);
     activateCallbacks?.();
 
-    // Wait for the real session ID from the provider before registering
+    const queueBeforeProviderSettlement =
+      !resumeSessionId && requireProviderSessionId;
+    if (queueBeforeProviderSettlement) {
+      const queued = await this.queueProcessMessage(process, message, {
+        allowSteer: false,
+      });
+      if (!queued.success) {
+        await process.abort();
+        throw new Error(queued.error ?? "Failed to queue initial message");
+      }
+    }
+
+    // Wait for the real session ID from the provider before registering.
+    // Message-driven providers only emit their init event after input arrives.
     if (!resumeSessionId) {
-      await process.waitForSessionId();
+      await this.settleProviderSessionId(process, requireProviderSessionId);
     }
     if (sessionSandbox) {
       await this.persistProcessSandboxOrAbort(process);
     }
 
-    const queued = await this.queueProcessMessage(process, message, {
-      allowSteer: false,
-    });
-    if (!queued.success) {
-      await process.abort();
-      throw new Error(queued.error ?? "Failed to queue initial message");
+    if (!queueBeforeProviderSettlement) {
+      const queued = await this.queueProcessMessage(process, message, {
+        allowSteer: false,
+      });
+      if (!queued.success) {
+        await process.abort();
+        throw new Error(queued.error ?? "Failed to queue initial message");
+      }
     }
 
     await this.persistSuccessfulSessionBoundaryOrAbort(process);
@@ -2663,6 +2767,7 @@ export class Supervisor {
     message: UserMessage,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
     this.assertSessionSandboxSettings(modelSettings);
     await this.waitForSessionActivation(sessionId);
@@ -2768,6 +2873,9 @@ export class Supervisor {
                 sessionId,
                 message,
               });
+              if (launchOptions?.requireProviderSessionId) {
+                await this.settleProviderSessionId(existingProcess, true);
+              }
               return existingProcess;
             }
 
@@ -2776,6 +2884,9 @@ export class Supervisor {
               message,
             );
             if (result.success) {
+              if (launchOptions?.requireProviderSessionId) {
+                await this.settleProviderSessionId(existingProcess, true);
+              }
               return existingProcess;
             }
             // Failed to queue - process likely terminated, clean up and start fresh.
@@ -2828,6 +2939,7 @@ export class Supervisor {
         message,
         permissionMode,
         modelSettings,
+        launchOptions,
       );
     }
 
@@ -5858,6 +5970,8 @@ export class Supervisor {
             undefined,
             request.permissionMode,
             request.modelSettings,
+            request.retryProviderStartupFailure,
+            request.requireProviderSessionId,
           );
           process = result;
         } else {
@@ -5868,6 +5982,8 @@ export class Supervisor {
             request.sessionId,
             request.permissionMode,
             request.modelSettings,
+            false,
+            false,
           );
           process = result;
         }
@@ -5915,7 +6031,11 @@ export class Supervisor {
         });
         request.resolve({ status: "cancelled", reason });
         try {
-          await request.onFailed?.(reason);
+          const failureCallback =
+            error instanceof RetryableSessionLaunchError
+              ? request.onRetryableFailure
+              : request.onFailed;
+          await failureCallback?.(reason);
         } catch (callbackError) {
           getLogger().warn(
             {
@@ -5945,6 +6065,8 @@ export class Supervisor {
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    retryProviderStartupFailure = false,
+    requireProviderSessionId = false,
   ): Promise<Process> {
     const resolved = resumeSessionId
       ? this.resolveColdLaunchSettings(
@@ -5965,6 +6087,8 @@ export class Supervisor {
         resolved.permissionMode,
         resolved.modelSettings,
         provider,
+        retryProviderStartupFailure,
+        requireProviderSessionId,
       );
     }
 
