@@ -90,6 +90,15 @@ set legacy value supplies it, and every listed legacy key is deleted.
 
 ## Child launch markers
 
+`YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN` are YA-owned outputs for a
+supervised provider session, not operator inputs. The URL is an opaque,
+session-specific POST target; the bearer token authorizes only that session's
+wake route. Both are published beside `AGENTCTL_SESSION_ID` after the canonical
+session id is known and remain inert while wake delivery is disabled. The token
+must never be logged. A YA server launched from such a child shell strips both
+markers during config load; they are parent-session capabilities, not config
+to relay into the new server's provider children.
+
 `YEP_CLAUDE_GATEWAY=1` is a YA-owned output marker injected into both the
 Claude SDK flag-settings environment and the spawned child environment for
 `claude-gateway` launches. It distinguishes that provider route from regular
@@ -140,6 +149,7 @@ value, because the child has no other way to express one.
 | `YEP_DEFERRED_JOIN_WINDOW_S` | Max seconds between consecutive compose times for queued-while-busy turns to join into one `--------`-joined provider turn at a delivery boundary. Default 0: never join — one verbatim turn per boundary. Server setting `deferredJoinWindowSeconds` overrides ([compose-time-context-anchors](compose-time-context-anchors.md)). |
 | `YEP_COMPOSE_ANCHORS` | `1` prepends `(Ns ago)` / `(Ms later)` staleness anchors to delivered queued turns; the first anchor quotes the assistant output the composer had last seen (`had seen: "…"`). Default off: queued text reaches the provider verbatim. Server setting `composeAnchorsEnabled` overrides. |
 | `YEP_TURN_TIMESTAMPS` | `before` or `after` adds an absolute `[sent <ISO-8601>]` compose-time marker to provider-bound user turns, in the provider session-jsonl timestamp format; the client hides it in presentation. Experimental, default off. Server setting `turnTimestamps` (Message Delivery pane) overrides ([compose-time-context-anchors](compose-time-context-anchors.md)). |
+| `YEP_SESSION_WAKE_BASE_URL` | HTTP(S) server base injected into remote provider sessions for session-wake callbacks. Required when the child cannot reach the ordinary localhost listener or cannot trust YA's self-signed HTTPS certificate; credentials, query parameters, and fragments are rejected. |
 
 ### Speech credentials & engine (the `stt` module)
 | Var | Meaning |

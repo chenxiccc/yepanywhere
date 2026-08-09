@@ -1104,6 +1104,8 @@ export class CodexProvider implements AgentProvider {
    */
   private getCodexEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env };
+    delete env.YEP_SESSION_WAKE_TOKEN;
+    delete env.YEP_SESSION_WAKE_URL;
     if (this.config.baseUrl) {
       env.OPENAI_BASE_URL = this.config.baseUrl;
     }
@@ -1929,6 +1931,7 @@ export class CodexProvider implements AgentProvider {
     const codexCommand = await this.resolveCodexCommand();
     const agentctlSessionEnvBridge = createAgentctlSessionEnvBridge(
       options.resumeSessionId,
+      options.getSessionChildEnv,
     );
     const codexEnv = agentctlSessionEnvBridge.extendEnv(this.getCodexEnv());
     if (options.resumeSessionId) {
@@ -1938,6 +1941,10 @@ export class CodexProvider implements AgentProvider {
       // inherits it regardless of BASH_ENV. New sessions (id unknown until
       // thread/start) stay on the bridge alone.
       codexEnv.AGENTCTL_SESSION_ID = options.resumeSessionId;
+      Object.assign(
+        codexEnv,
+        options.getSessionChildEnv?.(options.resumeSessionId),
+      );
     }
     let reloadSafeRuntime: ReloadSafeCodexRuntimeInfo | undefined;
     try {

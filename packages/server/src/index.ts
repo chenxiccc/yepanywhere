@@ -105,6 +105,7 @@ import {
   RelayClientService,
   SecurityClientService,
   ServerSettingsService,
+  loadOrCreateSessionWakeSecret,
   SessionQueuePersistenceService,
   SharingService,
   WorkstreamService,
@@ -657,6 +658,7 @@ async function startServer() {
     );
   }
   const serverProtocol = tlsOptions ? "https" : "http";
+  const sessionWakeSecret = await loadOrCreateSessionWakeSecret(config.dataDir);
 
   // Initialize services (loads state from disk)
   // InstallService first since it generates the installation ID used by other services
@@ -971,6 +973,12 @@ async function startServer() {
     browserProfileService,
     browserSettingsBackupService,
     serverSettingsService,
+    sessionWakeSecret,
+    getSessionWakeBaseUrl: (executor) =>
+      config.sessionWakeBaseUrl ??
+      (executor || tlsOptions
+        ? undefined
+        : `http://127.0.0.1:${networkBindingService.getLocalhostPort()}/`),
     projectStoragePolicy,
     hostAwakeService,
     workstreamService,

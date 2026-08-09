@@ -127,6 +127,7 @@ import { createEnvSettingsRoutes } from "./routes/env-settings.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionIndexRoutes } from "./routes/session-index.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
+import { createSessionWakeRoutes } from "./routes/session-wake.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
 import { createSupervisorQueueRoutes } from "./routes/supervisor-queue.js";
@@ -174,6 +175,10 @@ import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
+import {
+  SessionWakeService,
+  type SessionWakeDeliveryResult,
+} from "./services/SessionWakeService.js";
 import type { SecurityClientService } from "./services/SecurityClientService.js";
 import type { WorkstreamService } from "./services/WorkstreamService.js";
 import type {
@@ -198,6 +203,7 @@ import { applyRecapOverlayToSummary } from "./sessions/recap-overlays.js";
 import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import {
+  isAutomaticSessionResumeAllowed,
   isUnownedHeartbeatResumeEligible,
   type ResumeExemptionResult,
 } from "./sessions/resume-exemption.js";
@@ -333,6 +339,10 @@ export interface AppOptions {
   browserSettingsBackupService?: BrowserSettingsBackupService;
   /** ServerSettingsService for server-wide settings */
   serverSettingsService?: ServerSettingsService;
+  /** Persistent server secret used to mint per-session wake credentials. */
+  sessionWakeSecret?: Uint8Array;
+  /** Reachable server base URL injected into local provider child shells. */
+  getSessionWakeBaseUrl?: (executor?: string) => string | undefined;
   /** Shared location resolver and transition owner for project-scoped state. */
   projectStoragePolicy?: ProjectStoragePolicy;
   /** Process-global operating-system sleep assertion policy. */
@@ -975,6 +985,75 @@ export function createApp(options: AppOptions): AppResult {
     return resolved?.summary ?? null;
   };
   let supervisor: Supervisor;
+  const sessionWakeService = options.sessionWakeSecret
+    ? new SessionWakeService({
+        secret: options.sessionWakeSecret,
+        isEnabled: (sessionId) => {
+          const sessionOverride =
+            options.sessionMetadataService?.getMetadata(
+              sessionId,
+            )?.wakeTurnsEnabled;
+          return (
+            sessionOverride ??
+            options.serverSettingsService?.getSetting("wakeTurnsEnabled") ??
+            false
+          );
+        },
+        deliver: async ({
+          sessionId,
+          text,
+        }): Promise<SessionWakeDeliveryResult> => {
+          const live = supervisor.getProcessForSession(sessionId);
+          let projectPath = live?.projectPath;
+          if (!projectPath) {
+            const metadata =
+              options.sessionMetadataService?.getMetadata(sessionId);
+            if (
+              metadata?.isArchived ||
+              !isAutomaticSessionResumeAllowed(metadata)
+            ) {
+              return {
+                accepted: false,
+                status: 409,
+                error: "Session is not eligible for automatic resume",
+              };
+            }
+            if (!metadata?.workingProjectId) {
+              return {
+                accepted: false,
+                status: 404,
+                error: "Session project could not be resolved",
+              };
+            }
+            const project = await scanner.getProject(metadata.workingProjectId);
+            if (!project) {
+              return {
+                accepted: false,
+                status: 404,
+                error: "Session project could not be resolved",
+              };
+            }
+            projectPath = project.path;
+          }
+
+          const resumed = await supervisor.resumeSession(
+            sessionId,
+            projectPath,
+            {
+              text,
+            },
+          );
+          if ("error" in resumed) {
+            return {
+              accepted: false,
+              status: 503,
+              error: "Session queue is full",
+            };
+          }
+          return { accepted: true };
+        },
+      })
+    : undefined;
   const heartbeatProviderResolutionDeps = () => ({
     readerFactory,
     codexSessionsDir,
@@ -1063,6 +1142,15 @@ export function createApp(options: AppOptions): AppResult {
           Promise.resolve()
       : undefined,
     onSuccessfulProviderSession: options.onSuccessfulProviderSession,
+    getSessionChildEnv:
+      sessionWakeService && options.getSessionWakeBaseUrl
+        ? (sessionId, executor) => {
+            const baseUrl = options.getSessionWakeBaseUrl?.(executor);
+            return baseUrl
+              ? sessionWakeService.environmentForSession(sessionId, baseUrl)
+              : {};
+          }
+        : undefined,
     // Durably record a model's real context window the moment a process
     // observes it (in the result message), independent of any client fetch.
     onContextWindowObserved: options.modelInfoService
@@ -1131,6 +1219,10 @@ export function createApp(options: AppOptions): AppResult {
     getClaudeSteerBackgroundBashSettings: () =>
       options.serverSettingsService?.getSetting("claudeSteerBackgroundBash"),
   });
+  if (sessionWakeService) {
+    app.use("/session-wake/*", hostCheckMiddleware);
+    app.route("/session-wake", createSessionWakeRoutes(sessionWakeService));
+  }
 
   // Create external session tracker if eventBus is available
   const externalTracker = options.eventBus

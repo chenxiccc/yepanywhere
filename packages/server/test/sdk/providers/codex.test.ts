@@ -653,6 +653,9 @@ describe("CodexProvider app-server lifecycle", () => {
         resumeSessionId: "thread-resume-direct",
         initialMessage: { text: "resume the agentctl session" },
         effort: "low",
+        getSessionChildEnv: (sessionId) => ({
+          YEP_SESSION_WAKE_TOKEN: `wake-${sessionId}`,
+        }),
       });
 
       consume = (async () => {
@@ -668,6 +671,9 @@ describe("CodexProvider app-server lifecycle", () => {
       );
       expect(initializeRequest?.processEnvAgentctlSessionId).toBe(
         "thread-resume-direct",
+      );
+      expect(initializeRequest?.processEnvWakeToken).toBe(
+        "wake-thread-resume-direct",
       );
     } finally {
       session?.abort();
@@ -2304,6 +2310,7 @@ function logRequest(message) {
     method: message.method,
     params: message.params,
     processEnvAgentctlSessionId: process.env.AGENTCTL_SESSION_ID ?? "",
+    processEnvWakeToken: process.env.YEP_SESSION_WAKE_TOKEN ?? "",
   };
   if (message.method === "turn/start") {
     record.agentctlSessionId = agentctlSessionIdFromBash();

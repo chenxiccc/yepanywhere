@@ -52,9 +52,11 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
   choices visible at the spawn site rather than relying on Node or test-runner
   defaults.
 - The local `agentctl` bridge preserves an existing `BASH_ENV` through
-  `YEP_ORIGINAL_BASH_ENV`, then sources YA's atomically updated session-id
-  file. Tests must cover both chaining and initially known resume ids without
-  depending on the developer's own bridge.
+  `YEP_ORIGINAL_BASH_ENV`, then sources YA's atomically updated session-env
+  file. That file publishes `AGENTCTL_SESSION_ID` plus session-scoped outputs
+  such as `YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN`. Tests must cover
+  chaining, quoting, and initially known resume ids without depending on the
+  developer's own bridge.
 
 ## Hermetic-test contracts
 
@@ -83,7 +85,8 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
 - An inherited `BASH_ENV`, `YEP_ORIGINAL_BASH_ENV`, or
   `AGENTCTL_SESSION_ID` changes an agentctl bridge test.
 - The agentctl bridge stops chaining the prior `BASH_ENV`, publishing a later
-  session id, or seeding a known resume id before provider startup.
+  session id with its wake environment, or seeding a known resume id before
+  provider startup.
 - A Bash bridge probe accidentally inherits socket-backed stdin and silently
   exercises `.bashrc` startup instead of the intended `BASH_ENV` path.
 

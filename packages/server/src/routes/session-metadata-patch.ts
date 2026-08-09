@@ -10,6 +10,7 @@ export interface SessionMetadataPatch {
   starred?: boolean;
   parentSessionId?: string | null;
   heartbeatTurnsEnabled?: boolean;
+  wakeTurnsEnabled?: boolean | null;
   heartbeatTurnsAfterMinutes?: number | null;
   heartbeatTurnText?: string | null;
   heartbeatForceAfterMinutes?: number | null;
@@ -23,6 +24,7 @@ interface SessionMetadataPatchBody {
   starred?: boolean;
   parentSessionId?: string | null;
   heartbeatTurnsEnabled?: boolean;
+  wakeTurnsEnabled?: unknown;
   heartbeatTurnsAfterMinutes?: number | null;
   heartbeatTurnText?: string | null;
   heartbeatForceAfterMinutes?: number | null;
@@ -87,6 +89,7 @@ export function parseSessionMetadataPatch(
     body.starred === undefined &&
     body.parentSessionId === undefined &&
     body.heartbeatTurnsEnabled === undefined &&
+    body.wakeTurnsEnabled === undefined &&
     body.heartbeatTurnsAfterMinutes === undefined &&
     body.heartbeatTurnText === undefined &&
     body.heartbeatForceAfterMinutes === undefined &&
@@ -100,6 +103,14 @@ export function parseSessionMetadataPatch(
     body.heartbeatForceAfterMinutes,
     "heartbeatForceAfterMinutes",
   );
+
+  if (
+    body.wakeTurnsEnabled !== undefined &&
+    body.wakeTurnsEnabled !== null &&
+    typeof body.wakeTurnsEnabled !== "boolean"
+  ) {
+    return invalidPatch("wakeTurnsEnabled must be a boolean or null");
+  }
   if (parsedHeartbeatForceAfterMinutes.error) {
     return invalidPatch(parsedHeartbeatForceAfterMinutes.error);
   }
@@ -188,6 +199,7 @@ export function parseSessionMetadataPatch(
       starred: body.starred,
       parentSessionId,
       heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
+      wakeTurnsEnabled: body.wakeTurnsEnabled as boolean | null | undefined,
       heartbeatTurnsAfterMinutes: parsedHeartbeatTurnsAfterMinutes.value,
       heartbeatTurnText,
       heartbeatForceAfterMinutes: parsedHeartbeatForceAfterMinutes.value,

@@ -168,6 +168,12 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     description:
       "Hosted YA client base URL used when generating public-share links.",
   },
+  {
+    name: "YEP_SESSION_WAKE_BASE_URL",
+    group: "Server & network",
+    description:
+      "Reachable HTTP(S) server base injected into remote session-wake clients.",
+  },
 
   // Data & profiles
   {

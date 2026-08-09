@@ -83,6 +83,8 @@ export interface SessionMetadata {
   initialPrompt?: string;
   /** Whether this session is opted in to heartbeat turns */
   heartbeatTurnsEnabled?: boolean;
+  /** Per-session session-wake override; absent inherits the server default. */
+  wakeTurnsEnabled?: boolean;
   /** Explicit Kill blocks YA-owned automatic resume without hiding history. */
   autoResumeDisabled?: boolean;
   /** Optional per-session idle threshold override in minutes */
@@ -723,6 +725,7 @@ export class SessionMetadataService {
       parentSessionKind?: "btw-aside" | null;
       forkedFromSessionId?: string | null;
       heartbeatTurnsEnabled?: boolean;
+      wakeTurnsEnabled?: boolean | null;
       autoResumeDisabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
@@ -774,6 +777,10 @@ export class SessionMetadataService {
         if (updates.heartbeatTurnsEnabled) {
           result.autoResumeDisabled = undefined;
         }
+      }
+
+      if (updates.wakeTurnsEnabled !== undefined) {
+        result.wakeTurnsEnabled = updates.wakeTurnsEnabled ?? undefined;
       }
 
       if (updates.autoResumeDisabled !== undefined) {
@@ -861,6 +868,9 @@ export class SessionMetadataService {
     if (updated.initialPrompt) cleaned.initialPrompt = updated.initialPrompt;
     if (updated.heartbeatTurnsEnabled) {
       cleaned.heartbeatTurnsEnabled = updated.heartbeatTurnsEnabled;
+    }
+    if (updated.wakeTurnsEnabled !== undefined) {
+      cleaned.wakeTurnsEnabled = updated.wakeTurnsEnabled;
     }
     if (updated.autoResumeDisabled) {
       cleaned.autoResumeDisabled = updated.autoResumeDisabled;

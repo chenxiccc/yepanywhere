@@ -542,6 +542,8 @@ export interface SessionMetadataPayload
   extends Omit<AppSessionSummary, "ownership"> {
   /** Whether this session is opted in to heartbeat turns */
   heartbeatTurnsEnabled?: boolean;
+  /** Per-session wake-turn override; absent inherits the server default. */
+  wakeTurnsEnabled?: boolean;
   /** Optional per-session idle threshold override in minutes */
   heartbeatTurnsAfterMinutes?: number;
   /** Optional per-session heartbeat text override */

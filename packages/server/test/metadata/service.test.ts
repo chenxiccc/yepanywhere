@@ -556,6 +556,23 @@ describe("SessionMetadataService", () => {
       });
     });
 
+    it("persists both session-wake override values and clears to inheritance", async () => {
+      await service.initialize();
+
+      await service.updateMetadata("session-1", { wakeTurnsEnabled: false });
+      expect(service.getMetadata("session-1")).toEqual({
+        wakeTurnsEnabled: false,
+      });
+
+      await service.updateMetadata("session-1", { wakeTurnsEnabled: true });
+      expect(service.getMetadata("session-1")).toEqual({
+        wakeTurnsEnabled: true,
+      });
+
+      await service.updateMetadata("session-1", { wakeTurnsEnabled: null });
+      expect(service.getMetadata("session-1")).toBeUndefined();
+    });
+
     it("persists an automatic-resume block until heartbeat is re-enabled", async () => {
       await service.initialize();
       await service.updateMetadata("session-1", {

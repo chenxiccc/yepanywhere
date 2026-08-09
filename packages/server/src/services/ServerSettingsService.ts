@@ -133,6 +133,8 @@ export interface ServerSettings {
   heartbeatTurnsAfterMinutes?: number;
   /** Default text queued as the synthetic heartbeat user turn */
   heartbeatTurnText?: string;
+  /** Whether authenticated external session-wake turns are enabled by default. */
+  wakeTurnsEnabled?: boolean;
   /** Anthropic-compatible endpoint for the isolated claude-gateway provider */
   claudeGatewayUrl?: string;
   /** Optional shell line that starts a loopback Claude Gateway on demand. */
@@ -235,6 +237,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   hostAwakeBatteryFloorPercent: DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   heartbeatTurnsAfterMinutes: 15,
   heartbeatTurnText: DEFAULT_HEARTBEAT_TURN_TEXT,
+  wakeTurnsEnabled: false,
   speechAudioRetention: {
     enabled: true,
     maxAgeDays: DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS,
@@ -445,6 +448,10 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     settings.sourceReviewResponseTurns <= MAX_SOURCE_REVIEW_RESPONSE_TURNS
       ? settings.sourceReviewResponseTurns
       : DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS;
+  normalized.wakeTurnsEnabled =
+    typeof settings.wakeTurnsEnabled === "boolean"
+      ? settings.wakeTurnsEnabled
+      : DEFAULT_SERVER_SETTINGS.wakeTurnsEnabled;
   return normalized;
 }
 

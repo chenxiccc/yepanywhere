@@ -1,10 +1,10 @@
 # Session Wake Turns
 
-> Proposed: an authenticated server endpoint that lets local automation —
-> first client: `agentctl` job completion — queue a real user turn into one
-> specific session, so an agent that ended its turn with detached work in
-> flight is woken by the completion event itself rather than by a timer or
-> by the user noticing the silence.
+> Implemented: an authenticated server endpoint lets automation — first
+> client: `agentctl` job completion — queue a real user turn into one specific
+> session, so an agent that ended its turn with detached work in flight is
+> woken by the completion event itself rather than by a timer or by the user
+> noticing the silence.
 
 Topic: session-wake
 
@@ -40,17 +40,18 @@ turn text.
   jobId?}`. Clients never construct the URL: they receive it fully
   formed in `YEP_SESSION_WAKE_URL` and treat it as opaque, so the
   route's exact path shape stays an implementation detail. Text is
-  capped (proposed 2000 chars) and delivered verbatim.
+  capped at 2000 characters and delivered verbatim.
 - Auth is a per-session wake token — an HMAC of the YA session id under
-  a server secret — verified statelessly with a constant-time compare.
+  a persistent, owner-readable server secret — verified statelessly with a
+  constant-time compare.
   Possession authorizes exactly one thing: queueing text into that one
   session. The cookie-auth surface is not involved, and the token never
   appears in logs.
 - Feature-gated at delivery time, default off (vanilla-defaults): a
-  global server setting enables the endpoint, and per-session
-  `wakeTurnsEnabled` metadata (shape mirroring the heartbeat settings)
-  overrides it. A POST for a disabled session is rejected with a
-  distinguishable status so the client logs once and stops.
+  global `wakeTurnsEnabled` server setting enables the endpoint, and
+  per-session `wakeTurnsEnabled` metadata overrides it (`null` clears the
+  override). A POST for a disabled session is rejected with 403; invalid
+  credentials receive 401 without consulting or revealing the feature gate.
 - Delivery ladder, server-owned:
   - live registered process → queue the turn;
   - no live process → resume-then-deliver through the same
@@ -60,17 +61,23 @@ turn text.
     required: the wake text is itself the reason to resume.
   - Explicit Kill semantics are unchanged: `autoResumeDisabled` blocks
     wake resume exactly as it blocks heartbeat resume.
-- Env injection: children of a supervised session receive
+- Env injection: provider children of a supervised session receive
   `YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN` through the same
   channels that carry `AGENTCTL_SESSION_ID` today — spawn env for
   Codex, the agentctl `BASH_ENV` bridge for Claude. Injection is
   unconditional once the server supports the feature; the settings act
   at delivery time. This keeps enabling mid-session working without a
-  process rotation, and the env inert while the feature is off.
-- Per-session rate limit (proposed: a small burst, then one wake per
-  minute); excess wakes are dropped with a logged reason, never queued
-  unboundedly. Wake handling is purely event-driven — no new server
-  polling or timers (architecture-mandates).
+  process rotation, and the env inert while the feature is off. A plain local
+  HTTP server derives the URL from its live localhost port. Remote executors
+  and self-signed-HTTPS servers require `YEP_SESSION_WAKE_BASE_URL` to name an
+  HTTP(S) origin the child can reach and trust. Claude remote resumes receive
+  the env at spawn; a brand-new remote Claude session cannot receive it after
+  its canonical id is learned because YA has no remote shell-env mutation
+  channel yet.
+- Per-session rate limit: burst capacity 3, refilling one wake per minute.
+  Excess wakes receive 429 and are logged, never queued unboundedly. The
+  in-memory buckets are LRU-bounded and refill from request timestamps, so
+  wake handling creates no polling or timers (architecture-mandates).
 
 ## The agentctl client
 
@@ -92,7 +99,10 @@ in the agentctl repo, summarized in that repo's `topics/agentctl.md`):
   writes one line to the job log and stops. Heartbeat turns, when
   enabled, remain the backstop for missed wakes.
 
-### Provider-CLI injection fallback
+### Provider-CLI injection fallback (not implemented)
+
+The shipped `agentctl` wake plugin does not invoke a provider CLI when the YA
+environment is absent. Any future fallback must obey these ownership rules:
 
 When no wake env is present but a provider session id is known, direct
 CLI injection is permitted only for providers whose CLI can append a
@@ -100,10 +110,10 @@ turn to the same durable session, and only after an unowned check —
 never against a session a live process owns, since a second writer
 forks or corrupts the transcript (session-ownership):
 
-- Codex: `codex exec resume <session-id> "<text>"` appends the turn to
-  the same rollout <!-- assumed -->; safe only when nothing owns the
-  rollout — no YA server supervising the session and no live process
-  writing the file.
+- Codex: a verified same-rollout resume command is safe only when nothing owns
+  the rollout — no YA server supervising the session and no live process
+  writing the file. The exact CLI contract must be re-verified against the
+  pinned Codex version before implementation.
 - Claude: headless `--resume` continues under a new session id, so CLI
   injection cannot wake the original session; do not use it there. The
   Claude harness has native wakeup mechanisms instead.

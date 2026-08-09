@@ -84,6 +84,8 @@ export interface Config {
   defaultPermissionMode: PermissionMode;
   /** Server port */
   port: number;
+  /** Publicly reachable HTTP(S) base used by remote session-wake clients. */
+  sessionWakeBaseUrl?: string;
   /** File to write the actual port to after binding (for test harnesses) */
   portFile: string | null;
   /** Host/interface to bind to (default: 127.0.0.1). Use 0.0.0.0 to bind all interfaces. */
@@ -209,6 +211,11 @@ export function loadConfig(): Config {
   // Snapshot the documented env for the Environment settings panel before any
   // secrets are harvested/stripped below, redacting secrets at capture time.
   captureStartupEnvSettings();
+  // These are parent-session capabilities, never YA server configuration.
+  // A server launched from an agent shell must not relay that parent's wake
+  // credential into provider children it starts later.
+  delete process.env.YEP_SESSION_WAKE_TOKEN;
+  delete process.env.YEP_SESSION_WAKE_URL;
   // Harvest private YEP_STT_* values into the private store and strip them from
   // process.env before anything can spawn a child that would inherit them.
   harvestYaModuleEnv();
@@ -328,6 +335,9 @@ export function loadConfig(): Config {
       ) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),
+    sessionWakeBaseUrl: parseSessionWakeBaseUrl(
+      process.env.YEP_SESSION_WAKE_BASE_URL,
+    ),
     portFile: process.env.PORT_FILE ?? null,
     // Host defaults to 127.0.0.1 for security and consistency (avoids IPv6 ambiguity with "localhost")
     host: process.env.HOST ?? "127.0.0.1",
@@ -443,6 +453,34 @@ export function loadConfig(): Config {
 function parseOptionalPath(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseSessionWakeBaseUrl(
+  value: string | undefined,
+): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error(
+      "YEP_SESSION_WAKE_BASE_URL must be an absolute HTTP(S) URL",
+    );
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      "YEP_SESSION_WAKE_BASE_URL must be an HTTP(S) URL without credentials, query parameters, or a fragment",
+    );
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/u, "")}/`;
+  return url.toString();
 }
 
 function parseCommaSeparatedList(value: string | undefined): string[] {

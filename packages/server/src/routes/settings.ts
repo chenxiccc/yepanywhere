@@ -545,6 +545,13 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         }
       }
 
+      if ("wakeTurnsEnabled" in body) {
+        if (typeof body.wakeTurnsEnabled !== "boolean") {
+          return c.json({ error: "wakeTurnsEnabled must be a boolean" }, 400);
+        }
+        updates.wakeTurnsEnabled = body.wakeTurnsEnabled;
+      }
+
       if ("claudeGatewayUrl" in body) {
         if (
           body.claudeGatewayUrl === undefined ||

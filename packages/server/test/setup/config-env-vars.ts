@@ -72,6 +72,9 @@ export const CONFIG_ENV_VARS = [
   "YEP_CODEX_DISABLE_LIVE_DELTAS",
   "YEP_DATA_DIR",
   "YEP_PROFILE",
+  "YEP_SESSION_WAKE_BASE_URL",
+  "YEP_SESSION_WAKE_TOKEN",
+  "YEP_SESSION_WAKE_URL",
   // Legacy names are also cleared so tests can opt into compatibility
   // explicitly without inheriting a developer shell value.
   "YA_COMPOSE_ANCHORS",

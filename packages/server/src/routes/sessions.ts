@@ -2505,6 +2505,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         initialPrompt:
           metadata?.initialPrompt ?? sessionSummary?.fullTitle ?? undefined,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
+        wakeTurnsEnabled: metadata?.wakeTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
         heartbeatForceAfterMinutes:
@@ -2965,6 +2966,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             forkedFromSessionId: metadata?.forkedFromSessionId,
             initialPrompt: metadata?.initialPrompt,
             heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
+            wakeTurnsEnabled: metadata?.wakeTurnsEnabled,
             heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
             heartbeatTurnText: metadata?.heartbeatTurnText,
             heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
@@ -3272,6 +3274,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           metadata?.forkedFromSessionId ?? session.forkedFromSessionId,
         initialPrompt: metadata?.initialPrompt ?? session.fullTitle,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
+        wakeTurnsEnabled: metadata?.wakeTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
         heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,

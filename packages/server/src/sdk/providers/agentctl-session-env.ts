@@ -4,6 +4,10 @@ import { join } from "node:path";
 
 const AGENTCTL_SESSION_ID_ENV = "AGENTCTL_SESSION_ID";
 const ORIGINAL_BASH_ENV_ENV = "YEP_ORIGINAL_BASH_ENV";
+const SESSION_WAKE_ENV_NAMES = [
+  "YEP_SESSION_WAKE_URL",
+  "YEP_SESSION_WAKE_TOKEN",
+] as const;
 
 export interface AgentctlSessionEnvBridge {
   readonly bashEnvPath: string;
@@ -18,6 +22,7 @@ function shellSingleQuote(value: string): string {
 
 export function createAgentctlSessionEnvBridge(
   initialSessionId?: string,
+  getSessionEnv?: (sessionId: string) => Record<string, string>,
 ): AgentctlSessionEnvBridge {
   const dir = mkdtempSync(join(tmpdir(), "ya-agentctl-session-"));
   const bashEnvPath = join(dir, "bash-env.sh");
@@ -40,11 +45,19 @@ export function createAgentctlSessionEnvBridge(
 
   const publishSessionId = (sessionId: string): void => {
     const tempPath = join(dir, "agentctl-session.env.tmp");
+    const sessionEnv = {
+      [AGENTCTL_SESSION_ID_ENV]: sessionId,
+      ...getSessionEnv?.(sessionId),
+    };
     writeFileSync(
       tempPath,
       [
-        `${AGENTCTL_SESSION_ID_ENV}=${shellSingleQuote(sessionId)}`,
-        `export ${AGENTCTL_SESSION_ID_ENV}`,
+        ...Object.entries(sessionEnv).flatMap(([name, value]) => {
+          if (!/^[A-Z_][A-Z0-9_]*$/u.test(name)) {
+            throw new Error(`Invalid child environment variable name: ${name}`);
+          }
+          return [`${name}=${shellSingleQuote(value)}`, `export ${name}`];
+        }),
         "",
       ].join("\n"),
       { encoding: "utf-8", mode: 0o600 },
@@ -59,13 +72,15 @@ export function createAgentctlSessionEnvBridge(
   return {
     bashEnvPath,
     extendEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-      return {
+      const extended: NodeJS.ProcessEnv = {
         ...env,
         ...(env.BASH_ENV
           ? { [ORIGINAL_BASH_ENV_ENV]: env.BASH_ENV }
           : undefined),
         BASH_ENV: bashEnvPath,
       };
+      for (const name of SESSION_WAKE_ENV_NAMES) delete extended[name];
+      return extended;
     },
     publishSessionId,
     cleanup(): void {

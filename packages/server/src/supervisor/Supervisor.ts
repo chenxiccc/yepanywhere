@@ -635,6 +635,11 @@ export interface SupervisorOptions {
   onSessionExecutor?: OnSessionExecutorCallback;
   /** Persist install-wide provider use before a live process is registered. */
   onSuccessfulProviderSession?: OnSuccessfulProviderSessionCallback;
+  /** Child environment derived from a canonical session id and executor. */
+  getSessionChildEnv?: (
+    sessionId: string,
+    executor?: string,
+  ) => Record<string, string>;
   /** Callback invoked when a process observes a model's real context window. */
   onContextWindowObserved?: (
     model: string,
@@ -709,6 +714,7 @@ export class Supervisor {
   private workerQueue: WorkerQueue;
   private onSessionExecutor?: OnSessionExecutorCallback;
   private onSuccessfulProviderSession?: OnSuccessfulProviderSessionCallback;
+  private getSessionChildEnv?: SupervisorOptions["getSessionChildEnv"];
   private onContextWindowObserved?: (
     model: string,
     contextWindow: number,
@@ -778,6 +784,7 @@ export class Supervisor {
     });
     this.onSessionExecutor = options.onSessionExecutor;
     this.onSuccessfulProviderSession = options.onSuccessfulProviderSession;
+    this.getSessionChildEnv = options.getSessionChildEnv;
     this.onContextWindowObserved = options.onContextWindowObserved;
     this.onSessionSummary = options.onSessionSummary;
     this.getHeartbeatTurnSettings = options.getHeartbeatTurnSettings;
@@ -1500,6 +1507,10 @@ export class Supervisor {
       claudeSteerBackgroundBash: this.getClaudeSteerBackgroundBashSettings?.(),
       clientName: modelSettings?.clientName,
       globalInstructions: modelSettings?.globalInstructions,
+      getSessionChildEnv: this.getSessionChildEnv
+        ? (sessionId) =>
+            this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
+        : undefined,
       promptSuggestions: promptSuggestionMode === "native",
       sessionSandbox,
       onProviderRetentionChange: () =>
@@ -2060,6 +2071,10 @@ export class Supervisor {
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
+      getSessionChildEnv: this.getSessionChildEnv
+        ? (sessionId) =>
+            this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
+        : undefined,
       promptSuggestions: promptSuggestionMode === "native",
       sessionSandbox,
       onProviderRetentionChange: () =>
@@ -2251,6 +2266,10 @@ export class Supervisor {
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
+      getSessionChildEnv: this.getSessionChildEnv
+        ? (sessionId) =>
+            this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
+        : undefined,
       promptSuggestions: promptSuggestionMode === "native",
       sessionSandbox,
       sessionSandboxOptions,
@@ -2451,6 +2470,10 @@ export class Supervisor {
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
+      getSessionChildEnv: this.getSessionChildEnv
+        ? (sessionId) =>
+            this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
+        : undefined,
       promptSuggestions: promptSuggestionMode === "native",
       sessionSandbox,
       sessionSandboxOptions,

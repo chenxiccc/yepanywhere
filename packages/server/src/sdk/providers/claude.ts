@@ -1691,7 +1691,10 @@ export class ClaudeProvider implements AgentProvider {
     const abortController = new AbortController();
     const agentctlSessionEnvBridge = options.executor
       ? null
-      : createAgentctlSessionEnvBridge(options.resumeSessionId);
+      : createAgentctlSessionEnvBridge(
+          options.resumeSessionId,
+          options.getSessionChildEnv,
+        );
     const autoCompactOverrideEnv = getClaudeAutoCompactOverrideEnv(
       options.launchCompactPercentOverride,
     );
@@ -1713,6 +1716,7 @@ export class ClaudeProvider implements AgentProvider {
         ? {
             ...configuredRemoteEnv,
             AGENTCTL_SESSION_ID: options.resumeSessionId,
+            ...options.getSessionChildEnv?.(options.resumeSessionId),
           }
         : configuredRemoteEnv;
 

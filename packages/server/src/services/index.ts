@@ -46,6 +46,12 @@ export {
   PROJECT_DIRECTORY_STORAGE_VALUES,
   TOOL_RESULT_MEDIA_PRESERVATION_VALUES,
 } from "./ServerSettingsService.js";
+export {
+  SessionWakeService,
+  loadOrCreateSessionWakeSecret,
+  type SessionWakeDeliveryResult,
+  type SessionWakeRequest,
+} from "./SessionWakeService.js";
 
 export {
   HostAwakeService,

@@ -361,3 +361,37 @@ describe("loadConfig codex paths", () => {
     expect(config.shareXaiSttApiKeyWithClients).toBe(true);
   });
 });
+
+describe("loadConfig session wake base URL", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("normalizes an explicitly reachable HTTP(S) base", async () => {
+    vi.stubEnv("YEP_SESSION_WAKE_BASE_URL", "https://ya.example/wake-root");
+    const { loadConfig } = await import("../src/config.js");
+
+    expect(loadConfig().sessionWakeBaseUrl).toBe(
+      "https://ya.example/wake-root/",
+    );
+  });
+
+  it("rejects a base URL containing credentials", async () => {
+    vi.stubEnv("YEP_SESSION_WAKE_BASE_URL", "https://token@ya.example/");
+    const { loadConfig } = await import("../src/config.js");
+
+    expect(() => loadConfig()).toThrow("YEP_SESSION_WAKE_BASE_URL");
+  });
+
+  it("strips inherited parent-session wake capabilities", async () => {
+    vi.stubEnv("YEP_SESSION_WAKE_URL", "http://parent.invalid/wake");
+    vi.stubEnv("YEP_SESSION_WAKE_TOKEN", "parent-token");
+    const { loadConfig } = await import("../src/config.js");
+
+    loadConfig();
+
+    expect(process.env.YEP_SESSION_WAKE_URL).toBeUndefined();
+    expect(process.env.YEP_SESSION_WAKE_TOKEN).toBeUndefined();
+  });
+});

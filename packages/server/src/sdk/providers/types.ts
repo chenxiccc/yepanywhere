@@ -127,6 +127,8 @@ export interface StartSessionOptions {
   executor?: string;
   /** Environment variables to set on remote (for testing: CLAUDE_SESSIONS_DIR) */
   remoteEnv?: Record<string, string>;
+  /** Session-scoped environment published after the canonical id is known. */
+  getSessionChildEnv?: (sessionId: string) => Record<string, string>;
   /** Global instructions to append to system prompt (from server settings) */
   globalInstructions?: string;
   /** Native prompt-suggestion protocol opt-in for providers that support it. */

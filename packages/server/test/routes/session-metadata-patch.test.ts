@@ -17,6 +17,7 @@ describe("parseSessionMetadataPatch", () => {
       starred: false,
       parentSessionId: " parent ",
       heartbeatTurnsEnabled: true,
+      wakeTurnsEnabled: false,
       heartbeatTurnsAfterMinutes: 0,
       heartbeatTurnText: "x".repeat(250),
       heartbeatForceAfterMinutes: 5,
@@ -32,6 +33,7 @@ describe("parseSessionMetadataPatch", () => {
         starred: false,
         parentSessionId: "parent",
         heartbeatTurnsEnabled: true,
+        wakeTurnsEnabled: false,
         heartbeatTurnsAfterMinutes: null,
         heartbeatTurnText: "x".repeat(200),
         heartbeatForceAfterMinutes: 5,
@@ -45,6 +47,7 @@ describe("parseSessionMetadataPatch", () => {
     expect(
       parseSessionMetadataPatch({
         parentSessionId: "",
+        wakeTurnsEnabled: null,
         heartbeatTurnsAfterMinutes: null,
         heartbeatTurnText: "",
         heartbeatForceAfterMinutes: 0,
@@ -55,6 +58,7 @@ describe("parseSessionMetadataPatch", () => {
       ok: true,
       patch: {
         parentSessionId: null,
+        wakeTurnsEnabled: null,
         heartbeatTurnsAfterMinutes: null,
         heartbeatTurnText: null,
         heartbeatForceAfterMinutes: null,
@@ -93,6 +97,11 @@ describe("parseSessionMetadataPatch", () => {
       ok: false,
       status: 400,
       error: "parentSessionId must be a string or null",
+    });
+    expect(parseSessionMetadataPatch({ wakeTurnsEnabled: "yes" })).toEqual({
+      ok: false,
+      status: 400,
+      error: "wakeTurnsEnabled must be a boolean or null",
     });
     expect(
       parseSessionMetadataPatch({ promptSuggestionMode: "helper" }),

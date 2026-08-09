@@ -106,6 +106,23 @@ describe("Settings Routes", () => {
   });
 
   describe("PUT /", () => {
+    it("persists the default-off session wake gate", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wakeTurnsEnabled: true }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        wakeTurnsEnabled: true,
+      });
+    });
+
     it("returns the effective idle-reap grace before it is persisted", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
