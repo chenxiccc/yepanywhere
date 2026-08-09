@@ -488,8 +488,16 @@ describe("api server metadata facade", () => {
         body: request?.body,
       })),
     ).toEqual([
-      { url: "/api/version", method: "GET", body: undefined },
-      { url: "/api/version?fresh=1", method: "GET", body: undefined },
+      {
+        url: "/api/version?capabilities=compact-v1",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/version?fresh=1&capabilities=compact-v1",
+        method: "GET",
+        body: undefined,
+      },
       { url: "/api/server-info", method: "GET", body: undefined },
       { url: "/api/env-settings", method: "GET", body: undefined },
       {

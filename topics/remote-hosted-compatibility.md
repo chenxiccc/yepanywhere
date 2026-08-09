@@ -133,9 +133,11 @@ the existing compatibility metadata.
 - Capability flags remain exact feature gates. A client must still hide or
   degrade individual server-backed actions when their required capability is
   missing.
-- Server package semver remains useful for update guidance and display, but it
-  should not be the primary client/server compatibility contract because site
-  and server releases use different version systems.
+- Server package semver carries only registry-declared monotonic capability
+  implication and remains useful for update guidance and display. It is not a
+  broad compatibility contract: optional capability bits and protocol levels
+  still carry facts that release ordering cannot express, and site/server
+  releases use different version systems.
 
 ## Client-advertised transport formats
 

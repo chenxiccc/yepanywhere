@@ -8,6 +8,7 @@ import {
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
+  serverHasCapability,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -276,6 +277,26 @@ describe("GET /version", () => {
     expect(json.capabilities).toContain(VOICE_INPUT_CAPABILITY);
     expect(json.voiceBackends).toEqual(["ya-dummy"]);
     expect(json.voiceBackendCapabilities).toEqual({ "ya-dummy": {} });
+  });
+
+  it("negotiates version-implied and optional-bit capabilities", async () => {
+    mockFetch(() => new Response(null, { status: 204 }));
+
+    const { createVersionRoutes } = await importVersion();
+    const routes = createVersionRoutes({
+      getSessionSandboxAvailability: async () => ({
+        state: "unsupported-platform",
+        platform: "darwin",
+      }),
+    });
+    const response = await routes.request("/?capabilities=compact-v1");
+    const version = await response.json();
+
+    expect(version.capabilities).toBeUndefined();
+    expect(version.optionalCapabilityBits).toEqual([[0, 1]]);
+    expect(serverHasCapability(version, PROJECT_QUEUE_CAPABILITY)).toBe(true);
+    expect(serverHasCapability(version, VOICE_INPUT_CAPABILITY)).toBe(true);
+    expect(serverHasCapability(version, DEVICE_BRIDGE_CAPABILITY)).toBe(false);
   });
 
   it("reports configured speech backends while validation is pending", async () => {

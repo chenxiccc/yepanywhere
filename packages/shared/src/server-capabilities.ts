@@ -3,8 +3,66 @@ import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
 
 export type ServerCapabilityKind = "permanent" | "transitional";
 
+export const OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS = {
+  voiceInput: { name: "voiceInput", index: 0, introducedIn: "0.6.0" },
+  deviceBridgeAvailable: {
+    name: "deviceBridge-available",
+    index: 1,
+    introducedIn: "0.6.0",
+  },
+  deviceBridge: { name: "deviceBridge", index: 2, introducedIn: "0.6.0" },
+  deviceBridgeDownload: {
+    name: "deviceBridge-download",
+    index: 3,
+    introducedIn: "0.6.0",
+  },
+  deviceBridgeUpdate: {
+    name: "deviceBridge-update",
+    index: 4,
+    introducedIn: "0.6.0",
+  },
+  browserSettingsBackup: {
+    name: "browser-settings-backup",
+    index: 5,
+    introducedIn: "0.6.3",
+  },
+  securityClientAudit: {
+    name: SECURITY_CLIENT_AUDIT_CAPABILITY,
+    index: 6,
+    introducedIn: "0.7.1",
+  },
+  reloadSafeCodexRuntime: {
+    name: "reload-safe-codex-runtime",
+    index: 7,
+    introducedIn: "0.7.1",
+  },
+  sessionSandboxing: {
+    name: "session-sandboxing",
+    index: 8,
+    introducedIn: "0.7.1",
+  },
+} as const;
+
+export type OptionalServerCapabilityBitset = readonly (readonly [
+  wordIndex: number,
+  bits: number,
+])[];
+
+export interface CompactServerCapabilityAdvertisement {
+  optionalCapabilityBits: OptionalServerCapabilityBitset;
+  capabilityExtensions?: readonly string[];
+}
+
+export type ServerCapabilityAdvertisement =
+  | { kind: "version-implied" }
+  | { kind: "optional-bit"; index: number }
+  | { kind: "scoped" };
+
 export interface ServerCapabilitySource {
+  current?: string;
   capabilities?: readonly string[];
+  optionalCapabilityBits?: OptionalServerCapabilityBitset;
+  capabilityExtensions?: readonly string[];
 }
 
 export interface ServerCapabilityPermanentLifecycle {
@@ -36,6 +94,7 @@ export interface ServerCapabilityDefinition {
     | "speech";
   description: string;
   introducedIn: string;
+  advertisement: ServerCapabilityAdvertisement;
   clientFallback: string;
   serverContract?: {
     routes?: readonly string[];
@@ -60,6 +119,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "remoteAccess",
     introducedIn: "0.7.1",
+    advertisement: { kind: "scoped" },
     description:
       "Secret-authorized metadata selects sequential pull transfer for one immutable frozen session: at most 256 chunks of 256 KiB, with 64 MiB compressed and decompressed ceilings.",
     clientFallback:
@@ -85,6 +145,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "remoteAccess",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server exposes compact authenticated inventory and bearer-link revocation independently from public-share creation readiness.",
     clientFallback:
@@ -113,6 +174,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "rendering",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server resolves governing project glossaries, returns compiled phrase automata, and streams project glossary-path changes.",
     clientFallback:
@@ -142,6 +204,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "sessions",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server reports a session-collection generation and answers a conditional global session read with no-change instead of re-walking every project.",
     clientFallback:
@@ -166,6 +229,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "settings",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server defaults project-scoped YA state to its data directory, supports explicit project-local opt-in, and reconciles revisioned mutable state before changing modes.",
     clientFallback:
@@ -186,6 +250,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "settings",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server exposes a live-configurable best-effort grace before unviewed, verified-idle provider processes may be reaped.",
     clientFallback:
@@ -206,6 +271,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "settings",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server loads tool-result images on demand by default and can preserve new live results when explicitly enabled.",
     clientFallback:
@@ -226,6 +292,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.6.0",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports project source-control status summaries for the Source Control page and sidebar entry.",
     clientFallback: "Hide Source Control entry points.",
@@ -243,6 +310,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.6.0",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports the enhanced Source Control page, including file summaries, branch metadata, and recent commits.",
     clientFallback: "Show the Source Control upgrade/unsupported state.",
@@ -264,6 +332,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.6.0",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports explicit remote fetch/check for Source Control status.",
     clientFallback: "Hide remote-check controls.",
@@ -281,6 +350,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.6.0",
+    advertisement: { kind: "version-implied" },
     description: "Server supports Source Control pull actions.",
     clientFallback: "Hide pull controls.",
     serverContract: {
@@ -297,6 +367,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.6.0",
+    advertisement: { kind: "version-implied" },
     description: "Server supports Source Control push/publish actions.",
     clientFallback: "Hide push controls.",
     serverContract: {
@@ -313,6 +384,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.6.0",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports read-only Source Control integration-option analysis for diverged branches.",
     clientFallback: "Hide automatic integration-option controls.",
@@ -330,6 +402,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server reports the last YA session observed editing each still-dirty Source Control path.",
     clientFallback:
@@ -352,6 +425,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports the commit/file browser and server-owned source-review workflow.",
     clientFallback:
@@ -390,6 +464,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports captured source-review sites, durable submissions, outcomes, and unread review responses.",
     clientFallback:
@@ -433,6 +508,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "gitStatus",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports ignore-whitespace rendering and direct selected-revision-to-HEAD comparisons in Source Control.",
     clientFallback:
@@ -470,6 +546,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "localAccess",
     introducedIn: "0.6.0",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports configuring approval audit-log persistence from Local Access settings.",
     clientFallback:
@@ -489,6 +566,11 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "security",
     introducedIn: "0.7.1",
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.securityClientAudit.index,
+    },
     description:
       "Server supports signed security-client continuity, bounded audit history, and revocation.",
     clientFallback:
@@ -517,6 +599,11 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "settings",
     introducedIn: "0.6.3",
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.browserSettingsBackup.index,
+    },
     description:
       "Server stores one explicit backup of portable browser settings for save/load controls.",
     clientFallback: "Hide browser settings save/load controls.",
@@ -537,6 +624,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "providers",
     introducedIn: "0.6.3",
+    advertisement: { kind: "version-implied" },
     description:
       "Server persists opt-in previous/custom Claude model ids and exposes the maintained optional catalog.",
     clientFallback: "Hide the Additional models provider setting.",
@@ -567,6 +655,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "providers",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server can persist a Claude LLM-gateway URL and expose its models as an isolated Claude Gateway provider.",
     clientFallback:
@@ -590,6 +679,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "providers",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server can persist and run an explicit shell command when a configured loopback Claude Gateway has no TCP listener.",
     clientFallback:
@@ -613,6 +703,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "providers",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server can persist whether Claude Gateway launches deny Claude Code's Agent tool.",
     clientFallback:
@@ -636,6 +727,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "providers",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server exposes normalized read-only provider subscription and rate-limit windows.",
     clientFallback:
@@ -658,6 +750,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "providers",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server persists the default-off Codex reload-safe-session setting and exposes the restart action used to apply it.",
     clientFallback:
@@ -682,6 +775,11 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "providers",
     introducedIn: "0.7.1",
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.reloadSafeCodexRuntime.index,
+    },
     description:
       "This Linux server is running under a usable lifecycle host that can retain eligible Codex runtimes across a Hono reload.",
     clientFallback:
@@ -700,6 +798,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "localAccess",
     introducedIn: "0.6.3",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports always-on local `!!` shell commands, completions, and persisted bang-command history; the top-level history view stays behind an explicit default-off setting.",
     clientFallback: "Hide bang-command entry points and composer routing.",
@@ -727,6 +826,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "remoteAccess",
     introducedIn: "0.6.3",
+    advertisement: { kind: "version-implied" },
     description:
       "Server persists an optional visual marker identifying the current YA host.",
     clientFallback: "Hide host identity settings and render no host marker.",
@@ -745,6 +845,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "remoteAccess",
     introducedIn: "0.6.3",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports process-lifetime host-awake settings and status discovery.",
     clientFallback: "Hide host-awake settings.",
@@ -773,6 +874,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "localAccess",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server can report minimized host metrics for YA-owned and independently launched provider process trees.",
     clientFallback:
@@ -803,6 +905,10 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "localAccess",
     introducedIn: "0.7.1",
+    advertisement: {
+      kind: "optional-bit",
+      index: OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.sessionSandboxing.index,
+    },
     description:
       "Server currently has a usable local backend for accepting, persisting, enforcing, and reporting the default-off YA session filesystem sandbox selection.",
     clientFallback:
@@ -851,6 +957,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "localAccess",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server reports the local session-sandbox backend preflight state independently from launch-time enforcement.",
     clientFallback:
@@ -870,6 +977,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "projectQueue",
     introducedIn: "0.5.0",
+    advertisement: { kind: "version-implied" },
     description:
       "Server supports durable project-scoped queue creation, listing, mutation, dispatch pause/resume, and promotion.",
     clientFallback: "Hide Project Queue entry points.",
@@ -899,6 +1007,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "settings",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server persists project-scoped heartbeat defaults and recent heartbeat messages, then seeds new session metadata from the effective project-to-global values.",
     clientFallback:
@@ -930,6 +1039,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "sessions",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server session summaries identify manual resume exemptions so recent interrupted sessions can expose a safe message-less Resume action.",
     clientFallback:
@@ -954,6 +1064,7 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "projectQueue",
     introducedIn: "0.6.3",
+    advertisement: { kind: "version-implied" },
     description:
       "Server accepts and persists the active-composer new-session Project Queue shortcut presence setting.",
     clientFallback:
@@ -975,6 +1086,10 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "speech",
     introducedIn: "0.6.0",
+    advertisement: {
+      kind: "optional-bit",
+      index: OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.voiceInput.index,
+    },
     description:
       "Server permits voice input features and may expose server-routed speech backends.",
     clientFallback:
@@ -1004,6 +1119,11 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "deviceBridge",
     introducedIn: "0.6.0",
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.deviceBridgeAvailable.index,
+    },
     description:
       "Server recognizes the device bridge feature and can surface device settings or setup state.",
     clientFallback: "Hide device bridge settings and navigation.",
@@ -1021,6 +1141,10 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "deviceBridge",
     introducedIn: "0.6.0",
+    advertisement: {
+      kind: "optional-bit",
+      index: OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.deviceBridge.index,
+    },
     description:
       "Server has an installed device bridge runtime and device routes can be used.",
     clientFallback: "Hide live device controls.",
@@ -1044,6 +1168,11 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "deviceBridge",
     introducedIn: "0.6.0",
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.deviceBridgeDownload.index,
+    },
     description:
       "Server can download or update managed device bridge runtime dependencies.",
     clientFallback: "Hide device bridge download/update prompts.",
@@ -1062,6 +1191,11 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "deviceBridge",
     introducedIn: "0.6.0",
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.deviceBridgeUpdate.index,
+    },
     description:
       "Server reports an available update for managed device bridge runtime dependencies.",
     clientFallback:
@@ -1081,6 +1215,7 @@ export const SERVER_CAPABILITIES = {
     kind: "transitional",
     area: "sessions",
     introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
     description:
       "Server resolves Clone and direct Fork requests at real completed user-turn boundaries.",
     clientFallback:
@@ -1200,10 +1335,138 @@ export const DEVICE_BRIDGE_DOWNLOAD_CAPABILITY =
 export const DEVICE_BRIDGE_UPDATE_CAPABILITY =
   SERVER_CAPABILITIES.deviceBridgeUpdate.name;
 
+const SERVER_CAPABILITY_DEFINITIONS_BY_NAME = new Map<
+  string,
+  ServerCapabilityDefinition
+>(
+  Object.values(SERVER_CAPABILITIES).map((definition) => [
+    definition.name,
+    definition,
+  ]),
+);
+
+export function encodeOptionalServerCapabilityBits(
+  capabilities: readonly string[],
+): OptionalServerCapabilityBitset {
+  const words = new Map<number, number>();
+  for (const name of capabilities) {
+    const advertisement =
+      SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name)?.advertisement;
+    if (advertisement?.kind !== "optional-bit") continue;
+
+    const wordIndex = Math.floor(advertisement.index / 32);
+    const mask = 2 ** (advertisement.index % 32);
+    const current = words.get(wordIndex) ?? 0;
+    if (Math.floor(current / mask) % 2 === 0) {
+      words.set(wordIndex, current + mask);
+    }
+  }
+
+  return [...words.entries()].sort(([left], [right]) => left - right);
+}
+
+export function encodeCompactServerCapabilities(
+  capabilities: readonly string[],
+  currentVersion: string,
+): CompactServerCapabilityAdvertisement {
+  const capabilityExtensions = capabilities.filter((name) => {
+    const definition = SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name);
+    return (
+      !definition ||
+      (definition.advertisement.kind === "version-implied" &&
+        !isVersionAtLeast(currentVersion, definition.introducedIn)) ||
+      definition.advertisement.kind === "scoped"
+    );
+  });
+  return {
+    optionalCapabilityBits: encodeOptionalServerCapabilityBits(capabilities),
+    ...(capabilityExtensions.length > 0 ? { capabilityExtensions } : {}),
+  };
+}
+
 export function serverHasCapability(
   source: ServerCapabilitySource | null | undefined,
   capability: ServerCapabilityDefinition | ServerCapabilityName | string,
 ): boolean {
   const name = typeof capability === "string" ? capability : capability.name;
-  return source?.capabilities?.includes(name) ?? false;
+  if (
+    source?.capabilities?.includes(name) ||
+    source?.capabilityExtensions?.includes(name)
+  ) {
+    return true;
+  }
+
+  const definition =
+    typeof capability === "string"
+      ? SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name)
+      : capability;
+  if (!definition) return false;
+
+  if (definition.advertisement.kind === "version-implied") {
+    return isVersionAtLeast(source?.current, definition.introducedIn);
+  }
+  if (definition.advertisement.kind === "optional-bit") {
+    return optionalCapabilityBitIsSet(
+      source?.optionalCapabilityBits,
+      definition.advertisement.index,
+    );
+  }
+  return false;
+}
+
+function optionalCapabilityBitIsSet(
+  bitset: OptionalServerCapabilityBitset | undefined,
+  index: number,
+): boolean {
+  const wordIndex = Math.floor(index / 32);
+  const mask = 2 ** (index % 32);
+  for (const [candidateWordIndex, bits] of bitset ?? []) {
+    if (
+      candidateWordIndex === wordIndex &&
+      Number.isSafeInteger(bits) &&
+      bits >= 0 &&
+      bits <= 0xffff_ffff
+    ) {
+      return Math.floor(bits / mask) % 2 === 1;
+    }
+  }
+  return false;
+}
+
+function isVersionAtLeast(
+  current: string | null | undefined,
+  introducedIn: string,
+): boolean {
+  const candidate = parseCapabilityVersion(current);
+  const baseline = parseCapabilityVersion(introducedIn);
+  if (!candidate || !baseline) return false;
+
+  for (const index of [0, 1, 2] as const) {
+    if (candidate.parts[index] !== baseline.parts[index]) {
+      return candidate.parts[index] > baseline.parts[index];
+    }
+  }
+
+  if (candidate.prerelease === null) return true;
+  return /^\d+-g[0-9a-f]+(?:-dirty)?$/iu.test(candidate.prerelease);
+}
+
+function parseCapabilityVersion(version: string | null | undefined): {
+  parts: readonly [number, number, number];
+  prerelease: string | null;
+} | null {
+  const match = version
+    ?.trim()
+    .match(
+      /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/,
+    );
+  if (!match?.[1] || !match[2] || !match[3]) return null;
+  return {
+    parts: [
+      Number.parseInt(match[1], 10),
+      Number.parseInt(match[2], 10),
+      Number.parseInt(match[3], 10),
+    ],
+    prerelease: match[4] ?? null,
+  };
 }

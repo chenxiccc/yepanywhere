@@ -46,7 +46,9 @@ import {
   SECURITY_CLIENT_AUDIT_CAPABILITY,
   TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
+  encodeCompactServerCapabilities,
   type ClientDefaults,
+  type OptionalServerCapabilityBitset,
   type SessionSandboxAvailability,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -277,8 +279,12 @@ export interface VersionInfo {
   resumeProtocolVersion: number;
   /** Coarse hosted remote UI/server compatibility level. */
   remoteCompatibilityLevel: number;
-  /** Feature capabilities supported by this server. Used by clients to show/hide UI. */
-  capabilities: string[];
+  /** Legacy full capability names, returned unless compact-v1 is requested. */
+  capabilities?: string[];
+  /** Sparse 32-bit words for optional capabilities in compact-v1 responses. */
+  optionalCapabilityBits?: OptionalServerCapabilityBitset;
+  /** Names not yet implied by the reported release, chiefly source builds. */
+  capabilityExtensions?: readonly string[];
   /** Local host preflight for the optional YA session sandbox backend. */
   sessionSandboxing?: SessionSandboxAvailability;
   /**
@@ -504,6 +510,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
   routes.get("/", async (c) => {
     const currentVersionInfo = await getCurrentVersionInfo();
     const current = currentVersionInfo.version;
+    const compactCapabilities = c.req.query("capabilities") === "compact-v1";
     const fresh =
       c.req.query("fresh") === "1" || c.req.query("fresh") === "true";
     const deviceBridgeStatus = options?.getDeviceBridgeStatus
@@ -538,7 +545,9 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       installSource: currentVersionInfo.installSource,
       resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
       remoteCompatibilityLevel: REMOTE_COMPATIBILITY_LEVEL,
-      capabilities,
+      ...(compactCapabilities
+        ? encodeCompactServerCapabilities(capabilities, current)
+        : { capabilities }),
       sessionSandboxing: sessionSandboxAvailability,
       voiceBackends,
       voiceBackendStatuses,

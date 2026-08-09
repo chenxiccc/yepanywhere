@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS,
   SERVER_CAPABILITIES,
   type ServerCapabilityDefinition,
 } from "../packages/shared/src/server-capabilities.js";
@@ -34,6 +35,7 @@ const findings: AuditFinding[] = [];
 
 await auditOwnedRouteModules();
 await auditRawCapabilityChecks();
+auditCapabilityAdvertisements();
 auditTransitionalReviewDates();
 
 const errors = findings.filter((finding) => finding.kind === "error");
@@ -153,6 +155,76 @@ function auditTransitionalReviewDates(): void {
         message:
           `${capability.name} transitional review is due ` +
           `(${capability.lifecycle.reviewAfter}).`,
+      });
+    }
+  }
+}
+
+function auditCapabilityAdvertisements(): void {
+  const allocations = Object.values(OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS);
+  const allocationsByName = new Map(
+    allocations.map((allocation) => [allocation.name, allocation]),
+  );
+  const capabilitiesByName = new Map(
+    capabilities.map((capability) => [capability.name, capability]),
+  );
+  const allocatedIndices = new Map<number, string>();
+
+  for (const allocation of allocations) {
+    if (!Number.isInteger(allocation.index) || allocation.index < 0) {
+      findings.push({
+        kind: "error",
+        message: `${allocation.name} has invalid optional bit index ${allocation.index}.`,
+      });
+      continue;
+    }
+    const existing = allocatedIndices.get(allocation.index);
+    if (existing) {
+      findings.push({
+        kind: "error",
+        message:
+          `${allocation.name} reuses optional bit ${allocation.index} ` +
+          `already allocated to ${existing}.`,
+      });
+    } else {
+      allocatedIndices.set(allocation.index, allocation.name);
+    }
+
+    const capability = capabilitiesByName.get(allocation.name);
+    if (capability && capability.advertisement.kind !== "optional-bit") {
+      findings.push({
+        kind: "error",
+        message:
+          `${allocation.name} retains optional bit ${allocation.index} but ` +
+          `is advertised as ${capability.advertisement.kind}.`,
+      });
+    }
+  }
+
+  for (const capability of capabilities) {
+    if (capability.advertisement.kind !== "optional-bit") continue;
+    const allocation = allocationsByName.get(capability.name);
+    if (!allocation) {
+      findings.push({
+        kind: "error",
+        message: `${capability.name} has no durable optional-bit allocation.`,
+      });
+      continue;
+    }
+    if (allocation.index !== capability.advertisement.index) {
+      findings.push({
+        kind: "error",
+        message:
+          `${capability.name} uses optional bit ` +
+          `${capability.advertisement.index}, not allocated bit ${allocation.index}.`,
+      });
+    }
+    if (allocation.introducedIn !== capability.introducedIn) {
+      findings.push({
+        kind: "error",
+        message:
+          `${capability.name} allocation records ${allocation.introducedIn}, ` +
+          `not introducedIn ${capability.introducedIn}.`,
       });
     }
   }

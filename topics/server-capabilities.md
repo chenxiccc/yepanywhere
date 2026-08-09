@@ -1,8 +1,10 @@
 # Server Capabilities
 
-> Server capabilities are feature-advertisement strings returned by
-> `/api/version`. They gate optional UI affordances and endpoint usage across
-> new-client / older-server combinations without changing the wire shape.
+> Server capabilities gate optional UI affordances and endpoint usage across
+> new-client / older-server combinations. `/api/version` retains its legacy
+> name list and also supports a negotiated compact representation: release-
+> implied monotonic capabilities, sparse optional-capability bits, and short
+> textual extensions for source builds ahead of their release version.
 
 Topic: server-capabilities
 
@@ -12,12 +14,32 @@ The capability registry lives in
 `packages/shared/src/server-capabilities.ts`. It exports:
 
 - the exact capability string constants;
-- lifecycle metadata for each registered capability;
+- lifecycle and advertisement metadata for each registered capability;
+- the durable optional-bit allocation ledger;
 - a helper for checking a `/api/version`-style capability source.
 
 The registry metadata is compile-time/shared-code metadata. Do not require
-older servers to return registry metadata at runtime. The wire contract remains
-the existing `capabilities: string[]` field.
+older servers to return registry metadata at runtime. An old server ignores the
+compact query and returns its existing `capabilities: string[]`; an old client
+sends no compact query and receives that same field from a new server.
+
+New clients request `GET /api/version?capabilities=compact-v1` (with `fresh=1`
+when needed). A supporting server omits the legacy list and returns:
+
+- `current`, whose release semver implies every registry capability marked
+  `version-implied` with `introducedIn <= current`;
+- `optionalCapabilityBits`, an array of `[wordIndex, bits]` pairs. Empty
+  32-bit words are omitted, while each present word densely represents its 32
+  allocated indices;
+- `capabilityExtensions`, only when an advertised name is not yet implied by
+  `current`. The normal case is a source checkout ahead of the latest release
+  tag. Unknown extension names have no effect on older clients.
+
+`serverHasCapability` accepts both representations. Explicit legacy or
+extension names take precedence, then the helper checks a known optional bit or
+the capability's `introducedIn` release. This union keeps partially released
+source builds truthful without making their last Git tag claim unreleased
+contracts.
 
 Every capability string advertised from `/api/version` should have a registry
 entry, including permanent static features and dynamic environment/state
@@ -63,11 +85,11 @@ larger responses return 413 with update guidance. A browser without
 WebSocket even when metadata advertises chunks. Existing capability meanings
 and the `#v=2` marker remain unchanged.
 
-## Capability Classes
+## Capability Lifecycle Classes
 
-Use `kind: "permanent"` for capabilities that may vary indefinitely across
-servers or installations. Examples include server feature families, environment
-availability, or optional integrations that genuinely might not exist.
+Use `kind: "permanent"` for client gates that remain useful indefinitely. This
+includes self-hosted feature boundaries and environment-dependent availability;
+the lifecycle kind does not decide how the capability is encoded.
 
 Use `kind: "transitional"` for rollout guards that protect a new client from
 showing controls that call routes, fields, or event semantics older compatible
@@ -79,6 +101,39 @@ servers do not have. Transitional capabilities must define:
   that makes the client branch removable;
 - `removeServerAdvertisementWhen`, when useful - when the server can stop
   advertising the string after older maintained clients no longer branch on it.
+
+## Advertisement Classes
+
+Advertisement is independent from lifecycle:
+
+- `version-implied` is for a contract that is monotonic on the official release
+  line. Once a stable release reaches its `introducedIn` version, later official
+  releases must keep that contract. A future client therefore needs only the
+  server version and its own registry; capabilities introduced after that
+  client's build are unknown and irrelevant to it.
+- `optional-bit` is for support that may be disabled, removed, host-dependent,
+  or installation-dependent. Its allocated index is stable forever, including
+  after the capability is retired. Never renumber or reuse a ledger entry.
+- `scoped` is for a capability advertised by another payload rather than global
+  `/api/version`, such as one immutable public-share representation. It remains
+  an explicit name in that owning payload.
+
+Optional bit allocations are chronological within their introducing release:
+
+| Index | Introduced | Capability |
+| ---: | :---: | --- |
+| 0 | 0.6.0 | `voiceInput` |
+| 1 | 0.6.0 | `deviceBridge-available` |
+| 2 | 0.6.0 | `deviceBridge` |
+| 3 | 0.6.0 | `deviceBridge-download` |
+| 4 | 0.6.0 | `deviceBridge-update` |
+| 5 | 0.6.3 | `browser-settings-backup` |
+| 6 | 0.7.1 | `security-client-audit-v1` |
+| 7 | 0.7.1 | `reload-safe-codex-runtime` |
+| 8 | 0.7.1 | `session-sandboxing` |
+
+The code ledger, rather than this rendering, is authoritative. Retired rows
+stay in that ledger as reserved indices.
 
 ## When To Add One
 
@@ -221,11 +276,17 @@ unchanged. The complete UI and timing contract is in
 
 `packages/server/src/routes/version.ts` advertises capability names from the
 shared registry. Static capabilities can be included directly. Dynamic
-capabilities, such as environment-backed integrations, should still use the
-registry string constants but decide at runtime whether to advertise them.
+capabilities, such as environment-backed integrations, still use registry
+constants but decide at runtime whether to advertise them. The version route
+passes the resulting name set through `encodeCompactServerCapabilities` only
+after the client explicitly negotiates `compact-v1`; otherwise it returns the
+complete legacy name list.
 
 Do not hand-write raw capability strings in the version route when a registry
-constant exists.
+constant exists. A new monotonic contract gets `version-implied` advertisement
+metadata. A new dynamic or removable contract first gets the next never-used
+entry in `OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS`, then references that
+index from its registry definition.
 
 ### Snapshot delivery
 
@@ -252,8 +313,10 @@ above.
 
 ## Client Use
 
-Client code should compare against registry constants or domain helpers rather
-than string literals. Missing transitional capabilities mean "hide or degrade
+Client code should use `serverHasCapability` with registry constants or domain
+helpers rather than inspecting names, bits, or semver directly. The helper
+handles old-server name arrays, source-build extensions, optional bits, and
+release implication. Missing transitional capabilities mean "hide or degrade
 the optional feature," not "the server is broken."
 
 For visible controls, prefer gating before rendering. A defensive request error
@@ -273,11 +336,12 @@ Periodically audit transitional capabilities:
    code depends on it.
 
 `pnpm capabilities:audit` lists due transitional capabilities, rejects raw
-capability checks outside registry constants/helpers, and verifies that every
-route declared by a capability-owned route module is present in that
-capability's route contract (and vice versa). CI runs the audit. New
-capability-owned feature families should list their route modules in registry
-metadata so later route additions cannot silently escape the advertisement.
+capability checks outside registry constants/helpers, validates unique durable
+optional-bit allocations and their introduction versions, and verifies that
+every route declared by a capability-owned route module is present in that
+capability's route contract (and vice versa). CI runs the audit. New capability-
+owned feature families should list their route modules in registry metadata so
+later route additions cannot silently escape the advertisement.
 
 The audit complements, rather than replaces, released-server behavior
 fixtures. A capability may be registered perfectly while the client still
