@@ -1,9 +1,7 @@
 # Project Settings Overrides
 
-> Banked seed: per-project settings overrides — project-scoped values
-> affecting views/activity for any session in that project, taking
-> precedence over global settings — are easy to add mechanically but painful
-> to visualize/navigate, and have no current use.
+> Project settings hold narrowly justified project conventions that seed new
+> sessions ahead of global defaults without mutating existing sessions.
 
 Topic: project-settings-overrides
 
@@ -15,33 +13,44 @@ because it partitions a server cache is a poor candidate for a project
 override, since a per-project value re-partitions that cache along a different
 axis.
 
-Status: **banked seed (2026-07-24).** From the kzahel chat, in the context of
-"only cool really if it's project specific": rather than a plugin
-architecture ([[server-plugin-arch]]), the lighter project-specific lever
-would be settings overrides scoped to a project. Recorded as an observation,
-not a plan — "no real use for, just pointing out."
+Status: **first narrow surface implemented.** Heartbeat interval and message
+defaults are project-scoped session seeds. This realizes the earlier banked
+idea without turning Project Settings into a general override framework.
 
 ## Shape
 
 - Resolution order: project override → global setting → built-in default.
-- Scope: an override affects views/activity for *any session in that
-  project*, whichever client views it.
-- Mechanically easy (the settings read path gains one lookup level); the
-  real cost is UI: where a user sees that a project diverges from global,
-  what the effective value is, and how to find/clear the override — "pain
-  to visualize/navigate."
+- Scope: an override seeds missing metadata when a new session is established
+  in that project. Existing sessions retain their session-local values, and
+  project defaults never enable heartbeat turns by themselves.
+- A stored `null` means inherit the global value. Clearing an override does not
+  erase the project's recently used heartbeat messages.
+- Project-scoped state lives in YA's app-data project metadata, never inside
+  the selected project directory or its Git metadata.
+
+## Heartbeat defaults surface
+
+- `GET` and `PATCH /api/projects/:projectId/session-defaults` expose the
+  project heartbeat interval/message overrides plus up to eight recently used
+  project heartbeat messages, most recent first.
+- The server accepts intervals from 1 through 1,440 minutes and heartbeat
+  messages up to 2,000 characters. Empty explicit messages are invalid.
+- Project Settings is reachable from the project card's ellipsis or context
+  menu and from the session header menu. A client that does not observe the
+  `project-session-defaults` capability hides those entries and makes no
+  unsupported request.
+- The interval and message can inherit independently. The UI shows the current
+  global interval and uses the current global message as the inherited editor
+  hint.
 
 ## Precedent and reopen conditions
 
-[[attachment-storage]] § "Future: per-project override" already records this
-exact pattern for one setting (global-only v1, per-project later, with the
-v1 shape kept override-compatible). That per-setting approach — add a
-project scope only when a concrete setting needs it — is the likely path;
-a general project-overrides pane is justified only once several settings
-have grown project scopes and the visualization cost is paid once for all
-of them. Candidate early adopters if need appears: attachment storage
-location, [[interactives]] exposure/tunnel policy, [[session-defaults]]
-values that are really project conventions.
+[[attachment-storage]] § "Future: per-project override" records the same
+resolution pattern for one setting. Continue adding project scope one concrete
+setting at a time. A general project-overrides framework is justified only once
+several settings need the same resolution and visualization machinery.
+Candidate later adopters remain attachment storage location and
+[[interactives]] exposure/tunnel policy.
 
 ## See also
 

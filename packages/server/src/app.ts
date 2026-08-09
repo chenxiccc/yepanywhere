@@ -8,6 +8,8 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
+  DEFAULT_HEARTBEAT_TURN_TEXT,
+  DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   buildEffectiveAgentContext,
@@ -111,6 +113,7 @@ import {
   createProjectQueueRoutes,
 } from "./routes/project-queue.js";
 import { createProjectsRoutes } from "./routes/projects.js";
+import { createProjectSessionDefaultsRoutes } from "./routes/project-session-defaults.js";
 import { createProvidersRoutes } from "./routes/providers.js";
 import { createCodexUpdateRoutes } from "./routes/codex-updates.js";
 import {
@@ -172,6 +175,7 @@ import type { HostAwakeService } from "./services/host-awake/HostAwakeService.js
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
 import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
+import { initializeSessionHeartbeatDefaults } from "./services/sessionHeartbeatDefaults.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
@@ -1174,7 +1178,7 @@ export function createApp(options: AppOptions): AppResult {
                 options.serverSettingsService?.getSetting(
                   "heartbeatTurnsAfterMinutes",
                 ) ??
-                5,
+                DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES,
               forceAfterMinutes:
                 sessionHeartbeat?.heartbeatForceAfterMinutes ?? null,
               text:
@@ -1182,7 +1186,7 @@ export function createApp(options: AppOptions): AppResult {
                 options.serverSettingsService?.getSetting(
                   "heartbeatTurnText",
                 ) ??
-                "continue",
+                DEFAULT_HEARTBEAT_TURN_TEXT,
             };
           }
         : undefined,
@@ -1261,6 +1265,14 @@ export function createApp(options: AppOptions): AppResult {
         if (item.target.type !== "new-session") return;
         const metadata = options.sessionMetadataService;
         if (!metadata) return;
+
+        await initializeSessionHeartbeatDefaults({
+          sessionId: process.sessionId,
+          projectId: item.projectId,
+          sessionMetadataService: metadata,
+          projectMetadataService: options.projectMetadataService,
+          serverSettingsService: options.serverSettingsService,
+        });
 
         const provider = item.target.provider ?? process.provider;
         if (provider) {
@@ -1522,6 +1534,15 @@ export function createApp(options: AppOptions): AppResult {
       storagePolicy: projectStoragePolicy,
     }),
   );
+  if (options.projectMetadataService) {
+    app.route(
+      "/api/projects",
+      createProjectSessionDefaultsRoutes({
+        scanner,
+        projectMetadataService: options.projectMetadataService,
+      }),
+    );
+  }
   if (options.projectQueueService) {
     app.route(
       "/api/project-queue",
@@ -1601,6 +1622,7 @@ export function createApp(options: AppOptions): AppResult {
       notificationService: options.notificationService,
       sessionIndexService: options.sessionIndexService,
       sessionMetadataService: options.sessionMetadataService,
+      projectMetadataService: options.projectMetadataService,
       eventBus: options.eventBus,
       codexScanner,
       codexSessionsDir,

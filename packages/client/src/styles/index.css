@@ -8797,29 +8797,6 @@ a.linkified-url:hover {
   }
 }
 
-.settings-session-defaults-panel .session-default-discovery-row {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.75rem 1.75rem;
-}
-
-.settings-session-defaults-panel
-  .session-default-discovery-row
-  .session-default-recap-section {
-  flex: 1 1 36rem;
-  min-width: min(100%, 36rem);
-  container-type: inline-size;
-}
-
-.settings-session-defaults-panel
-  .session-default-discovery-row
-  .session-default-suggestions-section {
-  flex: 0 0 auto;
-  min-width: max-content;
-}
-
 /* Provider chips read best as one wide row. Model is often the only control on
    its row, so give the dropdown enough width for long provider model names
    instead of squeezing it into a single narrow grid track. */

@@ -1,4 +1,5 @@
 import {
+  MAX_HEARTBEAT_TURN_TEXT_LENGTH,
   PROMPT_SUGGESTION_MODES,
   type PromptSuggestionMode,
   clampRecapAfterSeconds,
@@ -129,7 +130,7 @@ export function parseSessionMetadataPatch(
       : body.heartbeatTurnText === null || body.heartbeatTurnText === ""
         ? null
         : typeof body.heartbeatTurnText === "string"
-          ? body.heartbeatTurnText.slice(0, 200)
+          ? body.heartbeatTurnText.slice(0, MAX_HEARTBEAT_TURN_TEXT_LENGTH)
           : null;
 
   if (

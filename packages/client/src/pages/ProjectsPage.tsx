@@ -1,10 +1,15 @@
-import type { ProjectQueueMessage } from "@yep-anywhere/shared";
+import {
+  PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  type ProjectQueueMessage,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectCard } from "../components/ProjectCard";
 import { ProjectQueueSection } from "../components/ProjectQueueSection";
+import { ProjectSessionDefaultsModal } from "../components/ProjectSessionDefaultsModal";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
@@ -22,12 +27,17 @@ export function ProjectsPage() {
   const { projects, loading, error, refetch } = useProjects();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const supportsProjectSessionDefaults = serverHasCapability(
+    version,
+    PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  );
   const inboxCountsByProject = useInboxCountsByProject();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProjectPath, setNewProjectPath] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [settingsProject, setSettingsProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
     null,
   );
@@ -363,6 +373,11 @@ export function ProjectsPage() {
                   }
                   basePath={basePath}
                   onDeleteProject={handleDeleteProject}
+                  onOpenSettings={
+                    supportsProjectSessionDefaults
+                      ? setSettingsProject
+                      : undefined
+                  }
                   isDeleting={deletingProjectId === project.id}
                 />
               ))}
@@ -370,6 +385,13 @@ export function ProjectsPage() {
           )}
         </div>
       </main>
+      {settingsProject && (
+        <ProjectSessionDefaultsModal
+          projectId={settingsProject.id}
+          projectName={settingsProject.name}
+          onClose={() => setSettingsProject(null)}
+        />
+      )}
     </MainContent>
   );
 }

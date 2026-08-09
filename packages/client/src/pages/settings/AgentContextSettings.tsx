@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildEffectiveAgentContext } from "@yep-anywhere/shared";
+import {
+  DEFAULT_HEARTBEAT_TURN_TEXT,
+  DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES,
+  buildEffectiveAgentContext,
+} from "@yep-anywhere/shared";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { HeartbeatTextArea } from "../../components/HeartbeatTextArea";
 import { useI18n } from "../../i18n";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
@@ -9,8 +14,8 @@ import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const MAX_LENGTH = 10000;
-const DEFAULT_HEARTBEAT_TEXT = "continue";
-const DEFAULT_HEARTBEAT_AFTER_MINUTES = 15;
+const DEFAULT_HEARTBEAT_TEXT = DEFAULT_HEARTBEAT_TURN_TEXT;
+const DEFAULT_HEARTBEAT_AFTER_MINUTES = DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
 
 function parseHeartbeatMinutes(value: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -299,14 +304,13 @@ export function AgentContextSettings() {
               <strong>{t("agentContextHeartbeatTextTitle")}</strong>
               <p>{t("agentContextHeartbeatTextDescription")}</p>
             </div>
-            <input
-              type="text"
+            <HeartbeatTextArea
               className="settings-input"
               value={heartbeatTurnText}
-              onChange={(e) => {
-                setHeartbeatTurnText(e.target.value.slice(0, 200));
+              onChange={(value) => {
+                setHeartbeatTurnText(value);
                 recomputeHasChanges({
-                  heartbeatTurnText: e.target.value.slice(0, 200),
+                  heartbeatTurnText: value,
                 });
                 setSaveError(null);
               }}

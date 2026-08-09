@@ -28,6 +28,7 @@ import type {
   ProjectQueuePromoteNowRequest,
   ProjectQueuePromoteNowResponse,
   ProjectQueueResponse,
+  ProjectSessionDefaultsResponse,
   ProjectWorkstreamsResponse,
   PublicShareManagementListResponse,
   PublicShareStorageState,
@@ -54,6 +55,7 @@ import type {
   ThinkingOption,
   TranscriptDisplayObject,
   UpdateProjectQueueItemRequest,
+  UpdateProjectSessionDefaultsRequest,
   UploadedFile,
   UrlProjectId,
   UserQuestionAnswers,
@@ -430,6 +432,23 @@ export const api = {
 
   getProject: (projectId: string) =>
     fetchJSON<{ project: Project }>(`/projects/${projectId}`),
+
+  getProjectSessionDefaults: (projectId: string) =>
+    fetchJSON<ProjectSessionDefaultsResponse>(
+      `/projects/${projectId}/session-defaults`,
+    ),
+
+  updateProjectSessionDefaults: (
+    projectId: string,
+    updates: UpdateProjectSessionDefaultsRequest,
+  ) =>
+    fetchJSON<ProjectSessionDefaultsResponse>(
+      `/projects/${projectId}/session-defaults`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+      },
+    ),
 
   deleteProject: (projectId: string) =>
     fetchJSON<{ removed: boolean; projectId: string; path: string }>(

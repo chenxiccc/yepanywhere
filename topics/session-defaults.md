@@ -188,16 +188,15 @@ part of the provider launch snapshot and does not move with a session.
 
 ## UI placement
 
-The session-defaults settings panel groups choices by persistence scope:
-
-1. All-provider defaults: recaps; prompt suggestions; permission mode; the
-   sandbox-new-sessions toggle; show-thinking display policy; and
-   forked-session behavior.
-2. AI Provider. The selector is the boundary between all-provider defaults above
-   and provider-specific defaults below.
-3. Provider-specific defaults for the selected provider: model, service tier,
-   thinking mode, effort, **Tailed Recap Model**, prompt-cache keepalive,
-   compaction threshold, and other model economics controls.
+The session-defaults settings panel follows the new-session decision order:
+AI Provider, model, thinking/effort, permission mode, sandboxing, show-thinking
+display policy, recaps, the conditional **Tailed Recap Model**, then prompt
+suggestions. A **Related behavior** divider follows that core launch sequence;
+fork-opening, compaction, and prompt-cache keepalive controls live below it.
+The visible order is for comprehension and does not change persistence scope:
+provider/model economics remain provider-specific, while permission, sandbox,
+recap, suggestions, show-thinking, and fork-opening keep their established
+all-provider or client-local ownership.
 
 New Session instead prioritizes the choices most likely to change before a
 launch. Its linear reading order is AI Provider, model and thinking, permission
@@ -267,8 +266,9 @@ UI/storage sequence below.
    the selected provider on read/next save.
 5. **All-provider placement.** Keep permission mode, show-thinking display
    policy, and forked-session behavior outside provider-scoped persistence.
-   New Session may interleave these controls with provider-specific choices by
-   launch relevance without changing their storage scope.
+   Session Defaults and New Session may interleave these controls with
+   provider-specific choices by launch relevance without changing their
+   storage scope.
 6. **Permission captions.** Shorten equal-width permission-mode card captions to
    the text above.
 7. **Tests.** Cover provider switch persistence, all-provider recap/suggestion

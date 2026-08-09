@@ -13,6 +13,7 @@ import {
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
+  PROJECT_SESSION_DEFAULTS_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
@@ -125,6 +126,11 @@ describe("Version Routes", () => {
   it("advertises server-resolved session fork intents", () => {
     expect(getServerCapabilities()).toContain(
       SESSION_FORK_TURN_INTENTS_CAPABILITY,
+    );
+  });
+  it("advertises project-scoped session defaults", () => {
+    expect(getServerCapabilities()).toContain(
+      PROJECT_SESSION_DEFAULTS_CAPABILITY,
     );
   });
 });

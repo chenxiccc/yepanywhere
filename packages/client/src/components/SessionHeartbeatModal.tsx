@@ -5,13 +5,18 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  DEFAULT_HEARTBEAT_TURN_TEXT,
+  DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES,
+} from "@yep-anywhere/shared";
 import { api } from "../api/client";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
+import { HeartbeatTextArea } from "./HeartbeatTextArea";
 
-const DEFAULT_HEARTBEAT_TEXT = "continue";
-const DEFAULT_HEARTBEAT_AFTER_MINUTES = 15;
+const DEFAULT_HEARTBEAT_TEXT = DEFAULT_HEARTBEAT_TURN_TEXT;
+const DEFAULT_HEARTBEAT_AFTER_MINUTES = DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
 const HEARTBEAT_AFTER_PRESETS = [5, 15, 30, 60] as const;
 const HEARTBEAT_FORCE_PRESETS = [1, 5, 15] as const;
 
@@ -54,10 +59,7 @@ export function SessionHeartbeatModal({
   const defaultAfterMinutes =
     settings?.heartbeatTurnsAfterMinutes ?? DEFAULT_HEARTBEAT_AFTER_MINUTES;
   const defaultText = settings?.heartbeatTurnText ?? DEFAULT_HEARTBEAT_TEXT;
-  const textOverride =
-    heartbeatTurnText && heartbeatTurnText !== defaultText
-      ? heartbeatTurnText
-      : "";
+  const textOverride = heartbeatTurnText ?? "";
   const [text, setText] = useState(textOverride);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,17 +72,12 @@ export function SessionHeartbeatModal({
     setForceAfterMinutes(
       heartbeatForceAfterMinutes ? String(heartbeatForceAfterMinutes) : "",
     );
-    setText(
-      heartbeatTurnText && heartbeatTurnText !== defaultText
-        ? heartbeatTurnText
-        : "",
-    );
+    setText(heartbeatTurnText ?? "");
   }, [
     enabled,
     heartbeatTurnText,
     heartbeatTurnsAfterMinutes,
     heartbeatForceAfterMinutes,
-    defaultText,
   ]);
 
   const afterMinutesParsed = Number.parseInt(afterMinutes, 10);
@@ -219,8 +216,7 @@ export function SessionHeartbeatModal({
         }
 
         const effectiveText = nextText.trim();
-        const shouldPersistText =
-          effectiveText.length > 0 && effectiveText !== defaultText;
+        const shouldPersistText = effectiveText.length > 0;
 
         await api.updateSessionMetadata(sessionId, {
           heartbeatTurnsEnabled: nextIsEnabled,
@@ -252,7 +248,6 @@ export function SessionHeartbeatModal({
     },
     [
       afterMinutes,
-      defaultText,
       forceAfterMinutes,
       isEnabled,
       onClose,
@@ -268,8 +263,8 @@ export function SessionHeartbeatModal({
   }, [saveSettings]);
 
   const handleTextKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key !== "Enter") return;
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key !== "Enter" || (!e.metaKey && !e.ctrlKey)) return;
       e.preventDefault();
       void saveSettings();
     },
@@ -409,12 +404,11 @@ export function SessionHeartbeatModal({
             </p>
           </div>
           <div className="session-heartbeat-text-row">
-            <input
-              type="text"
+            <HeartbeatTextArea
               value={text}
               inputMode="text"
-              onChange={(e) => {
-                setText(e.target.value.slice(0, 200));
+              onChange={(value) => {
+                setText(value);
                 setError(null);
               }}
               onKeyDown={handleTextKeyDown}

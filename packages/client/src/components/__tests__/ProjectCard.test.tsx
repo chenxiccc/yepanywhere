@@ -41,9 +41,36 @@ describe("ProjectCard", () => {
     const onDeleteProject = vi.fn();
     renderProjectCard(onDeleteProject);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Project settings" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove project" }));
 
     expect(onDeleteProject).toHaveBeenCalledWith(project);
+  });
+
+  it("opens project settings from the ellipsis and context menu", () => {
+    const onOpenSettings = vi.fn();
+    const { container } = render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectCard
+            project={project}
+            needsAttentionCount={0}
+            thinkingCount={0}
+            onOpenSettings={onOpenSettings}
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Project settings" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Project settings" }));
+    expect(onOpenSettings).toHaveBeenCalledWith(project);
+
+    fireEvent.contextMenu(
+      container.querySelector("[data-project-card-link]") as Element,
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Project settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(2);
   });
 
   it("shows a project queue count badge", () => {

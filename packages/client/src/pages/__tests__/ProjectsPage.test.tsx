@@ -4,6 +4,7 @@ import type {
   ProjectQueueItemSummary,
   ProjectQueueRecoveredSessionQueueSummary,
 } from "@yep-anywhere/shared";
+import { PROJECT_SESSION_DEFAULTS_CAPABILITY } from "@yep-anywhere/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -118,6 +119,10 @@ vi.mock("../../layouts", () => ({
 
 vi.mock("../../components/PageHeader", () => ({
   PageHeader: ({ title }: { title: string }) => <header>{title}</header>,
+}));
+
+vi.mock("../../components/ProjectSessionDefaultsModal", () => ({
+  ProjectSessionDefaultsModal: () => <div>Project defaults modal</div>,
 }));
 
 function makeItem(status: ProjectQueueItemSummary["status"]) {
@@ -265,6 +270,38 @@ describe("ProjectsPage", () => {
     expect(screen.queryByRole("heading", { name: "Project Queue" })).toBe(null);
     expect(screen.queryByText("Queued project work")).toBe(null);
     expect(screen.queryByTitle("Project Queue items: 1")).toBe(null);
+  });
+
+  it("gates the Project Settings menu item on its server capability", () => {
+    const { rerender } = render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Project settings" }));
+    expect(screen.queryByRole("menuitem", { name: "Project settings" })).toBe(
+      null,
+    );
+
+    state.version = {
+      capabilities: [
+        PROJECT_QUEUE_CAPABILITY,
+        PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      ],
+    };
+    rerender(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Project settings" }),
+    ).toBeTruthy();
   });
 
   it("hides project queue UI for hosted remote servers below the compatible level", () => {

@@ -34,6 +34,7 @@ import type { ISessionIndexService } from "../indexes/types.js";
 import { getLogger } from "../logging/logger.js";
 import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
 import type { SessionMetadataService } from "../metadata/index.js";
+import type { ProjectMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
@@ -48,9 +49,11 @@ import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import { appendApprovalAuditLog } from "../security/approvalAuditLog.js";
 import { getSessionSandboxSettingsError } from "../session-sandbox.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
+import type { ProjectQueueScheduler } from "../services/ProjectQueueScheduler.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
 import type { WorkstreamService } from "../services/WorkstreamService.js";
+import { initializeSessionHeartbeatDefaults } from "../services/sessionHeartbeatDefaults.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -204,6 +207,11 @@ export interface SessionsDeps {
   notificationService?: NotificationService;
   sessionIndexService?: ISessionIndexService;
   sessionMetadataService?: SessionMetadataService;
+  projectMetadataService?: ProjectMetadataService;
+  projectQueueScheduler?: Pick<
+    ProjectQueueScheduler,
+    "reserveUserSessionStart"
+  >;
   eventBus?: EventBus;
   codexScanner?: CodexSessionScanner;
   codexSessionsDir?: string;
@@ -1992,6 +2000,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       hints: deps.serverSettingsService?.getSetting("agentContextHints"),
     });
 
+  const initializeProjectHeartbeatDefaults = async (
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): Promise<void> =>
+    initializeSessionHeartbeatDefaults({
+      sessionId,
+      projectId,
+      sessionMetadataService: deps.sessionMetadataService,
+      projectMetadataService: deps.projectMetadataService,
+      serverSettingsService: deps.serverSettingsService,
+    });
+
   const resolveLaunchWorkstreamTarget = (
     project: Project,
     rawWorkstreamId: string | undefined,
@@ -3412,6 +3432,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       {
         projectId: project.id,
         workstreamId: workstreamTarget.workstreamId,
+        onStarted: (sessionId) =>
+          initializeProjectHeartbeatDefaults(sessionId, project.id),
       },
     );
 
@@ -3549,6 +3571,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       {
         projectId: project.id,
         workstreamId: workstreamTarget.workstreamId,
+        onStarted: (sessionId) =>
+          initializeProjectHeartbeatDefaults(sessionId, project.id),
       },
     );
 
@@ -3564,6 +3588,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (isQueuedResponse(result)) {
       return c.json({ ...result, serverTimestamp: Date.now() }, 202); // 202 Accepted - queued for processing
     }
+
+    await initializeProjectHeartbeatDefaults(result.sessionId, project.id);
 
     await persistLaunchMetadata(
       result.sessionId,
@@ -6814,6 +6840,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const { patch } = parsed;
 
     await deps.sessionMetadataService.updateMetadata(sessionId, patch);
+
+    if (patch.heartbeatTurnText) {
+      const savedProjectId =
+        deps.sessionMetadataService.getMetadata(sessionId)?.workingProjectId ??
+        deps.supervisor.getProcessForSession(sessionId)?.projectId;
+      if (savedProjectId) {
+        await deps.projectMetadataService?.recordRecentHeartbeatTurnText(
+          savedProjectId,
+          patch.heartbeatTurnText,
+        );
+      }
+    }
 
     if (
       patch.heartbeatTurnsEnabled !== undefined ||

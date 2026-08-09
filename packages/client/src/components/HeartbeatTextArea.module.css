@@ -1,0 +1,7 @@
+.textarea {
+  box-sizing: border-box;
+  min-height: 2.25rem;
+  max-height: calc(4lh + 0.8rem);
+  resize: none;
+  overflow-y: hidden;
+}

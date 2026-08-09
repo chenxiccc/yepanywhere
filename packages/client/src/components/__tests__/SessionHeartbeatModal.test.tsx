@@ -83,24 +83,30 @@ describe("SessionHeartbeatModal", () => {
   it("shows default heartbeat text as an editable placeholder", () => {
     renderModal();
 
-    const input = screen.getByPlaceholderText("continue") as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      "continue",
+    ) as HTMLTextAreaElement;
 
     expect(input.value).toBe("");
+    expect(input.rows).toBe(1);
+    expect(input.maxLength).toBe(2000);
   });
 
-  it("saves custom text on Enter and closes", async () => {
+  it("allows multiline text and saves on Ctrl+Enter", async () => {
     const onClose = vi.fn();
     renderModal({ onClose });
 
     const input = screen.getByPlaceholderText("continue");
-    fireEvent.change(input, { target: { value: "checking in" } });
+    fireEvent.change(input, { target: { value: "checking\nin" } });
     fireEvent.keyDown(input, { key: "Enter" });
+    expect(mockUpdateSessionMetadata).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
 
     await waitFor(() => {
       expect(mockUpdateSessionMetadata).toHaveBeenCalledWith("sess-1", {
         heartbeatTurnsEnabled: true,
         heartbeatTurnsAfterMinutes: null,
-        heartbeatTurnText: "checking in",
+        heartbeatTurnText: "checking\nin",
         heartbeatForceAfterMinutes: null,
       });
     });

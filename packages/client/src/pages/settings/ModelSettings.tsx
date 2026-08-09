@@ -587,213 +587,9 @@ export function ModelSettings() {
         <div
           className={`settings-session-defaults-panel ${styles.sessionDefaultsPanel}`}
         >
-          {canConfigureSessionSandbox && (
-            <SettingsItem
-              id="session-default-sandbox"
-              as="label"
-              label={t("modelSettingsSandboxDefaultTitle")}
-              description={`${t("newSessionSandboxDescription")} ${t("newSessionSandboxAvailability")}`}
-              keywords={[
-                "sandbox",
-                "bubblewrap",
-                "project writes",
-                t("newSessionSandboxLabel"),
-              ]}
-              valueText={
-                savedDefaults?.sandboxLevel === "project-write"
-                  ? t("newSessionSandboxLabel")
-                  : undefined
-              }
-              className="new-session-helper-section session-default-sandbox-section settings-item--session-default-block"
-            >
-              <input
-                type="checkbox"
-                checked={savedDefaults?.sandboxLevel === "project-write"}
-                disabled={settingsLoading}
-                onChange={(event) => {
-                  const enabled = event.currentTarget.checked;
-                  void updateNewSessionDefaults({
-                    sandboxLevel: enabled ? "project-write" : "none",
-                    ...(enabled && savedRecapMode === "side-session"
-                      ? { recapMode: "off" }
-                      : {}),
-                  });
-                }}
-                aria-label={t("modelSettingsSandboxDefaultTitle")}
-              />
-            </SettingsItem>
-          )}
-
-          <div className="session-default-discovery-row">
-            <SettingsItem
-              id="session-default-recap"
-              label={t("newSessionRecapTitle")}
-              keywords={["recap", "away summary", "side session", "fork"]}
-              valueText={recapModeLabels[selectedRecapMode]}
-              className="new-session-helper-section session-default-recap-section settings-item--session-default-block settings-item--wide-control"
-              after={
-                selectedRecapMode !== "off" ? (
-                  <RecapAfterSecondsControl
-                    value={selectedRecapAfterSeconds}
-                    disabled={settingsLoading}
-                    label={recapAfterSecondsInlineLabels[selectedRecapMode]}
-                    mode={selectedRecapMode}
-                    className="recap-after-seconds-control--inline"
-                    onCommit={(seconds) =>
-                      updateNewSessionDefaults({ recapAfterSeconds: seconds })
-                    }
-                  />
-                ) : undefined
-              }
-            >
-              <div className="new-session-helper-options">
-                {availableRecapModes.map((modeValue) => (
-                  <button
-                    key={modeValue}
-                    type="button"
-                    className={`new-session-helper-option ${
-                      selectedRecapMode === modeValue ? "selected" : ""
-                    }`}
-                    onClick={() =>
-                      void updateNewSessionDefaults({ recapMode: modeValue })
-                    }
-                    disabled={
-                      settingsLoading ||
-                      (canConfigureSessionSandbox &&
-                        savedDefaults?.sandboxLevel === "project-write" &&
-                        modeValue === "side-session")
-                    }
-                    title={getRecapModeDescription(
-                      modeValue,
-                      t,
-                      selectedRecapAfterSeconds,
-                    )}
-                  >
-                    <span className={`mode-option-dot recap-${modeValue}`} />
-                    <span>{recapModeLabels[modeValue]}</span>
-                  </button>
-                ))}
-              </div>
-            </SettingsItem>
-
-            <SettingsItem
-              id="session-default-suggestions"
-              label={t("newSessionPromptSuggestionsTitle")}
-              keywords={["suggestions", "prompt suggestions", "nudge"]}
-              valueText={
-                promptSuggestionModeLabels[selectedPromptSuggestionMode]
-              }
-              className="new-session-helper-section session-default-suggestions-section settings-item--session-default-block settings-item--wide-control"
-            >
-              <div className="new-session-helper-options">
-                {availablePromptSuggestionModes.map((modeValue) => (
-                  <button
-                    key={modeValue}
-                    type="button"
-                    className={`new-session-helper-option ${
-                      selectedPromptSuggestionMode === modeValue
-                        ? "selected"
-                        : ""
-                    }`}
-                    onClick={() =>
-                      void updateNewSessionDefaults({
-                        promptSuggestionMode: modeValue,
-                      })
-                    }
-                    disabled={settingsLoading}
-                    title={promptSuggestionModeDescriptions[modeValue]}
-                  >
-                    <span
-                      className={`mode-option-dot suggestion-${modeValue}`}
-                    />
-                    <span>{promptSuggestionModeLabels[modeValue]}</span>
-                  </button>
-                ))}
-              </div>
-            </SettingsItem>
-          </div>
-
-          {supportsPermissionMode && (
-            <SettingsItem
-              id="session-default-permission-mode"
-              label={t("newSessionModeTitle")}
-              keywords={["permission mode", "bypass", "plan", "accept edits"]}
-              valueText={modeLabels[effectiveDefaultPermissionMode]}
-              className="new-session-mode-section session-default-mode-section settings-item--session-default-block settings-item--wide-control"
-            >
-              <div className="mode-options">
-                {permissionModeOptions.map((modeValue) => (
-                  <button
-                    key={modeValue}
-                    type="button"
-                    className={`mode-option ${
-                      effectiveDefaultPermissionMode === modeValue
-                        ? "selected"
-                        : ""
-                    }`}
-                    onClick={() =>
-                      void updateNewSessionDefaults({
-                        permissionMode: modeValue,
-                      })
-                    }
-                    disabled={settingsLoading}
-                  >
-                    <span className={`mode-option-dot mode-${modeValue}`} />
-                    <div className="mode-option-content">
-                      <span className="mode-option-label">
-                        {modeLabels[modeValue]}
-                      </span>
-                      <span className="mode-option-desc">
-                        {modeDescriptions[modeValue]}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </SettingsItem>
-          )}
-
-          <SettingsItem
-            id="session-default-show-thinking"
-            label={t("showThinkingTitle")}
-            description={t("showThinkingHint")}
-            keywords={["show thinking", "reasoning", "display thinking"]}
-            valueText={String(showThinking)}
-            className="new-session-helper-section session-default-show-thinking-section settings-item--session-default-block settings-item--wide-control"
-          >
-            <ShowThinkingControls
-              value={showThinking}
-              onChange={setShowThinking}
-              t={t}
-              showLabel={false}
-            />
-          </SettingsItem>
-
-          <SettingsItem
-            id="session-default-fork-summary"
-            as="label"
-            label={t("modelSettingsForkSummaryAutoOpenTitle")}
-            description={t("modelSettingsForkSummaryAutoOpenDescription")}
-            keywords={[
-              "fork",
-              "fork summary",
-              "forked session",
-              t("modelSettingsForkSummaryAutoOpenLabel"),
-            ]}
-            valueText={
-              forkSummaryAutoOpen
-                ? t("modelSettingsForkSummaryAutoOpenLabel")
-                : undefined
-            }
-            className="new-session-helper-section session-default-fork-summary-section settings-item--session-default-block"
-          >
-            <input
-              type="checkbox"
-              checked={forkSummaryAutoOpen}
-              onChange={(e) => setForkSummaryAutoOpen(e.target.checked)}
-              aria-label={t("modelSettingsForkSummaryAutoOpenLabel")}
-            />
-          </SettingsItem>
+          <p className={styles.intro}>
+            {t("modelSettingsNewSessionDefaultsIntro")}
+          </p>
 
           <SettingsItem
             id="session-default-provider"
@@ -862,6 +658,275 @@ export function ModelSettings() {
             </div>
           </SettingsItem>
 
+          {showThinkingControls && (
+            <SettingsItem
+              id="session-default-thinking"
+              label={t("modelSettingsThinkingTitle")}
+              description={t("modelSettingsThinkingDescription")}
+              keywords={["thinking", "effort", "reasoning mode"]}
+              valueText={`${effectiveThinkingMode} ${effectiveEffortLevel ?? ""}`.trim()}
+              className="new-session-helper-section session-default-thinking-section settings-item--session-default-block settings-item--wide-control"
+            >
+              <ThinkingControlsPanel
+                mode={effectiveThinkingMode}
+                modeOptions={thinkingModeOptions}
+                onSetMode={(mode: ThinkingMode) =>
+                  void updateProviderSessionDefaults({ thinkingMode: mode })
+                }
+                level={effectiveEffortLevel}
+                effortOptions={effortOptions}
+                onSetEffort={(level: EffortLevel) =>
+                  void updateProviderSessionDefaults({ effortLevel: level })
+                }
+                onSetEffortMode={(level: EffortLevel) =>
+                  void updateProviderSessionDefaults({
+                    thinkingMode: "on",
+                    effortLevel: level,
+                  })
+                }
+                showThinkingControl={false}
+                provider={selectedProvider?.name}
+                t={t}
+                className="thinking-controls-panel--inline session-default-thinking-controls"
+              />
+            </SettingsItem>
+          )}
+
+          {supportsPermissionMode && (
+            <SettingsItem
+              id="session-default-permission-mode"
+              label={t("newSessionModeTitle")}
+              keywords={["permission mode", "bypass", "plan", "accept edits"]}
+              valueText={modeLabels[effectiveDefaultPermissionMode]}
+              className="new-session-mode-section session-default-mode-section settings-item--session-default-block settings-item--wide-control"
+            >
+              <div className="mode-options">
+                {permissionModeOptions.map((modeValue) => (
+                  <button
+                    key={modeValue}
+                    type="button"
+                    className={`mode-option ${
+                      effectiveDefaultPermissionMode === modeValue
+                        ? "selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      void updateNewSessionDefaults({
+                        permissionMode: modeValue,
+                      })
+                    }
+                    disabled={settingsLoading}
+                  >
+                    <span className={`mode-option-dot mode-${modeValue}`} />
+                    <div className="mode-option-content">
+                      <span className="mode-option-label">
+                        {modeLabels[modeValue]}
+                      </span>
+                      <span className="mode-option-desc">
+                        {modeDescriptions[modeValue]}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </SettingsItem>
+          )}
+
+          {canConfigureSessionSandbox && (
+            <SettingsItem
+              id="session-default-sandbox"
+              as="label"
+              label={t("modelSettingsSandboxDefaultTitle")}
+              description={`${t("newSessionSandboxDescription")} ${t("newSessionSandboxAvailability")}`}
+              keywords={[
+                "sandbox",
+                "bubblewrap",
+                "project writes",
+                t("newSessionSandboxLabel"),
+              ]}
+              valueText={
+                savedDefaults?.sandboxLevel === "project-write"
+                  ? t("newSessionSandboxLabel")
+                  : undefined
+              }
+              className="new-session-helper-section session-default-sandbox-section settings-item--session-default-block"
+            >
+              <input
+                type="checkbox"
+                checked={savedDefaults?.sandboxLevel === "project-write"}
+                disabled={settingsLoading}
+                onChange={(event) => {
+                  const enabled = event.currentTarget.checked;
+                  void updateNewSessionDefaults({
+                    sandboxLevel: enabled ? "project-write" : "none",
+                    ...(enabled && savedRecapMode === "side-session"
+                      ? { recapMode: "off" }
+                      : {}),
+                  });
+                }}
+                aria-label={t("modelSettingsSandboxDefaultTitle")}
+              />
+            </SettingsItem>
+          )}
+
+          <SettingsItem
+            id="session-default-show-thinking"
+            label={t("showThinkingTitle")}
+            description={t("showThinkingHint")}
+            keywords={["show thinking", "reasoning", "display thinking"]}
+            valueText={String(showThinking)}
+            className="new-session-helper-section session-default-show-thinking-section settings-item--session-default-block settings-item--wide-control"
+          >
+            <ShowThinkingControls
+              value={showThinking}
+              onChange={setShowThinking}
+              t={t}
+              showLabel={false}
+            />
+          </SettingsItem>
+
+          <SettingsItem
+            id="session-default-recap"
+            label={t("newSessionRecapTitle")}
+            keywords={["recap", "away summary", "side session", "fork"]}
+            valueText={recapModeLabels[selectedRecapMode]}
+            className="new-session-helper-section session-default-recap-section settings-item--session-default-block settings-item--wide-control"
+            after={
+              selectedRecapMode !== "off" ? (
+                <RecapAfterSecondsControl
+                  value={selectedRecapAfterSeconds}
+                  disabled={settingsLoading}
+                  label={recapAfterSecondsInlineLabels[selectedRecapMode]}
+                  mode={selectedRecapMode}
+                  className="recap-after-seconds-control--inline"
+                  onCommit={(seconds) =>
+                    updateNewSessionDefaults({ recapAfterSeconds: seconds })
+                  }
+                />
+              ) : undefined
+            }
+          >
+            <div className="new-session-helper-options">
+              {availableRecapModes.map((modeValue) => (
+                <button
+                  key={modeValue}
+                  type="button"
+                  className={`new-session-helper-option ${
+                    selectedRecapMode === modeValue ? "selected" : ""
+                  }`}
+                  onClick={() =>
+                    void updateNewSessionDefaults({ recapMode: modeValue })
+                  }
+                  disabled={
+                    settingsLoading ||
+                    (canConfigureSessionSandbox &&
+                      savedDefaults?.sandboxLevel === "project-write" &&
+                      modeValue === "side-session")
+                  }
+                  title={getRecapModeDescription(
+                    modeValue,
+                    t,
+                    selectedRecapAfterSeconds,
+                  )}
+                >
+                  <span className={`mode-option-dot recap-${modeValue}`} />
+                  <span>{recapModeLabels[modeValue]}</span>
+                </button>
+              ))}
+            </div>
+          </SettingsItem>
+
+          {showHelperSideModel && (
+            <SettingsItem
+              id="session-default-helper-model"
+              label={t("helperSideModelTitle")}
+              description={t("helperSideModelDescription")}
+              keywords={[
+                "helper model",
+                "tailed recap",
+                "side session model",
+                "recap model",
+              ]}
+              valueText={selectedHelperSideModel}
+              className="new-session-helper-section session-default-helper-model-section settings-item--session-default-block settings-item--wide-control"
+            >
+              <FilterDropdown
+                label={t("helperSideModelTitle")}
+                options={helperSideModelOptions}
+                selected={[selectedHelperSideModel]}
+                onChange={(selected) => {
+                  const helperSideModel =
+                    selected[0] ?? HELPER_SIDE_MODEL_CHEAPEST;
+                  void updateProviderSessionDefaults({ helperSideModel });
+                }}
+                multiSelect={false}
+                placeholder={t("helperSideModelCheapest")}
+                fullWidth
+              />
+            </SettingsItem>
+          )}
+
+          <SettingsItem
+            id="session-default-suggestions"
+            label={t("newSessionPromptSuggestionsTitle")}
+            keywords={["suggestions", "prompt suggestions", "nudge"]}
+            valueText={promptSuggestionModeLabels[selectedPromptSuggestionMode]}
+            className="new-session-helper-section session-default-suggestions-section settings-item--session-default-block settings-item--wide-control"
+          >
+            <div className="new-session-helper-options">
+              {availablePromptSuggestionModes.map((modeValue) => (
+                <button
+                  key={modeValue}
+                  type="button"
+                  className={`new-session-helper-option ${
+                    selectedPromptSuggestionMode === modeValue ? "selected" : ""
+                  }`}
+                  onClick={() =>
+                    void updateNewSessionDefaults({
+                      promptSuggestionMode: modeValue,
+                    })
+                  }
+                  disabled={settingsLoading}
+                  title={promptSuggestionModeDescriptions[modeValue]}
+                >
+                  <span className={`mode-option-dot suggestion-${modeValue}`} />
+                  <span>{promptSuggestionModeLabels[modeValue]}</span>
+                </button>
+              ))}
+            </div>
+          </SettingsItem>
+
+          <div className={styles.relatedDivider}>
+            <strong>{t("modelSettingsRelatedBehaviorTitle")}</strong>
+            <span>{t("modelSettingsRelatedBehaviorDescription")}</span>
+          </div>
+
+          <SettingsItem
+            id="session-default-fork-summary"
+            as="label"
+            label={t("modelSettingsForkSummaryAutoOpenTitle")}
+            description={t("modelSettingsForkSummaryAutoOpenDescription")}
+            keywords={[
+              "fork",
+              "fork summary",
+              "forked session",
+              t("modelSettingsForkSummaryAutoOpenLabel"),
+            ]}
+            valueText={
+              forkSummaryAutoOpen
+                ? t("modelSettingsForkSummaryAutoOpenLabel")
+                : undefined
+            }
+            className="new-session-helper-section session-default-fork-summary-section settings-item--session-default-block"
+          >
+            <input
+              type="checkbox"
+              checked={forkSummaryAutoOpen}
+              onChange={(e) => setForkSummaryAutoOpen(e.target.checked)}
+              aria-label={t("modelSettingsForkSummaryAutoOpenLabel")}
+            />
+          </SettingsItem>
+
           {showCompactThreshold && selectedModel && (
             <YaCompactContextEarlyControl
               id="session-default-compact-early"
@@ -919,70 +984,6 @@ export function ModelSettings() {
                 />
               </SettingsItem>
             )}
-
-          {showThinkingControls && (
-            <SettingsItem
-              id="session-default-thinking"
-              label={t("modelSettingsThinkingTitle")}
-              description={t("modelSettingsThinkingDescription")}
-              keywords={["thinking", "effort", "reasoning mode"]}
-              valueText={`${effectiveThinkingMode} ${effectiveEffortLevel ?? ""}`.trim()}
-              className="new-session-helper-section session-default-thinking-section settings-item--session-default-block settings-item--wide-control"
-            >
-              <ThinkingControlsPanel
-                mode={effectiveThinkingMode}
-                modeOptions={thinkingModeOptions}
-                onSetMode={(mode: ThinkingMode) =>
-                  void updateProviderSessionDefaults({ thinkingMode: mode })
-                }
-                level={effectiveEffortLevel}
-                effortOptions={effortOptions}
-                onSetEffort={(level: EffortLevel) =>
-                  void updateProviderSessionDefaults({ effortLevel: level })
-                }
-                onSetEffortMode={(level: EffortLevel) =>
-                  void updateProviderSessionDefaults({
-                    thinkingMode: "on",
-                    effortLevel: level,
-                  })
-                }
-                showThinkingControl={false}
-                provider={selectedProvider?.name}
-                t={t}
-                className="thinking-controls-panel--inline session-default-thinking-controls"
-              />
-            </SettingsItem>
-          )}
-
-          {showHelperSideModel && (
-            <SettingsItem
-              id="session-default-helper-model"
-              label={t("helperSideModelTitle")}
-              description={t("helperSideModelDescription")}
-              keywords={[
-                "helper model",
-                "tailed recap",
-                "side session model",
-                "recap model",
-              ]}
-              valueText={selectedHelperSideModel}
-              className="new-session-helper-section session-default-helper-model-section settings-item--session-default-block settings-item--wide-control"
-            >
-              <FilterDropdown
-                label={t("helperSideModelTitle")}
-                options={helperSideModelOptions}
-                selected={[selectedHelperSideModel]}
-                onChange={(selected) => {
-                  const helperSideModel =
-                    selected[0] ?? HELPER_SIDE_MODEL_CHEAPEST;
-                  void updateProviderSessionDefaults({ helperSideModel });
-                }}
-                multiSelect={false}
-                placeholder={t("helperSideModelCheapest")}
-                fullWidth
-              />
-            </SettingsItem>
-          )}
 
           {showPromptCacheKeepalive && selectedProvider && (
             <SettingsItem

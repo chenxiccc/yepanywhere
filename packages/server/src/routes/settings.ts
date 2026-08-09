@@ -3,6 +3,7 @@
  */
 
 import {
+  MAX_HEARTBEAT_TURN_TEXT_LENGTH,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   MAX_PROJECT_QUEUE_QUIET_SECONDS,
@@ -541,7 +542,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         ) {
           updates.heartbeatTurnText = DEFAULT_SERVER_SETTINGS.heartbeatTurnText;
         } else if (typeof body.heartbeatTurnText === "string") {
-          updates.heartbeatTurnText = body.heartbeatTurnText.slice(0, 200);
+          updates.heartbeatTurnText = body.heartbeatTurnText.slice(
+            0,
+            MAX_HEARTBEAT_TURN_TEXT_LENGTH,
+          );
         }
       }
 

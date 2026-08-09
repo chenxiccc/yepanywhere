@@ -894,6 +894,61 @@ export const SERVER_CAPABILITIES = {
         "Project Queue availability remains a server feature boundary for older servers and hosted remote clients.",
     },
   },
+  projectSessionDefaults: {
+    name: "project-session-defaults",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.1",
+    description:
+      "Server persists project-scoped heartbeat defaults and recent heartbeat messages, then seeds new session metadata from the effective project-to-global values.",
+    clientFallback:
+      "Hide Project Settings heartbeat entry points, make no project-default requests, and retain global plus per-session heartbeat behavior.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/session-defaults",
+        "PATCH /api/projects/:projectId/session-defaults",
+      ],
+      routeModules: ["packages/server/src/routes/project-session-defaults.ts"],
+      requestFields: [
+        "projectSessionDefaults.heartbeatTurnsAfterMinutes",
+        "projectSessionDefaults.heartbeatTurnText",
+      ],
+      responseFields: [
+        "projectSessionDefaults.projectId",
+        "projectSessionDefaults.overrides",
+        "projectSessionDefaults.recentHeartbeatTurnTexts",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, and project settings must never issue unsupported reads or writes to older servers.",
+    },
+  },
+  sidebarSessionResume: {
+    name: "sidebar-session-resume",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.7.1",
+    description:
+      "Server session summaries identify manual resume exemptions so recent interrupted sessions can expose a safe message-less Resume action.",
+    clientFallback:
+      "Hide sidebar Resume controls and make no reactivate request.",
+    serverContract: {
+      routes: [
+        "GET /api/sessions",
+        "POST /api/projects/:projectId/sessions/:sessionId/reactivate",
+        "POST /api/processes/:processId/abort",
+      ],
+      requestFields: ["processAbort.blockResume"],
+      responseFields: ["globalSessions.sessions[].autoResumeDisabled"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers do not expose the durable manual-termination marker in sidebar session summaries.",
+    },
+  },
   projectQueueNewSessionShortcutSetting: {
     name: "project-queue-new-session-shortcut-setting",
     kind: "permanent",
@@ -1062,6 +1117,11 @@ export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =
 export const PROGRESSIVE_SESSION_CATALOG_CAPABILITY =
   SERVER_CAPABILITIES.progressiveSessionCatalog.name;
 export const PROJECT_QUEUE_CAPABILITY = SERVER_CAPABILITIES.projectQueue.name;
+
+export const PROJECT_SESSION_DEFAULTS_CAPABILITY =
+  SERVER_CAPABILITIES.projectSessionDefaults.name;
+export const SIDEBAR_SESSION_RESUME_CAPABILITY =
+  SERVER_CAPABILITIES.sidebarSessionResume.name;
 export const PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.projectQueueNewSessionShortcutSetting.name;
 

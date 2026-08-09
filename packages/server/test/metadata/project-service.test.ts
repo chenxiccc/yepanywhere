@@ -143,6 +143,74 @@ describe("ProjectMetadataService", () => {
     });
   });
 
+  describe("project session defaults", () => {
+    it("persists overrides and keeps recently used messages most-recent-first", async () => {
+      const projectId = encodeProjectId("/path1");
+
+      await service.updateProjectSessionDefaults(projectId, {
+        heartbeatTurnsAfterMinutes: 30,
+        heartbeatTurnText: "first",
+      });
+      await service.recordRecentHeartbeatTurnText(projectId, "second");
+      await service.recordRecentHeartbeatTurnText(projectId, "first");
+
+      const reloaded = new ProjectMetadataService({ dataDir: tempDir });
+      await reloaded.initialize();
+      expect(reloaded.getProjectSessionDefaults(projectId)).toMatchObject({
+        heartbeatTurnsAfterMinutes: 30,
+        heartbeatTurnText: "first",
+        recentHeartbeatTurnTexts: ["first", "second"],
+      });
+    });
+
+    it("clears overrides without discarding recent messages", async () => {
+      const projectId = encodeProjectId("/path1");
+      await service.updateProjectSessionDefaults(projectId, {
+        heartbeatTurnsAfterMinutes: 45,
+        heartbeatTurnText: "keep going",
+      });
+
+      await service.updateProjectSessionDefaults(projectId, {
+        heartbeatTurnsAfterMinutes: null,
+        heartbeatTurnText: null,
+      });
+
+      expect(service.getProjectSessionDefaults(projectId)).toMatchObject({
+        recentHeartbeatTurnTexts: ["keep going"],
+      });
+      expect(
+        service.getProjectSessionDefaults(projectId)
+          ?.heartbeatTurnsAfterMinutes,
+      ).toBeUndefined();
+      expect(
+        service.getProjectSessionDefaults(projectId)?.heartbeatTurnText,
+      ).toBeUndefined();
+    });
+
+    it("preserves hidden projects while migrating older state", async () => {
+      const projectId = encodeProjectId("/hidden");
+      await fs.writeFile(
+        path.join(tempDir, "project-metadata.json"),
+        JSON.stringify({
+          version: 2,
+          projects: {},
+          hiddenProjects: {
+            [projectId]: {
+              path: "/hidden",
+              hiddenAt: "2026-08-09T00:00:00.000Z",
+            },
+          },
+        }),
+        "utf-8",
+      );
+
+      const migrated = new ProjectMetadataService({ dataDir: tempDir });
+      await migrated.initialize();
+
+      expect(migrated.isHiddenProject(projectId)).toBe(true);
+    });
+  });
+
   describe("removeProject", () => {
     it("removes a project from the list", async () => {
       const projectId1 = encodeProjectId("/path1");

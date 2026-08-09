@@ -94,7 +94,7 @@
 }
 
 .newSession,
-.delete {
+.menuTrigger {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -116,21 +116,47 @@
   border-color: var(--text-muted);
 }
 
-.delete {
-  color: var(--error-color, #ef4444);
-  opacity: 0.85;
+.menu {
+  position: relative;
 }
 
-.delete:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--error-color, #ef4444) 12%, transparent);
-  color: var(--error-color, #ef4444);
-  border-color: var(--error-color, #ef4444);
-  opacity: 1;
+.menuDropdown {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 10rem;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
 }
 
-.delete:disabled {
+.menuDropdown button {
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menuDropdown button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.menuDropdown button:disabled {
   cursor: default;
   opacity: 0.45;
+}
+
+.menuDropdown .deleteMenuItem {
+  color: var(--error-color);
 }
 
 .meta {

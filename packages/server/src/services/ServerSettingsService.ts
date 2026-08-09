@@ -25,8 +25,10 @@ import type {
 import {
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
   DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
+  DEFAULT_HEARTBEAT_TURN_TEXT,
   DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
+  MAX_HEARTBEAT_TURN_TEXT_LENGTH,
   clampProjectQueueQuietSeconds,
   isIdleReapHours,
   normalizeIdleReapHours,
@@ -47,7 +49,6 @@ export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES = 400 * 1024 * 1024;
 export const DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS = 8;
 export const MIN_SOURCE_REVIEW_RESPONSE_TURNS = 1;
 export const MAX_SOURCE_REVIEW_RESPONSE_TURNS = 32;
-const DEFAULT_HEARTBEAT_TURN_TEXT = "continue";
 export const MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH = 10_000;
 const LEGACY_DEFAULT_HEARTBEAT_TURN_TEXTS = new Set([
   "heartbeat",
@@ -410,11 +411,15 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
       ? settings.claudeGatewayDisableAgent
       : DEFAULT_SERVER_SETTINGS.claudeGatewayDisableAgent;
   const loadedHeartbeatText = settings.heartbeatTurnText?.trim();
-  if (
-    loadedHeartbeatText &&
-    LEGACY_DEFAULT_HEARTBEAT_TURN_TEXTS.has(loadedHeartbeatText)
-  ) {
+  if (!loadedHeartbeatText) {
     normalized.heartbeatTurnText = DEFAULT_SERVER_SETTINGS.heartbeatTurnText;
+  } else if (LEGACY_DEFAULT_HEARTBEAT_TURN_TEXTS.has(loadedHeartbeatText)) {
+    normalized.heartbeatTurnText = DEFAULT_SERVER_SETTINGS.heartbeatTurnText;
+  } else {
+    normalized.heartbeatTurnText = loadedHeartbeatText.slice(
+      0,
+      MAX_HEARTBEAT_TURN_TEXT_LENGTH,
+    );
   }
   if (!normalized.yaClientBaseUrl && normalized.publicShareViewerBaseUrl) {
     try {

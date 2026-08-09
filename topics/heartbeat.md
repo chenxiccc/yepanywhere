@@ -23,6 +23,14 @@ language, but they do not share ownership or evidence semantics.
   settings UI and local optimistic state, but `Supervisor.runHeartbeatSweep()`
   decides whether to queue the configured user-message text for an opted-in
   idle session.
+- New sessions snapshot their heartbeat interval and message from the first
+  available tier: project override, global setting, then the built-in default.
+  Project defaults seed only missing session metadata; they do not rewrite an
+  existing session and do not opt a session into heartbeat turns.
+- Heartbeat messages are bounded to 2,000 characters at every settings and
+  session-metadata write boundary. The shared editor starts at one line and
+  grows through four lines before scrolling, so a multi-line message remains
+  practical without dominating either settings surface.
 - Synthetic heartbeat turns must use the shared session-liveness contract:
   queue for `verified-idle`, and also for deliberately supported doubtful
   liveness states where YA cannot verify that the agent is making progress but

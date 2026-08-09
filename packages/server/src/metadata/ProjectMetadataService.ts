@@ -9,7 +9,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  MAX_HEARTBEAT_TURN_TEXT_LENGTH,
+  MAX_PROJECT_HEARTBEAT_RECENT_TEXTS,
+  type UpdateProjectSessionDefaultsRequest,
+  type UrlProjectId,
+} from "@yep-anywhere/shared";
+import {
   canonicalizeProjectPath,
+  decodeProjectId,
   encodeProjectId,
   getProjectIdentityKey,
 } from "../projects/paths.js";
@@ -29,16 +36,25 @@ export interface HiddenProjectMetadata {
   hiddenAt: string;
 }
 
+export interface ProjectSessionDefaultsMetadata {
+  heartbeatTurnsAfterMinutes?: number;
+  heartbeatTurnText?: string;
+  recentHeartbeatTurnTexts?: string[];
+  updatedAt: string;
+}
+
 export interface ProjectMetadataState {
   /** Map of projectId -> metadata */
   projects: Record<string, ProjectMetadata>;
   /** Map of projectId -> hidden project metadata */
   hiddenProjects?: Record<string, HiddenProjectMetadata>;
+  /** Project-scoped defaults used to initialize new session metadata. */
+  projectSessionDefaults?: Record<string, ProjectSessionDefaultsMetadata>;
   /** Schema version for future migrations */
   version: number;
 }
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 export interface ProjectMetadataServiceOptions {
   /** Directory to store metadata state (defaults to ~/.yep-anywhere) */
@@ -62,6 +78,7 @@ export class ProjectMetadataService {
     this.state = {
       projects: {},
       hiddenProjects: {},
+      projectSessionDefaults: {},
       version: CURRENT_VERSION,
     };
   }
@@ -90,6 +107,8 @@ export class ProjectMetadataService {
         // Future: handle migrations here
         this.state = this.normalizeState({
           projects: parsed.projects ?? {},
+          hiddenProjects: parsed.hiddenProjects ?? {},
+          projectSessionDefaults: parsed.projectSessionDefaults ?? {},
           version: CURRENT_VERSION,
         });
         await this.save();
@@ -105,6 +124,7 @@ export class ProjectMetadataService {
       this.state = {
         projects: {},
         hiddenProjects: {},
+        projectSessionDefaults: {},
         version: CURRENT_VERSION,
       };
     }
@@ -129,6 +149,112 @@ export class ProjectMetadataService {
    */
   getAllHiddenProjects(): Record<string, HiddenProjectMetadata> {
     return { ...(this.state.hiddenProjects ?? {}) };
+  }
+
+  getProjectSessionDefaults(
+    projectId: string,
+  ): ProjectSessionDefaultsMetadata | undefined {
+    const value =
+      this.state.projectSessionDefaults?.[this.canonicalProjectId(projectId)];
+    return value
+      ? {
+          ...value,
+          recentHeartbeatTurnTexts: value.recentHeartbeatTurnTexts
+            ? [...value.recentHeartbeatTurnTexts]
+            : undefined,
+        }
+      : undefined;
+  }
+
+  async updateProjectSessionDefaults(
+    projectId: string,
+    updates: UpdateProjectSessionDefaultsRequest,
+  ): Promise<ProjectSessionDefaultsMetadata> {
+    const canonicalProjectId = this.canonicalProjectId(projectId);
+    const current = this.state.projectSessionDefaults?.[canonicalProjectId];
+    const next: ProjectSessionDefaultsMetadata = {
+      ...current,
+      recentHeartbeatTurnTexts: current?.recentHeartbeatTurnTexts
+        ? [...current.recentHeartbeatTurnTexts]
+        : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (updates.heartbeatTurnsAfterMinutes !== undefined) {
+      if (updates.heartbeatTurnsAfterMinutes === null) {
+        delete next.heartbeatTurnsAfterMinutes;
+      } else if (
+        Number.isInteger(updates.heartbeatTurnsAfterMinutes) &&
+        updates.heartbeatTurnsAfterMinutes >= 1 &&
+        updates.heartbeatTurnsAfterMinutes <= 1440
+      ) {
+        next.heartbeatTurnsAfterMinutes = updates.heartbeatTurnsAfterMinutes;
+      } else {
+        throw new RangeError(
+          "heartbeatTurnsAfterMinutes must be null or an integer between 1 and 1440",
+        );
+      }
+    }
+
+    if (updates.heartbeatTurnText !== undefined) {
+      if (updates.heartbeatTurnText === null) {
+        delete next.heartbeatTurnText;
+      } else {
+        const text = updates.heartbeatTurnText.trim();
+        if (!text) {
+          throw new RangeError("heartbeatTurnText must not be empty");
+        }
+        if (text.length > MAX_HEARTBEAT_TURN_TEXT_LENGTH) {
+          throw new RangeError(
+            `heartbeatTurnText must be at most ${MAX_HEARTBEAT_TURN_TEXT_LENGTH} characters`,
+          );
+        }
+        next.heartbeatTurnText = text;
+        next.recentHeartbeatTurnTexts = this.withRecentHeartbeatText(
+          next.recentHeartbeatTurnTexts,
+          text,
+        );
+      }
+    }
+
+    this.state.projectSessionDefaults ??= {};
+    this.state.projectSessionDefaults[canonicalProjectId] = next;
+    await this.save();
+    return this.getProjectSessionDefaults(
+      canonicalProjectId,
+    ) as ProjectSessionDefaultsMetadata;
+  }
+
+  async recordRecentHeartbeatTurnText(
+    projectId: string,
+    rawText: string,
+  ): Promise<void> {
+    const text = rawText.trim().slice(0, MAX_HEARTBEAT_TURN_TEXT_LENGTH);
+    if (!text) return;
+
+    const canonicalProjectId = this.canonicalProjectId(projectId);
+    const current = this.state.projectSessionDefaults?.[canonicalProjectId];
+    const recentHeartbeatTurnTexts = this.withRecentHeartbeatText(
+      current?.recentHeartbeatTurnTexts,
+      text,
+    );
+    if (
+      current?.recentHeartbeatTurnTexts?.length ===
+        recentHeartbeatTurnTexts.length &&
+      current.recentHeartbeatTurnTexts.every(
+        (value, index) => value === recentHeartbeatTurnTexts[index],
+      )
+    ) {
+      return;
+    }
+
+    this.state.projectSessionDefaults ??= {};
+    this.state.projectSessionDefaults[canonicalProjectId] = {
+      ...current,
+      recentHeartbeatTurnTexts,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.save();
   }
 
   /**
@@ -233,6 +359,10 @@ export class ProjectMetadataService {
       string,
       { projectId: string; metadata: HiddenProjectMetadata }
     >();
+    const projectSessionDefaults = new Map<
+      string,
+      ProjectSessionDefaultsMetadata
+    >();
 
     for (const [projectId, metadata] of Object.entries(state.projects ?? {})) {
       const canonicalPath = canonicalizeProjectPath(metadata.path);
@@ -294,6 +424,22 @@ export class ProjectMetadataService {
       projectsByIdentity.delete(hiddenIdentity);
     }
 
+    for (const [projectId, metadata] of Object.entries(
+      state.projectSessionDefaults ?? {},
+    )) {
+      const canonicalProjectId = this.canonicalProjectId(projectId);
+      const normalized = this.normalizeProjectSessionDefaults(metadata);
+      if (!normalized) continue;
+      const existing = projectSessionDefaults.get(canonicalProjectId);
+      if (
+        !existing ||
+        new Date(normalized.updatedAt).getTime() >=
+          new Date(existing.updatedAt).getTime()
+      ) {
+        projectSessionDefaults.set(canonicalProjectId, normalized);
+      }
+    }
+
     const projects: Record<string, ProjectMetadata> = {};
     for (const { projectId, metadata } of projectsByIdentity.values()) {
       projects[projectId] = metadata;
@@ -307,8 +453,77 @@ export class ProjectMetadataService {
     return {
       projects,
       hiddenProjects,
+      projectSessionDefaults: Object.fromEntries(projectSessionDefaults),
       version: CURRENT_VERSION,
     };
+  }
+
+  private canonicalProjectId(projectId: string): string {
+    try {
+      return encodeProjectId(
+        canonicalizeProjectPath(decodeProjectId(projectId as UrlProjectId)),
+      );
+    } catch {
+      return projectId;
+    }
+  }
+
+  private normalizeProjectSessionDefaults(
+    metadata: ProjectSessionDefaultsMetadata,
+  ): ProjectSessionDefaultsMetadata | undefined {
+    if (!metadata || typeof metadata !== "object") return undefined;
+    const heartbeatTurnsAfterMinutes =
+      Number.isInteger(metadata.heartbeatTurnsAfterMinutes) &&
+      (metadata.heartbeatTurnsAfterMinutes ?? 0) >= 1 &&
+      (metadata.heartbeatTurnsAfterMinutes ?? 0) <= 1440
+        ? metadata.heartbeatTurnsAfterMinutes
+        : undefined;
+    const heartbeatTurnText =
+      typeof metadata.heartbeatTurnText === "string"
+        ? metadata.heartbeatTurnText
+            .trim()
+            .slice(0, MAX_HEARTBEAT_TURN_TEXT_LENGTH) || undefined
+        : undefined;
+    const recentHeartbeatTurnTexts = Array.isArray(
+      metadata.recentHeartbeatTurnTexts,
+    )
+      ? metadata.recentHeartbeatTurnTexts.reduce<string[]>((recent, value) => {
+          if (typeof value !== "string") return recent;
+          const text = value.trim().slice(0, MAX_HEARTBEAT_TURN_TEXT_LENGTH);
+          if (!text || recent.includes(text)) return recent;
+          recent.push(text);
+          return recent;
+        }, [])
+      : [];
+    const updatedAt = Number.isFinite(new Date(metadata.updatedAt).getTime())
+      ? metadata.updatedAt
+      : new Date(0).toISOString();
+
+    return {
+      ...(heartbeatTurnsAfterMinutes === undefined
+        ? {}
+        : { heartbeatTurnsAfterMinutes }),
+      ...(heartbeatTurnText === undefined ? {} : { heartbeatTurnText }),
+      ...(recentHeartbeatTurnTexts.length === 0
+        ? {}
+        : {
+            recentHeartbeatTurnTexts: recentHeartbeatTurnTexts.slice(
+              0,
+              MAX_PROJECT_HEARTBEAT_RECENT_TEXTS,
+            ),
+          }),
+      updatedAt,
+    };
+  }
+
+  private withRecentHeartbeatText(
+    current: string[] | undefined,
+    text: string,
+  ): string[] {
+    return [text, ...(current ?? []).filter((value) => value !== text)].slice(
+      0,
+      MAX_PROJECT_HEARTBEAT_RECENT_TEXTS,
+    );
   }
 
   private deleteProjectsByIdentity(projectPath: string): void {

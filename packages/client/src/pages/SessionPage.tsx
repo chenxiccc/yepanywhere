@@ -14,6 +14,7 @@ import type {
   UserQuestionAnswers,
 } from "@yep-anywhere/shared";
 import {
+  PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   getCanonicalInvocationToken,
   isClaudeProviderName,
@@ -50,6 +51,7 @@ import { MessageInputToolbar } from "../components/MessageInputToolbar";
 import { MessageList } from "../components/MessageList";
 import { ModelSwitchModal } from "../components/ModelSwitchModal";
 import { ProcessInfoBody } from "../components/ProcessInfoModal";
+import { ProjectSessionDefaultsModal } from "../components/ProjectSessionDefaultsModal";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
@@ -396,6 +398,10 @@ function SessionPageContent({
   );
   const { version: versionInfo } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
+  const supportsProjectSessionDefaults = serverHasCapability(
+    versionInfo,
+    PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  );
   const projectQueueProjectIds = useMemo(
     () =>
       supportsProjectQueue ? [projectId] : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
@@ -1887,6 +1893,8 @@ function SessionPageContent({
   const [approvalCollapsed, setApprovalCollapsed] = useState(false);
 
   const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
+  const [showProjectSettingsModal, setShowProjectSettingsModal] =
+    useState(false);
   const [showRecapModal, setShowRecapModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareModalView, setShareModalView] = useState<"manage" | "session">(
@@ -4776,6 +4784,11 @@ function SessionPageContent({
                   }
                   onClone={supportsForkFromTurn ? cloneSession : undefined}
                   cloneDisabled={forkAfterDisabled}
+                  onConfigureProjectSettings={
+                    supportsProjectSessionDefaults
+                      ? () => setShowProjectSettingsModal(true)
+                      : undefined
+                  }
                   onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                   onConfigureRecaps={
                     status.owner === "self"
@@ -4915,6 +4928,14 @@ function SessionPageContent({
             setLocalHeartbeatForceAfterMinutes(next.heartbeatForceAfterMinutes);
             showToast(t("sessionHeartbeatSaved"), "success");
           }}
+        />
+      )}
+
+      {showProjectSettingsModal && supportsProjectSessionDefaults && (
+        <ProjectSessionDefaultsModal
+          projectId={projectId}
+          projectName={project?.name}
+          onClose={() => setShowProjectSettingsModal(false)}
         />
       )}
 

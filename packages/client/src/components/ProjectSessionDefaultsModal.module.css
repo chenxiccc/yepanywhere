@@ -1,0 +1,149 @@
+:global(.modal):has(.body) {
+  width: min(44rem, calc(100vw - 1.5rem));
+  max-width: min(44rem, calc(100vw - 1.5rem));
+  height: auto;
+}
+
+.body {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-2);
+}
+
+.intro,
+.headingRow p,
+.textMeta {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.headingRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.headingRow h3 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-md);
+}
+
+.inheritToggle,
+.numberField,
+.recentField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.inheritToggle {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+
+.numberField input {
+  width: 6rem;
+}
+
+.recentField {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.recentField select,
+.numberField input,
+.textarea {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.recentField select,
+.numberField input {
+  min-height: 2.25rem;
+  padding: var(--space-2);
+}
+
+.textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  line-height: 1.45;
+}
+
+.textMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.error {
+  margin: 0;
+  color: var(--error-color);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.primary,
+.secondary {
+  min-height: 2.25rem;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  color: var(--button-text, white);
+}
+
+.secondary {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (max-width: 600px) {
+  :global(.modal):has(.body) {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+  }
+
+  .body {
+    min-width: 0;
+  }
+
+  .headingRow {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+}

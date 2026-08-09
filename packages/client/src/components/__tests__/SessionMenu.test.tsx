@@ -109,4 +109,14 @@ describe("SessionMenu CSS module contracts", () => {
         .disabled,
     ).toBe(true);
   });
+
+  it("opens project settings from the session menu", () => {
+    const onConfigureProjectSettings = vi.fn();
+    renderMenu({ onConfigureProjectSettings });
+
+    fireEvent.click(screen.getByRole("button", { name: "Session options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Project settings" }));
+
+    expect(onConfigureProjectSettings).toHaveBeenCalledOnce();
+  });
 });

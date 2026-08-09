@@ -459,6 +459,15 @@ export {
   clampProjectQueueQuietSeconds,
 } from "./project-queue.js";
 export {
+  DEFAULT_HEARTBEAT_TURN_TEXT,
+  DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES,
+  MAX_HEARTBEAT_TURN_TEXT_LENGTH,
+  MAX_PROJECT_HEARTBEAT_RECENT_TEXTS,
+  type ProjectSessionDefaultOverrides,
+  type ProjectSessionDefaultsResponse,
+  type UpdateProjectSessionDefaultsRequest,
+} from "./heartbeat.js";
+export {
   getApplicableSubscriptionUsageWindows,
   getMostUsedSubscriptionUsageWindow,
   type ProviderSubscriptionUsage,
@@ -488,6 +497,8 @@ export {
   PROGRESSIVE_SESSION_CATALOG_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+  PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  SIDEBAR_SESSION_RESUME_CAPABILITY,
   PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
