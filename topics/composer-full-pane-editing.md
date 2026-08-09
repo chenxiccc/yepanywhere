@@ -13,6 +13,10 @@ Topic: composer-full-pane-editing
   only the independent one-line collapse state.
 - The visible controls' tooltips and the in-session `?` shortcuts panel identify
   `Ctrl+U` as the shared maximize/restore accelerator.
+- Follow and the in-session maximize/restore control keep the same horizontal
+  anchors when the composer changes between its ordinary and one-line states.
+  Collapsed-field actions fit below that stable control group instead of moving
+  it sideways.
 - Full-pane mode is transient UI state. Leaving the page or restoring the
   ordinary composer does not change a saved preference or the draft text.
 - The textarea continually resizes as the draft changes. Its target height is

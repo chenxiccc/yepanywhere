@@ -11,6 +11,7 @@ import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
+  CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
@@ -463,6 +464,31 @@ describe("ProvidersSettings additional models", () => {
         name: "providersClaudeGatewayStartCommandAria",
       }),
     ).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", {
+        name: "providersClaudeGatewayDisableAgentTitle",
+      }),
+    ).toBeNull();
+  });
+
+  it("defaults the capability-gated Gateway Agent denial on", () => {
+    versionState.capabilities = [
+      CLAUDE_GATEWAY_CAPABILITY,
+      CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
+    ];
+    render(<ProvidersSettings />);
+
+    const checkbox = screen.getByRole("checkbox", {
+      name: "providersClaudeGatewayDisableAgentTitle",
+    });
+    expect(checkbox).toHaveProperty("checked", true);
+
+    fireEvent.click(checkbox);
+
+    expect(mockUpdateSetting).toHaveBeenCalledWith(
+      "claudeGatewayDisableAgent",
+      false,
+    );
   });
 
   it("saves a capability-gated Gateway start command with the URL", async () => {

@@ -129,6 +129,13 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   identity. YA must not infer this marker from a port, model id, vendor row, or
   other catalog content.
 - Gateway launches narrow several Claude Code defaults.
+  Claude Gateway denies the `Agent` tool by default through
+  `permissions.deny: ["Agent"]` in the per-launch flag-settings layer. This
+  blocks built-in Explore and Plan delegation, general-purpose subagents, and
+  custom subagents without changing regular Claude sessions or user settings
+  files. The server-wide **Disable Agent tool** setting may omit YA's rule for
+  processes started or resumed afterward; it does not override a deny from
+  Claude's user, project, or local settings.
   `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` defaults to `1` (one level of
   subagents, no nesting; the CLI default is 3), deferring to an explicit
   operator value in YA's own environment.

@@ -1,8 +1,8 @@
 # Mobile transcript horizontal overflow
 
-Status: **problem statement / deferred.** This records a longstanding mobile
-session-view bug so the next fix can start from the known mechanism and the
-closed upstream PR context instead of rediscovering it.
+Status: **implemented.** The outer transcript clips inline overflow while
+retaining vertical scrolling. Renderer-owned scrollers and turn image galleries
+remain local exceptions rather than widening or moving the session viewport.
 
 Related: PR [#90](https://github.com/kzahel/yepanywhere/pull/90), "Fix
 horizontal page scroll on mobile chat view", opened by `joshtech90` and closed
@@ -26,13 +26,13 @@ content. Recent confirmed examples:
 - Long code/tool output that should scroll inside its own renderer box, not
   widen the whole transcript.
 
-## Likely Mechanism
+## Owning mechanism
 
-`main.session-messages` is the vertical transcript scroller. Its base rule sets
-`overflow-y: auto` but does not explicitly constrain horizontal overflow.
-Under CSS overflow rules, when one axis is `auto`, a default `visible` value on
-the other axis can compute to scrollable behavior. A wide child can therefore
-make the outer transcript itself horizontally scrollable.
+`main.session-messages` is the vertical transcript scroller. Its base rule uses
+`overflow: clip auto`: inline overflow is clipped at the session viewport and
+block overflow remains the ordinary vertical scroll. This explicit two-axis
+contract matters because `overflow-y: auto` with the horizontal axis left at
+its initial `visible` value can compute to scrollable behavior on both axes.
 
 There is already a related desktop/split-pane guard:
 
@@ -74,24 +74,18 @@ Prefer fixing the shell invariant while keeping a development/debug signal for
 leaks, such as checking when `main.session-messages.scrollWidth` exceeds
 `clientWidth` after render.
 
-## Fix Direction
+## Contract
 
 The desired invariant is:
 
-- the outer session transcript must not horizontally scroll on mobile;
+- the outer session transcript must not horizontally scroll at any viewport
+  width;
 - wide renderer content that genuinely needs horizontal movement should own a
   local horizontal scroller inside its row/card;
+- turn image galleries may own horizontal touch scrolling without transferring
+  that gesture or overflow to the outer transcript;
 - header, transcript content, follow controls, connection bar, and composer
   must share one stable viewport alignment.
-
-Likely implementation work:
-
-- constrain the outer session layout with `min-width: 0` at the flex/grid
-  boundaries that can otherwise propagate min-content width;
-- hide horizontal overflow on the outer transcript scroller;
-- audit Grep/file-path/fixed-font rows so their long tokens shrink, ellipsize,
-  wrap, or scroll inside their own box according to each renderer's intended
-  UX.
 
 ## Acceptance
 

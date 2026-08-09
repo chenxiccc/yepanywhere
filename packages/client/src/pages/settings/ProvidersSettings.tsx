@@ -11,6 +11,7 @@ import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
+  CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   DEFAULT_IDLE_REAP_HOURS,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   MAX_IDLE_REAP_HOURS,
@@ -978,6 +979,31 @@ function ClaudeGatewaySettings({
   );
 }
 
+function ClaudeGatewayDisableAgentSetting() {
+  const { t } = useI18n();
+  const { settings, updateSetting } = useServerSettings();
+  const disabled = settings?.claudeGatewayDisableAgent ?? true;
+
+  return (
+    <SettingsItem
+      id="provider-claude-gateway-disable-agent"
+      as="label"
+      label={t("providersClaudeGatewayDisableAgentTitle")}
+      description={t("providersClaudeGatewayDisableAgentDescription")}
+      valueText={disabled ? t("commonOn") : t("commonOff")}
+    >
+      <input
+        type="checkbox"
+        checked={disabled}
+        aria-label={t("providersClaudeGatewayDisableAgentTitle")}
+        onChange={(event) =>
+          void updateSetting("claudeGatewayDisableAgent", event.target.checked)
+        }
+      />
+    </SettingsItem>
+  );
+}
+
 function ClaudeLoginCommandPanel({
   command,
   onCopy,
@@ -1307,6 +1333,10 @@ export function ProvidersSettings() {
     version,
     CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   );
+  const supportsClaudeGatewayDisableAgent = serverHasCapability(
+    version,
+    CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
+  );
   const supportsCodexReloadSafeSettings = serverHasCapability(
     version,
     RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
@@ -1527,10 +1557,15 @@ export function ProvidersSettings() {
               />
             )}
             {provider.id === "claude" && supportsClaudeGateway && (
-              <ClaudeGatewaySettings
-                reloadProviders={reloadProviders}
-                supportsAutostart={supportsClaudeGatewayAutostart}
-              />
+              <>
+                <ClaudeGatewaySettings
+                  reloadProviders={reloadProviders}
+                  supportsAutostart={supportsClaudeGatewayAutostart}
+                />
+                {supportsClaudeGatewayDisableAgent && (
+                  <ClaudeGatewayDisableAgentSetting />
+                )}
+              </>
             )}
             {provider.id === "claude" && supportsAdditionalModels && (
               <ClaudeAdditionalModelsSettings

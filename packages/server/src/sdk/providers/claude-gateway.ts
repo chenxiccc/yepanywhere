@@ -278,6 +278,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
 
   private static gatewayUrl: string | undefined;
   private static gatewayStartCommand: string | undefined;
+  private static gatewayDisableAgent = true;
   private static configurationGeneration = 0;
   /**
    * The last successful catalog and the exact endpoint that supplied it.
@@ -308,9 +309,14 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     ClaudeGatewayProvider.gatewayStartCommand = command;
   }
 
+  static setGatewayDisableAgent(disableAgent: boolean): void {
+    ClaudeGatewayProvider.gatewayDisableAgent = disableAgent;
+  }
+
   static async configureGateway(options: {
     url?: string;
     startCommand?: string;
+    disableAgent?: boolean;
   }): Promise<void> {
     if (
       ClaudeGatewayProvider.gatewayUrl !== options.url ||
@@ -320,6 +326,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     }
     ClaudeGatewayProvider.gatewayUrl = options.url;
     ClaudeGatewayProvider.gatewayStartCommand = options.startCommand;
+    ClaudeGatewayProvider.gatewayDisableAgent = options.disableAgent ?? true;
     await claudeGatewayLauncher.configure(options);
   }
 
@@ -479,6 +486,9 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
         launch.metadata,
         launch.isCopilotApi,
       ),
+      ...(ClaudeGatewayProvider.gatewayDisableAgent
+        ? { permissions: { deny: ["Agent"] } }
+        : {}),
     };
   }
 

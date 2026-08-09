@@ -43,6 +43,7 @@ describe("Settings Routes", () => {
       hostAwakeMode: "off",
       hostAwakeBatteryFloorPercent: 10,
       codexReloadSafeSessions: false,
+      claudeGatewayDisableAgent: true,
     };
 
     mockServerSettingsService = {
@@ -894,6 +895,7 @@ describe("Settings Routes", () => {
       expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
         url: "http://localhost:4141",
         startCommand: undefined,
+        disableAgent: true,
       });
     });
 
@@ -923,8 +925,51 @@ describe("Settings Routes", () => {
       expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
         url: "http://localhost:4141",
         startCommand: "HOST=localhost gateway start",
+        disableAgent: true,
       });
     });
+
+    it("persists and applies the Claude Gateway Agent denial live", async () => {
+      const onClaudeGatewaySettingsChanged = vi.fn();
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        onClaudeGatewaySettingsChanged,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeGatewayDisableAgent: false }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        claudeGatewayDisableAgent: false,
+      });
+      expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
+        url: undefined,
+        startCommand: undefined,
+        disableAgent: false,
+      });
+    });
+
+    it.each([null, "false", 0])(
+      "rejects invalid Claude Gateway Agent denial %p",
+      async (claudeGatewayDisableAgent) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ claudeGatewayDisableAgent }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+      },
+    );
 
     it.each([
       ["non-string", 42],
@@ -993,6 +1038,7 @@ describe("Settings Routes", () => {
       expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
         url: undefined,
         startCommand: undefined,
+        disableAgent: true,
       });
     });
 

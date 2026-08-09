@@ -24,6 +24,7 @@ describe("ClaudeGatewayProvider", () => {
   afterEach(() => {
     ClaudeGatewayProvider.setGatewayUrl(undefined);
     ClaudeGatewayProvider.setGatewayStartCommand(undefined);
+    ClaudeGatewayProvider.setGatewayDisableAgent(true);
     ClaudeGatewayProvider.forgetGatewayCatalog();
     ClaudeOllamaProvider.setOllamaUrl(undefined);
     configureProviderRuntime({ isClaudeOllamaVisible: () => false });
@@ -334,9 +335,20 @@ describe("ClaudeGatewayProvider", () => {
 
     expect(provider.getLaunchSettings("kimi-k2.7-code")).toEqual({
       env: expectedGatewayEnvironment,
+      permissions: { deny: ["Agent"] },
     });
     expect(provider.getLaunchEnvironment("kimi-k2.7-code")).toMatchObject(
       expectedGatewayEnvironment,
+    );
+  });
+
+  it("can leave the Agent tool available for Gateway launches", () => {
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+    ClaudeGatewayProvider.setGatewayDisableAgent(false);
+    const provider = new ExposedClaudeGatewayProvider();
+
+    expect(provider.getLaunchSettings("kimi-k2.7-code")).not.toHaveProperty(
+      "permissions",
     );
   });
 

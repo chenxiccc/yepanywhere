@@ -137,6 +137,8 @@ export interface ServerSettings {
   claudeGatewayUrl?: string;
   /** Optional shell line that starts a loopback Claude Gateway on demand. */
   claudeGatewayStartCommand?: string;
+  /** Whether Claude Gateway launches deny Claude Code's Agent tool. */
+  claudeGatewayDisableAgent: boolean;
   /** Ollama server URL for claude-ollama provider (default: http://localhost:11434) */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider (overrides the default minimal prompt) */
@@ -241,6 +243,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   lifecycleWebhooksEnabled: false,
   lifecycleWebhookDryRun: true,
   grokBuildUseXaiApiKey: false,
+  claudeGatewayDisableAgent: true,
   codexUpdatePolicy: "notify",
   codexReloadSafeSessions: false,
   claudeSteerBackgroundBash: DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
@@ -399,6 +402,10 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     gatewayStartCommand.trim()
       ? gatewayStartCommand.trim()
       : undefined;
+  normalized.claudeGatewayDisableAgent =
+    typeof settings.claudeGatewayDisableAgent === "boolean"
+      ? settings.claudeGatewayDisableAgent
+      : DEFAULT_SERVER_SETTINGS.claudeGatewayDisableAgent;
   const loadedHeartbeatText = settings.heartbeatTurnText?.trim();
   if (
     loadedHeartbeatText &&

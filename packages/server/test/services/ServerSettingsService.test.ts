@@ -24,6 +24,14 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("heartbeatTurnText")).toBe("continue");
   });
 
+  it("denies the Claude Gateway Agent tool by default", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("claudeGatewayDisableAgent")).toBe(true);
+  });
+
   it("keeps experimental workstreams disabled by default", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
 
@@ -348,6 +356,35 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("claudeGatewayStartCommand")).toBe(
       "HOST=localhost gateway start",
     );
+  });
+
+  it("persists an opt-out from the Claude Gateway Agent denial", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+    await service.updateSettings({ claudeGatewayDisableAgent: false });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+
+    expect(reloaded.getSetting("claudeGatewayDisableAgent")).toBe(false);
+  });
+
+  it("defaults malformed persisted Claude Gateway Agent denial values", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          claudeGatewayDisableAgent: "false",
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("claudeGatewayDisableAgent")).toBe(true);
   });
 
   it("drops malformed persisted Claude Gateway start commands", async () => {

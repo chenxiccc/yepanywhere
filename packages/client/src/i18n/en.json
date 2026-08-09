@@ -1986,6 +1986,8 @@
   "providersClaudeGatewayStartCommandPlaceholder": "cd /path/to/gateway && HOST=localhost gateway start",
   "providersClaudeGatewayStartCommandHint": "Optional. Runs through Bash on the YA server host only when the configured endpoint is loopback and its TCP port has no listener. Keep the gateway in the foreground so YA can stop it on shutdown.",
   "providersClaudeGatewayIsolationHint": "Applied only to YA sessions launched through Claude Gateway. Regular Claude sessions and manual Claude TUIs keep their current routing.",
+  "providersClaudeGatewayDisableAgentTitle": "Disable Agent tool",
+  "providersClaudeGatewayDisableAgentDescription": "Pass Claude Code a deny rule for the Agent tool in Claude Gateway sessions, preventing built-in and custom subagent delegation. Takes effect when a Gateway process starts or resumes; regular Claude is unchanged. Turning this off stops YA from adding the rule, but other Claude settings may still deny the tool.",
   "providersClaudeOllamaDeprecationNotice": "Use Claude Gateway instead. ClaudeOllama will be removed in a future release.",
   "providersClaudeOllamaDeprecationDismissAria": "Dismiss ClaudeOllama deprecation notice",
   "providersAdditionalModelsTitle": "Additional models",

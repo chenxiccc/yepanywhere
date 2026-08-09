@@ -1807,6 +1807,8 @@ export interface ServerSettings {
   claudeGatewayUrl?: string;
   /** Optional shell line that starts a loopback Claude Gateway on demand */
   claudeGatewayStartCommand?: string;
+  /** Whether Claude Gateway launches deny Claude Code's Agent tool */
+  claudeGatewayDisableAgent?: boolean;
   /** Ollama server URL for claude-ollama provider */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider */

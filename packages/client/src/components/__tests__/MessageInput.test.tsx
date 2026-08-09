@@ -4178,13 +4178,18 @@ describe("MessageInput", () => {
       clientDefaults: { collapsedComposerButton: "microphone" },
     };
 
-    renderMessageInput(
+    const textarea = renderMessageInput(
       vi.fn(() => true),
       { collapsed: true },
     );
     fireEvent.click(screen.getByRole("button", { name: "voice" }));
 
     expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
+    expect(
+      textarea
+        .closest("[data-composer-shell='true']")
+        ?.getAttribute("data-collapsed-leading-microphone"),
+    ).toBe("true");
   });
 
   it("uses desktop collapsed side space for line count and server mic", () => {
@@ -4260,6 +4265,7 @@ describe("MessageInput", () => {
     const expandButton = screen.getByRole("button", {
       name: "Expand composer",
     });
+    const anchoredClassName = expandButton.className;
 
     expect(expandButton.title).toBe("Expand composer (Ctrl+U)");
     fireEvent.click(
@@ -4269,6 +4275,7 @@ describe("MessageInput", () => {
     expect(screen.getByRole("button", { name: "Expand composer" })).toBe(
       expandButton,
     );
+    expect(expandButton.className).toBe(anchoredClassName);
 
     fireEvent.click(expandButton);
     expect(textarea.rows).toBe(3);

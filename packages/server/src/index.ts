@@ -778,6 +778,7 @@ async function startServer() {
   await ClaudeGatewayProvider.configureGateway({
     url: serverSettingsService.getSetting("claudeGatewayUrl"),
     startCommand: serverSettingsService.getSetting("claudeGatewayStartCommand"),
+    disableAgent: serverSettingsService.getSetting("claudeGatewayDisableAgent"),
   });
   const savedOllamaUrl = serverSettingsService.getSetting("ollamaUrl");
   const savedOllamaSystemPrompt =

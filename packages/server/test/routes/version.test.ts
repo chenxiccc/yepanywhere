@@ -5,6 +5,7 @@ import {
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
+  CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GLOSSARY_TOOLTIPS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
@@ -70,6 +71,9 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(CLAUDE_GATEWAY_CAPABILITY);
     expect(getServerCapabilities()).toContain(
       CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
+    );
+    expect(getServerCapabilities()).toContain(
+      CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
     );
   });
 

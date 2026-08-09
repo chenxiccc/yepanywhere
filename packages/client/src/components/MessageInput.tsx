@@ -3086,9 +3086,7 @@ export function MessageInput({
         <FullPaneComposerToggle
           expanded={fullPane}
           onToggle={toggleFullPane}
-          className={`${styles.fullPaneToggle}${
-            collapsed ? ` ${styles.fullPaneToggleCollapsed}` : ""
-          }`}
+          className={styles.fullPaneToggle}
         />
       )}
       <div
@@ -3097,8 +3095,17 @@ export function MessageInput({
           (showCollapsedLineCount || showCollapsedDesktopMicrophone)
             ? "has-collapsed-side-actions"
             : ""
+        }${
+          showCollapsedMicrophone
+            ? ` ${styles.collapsedWithLeadingMicrophone}`
+            : ""
+        }${
+          showCollapsedMicrophone && !showCollapsedSendAction
+            ? ` ${styles.collapsedWithLeadingMicrophoneOnly}`
+            : ""
         }`}
         data-composer-shell="true"
+        data-collapsed-leading-microphone={showCollapsedMicrophone || undefined}
       >
         <div
           className={`speech-draft-field ${
@@ -3440,7 +3447,13 @@ export function MessageInput({
           )}
 
         {collapsed && (
-          <div className="message-input-collapsed-actions">
+          <div
+            className={`message-input-collapsed-actions${
+              showCollapsedMicrophone
+                ? ` ${styles.collapsedActionsWithMicrophone}`
+                : ""
+            }`}
+          >
             {showCollapsedMicrophone && (
               <VoiceInputButton
                 ref={voiceButtonRef}

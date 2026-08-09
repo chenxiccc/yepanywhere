@@ -457,6 +457,9 @@ export function createApp(options: AppOptions): AppResult {
       claudeGatewayStartCommand: options.serverSettingsService?.getSetting(
         "claudeGatewayStartCommand",
       ),
+      claudeGatewayDisableAgent: options.serverSettingsService?.getSetting(
+        "claudeGatewayDisableAgent",
+      ),
       ollamaUrl: options.serverSettingsService?.getSetting("ollamaUrl"),
       ollamaSystemPrompt:
         options.serverSettingsService?.getSetting("ollamaSystemPrompt"),

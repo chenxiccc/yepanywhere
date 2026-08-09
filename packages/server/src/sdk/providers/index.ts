@@ -116,6 +116,7 @@ export interface ProviderRuntimeSnapshot {
   claudeAdditionalModels?: readonly ClaudeAdditionalModelSelection[];
   claudeGatewayUrl?: string;
   claudeGatewayStartCommand?: string;
+  claudeGatewayDisableAgent?: boolean;
   ollamaUrl?: string;
   ollamaSystemPrompt?: string;
   ollamaUseFullSystemPrompt?: boolean;

@@ -80,6 +80,7 @@ export interface SettingsRoutesDeps {
   onClaudeGatewaySettingsChanged?: (settings: {
     url?: string;
     startCommand?: string;
+    disableAgent: boolean;
   }) => Promise<void> | void;
   /** Callback to apply Ollama URL changes at runtime */
   onOllamaUrlChanged?: (url: string | undefined) => void;
@@ -580,6 +581,15 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         }
         updates.claudeGatewayStartCommand = startCommand;
       }
+      if ("claudeGatewayDisableAgent" in body) {
+        if (typeof body.claudeGatewayDisableAgent !== "boolean") {
+          return c.json(
+            { error: "claudeGatewayDisableAgent must be a boolean" },
+            400,
+          );
+        }
+        updates.claudeGatewayDisableAgent = body.claudeGatewayDisableAgent;
+      }
 
       // Handle ollamaUrl string (URL, or undefined/null/"" to clear)
       if ("ollamaUrl" in body) {
@@ -898,12 +908,14 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       }
       if (
         ("claudeGatewayUrl" in updates ||
-          "claudeGatewayStartCommand" in updates) &&
+          "claudeGatewayStartCommand" in updates ||
+          "claudeGatewayDisableAgent" in updates) &&
         onClaudeGatewaySettingsChanged
       ) {
         await onClaudeGatewaySettingsChanged({
           url: settings.claudeGatewayUrl,
           startCommand: settings.claudeGatewayStartCommand,
+          disableAgent: settings.claudeGatewayDisableAgent,
         });
       }
       if ("ollamaSystemPrompt" in updates && onOllamaSystemPromptChanged) {

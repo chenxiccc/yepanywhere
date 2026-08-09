@@ -2301,7 +2301,7 @@ a.sidebar-nav-item {
 
 .session-messages {
   flex: 1;
-  overflow-y: auto;
+  overflow: clip auto;
   scrollbar-gutter: stable;
   padding: 1rem;
   padding-inline-end: var(--turn-rail-content-padding-inline-end);

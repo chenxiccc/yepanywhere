@@ -161,6 +161,12 @@ bar's existing height. On a coarse-pointer device its hit area extends 10px
 upward into the composer and 4px below the control without contributing to
 layout height.
 
+When the phone-width composer is collapsed and its configured action is the
+microphone, the Mic occupies the far-left edge and the text field begins to its
+right. A simultaneously available fallback send action remains at the far-right
+edge; neither control may overlay the editable text or force the composer wider
+than the session viewport.
+
 If the keyboard is already open and the composer switches to its compact
 delivery row, the mic remains pinned alongside the delivery controls so
 entering text does not remove the active speech control. When waveform display

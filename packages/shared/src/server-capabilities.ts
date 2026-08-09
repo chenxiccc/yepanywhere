@@ -608,6 +608,29 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on claude-gateway-autostart.",
     },
   },
+  claudeGatewayDisableAgent: {
+    name: "claude-gateway-disable-agent",
+    kind: "transitional",
+    area: "providers",
+    introducedIn: "0.7.1",
+    description:
+      "Server can persist whether Claude Gateway launches deny Claude Code's Agent tool.",
+    clientFallback:
+      "Hide the Gateway Agent-tool setting and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.claudeGatewayDisableAgent"],
+      responseFields: ["settings.claudeGatewayDisableAgent"],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-11-09",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the Gateway Agent-tool setting.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on claude-gateway-disable-agent.",
+    },
+  },
   providerSubscriptionUsage: {
     name: "provider-subscription-usage",
     kind: "transitional",
@@ -1075,6 +1098,9 @@ export const CLAUDE_GATEWAY_CAPABILITY = SERVER_CAPABILITIES.claudeGateway.name;
 
 export const CLAUDE_GATEWAY_AUTOSTART_CAPABILITY =
   SERVER_CAPABILITIES.claudeGatewayAutostart.name;
+
+export const CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY =
+  SERVER_CAPABILITIES.claudeGatewayDisableAgent.name;
 
 export const PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY =
   SERVER_CAPABILITIES.providerSubscriptionUsage.name;
