@@ -506,6 +506,7 @@ export function AppearanceSettings() {
         "typography",
         "text size",
         "line spacing",
+        "sidebar layout density compact comfortable spacing",
         "generated titles",
         "conversation view activity previews thinking",
       ]}
@@ -632,6 +633,35 @@ export function AppearanceSettings() {
             >
               ×
             </button>
+          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceSidebarSpacingTitle")}
+          description={t("appearanceSidebarSpacingDescription")}
+          keywords={["sidebar spacing", "layout", "compact", "comfortable"]}
+          valueText={getSidebarSpacingLabel(sidebarSpacing, translate)}
+          className="settings-item--wide-control"
+        >
+          <div
+            className="font-size-selector"
+            role="radiogroup"
+            aria-label={t("appearanceSidebarSpacingTitle")}
+          >
+            {SIDEBAR_SPACINGS.map((spacing) => {
+              const selected = sidebarSpacing === spacing;
+              return (
+                <button
+                  key={spacing}
+                  type="button"
+                  className={`font-size-option ${selected ? "active" : ""}`}
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setSidebarSpacing(spacing)}
+                >
+                  {getSidebarSpacingLabel(spacing, translate)}
+                </button>
+              );
+            })}
           </div>
         </SettingsItem>
         <SettingsItem
@@ -1110,25 +1140,6 @@ export function AppearanceSettings() {
                     />
                   ))}
                 </datalist>
-
-                <div className="output-appearance-control">
-                  <span className="output-appearance-label">
-                    {t("appearanceSidebarSpacingTitle")}
-                  </span>
-                  <div className="font-size-selector output-font-selector">
-                    {SIDEBAR_SPACINGS.map((spacing) => (
-                      <button
-                        key={spacing}
-                        type="button"
-                        className={`font-size-option ${sidebarSpacing === spacing ? "active" : ""}`}
-                        onClick={() => setSidebarSpacing(spacing)}
-                      >
-                        {getSidebarSpacingLabel(spacing, translate)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="output-appearance-control">
                   <span className="output-appearance-label">
                     {t("appearanceOutputFontLabel")}

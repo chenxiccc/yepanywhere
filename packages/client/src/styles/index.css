@@ -1679,12 +1679,11 @@ body.session-transcript-selection-active .reload-banner * {
 .sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: var(--sidebar-header-justify-content, space-between);
+  justify-content: space-between;
   padding: var(--sidebar-header-padding, 0.75rem 1rem);
 }
 
 .sidebar-brand {
-  display: var(--sidebar-brand-display, inline);
   font-weight: 600;
   font-size: 1.1rem;
   color: var(--text-color);
@@ -1857,12 +1856,13 @@ a.sidebar-nav-item {
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: var(--sidebar-navigation-padding-block, 0.5rem) 0.75ch;
+  gap: var(--sidebar-navigation-inline-spacing, 0.75rem);
+  padding: var(--sidebar-navigation-padding-block, 0.5rem)
+    var(--sidebar-navigation-inline-spacing, 0.75rem);
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: var(--sidebar-navigation-font-size, var(--font-size-sm));
+  font-size: var(--font-size-sm);
   cursor: pointer;
   border-radius: var(--radius-sm);
   text-align: left;
@@ -1892,7 +1892,7 @@ a.sidebar-nav-item {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 0 0.75ch;
+  padding: 0 var(--sidebar-navigation-inline-spacing, 0.75rem);
   margin-bottom: var(--sidebar-section-header-gap, 0.5rem);
 }
 
@@ -1901,7 +1901,7 @@ a.sidebar-nav-item {
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-dimmed);
-  padding: 0 0.75ch;
+  padding: 0 var(--sidebar-navigation-inline-spacing, 0.75rem);
   margin: 0 0 var(--sidebar-section-header-gap, 0.5rem);
 }
 

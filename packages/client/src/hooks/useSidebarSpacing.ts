@@ -14,12 +14,10 @@ const sidebarSpacingMetrics: Record<
     rowPaddingBlock: string;
     rowLineHeight: string;
     navigationPaddingBlock: string;
-    navigationFontSize: string;
+    navigationInlineSpacing: string;
     sectionGap: string;
     sectionHeaderGap: string;
     headerPadding: string;
-    headerJustifyContent: string;
-    brandDisplay: string;
     actionsPaddingTop: string;
     sessionsPaddingTop: string;
   }
@@ -29,12 +27,10 @@ const sidebarSpacingMetrics: Record<
     rowPaddingBlock: "2px",
     rowLineHeight: "1.2",
     navigationPaddingBlock: "0.25em",
-    navigationFontSize: "var(--font-size-base)",
+    navigationInlineSpacing: "0.5rem",
     sectionGap: "0.5em",
     sectionHeaderGap: "0.25em",
-    headerPadding: "0",
-    headerJustifyContent: "flex-end",
-    brandDisplay: "none",
+    headerPadding: "0.25rem 0.5rem",
     actionsPaddingTop: "1px",
     sessionsPaddingTop: "0",
   },
@@ -43,12 +39,10 @@ const sidebarSpacingMetrics: Record<
     rowPaddingBlock: "var(--space-1)",
     rowLineHeight: "1.3",
     navigationPaddingBlock: "0.5rem",
-    navigationFontSize: "var(--font-size-sm)",
+    navigationInlineSpacing: "0.75rem",
     sectionGap: "1rem",
     sectionHeaderGap: "0.5rem",
     headerPadding: "0.75rem 1rem",
-    headerJustifyContent: "space-between",
-    brandDisplay: "inline",
     actionsPaddingTop: "0",
     sessionsPaddingTop: "0.25rem",
   },
@@ -57,6 +51,9 @@ const sidebarSpacingMetrics: Record<
 function applySidebarSpacing(spacing: SidebarSpacing): void {
   const root = document.documentElement;
   const metrics = sidebarSpacingMetrics[spacing];
+  root.style.removeProperty("--sidebar-navigation-font-size");
+  root.style.removeProperty("--sidebar-header-justify-content");
+  root.style.removeProperty("--sidebar-brand-display");
   root.dataset.sidebarSpacing = spacing;
   root.style.setProperty("--sidebar-row-min-height", metrics.rowMinHeight);
   root.style.setProperty(
@@ -69,8 +66,8 @@ function applySidebarSpacing(spacing: SidebarSpacing): void {
     metrics.navigationPaddingBlock,
   );
   root.style.setProperty(
-    "--sidebar-navigation-font-size",
-    metrics.navigationFontSize,
+    "--sidebar-navigation-inline-spacing",
+    metrics.navigationInlineSpacing,
   );
   root.style.setProperty("--sidebar-section-gap", metrics.sectionGap);
   root.style.setProperty(
@@ -78,11 +75,6 @@ function applySidebarSpacing(spacing: SidebarSpacing): void {
     metrics.sectionHeaderGap,
   );
   root.style.setProperty("--sidebar-header-padding", metrics.headerPadding);
-  root.style.setProperty(
-    "--sidebar-header-justify-content",
-    metrics.headerJustifyContent,
-  );
-  root.style.setProperty("--sidebar-brand-display", metrics.brandDisplay);
   root.style.setProperty(
     "--sidebar-actions-padding-top",
     metrics.actionsPaddingTop,

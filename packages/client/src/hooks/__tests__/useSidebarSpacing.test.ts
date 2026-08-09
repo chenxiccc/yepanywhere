@@ -13,6 +13,17 @@ describe("initializeSidebarSpacing", () => {
     document.documentElement.style.removeProperty(
       "--sidebar-sessions-padding-top",
     );
+    document.documentElement.style.removeProperty(
+      "--sidebar-navigation-inline-spacing",
+    );
+    document.documentElement.style.removeProperty("--sidebar-header-padding");
+    document.documentElement.style.removeProperty(
+      "--sidebar-navigation-font-size",
+    );
+    document.documentElement.style.removeProperty(
+      "--sidebar-header-justify-content",
+    );
+    document.documentElement.style.removeProperty("--sidebar-brand-display");
   });
 
   it("defaults to comfortable spacing", () => {
@@ -24,10 +35,27 @@ describe("initializeSidebarSpacing", () => {
         "--sidebar-row-min-height",
       ),
     ).toBe("34px");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-navigation-inline-spacing",
+      ),
+    ).toBe("0.75rem");
   });
 
   it("restores compact spacing", () => {
     localStorage.setItem(UI_KEYS.sidebarSpacing, "compact");
+    document.documentElement.style.setProperty(
+      "--sidebar-navigation-font-size",
+      "var(--font-size-base)",
+    );
+    document.documentElement.style.setProperty(
+      "--sidebar-header-justify-content",
+      "flex-end",
+    );
+    document.documentElement.style.setProperty(
+      "--sidebar-brand-display",
+      "none",
+    );
 
     initializeSidebarSpacing();
 
@@ -39,14 +67,29 @@ describe("initializeSidebarSpacing", () => {
     ).toBe("calc(1.5rem + 1px)");
     expect(
       document.documentElement.style.getPropertyValue(
+        "--sidebar-navigation-inline-spacing",
+      ),
+    ).toBe("0.5rem");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-header-padding",
+      ),
+    ).toBe("0.25rem 0.5rem");
+    expect(
+      document.documentElement.style.getPropertyValue(
         "--sidebar-navigation-font-size",
       ),
-    ).toBe("var(--font-size-base)");
+    ).toBe("");
     expect(
       document.documentElement.style.getPropertyValue(
         "--sidebar-brand-display",
       ),
-    ).toBe("none");
+    ).toBe("");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-header-justify-content",
+      ),
+    ).toBe("");
     expect(
       document.documentElement.style.getPropertyValue(
         "--sidebar-actions-padding-top",

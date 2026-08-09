@@ -1027,7 +1027,12 @@ describe("Sidebar collapsed toggle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("link", { name: /New Session/i })).toBeDefined();
+    const newSessionLink = screen.getByRole("link", { name: /New Session/i });
+    const newSessionIcon = newSessionLink.querySelector(
+      ".sidebar-new-session-icon",
+    );
+    expect(newSessionIcon?.querySelector("circle")).toBeTruthy();
+    expect(newSessionIcon?.querySelectorAll("line")).toHaveLength(2);
     expect(screen.getByText("Draft")).toBeDefined();
   });
 

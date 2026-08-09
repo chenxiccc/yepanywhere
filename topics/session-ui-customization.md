@@ -140,20 +140,25 @@ Compact uses the earlier density plus one pixel of separation: a
 pointers keep at least 40px rows with 6px block padding in both modes, so
 desktop density does not reduce phone and tablet tap reliability.
 
-Compact hides the YepAnywhere sidebar brand because it links to the same route
-as New session, so the New session row carries the Y brand glyph in place of a
-generic plus. Its primary navigation labels use `--font-size-base`, one UI font
-token above the `--font-size-sm` session titles; Comfortable keeps both at the
-smaller token. The mobile close control and collapsed desktop rail remain
-available when the brand is hidden.
+Both modes keep the YepAnywhere sidebar wordmark and the same navigation type
+size. New session uses the green circular plus in expanded and collapsed
+sidebars so the create action stays recognizable; sidebar density never changes
+branding, action meaning, or type size. The mobile close control and collapsed
+desktop rail remain available in both modes.
 
 The same preference controls navigation-row padding and the gaps between
-sidebar sections. Inline edge spacing follows the active UI font: top-level
-sidebar labels use a `0.75ch` inset, while nested session and queue rows use
-`1ch`. The inset must not grow from a fixed window-edge margin independently
-of the selected UI font. Compact leaves a 1px top breathing gap above New
-session and starts the scrolling navigation immediately below that row instead
-of retaining Comfortable's separate 0.25rem inset.
+sidebar sections. For top-level navigation, one metric controls both the
+leading edge inset and the icon-to-label gap: `0.75rem` in Comfortable and
+`0.5rem` in Compact. This keeps icons visually balanced between the viewport
+edge and their labels. Nested session and queue rows retain their `1ch` inset.
+Compact leaves a 1px top breathing gap above New session and starts the
+scrolling navigation immediately below that row instead of retaining
+Comfortable's separate 0.25rem inset.
+
+The persisted preference remains `comfortable` / `compact`, but its visible
+label is **Sidebar density**. It appears with the main Appearance layout
+controls beside Content width, not inside Typography, because it changes row
+and section spacing rather than text rendering.
 
 ### UI size
 

@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../i18n";
 import { invalidateLocalStorageValues } from "../../../lib/localStorageValue";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { AppearanceSettings } from "../AppearanceSettings";
+
+vi.mock("../../../hooks/useVersion", () => ({
+  useVersion: () => ({ version: null }),
+}));
 
 function renderAppearanceSettings() {
   return render(
@@ -36,22 +46,22 @@ describe("AppearanceSettings", () => {
     const themedButton = screen.getByRole("button", { name: "Themed" });
     expect(themedButton.classList.contains("active")).toBe(true);
     const nativeButton = screen.getByRole("button", { name: "Native" });
-    fireEvent.click(nativeButton);
+    act(() => fireEvent.click(nativeButton));
     expect(localStorage.getItem(UI_KEYS.tooltipMode)).toBe("native");
 
     const number = screen.getByRole<HTMLInputElement>("spinbutton", {
       name: "Tooltip Style and Delay",
     });
-    fireEvent.change(number, { target: { value: "" } });
+    act(() => fireEvent.change(number, { target: { value: "" } }));
     expect(localStorage.getItem(UI_KEYS.tooltipMode)).toBe("native");
 
-    fireEvent.change(number, { target: { value: "80" } });
+    act(() => fireEvent.change(number, { target: { value: "80" } }));
     expect(localStorage.getItem(UI_KEYS.tooltipMode)).toBe("themed");
-    fireEvent.blur(number);
+    act(() => fireEvent.blur(number));
     expect(localStorage.getItem(UI_KEYS.tooltipDelayMs)).toBe("80");
   });
 
-  it("controls free UI size entry and compact sidebar metrics", () => {
+  it("controls free UI size entry and sidebar density", () => {
     const { container } = renderAppearanceSettings();
 
     const slider = container.querySelector<HTMLInputElement>("#ui-font-scale");
@@ -78,31 +88,47 @@ describe("AppearanceSettings", () => {
       ),
     ).toEqual(["85", "100", "115", "130"]);
 
-    fireEvent.change(number, { target: { value: "93.5" } });
-    fireEvent.blur(number);
+    act(() => {
+      fireEvent.change(number, { target: { value: "93.5" } });
+      fireEvent.blur(number);
+    });
     expect(localStorage.getItem(UI_KEYS.fontSize)).toBe("93.5");
     expect(document.documentElement.style.fontSize).toBe("93.5%");
 
-    fireEvent.change(number, { target: { value: "25" } });
-    fireEvent.blur(number);
+    act(() => {
+      fireEvent.change(number, { target: { value: "25" } });
+      fireEvent.blur(number);
+    });
     expect(localStorage.getItem(UI_KEYS.fontSize)).toBe("50");
     expect(number.value).toBe("50");
     expect(slider.value).toBe("85");
 
-    fireEvent.change(number, { target: { value: "350" } });
-    fireEvent.blur(number);
+    act(() => {
+      fireEvent.change(number, { target: { value: "350" } });
+      fireEvent.blur(number);
+    });
     expect(localStorage.getItem(UI_KEYS.fontSize)).toBe("300");
     expect(number.value).toBe("300");
     expect(slider.value).toBe("130");
 
-    const comfortable = screen.getByText("Comfortable").closest("button");
+    const densityLabel = screen.getByText("Sidebar density");
+    const densityRow = densityLabel.closest("[data-settings-item]");
+    expect(densityRow).toBeTruthy();
+    expect(densityRow?.querySelector("p")?.textContent).toContain(
+      "spacing for sidebar rows and sections",
+    );
+    expect(densityRow?.closest(".output-appearance-settings")).toBeNull();
+
+    const comfortable = densityRow?.querySelector<HTMLButtonElement>(
+      'button[role="radio"][aria-checked="true"]',
+    );
     expect(comfortable).toBeTruthy();
     if (!comfortable) throw new Error("Comfortable spacing control is missing");
     expect(comfortable.classList.contains("active")).toBe(true);
     const compact = screen.getByText("Compact").closest("button");
     expect(compact).toBeTruthy();
     if (!compact) throw new Error("Compact spacing control is missing");
-    fireEvent.click(compact);
+    act(() => fireEvent.click(compact));
     expect(localStorage.getItem(UI_KEYS.sidebarSpacing)).toBe("compact");
     expect(
       document.documentElement.style.getPropertyValue(

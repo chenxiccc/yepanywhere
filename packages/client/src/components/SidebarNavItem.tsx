@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ThinkingIndicator } from "./ThinkingIndicator";
-import { YepAnywhereGlyph } from "./YepAnywhereLogo";
 
 /**
  * Common SVG icons used in sidebar navigation.
@@ -105,7 +104,33 @@ export const SidebarIcons = {
     </svg>
   ),
   newSession: (
-    <YepAnywhereGlyph className="sidebar-new-session-icon" size={20} />
+    <svg
+      className="sidebar-new-session-icon"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="12" fill="var(--app-yep-green)" />
+      <line
+        x1="12"
+        y1="7"
+        x2="12"
+        y2="17"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="7"
+        y1="12"
+        x2="17"
+        y2="12"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
   ),
   sourceControl: (
     <svg
