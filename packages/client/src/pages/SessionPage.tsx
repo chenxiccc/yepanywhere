@@ -4204,7 +4204,7 @@ function SessionPageContent({
   const handleTerminate = async () => {
     if (status.owner === "self" && status.processId) {
       try {
-        await api.abortProcess(status.processId);
+        await api.abortProcess(status.processId, { blockResume: true });
         showToast(t("sessionTerminated"), "success");
       } catch (err) {
         console.error("Failed to terminate session:", err);

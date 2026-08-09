@@ -1,0 +1,10 @@
+.pendingQueueRow {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.pendingQueueLink {
+  flex: 1;
+  min-width: 0;
+}

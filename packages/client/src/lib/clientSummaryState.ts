@@ -173,6 +173,7 @@ const REMAP_MERGE_GROUPS = {
     "customTitle",
     "isArchived",
     "isStarred",
+    "autoResumeDisabled",
     "parentSessionId",
     "parentSessionKind",
     "forkedFromSessionId",
@@ -1215,6 +1216,7 @@ function withMetadataFields(
     customTitle?: string;
     isArchived?: boolean;
     isStarred?: boolean;
+    autoResumeDisabled?: boolean;
     parentSessionId?: string | null;
     parentSessionKind?: "btw-aside" | null;
     forkedFromSessionId?: string | null;
@@ -1237,6 +1239,13 @@ function withMetadataFields(
       : {}),
     ...(canApplyObservedField(record.isStarred, fields.isStarred, isFresh)
       ? { isStarred: fields.isStarred }
+      : {}),
+    ...(canApplyObservedField(
+      record.autoResumeDisabled,
+      fields.autoResumeDisabled,
+      isFresh,
+    )
+      ? { autoResumeDisabled: fields.autoResumeDisabled }
       : {}),
     ...(fields.parentSessionId === null
       ? isFresh
@@ -1424,6 +1433,7 @@ function upsertSnapshotRecord(
       customTitle: row.customTitle,
       isArchived: row.isArchived,
       isStarred: row.isStarred,
+      autoResumeDisabled: row.autoResumeDisabled,
       parentSessionId: row.parentSessionId,
       parentSessionKind: row.parentSessionKind,
       forkedFromSessionId: row.forkedFromSessionId,

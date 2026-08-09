@@ -5605,6 +5605,60 @@ describe("Session reactivation route", () => {
     () => ({ getSessionSummary: vi.fn(async () => null) }) as ISessionReader,
   );
 
+  it("reserves the project until provider startup settles", async () => {
+    let finishStartup!: (process: { id: string }) => void;
+    const startup = new Promise<{ id: string }>((resolve) => {
+      finishStartup = resolve;
+    });
+    const release = vi.fn();
+    const reserveUserSessionStart = vi.fn(() => release);
+    const reactivateSession = vi.fn(() => startup);
+    const routes = createSessionsRoutes({
+      supervisor: {
+        reactivateSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory,
+      projectQueueScheduler: { reserveUserSessionStart },
+    });
+
+    const responsePromise = routes.request(reactivatePath, { method: "POST" });
+    await vi.waitFor(() => expect(reactivateSession).toHaveBeenCalledOnce());
+
+    expect(reserveUserSessionStart).toHaveBeenCalledWith(projectId, "sess-1");
+    expect(release).not.toHaveBeenCalled();
+
+    finishStartup({ id: "process-started" });
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("releases the project reservation after provider startup fails", async () => {
+    const release = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        reactivateSession: vi.fn(async () => {
+          throw new Error("provider refused startup");
+        }),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory,
+      projectQueueScheduler: {
+        reserveUserSessionStart: vi.fn(() => release),
+      },
+    });
+
+    const response = await routes.request(reactivatePath, { method: "POST" });
+
+    expect(response.status).toBe(503);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["malformed", "{not-json"],
     ["array", "[]"],

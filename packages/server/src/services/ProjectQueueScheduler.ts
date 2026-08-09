@@ -162,6 +162,10 @@ export class ProjectQueueScheduler {
   private readonly fixedIdleGraceMs?: number;
   private readonly getConfiguredIdleGraceMs?: () => number;
   private readonly timers = new Map<UrlProjectId, ProjectQueueTimerState>();
+  private readonly userSessionStartReservations = new Map<
+    UrlProjectId,
+    Map<string, number>
+  >();
   private readonly inFlight = new Set<UrlProjectId>();
   private readonly inFlightRuns = new Set<Promise<RunProjectResult>>();
   private readonly unsubscribe: () => void;
@@ -185,8 +189,46 @@ export class ProjectQueueScheduler {
       clearTimeout(state.timer);
     }
     this.timers.clear();
+    this.userSessionStartReservations.clear();
     await Promise.allSettled(this.inFlightRuns);
     this.inFlight.clear();
+  }
+
+  /**
+   * Reserve a project's idle predicate while an admitted user request is
+   * starting a session but has not yet registered a live provider process.
+   */
+  reserveUserSessionStart(
+    projectId: UrlProjectId,
+    sessionId: string,
+  ): () => void {
+    if (this.disposed) return () => {};
+
+    const reservations =
+      this.userSessionStartReservations.get(projectId) ?? new Map();
+    reservations.set(sessionId, (reservations.get(sessionId) ?? 0) + 1);
+    this.userSessionStartReservations.set(projectId, reservations);
+    this.clearProjectTimer(projectId);
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+
+      const current = this.userSessionStartReservations.get(projectId);
+      const count = current?.get(sessionId);
+      if (current && count !== undefined) {
+        if (count > 1) {
+          current.set(sessionId, count - 1);
+        } else {
+          current.delete(sessionId);
+          if (current.size === 0) {
+            this.userSessionStartReservations.delete(projectId);
+          }
+        }
+      }
+      this.scheduleProjectIfDispatchable(projectId);
+    };
   }
 
   async getProjectIdleStatus(
@@ -195,12 +237,19 @@ export class ProjectQueueScheduler {
     // Project Queue ordering and UI semantics are documented in
     // topics/project-queue.md. In particular, per-session queues must drain
     // before a project-level queue item can promote.
-    return getProjectWorkIdleStatus(projectId, {
+    const status = await getProjectWorkIdleStatus(projectId, {
       supervisor: this.supervisor,
       externalTracker: this.externalTracker,
       getRecoveredPatientQueueCount: (candidateProjectId) =>
         this.getRecoveredPatientQueueCount(candidateProjectId),
     });
+    const reservations = this.userSessionStartReservations.get(projectId);
+    if (reservations) {
+      for (const sessionId of reservations.keys()) {
+        status.blockers.push(`${sessionId}:user-starting`);
+      }
+    }
+    return { idle: status.blockers.length === 0, blockers: status.blockers };
   }
 
   async getProjectStatus(

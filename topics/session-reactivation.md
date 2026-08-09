@@ -13,11 +13,13 @@ primitive already existed in the
 supervisor; this work exposed it as a public `Supervisor.reactivateSession`, a
 `POST …/reactivate` route, and a client Activate button. See *As built* below.
 
-Naming: the user-facing button label is **"Activate"** (from the client's point
-of view a reaped session simply isn't active). The server primitive / this
-topic is **reactivate**. Avoid "reattach" — there is no live process to attach
-to; reactivation spawns a *fresh* harness process bound to the session id and
-replays its history. "Revive" is an acceptable synonym. Candidate glossary row.
+Naming: the model panel's button label is **"Activate"** because it makes an
+inactive process available for configuration. The sidebar's one-click recovery
+label is **"Resume"** because its user intent is to continue an interrupted
+session. Both call the server **reactivate** primitive. Avoid "reattach" — there
+is no live process to attach to; reactivation spawns a *fresh* harness process
+bound to the session id and replays its history. "Revive" is an acceptable
+synonym. Candidate glossary row.
 <!-- unconfirmed: 2026-06-16 -->
 
 ## Motivation
@@ -89,6 +91,13 @@ resume:
   note becomes an Activate button (`onActivate`); `SessionPage` calls reactivate
   and flips `status` to `{ owner: "self", processId }`, after which the existing
   `processId`-keyed effect loads models and the full options replace the note.
+- **Sidebar recovery:** a capability-gated Resume button appears only in the
+  **Starred** and **Last 24 Hours** sections, for an unowned session whose last
+  activity is less than ten hours old and whose `autoResumeDisabled` marker is
+  not set. Creation time is irrelevant. The sidebar checks those
+  already-rendered rows linearly during ordinary renders; there is no timer or
+  additional session scan. Without `sidebar-session-resume`, the client hides
+  the control and makes no reactivation request.
 - **Durable settings:** `SessionMetadata.effectiveLaunchSettings` is a complete,
   versioned snapshot of the last successfully applied process launch policy.
   Resolution is explicit request, durable snapshot, legacy requested-model

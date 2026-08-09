@@ -144,6 +144,8 @@ export interface GlobalSessionItem {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
+  /** True when an explicit manual termination disabled resume. */
+  autoResumeDisabled?: boolean;
   /** Interactive Mother session for a YA-owned `/btw` aside. */
   parentSessionId?: string;
   parentSessionKind?: "btw-aside";

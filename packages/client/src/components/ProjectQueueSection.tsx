@@ -137,6 +137,8 @@ function formatProjectQueueBlocker(blocker: string, t: Translate): string {
       return t("projectQueueBlockerDeferredQueue", { session });
     case "pending-input":
       return t("projectQueueBlockerPendingInput", { session });
+    case "user-starting":
+      return t("projectQueueBlockerUserStarting", { session });
     case "external":
       return t("projectQueueBlockerExternal", { session });
     default:

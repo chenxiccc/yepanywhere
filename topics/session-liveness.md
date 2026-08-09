@@ -46,8 +46,16 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   can be released only by a later explicit abort that verifies exit.
 - Once explicit Kill/Terminate persists `autoResumeDisabled`, no automatic
   work may start that provider session again. Unowned heartbeat and cold
-  fork-recap revival both obey this gate. Explicit user continuation through
-  Activate, Send, or an equivalent action may still reactivate the session.
+  fork-recap revival both obey this gate. The sidebar's quick Resume action
+  also stays hidden because it is intended for interruption recovery rather
+  than overriding a deliberate termination. Explicit user continuation through
+  the full session page may still reactivate the session.
+- Sidebar Resume eligibility is a bounded recovery projection, not a new
+  liveness status: in the **Starred** and **Last 24 Hours** sections, no live
+  owner, no manual-resume exemption, and `updatedAt` within ten hours. Session
+  creation time does not participate. Eligibility is checked linearly over
+  those already-rendered sidebar rows during ordinary renders, with no extra
+  timer or session scan.
 - Heartbeat turns are idle-timeout checks, not wall-clock ticks. Once a session
   is `verified-idle`, the timeout anchor is the latest real provider/session
   liveness signal, including verified idle/progress, normalized provider
@@ -213,6 +221,9 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   timestamps for reconnecting clients.
 - A failed or not-yet-persisted new session with an accepted initial prompt
   exposes a copy action for that prompt in session history.
+- Sidebar Resume is offered for a recently active unowned interrupted session,
+  but not after ten hours, while an owner is live, or after explicit
+  Kill/Terminate; a missing capability produces no control or request.
 - Claude control probes time out and surface errors rather than relying on
   process-alive as proof of progress.
 - Viewer-absence reaping applies only to verified-idle, unretained work. Any

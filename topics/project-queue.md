@@ -42,6 +42,11 @@ instead of waiting for the whole project.
 - Project Queue promotion requires the project to remain idle for the configured
   project-quiet window, then re-checks project idleness immediately after
   claiming the item.
+- An admitted user request to start or reactivate a session reserves that
+  project as busy before provider startup begins. The reservation remains until
+  the provider harness has successfully started or the request reaches a
+  settled failure, closing the gap before the new process appears in the
+  ordinary idle predicate.
 - Promotion handles one Project Queue item per project-idle boundary. Do not
   drain the project backlog in one burst.
 - A global Project Queue dispatch pause gates automatic promotion above all
@@ -134,7 +139,9 @@ A project is not idle while any owned session in that project has:
 - liveness other than `verified-idle`.
 
 A project is also not idle while it has a worker/startup queue entry or known
-external session ownership. Project Queue promotion also treats persisted
+external session ownership. It is likewise not idle while an admitted
+user-initiated session start is still establishing its provider harness.
+Project Queue promotion also treats persisted
 `paused-after-restart` patient session-queue entries in the project as
 not-idle, even when no live process currently owns those entries. External
 ownership is best-effort and can decay; UI copy must not promise perfect
@@ -166,6 +173,13 @@ Hosted remote clients must additionally require the current remote
 compatibility generation, because early Project Queue-capable source checkouts
 predate the compatibility marker and can expose partial Project Queue behavior
 to newer hosted clients.
+
+After restart-paused dispatch, each queued new-session row in the sidebar's
+Pending Sessions section exposes the same compact Resume control used by
+interrupted session rows. It atomically resumes global dispatch and moves that
+item to the head of its own project's queue. The ordinary scheduler still
+decides when it may launch; Resume is not Force start. Failed items retain
+their explicit Retry flow instead.
 
 When the button is visible by user preference, the UI should still suppress it
 when Project Queue adds no useful semantics:
@@ -226,6 +240,13 @@ warning badge in addition to its queue count whenever that project has a
 `failed` item, and the existing Project Queue row carries the error and Retry
 action. The badge is attention state, not another count. Automatic startup
 attempts do not produce repeated browser toasts.
+
+Field observation on 2026-08-09 confirmed this settled state after a real
+post-restart retry: the item retained its prompt and startup-timeout detail,
+rendered `Failed` with Retry/Edit/Delete actions, and kept only its own project
+blocked as `Blocked: first queue item failed`. A later full YA reload made the
+preceding dirty-server state unsuitable for exact reproduction; it is not
+evidence for expanding the incident UI.
 
 A richer state-apparent presentation is worthwhile only if field evidence says
 this intermittent edge case is common enough to justify it. A future design

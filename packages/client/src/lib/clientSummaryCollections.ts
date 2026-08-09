@@ -48,6 +48,7 @@ export interface SessionCollectionRecord {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
+  autoResumeDisabled?: boolean;
   activeStartedAt?: number;
   parentSessionId?: string;
   parentSessionKind?: "btw-aside";

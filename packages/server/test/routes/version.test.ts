@@ -19,6 +19,7 @@ import {
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   SESSION_FORK_TURN_INTENTS_CAPABILITY,
+  SIDEBAR_SESSION_RESUME_CAPABILITY,
   SECURITY_CLIENT_AUDIT_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { getServerCapabilities } from "../../src/routes/version.js";
@@ -128,6 +129,13 @@ describe("Version Routes", () => {
       SESSION_FORK_TURN_INTENTS_CAPABILITY,
     );
   });
+
+  it("advertises sidebar-safe session resume summaries", () => {
+    expect(getServerCapabilities()).toContain(
+      SIDEBAR_SESSION_RESUME_CAPABILITY,
+    );
+  });
+
   it("advertises project-scoped session defaults", () => {
     expect(getServerCapabilities()).toContain(
       PROJECT_SESSION_DEFAULTS_CAPABILITY,

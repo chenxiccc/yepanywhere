@@ -20,6 +20,7 @@ import type {
   ProviderChildSessionSummary,
   SessionStatus,
 } from "../types";
+import { CompactResumeButton } from "./CompactResumeButton";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ProviderBadge } from "./ProviderBadge";
 import { SessionHoverCard } from "./SessionHoverCard";
@@ -79,6 +80,9 @@ interface SessionListItemProps {
   onToggleArchive?: () => void;
   onToggleRead?: () => void;
   onRename?: () => void;
+  /** Resume an eligible interrupted session without sending a message. */
+  onResume?: () => void | Promise<void>;
+  resumePending?: boolean;
 
   // Selection (for All Sessions page)
   isCurrent?: boolean;
@@ -180,6 +184,8 @@ export function SessionListItem({
   onToggleArchive,
   onToggleRead,
   onRename,
+  onResume,
+  resumePending = false,
   // Selection
   isCurrent = false,
   isSelected = false,
@@ -882,6 +888,15 @@ export function SessionListItem({
             </>
           )}
         </Link>
+      )}
+
+      {onResume && (
+        <CompactResumeButton
+          onResume={onResume}
+          pending={resumePending}
+          title={t("sidebarSessionResumeTitle")}
+          label={t("sidebarSessionResume")}
+        />
       )}
 
       {/* Only show menu when provider is available (required for clone) */}

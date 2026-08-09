@@ -84,7 +84,12 @@ describe("Global Sessions Routes", () => {
   let unreadMap: Map<string, boolean>;
   let metadataMap: Map<
     string,
-    { customTitle?: string; isArchived?: boolean; isStarred?: boolean }
+    {
+      customTitle?: string;
+      isArchived?: boolean;
+      isStarred?: boolean;
+      autoResumeDisabled?: boolean;
+    }
   >;
   let externalSessions: Set<string>;
 
@@ -213,6 +218,18 @@ describe("Global Sessions Routes", () => {
       expect(result.sessions[0].projectName).toBe("project-one");
       expect(result.sessions[1].id).toBe("sess2");
       expect(result.sessions[1].projectName).toBe("project-two");
+    });
+
+    it("exposes manual resume exemptions in session summaries", async () => {
+      const project = createProject("proj1", "project-one", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", minutesAgo(5));
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      metadataMap.set("sess1", { autoResumeDisabled: true });
+
+      const result = await makeRequest();
+
+      expect(result.sessions[0].autoResumeDisabled).toBe(true);
     });
 
     it("only computes global stats when includeStats=true", async () => {

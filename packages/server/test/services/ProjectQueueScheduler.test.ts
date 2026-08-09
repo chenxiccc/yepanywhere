@@ -269,6 +269,39 @@ describe("ProjectQueueScheduler", () => {
     await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1), 400);
   });
 
+  it("blocks promotion while an admitted user session start is unresolved", async () => {
+    await scheduler.dispose();
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 25,
+    });
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "queued-session" },
+        message: { text: "wait for the user start" },
+      },
+    });
+    const release = scheduler.reserveUserSessionStart(
+      projectId,
+      "user-session",
+    );
+
+    await wait(50);
+    expect(supervisor.resumeCalls).toHaveLength(0);
+    await expect(scheduler.getProjectIdleStatus(projectId)).resolves.toEqual({
+      idle: false,
+      blockers: ["user-session:user-starting"],
+    });
+
+    release();
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1), 400);
+  });
+
   it("waits for in-flight promotion work before disposing", async () => {
     let releaseResume!: () => void;
     supervisor.resumeBlocker = new Promise((resolve) => {

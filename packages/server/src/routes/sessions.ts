@@ -4185,6 +4185,26 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   // Spawn or reconcile a live harness process without delivering a turn. Every
   // request is validated and serialized, including when the session is already
   // owned or another activation is still in flight.
+  routes.use(
+    "/projects/:projectId/sessions/:sessionId/reactivate",
+    async (c, next) => {
+      const projectId = c.req.param("projectId");
+      if (!isUrlProjectId(projectId) || !deps.projectQueueScheduler) {
+        await next();
+        return;
+      }
+
+      const release = deps.projectQueueScheduler.reserveUserSessionStart(
+        projectId,
+        c.req.param("sessionId"),
+      );
+      try {
+        await next();
+      } finally {
+        release();
+      }
+    },
+  );
   routes.post(
     "/projects/:projectId/sessions/:sessionId/reactivate",
     async (c) => {

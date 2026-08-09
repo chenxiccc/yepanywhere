@@ -3,6 +3,7 @@
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
+  SIDEBAR_SESSION_RESUME_CAPABILITY,
   type ProjectQueueItemSummary,
   type ProjectQueueProjectStatus,
 } from "@yep-anywhere/shared";
@@ -21,10 +22,13 @@ import { Sidebar } from "../Sidebar";
 const {
   globalSessionsState,
   mockGlobalLoadMore,
+  mockMoveItemToTop,
   mockPromoteNow,
+  mockReactivateSession,
   mockRemoteConnectionState,
   mockStarredLoadMore,
   mockToggleExpanded,
+  mockShowToast,
   mockWindowOpen,
   newSessionDraftState,
   projectQueueSidebarCountState,
@@ -46,12 +50,15 @@ const {
     loadMore: vi.fn(),
   },
   mockGlobalLoadMore: vi.fn(),
+  mockMoveItemToTop: vi.fn(),
   mockPromoteNow: vi.fn(),
+  mockReactivateSession: vi.fn(),
   mockRemoteConnectionState: {
     value: null as null | { disconnect: ReturnType<typeof vi.fn> },
   },
   mockStarredLoadMore: vi.fn(),
   mockToggleExpanded: vi.fn(),
+  mockShowToast: vi.fn(),
   mockWindowOpen: vi.fn(),
   newSessionDraftState: {
     hasDraft: false,
@@ -61,6 +68,7 @@ const {
   },
   projectQueuesState: {
     queuesByProject: {} as Record<string, ProjectQueueItemSummary[]>,
+    dispatchState: { status: "running" } as { status: "running" | "paused" },
   },
   projectsState: {
     projects: [] as Array<Record<string, unknown>>,
@@ -68,6 +76,16 @@ const {
   versionState: {
     capabilities: [] as string[],
   },
+}));
+
+vi.mock("../../api/client", () => ({
+  api: {
+    reactivateSession: mockReactivateSession,
+  },
+}));
+
+vi.mock("../../contexts/ToastContext", () => ({
+  useToastContext: () => ({ showToast: mockShowToast }),
 }));
 
 vi.mock("../../contexts/RemoteConnectionContext", () => ({
@@ -89,7 +107,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
     mutatingItemId: null,
     mutatingDispatchState: false,
     mutatingPromoteItemId: null,
-    dispatchState: { status: "running" },
+    dispatchState: projectQueuesState.dispatchState,
     refetch: vi.fn(),
     pauseDispatch: vi.fn(),
     resumeDispatch: vi.fn(),
@@ -97,7 +115,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     retryItem: vi.fn(),
-    moveItemToTop: vi.fn(),
+    moveItemToTop: mockMoveItemToTop,
   }),
 }));
 
@@ -230,6 +248,14 @@ vi.mock("../../i18n", () => ({
         projectQueueStatusFailed: "Failed",
         projectQueueTargetNewSession: "New session",
         projectQueueUnknownProject: "Unknown project",
+        sidebarSessionResume: "Resume",
+        sidebarSessionResumeTitle:
+          "Resume this interrupted session without sending a message",
+        sidebarSessionResumeFailed: "Failed to resume session: {message}",
+        sidebarPendingSessionResumeTitle:
+          "Resume Project Queue dispatch with this pending session first",
+        sidebarPendingSessionResumeFailed:
+          "Failed to resume pending session: {message}",
       } as Record<string, string>;
       let text = messages[key] ?? key;
       if (vars) {
@@ -252,11 +278,15 @@ vi.mock("../SessionListItem", () => ({
     title,
     activity,
     hasProjectQueue,
+    onResume,
+    resumePending,
   }: {
     sessionId: string;
     title: string;
     activity?: string;
     hasProjectQueue?: boolean;
+    onResume?: () => void | Promise<void>;
+    resumePending?: boolean;
   }) => (
     <li data-testid={`session-${sessionId}`} data-activity={activity ?? ""}>
       {title}
@@ -264,6 +294,15 @@ vi.mock("../SessionListItem", () => ({
         <span data-testid={`thinking-${sessionId}`}>Thinking</span>
       ) : null}
       {hasProjectQueue ? <span>Q</span> : null}
+      {onResume ? (
+        <button
+          type="button"
+          onClick={() => void onResume()}
+          disabled={resumePending}
+        >
+          Resume
+        </button>
+      ) : null}
     </li>
   ),
 }));
@@ -355,7 +394,12 @@ describe("Sidebar collapsed toggle", () => {
     });
     mockToggleExpanded.mockReset();
     mockWindowOpen.mockReset();
+    mockMoveItemToTop.mockReset();
+    mockMoveItemToTop.mockResolvedValue(undefined);
     mockPromoteNow.mockReset();
+    mockReactivateSession.mockReset();
+    mockReactivateSession.mockResolvedValue({ processId: "process-1" });
+    mockShowToast.mockReset();
     mockRemoteConnectionState.value = null;
     mockGlobalLoadMore.mockReset();
     mockStarredLoadMore.mockReset();
@@ -369,6 +413,7 @@ describe("Sidebar collapsed toggle", () => {
     starredSessionsState.loadMore = mockStarredLoadMore;
     newSessionDraftState.hasDraft = false;
     projectQueuesState.queuesByProject = {};
+    projectQueuesState.dispatchState = { status: "running" };
     projectQueueSidebarCountState.count = 0;
     projectsState.projects = [];
     versionState.capabilities = [];
@@ -493,6 +538,65 @@ describe("Sidebar collapsed toggle", () => {
 
     expect(screen.getByText("Session 13")).toBeDefined();
     expect(screen.queryByText("Show more")).toBeNull();
+  });
+
+  it("offers one-click Resume only for recent unowned non-terminated sessions", async () => {
+    versionState.capabilities = [SIDEBAR_SESSION_RESUME_CAPABILITY];
+    globalSessionsState.sessions = [
+      makeSession(
+        "eligible",
+        new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(),
+      ),
+      makeSession(
+        "too-old",
+        new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(),
+      ),
+      makeSession("manual", new Date().toISOString(), {
+        autoResumeDisabled: true,
+      }),
+      makeSession("live", new Date().toISOString(), {
+        ownership: { owner: "self", processId: "process-live" },
+      }),
+    ];
+
+    renderSidebar();
+
+    expect(
+      screen.getByTestId("session-eligible").querySelector("button")
+        ?.textContent,
+    ).toBe("Resume");
+    expect(
+      screen.getByTestId("session-too-old").querySelector("button"),
+    ).toBeNull();
+    expect(
+      screen.getByTestId("session-manual").querySelector("button"),
+    ).toBeNull();
+    expect(
+      screen.getByTestId("session-live").querySelector("button"),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByTestId("session-eligible").querySelector("button") as Element,
+    );
+    await waitFor(() => {
+      expect(mockReactivateSession).toHaveBeenCalledWith(
+        "project-1",
+        "eligible",
+      );
+    });
+  });
+
+  it("hides one-click Resume when the server capability is absent", () => {
+    globalSessionsState.sessions = [
+      makeSession("eligible", new Date().toISOString()),
+    ];
+
+    renderSidebar();
+
+    expect(
+      screen.getByTestId("session-eligible").querySelector("button"),
+    ).toBeNull();
+    expect(mockReactivateSession).not.toHaveBeenCalled();
   });
 
   it("marks sidebar rows that have Project Queue items", () => {
@@ -706,6 +810,44 @@ describe("Sidebar collapsed toggle", () => {
     expect(link.getAttribute("href")).toBe(
       "/remote/test/projects?queueItem=queue-new-session",
     );
+  });
+
+  it("resumes restart-paused dispatch with the selected pending item first", async () => {
+    versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
+    projectsState.projects = [
+      {
+        id: "project-1",
+        name: "Alpha",
+        projectQueueCount: 2,
+      },
+    ];
+    projectQueuesState.dispatchState = { status: "paused" };
+    projectQueuesState.queuesByProject = {
+      "project-1": [
+        makeProjectQueueItem("queue-first"),
+        makeProjectQueueItem("queue-selected", {
+          target: { type: "new-session", title: "Selected pending session" },
+        }),
+      ],
+    };
+
+    renderSidebar();
+    const selectedLink = screen.getByRole("link", {
+      name: /Selected pending session/i,
+    });
+    const row = selectedLink.closest("li");
+    const resume = row?.querySelector("button");
+    expect(resume?.textContent).toBe("Resume");
+
+    fireEvent.click(resume as Element);
+
+    await waitFor(() =>
+      expect(mockMoveItemToTop).toHaveBeenCalledWith(
+        "project-1",
+        "queue-selected",
+      ),
+    );
+    expect(mockPromoteNow).not.toHaveBeenCalled();
   });
 
   it("starts queued new-session sidebar rows before navigating", async () => {

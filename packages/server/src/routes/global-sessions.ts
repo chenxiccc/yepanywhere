@@ -97,6 +97,8 @@ export interface GlobalSessionItem {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
+  /** True when an explicit manual termination disabled automatic resume. */
+  autoResumeDisabled?: boolean;
   /** Interactive Mother session for a YA-owned `/btw` aside. */
   parentSessionId?: string;
   parentSessionKind?: "btw-aside";
@@ -634,6 +636,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           customTitle,
           isArchived,
           isStarred,
+          autoResumeDisabled: metadata?.autoResumeDisabled === true,
           parentSessionId,
           parentSessionKind,
           forkedFromSessionId,
