@@ -122,6 +122,9 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   the Claude SDK's per-launch flag-settings layer and in that child process's
   environment only. The YA marker identifies the Gateway provider route, not
   the implementation behind its generic Anthropic-compatible endpoint.
+  YA-owned process identity and persisted session metadata remain authoritative
+  when displaying that route; transcript model-name inference must not recast a
+  Gateway session as `claude-ollama`.
 - A gateway that returns `X-Copilot-API: 1` from `/v1/models` explicitly
   identifies that implementation. After observing that header, YA adds
   `YEP_COPILOT_API=1` to the Claude flag-settings and child environments for

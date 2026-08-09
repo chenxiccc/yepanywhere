@@ -577,4 +577,51 @@ describe("Processes Routes", () => {
     expect(json.processes[0]?.sessionTitle).toBe("Fix the agents page titles");
     expect(json.processes[0]?.provider).toBe("codex");
   });
+
+  it("keeps the canonical Gateway provider over transcript inference", async () => {
+    const project = {
+      ...createProject(),
+      provider: "claude-gateway",
+    } satisfies Project;
+    const process = {
+      ...createProcessInfo(),
+      provider: "claude-gateway",
+    } satisfies ProcessInfo;
+    const summary = {
+      ...createSummary(),
+      provider: "claude-ollama",
+      model: "gpt-5.6-terra",
+    } satisfies SessionSummary;
+
+    const routes = createProcessesRoutes({
+      supervisor: {
+        getProcessInfoList: vi.fn(() => [process]),
+      } as unknown as Supervisor,
+      scanner: {
+        getProject: vi.fn(async () => project),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => summary),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+      } as unknown as SessionMetadataService,
+    });
+
+    const response = await routes.request("/");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      processes: [
+        {
+          sessionId: "sess-1",
+          provider: "claude-gateway",
+          model: "gpt-5.6-terra",
+        },
+      ],
+    });
+  });
 });

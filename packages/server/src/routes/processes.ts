@@ -115,11 +115,11 @@ async function enrichProcessInfo(
       enriched.model = summary.model;
     }
 
-    // Prefer the durable session provider over the process provider when available.
-    // This fixes stale terminated-process rows that were started with the wrong
-    // provider but whose session metadata and on-disk transcript are correct.
-    enriched.provider =
-      summary?.provider ?? metadata?.provider ?? process.provider;
+    // Persisted metadata and the owning process carry the canonical provider
+    // route. A transcript summary may only infer a Claude-family variant from
+    // its model name, so letting it override either source can recast Gateway
+    // sessions as Claude Ollama in the Agents view.
+    enriched.provider = metadata?.provider ?? process.provider;
 
     // Resolve the YA model id used to key per-model settings. Prefer the live
     // requested alias, then the alias persisted when YA started the session
