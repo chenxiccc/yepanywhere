@@ -35,7 +35,9 @@ ownership discovery, a new viewer route, or an executable-content service.
 - A **Viewer link** is a stable YA application route. A raw API URL is not
   relabeled or copied as a viewer link.
 - The second panel is selected rather than hover-only, so the same interaction
-  works on touch. It includes an explicit **Back** action.
+  works on touch. On a fine hover-capable pointer it also opens as an adjacent
+  flyout when the branch is hovered. Compact/touch presentation includes an
+  explicit **Back** action.
 - Ordinary Markdown behavior remains preview-first. Ordinary HTML behavior is
   source-first. An explicit HTML preview stays scriptless and opaque-origin;
   selecting Preview never navigates to the raw file response.
@@ -91,6 +93,8 @@ applications.
 - Copy labels distinguish path coordinates from stable viewer links, and raw
   local API URLs are absent from the Copy panel.
 - Desktop and phone-width captures show usable first- and second-level menus.
+- Desktop branch hover opens the corresponding adjacent flyout without a
+  click; click/tap remains a complete path through the same actions.
 - Focused tests, lint, formatting, typecheck, and CSS checks pass. Advisory
   i18n and console scans add no findings beyond their checked-in baselines.
 - The relevant browser interaction passes without a stale-runtime banner or
@@ -98,8 +102,8 @@ applications.
 
 ## Verification
 
-- All 381 client test files pass (3,376 tests). The focused file-action,
-  viewer, path-helper, and catalog set passes 79 tests without warnings.
+- All 381 client test files pass (3,378 tests). The focused file-action,
+  viewer, path-helper, and catalog set passes 81 tests without warnings.
 - `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm css:check`,
   `pnpm console:scan`, and `pnpm i18n:scan` pass their repository contracts.
   The i18n scan retains its three pre-existing development-server findings;
@@ -116,3 +120,17 @@ applications.
   reached 3,827 passing server tests but failed 14 unrelated server lifecycle,
   public-share, and descriptor-race tests, including teardown-time
   `setTimeout is not defined` errors. No server source changed here.
+
+## Interaction follow-up — 2026-08-09
+
+The initial selectable replacement panel worked on touch but felt unlike a
+conventional desktop context menu because Open and Copy required a click.
+Fine-pointer hover now opens the corresponding submenu beside the root menu;
+the active branch remains highlighted and moving to a normal root action
+closes the flyout. Click continues to open that flyout, while coarse pointers
+and narrow viewports retain the replacement panel and explicit Back action.
+
+A fresh browser pass against the real shared component verified both Open and
+Copy hover flyouts with the root menu still visible. At 375×812, pointer
+movement alone kept one root menu open and a deliberate tap replaced it with
+the Open panel and Back action. The browser console remained clean.

@@ -40,8 +40,13 @@
 }
 
 .menu button:hover,
-.menu button:focus-visible {
+.menu button:focus-visible,
+.menu button.activeItem {
   background: var(--bg-hover);
+}
+
+.submenu {
+  z-index: 10000;
 }
 
 .branchLabel,

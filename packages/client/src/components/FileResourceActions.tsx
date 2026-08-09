@@ -71,10 +71,14 @@ export function useStartNewSessionFromFile(
 
 function FilePathContextMenuItem({
   children,
+  expanded = false,
+  onHover,
   onSelect,
   opensPanel = false,
 }: {
   children: ReactNode;
+  expanded?: boolean;
+  onHover?: () => void;
   onSelect: () => void;
   opensPanel?: boolean;
 }) {
@@ -83,7 +87,10 @@ function FilePathContextMenuItem({
       type="button"
       role="menuitem"
       aria-haspopup={opensPanel ? "menu" : undefined}
+      aria-expanded={opensPanel ? expanded : undefined}
+      className={expanded ? styles.activeItem : undefined}
       onClick={onSelect}
+      onMouseEnter={onHover}
     >
       {children}
     </button>
@@ -133,6 +140,10 @@ export function FilePathContextMenu({
       onCopyViewerLink ||
       onCopyContents,
   );
+  const usesHoverFlyout =
+    window.innerWidth >= 520 &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   // The right-click that opened this menu came from a link that was almost
   // certainly showing its hover tooltip, and the pointer then holds still — so
@@ -156,7 +167,22 @@ export function FilePathContextMenu({
     onClose();
   };
 
-  const estimatedMenuHeight = panel === "copy" ? 280 : 180;
+  const rootMenuLeft = Math.max(8, Math.min(x, window.innerWidth - 230));
+  const rootMenuTop = Math.max(8, Math.min(y, window.innerHeight - 180));
+  const estimatedSubmenuHeight = panel === "copy" ? 280 : 180;
+  const submenuTop = usesHoverFlyout
+    ? Math.max(
+        8,
+        Math.min(rootMenuTop, window.innerHeight - estimatedSubmenuHeight),
+      )
+    : Math.max(8, Math.min(y, window.innerHeight - estimatedSubmenuHeight));
+  const canOpenSubmenuRight = rootMenuLeft + 218 + 230 <= window.innerWidth;
+  const submenuLeft = usesHoverFlyout
+    ? canOpenSubmenuRight
+      ? rootMenuLeft + 218
+      : Math.max(8, rootMenuLeft - 218)
+    : rootMenuLeft;
+  const renderRootPanel = panel === "root" || usesHoverFlyout;
 
   return createPortal(
     <>
@@ -170,107 +196,125 @@ export function FilePathContextMenu({
           onClose();
         }}
       />
-      <div
-        className={styles.menu}
-        role="menu"
-        style={{
-          left: Math.max(8, Math.min(x, window.innerWidth - 230)),
-          top: Math.max(
-            8,
-            Math.min(y, window.innerHeight - estimatedMenuHeight),
-          ),
-        }}
-      >
-        {panel === "root" ? (
-          <>
+      {renderRootPanel ? (
+        <div
+          className={styles.menu}
+          role="menu"
+          style={{ left: rootMenuLeft, top: rootMenuTop }}
+        >
+          <FilePathContextMenuItem
+            expanded={panel === "open"}
+            opensPanel={hasPresentationChoice}
+            onHover={
+              usesHoverFlyout && hasPresentationChoice
+                ? () => setPanel("open")
+                : undefined
+            }
+            onSelect={() =>
+              hasPresentationChoice ? setPanel("open") : select(onOpen)
+            }
+          >
+            {hasPresentationChoice ? (
+              <BranchLabel>{t("fileLinkMenuOpen" as never)}</BranchLabel>
+            ) : (
+              t("fileLinkMenuOpen" as never)
+            )}
+          </FilePathContextMenuItem>
+          {canStartNewSession && onStartNewSession ? (
             <FilePathContextMenuItem
-              opensPanel={hasPresentationChoice}
-              onSelect={() =>
-                hasPresentationChoice ? setPanel("open") : select(onOpen)
-              }
+              onHover={usesHoverFlyout ? () => setPanel("root") : undefined}
+              onSelect={() => select(onStartNewSession)}
             >
-              {hasPresentationChoice ? (
-                <BranchLabel>{t("fileLinkMenuOpen" as never)}</BranchLabel>
-              ) : (
-                t("fileLinkMenuOpen" as never)
-              )}
+              {t("fileLinkMenuNewSession" as never)}
             </FilePathContextMenuItem>
-            {canStartNewSession && onStartNewSession ? (
-              <FilePathContextMenuItem
-                onSelect={() => select(onStartNewSession)}
-              >
-                {t("fileLinkMenuNewSession" as never)}
-              </FilePathContextMenuItem>
-            ) : null}
-            {hasCopyActions ? <div className={styles.separator} /> : null}
-            {hasCopyActions ? (
-              <FilePathContextMenuItem
-                opensPanel
-                onSelect={() => setPanel("copy")}
-              >
-                <BranchLabel>{t("fileLinkMenuCopy" as never)}</BranchLabel>
-              </FilePathContextMenuItem>
-            ) : null}
-          </>
-        ) : null}
-        {panel === "open" ? (
-          <>
-            <FilePathContextMenuItem onSelect={() => setPanel("root")}>
-              <BackLabel>{t("fileLinkMenuBack" as never)}</BackLabel>
+          ) : null}
+          {hasCopyActions ? <div className={styles.separator} /> : null}
+          {hasCopyActions ? (
+            <FilePathContextMenuItem
+              expanded={panel === "copy"}
+              opensPanel
+              onHover={usesHoverFlyout ? () => setPanel("copy") : undefined}
+              onSelect={() => setPanel("copy")}
+            >
+              <BranchLabel>{t("fileLinkMenuCopy" as never)}</BranchLabel>
             </FilePathContextMenuItem>
-            <div className={styles.separator} />
-            {onOpenSource ? (
-              <FilePathContextMenuItem onSelect={() => select(onOpenSource)}>
-                {t("fileViewerSource" as never)}
+          ) : null}
+        </div>
+      ) : null}
+      {panel !== "root" ? (
+        <div
+          aria-label={
+            panel === "open"
+              ? t("fileLinkMenuOpen" as never)
+              : t("fileLinkMenuCopy" as never)
+          }
+          className={`${styles.menu} ${styles.submenu}`}
+          role="menu"
+          style={{ left: submenuLeft, top: submenuTop }}
+        >
+          {!usesHoverFlyout ? (
+            <>
+              <FilePathContextMenuItem onSelect={() => setPanel("root")}>
+                <BackLabel>{t("fileLinkMenuBack" as never)}</BackLabel>
               </FilePathContextMenuItem>
-            ) : null}
-            {onOpenPreview ? (
-              <FilePathContextMenuItem onSelect={() => select(onOpenPreview)}>
-                {t("fileViewerPreview" as never)}
-              </FilePathContextMenuItem>
-            ) : null}
-          </>
-        ) : null}
-        {panel === "copy" ? (
-          <>
-            <FilePathContextMenuItem onSelect={() => setPanel("root")}>
-              <BackLabel>{t("fileLinkMenuBack" as never)}</BackLabel>
-            </FilePathContextMenuItem>
-            <div className={styles.separator} />
-            {onCopyProjectRelativePath ? (
-              <FilePathContextMenuItem
-                onSelect={() => select(onCopyProjectRelativePath)}
-              >
-                {t("fileLinkMenuProjectRelativePath" as never)}
-              </FilePathContextMenuItem>
-            ) : null}
-            {onCopyAbsolutePath ? (
-              <FilePathContextMenuItem
-                onSelect={() => select(onCopyAbsolutePath)}
-              >
-                {t("fileLinkMenuAbsolutePath" as never)}
-              </FilePathContextMenuItem>
-            ) : null}
-            {onCopyFilePath ? (
-              <FilePathContextMenuItem onSelect={() => select(onCopyFilePath)}>
-                {t("fileLinkMenuFilePath" as never)}
-              </FilePathContextMenuItem>
-            ) : null}
-            {onCopyViewerLink ? (
-              <FilePathContextMenuItem
-                onSelect={() => select(onCopyViewerLink)}
-              >
-                {t("fileLinkMenuViewerLink" as never)}
-              </FilePathContextMenuItem>
-            ) : null}
-            {onCopyContents ? (
-              <FilePathContextMenuItem onSelect={() => select(onCopyContents)}>
-                {t("fileLinkMenuContents" as never)}
-              </FilePathContextMenuItem>
-            ) : null}
-          </>
-        ) : null}
-      </div>
+              <div className={styles.separator} />
+            </>
+          ) : null}
+          {panel === "open" ? (
+            <>
+              {onOpenSource ? (
+                <FilePathContextMenuItem onSelect={() => select(onOpenSource)}>
+                  {t("fileViewerSource" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
+              {onOpenPreview ? (
+                <FilePathContextMenuItem onSelect={() => select(onOpenPreview)}>
+                  {t("fileViewerPreview" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
+            </>
+          ) : null}
+          {panel === "copy" ? (
+            <>
+              {onCopyProjectRelativePath ? (
+                <FilePathContextMenuItem
+                  onSelect={() => select(onCopyProjectRelativePath)}
+                >
+                  {t("fileLinkMenuProjectRelativePath" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
+              {onCopyAbsolutePath ? (
+                <FilePathContextMenuItem
+                  onSelect={() => select(onCopyAbsolutePath)}
+                >
+                  {t("fileLinkMenuAbsolutePath" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
+              {onCopyFilePath ? (
+                <FilePathContextMenuItem
+                  onSelect={() => select(onCopyFilePath)}
+                >
+                  {t("fileLinkMenuFilePath" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
+              {onCopyViewerLink ? (
+                <FilePathContextMenuItem
+                  onSelect={() => select(onCopyViewerLink)}
+                >
+                  {t("fileLinkMenuViewerLink" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
+              {onCopyContents ? (
+                <FilePathContextMenuItem
+                  onSelect={() => select(onCopyContents)}
+                >
+                  {t("fileLinkMenuContents" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
     </>,
     document.body,
   );

@@ -116,6 +116,11 @@ vocabulary even though their authorization routes remain distinct:
   touch-selectable **Open > Source / Preview** panel. Other files keep a direct
   **Open** action. This is an initial-presentation choice, not a different file
   permission or serving route.
+- On a fine hover-capable pointer, hovering **Open** or **Copy** opens an
+  adjacent flyout and highlights the active branch, matching conventional
+  desktop context menus. Click still opens the same flyout. Coarse pointers
+  and narrow viewports use the compact replacement panel with an explicit
+  **Back** action, so hover is never the only route to a submenu.
 - HTML is source-first. Its explicit Preview is a client-owned `srcdoc`
   document under an empty iframe sandbox, no-referrer policy, and restrictive
   meta CSP. Markdown remains preview-first and may be opened as source. Both

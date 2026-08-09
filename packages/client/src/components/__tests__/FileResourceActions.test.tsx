@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { FilePathContextMenu } from "../FileResourceActions";
@@ -42,7 +48,10 @@ function overlay() {
 }
 
 describe("FilePathContextMenu", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it("portals the overlay and menu directly into the body", () => {
     renderMenu();
@@ -75,6 +84,52 @@ describe("FilePathContextMenu", () => {
       "Viewer link",
       "Contents",
     ]);
+  });
+
+  it("opens adjacent submenus on hover-capable pointers", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true }) as MediaQueryList),
+    );
+    renderMenu();
+
+    const rootMenu = screen.getByRole("menu");
+    const openItem = within(rootMenu).getByRole("menuitem", { name: "Open" });
+    fireEvent.mouseEnter(openItem);
+
+    expect(document.body.contains(rootMenu)).toBe(true);
+    expect(openItem.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      within(screen.getByRole("menu", { name: "Open" }))
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Source", "Preview"]);
+    expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
+
+    fireEvent.mouseEnter(
+      within(rootMenu).getByRole("menuitem", { name: "Copy" }),
+    );
+    expect(screen.queryByRole("menu", { name: "Open" })).toBeNull();
+    expect(
+      within(screen.getByRole("menu", { name: "Copy" }))
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "Project-relative path",
+      "Absolute file path",
+      "Viewer link",
+      "Contents",
+    ]);
+
+    fireEvent.mouseEnter(
+      within(rootMenu).getByRole("menuitem", { name: "New session" }),
+    );
+    expect(screen.queryByRole("menu", { name: "Copy" })).toBeNull();
+
+    fireEvent.click(within(rootMenu).getByRole("menuitem", { name: "Copy" }));
+    expect(
+      document.body.contains(screen.getByRole("menu", { name: "Copy" })),
+    ).toBe(true);
   });
 
   it("omits the conditional items when their actions are unavailable", () => {
@@ -153,6 +208,23 @@ describe("FilePathContextMenu", () => {
     const menu = screen.getByRole("menu");
     expect(menu.style.left).toBe("8px");
     expect(menu.style.top).toBe("8px");
+  });
+
+  it("opens a hover flyout to the left when the right edge is constrained", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true }) as MediaQueryList),
+    );
+    renderMenu({ x: 9999, y: 10 });
+
+    const rootMenu = screen.getByRole("menu");
+    fireEvent.mouseEnter(
+      within(rootMenu).getByRole("menuitem", { name: "Open" }),
+    );
+
+    expect(screen.getByRole("menu", { name: "Open" }).style.left).toBe(
+      `${window.innerWidth - 448}px`,
+    );
   });
 
   it("styles both portal nodes from the module, not the removed globals", () => {
