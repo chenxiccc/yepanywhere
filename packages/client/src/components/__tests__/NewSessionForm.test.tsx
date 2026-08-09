@@ -2331,7 +2331,7 @@ describe("NewSessionForm", () => {
     expect(screen.queryByRole("button", { name: "HD" })).toBeNull();
   });
 
-  it("places all-provider controls before provider-specific controls", async () => {
+  it("places core launch controls before optional session helpers", async () => {
     serverSettingsState.isLoading = false;
 
     const { container } = render(
@@ -2353,18 +2353,21 @@ describe("NewSessionForm", () => {
       container.querySelectorAll(".new-session-provider-slot h3"),
       (element) => element.textContent,
     );
-    expect(headings.indexOf("newSessionModeTitle")).toBeGreaterThan(
-      headings.indexOf("newSessionPromptSuggestionsTitle"),
-    );
-    expect(headings.indexOf("showThinkingTitle")).toBeGreaterThan(
-      headings.indexOf("newSessionModeTitle"),
-    );
-    expect(headings.indexOf("newSessionProviderTitle")).toBeGreaterThan(
-      headings.indexOf("showThinkingTitle"),
+    expect(headings.indexOf("newSessionModelTitle")).toBeGreaterThan(
+      headings.indexOf("newSessionProviderTitle"),
     );
     expect(headings.indexOf("modelSettingsThinkingTitle")).toBeGreaterThan(
       headings.indexOf("newSessionModelTitle"),
     );
+    expect(headings.indexOf("newSessionModeTitle")).toBeGreaterThan(
+      headings.indexOf("modelSettingsThinkingTitle"),
+    );
+    expect(headings.indexOf("newSessionRecapTitle")).toBeGreaterThan(
+      headings.indexOf("newSessionModeTitle"),
+    );
+    expect(
+      headings.indexOf("newSessionPromptSuggestionsTitle"),
+    ).toBeGreaterThan(headings.indexOf("newSessionRecapTitle"));
   });
 
   it("uses the selected rapid-speech prefix for new-session Project Queue", async () => {

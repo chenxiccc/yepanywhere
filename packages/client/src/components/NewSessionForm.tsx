@@ -3754,15 +3754,15 @@ export function NewSessionForm({
           sandboxSection ||
           permissionSection) && (
           <div className="new-session-provider-slot">
-            {recapSection}
-            {promptSuggestionSection}
-            {sandboxSection}
-            {permissionSection}
-            {showThinkingSection}
             {showProviderAndModel && providerSection}
             {showProviderAndModel && modelSection}
             {thinkingSection}
+            {permissionSection}
+            {sandboxSection}
+            {showThinkingSection}
+            {recapSection}
             {helperSideModelSection}
+            {promptSuggestionSection}
           </div>
         )}
       </div>

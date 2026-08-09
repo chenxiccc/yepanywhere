@@ -36,9 +36,11 @@ currently selected provider lacks the feature.
   override it before process creation. The control is rendered and sent only
   when the server reports a currently available host backend; see
   [session-sandboxing](session-sandboxing.md).
-- **Recaps** — recap mode and away threshold belong together. They are
-  presented above AI Provider because they are standing session-helper choices,
-  not properties of whichever provider button happens to be selected.
+- **Recaps** — recap mode and away threshold belong together. They are standing
+  session-helper choices, not properties of whichever provider button happens
+  to be selected. In New Session's linear control stack, they follow the core
+  launch choices so an infrequently changed helper does not sit next to the
+  composer.
 - **Prompt suggestions** — expose `Off` / `Native` unconditionally. Launch code
   only enables native provider suggestions when supported, but the default UI
   must not show provider-specific "unsupported" copy in the all-provider area.
@@ -186,7 +188,7 @@ part of the provider launch snapshot and does not move with a session.
 
 ## UI placement
 
-In the session-defaults panel and the new-session form:
+The session-defaults settings panel groups choices by persistence scope:
 
 1. All-provider defaults: recaps; prompt suggestions; permission mode; the
    sandbox-new-sessions toggle; show-thinking display policy; and
@@ -196,6 +198,15 @@ In the session-defaults panel and the new-session form:
 3. Provider-specific defaults for the selected provider: model, service tier,
    thinking mode, effort, **Tailed Recap Model**, prompt-cache keepalive,
    compaction threshold, and other model economics controls.
+
+New Session instead prioritizes the choices most likely to change before a
+launch. Its linear reading order is AI Provider, model and thinking, permission
+mode and sandboxing, show-thinking display policy, then recaps, the conditional
+**Tailed Recap Model**, and prompt suggestions. This is also the narrow-viewport
+visual order, keeping optional helper behavior away from the composer. Desktop
+uses the same DOM order so visual, keyboard, and screen-reader traversal do not
+disagree. Placement does not change a setting's all-provider or provider-local
+persistence scope.
 
 Permission-mode cards are equal-sized by design. Their captions should fit the
 card grid with short explanatory text:
@@ -244,9 +255,9 @@ UI/storage sequence below.
 
 1. **Pin this contract.** Create this topic, add the glossary/topic index row,
    and use it as the commit topic for the UI/storage changes.
-2. **Recap UI.** Move recap controls above AI Provider; keep **Tailed Recap
-   Model** in provider-specific defaults after thinking effort; make `Forked`
-   available whenever the provider can generate recaps.
+2. **Recap UI.** Group recap controls with all-provider defaults in the settings
+   panel; keep **Tailed Recap Model** provider-specific; make `Forked` available
+   whenever the provider can generate recaps.
 3. **Prompt suggestions.** Show `Off` / `Native` unconditionally in the
    all-provider defaults area; remove provider-specific unsupported copy; keep
    launch-time native enablement capability-gated.
@@ -254,10 +265,10 @@ UI/storage sequence below.
    selected-provider model, thinking mode, effort, and tailed recap model
    through it. Preserve legacy fields and existing saved preferences by seeding
    the selected provider on read/next save.
-5. **All-provider placement.** Move permission mode, show-thinking display
-   policy, and forked-session behavior out of the AI-provider-specific region.
-   Keep show-thinking all-provider/per-install and separate from thinking mode +
-   effort spend controls.
+5. **All-provider placement.** Keep permission mode, show-thinking display
+   policy, and forked-session behavior outside provider-scoped persistence.
+   New Session may interleave these controls with provider-specific choices by
+   launch relevance without changing their storage scope.
 6. **Permission captions.** Shorten equal-width permission-mode card captions to
    the text above.
 7. **Tests.** Cover provider switch persistence, all-provider recap/suggestion
