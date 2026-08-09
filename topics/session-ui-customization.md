@@ -142,9 +142,11 @@ desktop density does not reduce phone and tablet tap reliability.
 
 Both modes keep the YepAnywhere sidebar wordmark and the same navigation type
 size. New session uses the green circular plus in expanded and collapsed
-sidebars so the create action stays recognizable; sidebar density never changes
-branding, action meaning, or type size. The mobile close control and collapsed
-desktop rail remain available in both modes.
+sidebars so the create action stays recognizable. It uses the same 16px footprint
+as the other top-level navigation icons; the green fill supplies emphasis without
+making the action geometrically larger. Sidebar density never changes branding,
+action meaning, or type size. The mobile close control and collapsed desktop
+rail remain available in both modes.
 
 The same preference controls navigation-row padding and the gaps between
 sidebar sections. For top-level navigation, one metric controls both the

@@ -34,6 +34,9 @@ review or discussion that adds another product constraint.
 - New Session uses a green circular plus in every expanded, compact, and
   collapsed sidebar state. A plus communicates creation directly; the brand
   already has its own header surface and should not replace action semantics.
+  Its 16px footprint matches the other top-level navigation icons; the filled
+  green treatment already provides enough primary-action emphasis without a
+  larger geometry competing with the wordmark.
 - One density-owned inline-spacing metric controls both the leading edge inset
   and the icon-to-label gap. Comfortable uses `0.75rem`; Compact uses
   `0.5rem`. Equal measurements keep the icon visually centered between the
@@ -90,8 +93,9 @@ lint, typecheck, client tests, i18n and console scans, then inspect fresh
 ## Completion evidence
 
 - `SidebarNavItem`, spacing-hook, and Appearance settings tests cover the plus
-  structure, both density metric sets, legacy custom-property cleanup, visible
-  settings location, accessibility state, and persisted preference updates.
+  structure and shared 16px icon footprint, both density metric sets, legacy
+  custom-property cleanup, visible settings location, accessibility state, and
+  persisted preference updates.
 - The focused browser contract in `e2e/sidebar-density.spec.ts` passes against
   a fresh production client build and isolated server. It verifies equal
   navigation edge/gap measurements, unchanged navigation type and wordmark,

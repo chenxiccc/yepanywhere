@@ -1031,6 +1031,8 @@ describe("Sidebar collapsed toggle", () => {
     const newSessionIcon = newSessionLink.querySelector(
       ".sidebar-new-session-icon",
     );
+    expect(newSessionIcon?.getAttribute("width")).toBe("16");
+    expect(newSessionIcon?.getAttribute("height")).toBe("16");
     expect(newSessionIcon?.querySelector("circle")).toBeTruthy();
     expect(newSessionIcon?.querySelectorAll("line")).toHaveLength(2);
     expect(screen.getByText("Draft")).toBeDefined();
