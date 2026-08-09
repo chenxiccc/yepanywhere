@@ -39,6 +39,11 @@ native-preferred fallback: wait a bounded grace window, use a native recap
 if it arrives, and only synthesize when native does not arrive in time. The
 supervisor must uphold:
 
+- **Inherit the source model.** The generator's one helper turn uses the
+  source session's exact selected model, or its provider-reported model when
+  the source selected `default`. Provider-specific helper effort remains
+  independent and may be lower than the source effort.
+
 1. **At most one fork worker per process.** A second concurrent request
    while one is in flight is refused with reason "recap already in
    flight" (`requestForkedRecap`, `Supervisor.ts:2098`).
@@ -258,6 +263,9 @@ waiting for idle and then using `process.sessionId` for detail/list assertions.
 - A cold (process-dead) fork-mode session is revived and recapped on the
   session-keyed away trigger; a cold non-fork session is not revived; a
   background recap never preempts a live worker (skips at capacity).
+- A forked recap request carries the resolved source model into the provider;
+  gateway model settings and native Codex resume params receive that same
+  model while helper effort remains independently configurable.
 - `recapMode` round-trips through `SessionMetadataService` (persist on
   recap-config, read on reactivation), surviving server restart.
 - A revived process with an empty recap buffer still emits a forked recap

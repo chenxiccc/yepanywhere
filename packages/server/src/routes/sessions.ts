@@ -95,7 +95,10 @@ import type { ISessionReader, LoadedSession } from "../sessions/types.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { getStaticSlashCommandsForProvider } from "../sdk/providers/staticSlashCommands.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
-import type { ProviderForkBoundary } from "../sdk/providers/types.js";
+import {
+  type ProviderForkBoundary,
+  resolveInheritedForkModel,
+} from "../sdk/providers/types.js";
 import type { Process } from "../supervisor/Process.js";
 import type {
   ModelSettings,
@@ -2059,9 +2062,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         initialPrompt,
       );
     }
-    // Persist the requested YA model id (the launch alias, incl. "default") so
-    // per-model settings still key by it after a server restart, instead of
-    // falling back to the reported model. See topics/provider-abstraction.md.
+    // Persist the launch model identity. Normal launches retain the selected YA
+    // alias (including "default"); forks replace "default" with the observed
+    // source model so a cold first resume cannot drift to a new default.
     if (requestedModel) {
       await deps.sessionMetadataService.setRequestedModel(
         sessionId,
@@ -5266,12 +5269,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const savedExecutor = parseOptionalExecutor(
       deps.sessionMetadataService?.getExecutor(sessionId),
     ).executor;
+    let inheritedModel = resolveInheritedForkModel(
+      deps.sessionMetadataService?.getRequestedModel(sessionId),
+      sourceProcess?.resolvedModel,
+      sourceProcess?.model,
+    );
+    if (!inheritedModel) {
+      const fullSummary = await findSessionSummaryAcrossProviders(
+        project,
+        sessionId,
+        projectId,
+        providerResolutionDeps(deps),
+        providerName,
+      );
+      inheritedModel = resolveInheritedForkModel(
+        deps.sessionMetadataService?.getRequestedModel(sessionId),
+        fullSummary?.summary.model,
+      );
+    }
     await persistLaunchMetadata(
       fork.sessionId,
       providerName,
       savedExecutor,
       undefined,
-      deps.sessionMetadataService?.getRequestedModel(sessionId),
+      inheritedModel,
       originalMetadata?.promptSuggestionMode,
       originalMetadata?.recapAfterSeconds,
       originalMetadata?.workstreamId,
@@ -5385,9 +5406,24 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const savedExecutor = parseOptionalExecutor(
       deps.sessionMetadataService.getExecutor(sessionId),
     ).executor;
-    let requestedModel =
-      deps.sessionMetadataService.getRequestedModel(sessionId) ??
-      liveSourceProcess?.model;
+    let requestedModel = resolveInheritedForkModel(
+      deps.sessionMetadataService.getRequestedModel(sessionId),
+      liveSourceProcess?.resolvedModel,
+      liveSourceProcess?.model,
+    );
+    if (!requestedModel) {
+      const fullSummary = await findSessionSummaryAcrossProviders(
+        project,
+        sessionId,
+        projectId,
+        providerResolutionDeps(deps),
+        providerName,
+      );
+      requestedModel = resolveInheritedForkModel(
+        deps.sessionMetadataService.getRequestedModel(sessionId),
+        fullSummary?.summary.model,
+      );
+    }
     const sourceMetadata = deps.sessionMetadataService.getMetadata?.(sessionId);
     const sourceProjectPath =
       sourceMetadata?.sandboxLevel === "project-write"
@@ -5427,7 +5463,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           },
           { requestedOverrides: {} },
         );
-        requestedModel = requestedModel ?? sourceProcess.model;
+        requestedModel = resolveInheritedForkModel(
+          requestedModel,
+          sourceProcess.resolvedModel,
+          sourceProcess.model,
+        );
       }
 
       const generator = await deps.supervisor.forkSession({
@@ -5472,6 +5512,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         strategy: "fork",
         generatorSessionId: generator.sessionId,
         cwd: sourceProjectPath,
+        model: requestedModel,
         currentTitle,
         lengthTarget,
         signal: abortController.signal,
@@ -5651,9 +5692,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       const savedExecutor = parseOptionalExecutor(
         deps.sessionMetadataService.getExecutor(sessionId),
       ).executor;
-      const requestedModel =
-        deps.sessionMetadataService.getRequestedModel(sessionId) ??
-        sourceProcess?.model;
+      const requestedModel = resolveInheritedForkModel(
+        deps.sessionMetadataService.getRequestedModel(sessionId),
+        sourceProcess?.resolvedModel,
+        sourceSession.model,
+        sourceProcess?.model,
+      );
 
       void (async () => {
         let generatorSessionId: string | undefined;
@@ -5707,6 +5751,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
               strategy: "fork",
               generatorSessionId: generator.sessionId,
               cwd: sourceProjectPath,
+              model: requestedModel,
               afterTurnMessageId: boundary.retainedThroughMessageId,
               afterTurnContext: boundary.retainedThroughContext,
               instructions,

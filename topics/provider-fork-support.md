@@ -62,6 +62,12 @@ Contract obligations, not just the shape:
   message, turn, or entry boundary. `upToMessageId` remains only for legacy
   clients and internal callers. Browser display ids never substitute for a
   typed provider identity.
+- **Same model, independent effort.** The first resumed turn uses the source
+  session's model. An explicit selected model remains the launch identity; when
+  the source selected `default`, YA pins the provider-reported model before
+  persisting or resuming the fork. Fork-backed recap, retitle, and handoff
+  helpers pass that model into their immediate generator turn. Effort is a
+  separate setting and a helper may deliberately use a lower level.
 - **Never emulated when absent.** Absence means the capability does not exist;
   YA must not ship a fork-labeled button backed by replay/forgery on a provider
   that cannot truly fork (`session-context-actions.md` § Fork; `types.ts:291`).

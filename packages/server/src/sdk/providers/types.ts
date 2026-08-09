@@ -399,6 +399,28 @@ export interface AgentProvider {
   }) => Promise<{ sessionId: string }>;
 }
 
+/**
+ * Resolve the model a fork must inherit from its source session.
+ *
+ * An explicit requested model remains the launch contract. The provider's
+ * reported model pins sessions launched through `default`, whose meaning can
+ * otherwise drift between the source and the fork's first resumed turn.
+ */
+export function resolveInheritedForkModel(
+  requestedModel: string | undefined,
+  ...reportedModels: Array<string | undefined>
+): string | undefined {
+  if (requestedModel && requestedModel !== "default") {
+    return requestedModel;
+  }
+  for (const reportedModel of reportedModels) {
+    if (reportedModel && reportedModel !== "default") {
+      return reportedModel;
+    }
+  }
+  return undefined;
+}
+
 export type SummaryGenerationRequest =
   | {
       purpose: "recap";
@@ -413,6 +435,8 @@ export type SummaryGenerationRequest =
       generatorSessionId: string;
       /** Project working directory the session belongs to. */
       cwd: string;
+      /** Exact source model inherited by the fork; helper effort is independent. */
+      model: string | undefined;
       /** Cancels the helper query when the request is abandoned. */
       signal?: AbortSignal;
       /** Shared project-private provider state inherited from the source. */
@@ -425,6 +449,8 @@ export type SummaryGenerationRequest =
       generatorSessionId: string;
       /** Project working directory the session belongs to. */
       cwd: string;
+      /** Exact source model inherited by the fork; helper effort is independent. */
+      model: string | undefined;
       /** Completed-turn boundary retained by the target fork. */
       afterTurnMessageId: string;
       /** Human-readable excerpt of the retained boundary, when available. */
@@ -443,6 +469,8 @@ export type SummaryGenerationRequest =
       generatorSessionId: string;
       /** Project working directory the session belongs to. */
       cwd: string;
+      /** Exact source model inherited by the fork; helper effort is independent. */
+      model: string | undefined;
       /** Current displayed title, if any, to avoid repeating a bad title. */
       currentTitle?: string;
       /** Target maximum title length in characters. */

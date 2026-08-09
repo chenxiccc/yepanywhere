@@ -1154,6 +1154,7 @@ describe("CodexProvider app-server lifecycle", () => {
         strategy: "fork",
         generatorSessionId: "thread-generator",
         cwd: tempDir,
+        model: "gpt-5.6-sol",
         currentTitle: "Old title",
         lengthTarget: 72,
       });
@@ -1167,6 +1168,7 @@ describe("CodexProvider app-server lifecycle", () => {
       const turnStart = requests.find(
         (request) => request.method === "turn/start",
       );
+      expect(resume?.params).toMatchObject({ model: "gpt-5.6-sol" });
 
       expect(resume?.params).toMatchObject({
         threadId: "thread-generator",

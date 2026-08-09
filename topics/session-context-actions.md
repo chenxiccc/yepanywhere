@@ -99,8 +99,11 @@ a new session with the same project/provider/model and navigate to it.
 YA exposes one provider-native copy family for Claude, Codex, and Pi. A direct
 **Clone** keeps the latest completed response; **Fork before/after** keeps a
 server-resolved prefix at a real user-turn boundary. Both create a cold session
-with no new provider turn and leave the source unchanged. **Handoff** remains a
-separate replacement/continuation workflow.
+with no new provider turn and leave the source unchanged. The child persists
+the source model for its first cold resume; a source launched through
+`default` is pinned to the provider-reported model rather than re-evaluating a
+possibly changed default. Effort remains an independent launch setting.
+**Handoff** remains a separate replacement/continuation workflow.
 
 Claude's underlying SDK 0.3.170 surface is:
 

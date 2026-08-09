@@ -47,6 +47,7 @@ describe("Codex summary helpers", () => {
         strategy: "fork",
         generatorSessionId: "thread-1",
         cwd: "/tmp/project",
+        model: "gpt-5.6-sol",
       }),
     ).toContain("Recap the current session state in under 40 words");
 
@@ -55,6 +56,7 @@ describe("Codex summary helpers", () => {
       strategy: "fork",
       generatorSessionId: "thread-1",
       cwd: "/tmp/project",
+      model: "gpt-5.6-sol",
       currentTitle: "  Old title  ",
       lengthTarget: 72,
     });
@@ -66,6 +68,7 @@ describe("Codex summary helpers", () => {
       strategy: "fork",
       generatorSessionId: "thread-1",
       cwd: "/tmp/project",
+      model: "gpt-5.6-sol",
       afterTurnMessageId: "turn-2",
       afterTurnContext: "  tests passed  ",
       instructions: "  keep it terse  ",
@@ -83,11 +86,13 @@ describe("Codex summary helpers", () => {
         strategy: "fork",
         generatorSessionId: "thread-title",
         cwd: "/tmp/project",
+        model: "gpt-5.6-sol",
       },
       true,
     );
     expect(retitle).toMatchObject({
       threadId: "thread-title",
+      model: "gpt-5.6-sol",
       cwd: "/tmp/project",
       approvalPolicy: "untrusted",
       sandbox: "read-only",
@@ -100,6 +105,7 @@ describe("Codex summary helpers", () => {
       strategy: "fork",
       generatorSessionId: "thread-summary",
       cwd: "/tmp/project",
+      model: "gpt-5.6-sol",
       afterTurnMessageId: "turn-2",
     });
     expect(handoff.excludeTurns).toBeUndefined();

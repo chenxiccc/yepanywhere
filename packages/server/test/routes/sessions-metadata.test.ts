@@ -3290,10 +3290,13 @@ describe("Sessions metadata route", () => {
     const forkSession = vi.fn(async () => ({ sessionId: "sess-clone" }));
     const resumeSession = vi.fn();
     const updateMetadata = vi.fn(async () => undefined);
+    const setRequestedModel = vi.fn(async () => undefined);
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => ({
           provider: "claude",
+          requestedModel: "default",
+          resolvedModel: "gpt-5.6-sol",
           state: { type: "idle", since: new Date() },
           getMessageHistory: vi.fn(() => []),
         })),
@@ -3314,8 +3317,9 @@ describe("Sessions metadata route", () => {
       sessionMetadataService: {
         getProvider: vi.fn(() => "claude"),
         setProvider: vi.fn(async () => undefined),
+        setRequestedModel,
         getExecutor: vi.fn(() => undefined),
-        getRequestedModel: vi.fn(() => undefined),
+        getRequestedModel: vi.fn(() => "default"),
         getMetadata: vi.fn(() => ({ customTitle: "Short session" })),
         updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
@@ -3352,6 +3356,7 @@ describe("Sessions metadata route", () => {
       title: "Clone: Short session",
       forkedFromSessionId: "sess-1",
     });
+    expect(setRequestedModel).toHaveBeenCalledWith("sess-clone", "gpt-5.6-sol");
     expect(resumeSession).not.toHaveBeenCalled();
   });
 
@@ -3489,6 +3494,7 @@ describe("Sessions metadata route", () => {
       sessionMetadataService: {
         getProvider: vi.fn(() => "claude"),
         setProvider: vi.fn(async () => undefined),
+        setRequestedModel: vi.fn(async () => undefined),
         getExecutor: vi.fn(() => undefined),
         getRequestedModel: vi.fn(() => undefined),
         getMetadata: vi.fn(() => ({ customTitle: "Tool turn" })),
@@ -3623,6 +3629,7 @@ describe("Sessions metadata route", () => {
       sessionMetadataService: {
         getProvider: vi.fn(() => "codex"),
         setProvider: vi.fn(async () => undefined),
+        setRequestedModel: vi.fn(async () => undefined),
         getExecutor: vi.fn(() => undefined),
         getRequestedModel: vi.fn(() => undefined),
         getMetadata: vi.fn(() => ({ customTitle: "Codex tools" })),
@@ -3808,6 +3815,7 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({
         purpose: "session-retitle",
         strategy: "fork",
+        model: "sonnet",
         generatorSessionId: "sess-retitle-generator",
         cwd: project.path,
         currentTitle: "old noisy title",
@@ -4084,6 +4092,7 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({
         purpose: "fork-after-summary",
         strategy: "fork",
+        model: "sonnet",
         generatorSessionId: "sess-generator",
         cwd: project.path,
         afterTurnMessageId: "msg-after-initial-turn",

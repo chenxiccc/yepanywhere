@@ -1449,8 +1449,9 @@ export class ClaudeProvider implements AgentProvider {
           abortController,
           permissionMode: "default",
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
-          env: this.getEnv(),
-          settings: this.getSettings(),
+          env: this.getEnv(request.model),
+          settings: this.getSettings(request.model),
+          model: normalizeClaudeLaunchModel(request.model),
           resume: request.generatorSessionId,
           maxTurns: 1,
           spawnClaudeCodeProcess: request.sessionSandbox

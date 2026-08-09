@@ -3261,7 +3261,12 @@ describe("Supervisor", () => {
         "/tmp/test",
         "revived-session",
         undefined,
-        { providerName: "claude", recapMode: "fork" },
+        {
+          model: "gpt-5.6-sol",
+          requestedModel: "gpt-5.6-sol",
+          providerName: "claude",
+          recapMode: "fork",
+        },
       );
       await vi.waitFor(() => expect(process.state.type).toBe("idle"));
       // The in-memory recap buffer is empty for a freshly revived process.
@@ -3299,6 +3304,9 @@ describe("Supervisor", () => {
         text: "forked summary",
       });
       expect(forkSession).toHaveBeenCalled();
+      expect(generateSummary).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "gpt-5.6-sol" }),
+      );
 
       await process.abort();
     });

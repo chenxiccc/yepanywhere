@@ -89,7 +89,7 @@ export function createCodexForkSummaryThreadResumeParams(
 ): ThreadResumeParams {
   const params: ThreadResumeParams = {
     threadId: request.generatorSessionId,
-    model: null,
+    model: request.model ?? null,
     cwd: request.cwd,
     approvalPolicy: "untrusted",
     sandbox: "read-only",

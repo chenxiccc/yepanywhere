@@ -43,6 +43,7 @@ import type {
   SummaryGenerationRequest,
   SummaryGenerationResult,
 } from "../sdk/providers/types.js";
+import { resolveInheritedForkModel } from "../sdk/providers/types.js";
 import { formatAgentRecapExcerpt } from "../sessions/agent-excerpt.js";
 import {
   isAwaySummaryMessage,
@@ -3184,6 +3185,11 @@ export class Supervisor {
           strategy: "fork",
           generatorSessionId: generator.sessionId,
           cwd: process.projectPath,
+          model: resolveInheritedForkModel(
+            process.requestedModel,
+            process.resolvedModel,
+            process.model,
+          ),
           signal: abortController.signal,
           sessionSandbox: generator.sessionSandbox,
         })
