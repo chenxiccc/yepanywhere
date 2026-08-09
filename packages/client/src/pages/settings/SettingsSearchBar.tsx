@@ -44,10 +44,17 @@ export function SettingsSearchBar({
   );
   const searching = query.trim() !== "";
   return (
-    <div className={styles.bar}>
+    <form
+      className={styles.bar}
+      role="search"
+      autoComplete="off"
+      onSubmit={(event) => event.preventDefault()}
+    >
       <div className={styles.inputWrap}>
         <input
           type="search"
+          name="settings-search"
+          autoComplete="off"
           className={`settings-input ${styles.input}`}
           placeholder={t("settingsSearchPlaceholder")}
           aria-label={t("settingsSearchPlaceholder")}
@@ -81,6 +88,6 @@ export function SettingsSearchBar({
           {t("settingsSearchMatchValues")}
         </label>
       )}
-    </div>
+    </form>
   );
 }

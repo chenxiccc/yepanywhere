@@ -188,6 +188,17 @@ describe("SpeechSettings", () => {
     );
   });
 
+  it("keeps the browser xAI STT key out of saved-login autofill", () => {
+    render(<SpeechSettings />);
+
+    const apiKey = screen.getByLabelText(
+      "speechSettingsXaiKeyTitle",
+    ) as HTMLInputElement;
+
+    expect(apiKey.autocomplete).toBe("new-password");
+    expect(apiKey.name).toBe("xai-stt-api-key");
+  });
+
   it("shows a validating backend immediately but does not allow selection", () => {
     versionState.voiceBackends = ["ya-grok"];
     versionState.voiceBackendStatuses = [

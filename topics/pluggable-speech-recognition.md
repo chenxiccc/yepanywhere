@@ -282,7 +282,9 @@ streaming/confidence surface exists.
 - The browser-local xAI STT key field is always reachable from STT settings and
   from the mic-button speech options. Saving a non-empty browser key updates
   the method list locally and can make direct Grok streaming the selected
-  default even when the YA server advertises no Grok STT backend.
+  default even when the YA server advertises no Grok STT backend. The masked
+  key field is a new credential, never a saved-login password; browser password
+  managers must not pair it with an earlier text or search field.
 - YA-controlled and direct xAI STT paths share one browser mic capture owner
   when Keep Mic Warm is enabled. The shared stream is keyed by the selected mic
   device, requests the same raw speech constraints for batch and streaming

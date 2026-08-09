@@ -28,6 +28,9 @@ principle this design follows).
   splits on whitespace and every token must appear, case-insensitively, in
   the row's searchable text. Esc or the ✕ affordance clears the query and
   restores the normal view.
+- **Credential isolation.** Browser or password-manager autofill must never
+  populate the query. The field owns a dedicated search form, separate from
+  credential inputs mounted by settings panes, and opts out of autocomplete.
 - **Search corpus.** A row matches on its declared plain-text label,
   description, and optional hidden keywords; a section matches on its
   title/description; a category matches on its label/description.

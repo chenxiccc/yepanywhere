@@ -443,10 +443,12 @@ export function SpeechSettings() {
         >
           <input
             type="password"
+            id="xai-stt-api-key"
+            name="xai-stt-api-key"
             className="settings-input"
             value={browserXaiSttApiKey}
             placeholder={t("speechSettingsXaiKeyPlaceholder")}
-            autoComplete="off"
+            autoComplete="new-password"
             spellCheck={false}
             onChange={(event) => {
               setBrowserXaiSttApiKey(event.currentTarget.value);

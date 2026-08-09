@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsItem } from "../SettingsItem";
+import { SettingsSearchBar } from "../SettingsSearchBar";
 import {
   SettingsJumpTargetProvider,
   type SettingsSearchScope,
@@ -33,6 +34,36 @@ function makeScope(
 
 afterEach(() => {
   cleanup();
+});
+
+describe("SettingsSearchBar credential boundary", () => {
+  it("keeps search outside a mounted settings credential form", () => {
+    render(
+      <>
+        <SettingsSearchBar
+          query=""
+          onQueryChange={vi.fn()}
+          matchValues={false}
+          onMatchValuesChange={vi.fn()}
+        />
+        <input
+          type="password"
+          aria-label="Browser xAI STT Key"
+          autoComplete="new-password"
+        />
+      </>,
+    );
+
+    const search = screen.getByRole("searchbox") as HTMLInputElement;
+    const credential = screen.getByLabelText(
+      "Browser xAI STT Key",
+    ) as HTMLInputElement;
+
+    expect(search.form).not.toBeNull();
+    expect(search.form).not.toBe(credential.form);
+    expect(search.autocomplete).toBe("off");
+    expect(search.name).toBe("settings-search");
+  });
 });
 
 describe("SettingsItem under search scope", () => {
