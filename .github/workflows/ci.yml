@@ -106,7 +106,12 @@ jobs:
           cache: "pnpm"
       - run: pnpm install
       - run: pnpm --filter @yep-anywhere/shared build
-      - run: pnpm --filter @yep-anywhere/server exec vitest run test/services/WindowsHostAwakeBackend.test.ts
+      # A hosted runner can rarely spend the full production startup bound in
+      # cold PowerShell/Add-Type setup. One isolated-test retry distinguishes
+      # that host jitter without extending YA's bounded 20-second probe.
+      - run: >-
+          pnpm --filter @yep-anywhere/server exec vitest run
+          test/services/WindowsHostAwakeBackend.test.ts --retry=1
 
   e2e-tests:
     runs-on: ubuntu-latest
