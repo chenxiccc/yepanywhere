@@ -67,6 +67,9 @@ const versionState = vi.hoisted(() => ({
   }>,
 }));
 const prewarmYaServerSpeechBackend = vi.hoisted(() => vi.fn(async () => {}));
+const undoMocks = vi.hoisted(() => ({
+  useSettingsUndoBaseline: vi.fn(),
+}));
 
 vi.mock("../../../hooks/useModelSettings", () => ({
   useModelSettings: () => modelSettings,
@@ -116,6 +119,8 @@ vi.mock("../../../lib/speechProviders/YaServerProvider", () => ({
   prewarmYaServerSpeechBackend,
 }));
 
+vi.mock("../SettingsUndoContext", () => undoMocks);
+
 describe("SpeechSettings", () => {
   beforeEach(() => {
     versionState.capabilities = [VOICE_INPUT_CAPABILITY];
@@ -139,7 +144,9 @@ describe("SpeechSettings", () => {
     speechCaptureSettings.setAsrAttributionMs.mockClear();
     speechCaptureSettings.setSpeechMessagePrefixMode.mockClear();
     speechCaptureSettings.setSpeechMessageCustomPrefix.mockClear();
+    browserXaiKey.browserXaiSttApiKey = "";
     browserXaiKey.setBrowserXaiSttApiKey.mockClear();
+    undoMocks.useSettingsUndoBaseline.mockClear();
     prewarmYaServerSpeechBackend.mockClear();
   });
 
@@ -199,6 +206,21 @@ describe("SpeechSettings", () => {
     expect(apiKey.name).toBe("xai-stt-api-key");
   });
 
+  it("includes the browser xAI STT key in pane undo", () => {
+    browserXaiKey.browserXaiSttApiKey = "opening-key";
+    render(<SpeechSettings />);
+
+    const call = undoMocks.useSettingsUndoBaseline.mock.calls[0];
+    if (!call) throw new Error("Speech undo did not register");
+    const [snapshot, restore] = call;
+    expect(snapshot.browserXaiSttApiKey).toBe("opening-key");
+
+    restore({ ...snapshot, browserXaiSttApiKey: "restored-key" });
+    expect(browserXaiKey.setBrowserXaiSttApiKey).toHaveBeenCalledWith(
+      "restored-key",
+    );
+  });
+
   it("shows a validating backend immediately but does not allow selection", () => {
     versionState.voiceBackends = ["ya-grok"];
     versionState.voiceBackendStatuses = [
@@ -224,7 +246,7 @@ describe("SpeechSettings", () => {
     );
 
     const option = screen.getByRole("button", {
-      name: /NeMo Parakeet STT speechSettingsBackendValidating/,
+      name: /NeMo Parakeet STT\s*speechSettingsBackendValidating/,
     }) as HTMLButtonElement;
     expect(option.disabled).toBe(true);
   });

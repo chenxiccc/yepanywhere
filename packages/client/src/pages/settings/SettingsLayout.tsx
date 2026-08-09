@@ -60,6 +60,7 @@ import {
   SettingsUndoProvider,
   useSettingsUndoRegistration,
 } from "./SettingsUndoContext";
+import { SettingsUndoButton } from "./SettingsUndoButton";
 import { SpeechSettings } from "./SpeechSettings";
 import { SourceControlSettings } from "./SourceControlSettings";
 import { StorageSettings } from "./StorageSettings";
@@ -374,24 +375,14 @@ export function SettingsLayout() {
     </span>
   );
 
-  const canUndoSettingsChange = undoRegistration?.canUndo ?? false;
-
   // The single per-pane Undo affordance: panes register via useSettingsUndo.
   // Keep the button's header footprint even while hidden so settings rows do
   // not shift when a field first becomes undoable.
   const undoButton = (
-    <button
-      type="button"
-      className="settings-button"
-      onClick={() => void undoRegistration?.undo()}
-      title={t("settingsUndoChangesTooltip")}
-      disabled={!canUndoSettingsChange}
-      aria-hidden={!canUndoSettingsChange}
-      tabIndex={canUndoSettingsChange ? 0 : -1}
-      style={{ visibility: canUndoSettingsChange ? "visible" : "hidden" }}
-    >
-      {t("settingsUndoChanges")}
-    </button>
+    <SettingsUndoButton
+      registration={undoRegistration}
+      paneTitle={resolvedPaneTitle}
+    />
   );
 
   // Narrow settings: category list OR category detail (not both)

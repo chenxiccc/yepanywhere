@@ -98,6 +98,7 @@ export function SpeechSettings() {
       speechMessagePrefixMode,
       speechMessageCustomPrefix,
       parakeetSpeechModel,
+      browserXaiSttApiKey,
     }),
     [
       voiceInputEnabled,
@@ -111,6 +112,7 @@ export function SpeechSettings() {
       speechMessagePrefixMode,
       speechMessageCustomPrefix,
       parakeetSpeechModel,
+      browserXaiSttApiKey,
     ],
   );
   const restoreUndoState = useCallback(
@@ -126,6 +128,7 @@ export function SpeechSettings() {
       setSpeechMessagePrefixMode(snapshot.speechMessagePrefixMode);
       setSpeechMessageCustomPrefix(snapshot.speechMessageCustomPrefix);
       setParakeetSpeechModel(snapshot.parakeetSpeechModel);
+      setBrowserXaiSttApiKey(snapshot.browserXaiSttApiKey);
     },
     [
       setVoiceInputEnabled,
@@ -139,6 +142,7 @@ export function SpeechSettings() {
       setSpeechMessagePrefixMode,
       setSpeechMessageCustomPrefix,
       setParakeetSpeechModel,
+      setBrowserXaiSttApiKey,
     ],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);

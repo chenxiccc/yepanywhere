@@ -198,6 +198,12 @@ the one Undo button top-right on the header row — never inside scrollable
 pane content. A pane that adopts immediate apply should register undo so
 accidental changes stay recoverable.
 
+Undo is intentionally one step at pane granularity, rather than a per-action
+history or redo chain. The header button and `Ctrl+Z` / `⌘Z` invoke the same
+active-pane registration. The button's hover and accessibility label names the
+pane and says that it undoes changes made since opening it. When focus is in a
+text-editable control, the shortcut remains native text undo.
+
 Undo semantics vary by pane kind, deliberately:
 - **Snapshot panes** (immediate-apply or simple Save forms) revert to the
   pane-open snapshot via `useSettingsUndoBaseline` — wired in Message

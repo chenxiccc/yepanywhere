@@ -2177,6 +2177,7 @@
   "agentContextHeartbeatTextDescription": "Default user-turn text for opted-in sessions. Individual sessions can override it.",
   "settingsUndoChanges": "Undo",
   "settingsUndoChangesTooltip": "Undo changes made on this settings page",
+  "settingsUndoSnapshotTooltip": "Undo changes on {page} since opening it ({shortcut})",
   "settingsSearchPlaceholder": "Search settings",
   "settingsSearchClear": "Clear search",
   "settingsSearchMatchValues": "Match values",
