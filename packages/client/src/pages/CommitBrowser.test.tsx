@@ -454,7 +454,7 @@ describe("CommitBrowser", () => {
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
   });
 
-  it("keeps a clean Working tree selectable inside commit history", async () => {
+  it("opens the newest commit for a clean tree and keeps Working tree selectable", async () => {
     primeApis();
 
     render(
@@ -468,19 +468,59 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
     const workingTreeRow = document.querySelector(
       ".commit-list-working-tree .commit-list-item",
     ) as HTMLButtonElement;
-    expect(workingTreeRow.classList.contains("selected")).toBe(true);
-    expect(getGitCommit).not.toHaveBeenCalled();
+    const commitRow = document.querySelector(
+      ".commit-list-row:not(.commit-list-working-tree) .commit-list-item",
+    ) as HTMLButtonElement;
+    expect(workingTreeRow.classList.contains("selected")).toBe(false);
+    expect(commitRow.classList.contains("selected")).toBe(true);
+    expect(await screen.findByText("gitStatusWorkingTreeClean")).toBeDefined();
 
-    fireEvent.click(await screen.findByText("first commit"));
-    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
     fireEvent.click(workingTreeRow);
     expect(workingTreeRow.classList.contains("selected")).toBe(true);
     expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
     expect(screen.getByText("first commit")).toBeDefined();
+  });
+
+  it("opens the newest commit for a clean tree on phone", async () => {
+    primeApis();
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          status={cleanStatus()}
+          isWideScreen={false}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
+    expect(await screen.findByText("gitStatusWorkingTreeClean")).toBeDefined();
+    expect(document.querySelector(".commit-revisions-column")).toBeNull();
+  });
+
+  it("falls back to Working tree when a clean repository has no commits", async () => {
+    primeApis();
+    getGitCommits.mockResolvedValue({ commits: [], hasMore: false });
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          status={cleanStatus()}
+          isWideScreen={true}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(getGitCommit).not.toHaveBeenCalled();
   });
 
   it("uses arrow keys to move the focused revision selection", async () => {
@@ -931,7 +971,7 @@ describe("CommitBrowser", () => {
     expect(badges.some((badge) => badge.textContent === "1")).toBe(true);
   });
 
-  it("soft-reflows the compact body but opens the verbatim message", async () => {
+  it("repeats the subject, soft-reflows the body, and opens the verbatim message", async () => {
     const first =
       "Rendered commit prose is commonly hard-wrapped for a readable terminal";
     const second =
@@ -961,7 +1001,7 @@ describe("CommitBrowser", () => {
     );
 
     const compactBody = await screen.findByTitle("sourceShowFullMessage");
-    expect(compactBody.textContent).toBe(`${first} ${second}`);
+    expect(compactBody.textContent).toBe(`first commit\n\n${first} ${second}`);
     fireEvent.click(compactBody);
     await waitFor(() =>
       expect(document.querySelector(".commit-message-full")).not.toBeNull(),

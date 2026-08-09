@@ -79,8 +79,9 @@ export function useCommitBrowserModel({
     // different recent commit.
     return [detail, ...searchedOrRecentCommits];
   }, [detail, searchedOrRecentCommits, selectedSha]);
-  // Working tree is a real selectable revision even when its diff is empty.
-  // A clean tree must never fall through to selecting the newest commit.
+  // Working tree remains a real selectable revision even when its diff is
+  // empty. A clean landing prefers the newest commit while retaining that
+  // pinned revision as the explicit way back to the clean state.
   const showWorkingTreeRevision = status !== undefined;
   const displayedKeys = useMemo(
     () => [
@@ -120,20 +121,24 @@ export function useCommitBrowserModel({
     };
   }, [initialSha, projectId, t]);
 
-  // Desktop opens the first available revision. Unified Source Control always
-  // supplies status, so that revision is Working tree even when it is clean.
-  // An explicit blame-hash selection remains authoritative while detail loads.
+  const defaultKey = status?.isClean
+    ? (displayedCommits[0]?.hash ??
+      (!loadingList ? WORKING_TREE_KEY : undefined))
+    : displayedKeys[0];
+
+  // Desktop opens the preferred revision. A clean Source Control landing does
+  // the same on phone so it reaches the useful newest commit instead of an
+  // empty state. Explicit and user-selected revisions remain authoritative.
   useEffect(() => {
-    const first = displayedKeys[0];
-    if (!isWideScreen || !first) return;
+    if ((!isWideScreen && !status?.isClean) || !defaultKey) return;
     setSelectedKey((current) =>
       current &&
       (displayedKeys.includes(current) ||
         (initialSha !== undefined && current === initialSha))
         ? current
-        : first,
+        : defaultKey,
     );
-  }, [displayedKeys, initialSha, isWideScreen]);
+  }, [defaultKey, displayedKeys, initialSha, isWideScreen, status?.isClean]);
 
   const loadMore = useCallback(async () => {
     try {

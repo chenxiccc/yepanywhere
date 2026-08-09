@@ -30,8 +30,9 @@ recovery.
 The navigation surface has these modes:
 
 - **Changes** is the default quick check and owns both the current
-  HEAD-to-filesystem state and explicitly opened commit history. **Working
-  tree** is its permanent default revision, including when its diff is empty.
+  HEAD-to-filesystem state and commit history. A dirty repository selects its
+  pinned **Working tree** revision; a clean repository selects its newest
+  commit while keeping Working tree available.
 - **Files** searches tracked paths and opens file content immediately, then
   enriches its blame column asynchronously when provenance becomes available.
 - **Pending Comments** is the unsubmitted accumulator owned by
@@ -44,23 +45,23 @@ The navigation surface has these modes:
   in *Header hierarchy* below must be re-verified at phone width rather than
   assumed to still fit.
 
-Normal Source Control navigation opens Changes with Working tree selected.
-Neither a clean tree nor an empty changed-file list falls through to HEAD or
-another commit. A clean tree renders a quiet confirmation with no recent
-commit card or history list. The detail-level **‹ Commit history** parent link
-is the explicit path into commits and occupies the same position for Working
-tree and narrow-screen commit detail; it names the parent destination without
-claiming that history was necessarily the user's previous view. Legacy
-`?tab=commits` URLs enter that history inside Changes, and a `?rev=<sha>` deep
-link selects its commit.
+Normal Source Control navigation opens Changes. A dirty repository selects
+Working tree; a clean repository selects the newest commit at desktop and phone
+widths and marks its detail with a small **Working tree clean** badge. If the
+repository has no commits, the clean Working tree confirmation remains the
+fallback. The pinned Working tree row is always available as the explicit path
+to that empty revision. The detail-level **‹ Commit history** parent link names
+the parent destination without claiming that history was necessarily the
+user's previous view. Legacy `?tab=commits` URLs enter history inside Changes,
+and a `?rev=<sha>` deep link selects its commit.
 
 Desktop uses master-detail panes once history is open; phone layouts drill
 from revisions to files to a full-screen diff and restore the prior list
-position on Back or back-swipe. Once history is open, the pinned Working tree
-behaves like any other revision: desktop keeps it selected beside the history
-list, while phone opens its detail with **‹ Commit history** returning to that
-list. The top-level Changes tab or Clean/Dirty badge restores the standalone
-default working-tree landing.
+position on Back or back-swipe. The pinned Working tree behaves like any other
+revision: desktop keeps it selected beside the history list, while phone opens
+its detail with **‹ Commit history** returning to that list. The top-level
+Changes tab reapplies the status-sensitive landing; the Dirty badge restores
+the standalone Working tree landing.
 
 ## Header hierarchy
 
@@ -184,6 +185,12 @@ in list rows; primary quick actions belong in the selected detail banner; one
 shared ellipsis/context menu discloses the full action set. Right-click,
 long-press, the visible ellipsis, and Shift+F10/Menu open the same accessible
 menu with focus return and keyboard traversal.
+
+When the selected commit has a body, its message card begins with the complete,
+wrapping subject even though the detail banner retains its compact ellipsized
+copy. The subject is preserved verbatim; only likely manual prose wrapping in
+the commit body is folded to the pane width. Phone detail keeps the full subject
+above its compact full-message action.
 
 Source lists support Up/Down selection, Enter drill-in, Escape return, and `/`
 to focus search when focus is outside an editor. Diff navigation supports

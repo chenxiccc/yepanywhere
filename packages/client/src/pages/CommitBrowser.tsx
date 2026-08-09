@@ -343,6 +343,7 @@ export function CommitBrowser({
             loading={loadingDetail || (compareToHead && loadingComparison)}
             detailError={detailError}
             compareToHead={compareToHead}
+            workingTreeClean={status?.isClean === true}
             isWideScreen={isWideScreen}
             messageView={messageView}
             selectedFiles={selectedFiles}

@@ -677,7 +677,8 @@ function GitStatusContent({
     tab === "changes" &&
     (searchParams.get("history") === "1" ||
       searchParams.get("tab") === "commits" ||
-      commitSha !== undefined);
+      commitSha !== undefined ||
+      (status.isClean && worktreeFile === undefined));
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [showProjectionNotice, setShowProjectionNotice] = useState(false);
   const projectionNoticeNeedsPortal = useMediaQuery("(max-width: 600px)");

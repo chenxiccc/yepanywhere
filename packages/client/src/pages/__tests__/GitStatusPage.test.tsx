@@ -341,6 +341,25 @@ describe("GitStatusPage source header", () => {
     expect(screen.queryByTestId("commit-browser")).toBeNull();
   });
 
+  it("lands on commit history when Changes is clean", async () => {
+    mocks.useGitStatus.mockReturnValue({
+      gitStatus: { ...status(), isClean: true, files: [] },
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderPage();
+
+    expect(await screen.findByTestId("commit-browser")).toBeDefined();
+    expect(screen.queryByTestId("working-tree-browser")).toBeNull();
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabChanges/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
   it("gates diff projections without blocking ordinary Source Control", async () => {
     mocks.useVersion.mockReturnValue({
       version: {
