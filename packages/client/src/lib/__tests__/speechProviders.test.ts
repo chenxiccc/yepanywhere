@@ -534,7 +534,7 @@ describe("browser-native speech provider", () => {
     expect("prewarm" in provider).toBe(false);
   });
 
-  it("enables inferred punctuation when the recognizer supports it", () => {
+  it("keeps inferred punctuation off by default when supported", () => {
     class PunctuatedSpeechRecognition extends FakeSpeechRecognition {
       unspokenPunctuation = false;
     }
@@ -542,6 +542,26 @@ describe("browser-native speech provider", () => {
       PunctuatedSpeechRecognition,
     );
     const provider = new BrowserNativeProvider();
+
+    provider.start();
+
+    expect(
+      (Recognition.instance as PunctuatedSpeechRecognition | null)
+        ?.unspokenPunctuation,
+    ).toBe(false);
+    provider.dispose();
+  });
+
+  it("enables inferred punctuation after explicit opt-in", () => {
+    class PunctuatedSpeechRecognition extends FakeSpeechRecognition {
+      unspokenPunctuation = false;
+    }
+    const Recognition = installFakeSpeechRecognition(
+      PunctuatedSpeechRecognition,
+    );
+    const provider = new BrowserNativeProvider({
+      unspokenPunctuation: true,
+    });
 
     provider.start();
 

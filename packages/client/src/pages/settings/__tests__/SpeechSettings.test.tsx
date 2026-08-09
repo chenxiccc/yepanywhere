@@ -34,6 +34,8 @@ const speechCaptureSettings = vi.hoisted(() => ({
   setKeepMicWarm: vi.fn(),
   reducePlayback: true,
   setReducePlayback: vi.fn(),
+  unspokenPunctuation: false,
+  setUnspokenPunctuation: vi.fn(),
   followUpListenMs: 0,
   setFollowUpListenMs: vi.fn(),
   asrAttributionMs: 0,
@@ -131,6 +133,8 @@ describe("SpeechSettings", () => {
     modelSettings.setParakeetSpeechModel.mockClear();
     speechCaptureSettings.setKeepMicWarm.mockClear();
     speechCaptureSettings.setReducePlayback.mockClear();
+    speechCaptureSettings.unspokenPunctuation = false;
+    speechCaptureSettings.setUnspokenPunctuation.mockClear();
     speechCaptureSettings.setFollowUpListenMs.mockClear();
     speechCaptureSettings.setAsrAttributionMs.mockClear();
     speechCaptureSettings.setSpeechMessagePrefixMode.mockClear();
@@ -167,6 +171,21 @@ describe("SpeechSettings", () => {
     expect(
       speechCaptureSettings.setSpeechMessagePrefixMode,
     ).toHaveBeenCalledWith("stt");
+  });
+
+  it("offers default-off browser punctuation as an explicit opt-in", () => {
+    render(<SpeechSettings />);
+
+    const toggle = screen.getByRole("checkbox", {
+      name: "speechSettingsUnspokenPunctuationTitle",
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+
+    fireEvent.click(toggle);
+
+    expect(speechCaptureSettings.setUnspokenPunctuation).toHaveBeenCalledWith(
+      true,
+    );
   });
 
   it("shows a validating backend immediately but does not allow selection", () => {

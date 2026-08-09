@@ -2045,6 +2045,8 @@
   "speechSettingsBackendUnavailable": "Backend unavailable.",
   "speechSettingsBackendPlaceholder": "Select STT backend",
   "speechSettingsNoServerBackends": "No server-routed STT backends are currently advertised; browser-native recognition remains available when supported.",
+  "speechSettingsUnspokenPunctuationTitle": "Infer punctuation from speech",
+  "speechSettingsUnspokenPunctuationDescription": "Browser-native STT only. Let supported browsers infer periods, commas, and question marks from pauses and prosody. Off by default because brief thinking pauses can produce extra periods.",
   "speechSettingsStreamingRelayUnavailable": "Streaming speech controls are unavailable over relay; this browser uses batch transcription here.",
   "speechSettingsXaiKeyTitle": "Browser xAI STT Key",
   "speechSettingsXaiKeyDescription": "Optional. Stored in this browser only and not sent to YA. Direct Grok STT uses it first; if empty, it asks this YA server for a short-lived secret or borrowed key only when transcription starts.",

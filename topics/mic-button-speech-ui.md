@@ -127,13 +127,16 @@ letters, and unlisted title-case words such as likely names. A provisional
 preview for such a later chunk uses the same normalization, so capitalization
 does not visibly change merely because the chunk commits.
 
-For browser-native Web Speech, YA feature-detects the
-`SpeechRecognition.unspokenPunctuation` property and enables it when present.
-Recognizers without that property must continue normally with their raw
-transcripts; browser support is detected from the recognition instance rather
-than inferred from a user-agent string. The capitalization fallback above
-remains active because older Chrome and Android do not provide inferred
-punctuation through this interface.
+For browser-native Web Speech, **Infer punctuation from speech** is a
+browser-local, default-off preference. When enabled, YA feature-detects the
+`SpeechRecognition.unspokenPunctuation` property and sets it to `true`; when
+disabled, YA leaves inferred punctuation off. Recognizers without that property
+must continue normally with their raw transcripts. The Web Speech API exposes
+only this boolean control: alternative confidence applies to the whole
+transcript hypothesis, not to individual inferred punctuation marks, so YA
+must not present a punctuation-confidence threshold it cannot enforce. The
+capitalization fallback above remains active because older Chrome and Android
+do not provide inferred punctuation through this interface.
 
 ## Streaming Behavior
 

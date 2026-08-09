@@ -66,6 +66,8 @@ export function SpeechSettings() {
     setKeepMicWarm,
     reducePlayback,
     setReducePlayback,
+    unspokenPunctuation,
+    setUnspokenPunctuation,
     followUpListenMs,
     setFollowUpListenMs,
     asrAttributionMs,
@@ -90,6 +92,7 @@ export function SpeechSettings() {
       speechSmartTurnSettings,
       keepMicWarm,
       reducePlayback,
+      unspokenPunctuation,
       followUpListenMs,
       asrAttributionMs,
       speechMessagePrefixMode,
@@ -102,6 +105,7 @@ export function SpeechSettings() {
       speechSmartTurnSettings,
       keepMicWarm,
       reducePlayback,
+      unspokenPunctuation,
       followUpListenMs,
       asrAttributionMs,
       speechMessagePrefixMode,
@@ -116,6 +120,7 @@ export function SpeechSettings() {
       setSpeechSmartTurnSettings(snapshot.speechSmartTurnSettings);
       setKeepMicWarm(snapshot.keepMicWarm);
       setReducePlayback(snapshot.reducePlayback);
+      setUnspokenPunctuation(snapshot.unspokenPunctuation);
       setFollowUpListenMs(snapshot.followUpListenMs);
       setAsrAttributionMs(snapshot.asrAttributionMs);
       setSpeechMessagePrefixMode(snapshot.speechMessagePrefixMode);
@@ -128,6 +133,7 @@ export function SpeechSettings() {
       setSpeechSmartTurnSettings,
       setKeepMicWarm,
       setReducePlayback,
+      setUnspokenPunctuation,
       setFollowUpListenMs,
       setAsrAttributionMs,
       setSpeechMessagePrefixMode,
@@ -447,6 +453,21 @@ export function SpeechSettings() {
             }}
             aria-label={t("speechSettingsXaiKeyTitle")}
           />
+        </SettingsItem>
+
+        <SettingsItem
+          label={t("speechSettingsUnspokenPunctuationTitle")}
+          description={t("speechSettingsUnspokenPunctuationDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={unspokenPunctuation}
+              onChange={(event) => setUnspokenPunctuation(event.target.checked)}
+              aria-label={t("speechSettingsUnspokenPunctuationTitle")}
+            />
+            <span className="toggle-slider" />
+          </label>
         </SettingsItem>
 
         <SettingsItem

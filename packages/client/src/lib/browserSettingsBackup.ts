@@ -36,6 +36,7 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.streamingEnabled,
   UI_KEYS.speechKeepMicWarm,
   UI_KEYS.speechReducePlayback,
+  UI_KEYS.speechUnspokenPunctuation,
   UI_KEYS.speechFollowUpListenMs,
   UI_KEYS.speechAsrAttributionMs,
   UI_KEYS.speechMessagePrefixMode,

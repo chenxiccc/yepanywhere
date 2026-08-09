@@ -43,6 +43,7 @@ const {
       keepMicWarm: false,
       micDeviceId: null as string | null,
       reducePlayback: true,
+      unspokenPunctuation: false,
       followUpListenMs: 0,
     },
     startListening: vi.fn(),
@@ -168,6 +169,7 @@ describe("VoiceInputButton", () => {
     speechCaptureState.keepMicWarm = false;
     speechCaptureState.micDeviceId = null;
     speechCaptureState.reducePlayback = true;
+    speechCaptureState.unspokenPunctuation = false;
     speechCaptureState.followUpListenMs = 0;
     startListening.mockReset();
     versionState.loading = false;
@@ -265,6 +267,21 @@ describe("VoiceInputButton", () => {
     expect(firstOpenSpeechSocket).toBeDefined();
     expect(secondOpenSpeechSocket).toBe(firstOpenSpeechSocket);
     expect(observedSpeechOptions.at(-1)?.reducePlayback).toBe(true);
+    expect(observedSpeechOptions.at(-1)?.unspokenPunctuation).toBe(false);
+  });
+
+  it("passes the browser punctuation preference to speech providers", () => {
+    speechCaptureState.unspokenPunctuation = true;
+
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="browser-native"
+      />,
+    );
+
+    expect(observedSpeechOptions.at(-1)?.unspokenPunctuation).toBe(true);
   });
 
   it("keeps an unavailable enabled microphone visible but disabled", () => {

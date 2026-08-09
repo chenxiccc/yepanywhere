@@ -163,10 +163,11 @@ export class BrowserNativeProvider implements SpeechProvider {
     this.recognition = recognition;
     recognition.continuous = true;
     recognition.interimResults = true;
-    // Chrome 151+ can infer punctuation from pauses and prosody. Keep older
-    // browsers on their existing raw-transcript path without UA sniffing.
+    // Chrome 151+ can infer punctuation from pauses and prosody. Keep this
+    // default-off preference harmless on older recognizers without UA sniffing.
     if ("unspokenPunctuation" in recognition) {
-      recognition.unspokenPunctuation = true;
+      recognition.unspokenPunctuation =
+        this.options.unspokenPunctuation === true;
     }
     // Always set lang explicitly so we don't depend on the browser's
     // locale guess. Caller's override wins; otherwise fall back to the

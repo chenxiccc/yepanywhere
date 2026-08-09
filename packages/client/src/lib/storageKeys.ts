@@ -47,6 +47,7 @@ export const UI_KEYS = {
   streamingEnabled: "yep-anywhere-streaming-enabled",
   speechKeepMicWarm: "yep-anywhere-speech-keep-mic-warm",
   speechReducePlayback: "yep-anywhere-speech-reduce-playback",
+  speechUnspokenPunctuation: "yep-anywhere-speech-unspoken-punctuation",
   speechFollowUpListenMs: "yep-anywhere-speech-follow-up-listen-ms",
   speechAsrAttributionMs: "yep-anywhere-speech-asr-attribution-ms",
   speechMessagePrefixMode: "yep-anywhere-speech-message-prefix-mode",

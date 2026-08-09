@@ -182,8 +182,13 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     relayedServerSpeechAvailable,
     openRelayedSpeechSocket,
   } = useSpeechSourceRuntime();
-  const { keepMicWarm, micDeviceId, reducePlayback, followUpListenMs } =
-    useSpeechCaptureSettings();
+  const {
+    keepMicWarm,
+    micDeviceId,
+    reducePlayback,
+    unspokenPunctuation,
+    followUpListenMs,
+  } = useSpeechCaptureSettings();
   const serverVoiceEnabled =
     versionInfo?.capabilities === undefined
       ? true
@@ -299,6 +304,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     temporarilyKeepMicWarm,
     micDeviceId,
     reducePlayback,
+    unspokenPunctuation,
     onAudioSamples: showWaveform ? publishSpeechWaveformSamples : undefined,
     parakeetModel: parakeetSpeechModel,
     openRelayedSpeechSocket,

@@ -42,6 +42,8 @@ export interface UseSpeechRecognitionOptions {
   micDeviceId?: string | null;
   /** Ask the browser to reduce speaker leakage into YA-controlled capture. */
   reducePlayback?: boolean;
+  /** Let browser-native recognition infer punctuation from pauses and prosody. */
+  unspokenPunctuation?: boolean;
   /** Receive real microphone samples for local waveform rendering. */
   onAudioSamples?: (samples: Float32Array) => void;
   /** Browser-selected local Parakeet model id for the YA Parakeet backend. */
@@ -93,6 +95,7 @@ function createProvider(
     temporarilyKeepMicWarm?: () => boolean;
     micDeviceId?: string | null;
     reducePlayback?: boolean;
+    unspokenPunctuation?: boolean;
     onAudioSamples?: (samples: Float32Array) => void;
     parakeetModel?: string;
     openRelayedSpeechSocket?: () => Promise<ConnectionSpeechSocket>;
@@ -148,6 +151,7 @@ export function useSpeechRecognition(
     temporarilyKeepMicWarm,
     micDeviceId,
     reducePlayback,
+    unspokenPunctuation,
     onAudioSamples,
     parakeetModel,
     openRelayedSpeechSocket,
@@ -194,6 +198,7 @@ export function useSpeechRecognition(
   const keepMicWarmRef = useRef(keepMicWarm);
   const micDeviceIdRef = useRef(micDeviceId);
   const reducePlaybackRef = useRef(reducePlayback);
+  const unspokenPunctuationRef = useRef(unspokenPunctuation);
   const parakeetModelRef = useRef(parakeetModel);
   const openRelayedSpeechSocketRef = useRef(openRelayedSpeechSocket);
 
@@ -212,6 +217,7 @@ export function useSpeechRecognition(
           temporarilyKeepMicWarmRef.current?.() === true,
         micDeviceId: micDeviceIdRef.current,
         reducePlayback: reducePlaybackRef.current,
+        unspokenPunctuation: unspokenPunctuationRef.current,
         onAudioSamples: onAudioSamples
           ? (samples) => onAudioSamplesRef.current?.(samples)
           : undefined,
@@ -246,6 +252,7 @@ export function useSpeechRecognition(
       keepMicWarm === keepMicWarmRef.current &&
       micDeviceId === micDeviceIdRef.current &&
       reducePlayback === reducePlaybackRef.current &&
+      unspokenPunctuation === unspokenPunctuationRef.current &&
       Boolean(onAudioSamples) === onAudioSamplesEnabledRef.current &&
       parakeetModel === parakeetModelRef.current &&
       openRelayedSpeechSocket === openRelayedSpeechSocketRef.current
@@ -259,6 +266,7 @@ export function useSpeechRecognition(
     keepMicWarmRef.current = keepMicWarm;
     micDeviceIdRef.current = micDeviceId;
     reducePlaybackRef.current = reducePlayback;
+    unspokenPunctuationRef.current = unspokenPunctuation;
     onAudioSamplesRef.current = onAudioSamples;
     onAudioSamplesEnabledRef.current = Boolean(onAudioSamples);
     parakeetModelRef.current = parakeetModel;
@@ -277,6 +285,7 @@ export function useSpeechRecognition(
         temporarilyKeepMicWarmRef.current?.() === true,
       micDeviceId,
       reducePlayback,
+      unspokenPunctuation,
       onAudioSamples: onAudioSamples
         ? (samples) => onAudioSamplesRef.current?.(samples)
         : undefined,
@@ -301,6 +310,7 @@ export function useSpeechRecognition(
     keepMicWarm,
     micDeviceId,
     reducePlayback,
+    unspokenPunctuation,
     onAudioSamples,
     parakeetModel,
     openRelayedSpeechSocket,

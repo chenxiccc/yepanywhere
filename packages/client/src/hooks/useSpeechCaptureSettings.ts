@@ -44,6 +44,14 @@ export function getSpeechReducePlaybackSetting(): boolean {
   );
 }
 
+export function getSpeechUnspokenPunctuationSetting(): boolean {
+  if (!canUseLocalStorage()) return false;
+  return (
+    globalThis.localStorage.getItem(UI_KEYS.speechUnspokenPunctuation) ===
+    "true"
+  );
+}
+
 export function getSpeechMicDeviceIdSetting(): string | null {
   if (!canUseLocalStorage()) return null;
   const deviceId = globalThis.localStorage.getItem(UI_KEYS.speechMicDeviceId);
@@ -138,6 +146,16 @@ export function setSpeechReducePlaybackSetting(enabled: boolean): void {
   for (const subscriber of subscribers) subscriber();
 }
 
+export function setSpeechUnspokenPunctuationSetting(enabled: boolean): void {
+  if (canUseLocalStorage()) {
+    globalThis.localStorage.setItem(
+      UI_KEYS.speechUnspokenPunctuation,
+      enabled ? "true" : "false",
+    );
+  }
+  for (const subscriber of subscribers) subscriber();
+}
+
 export function setSpeechMicDeviceIdSetting(deviceId: string | null): void {
   const previousDeviceId = getSpeechMicDeviceIdSetting();
   const nextDeviceId = deviceId && deviceId.length > 0 ? deviceId : null;
@@ -215,6 +233,9 @@ export function useSpeechCaptureSettings() {
   const [reducePlayback, setReducePlaybackState] = useState(
     getSpeechReducePlaybackSetting,
   );
+  const [unspokenPunctuation, setUnspokenPunctuationState] = useState(
+    getSpeechUnspokenPunctuationSetting,
+  );
   const [followUpListenMs, setFollowUpListenMsState] = useState(
     getSpeechFollowUpListenMsSetting,
   );
@@ -231,6 +252,7 @@ export function useSpeechCaptureSettings() {
       setKeepMicWarmState(getSpeechKeepMicWarmSetting());
       setMicDeviceIdState(getSpeechMicDeviceIdSetting());
       setReducePlaybackState(getSpeechReducePlaybackSetting());
+      setUnspokenPunctuationState(getSpeechUnspokenPunctuationSetting());
       setFollowUpListenMsState(getSpeechFollowUpListenMsSetting());
       setAsrAttributionMsState(getSpeechAsrAttributionMsSetting());
       setSpeechMessagePrefixModeState(getSpeechMessagePrefixModeSetting());
@@ -254,6 +276,10 @@ export function useSpeechCaptureSettings() {
 
   const setReducePlayback = useCallback((enabled: boolean) => {
     setSpeechReducePlaybackSetting(enabled);
+  }, []);
+
+  const setUnspokenPunctuation = useCallback((enabled: boolean) => {
+    setSpeechUnspokenPunctuationSetting(enabled);
   }, []);
 
   const setFollowUpListenMs = useCallback((value: number) => {
@@ -287,6 +313,8 @@ export function useSpeechCaptureSettings() {
     setMicDeviceId,
     reducePlayback,
     setReducePlayback,
+    unspokenPunctuation,
+    setUnspokenPunctuation,
     followUpListenMs,
     setFollowUpListenMs,
     asrAttributionMs,

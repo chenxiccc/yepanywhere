@@ -140,6 +140,8 @@ export interface SpeechProviderOptions extends SpeechProviderEvents {
   micDeviceId?: string | null;
   /** Ask the browser to reduce speaker leakage into YA-controlled capture. */
   reducePlayback?: boolean;
+  /** Let browser-native recognition infer punctuation from pauses and prosody. */
+  unspokenPunctuation?: boolean;
   /**
    * Receive browser microphone samples for local visualization. The callback
    * must consume the view synchronously; capture buffers may be reused.
