@@ -49,8 +49,10 @@ cancellation on activity) and the current trigger/threshold gaps.
   anything new to summarize. Because the request is keyed by session, not
   process, it survives a server restart: a *displayed* fork-mode session whose
   process died is revived and recapped from its transcript (never preempting a
-  live worker). See [fork-recap.md](fork-recap.md) for the revive/no-preempt
-  lifecycle.
+  live worker). A session explicitly terminated with automatic resume disabled
+  is never revived for a recap; Activate, Send, and equivalent user actions
+  remain deliberate continuation paths. See [fork-recap.md](fork-recap.md) for
+  the revive/no-preempt lifecycle.
 - Recap configuration is durable. `recapAfterSeconds` and `recapMode` are
   persisted in session metadata, so a session's recap preference survives a
   process death / reactivation and is what tells a cold session whether and how

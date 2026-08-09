@@ -5838,6 +5838,36 @@ describe("Session-keyed away-recap route", () => {
     });
   });
 
+  it("does not revive a terminated session whose automatic resume is disabled", async () => {
+    const reactivateSession = vi.fn();
+    const requestRecap = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        reactivateSession,
+        requestRecap,
+      } as unknown as SessionsDeps["supervisor"],
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({
+          provider: "claude" as ProviderName,
+          recapMode: "fork" as const,
+          autoResumeDisabled: true,
+        })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(recapPath, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      supported: true,
+      emitted: false,
+      reason: "recap skipped: automatic resume disabled",
+    });
+    expect(reactivateSession).not.toHaveBeenCalled();
+    expect(requestRecap).not.toHaveBeenCalled();
+  });
+
   it("skips a cold session whose recap mode is not fork (no revival)", async () => {
     const reactivateSession = vi.fn();
     const requestRecap = vi.fn();

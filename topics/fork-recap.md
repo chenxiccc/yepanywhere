@@ -122,10 +122,13 @@ The session-keyed route resolves the trigger:
 - A **cold** session (no live process) is revived and recapped **only when its
   durable `recapMode` is `fork`** — `side-session`/`native` recaps need the
   in-memory recent-text buffer a revived process lacks, while `fork` reads the
-  transcript from disk. Revival uses `reactivateSession(..., {preempt:false})`:
-  a background recap must **never evict a live worker** to revive a different
-  session, so at capacity it skips rather than preempts. The revived recap
-  passes `{revived:true}` to bypass the native-wait + emptiness gate (point 4).
+  transcript from disk. A persisted `autoResumeDisabled` marker blocks this
+  automatic revival; only a fresh explicit user action such as Activate or Send
+  may continue a terminated session. Otherwise revival uses
+  `reactivateSession(..., {preempt:false})`: a background recap must **never
+  evict a live worker** to revive a different session, so at capacity it skips
+  rather than preempts. The revived recap passes `{revived:true}` to bypass the
+  native-wait + emptiness gate (point 4).
 
 Because the timer only exists for the session a client is *displaying*, an
 unfocused / list-only session never time-triggers a recap — the focus scoping

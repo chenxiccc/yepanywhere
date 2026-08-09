@@ -44,6 +44,10 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   out verification remains a terminal error owner: it emits no completion or
   `owner: "none"`, refuses resume/reactivation/configuration replacement, and
   can be released only by a later explicit abort that verifies exit.
+- Once explicit Kill/Terminate persists `autoResumeDisabled`, no automatic
+  work may start that provider session again. Unowned heartbeat and cold
+  fork-recap revival both obey this gate. Explicit user continuation through
+  Activate, Send, or an equivalent action may still reactivate the session.
 - Heartbeat turns are idle-timeout checks, not wall-clock ticks. Once a session
   is `verified-idle`, the timeout anchor is the latest real provider/session
   liveness signal, including verified idle/progress, normalized provider

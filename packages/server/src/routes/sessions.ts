@@ -70,6 +70,7 @@ import {
   latestRecapMessage,
   mergeRecapMessages,
 } from "../sessions/recap-overlays.js";
+import { isAutomaticSessionResumeAllowed } from "../sessions/resume-exemption.js";
 import {
   type PaginationInfo,
   sliceAfterMessageIdWithMatch,
@@ -4381,6 +4382,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // side-session/native recaps need in-memory recent text a revived process
     // lacks. Other modes simply skip until the session is live again.
     const metadata = deps.sessionMetadataService?.getMetadata?.(sessionId);
+    if (!isAutomaticSessionResumeAllowed(metadata)) {
+      return c.json({
+        supported: true,
+        emitted: false,
+        reason: "recap skipped: automatic resume disabled",
+      });
+    }
     const recapMode =
       metadata?.recapMode ??
       deps.sessionMetadataService?.getRecapMode?.(sessionId);
