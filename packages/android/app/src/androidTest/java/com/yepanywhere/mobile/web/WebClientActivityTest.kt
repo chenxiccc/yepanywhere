@@ -295,31 +295,21 @@ class WebClientActivityTest {
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
             awaitJavaScript(scenario, "window.location.pathname", "\"/login\"")
             val initialUrl = evaluateJavaScript(scenario, "window.location.href")
-            evaluateJavaScript(
-                scenario,
-                """
-                window.__yaHistoryPopped = false;
-                window.addEventListener("popstate", () => {
-                  window.__yaHistoryPopped = true;
-                }, { once: true });
-                const historyUrl = new URL(window.location.href);
-                historyUrl.searchParams.set("android-history-contract", "1");
-                history.pushState(
-                  { source: "android-instrumentation" },
-                  "",
-                  historyUrl
-                );
-                true;
-                """.trimIndent(),
-            )
+            scenario.onActivity { activity ->
+                activity.findViewById<WebView>(R.id.web_client).loadUrl(
+                    "https://appassets.androidplatform.net/login/direct" +
+                        "?android-history-contract=1",
+                )
+            }
             awaitJavaScript(
                 scenario,
-                "new URL(window.location.href).searchParams.get('android-history-contract')",
-                "\"1\"",
+                "window.location.pathname",
+                "\"/login/direct\"",
             )
+            awaitJavaScript(scenario, "document.readyState", "\"complete\"")
             awaitWebViewCondition(
                 scenario,
-                "WebView history did not include the pushed entry",
+                "WebView history did not include the direct-login page",
             ) { view ->
                 view.canGoBack()
             }
@@ -328,7 +318,6 @@ class WebClientActivityTest {
                 activity.onBackPressedDispatcher.onBackPressed()
             }
 
-            awaitJavaScript(scenario, "window.__yaHistoryPopped", "true")
             awaitJavaScript(scenario, "window.location.href", initialUrl)
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
