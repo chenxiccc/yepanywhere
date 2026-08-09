@@ -163,11 +163,16 @@ upload the result and JSONL accumulator, and register a new runner class without
 hard-coding its capacity. The complete result remains the evidence source;
 committing a capacity registration or tighter target remains a reviewed change.
 
-`.github/workflows/performance.yml` runs server and built-client `fleet-small`
-arms, a browser `focused-append` arm, and the `specialized-contracts` arm on
-fresh runners for client, server, shared-package, and suite changes. Only the
-browser-capable arms install Chromium. The workflow checks out the full YA
-history so the pinned fixture revision is available, and checks out
+`.github/workflows/performance.yml` is an explicit manual diagnostic. It does
+not run on pushes or pull requests while its GitHub-hosted teardown and portable
+runner ceilings are being calibrated; local suite commands remain available.
+A maintainer-triggered run executes server and built-client `fleet-small` arms,
+a browser `focused-append` arm, and the `specialized-contracts` arm on fresh
+runners. Restore automatic triggers only after unchanged-source runs prove that
+the workflow is reliably green on its supported runner classes.
+
+Only the browser-capable arms install Chromium. The workflow checks out the
+full YA history so the pinned fixture revision is available, and checks out
 `graehl/agents` at the reviewed full commit recorded in the workflow. Each arm
 uploads its driver/scenario-keyed result, history, and log even on failure and
 copies all four scrape records into its step summary. A previously unseen

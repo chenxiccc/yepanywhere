@@ -1,28 +1,6 @@
 name: Performance Ratchet
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/server/**'
-      - 'packages/shared/**'
-      - 'packages/client/**'
-      - 'scripts/perf-suite/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/performance.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'packages/server/**'
-      - 'packages/shared/**'
-      - 'packages/client/**'
-      - 'scripts/perf-suite/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/performance.yml'
   workflow_dispatch:
 
 permissions:
