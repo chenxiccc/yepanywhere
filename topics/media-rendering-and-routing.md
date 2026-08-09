@@ -96,18 +96,51 @@ and the route it pulls from.
   → `LocalMediaModal` → `/api/local-image`. Relay-safe.
 - **Local file modal (rendered-text file links)** — click a non-media local file
   link in rendered text; a modal renders text/JSON/log inline, PDFs from a blob
-  URL, and (direct mode) HTML/Markdown in a sandboxed iframe. `LocalFileModal`
-  → `/api/local-file`. Relay-safe. The sandboxed modal is the only permitted
-  HTML preview shape; open/new-tab actions must not escape it to an inline raw
-  active response. See [`active-content-security.md`](active-content-security.md).
+  URL, and an explicitly selected HTML/Markdown preview in a sandboxed iframe.
+  `LocalFileModal` → `/api/local-file`. Relay-safe. HTML defaults to source;
+  Markdown keeps its established preview default. The sandboxed modal is the
+  only permitted HTML preview shape; open/new-tab actions must not escape it to
+  an inline raw active response. See
+  [`active-content-security.md`](active-content-security.md).
 
 File-viewer modals own one same-URL browser-history entry: Back dismisses the
 viewer without leaving the underlying session, while opening or React effect
-replay must never traverse pre-modal history. File-link custom context menus
-preserve the browser-standard copy-link affordance as **Copy URL** whenever the
-standalone target is valid for the current connection. Relay-only local API
-links omit that action rather than copying an unusable hosted-origin `/api`
-URL.
+replay must never traverse pre-modal history.
+
+### File action and presentation choice
+
+Project-file links and rendered local-file links share one client context-menu
+vocabulary even though their authorization routes remain distinct:
+
+- Files with meaningful source and static preview representations use a
+  touch-selectable **Open > Source / Preview** panel. Other files keep a direct
+  **Open** action. This is an initial-presentation choice, not a different file
+  permission or serving route.
+- HTML is source-first. Its explicit Preview is a client-owned `srcdoc`
+  document under an empty iframe sandbox, no-referrer policy, and restrictive
+  meta CSP. Markdown remains preview-first and may be opened as source. Both
+  representations remain toggleable inside the project `FileViewer`; the
+  local-file modal takes its initial representation from the context menu in
+  this first convergence step.
+- **Copy** opens a second panel whose labels describe the coordinate or value:
+  **Project-relative path**, **Absolute file path**, **File path** when the
+  client cannot classify it more strongly, **Viewer link**, and **Contents**.
+  Only available, non-duplicate coordinates appear.
+- **Viewer link** means a stable YA application viewer route. A raw
+  `/api/local-file` or project raw-file response is never presented as a
+  viewer link. Relay and direct clients therefore use the same meaning rather
+  than changing the label according to transport.
+- Public shares may expose their share-scoped viewer link and project-relative
+  path, but the file action menu does not derive or copy the host's absolute
+  project path.
+
+This convergence is client-only and uses existing fetch contracts. The server
+still needs separate future work to provide a stable viewer route for an
+arbitrary allow-listed file, resolve a rendered path to another scanned
+project's owner, and broker relative preview assets across direct and relay
+transports. Until those contracts exist, an outside-project local file has no
+copyable Viewer link, and static preview assets are limited to data/blob
+resources admitted by the client preview CSP.
 
 ### Composer and new-session
 
@@ -502,7 +535,17 @@ project/file-access allow-set without fallback lookup or filesystem guessing.
   in any new surface.
 - **In-project vs. out-of-project routing** — tool-result links always use the
   project files route; rendered-text links split by location. The two systems
-  don't share the in/out-of-project decision.
+  don't share the in/out-of-project decision. Their client action vocabulary
+  now matches, but discovering that an outside path belongs to another scanned
+  project remains a server-backed follow-up.
+- **Stable viewer links for allow-listed local files** — the client does not
+  call a raw `/api/local-file` URL a Viewer link. A real standalone viewer for
+  those files requires a durable server/client coordinate that works across
+  direct and relay connections.
+- **Static preview assets** — the scriptless HTML preview denies ambient
+  network loads. Supporting relative images or styles requires the trusted
+  viewer to fetch, bound, and broker those assets; relaxing iframe networking
+  is not the fallback.
 - **Both doors share one allow-set** — as of `docs/tactical/018`, the
   project-files route enforces the same file-access allow-set as the media
   doors for absolute/`~` paths (relative paths stay project-scoped). The set is

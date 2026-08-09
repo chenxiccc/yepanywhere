@@ -463,6 +463,81 @@ describe("FileViewer", () => {
     ]);
   });
 
+  it("keeps HTML source-first and confines an explicit static preview", async () => {
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: "reports/demo.html",
+        size: 96,
+        mimeType: "text/html",
+        isText: true,
+      },
+      rawUrl: "",
+      content:
+        '<h1>Preview heading</h1><script>parent.document.body.dataset.pwned="1"</script>',
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="reports/demo.html"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Preview" })).toBeTruthy();
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(screen.getByText(/Preview heading/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const frame = container.querySelector<HTMLIFrameElement>("iframe");
+    expect(frame).toBeTruthy();
+    expect(frame?.getAttribute("sandbox")).toBe("");
+    expect(frame?.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(frame?.srcdoc).toContain("Content-Security-Policy");
+    expect(frame?.srcdoc).toContain("default-src 'none'");
+    expect(document.body.dataset.pwned).toBeUndefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("honors an HTML preview selected before the project viewer opens", async () => {
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: "reports/demo.html",
+        size: 32,
+        mimeType: "text/html",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "<p>Chosen preview</p>",
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="reports/demo.html"
+          initialPresentation="preview"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(container.querySelector("iframe")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Preview" }).classList).toContain(
+      "active",
+    );
+  });
+
   it("opens image previews as raw image tabs", async () => {
     const fileResponse: FileContentResponse = {
       metadata: {

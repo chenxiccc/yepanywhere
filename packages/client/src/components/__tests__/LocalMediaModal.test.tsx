@@ -338,6 +338,96 @@ describe("LocalFileModal project paths", () => {
       encodeURIComponent(rawPath),
     );
   });
+
+  it("opens ordinary HTML as source and confines an explicit preview", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          '<h1>Local preview</h1><script>parent.document.body.dataset.pwned="1"</script>',
+          { headers: { "Content-Type": "text/html" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const resource = { kind: "local-file" as const, path: "/tmp/demo.html" };
+
+    const { rerender } = render(
+      <I18nProvider>
+        <LocalFileModal resource={resource} onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText(/Local preview/)).toBeTruthy();
+    expect(document.querySelector("iframe")).toBeNull();
+
+    rerender(
+      <I18nProvider>
+        <LocalFileModal
+          resource={resource}
+          initialPresentation="preview"
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    const frame = await waitFor(() => {
+      const candidate = document.querySelector<HTMLIFrameElement>("iframe");
+      expect(candidate).toBeTruthy();
+      return candidate;
+    });
+    if (!frame) throw new Error("Expected HTML preview iframe");
+    expect(frame.getAttribute("sandbox")).toBe("");
+    expect(frame.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(frame.srcdoc).toContain("default-src 'none'");
+    expect(document.body.dataset.pwned).toBeUndefined();
+  });
+
+  it("requests Markdown source or rendered preview from the existing route", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      return new Response(
+        url.includes("render=1") ? "<h1>Rendered note</h1>" : "# Note\n",
+        {
+          headers: {
+            "Content-Type": url.includes("render=1")
+              ? "text/html"
+              : "text/markdown",
+          },
+        },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const resource = {
+      kind: "local-file" as const,
+      path: "/tmp/note.md",
+      renderMarkdown: true,
+    };
+
+    const { rerender } = render(
+      <I18nProvider>
+        <LocalFileModal
+          resource={resource}
+          initialPresentation="source"
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText("# Note")).toBeTruthy();
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("render=1");
+
+    rerender(
+      <I18nProvider>
+        <LocalFileModal
+          resource={resource}
+          initialPresentation="preview"
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(document.querySelector("iframe")).toBeTruthy());
+    expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("render=1");
+  });
 });
 
 describe("LocalMediaModal", () => {

@@ -435,7 +435,7 @@ describe("TextBlock", () => {
     expect(await screen.findByText(/"ok": true/)).toBeTruthy();
   });
 
-  it("copies a direct rendered file link URL from its context menu", async () => {
+  it("labels a direct rendered file path and omits its raw API URL", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
@@ -453,13 +453,53 @@ describe("TextBlock", () => {
     fireEvent.contextMenu(
       screen.getByRole("link", { name: "research-practice.md" }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy URL" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Viewer link" })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Absolute file path" }),
+    );
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(
-        "http://localhost:3000/api/local-file?path=%2Fhome%2Fgraehl%2Fagents%2Fuser%2Fresearch-practice.md&render=1&line=1",
+        "/home/graehl/agents/user/research-practice.md",
       );
     });
+  });
+
+  it("opens a rendered local HTML link in the selected presentation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("<h1>Rendered local preview</h1>", {
+            headers: { "Content-Type": "text/html" },
+          }),
+      ),
+    );
+
+    render(
+      <I18nProvider>
+        <TextBlock
+          text="[demo.html](/tmp/demo.html)"
+          augmentHtml={
+            '<p><a href="/api/local-file?path=%2Ftmp%2Fdemo.html" data-ya-resource="local-file" data-ya-path="/tmp/demo.html">demo.html</a></p>'
+          }
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: "demo.html" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Preview" }));
+
+    const frame = await waitFor(() => {
+      const candidate = document.querySelector<HTMLIFrameElement>("iframe");
+      expect(candidate).toBeTruthy();
+      return candidate;
+    });
+    expect(frame?.getAttribute("sandbox")).toBe("");
+    expect(frame?.srcdoc).toContain("Rendered local preview");
   });
 
   it("opens absolute local-file links under the active project in FileViewer", async () => {

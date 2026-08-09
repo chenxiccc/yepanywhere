@@ -14,11 +14,14 @@ function renderMenu(
 ) {
   const onClose = vi.fn();
   const handlers = {
+    onCopyAbsolutePath: vi.fn(),
     onCopyContents: vi.fn(),
-    onCopyPath: vi.fn(),
-    onCopyUrl: vi.fn(),
+    onCopyProjectRelativePath: vi.fn(),
+    onCopyViewerLink: vi.fn(),
+    onOpen: vi.fn(),
+    onOpenPreview: vi.fn(),
+    onOpenSource: vi.fn(),
     onStartNewSession: vi.fn(),
-    onView: vi.fn(),
   };
   render(
     <I18nProvider>
@@ -49,38 +52,62 @@ describe("FilePathContextMenu", () => {
     expect(overlay().parentElement).toBe(document.body);
   });
 
-  it("renders all five items in order when every action is available", () => {
+  it("groups open and copy actions in touch-selectable panels", () => {
     renderMenu();
 
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Open›", "New session", "Copy›"]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["‹Back", "Source", "Preview"]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
-      "View",
-      "New session",
-      "Copy URL",
-      "Copy path",
-      "Copy contents",
+      "‹Back",
+      "Project-relative path",
+      "Absolute file path",
+      "Viewer link",
+      "Contents",
     ]);
   });
 
   it("omits the conditional items when their actions are unavailable", () => {
     renderMenu({
-      canCopyContents: false,
       canStartNewSession: false,
-      onCopyUrl: undefined,
+      onCopyAbsolutePath: undefined,
+      onCopyContents: undefined,
+      onCopyProjectRelativePath: undefined,
+      onCopyViewerLink: undefined,
+      onOpenPreview: undefined,
+      onOpenSource: undefined,
     });
 
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["View", "Copy path"]);
+    ).toEqual(["Open"]);
   });
 
-  it("omits an item whose handler is missing even when it is enabled", () => {
-    renderMenu({ onCopyContents: undefined, onStartNewSession: undefined });
+  it("uses an unclassified file-path label when no stronger path is known", () => {
+    renderMenu({
+      onCopyAbsolutePath: undefined,
+      onCopyContents: undefined,
+      onCopyFilePath: vi.fn(),
+      onCopyProjectRelativePath: undefined,
+      onCopyViewerLink: undefined,
+      onStartNewSession: undefined,
+    });
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
 
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["View", "Copy URL", "Copy path"]);
+    ).toEqual(["‹Back", "File path"]);
   });
 
   it("runs the selected action and then closes", () => {
@@ -88,10 +115,13 @@ describe("FilePathContextMenu", () => {
     const sequence: string[] = [];
     renderMenu({
       onClose: () => sequence.push("close"),
-      onCopyPath: () => sequence.push("copyPath"),
+      onCopyProjectRelativePath: () => sequence.push("copyPath"),
     });
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy path" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Project-relative path" }),
+    );
 
     expect(sequence).toEqual(["copyPath", "close"]);
   });
@@ -113,7 +143,7 @@ describe("FilePathContextMenu", () => {
     renderMenu({ x: 9999, y: 9999 });
 
     const menu = screen.getByRole("menu");
-    expect(menu.style.left).toBe(`${window.innerWidth - 190}px`);
+    expect(menu.style.left).toBe(`${window.innerWidth - 230}px`);
     expect(menu.style.top).toBe(`${window.innerHeight - 180}px`);
   });
 

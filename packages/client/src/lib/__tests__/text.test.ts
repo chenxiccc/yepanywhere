@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getAbsoluteFilePath,
   getPathBasename,
   getProjectRelativePath,
   makeDisplayPath,
@@ -51,6 +52,19 @@ describe("path display helpers", () => {
     expect(shortenPath("D:\\work\\external\\trace.log")).toBe(
       "D:\\work\\external\\trace.log",
     );
+  });
+
+  it("resolves project-relative paths without rewriting absolute paths", () => {
+    expect(getAbsoluteFilePath("docs/note.md", "/workspace/project")).toBe(
+      "/workspace/project/docs/note.md",
+    );
+    expect(getAbsoluteFilePath("docs\\note.md", "C:\\workspace\\project")).toBe(
+      "C:/workspace/project/docs/note.md",
+    );
+    expect(getAbsoluteFilePath("/tmp/note.md", "/workspace/project")).toBe(
+      "/tmp/note.md",
+    );
+    expect(getAbsoluteFilePath("docs/note.md", null)).toBeNull();
   });
 
   it("handles basename and display splitting for both slash styles", () => {

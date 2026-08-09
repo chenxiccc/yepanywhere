@@ -23,10 +23,15 @@ import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
+import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
 import {
+  getAbsoluteFilePath,
+  getProjectRelativePath,
   getPathBasename,
+  isAbsoluteLikePath,
   makeDisplayPath,
+  normalizePathSeparators,
   stripTrailingPathSeparators,
 } from "../lib/text";
 import {
@@ -39,8 +44,11 @@ import {
 } from "./LocalMediaModal";
 import {
   FilePathContextMenu,
+  type FileViewPresentation,
+  supportsSourceAndPreview,
   useStartNewSessionFromFile,
 } from "./FileResourceActions";
+import viewerStyles from "./FileViewer.module.css";
 import {
   combineDensityOffsets,
   FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
@@ -95,6 +103,8 @@ interface FileViewerProps {
   lineEnd?: number;
   /** Full shows context; range shows only the requested line range. */
   viewMode?: FileViewerMode;
+  /** Requested initial representation; ordinary HTML remains source-first. */
+  initialPresentation?: FileViewPresentation;
 }
 
 export type FileViewerMode = "full" | "range";
@@ -154,6 +164,14 @@ function getLanguageFromPath(filePath: string): string {
  */
 function isImageFile(mimeType: string): boolean {
   return mimeType.startsWith("image/");
+}
+
+function isHtmlLikeFile(filePath: string, mimeType: string): boolean {
+  return (
+    /\.(?:html?|xhtml)$/i.test(filePath) ||
+    mimeType === "text/html" ||
+    mimeType === "application/xhtml+xml"
+  );
 }
 
 function getProjectPath(projectId: string): string | null {
@@ -319,6 +337,7 @@ export const FileViewer = memo(function FileViewer({
   lineNumber,
   lineEnd,
   viewMode = "full",
+  initialPresentation,
 }: FileViewerProps) {
   const { t } = useI18n();
   const transport = useCurrentSourceRuntime().transport;
@@ -420,8 +439,16 @@ export const FileViewer = memo(function FileViewer({
       .then((data) => {
         if (!cancelled) {
           setFileData(data);
+          const markdownPreviewAvailable =
+            isMarkdownLikeFile(filePath) && Boolean(data.renderedMarkdownHtml);
+          const htmlPreviewAvailable =
+            data.content !== undefined &&
+            isHtmlLikeFile(filePath, data.metadata.mimeType);
           setShowPreview(
-            isMarkdownLikeFile(filePath) && Boolean(data.renderedMarkdownHtml),
+            initialPresentation
+              ? initialPresentation === "preview" &&
+                  (markdownPreviewAvailable || htmlPreviewAvailable)
+              : markdownPreviewAvailable,
           );
           setLoading(false);
         }
@@ -436,7 +463,16 @@ export const FileViewer = memo(function FileViewer({
     return () => {
       cancelled = true;
     };
-  }, [projectId, filePath, lineEnd, lineNumber, source, t, viewMode]);
+  }, [
+    projectId,
+    filePath,
+    initialPresentation,
+    lineEnd,
+    lineNumber,
+    source,
+    t,
+    viewMode,
+  ]);
 
   useEffect(() => {
     if (!fileData || !isImageFile(fileData.metadata.mimeType)) {
@@ -530,6 +566,41 @@ export const FileViewer = memo(function FileViewer({
     () => makeDisplayPath(filePath, projectPath),
     [filePath, projectPath],
   );
+  const projectRelativeCopyPath = useMemo(() => {
+    if (!isAbsoluteLikePath(filePath)) {
+      return normalizePathSeparators(filePath).replace(/^\.\/+/, "");
+    }
+    return getProjectRelativePath(filePath, projectPath);
+  }, [filePath, projectPath]);
+  const absoluteCopyPath = useMemo(() => {
+    return getAbsoluteFilePath(filePath, projectPath);
+  }, [filePath, projectPath]);
+  const standaloneViewerUrl = useMemo(() => {
+    if (openInNewTabUrl) {
+      return openInNewTabUrl;
+    }
+    const searchParams = new URLSearchParams({ path: filePath });
+    if (lineNumber !== undefined) {
+      searchParams.set("line", String(lineNumber));
+    }
+    if (lineEnd !== undefined) {
+      searchParams.set("lineEnd", String(lineEnd));
+    }
+    if (viewMode === "range") {
+      searchParams.set("view", "range");
+    }
+    return toBrowserAppHref(
+      `${basePath}/projects/${projectId}/file?${searchParams}`,
+    );
+  }, [
+    basePath,
+    filePath,
+    lineEnd,
+    lineNumber,
+    openInNewTabUrl,
+    projectId,
+    viewMode,
+  ]);
   const fileName = getPathBasename(filePath);
   const language = getLanguageFromPath(filePath);
   const loadedIsImage = fileData
@@ -574,34 +645,8 @@ export const FileViewer = memo(function FileViewer({
       window.open(imageOpenUrl, "_blank", "noopener");
       return;
     }
-    if (openInNewTabUrl) {
-      window.open(openInNewTabUrl, "_blank", "noopener");
-      return;
-    }
-    const searchParams = new URLSearchParams({ path: filePath });
-    if (lineNumber !== undefined) {
-      searchParams.set("line", String(lineNumber));
-    }
-    if (lineEnd !== undefined) {
-      searchParams.set("lineEnd", String(lineEnd));
-    }
-    if (viewMode === "range") {
-      searchParams.set("view", "range");
-    }
-    const url = toBrowserAppHref(
-      `${basePath}/projects/${projectId}/file?${searchParams}`,
-    );
-    window.open(url, "_blank", "noopener");
-  }, [
-    basePath,
-    projectId,
-    filePath,
-    lineNumber,
-    lineEnd,
-    imageOpenUrl,
-    openInNewTabUrl,
-    viewMode,
-  ]);
+    window.open(standaloneViewerUrl, "_blank", "noopener");
+  }, [imageOpenUrl, standaloneViewerUrl]);
   const handlePathContextMenu = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -638,6 +683,9 @@ export const FileViewer = memo(function FileViewer({
     content !== undefined &&
     isMarkdownLikeFile(filePath) &&
     !!renderedMarkdownHtml;
+  const hasHtmlPreview =
+    content !== undefined && isHtmlLikeFile(filePath, metadata.mimeType);
+  const hasFilePreview = hasMarkdownPreview || hasHtmlPreview;
 
   // Render content based on file type
   const renderContent = () => {
@@ -681,6 +729,20 @@ export const FileViewer = memo(function FileViewer({
             onContextMenu={handleLocalResourceContextMenu}
             onKeyDown={handleLocalResourceKeyDown}
             ref={markdownPreviewRef}
+          />
+        );
+      }
+
+      if (showPreview && hasHtmlPreview) {
+        return (
+          <iframe
+            aria-label={fileName}
+            className={viewerStyles.htmlPreviewFrame}
+            data-tooltip=""
+            sandbox=""
+            referrerPolicy="no-referrer"
+            srcDoc={createScriptlessHtmlPreviewDocument(content)}
+            title={fileName}
           />
         );
       }
@@ -841,7 +903,7 @@ export const FileViewer = memo(function FileViewer({
         </span>
       </div>
       <div className="file-viewer-actions">
-        {hasMarkdownPreview && (
+        {hasFilePreview && (
           <MarkdownViewToggle
             sourceLabel={t("fileViewerSource" as never)}
             previewLabel={t("fileViewerPreview" as never)}
@@ -951,9 +1013,38 @@ export const FileViewer = memo(function FileViewer({
           y={contextMenu.y}
           canStartNewSession={publicShareContext === null}
           onClose={closeContextMenu}
-          onView={handleOpenInNewTab}
+          onOpen={handleOpenInNewTab}
+          onOpenSource={
+            supportsSourceAndPreview(filePath)
+              ? () => setShowPreview(false)
+              : undefined
+          }
+          onOpenPreview={
+            supportsSourceAndPreview(filePath) && hasFilePreview
+              ? () => setShowPreview(true)
+              : undefined
+          }
           onStartNewSession={startNewSession}
-          onCopyPath={() => void writeClipboardText(filePath)}
+          onCopyProjectRelativePath={
+            projectRelativeCopyPath
+              ? () => void writeClipboardText(projectRelativeCopyPath)
+              : undefined
+          }
+          onCopyAbsolutePath={
+            publicShareContext === null && absoluteCopyPath
+              ? () => void writeClipboardText(absoluteCopyPath)
+              : undefined
+          }
+          onCopyFilePath={
+            !projectRelativeCopyPath && !absoluteCopyPath
+              ? () => void writeClipboardText(filePath)
+              : undefined
+          }
+          onCopyViewerLink={() =>
+            void writeClipboardText(
+              new URL(standaloneViewerUrl, window.location.href).href,
+            )
+          }
           onCopyContents={handleCopyContentsFromMenu}
         />
       )}
@@ -971,7 +1062,8 @@ export const FileViewer = memo(function FileViewer({
       ) : null}
       {localFileModal ? (
         <LocalFileModal
-          resource={localFileModal}
+          resource={localFileModal.resource}
+          initialPresentation={localFileModal.initialPresentation}
           onClose={closeLocalFileModal}
         />
       ) : null}
@@ -985,6 +1077,7 @@ export const FileViewer = memo(function FileViewer({
             filePath={projectFileModal.filePath}
             lineNumber={projectFileModal.lineNumber}
             lineEnd={projectFileModal.lineEnd}
+            initialPresentation={projectFileModal.initialPresentation}
             onClose={closeProjectFileModal}
           />
         </Modal>

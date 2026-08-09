@@ -52,7 +52,8 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
         )}
         {localFileModal && (
           <LocalFileModal
-            resource={localFileModal}
+            resource={localFileModal.resource}
+            initialPresentation={localFileModal.initialPresentation}
             onClose={closeLocalFileModal}
           />
         )}
@@ -62,6 +63,7 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
             filePath={projectFileModal.filePath}
             lineNumber={projectFileModal.lineNumber}
             lineEnd={projectFileModal.lineEnd}
+            initialPresentation={projectFileModal.initialPresentation}
             onClose={closeProjectFileModal}
           />
         )}

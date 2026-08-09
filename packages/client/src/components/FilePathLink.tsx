@@ -13,8 +13,10 @@ import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../lib/markdownSelectionCopy";
 import {
+  getAbsoluteFilePath,
   getPathBasename,
   getProjectRelativePath,
+  isAbsoluteLikePath,
   normalizePathSeparators,
   stripTrailingPathSeparators,
 } from "../lib/text";
@@ -25,6 +27,8 @@ import {
 } from "./FileViewer";
 import {
   FilePathContextMenu,
+  type FileViewPresentation,
+  supportsSourceAndPreview,
   useStartNewSessionFromFile,
 } from "./FileResourceActions";
 import { createPublicShareFileViewerSource } from "./publicShareFileViewerSource";
@@ -150,6 +154,8 @@ export const FilePathLink = memo(function FilePathLink({
   const publicShareContext = usePublicShareContext();
   const basePath = useRemoteBasePath();
   const [showModal, setShowModal] = useState(false);
+  const [modalPresentation, setModalPresentation] =
+    useState<FileViewPresentation>();
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -159,6 +165,21 @@ export const FilePathLink = memo(function FilePathLink({
     [projectId, filePath],
   );
   const startNewSession = useStartNewSessionFromFile(projectId, viewerFilePath);
+  const projectPath = useMemo(() => getProjectPath(projectId), [projectId]);
+  const projectRelativeCopyPath = useMemo(
+    () =>
+      isAbsoluteLikePath(viewerFilePath)
+        ? getProjectRelativePath(viewerFilePath, projectPath)
+        : normalizePathSeparators(viewerFilePath).replace(/^\.\/+/, ""),
+    [projectPath, viewerFilePath],
+  );
+  const absoluteCopyPath = useMemo(() => {
+    return getAbsoluteFilePath(
+      isAbsoluteLikePath(filePath) ? filePath : viewerFilePath,
+      projectPath,
+    );
+  }, [filePath, projectPath, viewerFilePath]);
+  const hasPresentationChoice = supportsSourceAndPreview(viewerFilePath);
   const publicShareFileViewUrl = publicShareContext
     ? buildPublicShareFileHref(publicShareContext, {
         columnNumber,
@@ -200,6 +221,7 @@ export const FilePathLink = memo(function FilePathLink({
         return;
       }
       e.preventDefault();
+      setModalPresentation(undefined);
       setShowModal(true);
     },
     [publicShareContext, publicShareFileViewUrl],
@@ -214,11 +236,11 @@ export const FilePathLink = memo(function FilePathLink({
     setContextMenu({ x: event.clientX, y: event.clientY });
   }, []);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
-  const handleViewFromMenu = useCallback(() => setShowModal(true), []);
-  const handleCopyPathFromMenu = useCallback(() => {
-    void writeClipboardText(viewerFilePath);
-  }, [viewerFilePath]);
-  const handleCopyUrlFromMenu = useCallback(() => {
+  const openFromMenu = useCallback((presentation?: FileViewPresentation) => {
+    setModalPresentation(presentation);
+    setShowModal(true);
+  }, []);
+  const handleCopyViewerLinkFromMenu = useCallback(() => {
     if (!fileViewUrl) return;
     void writeClipboardText(new URL(fileViewUrl, window.location.href).href);
   }, [fileViewUrl]);
@@ -263,10 +285,32 @@ export const FilePathLink = memo(function FilePathLink({
           y={contextMenu.y}
           canStartNewSession={publicShareContext === null}
           onClose={closeContextMenu}
-          onView={handleViewFromMenu}
+          onOpen={() => openFromMenu()}
+          onOpenSource={
+            hasPresentationChoice ? () => openFromMenu("source") : undefined
+          }
+          onOpenPreview={
+            hasPresentationChoice ? () => openFromMenu("preview") : undefined
+          }
           onStartNewSession={startNewSession}
-          onCopyUrl={fileViewUrl ? handleCopyUrlFromMenu : undefined}
-          onCopyPath={handleCopyPathFromMenu}
+          onCopyProjectRelativePath={
+            projectRelativeCopyPath
+              ? () => void writeClipboardText(projectRelativeCopyPath)
+              : undefined
+          }
+          onCopyAbsolutePath={
+            publicShareContext === null && absoluteCopyPath
+              ? () => void writeClipboardText(absoluteCopyPath)
+              : undefined
+          }
+          onCopyFilePath={
+            !projectRelativeCopyPath && !absoluteCopyPath
+              ? () => void writeClipboardText(viewerFilePath)
+              : undefined
+          }
+          onCopyViewerLink={
+            fileViewUrl ? handleCopyViewerLinkFromMenu : undefined
+          }
           onCopyContents={handleCopyContentsFromMenu}
         />
       )}
@@ -277,6 +321,7 @@ export const FilePathLink = memo(function FilePathLink({
           lineNumber={lineNumber}
           lineEnd={lineEnd}
           viewMode={viewMode}
+          initialPresentation={modalPresentation}
           source={publicShareFileViewerSource}
           openInNewTabUrl={fileViewUrl}
           onClose={handleClose}
@@ -295,6 +340,7 @@ export function FileViewerModal({
   lineNumber,
   lineEnd,
   viewMode = "full",
+  initialPresentation,
   source,
   openInNewTabUrl,
   onClose,
@@ -304,6 +350,7 @@ export function FileViewerModal({
   lineNumber?: number;
   lineEnd?: number;
   viewMode?: FileViewerMode;
+  initialPresentation?: FileViewPresentation;
   source?: FileViewerSource;
   openInNewTabUrl?: string | null;
   onClose: () => void;
@@ -361,6 +408,7 @@ export function FileViewerModal({
           lineNumber={lineNumber}
           lineEnd={lineEnd}
           viewMode={viewMode}
+          initialPresentation={initialPresentation}
           source={source}
           openInNewTabUrl={openInNewTabUrl}
           onClose={onClose}

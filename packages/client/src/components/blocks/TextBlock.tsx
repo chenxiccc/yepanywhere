@@ -565,7 +565,8 @@ export const TextBlock = memo(function TextBlock({
 
       {localFileModal && (
         <LocalFileModal
-          resource={localFileModal}
+          resource={localFileModal.resource}
+          initialPresentation={localFileModal.initialPresentation}
           onClose={closeLocalFileModal}
         />
       )}
@@ -576,6 +577,7 @@ export const TextBlock = memo(function TextBlock({
           filePath={projectFileModal.filePath}
           lineNumber={projectFileModal.lineNumber}
           lineEnd={projectFileModal.lineEnd}
+          initialPresentation={projectFileModal.initialPresentation}
           onClose={closeProjectFileModal}
         />
       )}

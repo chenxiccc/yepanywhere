@@ -62,7 +62,8 @@ describe("FilePathLink", () => {
     fireEvent.contextMenu(
       screen.getByRole("link", { name: /guide\.md\s*:12/ }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy URL" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Viewer link" }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(
@@ -320,6 +321,49 @@ describe("FilePathLink", () => {
     expect(window.location.search).toBe("?projectId=project-id");
   });
 
+  it("opens the selected HTML presentation from the context menu", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            metadata: {
+              path: "reports/demo.html",
+              size: 24,
+              mimeType: "text/html",
+              isText: true,
+            },
+            rawUrl: "",
+            content: "<h1>Selected preview</h1>",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }),
+    );
+
+    render(
+      <I18nProvider>
+        <FilePathLink
+          projectId="project-id"
+          filePath="reports/demo.html"
+          displayText="demo.html"
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: "demo.html" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Preview" }));
+
+    await waitFor(() => expect(document.querySelector("iframe")).toBeTruthy());
+    expect(
+      document.querySelector<HTMLIFrameElement>("iframe")?.srcdoc,
+    ).toContain("Selected preview");
+  });
+
   it("copies file contents from the context menu", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
@@ -356,7 +400,8 @@ describe("FilePathLink", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("link", { name: "guide.md" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy contents" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Contents" }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("# Guide\n");

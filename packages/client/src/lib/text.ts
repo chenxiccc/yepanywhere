@@ -37,13 +37,28 @@ function comparisonKey(path: string): string {
   return isWindowsComparablePath(path) ? path.toLowerCase() : path;
 }
 
-function isAbsoluteLikePath(path: string): boolean {
+export function isAbsoluteLikePath(path: string): boolean {
   const normalized = normalizePathSeparators(path);
   return (
     normalized.startsWith("/") ||
     normalized.startsWith("//") ||
     WINDOWS_DRIVE_PATH_RE.test(normalized)
   );
+}
+
+export function getAbsoluteFilePath(
+  filePath: string,
+  projectPath: string | null | undefined,
+): string | null {
+  if (isAbsoluteLikePath(filePath)) {
+    return filePath;
+  }
+  if (!projectPath) {
+    return null;
+  }
+  return `${stripTrailingPathSeparators(projectPath)}/${normalizePathSeparators(
+    filePath,
+  ).replace(/^\.\/+/, "")}`;
 }
 
 function normalizeRelativeDisplayPath(path: string): string {

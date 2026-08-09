@@ -43,6 +43,25 @@ the [unstarted tactical plan](../docs/tactical/078-active-content-origin-isolati
 Neither artifact weakens the contract below: until remediation is implemented
 and verified, the defect remains open.
 
+### Client viewer mitigation — 2026-08-09
+
+The shared file context menu now distinguishes Source from Preview without
+navigating either selection to a raw active response. Ordinary HTML opens as
+source; an explicit preview in either current client viewer uses the same
+client-owned `srcdoc` wrapper with an empty iframe sandbox, no-referrer policy,
+and a restrictive meta CSP that denies scripts, connections, frames, objects,
+workers, forms, base URLs, and ambient image/media loads. Markdown keeps its
+sanitized preview default and can be requested as source.
+
+This is defense in depth at the current client presentation boundary, not
+remediation of the confirmed server defect. Old clients, address-bar visits,
+modified browser navigation that escapes interception, redirects, and copied
+raw endpoints remain safe only when the server response work in
+[tactical 078](../docs/tactical/078-active-content-origin-isolation.md) lands.
+The client also deliberately withholds a **Viewer link** for arbitrary
+allow-listed local files rather than mislabeling `/api/local-file`; a stable
+standalone coordinate is future server-backed work.
+
 ## Content Trust Classes
 
 The implementation and future designs must keep four classes separate.
@@ -220,5 +239,11 @@ reachability, not this isolation requirement.
 - Which PDF and XML-family capabilities require attachment-only handling.
 - Whether the standalone rendered-Markdown document has enough browser-native
   value to retain after unified-viewer convergence.
+- The stable standalone viewer coordinate for an allow-listed file outside the
+  active project, and whether the server should resolve it to another scanned
+  project's viewer without exposing raw paths in URLs.
+- The bounded asset-broker contract for relative images and styles in static
+  HTML preview across direct and relay connections. The current client preview
+  intentionally denies ambient network loads.
 - Whether trusted hosted-client headers justify moving the primary static
   deployment; this is hardening, not the active-content fix.

@@ -15,7 +15,10 @@
   z-index: 9999;
   display: flex;
   flex-direction: column;
-  min-width: 170px;
+  min-width: 210px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   padding: var(--space-1);
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
@@ -25,6 +28,7 @@
 
 .menu button {
   appearance: none;
+  min-height: 36px;
   text-align: left;
   background: transparent;
   border: 0;
@@ -38,4 +42,33 @@
 .menu button:hover,
 .menu button:focus-visible {
   background: var(--bg-hover);
+}
+
+.branchLabel,
+.backLabel {
+  display: flex;
+  align-items: center;
+}
+
+.branchLabel {
+  width: 100%;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.backLabel {
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+
+.separator {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--border-subtle);
+}
+
+@media (pointer: coarse) {
+  .menu button {
+    min-height: 44px;
+  }
 }

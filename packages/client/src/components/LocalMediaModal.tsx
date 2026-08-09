@@ -18,11 +18,14 @@ import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useInlineMedia } from "../hooks/useInlineMedia";
 import { useI18n } from "../i18n";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
+import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { toSourceTransportApiPath } from "../lib/sourceTransportPaths";
 import {
+  getAbsoluteFilePath,
   getPathBasename,
   getProjectRelativePath,
+  isAbsoluteLikePath,
   makeDisplayPath,
 } from "../lib/text";
 import type { SourceTransport } from "../lib/transport";
@@ -33,6 +36,8 @@ import {
 } from "../lib/vectorImageSizing";
 import {
   FilePathContextMenu,
+  type FileViewPresentation,
+  supportsSourceAndPreview,
   useStartNewSessionFromFileAction,
 } from "./FileResourceActions";
 import {
@@ -71,7 +76,13 @@ interface DisplayedLocalMedia {
 
 interface LocalFileModalProps {
   resource: LocalResourceRef;
+  initialPresentation?: FileViewPresentation;
   onClose: () => void;
+}
+
+export interface LocalFileModalTarget {
+  resource: LocalResourceRef;
+  initialPresentation?: FileViewPresentation;
 }
 
 export interface ProjectFileModalTarget {
@@ -79,6 +90,7 @@ export interface ProjectFileModalTarget {
   filePath: string;
   lineNumber?: number;
   lineEnd?: number;
+  initialPresentation?: FileViewPresentation;
 }
 
 interface ProjectContext {
@@ -95,7 +107,7 @@ interface UseLocalResourceClickResult {
     path: string;
     mediaType: LocalResourceMediaType;
   } | null;
-  localFileModal: LocalResourceRef | null;
+  localFileModal: LocalFileModalTarget | null;
   projectFileModal: ProjectFileModalTarget | null;
   closeModal: () => void;
   closeLocalFileModal: () => void;
@@ -166,7 +178,7 @@ function localMediaApiPath(path: string): string {
 
 function localResourceApiPath(
   resource: LocalResourceRef,
-  sameOriginUrls: boolean,
+  renderMarkdown: boolean,
 ): string {
   if (resource.kind === "project-raw-file") {
     const params = new URLSearchParams({ path: resource.path });
@@ -179,7 +191,7 @@ function localResourceApiPath(
   }
 
   const params = new URLSearchParams({ path: resource.path });
-  if (resource.renderMarkdown && sameOriginUrls) {
+  if (resource.renderMarkdown && renderMarkdown) {
     params.set("render", "1");
   }
   if (resource.download) {
@@ -626,11 +638,16 @@ export function LocalMediaModal({
   );
 }
 
-export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
+export function LocalFileModal({
+  resource,
+  initialPresentation,
+  onClose,
+}: LocalFileModalProps) {
   const sessionMetadata = useOptionalSessionMetadata();
   const transport = useCurrentSourceRuntime().transport;
-  const sameOriginUrls = transport.capabilities.sameOriginUrls;
-  const apiPath = localResourceApiPath(resource, sameOriginUrls);
+  const presentation =
+    initialPresentation ?? (resource.renderMarkdown ? "preview" : "source");
+  const apiPath = localResourceApiPath(resource, presentation === "preview");
   const fileName = getFileName(resource.path);
   const locationSuffix = `${resource.lineNumber !== undefined ? `:${resource.lineNumber}` : ""}${
     resource.columnNumber !== undefined ? `:${resource.columnNumber}` : ""
@@ -657,7 +674,7 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
           const html = await readBlobText(blob);
           if (!cancelled) {
             setState(
-              sameOriginUrls
+              presentation === "preview"
                 ? { status: "html", html }
                 : { status: "text", contentType, text: html },
             );
@@ -692,7 +709,7 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [apiPath, sameOriginUrls, transport]);
+  }, [apiPath, presentation, transport]);
 
   return (
     <Modal title={fileName} onClose={onClose}>
@@ -720,9 +737,12 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
         )}
         {state.status === "html" && (
           <iframe
+            aria-label={fileName}
             className={styles.fileHtmlFrame}
+            data-tooltip=""
             sandbox=""
-            srcDoc={state.html}
+            referrerPolicy="no-referrer"
+            srcDoc={createScriptlessHtmlPreviewDocument(state.html)}
             title={fileName}
           />
         )}
@@ -809,7 +829,6 @@ function getLocalMediaType(
 function LocalResourceContextMenu({
   contextMenu,
   projectContext,
-  sameOriginUrls,
   transport,
   onClose,
   onOpenResource,
@@ -822,16 +841,32 @@ function LocalResourceContextMenu({
     url: string | null;
   };
   projectContext: ProjectContext | null | undefined;
-  sameOriginUrls: boolean;
   transport: SourceTransport;
   onClose: () => void;
   onOpenResource: (
     resource: LocalResourceRef,
     target: HTMLAnchorElement,
+    presentation?: FileViewPresentation,
   ) => void;
 }) {
   const startNewSessionFromFile = useStartNewSessionFromFileAction();
-  const copyUrl = contextMenu.url;
+  const projectRelativePath = contextMenu.projectFileTarget?.filePath ?? null;
+  const absolutePath = isAbsoluteLikePath(contextMenu.resource.path)
+    ? contextMenu.resource.path
+    : projectRelativePath && projectContext?.projectPath
+      ? getAbsoluteFilePath(projectRelativePath, projectContext.projectPath)
+      : null;
+  const viewerLink =
+    contextMenu.resource.kind === "project-file" ? contextMenu.url : null;
+  const hasPresentationChoice = supportsSourceAndPreview(
+    contextMenu.resource.path,
+    Boolean(contextMenu.resource.renderMarkdown),
+  );
+  const openResource = (presentation?: FileViewPresentation) => {
+    const anchor = document.createElement("a");
+    anchor.href = "#";
+    onOpenResource(contextMenu.resource, anchor, presentation);
+  };
 
   return (
     <FilePathContextMenu
@@ -839,11 +874,13 @@ function LocalResourceContextMenu({
       y={contextMenu.y}
       canStartNewSession={Boolean(projectContext?.projectId)}
       onClose={onClose}
-      onView={() => {
-        const anchor = document.createElement("a");
-        anchor.href = "#";
-        onOpenResource(contextMenu.resource, anchor);
-      }}
+      onOpen={() => openResource()}
+      onOpenSource={
+        hasPresentationChoice ? () => openResource("source") : undefined
+      }
+      onOpenPreview={
+        hasPresentationChoice ? () => openResource("preview") : undefined
+      }
       onStartNewSession={
         projectContext?.projectId
           ? () =>
@@ -854,12 +891,22 @@ function LocalResourceContextMenu({
               )
           : undefined
       }
-      onCopyPath={() =>
-        void writeClipboardText(
-          contextMenu.projectFileTarget?.filePath ?? contextMenu.resource.path,
-        )
+      onCopyProjectRelativePath={
+        projectRelativePath
+          ? () => void writeClipboardText(projectRelativePath)
+          : undefined
       }
-      onCopyUrl={copyUrl ? () => void writeClipboardText(copyUrl) : undefined}
+      onCopyAbsolutePath={
+        absolutePath ? () => void writeClipboardText(absolutePath) : undefined
+      }
+      onCopyFilePath={
+        !projectRelativePath && !absolutePath
+          ? () => void writeClipboardText(contextMenu.resource.path)
+          : undefined
+      }
+      onCopyViewerLink={
+        viewerLink ? () => void writeClipboardText(viewerLink) : undefined
+      }
       onCopyContents={() => {
         const { projectFileTarget, resource } = contextMenu;
         if (projectFileTarget) {
@@ -872,7 +919,7 @@ function LocalResourceContextMenu({
         }
         void writeClipboardTextLater(
           fetchLocalResourceBlob(
-            localResourceApiPath(resource, sameOriginUrls),
+            localResourceApiPath(resource, false),
             transport,
           ).then(readBlobText),
         );
@@ -897,9 +944,8 @@ export function useLocalResourceClick(
     path: string;
     mediaType: LocalResourceMediaType;
   } | null>(null);
-  const [localFileModal, setLocalFileModal] = useState<LocalResourceRef | null>(
-    null,
-  );
+  const [localFileModal, setLocalFileModal] =
+    useState<LocalFileModalTarget | null>(null);
   const [projectFileModal, setProjectFileModal] =
     useState<ProjectFileModalTarget | null>(null);
   const [contextMenu, setContextMenu] = useState<{
@@ -913,13 +959,17 @@ export function useLocalResourceClick(
   const openResource = (
     resource: LocalResourceRef,
     target: HTMLAnchorElement,
+    presentation?: FileViewPresentation,
   ) => {
     const projectFileTarget = normalizeResourceForProjectContext(
       resource,
       projectContext,
     );
     if (projectFileTarget) {
-      setProjectFileModal(projectFileTarget);
+      setProjectFileModal({
+        ...projectFileTarget,
+        ...(presentation ? { initialPresentation: presentation } : {}),
+      });
       setLocalFileModal(null);
       setModal(null);
       return true;
@@ -936,7 +986,10 @@ export function useLocalResourceClick(
     }
 
     if (isLocalFileResource(resource)) {
-      setLocalFileModal(resource);
+      setLocalFileModal({
+        resource,
+        ...(presentation ? { initialPresentation: presentation } : {}),
+      });
       setModal(null);
       setProjectFileModal(null);
       return true;
@@ -1055,7 +1108,7 @@ export function useLocalResourceClick(
         resource,
         projectContext,
       ),
-      url: sameOriginUrls ? target.href : null,
+      url: resource.kind === "project-file" ? target.href : null,
     });
   };
 
@@ -1067,7 +1120,6 @@ export function useLocalResourceClick(
     <LocalResourceContextMenu
       contextMenu={contextMenu}
       projectContext={projectContext}
-      sameOriginUrls={sameOriginUrls}
       transport={transport}
       onClose={closeContextMenu}
       onOpenResource={openResource}
