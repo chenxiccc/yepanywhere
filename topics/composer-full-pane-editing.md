@@ -8,12 +8,15 @@ Topic: composer-full-pane-editing
 
 - The New Session composer and editable handoff composer expose a visible
   full-pane toggle. The in-session composer exposes the same mode through
-  `Ctrl+Shift+F`; a visible in-session affordance remains deferred until it can
-  be distinguished from the existing one-line collapse control.
+  `Ctrl+U` and a top-right maximize/restore control that remains available when
+  the composer is minimized to one line. The centered chevron continues to own
+  only the independent one-line collapse state.
+- The visible controls' tooltips and the in-session `?` shortcuts panel identify
+  `Ctrl+U` as the shared maximize/restore accelerator.
 - Full-pane mode is transient UI state. Leaving the page or restoring the
   ordinary composer does not change a saved preference or the draft text.
 - The textarea continually resizes as the draft changes. Its target height is
-  the rendered draft plus four additional text lines, capped by the space
+  the rendered draft plus one additional text line, capped by the space
   available in the pane; once capped, the textarea scrolls internally.
 - Entry preserves the ordinary composer width when that width can accommodate
   the target height. The New Session and handoff composer may widen to the
@@ -29,6 +32,11 @@ Topic: composer-full-pane-editing
   height the composer actually needs. On New Session and handoff surfaces, the
   containing page or modal header remains visible while launch settings yield
   the editing area.
+- Activating the transcript's **Follow** control restores a full-pane composer
+  to its ordinary size while rejoining the live tail. Activating the composer's
+  own maximize/restore control changes only composer size; it does not move the
+  transcript or change follow intent. The one-line collapse state remains
+  independent of both.
 
 ## Deferred UI Design
 
@@ -39,12 +47,17 @@ controls yield to the editing area and return unchanged when full-pane mode is
 restored; do not improvise a partial compact toolbar as part of the current
 interaction.
 
+The in-session top-right maximize/restore placement is a live prototype. It
+uses window-management iconography and a top-right control group to avoid
+confusion with the centered one-line collapse chevron; evaluate its live fit
+before treating the icon geometry and placement as final.
+
 ## Verification Boundary
 
-`resizeComposerTextarea` owns the draft-plus-four-lines calculation and height
+`resizeComposerTextarea` owns the draft-plus-one-line calculation and height
 cap. `NewSessionForm` owns the visible toggle, width escalation, and handoff
-reuse. `MessageInput` owns the keyboard-only in-session entry and the
-editing-first Enter contract.
+reuse. `MessageInput` owns the visible in-session entry and the editing-first
+Enter contract.
 
 Behavior tests cover live sizing, height capping, both entry paths, newline
 semantics, and direct Ctrl+Enter submission. Final browser captures cover the

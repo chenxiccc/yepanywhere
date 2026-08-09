@@ -371,6 +371,7 @@ vi.mock("../../i18n", () => ({
           toolbarShortcutCancelLatestQueuedMessage:
             "Cancel latest queued message",
           toolbarShortcutClearComposer: "Clear composer",
+          toolbarShortcutFullPaneComposer: "Expand / restore composer",
           toolbarShortcutRenderedSourceMode: "Rendered/source mode",
           speechSettingsXaiKeyTitle: "Browser xAI STT Key",
           speechSettingsXaiKeyPlaceholder: "Borrow from server when empty",
@@ -380,6 +381,10 @@ vi.mock("../../i18n", () => ({
           speechTranscribingPlaceholder: "Transcribing...",
           speechFinalizingPlaceholder: "Finalizing...",
           speechTranscribingCancel: "Cancel transcription",
+          composerFullPaneExpand: "Expand composer",
+          composerFullPaneExpandTitle: `Expand composer (${params?.shortcut ?? ""})`,
+          composerFullPaneRestore: "Restore composer",
+          composerFullPaneRestoreTitle: `Restore composer (${params?.shortcut ?? ""})`,
           messageInputCollapsedLineCount: `${params?.count ?? ""} lines`,
           forkSummaryComposerTitle: "Fork after selected turn",
           forkSummaryComposerDescription:
@@ -3411,6 +3416,23 @@ describe("MessageInput", () => {
     expect(keys).toEqual(["Ctrl", "Alt", "S"]);
   });
 
+  it("shows the full-pane composer shortcut in shortcut help", () => {
+    renderMessageInput();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Session keyboard shortcuts" }),
+    );
+
+    const row = screen
+      .getByText("Expand / restore composer")
+      .closest(".session-shortcuts-row");
+    const keys = Array.from(row?.querySelectorAll("kbd") ?? []).map(
+      (key) => key.textContent,
+    );
+
+    expect(keys).toEqual(["Ctrl", "U"]);
+  });
+
   it("shows the Project Queue Ctrl+Enter binding in shortcut help", async () => {
     renderMessageInput(vi.fn(), { onProjectQueue: vi.fn(), onQueue: vi.fn() });
 
@@ -4233,6 +4255,59 @@ describe("MessageInput", () => {
     expectSubmission(onQueue, "follow up later", "deferred");
   });
 
+  it("keeps the full-pane toggle available while minimized", () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+    const expandButton = screen.getByRole("button", {
+      name: "Expand composer",
+    });
+
+    expect(expandButton.title).toBe("Expand composer (Ctrl+U)");
+    fireEvent.click(
+      screen.getByRole("button", { name: "messageInputCollapse" }),
+    );
+    expect(textarea.rows).toBe(1);
+    expect(screen.getByRole("button", { name: "Expand composer" })).toBe(
+      expandButton,
+    );
+
+    fireEvent.click(expandButton);
+    expect(textarea.rows).toBe(3);
+    expect(textarea.closest('[data-composer-full-pane="true"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Restore composer" }).title).toBe(
+      "Restore composer (Ctrl+U)",
+    );
+  });
+
+  it("restores full-pane editing without collapsing to one line", () => {
+    let restoreFullPane: (() => void) | undefined;
+    const props = {
+      onSend: vi.fn(),
+      draftKey: "test-draft",
+      placeholder: "Message",
+      supportsPermissionMode: false,
+      supportsThinkingToggle: false,
+      onRecallLastSubmission: vi.fn(() => true),
+    };
+    render(
+      <MessageInput
+        {...props}
+        onFullPaneControlsReady={(controls) => {
+          restoreFullPane = controls?.restore;
+        }}
+      />,
+    );
+    const textarea = screen.getByPlaceholderText(
+      "Message",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand composer" }));
+    expect(textarea.closest('[data-composer-full-pane="true"]')).toBeTruthy();
+
+    act(() => restoreFullPane?.());
+    expect(textarea.closest('[data-composer-full-pane="true"]')).toBeNull();
+    expect(textarea.rows).toBe(3);
+  });
+
   it("uses editing-first key semantics in full-pane mode", () => {
     const onSend = vi.fn();
     const onQueue = vi.fn();
@@ -4250,9 +4325,8 @@ describe("MessageInput", () => {
 
     fireEvent.change(textarea, { target: { value: "long-form draft" } });
     fireEvent.keyDown(textarea, {
-      key: "f",
+      key: "u",
       ctrlKey: true,
-      shiftKey: true,
     });
 
     expect(textarea.closest('[data-composer-full-pane="true"]')).toBeTruthy();

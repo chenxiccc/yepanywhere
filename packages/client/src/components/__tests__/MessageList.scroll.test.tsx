@@ -293,6 +293,7 @@ describe("MessageList scroll and follow", () => {
     const composerTarget = document.createElement("div");
     composerTarget.className = "session-input-inner";
     document.body.append(composerTarget);
+    const onFollowCurrent = vi.fn();
 
     const { container } = render(
       <MessageList
@@ -300,6 +301,7 @@ describe("MessageList scroll and follow", () => {
           userMessage("user-1", "earlier request"),
           assistantMessage("assistant-1", "current response"),
         ]}
+        onFollowCurrent={onFollowCurrent}
       />,
     );
     const scrollTo = vi.fn();
@@ -329,6 +331,7 @@ describe("MessageList scroll and follow", () => {
 
     expect(scrollTo).not.toHaveBeenCalled();
     expect(container.scrollTop).toBe(500);
+    expect(onFollowCurrent).toHaveBeenCalledTimes(1);
     composerTarget.remove();
   });
 

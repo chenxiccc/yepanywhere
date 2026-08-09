@@ -582,6 +582,8 @@ interface Props {
   showFollowButton?: boolean;
   /** Optional floating container for the shared Follow affordance. */
   followButtonPortalTarget?: HTMLElement | null;
+  /** Restore transient session chrome when Follow explicitly rejoins the tail. */
+  onFollowCurrent?: () => void;
   initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
   onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
   /** Immediate live-tail intent; unlike route snapshots, this is not debounced. */
@@ -923,6 +925,7 @@ export const MessageList = memo(function MessageList({
   conversationViewEnabledOverride,
   showFollowButton = true,
   followButtonPortalTarget,
+  onFollowCurrent,
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
   onFollowingBottomChange,
@@ -2790,6 +2793,11 @@ export const MessageList = memo(function MessageList({
     shouldWaitForInitialAnchorRestore,
   ]);
 
+  const handleFollowClick = useCallback(() => {
+    onFollowCurrent?.();
+    scrollToCurrent();
+  }, [onFollowCurrent, scrollToCurrent]);
+
   const followButtonTarget =
     !isScrolledToBottom && typeof document !== "undefined"
       ? followButtonPortalTarget === undefined
@@ -2809,7 +2817,7 @@ export const MessageList = memo(function MessageList({
         className={`message-follow-toggle${
           newOutputBelowVisible ? " is-new-output" : ""
         }`}
-        onClick={scrollToCurrent}
+        onClick={handleFollowClick}
         aria-label={followButtonTitle}
         title={followButtonTitle}
       >

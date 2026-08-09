@@ -9,6 +9,64 @@
   width: 100%;
 }
 
+.fullPaneToggle {
+  position: absolute;
+  top: -12px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  color: var(--text-muted);
+  background: var(--bg-code);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.fullPaneToggle:hover,
+.fullPaneToggle:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  outline: none;
+}
+
+.fullPaneToggle[aria-pressed="true"] {
+  color: var(--app-yep-green);
+  border-color: color-mix(
+    in srgb,
+    var(--app-yep-green) 62%,
+    var(--border-input)
+  );
+}
+
+.fullPaneToggle svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fullPaneToggleCollapsed {
+  right: 46px;
+}
+
+:global(.session-input-inner):has(.fullPaneToggle)
+  > :global(.message-follow-toggle) {
+  right: 46px;
+}
+
+:global(.session-input-inner):has(.fullPaneToggleCollapsed)
+  > :global(.message-follow-toggle) {
+  right: 82px;
+}
+
 .keyboardSpeechSlotWithWaveform.keyboardSpeechSlotWithWaveform {
   width: 150px;
   max-width: 150px;

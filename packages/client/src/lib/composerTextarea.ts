@@ -1,8 +1,8 @@
 const EXPANDED_COMPOSER_MAX_VIEWPORT_RATIO = 0.5;
 const FALLBACK_TEXTAREA_LINE_HEIGHT_PX = 20;
-const FULL_PANE_COMPOSER_RESERVE_LINES = 4;
+const FULL_PANE_COMPOSER_RESERVE_LINES = 1;
 
-export const FULL_PANE_COMPOSER_SHORTCUT = "Ctrl+Shift+F";
+export const FULL_PANE_COMPOSER_SHORTCUT = "Ctrl+U";
 
 interface ComposerShortcutEvent {
   key: string;
@@ -16,9 +16,9 @@ export function isFullPaneComposerShortcut(
   event: ComposerShortcutEvent,
 ): boolean {
   return (
-    event.key.toLowerCase() === "f" &&
+    event.key.toLowerCase() === "u" &&
     event.ctrlKey &&
-    event.shiftKey &&
+    !event.shiftKey &&
     !event.metaKey &&
     !event.altKey
   );

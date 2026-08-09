@@ -130,7 +130,7 @@ describe("composer textarea sizing", () => {
     expect(textarea.style.overflowY).toBe("");
   });
 
-  it("keeps four spare lines while a full-pane draft grows", () => {
+  it("keeps one spare line while a full-pane draft grows", () => {
     const host = document.createElement("div");
     host.dataset.composerFullPane = "true";
     const composer = document.createElement("div");
@@ -161,14 +161,14 @@ describe("composer textarea sizing", () => {
     expect(resizeComposerTextarea(textarea, false, true)).toEqual({
       overflowed: false,
     });
-    expect(textarea.style.height).toBe("180px");
+    expect(textarea.style.height).toBe("120px");
     expect(textarea.style.overflowY).toBe("hidden");
 
     scrollHeight = 120;
     expect(resizeComposerTextarea(textarea, false, true)).toEqual({
       overflowed: false,
     });
-    expect(textarea.style.height).toBe("200px");
+    expect(textarea.style.height).toBe("140px");
     expect(textarea.style.overflowY).toBe("hidden");
   });
 
@@ -245,9 +245,9 @@ describe("composer textarea sizing", () => {
     expect(resizeComposerTextarea(textarea, false, true)).toEqual({
       overflowed: false,
     });
-    expect(textarea.style.height).toBe("200px");
+    expect(textarea.style.height).toBe("140px");
 
-    scrollHeight = 330;
+    scrollHeight = 340;
     expect(resizeComposerTextarea(textarea, false, true)).toEqual({
       overflowed: true,
     });
@@ -279,21 +279,21 @@ describe("composer textarea sizing", () => {
 });
 
 describe("full-pane composer shortcut", () => {
-  it("recognizes only Ctrl+Shift+F", () => {
+  it("recognizes only Ctrl+U", () => {
     expect(
       isFullPaneComposerShortcut({
-        key: "F",
+        key: "U",
         ctrlKey: true,
-        shiftKey: true,
+        shiftKey: false,
         metaKey: false,
         altKey: false,
       }),
     ).toBe(true);
     expect(
       isFullPaneComposerShortcut({
-        key: "f",
+        key: "u",
         ctrlKey: true,
-        shiftKey: false,
+        shiftKey: true,
         metaKey: false,
         altKey: false,
       }),

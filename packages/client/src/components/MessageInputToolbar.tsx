@@ -2094,6 +2094,13 @@ export function MessageInputToolbarView({
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
+                        <kbd>U</kbd>
+                      </span>
+                      <span>{t("toolbarShortcutFullPaneComposer")}</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
                         <kbd>Shift</kbd>
                         <kbd>M</kbd>
                       </span>

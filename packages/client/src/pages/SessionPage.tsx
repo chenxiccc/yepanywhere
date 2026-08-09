@@ -41,6 +41,7 @@ import { HostIdentityMarker } from "../components/HostIdentityMarker";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
 import {
+  type FullPaneComposerControls,
   MessageInput,
   type MessageSubmissionMetadata,
   type UploadProgress,
@@ -671,6 +672,18 @@ function SessionPageContent({
     useState<LiveModelConfig | null>(null);
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
+  const composerFullPaneControlsRef = useRef<FullPaneComposerControls | null>(
+    null,
+  );
+  const handleFollowCurrent = useCallback(() => {
+    composerFullPaneControlsRef.current?.restore();
+  }, []);
+  const handleFullPaneControlsReady = useCallback(
+    (controls: FullPaneComposerControls | null) => {
+      composerFullPaneControlsRef.current = controls;
+    },
+    [],
+  );
   const draftControlsRef = useRef<DraftControls | null>(null);
   const [quoteClearSignal, setQuoteClearSignal] = useState(0);
   const pendingMotherComposerTransferRef = useRef<string | null>(null);
@@ -5161,6 +5174,7 @@ function SessionPageContent({
                   initialScrollSnapshot={initialScrollSnapshot}
                   onScrollSnapshotChange={updateRouteScrollSnapshot}
                   onFollowingBottomChange={updateActiveWindowFollowingBottom}
+                  onFollowCurrent={handleFollowCurrent}
                   scrollBehaviorMode={sessionScrollBehaviorMode}
                   offscreenTranscriptRenderingEnabled={
                     sessionOffscreenTranscriptRenderingEnabled
@@ -5385,6 +5399,7 @@ function SessionPageContent({
                     pendingInputRequest.sessionId === actualSessionId
                   )
                 }
+                onFullPaneControlsReady={handleFullPaneControlsReady}
                 contextUsage={session?.contextUsage}
                 lastActivityAt={activityAt}
                 positionTimestampMs={transcriptPositionTimestampMs}

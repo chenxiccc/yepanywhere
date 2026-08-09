@@ -108,6 +108,7 @@ import type {
   ProviderRuntimeStatus,
 } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
+import { FullPaneComposerToggle } from "./FullPaneComposerToggle";
 import {
   MessageInputToolbar,
   type MessageInputToolbarProps,
@@ -139,6 +140,10 @@ export interface MessageInputAttachment {
   width?: number;
   height?: number;
   previewUrl?: string;
+}
+
+export interface FullPaneComposerControls {
+  restore: () => void;
 }
 
 export interface MessageSubmissionMetadata {
@@ -248,6 +253,8 @@ interface Props {
   };
   /** Collapse to single-line but keep visible and focusable (for when approval panel is showing) */
   collapsed?: boolean;
+  /** Expose full-pane controls to a parent that coordinates adjacent UI. */
+  onFullPaneControlsReady?: (controls: FullPaneComposerControls | null) => void;
   /** Callback to receive draft controls for success/failure handling */
   onDraftControlsReady?: (controls: DraftControls) => void;
   /** Notify parent of draft edits for UI linked to the composer text. */
@@ -408,6 +415,7 @@ export function MessageInput({
   draftKey,
   draftIndex,
   collapsed: externalCollapsed,
+  onFullPaneControlsReady,
   onDraftControlsReady,
   onDraftTextChange,
   contextUsage,
@@ -1115,6 +1123,25 @@ export function MessageInput({
 
   useEffect(() => {
     if (externalCollapsed) setFullPane(false);
+  }, [externalCollapsed]);
+
+  const restoreFullPane = useCallback(() => setFullPane(false), []);
+
+  const fullPaneControls = useMemo<FullPaneComposerControls>(
+    () => ({ restore: restoreFullPane }),
+    [restoreFullPane],
+  );
+
+  useEffect(() => {
+    onFullPaneControlsReady?.(fullPaneControls);
+    return () => onFullPaneControlsReady?.(null);
+  }, [fullPaneControls, onFullPaneControlsReady]);
+
+  const toggleFullPane = useCallback(() => {
+    if (externalCollapsed) return;
+    setUserCollapsed(false);
+    setFullPane((current) => !current);
+    textareaRef.current?.focus();
   }, [externalCollapsed]);
 
   useEffect(() => {
@@ -2030,10 +2057,7 @@ export function MessageInput({
     if (isFullPaneComposerShortcut(e)) {
       e.preventDefault();
       e.stopPropagation();
-      if (!externalCollapsed) {
-        setUserCollapsed(false);
-        setFullPane((current) => !current);
-      }
+      toggleFullPane();
       return;
     }
 
@@ -3057,6 +3081,15 @@ export function MessageInput({
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </button>
+      )}
+      {!externalCollapsed && (
+        <FullPaneComposerToggle
+          expanded={fullPane}
+          onToggle={toggleFullPane}
+          className={`${styles.fullPaneToggle}${
+            collapsed ? ` ${styles.fullPaneToggleCollapsed}` : ""
+          }`}
+        />
       )}
       <div
         className={`message-input ${collapsed ? "message-input-collapsed" : ""} ${

@@ -539,6 +539,10 @@ vi.mock("../../i18n", () => ({
           "Summarize from a temporary fork after backgrounding (not closing) for {seconds} s.",
         toolbarProjectQueueTooltipWithShortcut:
           "Send after all sessions in this project are idle\nCtrl+Enter",
+        composerFullPaneExpand: "Expand composer",
+        composerFullPaneExpandTitle: "Expand composer ({shortcut})",
+        composerFullPaneRestore: "Restore composer",
+        composerFullPaneRestoreTitle: "Restore composer ({shortcut})",
         speechPrefixDeliveryLabel: "{action}. Prepends {prefix}.",
         speechPrefixDeliveryTooltip: "{tooltip} Prepends {prefix}.",
       };
@@ -1927,21 +1931,20 @@ describe("NewSessionForm", () => {
 
     const composer = screen.getByPlaceholderText("newSessionPlaceholder");
     const expandButton = screen.getByRole("button", {
-      name: "newSessionComposerExpand",
+      name: "Expand composer",
     });
+    expect(expandButton.title).toBe("Expand composer (Ctrl+U)");
     fireEvent.click(expandButton);
     expect(expandButton.getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.keyDown(composer, {
-      key: "f",
+      key: "u",
       ctrlKey: true,
-      shiftKey: true,
     });
     expect(expandButton.getAttribute("aria-pressed")).toBe("false");
     fireEvent.keyDown(composer, {
-      key: "f",
+      key: "u",
       ctrlKey: true,
-      shiftKey: true,
     });
     expect(expandButton.getAttribute("aria-pressed")).toBe("true");
 
