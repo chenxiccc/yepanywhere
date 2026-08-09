@@ -17,6 +17,7 @@ Related:
 [client source runtime topology](client-source-runtime-topology.md),
 [relay client mux](relay-client-mux.md),
 [core service API](core-service-api.md),
+[Claude cross-session messaging](claude-cross-session-messaging.md),
 [federated super sessions](federated-super-sessions.md),
 [remote executors](../docs/project/remote-executors.md),
 [super-session testbed appliance](../docs/tactical/073-super-session-testbed-appliance.md),
@@ -417,6 +418,14 @@ provider-specific or deferred.
 **Computer use.** Delegation initially benefits from whatever native tools the
 target provider already supplies. A broader guest-native computer-use tool is
 complementary and not a prerequisite.
+
+**Claude cross-session messaging.** Claude's provider-native session inbox is
+a useful communication capability and its local Agent View is a useful UX
+reference. Neither establishes YA peer identity, directional grants, remote
+worker launch, provider-neutral lifecycle control, or durable delegation
+state. YA may use it through the Claude adapter where supported, but it is not
+the cross-host coordination protocol. See the dedicated
+[comparison](claude-cross-session-messaging.md).
 
 ## Known Open Questions
 

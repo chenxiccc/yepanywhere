@@ -165,6 +165,8 @@
   provider persistence and nested beneath its canonical YA parent session.
 - cross-host-delegation - Directed YA-host grants and the product surface for
   creating and supervising separate native worker sessions on another host.
+- claude-cross-session-messaging - Claude's live session messaging and local
+  Agent View compared with YA's durable cross-host delegation control plane.
 - older-claude-models - Default-off server registry and grandfathered custom
   selections for previous provider model versions.
 - host-awake - Server-owned, process-lifetime idle-sleep inhibition with an
