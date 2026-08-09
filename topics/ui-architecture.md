@@ -136,6 +136,20 @@ Choosing any action consumes the current notice instead of morphing it into a
 status or confirmation panel. The requested reload or safe-restart schedule
 continues; after a reload, later source changes may produce a fresh notice.
 
+## Fatal Client Diagnostics
+
+The root client error boundary preserves enough context to diagnose an
+otherwise unrecoverable React render failure without reproducing it. Its
+fallback exposes a copyable diagnostic containing the error and component
+stacks, route, client/server versions, timestamp, user agent, bounded DOM
+counts, and the browser-local Conversation View/thinking settings relevant to
+session rendering. It never includes transcript or draft text.
+
+The Report Issue action targets the canonical repository and pre-fills the
+same diagnostic plus a prompt for the immediately preceding action. Optional
+remote client-log collection receives the diagnostic as one formatted error
+entry, so object serialization cannot discard React's component stack.
+
 ## Selected-Route Module Ownership
 
 The initial client module graph contains the stable source/authentication,

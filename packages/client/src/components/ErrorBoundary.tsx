@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import enMessages from "../i18n/en.json";
+import { writeClipboardText } from "../lib/clipboard";
+import { UI_KEYS } from "../lib/storageKeys";
 
 interface Props {
   children: ReactNode;
@@ -9,8 +11,122 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  crashContext: CrashContext | null;
   serverVersion: string | null;
   versionLoading: boolean;
+  copyStatus: "idle" | "copied" | "failed";
+}
+
+interface CrashContext {
+  capturedAt: string;
+  url: string;
+  userAgent: string;
+  dom: {
+    nodes: number;
+    messageRows: number;
+    streamingBlocks: number;
+    conversationActivityRows: number;
+    thinkingPreviewRows: number;
+  };
+  preferences: {
+    conversationView: string | null;
+    conversationViewTurnLimit: string | null;
+    thinkingVisible: string | null;
+  };
+}
+
+const GITHUB_ISSUES_URL = "https://github.com/kzahel/yepanywhere/issues/new";
+
+function getClientVersion(): string {
+  return typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "unknown";
+}
+
+function readPreference(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function captureCrashContext(): CrashContext {
+  return {
+    capturedAt: new Date().toISOString(),
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    dom: {
+      nodes: document.getElementsByTagName("*").length,
+      messageRows: document.querySelectorAll(".message-render-row").length,
+      streamingBlocks: document.querySelectorAll(".streaming-block").length,
+      conversationActivityRows: document.querySelectorAll(
+        ".conversation-activity-row",
+      ).length,
+      thinkingPreviewRows: document.querySelectorAll(
+        ".conversation-thinking-preview",
+      ).length,
+    },
+    preferences: {
+      conversationView: readPreference(UI_KEYS.conversationView),
+      conversationViewTurnLimit: readPreference(
+        UI_KEYS.conversationViewTurnLimit,
+      ),
+      thinkingVisible: readPreference(UI_KEYS.sessionThinkingVisible),
+    },
+  };
+}
+
+export function formatClientCrashDiagnostic(
+  error: Error | null,
+  errorInfo: ErrorInfo | null,
+  context: CrashContext | null,
+  serverVersion: string | null,
+): string {
+  const lines = [
+    "Yep Anywhere client fatal error",
+    `Timestamp: ${context?.capturedAt ?? "unknown"}`,
+    `URL: ${context?.url ?? "unknown"}`,
+    `Client version: ${getClientVersion()}`,
+    `Server version: ${serverVersion ?? "unknown"}`,
+    `User agent: ${context?.userAgent ?? "unknown"}`,
+    `DOM: ${JSON.stringify(context?.dom ?? null)}`,
+    `Preferences: ${JSON.stringify(context?.preferences ?? null)}`,
+    "",
+    `Error: ${error?.message ?? "Unknown error"}`,
+  ];
+
+  if (error?.stack) {
+    lines.push("", "JavaScript stack:", error.stack);
+  }
+  if (errorInfo?.componentStack) {
+    lines.push("", "React component stack:", errorInfo.componentStack);
+  }
+  return lines.join("\n");
+}
+
+export function buildClientCrashIssueUrl(
+  error: Error | null,
+  diagnostic: string,
+): string {
+  const titleMessage = (error?.message ?? "Unknown error")
+    .split("\n", 1)[0]
+    ?.slice(0, 100);
+  const body = [
+    "## What was happening",
+    "",
+    "<!-- What action or live update immediately preceded the crash? -->",
+    "",
+    "## Diagnostic",
+    "",
+    "```text",
+    diagnostic,
+    "```",
+  ].join("\n");
+  const params = new URLSearchParams({
+    title: `Client crash: ${titleMessage}`,
+    body,
+    labels: "bug",
+  });
+  return `${GITHUB_ISSUES_URL}?${params.toString()}`;
 }
 
 /**
@@ -24,42 +140,68 @@ export class ErrorBoundary extends Component<Props, State> {
       hasError: false,
       error: null,
       errorInfo: null,
+      crashContext: null,
       serverVersion: null,
       versionLoading: false,
+      copyStatus: "idle",
     };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+    // This render-phase hook still sees the previously committed session DOM;
+    // componentDidCatch runs after React has replaced it with the fallback.
+    return { hasError: true, error, crashContext: captureCrashContext() };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    this.setState({ errorInfo });
+    const crashContext = this.state.crashContext ?? captureCrashContext();
+    this.setState({ errorInfo, crashContext, versionLoading: true });
 
     // Fetch server version to help diagnose version mismatches
     this.fetchServerVersion();
 
-    // Log error for debugging
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    // Keep one self-contained string so optional remote console collection
+    // preserves the component stack instead of depending on object formatting.
+    console.error(
+      `[ErrorBoundary] Fatal client render error\n${formatClientCrashDiagnostic(
+        error,
+        errorInfo,
+        crashContext,
+        null,
+      )}`,
+    );
   }
 
   async fetchServerVersion() {
-    this.setState({ versionLoading: true });
     try {
       const res = await fetch("/api/version");
       if (res.ok) {
-        const data = await res.json();
-        this.setState({ serverVersion: data.current });
+        const data = (await res.json()) as { current?: unknown };
+        this.setState({
+          serverVersion: typeof data.current === "string" ? data.current : null,
+          versionLoading: false,
+        });
+        return;
       }
     } catch {
       // Ignore - version fetch failed (might be why we're in an error state)
-    } finally {
-      this.setState({ versionLoading: false });
     }
+    this.setState({ versionLoading: false });
   }
 
   handleReload = () => {
     window.location.reload();
+  };
+
+  handleCopyDiagnostics = async () => {
+    const diagnostic = formatClientCrashDiagnostic(
+      this.state.error,
+      this.state.errorInfo,
+      this.state.crashContext,
+      this.state.serverVersion,
+    );
+    const copied = await writeClipboardText(diagnostic);
+    this.setState({ copyStatus: copied ? "copied" : "failed" });
   };
 
   // Check if the error looks like a property access error (common in version mismatches)
@@ -78,8 +220,22 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      const { error, serverVersion, versionLoading } = this.state;
+      const {
+        error,
+        errorInfo,
+        crashContext,
+        serverVersion,
+        versionLoading,
+        copyStatus,
+      } = this.state;
       const isVersionMismatch = this.isLikelyVersionMismatch();
+      const diagnostic = formatClientCrashDiagnostic(
+        error,
+        errorInfo,
+        crashContext,
+        serverVersion,
+      );
+      const issueUrl = buildClientCrashIssueUrl(error, diagnostic);
 
       return (
         <div style={styles.container}>
@@ -118,6 +274,13 @@ export class ErrorBoundary extends Component<Props, State> {
               )}
             </div>
 
+            <details style={styles.diagnosticDetails}>
+              <summary style={styles.diagnosticSummary}>
+                {enMessages.errorBoundaryDiagnosticDetails}
+              </summary>
+              <pre style={styles.diagnosticText}>{diagnostic}</pre>
+            </details>
+
             <div style={styles.actions}>
               <button
                 type="button"
@@ -126,8 +289,19 @@ export class ErrorBoundary extends Component<Props, State> {
               >
                 {enMessages.errorBoundaryReloadPage}
               </button>
+              <button
+                type="button"
+                onClick={this.handleCopyDiagnostics}
+                style={styles.secondaryButton}
+              >
+                {copyStatus === "copied"
+                  ? enMessages.errorBoundaryDiagnosticsCopied
+                  : copyStatus === "failed"
+                    ? enMessages.errorBoundaryDiagnosticsCopyFailed
+                    : enMessages.errorBoundaryCopyDiagnostics}
+              </button>
               <a
-                href="https://github.com/anthropics/yep-anywhere/issues"
+                href={issueUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={styles.issueLink}
@@ -222,6 +396,26 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     color: "#a1a1aa",
   },
+  diagnosticDetails: {
+    marginBottom: "24px",
+    padding: "12px 16px",
+    backgroundColor: "#27272a",
+    borderRadius: "6px",
+  },
+  diagnosticSummary: {
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#d4d4d8",
+  },
+  diagnosticText: {
+    maxHeight: "240px",
+    margin: "12px 0 0 0",
+    overflow: "auto",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    fontSize: "11px",
+    color: "#d4d4d8",
+  },
   actions: {
     display: "flex",
     gap: "12px",
@@ -236,6 +430,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fff",
     backgroundColor: "#6366f1",
     border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+  },
+  secondaryButton: {
+    flex: 1,
+    minWidth: "120px",
+    padding: "12px 24px",
+    fontSize: "15px",
+    fontWeight: 500,
+    color: "#d4d4d8",
+    backgroundColor: "transparent",
+    border: "1px solid #52525b",
     borderRadius: "8px",
     cursor: "pointer",
   },
