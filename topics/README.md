@@ -96,3 +96,6 @@
   monolith convenience wins absent a contributing community)
 - Project settings overrides (banked seed: project-scoped overrides beating
   global settings; mechanically easy, visualization is the cost)
+- Session wake turns (proposal: authenticated local-automation endpoint queues
+  a user turn into one session; agentctl job-completion client, resume-on-wake
+  gates, provider-CLI fallback rules)

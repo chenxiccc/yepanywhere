@@ -287,3 +287,5 @@
 - composer-full-pane-editing - Viewport-bounded long-form drafting with one
   spare line, direct Ctrl+Enter submission, and visible New Session, handoff,
   and in-session entry.
+- session-wake - Event-driven wake turns: authenticated endpoint + agentctl
+  job-completion client (design topic; implementation series to follow).
