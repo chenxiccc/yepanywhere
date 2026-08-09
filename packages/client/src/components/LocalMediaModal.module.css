@@ -12,7 +12,7 @@
 .inlineFrame {
   position: relative;
   display: inline-block;
-  max-width: min(100%, 900px);
+  max-width: min(100%, 720px);
 }
 
 /*
@@ -32,8 +32,8 @@
   padding: 0;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  background: transparent;
-  cursor: copy;
+  background: var(--bg-code);
+  cursor: zoom-in;
 }
 
 .inlineImageButton:hover {
@@ -49,7 +49,7 @@
 .inlineImage {
   display: block;
   max-width: 100%;
-  max-height: min(72vh, 720px);
+  max-height: min(60vh, 480px);
   object-fit: contain;
   border-radius: calc(var(--radius-md) - 1px);
 }
@@ -73,18 +73,6 @@
 
 .inlineError {
   color: var(--color-error);
-}
-
-.inlineCopied {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-sm);
-  font-size: 12px;
 }
 
 /* Local media modal content */

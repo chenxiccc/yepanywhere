@@ -500,6 +500,11 @@ describe("LocalMediaModal", () => {
     expect(hasClass(imageSurface, imageViewerStyles.fit)).toBe(true);
 
     const image = screen.getByRole("img", { name: "plot.png" });
+    fireEvent.contextMenu(image);
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Open", "Download", "Copy›"]);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss image menu" }));
     Object.defineProperties(image, {
       naturalHeight: { configurable: true, value: 1080 },
       naturalWidth: { configurable: true, value: 1920 },

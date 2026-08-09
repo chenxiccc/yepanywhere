@@ -126,6 +126,28 @@ Collapsed media rows fetch no bytes. Expanded rows lazily fetch and render an
 object URL. Do not render a bare `/api/...` URL directly in `<img>` because a
 relay-origin page does not share the server origin.
 
+## Client image action contract
+
+An opaque media handle gives the client authenticated bytes plus presentation
+metadata; it does not give the image a filesystem identity. The shared image
+menu therefore always derives actions from capabilities:
+
+- a fetchable handle supports Open, Download, and Copy image;
+- a stable viewer link is absent because the raw media route is not an
+  application viewer and a transient object URL is not durable;
+- an inline/data-backed result has no path merely because the server decoded
+  it into a transient handle or preserved content-addressed blob; and
+- a single path-backed `ViewImage`/`ImageView`/image `Read` result may use the
+  already-visible tool-input path client-side when it unambiguously describes
+  that result. Multiple media items never inherit one guessed path.
+
+The server catalog may retain `originalPath` to re-open a permitted path, but
+that internal locator and any app-data or project-local preservation path are
+not client-facing coordinates. Public shares continue to omit host absolute
+paths. Any future public `sourcePath` field needs an explicit capability,
+authenticated/public-share redaction rules, and a clear distinction between
+the source file and the captured image bytes.
+
 ## Optional Durable Preservation
 
 Durable tool-result preservation is default-off and requires a dedicated
@@ -242,6 +264,25 @@ media id never grants public access.
 - Do not move conversion to the browser; that still transfers the base64.
 - Do not make inline expansion default-on.
 - Do not treat huge non-media output such as stdout as part of this policy.
+- Do not expose a preservation blob path as the image's absolute file path.
+- Do not label the authenticated byte route as a stable viewer link.
+
+## Possible server-backed refinements
+
+- Add a stable application viewer coordinate for session media whose access
+  and lifetime are explicit, relay-safe, and share-aware. Keep the existing raw
+  media route as a byte response rather than retroactively changing its
+  meaning.
+- If tool input cannot identify a path-backed image, add an optional semantic
+  source coordinate to authenticated metadata. Gate it as a new capability,
+  omit it for inline data, and redact host paths from public shares.
+- If measurements show repeated decoding or relay fetches are material, add a
+  bounded read-through cache independently from durable preservation. It needs
+  byte and age eviction, source-runtime/session scoping, and no project writes
+  by default.
+- Consider conditional fetch metadata such as an immutable content hash or
+  ETag for preserved blobs so repeated clients can validate safely without
+  promising that transient on-demand handles are durable.
 
 ## Acceptance
 

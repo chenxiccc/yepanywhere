@@ -18,17 +18,17 @@
 .togglePlaceholder {
   display: inline-grid;
   place-items: center;
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 1.35em;
+  width: 1.35em;
+  height: 1.35em;
   padding: 0;
   color: var(--text-muted, #888);
   font: inherit;
 }
 
 .toggle {
-  border: none;
-  border-radius: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
   background: transparent;
   cursor: pointer;
 }
@@ -37,6 +37,7 @@
 .toggle:focus-visible {
   color: var(--text-primary, #ccc);
   background: var(--bg-hover, #2a2a2a);
+  border-color: var(--text-secondary);
 }
 
 .togglePlaceholder {

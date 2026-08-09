@@ -590,6 +590,18 @@ describe("FileViewer", () => {
     expect(
       screen.getByRole("img", { name: "result.png" }).getAttribute("src"),
     ).toBe("blob:file-viewer-image");
+    fireEvent.contextMenu(screen.getByRole("img", { name: "result.png" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual([
+      "‹Back",
+      "Image",
+      "Project-relative path",
+      "Absolute file path",
+      "Viewer link",
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss image menu" }));
 
     const openButton = container.querySelector<HTMLButtonElement>(
       '.file-viewer-actions .file-viewer-action[title="Open image in new tab"]',

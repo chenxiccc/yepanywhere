@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { useCurrentSourceRuntime } from "../../../contexts/SourceRuntimeContext";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
-import { LocalMediaModal } from "../../LocalMediaModal";
+import { useImageResourceActions } from "../../ImageResourceActions";
+import { fetchLocalMediaBlob, LocalMediaModal } from "../../LocalMediaModal";
 import type { ToolRenderer } from "./types";
 
 interface ViewImageInput {
@@ -19,16 +21,23 @@ function ViewImageButton({
   path,
   className,
   onClick,
+  onContextMenu,
   projectPath,
 }: {
   path: string;
   className: string;
   onClick: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent<Element>) => void;
   projectPath?: string | null;
 }) {
   const displayPath = makeDisplayPath(path, projectPath);
   return (
-    <button type="button" className={className} onClick={onClick}>
+    <button
+      type="button"
+      className={className}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+    >
       {getFileName(displayPath)}
       <span className="file-line-count-inline">(image)</span>
     </button>
@@ -50,16 +59,30 @@ function ViewImageClickable({
   projectPath?: string | null;
 }) {
   const [showModal, setShowModal] = useState(false);
+  const transport = useCurrentSourceRuntime().transport;
+  const loadBlob = useCallback(
+    () => fetchLocalMediaBlob(path, undefined, "modal", transport),
+    [path, transport],
+  );
+  const openViewer = useCallback(() => setShowModal(true), []);
+  const imageActions = useImageResourceActions({
+    fileName: getFileName(path),
+    filePath: path,
+    loadBlob,
+    onOpen: openViewer,
+    projectPath,
+  });
 
   return (
     <>
       <ViewImageButton
         path={path}
         className={buttonClass}
+        onContextMenu={imageActions.handleContextMenu}
         projectPath={projectPath}
         onClick={(e) => {
           if (stopPropagation) e.stopPropagation();
-          setShowModal(true);
+          openViewer();
         }}
       />
       {showModal && (
@@ -69,6 +92,7 @@ function ViewImageClickable({
           onClose={() => setShowModal(false)}
         />
       )}
+      {imageActions.contextMenuElement}
     </>
   );
 }

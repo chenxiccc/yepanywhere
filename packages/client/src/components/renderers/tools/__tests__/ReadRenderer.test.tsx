@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublicShareProvider } from "../../../../contexts/PublicShareContext";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { setInlineMediaExpandedPreference } from "../../../../hooks/useInlineMedia";
+import { I18nProvider } from "../../../../i18n";
 import { readRenderer } from "../ReadRenderer";
 import type { ReadResult } from "../types";
 
@@ -51,13 +52,15 @@ const projectId = toUrlProjectId(projectRoot);
 
 function renderInSession(children: ReactNode) {
   return render(
-    <SessionMetadataProvider
-      projectId={projectId}
-      projectPath={projectRoot}
-      sessionId="session-1"
-    >
-      {children}
-    </SessionMetadataProvider>,
+    <I18nProvider>
+      <SessionMetadataProvider
+        projectId={projectId}
+        projectPath={projectRoot}
+        sessionId="session-1"
+      >
+        {children}
+      </SessionMetadataProvider>
+    </I18nProvider>,
   );
 }
 

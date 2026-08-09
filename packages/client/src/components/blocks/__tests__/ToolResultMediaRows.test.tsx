@@ -17,7 +17,10 @@ import { asClientSummarySourceKey } from "../../../lib/clientSummaryStore";
 import type { YaSourceRuntime } from "../../../lib/sourceRuntime";
 import { SourceRuntimeProvider } from "../../../lib/sourceRuntimeReact";
 import { FakeSourceTransport } from "../../../lib/transport";
-import { ToolResultMediaRows } from "../ToolResultMediaRows";
+import {
+  getToolResultImageSourcePath,
+  ToolResultMediaRows,
+} from "../ToolResultMediaRows";
 
 const STORED_MEDIA: ToolResultMedia[] = [
   {
@@ -52,7 +55,11 @@ function createRuntime(transport: FakeSourceTransport): YaSourceRuntime {
   };
 }
 
-function renderRows(media: ToolResultMedia[], transport: FakeSourceTransport) {
+function renderRows(
+  media: ToolResultMedia[],
+  transport: FakeSourceTransport,
+  sourcePath?: string,
+) {
   return render(
     <I18nProvider>
       <SourceRuntimeProvider runtime={createRuntime(transport)}>
@@ -64,6 +71,7 @@ function renderRows(media: ToolResultMedia[], transport: FakeSourceTransport) {
           <ToolResultMediaRows
             displayName="Viewed"
             media={media}
+            sourcePath={sourcePath}
             status="complete"
           />
         </SessionMetadataProvider>
@@ -168,5 +176,62 @@ describe("ToolResultMediaRows", () => {
     expect(screen.getByText("vector.svg")).toBeTruthy();
     expect(screen.getByText("(image unavailable)")).toBeTruthy();
     expect(fetchBlob).not.toHaveBeenCalled();
+  });
+
+  it("offers image and semantic path actions from the filename", () => {
+    const transport = new FakeSourceTransport({
+      fetchBlob: vi.fn(async () => new Blob(["png"], { type: "image/png" })),
+    });
+    renderRows(
+      [STORED_MEDIA[0] as ToolResultMedia],
+      transport,
+      "/project/captures/first.png",
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "first.png" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Open", "Download", "Copy›"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual([
+      "‹Back",
+      "Image",
+      "Project-relative path",
+      "Absolute file path",
+      "Viewer link",
+    ]);
+  });
+
+  it("uses a tool-input path only for a single path-backed image", () => {
+    expect(
+      getToolResultImageSourcePath(
+        "ViewImage",
+        { path: "/tmp/capture.png" },
+        1,
+      ),
+    ).toBe("/tmp/capture.png");
+    expect(
+      getToolResultImageSourcePath(
+        "Read",
+        { file_path: "captures/first.png" },
+        1,
+      ),
+    ).toBe("captures/first.png");
+    expect(
+      getToolResultImageSourcePath(
+        "ViewImage",
+        { path: "/tmp/capture.png" },
+        2,
+      ),
+    ).toBeUndefined();
+    expect(
+      getToolResultImageSourcePath(
+        "GenerateImage",
+        { path: "/tmp/capture.png" },
+        1,
+      ),
+    ).toBeUndefined();
   });
 });

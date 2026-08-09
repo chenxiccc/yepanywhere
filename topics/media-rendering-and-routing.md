@@ -107,7 +107,7 @@ File-viewer modals own one same-URL browser-history entry: Back dismisses the
 viewer without leaving the underlying session, while opening or React effect
 replay must never traverse pre-modal history.
 
-### File action and presentation choice
+### Resource actions and file presentation choice
 
 Project-file links and rendered local-file links share one client context-menu
 vocabulary even though their authorization routes remain distinct:
@@ -146,6 +146,45 @@ project's owner, and broker relative preview assets across direct and relay
 transports. Until those contracts exist, an outside-project local file has no
 copyable Viewer link, and static preview assets are limited to data/blob
 resources admitted by the client preview CSP.
+
+Images use the same callback-driven resource menu without pretending that
+every byte source is a file:
+
+- Ordinary activation of an image link, name, thumbnail, or expanded preview
+  opens the shared full image viewer. The adjacent `+ / -` control changes
+  inline disclosure only; it is not a second copy or open gesture.
+- Right-click on rendered Markdown/local-media links and hydrated pixels,
+  normalized tool-result filenames and previews, legacy path-backed
+  `ViewImage` and image `Read` results, compact-gallery thumbnails, project
+  viewer images, and the full image viewer opens the same resource menu.
+- **Open** is direct. **Download** appears when the client has a byte source.
+  **Copy** contains **Image** and only the semantic coordinates that exist:
+  **Project-relative path**, **Absolute file path**, **File path**, and a stable
+  **Viewer link**. An unavailable coordinate is omitted rather than disabled
+  or inferred.
+- Clipboard and download actions fetch through the active source transport.
+  Copy image starts `ClipboardItem.write()` during the selecting gesture and
+  supplies relay-delivered bytes as a pending PNG, so a slow relay round trip
+  does not normally outlive browser user activation.
+- A single normalized `ViewImage`, `ImageView`, or image `Read` result may use
+  its unambiguous tool-input path as semantic source identity. Multi-image
+  results and other image-producing tools do not inherit one guessed path.
+- A semantic path inside the active project may derive the existing stable
+  project `FileViewer` route and expose it as **Viewer link**. An allow-listed
+  path outside that project still has no stable application viewer coordinate;
+  its raw byte URL is not relabeled.
+- JSONL-embedded data, opaque session-media handles, object URLs, and
+  content-addressed preserved blobs are byte sources, not filesystem
+  coordinates. Their menus still support Open, Download, and Copy image but
+  do not manufacture path or viewer-link actions.
+- Public shares may retain a safe project-relative coordinate and their
+  share-scoped viewer URL. They never expose a host absolute path through an
+  **Absolute file path** or fallback **File path** item.
+
+Markdown image references remain compact prose while tool images remain
+ordered activity rows with tool identity and status. Their disclosure control
+size, filename/suffix treatment, preview border/background/containment, and
+full-screen viewer behavior are aligned without flattening those two roles.
 
 ### Composer and new-session
 
@@ -560,5 +599,17 @@ project/file-access allow-set without fallback lookup or filesystem guessing.
 - **Context-specific media remains** — normalized tool-result images share one
   media row, and modal-based local images share `LocalMediaModal`; attachments,
   rendered Markdown placeholders, and the project `FileViewer` retain
-  context-specific presentation. Cross-surface fixes still belong in a shared
-  source adapter or the narrowest common rendering boundary.
+  context-specific presentation. Image actions now converge through one
+  capability-shaped client menu and shared clipboard/download operations.
+  Further cross-surface byte reuse still belongs in a shared source adapter or
+  the narrowest common rendering boundary.
+- **Opaque media viewer links** — the authenticated session-media fetch route
+  serves bytes, not a stable YA application viewer. Copying that raw route or
+  a transient object URL as **Viewer link** would misstate its lifetime and
+  relay behavior. A durable session-media viewer coordinate remains
+  server-backed work.
+- **Repeated client fetches** — an expanded preview, later modal, download, or
+  copy action can independently fetch the same media. The full viewer reuses
+  its already-loaded blob for its own actions, but cross-surface blob sharing
+  is not yet a bounded client cache. Add one only with explicit lifetime,
+  byte-budget, object-URL revocation, and source-runtime scoping.

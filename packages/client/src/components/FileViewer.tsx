@@ -22,6 +22,7 @@ import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
+import { downloadBlob } from "../lib/imageActions";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
@@ -48,6 +49,7 @@ import {
   supportsSourceAndPreview,
   useStartNewSessionFromFile,
 } from "./FileResourceActions";
+import { useImageResourceActions } from "./ImageResourceActions";
 import viewerStyles from "./FileViewer.module.css";
 import {
   combineDensityOffsets,
@@ -287,17 +289,6 @@ const DEFAULT_FILE_VIEWER_SOURCE: FileViewerSource = {
         }
       : undefined,
 };
-
-function downloadBlob(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
 
 function getTargetTopWithinContainer(
   container: HTMLElement,
@@ -647,6 +638,26 @@ export const FileViewer = memo(function FileViewer({
     }
     window.open(standaloneViewerUrl, "_blank", "noopener");
   }, [imageOpenUrl, standaloneViewerUrl]);
+  const loadImageBlob = useCallback(() => {
+    if (!fileData) {
+      return Promise.reject(new Error("Image is not loaded"));
+    }
+    if (source.fetchRawFileBlob) {
+      return source.fetchRawFileBlob(fileData, filePath, false);
+    }
+    const params = new URLSearchParams({ path: filePath });
+    return transport.fetchBlob(
+      `/projects/${encodeURIComponent(projectId)}/files/raw?${params}`,
+    );
+  }, [fileData, filePath, projectId, source, transport]);
+  const imageActions = useImageResourceActions({
+    fileName,
+    filePath,
+    loadBlob: loadedIsImage ? loadImageBlob : undefined,
+    onOpen: handleOpenInNewTab,
+    projectPath,
+    viewerLink: standaloneViewerUrl,
+  });
   const handlePathContextMenu = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -703,6 +714,7 @@ export const FileViewer = memo(function FileViewer({
               rel="noopener noreferrer"
               title={openImageInNewTabLabel}
               aria-label={openImageInNewTabLabel}
+              onContextMenu={imageActions.handleContextMenu}
             >
               <img src={imageUrl} alt={fileName} />
             </a>
@@ -1049,6 +1061,7 @@ export const FileViewer = memo(function FileViewer({
         />
       )}
       {localResourceContextMenu}
+      {loadedIsImage ? imageActions.contextMenuElement : null}
       <div className="file-viewer-body" ref={fileViewerBodyRef}>
         {renderContent()}
       </div>

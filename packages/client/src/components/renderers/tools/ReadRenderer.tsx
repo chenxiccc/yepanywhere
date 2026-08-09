@@ -1,4 +1,10 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
@@ -13,6 +19,8 @@ import {
   FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
   MarkdownPreview,
 } from "../../MarkdownPreview";
+import { useImageResourceActions } from "../../ImageResourceActions";
+import { LocalMediaModal, type LocalMediaSource } from "../../LocalMediaModal";
 import { SchemaWarning } from "../../SchemaWarning";
 import { SessionFilePathLink } from "../../SessionFilePathLink";
 import {
@@ -29,6 +37,7 @@ import type {
   TextFile,
   ToolRenderer,
 } from "./types";
+import styles from "./ReadRenderer.module.css";
 
 /** Extended result type with server-rendered syntax highlighting */
 interface ReadResultWithAugment extends ReadResult {
@@ -446,6 +455,31 @@ function ImageFileResult({
   const { inlineMediaExpandedByDefault } = useInlineMedia();
   const [override, setOverride] = useState<boolean | null>(null);
   const expanded = override ?? inlineMediaExpandedByDefault;
+  const [modalOpen, setModalOpen] = useState(false);
+  const imageBlob = useMemo(() => {
+    const binary = atob(file.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new Blob([bytes], { type: file.type });
+  }, [file.base64, file.type]);
+  const loadBlob = useCallback(async () => imageBlob, [imageBlob]);
+  const mediaSource = useMemo<LocalMediaSource>(
+    () => ({
+      buildApiPath: () => "inline-read-image",
+      fetchBlob: loadBlob,
+    }),
+    [loadBlob],
+  );
+  const openViewer = useCallback(() => setModalOpen(true), []);
+  const fileName = filePath ? getFileName(filePath) : "image";
+  const imageActions = useImageResourceActions({
+    fileName,
+    filePath,
+    loadBlob,
+    onOpen: openViewer,
+  });
 
   return (
     <div className="read-image-result">
@@ -483,14 +517,32 @@ function ImageFileResult({
         </div>
       )}
       {expanded && (
-        <img
-          className="read-image"
-          src={`data:${file.type};base64,${file.base64}`}
-          alt="File content"
-          width={dimensions?.displayWidth}
-          height={dimensions?.displayHeight}
-        />
+        <button
+          type="button"
+          className={styles.imagePreviewButton}
+          aria-label={`Open ${fileName}`}
+          onClick={openViewer}
+          onContextMenu={imageActions.handleContextMenu}
+        >
+          <img
+            className="read-image"
+            src={`data:${file.type};base64,${file.base64}`}
+            alt="File content"
+            width={dimensions?.displayWidth}
+            height={dimensions?.displayHeight}
+          />
+        </button>
       )}
+      {modalOpen ? (
+        <LocalMediaModal
+          path={fileName}
+          filePath={filePath ?? null}
+          mediaType="image"
+          mediaSource={mediaSource}
+          onClose={() => setModalOpen(false)}
+        />
+      ) : null}
+      {imageActions.contextMenuElement}
     </div>
   );
 }

@@ -402,6 +402,49 @@ describe("TextBlock", () => {
     ).toBeTruthy();
   });
 
+  it("opens hydrated image pixels and exposes their image actions", async () => {
+    setInlineMediaExpandedPreference(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Blob(["png"], { type: "image/png" }))),
+    );
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:preview"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(
+      <I18nProvider>
+        <TextBlock
+          text="![trajectory](/tmp/trajectory.png)"
+          augmentHtml={
+            '<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true" aria-label="Collapse image" aria-expanded="true">-</button><a href="/api/local-image?path=%2Ftmp%2Ftrajectory.png" class="local-media-link" data-ya-resource="local-media" data-ya-path="/tmp/trajectory.png" data-ya-media-type="image" data-media-type="image">trajectory<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true"></span>'
+          }
+        />
+      </I18nProvider>,
+    );
+
+    const preview = await screen.findByRole("button", {
+      name: "Open trajectory.png",
+    });
+    fireEvent.contextMenu(preview);
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Open", "Download", "Copy›"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["‹Back", "Image", "Absolute file path"]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(screen.getByRole("dialog").textContent).toContain("trajectory.png");
+    expect(
+      await screen.findByRole("img", { name: "trajectory.png" }),
+    ).toBeTruthy();
+  });
+
   it("opens direct local-file links in a modal", async () => {
     const fetchMock = vi.fn(
       async () =>

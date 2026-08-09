@@ -1,5 +1,6 @@
 import {
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
   useCallback,
@@ -84,6 +85,7 @@ export function ImageViewer({
   initialNavigationChrome = "all",
   keyboardNavigationSequence = 0,
   navigation,
+  onContextMenu,
   onNavigationInput,
   onClose,
   url,
@@ -93,6 +95,7 @@ export function ImageViewer({
   initialNavigationChrome?: "all" | "position";
   keyboardNavigationSequence?: number;
   navigation?: ImageViewerNavigation;
+  onContextMenu?: (event: ReactMouseEvent<Element>) => void;
   onNavigationInput?: (input: ImageViewerNavigationInput) => void;
   onClose: () => void;
   url: string;
@@ -496,6 +499,7 @@ export function ImageViewer({
                 src={url}
                 alt={fileName}
                 draggable={false}
+                onContextMenu={onContextMenu}
                 style={imageStyle}
                 onLoad={(event) => {
                   setDimensions({

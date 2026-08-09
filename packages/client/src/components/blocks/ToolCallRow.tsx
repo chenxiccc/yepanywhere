@@ -35,7 +35,10 @@ import {
   isElementFullyScrollVisible,
 } from "../../lib/tooltipVisibility";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
-import { ToolResultMediaRows } from "./ToolResultMediaRows";
+import {
+  getToolResultImageSourcePath,
+  ToolResultMediaRows,
+} from "./ToolResultMediaRows";
 import { toolRegistry } from "../renderers/tools";
 import { getOutputTailTooltip } from "../renderers/tools/outputPreview";
 import type { RenderContext } from "../renderers/types";
@@ -1022,6 +1025,11 @@ export const ToolCallRow = memo(function ToolCallRow({
       <ToolResultMediaRows
         displayName={toolRegistry.getDisplayName(toolName, status, toolInput)}
         media={toolResult.media}
+        sourcePath={getToolResultImageSourcePath(
+          toolName,
+          toolInput,
+          toolResult.media.length,
+        )}
         status={status}
       />
     );

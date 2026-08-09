@@ -3,7 +3,13 @@ import type {
   ToolResultMedia,
   ToolResultMediaRejectionReason,
 } from "@yep-anywhere/shared";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useRememberedDisclosureState } from "../../contexts/RememberedDisclosureStateContext";
 import { useSessionMetadata } from "../../contexts/SessionMetadataContext";
 import { useCurrentSourceRuntime } from "../../contexts/SourceRuntimeContext";
@@ -11,12 +17,14 @@ import { useInlineMedia } from "../../hooks/useInlineMedia";
 import { useI18n, type MessageKey } from "../../i18n";
 import { toSourceTransportApiPath } from "../../lib/sourceTransportPaths";
 import type { ToolCallItem } from "../../types/renderItems";
+import { useImageResourceActions } from "../ImageResourceActions";
 import { LocalMediaModal, type LocalMediaSource } from "../LocalMediaModal";
 import styles from "./ToolResultMediaRows.module.css";
 
 interface ToolResultMediaRowsProps {
   displayName: string;
   media: ToolResultMedia[];
+  sourcePath?: string;
   status: ToolCallItem["status"];
 }
 
@@ -42,6 +50,7 @@ const REJECTION_KEYS: Record<ToolResultMediaRejectionReason, MessageKey> = {
 export function ToolResultMediaRows({
   displayName,
   media,
+  sourcePath,
   status,
 }: ToolResultMediaRowsProps) {
   return (
@@ -52,6 +61,7 @@ export function ToolResultMediaRows({
           displayName={displayName}
           index={index}
           media={item}
+          sourcePath={sourcePath}
         />
       ))}
     </div>
@@ -62,10 +72,12 @@ function ToolResultMediaRow({
   displayName,
   index,
   media,
+  sourcePath,
 }: {
   displayName: string;
   index: number;
   media: ToolResultMedia;
+  sourcePath?: string;
 }) {
   const { inlineMediaExpandedByDefault } = useInlineMedia();
   const { t } = useI18n();
@@ -96,6 +108,7 @@ function ToolResultMediaRow({
       filename={filename}
       initialExpanded={inlineMediaExpandedByDefault}
       media={media}
+      sourcePath={sourcePath}
     />
   );
 }
@@ -105,11 +118,13 @@ function StoredToolResultMediaRow({
   filename,
   initialExpanded,
   media,
+  sourcePath,
 }: {
   displayName: string;
   filename: string;
   initialExpanded: boolean;
   media: StoredToolResultMedia;
+  sourcePath?: string;
 }) {
   const { projectId, sessionId } = useSessionMetadata();
   const transport = useCurrentSourceRuntime().transport;
@@ -126,6 +141,17 @@ function StoredToolResultMediaRow({
     () => ({ buildApiPath: () => apiPath }),
     [apiPath],
   );
+  const loadBlob = useCallback(
+    () => transport.fetchBlob(toSourceTransportApiPath(apiPath)),
+    [apiPath, transport],
+  );
+  const openViewer = useCallback(() => setModalOpen(true), []);
+  const imageActions = useImageResourceActions({
+    fileName: filename,
+    filePath: sourcePath,
+    loadBlob,
+    onOpen: openViewer,
+  });
 
   useEffect(() => {
     if (!expanded) {
@@ -136,8 +162,7 @@ function StoredToolResultMediaRow({
     let cancelled = false;
     let objectUrl: string | null = null;
     setPreview({ state: "loading" });
-    void transport
-      .fetchBlob(toSourceTransportApiPath(apiPath))
+    void loadBlob()
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
         if (cancelled) {
@@ -154,7 +179,7 @@ function StoredToolResultMediaRow({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [apiPath, expanded, transport]);
+  }, [expanded, loadBlob]);
 
   const dimensions =
     media.width && media.height ? `${media.width}×${media.height}` : null;
@@ -188,7 +213,8 @@ function StoredToolResultMediaRow({
         <button
           type="button"
           className={styles.filename}
-          onClick={() => setModalOpen(true)}
+          onClick={openViewer}
+          onContextMenu={imageActions.handleContextMenu}
         >
           {filename}
         </button>
@@ -212,7 +238,8 @@ function StoredToolResultMediaRow({
             <button
               type="button"
               className={styles.imageButton}
-              onClick={() => setModalOpen(true)}
+              onClick={openViewer}
+              onContextMenu={imageActions.handleContextMenu}
               aria-label={t("toolResultMediaOpen", { filename })}
             >
               <img
@@ -229,11 +256,38 @@ function StoredToolResultMediaRow({
       {modalOpen && (
         <LocalMediaModal
           path={filename}
+          filePath={sourcePath ?? null}
           mediaType="image"
           mediaSource={mediaSource}
           onClose={() => setModalOpen(false)}
         />
       )}
+      {imageActions.contextMenuElement}
     </div>
   );
+}
+
+export function getToolResultImageSourcePath(
+  toolName: string,
+  toolInput: unknown,
+  mediaCount: number,
+): string | undefined {
+  if (mediaCount !== 1 || !toolInput || typeof toolInput !== "object") {
+    return undefined;
+  }
+  const normalizedToolName = toolName.toLowerCase().replaceAll("_", "");
+  if (
+    normalizedToolName !== "viewimage" &&
+    normalizedToolName !== "imageview" &&
+    normalizedToolName !== "read"
+  ) {
+    return undefined;
+  }
+
+  const input = toolInput as Record<string, unknown>;
+  const paths = [input.path, input.file_path, input.filePath]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return new Set(paths).size === 1 ? paths[0] : undefined;
 }

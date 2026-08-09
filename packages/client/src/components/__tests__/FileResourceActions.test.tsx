@@ -7,7 +7,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { FilePathContextMenu } from "../FileResourceActions";
+import {
+  FilePathContextMenu,
+  ResourceContextMenu,
+} from "../FileResourceActions";
 
 /** Global class names forbidden by this component's CSS Module ownership. */
 const REMOVED_LEGACY_CLASSES = [
@@ -84,6 +87,39 @@ describe("FilePathContextMenu", () => {
       "Viewer link",
       "Contents",
     ]);
+  });
+
+  it("adds capability-shaped image actions without file-only entries", () => {
+    const onCopyImage = vi.fn();
+    const onDownload = vi.fn();
+    render(
+      <I18nProvider>
+        <ResourceContextMenu
+          x={10}
+          y={10}
+          canStartNewSession={false}
+          dismissLabel="Dismiss image actions"
+          onClose={vi.fn()}
+          onCopyImage={onCopyImage}
+          onDownload={onDownload}
+          onOpen={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Open", "Download", "Copy›"]);
+    expect(
+      screen.getByRole("button", { name: "Dismiss image actions" }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["‹Back", "Image"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Image" }));
+    expect(onCopyImage).toHaveBeenCalledTimes(1);
   });
 
   it("opens adjacent submenus on hover-capable pointers", () => {

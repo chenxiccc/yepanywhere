@@ -111,7 +111,21 @@ describe("ViewImageRenderer", () => {
 
     expect(fetchBlob).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /plot\.png/i }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: /plot\.png/i }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Open", "Download", "Copy›"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual([
+      "‹Back",
+      "Image",
+      "Project-relative path",
+      "Absolute file path",
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
 
     await waitFor(() => {
       expect(fetchBlob).toHaveBeenCalledWith(

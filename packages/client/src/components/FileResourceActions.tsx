@@ -22,16 +22,19 @@ export function supportsSourceAndPreview(
   );
 }
 
-interface FilePathContextMenuProps {
+export interface ResourceContextMenuProps {
   x: number;
   y: number;
   canStartNewSession?: boolean;
+  dismissLabel?: string;
   onClose: () => void;
   onCopyAbsolutePath?: () => void;
   onCopyContents?: () => void;
   onCopyFilePath?: () => void;
+  onCopyImage?: () => void;
   onCopyProjectRelativePath?: () => void;
   onCopyViewerLink?: () => void;
+  onDownload?: () => void;
   onOpen: () => void;
   onOpenPreview?: () => void;
   onOpenSource?: () => void;
@@ -115,21 +118,24 @@ function BackLabel({ children }: { children: ReactNode }) {
   );
 }
 
-export function FilePathContextMenu({
+export function ResourceContextMenu({
   x,
   y,
   canStartNewSession = true,
+  dismissLabel,
   onClose,
   onCopyAbsolutePath,
   onCopyContents,
   onCopyFilePath,
+  onCopyImage,
   onCopyProjectRelativePath,
   onCopyViewerLink,
+  onDownload,
   onOpen,
   onOpenPreview,
   onOpenSource,
   onStartNewSession,
-}: FilePathContextMenuProps) {
+}: ResourceContextMenuProps) {
   const { t } = useI18n();
   const [panel, setPanel] = useState<"copy" | "open" | "root">("root");
   const hasPresentationChoice = Boolean(onOpenSource && onOpenPreview);
@@ -137,6 +143,7 @@ export function FilePathContextMenu({
     onCopyProjectRelativePath ||
       onCopyAbsolutePath ||
       onCopyFilePath ||
+      onCopyImage ||
       onCopyViewerLink ||
       onCopyContents,
   );
@@ -155,11 +162,12 @@ export function FilePathContextMenu({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         onClose();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [onClose]);
 
   const select = (action: () => void) => {
@@ -168,8 +176,13 @@ export function FilePathContextMenu({
   };
 
   const rootMenuLeft = Math.max(8, Math.min(x, window.innerWidth - 230));
-  const rootMenuTop = Math.max(8, Math.min(y, window.innerHeight - 180));
-  const estimatedSubmenuHeight = panel === "copy" ? 280 : 180;
+  const rootMenuHeight = onDownload ? 220 : 180;
+  const rootMenuTop = Math.max(
+    8,
+    Math.min(y, window.innerHeight - rootMenuHeight),
+  );
+  const estimatedSubmenuHeight =
+    panel === "copy" ? 280 + (onCopyImage ? 44 : 0) : 180;
   const submenuTop = usesHoverFlyout
     ? Math.max(
         8,
@@ -189,7 +202,7 @@ export function FilePathContextMenu({
       <button
         type="button"
         className={styles.overlay}
-        aria-label={t("fileLinkDismissMenu" as never)}
+        aria-label={dismissLabel ?? t("fileLinkDismissMenu" as never)}
         onClick={onClose}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -220,6 +233,14 @@ export function FilePathContextMenu({
               t("fileLinkMenuOpen" as never)
             )}
           </FilePathContextMenuItem>
+          {onDownload ? (
+            <FilePathContextMenuItem
+              onHover={usesHoverFlyout ? () => setPanel("root") : undefined}
+              onSelect={() => select(onDownload)}
+            >
+              {t("resourceMenuDownload" as never)}
+            </FilePathContextMenuItem>
+          ) : null}
           {canStartNewSession && onStartNewSession ? (
             <FilePathContextMenuItem
               onHover={usesHoverFlyout ? () => setPanel("root") : undefined}
@@ -276,6 +297,11 @@ export function FilePathContextMenu({
           ) : null}
           {panel === "copy" ? (
             <>
+              {onCopyImage ? (
+                <FilePathContextMenuItem onSelect={() => select(onCopyImage)}>
+                  {t("imageResourceMenuImage" as never)}
+                </FilePathContextMenuItem>
+              ) : null}
               {onCopyProjectRelativePath ? (
                 <FilePathContextMenuItem
                   onSelect={() => select(onCopyProjectRelativePath)}
@@ -319,3 +345,6 @@ export function FilePathContextMenu({
     document.body,
   );
 }
+
+/** File-oriented compatibility name for existing call sites. */
+export const FilePathContextMenu = ResourceContextMenu;
