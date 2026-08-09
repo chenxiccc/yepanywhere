@@ -39,9 +39,9 @@ concurrency:
 
 jobs:
   verify-android-app:
-    name: Build, inspect, and instrument
+    name: Build, lint, and inspect
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -96,6 +96,59 @@ jobs:
       - name: Inspect APK contracts
         run: pnpm --filter @yep-anywhere/android inspect:apks
 
+      - name: Upload Android build artifacts and reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-app-build-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: |
+            packages/android/app/build/outputs/apk/**/*.apk
+            packages/android/app/build/reports/**
+            packages/android/app/build/test-results/**
+
+  instrument-android-app:
+    name: WebView instrumentation
+    needs: verify-android-app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20.12'
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            packages/android/*.gradle.kts
+            packages/android/gradle.properties
+            packages/android/gradle/wrapper/gradle-wrapper.properties
+            packages/android/app/*.gradle.kts
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Android SDK packages
+        run: >-
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Prepare bundled client assets
+        run: pnpm --filter @yep-anywhere/android prepare-frontend
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
@@ -118,14 +171,12 @@ jobs:
             cd packages/android && ./gradlew connectedBundledDebugAndroidTest
             --warning-mode all --no-daemon
 
-      - name: Upload Android artifacts and reports
+      - name: Upload Android instrumentation reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: android-app-${{ github.run_attempt }}
+          name: android-app-instrumentation-${{ github.run_attempt }}
           if-no-files-found: ignore
           path: |
-            packages/android/app/build/outputs/apk/**/*.apk
             packages/android/app/build/reports/**
             packages/android/app/build/outputs/androidTest-results/**
-            packages/android/app/build/test-results/**

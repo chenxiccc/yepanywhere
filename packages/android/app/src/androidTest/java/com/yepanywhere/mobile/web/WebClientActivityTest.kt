@@ -1,5 +1,6 @@
 package com.yepanywhere.mobile.web
 
+import android.Manifest
 import android.app.Activity
 import android.app.Instrumentation.ActivityResult
 import android.content.Intent
@@ -110,6 +111,11 @@ class WebClientActivityTest {
 
     @Test
     fun recentUserActionCanResolveNotificationPermission() {
+        val permissionDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            resetNotificationPermission()
+        } else {
+            null
+        }
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
             scenario.onActivity { activity -> activity.onUserInteraction() }
@@ -120,17 +126,19 @@ class WebClientActivityTest {
             )
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val device = UiDevice.getInstance(
-                    InstrumentationRegistry.getInstrumentation(),
+                val device = checkNotNull(permissionDevice)
+                val allowButtonSelector = By.res(
+                    "com.android.permissioncontroller:id/permission_allow_button",
                 )
-                device.wait(
-                    Until.findObject(
-                        By.res(
-                            "com.android.permissioncontroller:id/permission_allow_button",
-                        ),
-                    ),
-                    5_000,
-                )?.click()
+                val allowButton = device.wait(
+                    Until.findObject(allowButtonSelector),
+                    10_000,
+                ) ?: throw AssertionError("Notification permission dialog did not appear")
+                allowButton.click()
+                assertTrue(
+                    "Notification permission dialog did not close after Allow",
+                    device.wait(Until.gone(allowButtonSelector), 5_000),
+                )
                 awaitJavaScript(
                     scenario,
                     """
@@ -190,18 +198,21 @@ class WebClientActivityTest {
             evaluateJavaScript(
                 scenario,
                 """
+                window.__yaNativeFrameReady = "pending";
                 const frame = document.createElement("iframe");
                 frame.id = "ya-native-test-frame";
+                frame.srcdoc = "<!doctype html><html><body>frame</body></html>";
+                frame.addEventListener("load", () => {
+                  window.__yaNativeFrameReady =
+                    frame.contentDocument?.readyState ?? "missing";
+                }, { once: true });
                 document.body.appendChild(frame);
                 true;
                 """.trimIndent(),
             )
             awaitJavaScript(
                 scenario,
-                """
-                document.getElementById("ya-native-test-frame")
-                  ?.contentDocument?.readyState ?? "missing"
-                """.trimIndent(),
+                "window.__yaNativeFrameReady",
                 "\"complete\"",
             )
             evaluateJavaScript(
@@ -282,32 +293,22 @@ class WebClientActivityTest {
     fun backNavigatesWebHistoryBeforeFinishingTheActivity() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
-            scenario.onActivity { activity ->
-                activity.findViewById<WebView>(R.id.web_client).apply {
-                    webViewClient = WebViewClient()
-                    loadDataWithBaseURL(
-                        "https://appassets.androidplatform.net/history-first/",
-                        "<html><body>history-first</body></html>",
-                        "text/html",
-                        Charsets.UTF_8.name(),
-                        "https://appassets.androidplatform.net/history-first",
-                    )
-                }
-            }
+            val firstUrl = "https://appassets.androidplatform.net/history-first/"
+            loadHtmlAndAwaitPage(
+                scenario,
+                firstUrl,
+                "<html><body>history-first</body></html>",
+            )
             awaitJavaScript(
                 scenario,
                 "document.body.textContent",
                 "\"history-first\"",
             )
-            scenario.onActivity { activity ->
-                activity.findViewById<WebView>(R.id.web_client).loadDataWithBaseURL(
-                    "https://appassets.androidplatform.net/history-second/",
-                    "<html><body>history-second</body></html>",
-                    "text/html",
-                    Charsets.UTF_8.name(),
-                    "https://appassets.androidplatform.net/history-second",
-                )
-            }
+            loadHtmlAndAwaitPage(
+                scenario,
+                "https://appassets.androidplatform.net/history-second/",
+                "<html><body>history-second</body></html>",
+            )
             awaitJavaScript(
                 scenario,
                 "document.body.textContent",
@@ -320,7 +321,7 @@ class WebClientActivityTest {
                 view.canGoBack()
             }
 
-            scenario.onActivity { activity ->
+            runAndAwaitPage(scenario, firstUrl) { activity ->
                 activity.onBackPressedDispatcher.onBackPressed()
             }
 
@@ -429,6 +430,55 @@ class WebClientActivityTest {
 
     private fun jsonString(value: String): String {
         return org.json.JSONObject.quote(value)
+    }
+
+    private fun resetNotificationPermission(): UiDevice {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
+        val packageName = instrumentation.targetContext.packageName
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        device.executeShellCommand("pm revoke $packageName $permission")
+        device.executeShellCommand(
+            "pm clear-permission-flags $packageName $permission user-set user-fixed",
+        )
+        return device
+    }
+
+    private fun loadHtmlAndAwaitPage(
+        scenario: ActivityScenario<WebClientActivity>,
+        pageUrl: String,
+        html: String,
+    ) {
+        runAndAwaitPage(scenario, pageUrl) { activity ->
+            activity.findViewById<WebView>(R.id.web_client).loadDataWithBaseURL(
+                pageUrl,
+                html,
+                "text/html",
+                Charsets.UTF_8.name(),
+                pageUrl,
+            )
+        }
+    }
+
+    private fun runAndAwaitPage(
+        scenario: ActivityScenario<WebClientActivity>,
+        expectedUrl: String,
+        action: (WebClientActivity) -> Unit,
+    ) {
+        val completed = CountDownLatch(1)
+        scenario.onActivity { activity ->
+            activity.findViewById<WebView>(R.id.web_client).webViewClient =
+                object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String) {
+                        if (url == expectedUrl) completed.countDown()
+                    }
+                }
+            action(activity)
+        }
+        assertTrue(
+            "WebView did not finish loading $expectedUrl",
+            completed.await(10, TimeUnit.SECONDS),
+        )
     }
 
     private fun awaitOrientation(
