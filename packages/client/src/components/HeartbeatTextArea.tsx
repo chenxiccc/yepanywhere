@@ -40,7 +40,7 @@ export function HeartbeatTextArea({
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, []);
 
-  useLayoutEffect(resize, [resize, value]);
+  useLayoutEffect(resize);
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     onChange(
