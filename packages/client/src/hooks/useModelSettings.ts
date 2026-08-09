@@ -25,6 +25,7 @@ import {
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
 import {
+  cleanSpeechSmartTurnSettings,
   DEFAULT_GROK_SPEECH_AUDIO_SETTINGS,
   DEFAULT_SPEECH_SMART_TURN_SETTINGS,
   type GrokSpeechAudioSettings,
@@ -49,8 +50,6 @@ export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
 ];
 
 export { EFFORT_LEVEL_OPTIONS };
-
-const MAX_SPEECH_SMART_TURN_TIMEOUT_MS = 10000;
 
 /**
  * Opus and Sonnet are both always 1M now (the picker no longer offers a
@@ -192,38 +191,12 @@ function saveSpeechMethod(method: SpeechMethodId) {
   localStorage.setItem(BROWSER_LOCAL_KEYS.speechMethod, method);
 }
 
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function cleanSpeechSmartTurnSettings(
-  settings: Partial<SpeechSmartTurnSettings>,
-): SpeechSmartTurnSettings {
-  return {
-    enabled: settings.enabled === true,
-    threshold:
-      typeof settings.threshold === "number" &&
-      Number.isFinite(settings.threshold)
-        ? clampNumber(settings.threshold, 0, 1)
-        : DEFAULT_SPEECH_SMART_TURN_SETTINGS.threshold,
-    timeoutMs:
-      typeof settings.timeoutMs === "number" &&
-      Number.isFinite(settings.timeoutMs)
-        ? Math.round(
-            clampNumber(
-              settings.timeoutMs,
-              0,
-              MAX_SPEECH_SMART_TURN_TIMEOUT_MS,
-            ),
-          )
-        : DEFAULT_SPEECH_SMART_TURN_SETTINGS.timeoutMs,
-  };
-}
-
 function loadSpeechSmartTurnSettings(): SpeechSmartTurnSettings {
-  return resolveDefaultedValue(
-    loadSpeechSmartTurnSettingsSetting(),
-    getBuiltInSpeechClientDefaults().speechSmartTurnSettings,
+  return cleanSpeechSmartTurnSettings(
+    resolveDefaultedValue(
+      loadSpeechSmartTurnSettingsSetting(),
+      getBuiltInSpeechClientDefaults().speechSmartTurnSettings,
+    ),
   );
 }
 
@@ -373,9 +346,11 @@ export function useModelSettings() {
   );
   const [speechSmartTurnSettings, setSpeechSmartTurnSettingsState] =
     useState<SpeechSmartTurnSettings>(() =>
-      resolveDefaultedValue(
-        loadSpeechSmartTurnSettingsSetting(),
-        speechDefaults.speechSmartTurnSettings,
+      cleanSpeechSmartTurnSettings(
+        resolveDefaultedValue(
+          loadSpeechSmartTurnSettingsSetting(),
+          speechDefaults.speechSmartTurnSettings,
+        ),
       ),
     );
   const [grokSpeechAudioSettings, setGrokSpeechAudioSettingsState] =
@@ -398,7 +373,9 @@ export function useModelSettings() {
       setHasStoredSpeechMethod(hasServerSpeechMethodDefault);
     }
     if (isClientStorageDefault(loadSpeechSmartTurnSettingsSetting())) {
-      setSpeechSmartTurnSettingsState(speechDefaults.speechSmartTurnSettings);
+      setSpeechSmartTurnSettingsState(
+        cleanSpeechSmartTurnSettings(speechDefaults.speechSmartTurnSettings),
+      );
     }
     if (isClientStorageDefault(loadGrokSpeechAudioSettingsSetting())) {
       setGrokSpeechAudioSettingsState(speechDefaults.grokSpeechAudioSettings);

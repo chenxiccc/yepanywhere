@@ -11,8 +11,8 @@ import {
   useState,
 } from "react";
 import type { FilterOption } from "./FilterDropdown";
+import { SpeechMessagePrefixControls } from "./SpeechMessagePrefixControls";
 import { SpeechSmartTurnControls } from "./SpeechSmartTurnControls";
-import { SpeechTimingControls } from "./SpeechTimingControls";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
@@ -393,12 +393,9 @@ export function SpeechControlMenu({
           )}
           <section className="speech-options-section">
             <div className="speech-options-section-title">
-              {t("speechSettingsTimingTitle")}
+              {t("speechSettingsMessagePrefixTitle")}
             </div>
-            <SpeechTimingControls
-              showFollowUp={showSmartTurnControls}
-              disabled={smartTurnDisabled}
-            />
+            <SpeechMessagePrefixControls disabled={smartTurnDisabled} />
           </section>
           {showParakeetModelControls && (
             <section className="speech-options-section">

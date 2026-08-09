@@ -193,7 +193,12 @@ describe("VoiceInputButton", () => {
         ref={ref}
         onTranscript={onTranscript}
         speechMethod="ya-grok"
-        smartTurn={{ enabled: true, threshold: 0.95, timeoutMs: 3_000 }}
+        smartTurn={{
+          enabled: true,
+          threshold: 0.95,
+          timeoutMs: 3_000,
+          graceMs: 0,
+        }}
       />,
     );
 
@@ -224,7 +229,12 @@ describe("VoiceInputButton", () => {
       ref,
       onTranscript: vi.fn(() => "committed" as const),
       speechMethod: "ya-grok" as const,
-      smartTurn: { enabled: true, threshold: 0.95, timeoutMs: 3_000 },
+      smartTurn: {
+        enabled: true,
+        threshold: 0.95,
+        timeoutMs: 3_000,
+        graceMs: 0,
+      },
     };
 
     const view = render(<VoiceInputButton {...props} />);

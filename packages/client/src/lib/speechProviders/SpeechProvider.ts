@@ -48,13 +48,66 @@ export interface SpeechSmartTurnSettings {
   enabled: boolean;
   threshold: number;
   timeoutMs: number;
+  /**
+   * After an automatic end-of-turn send decision (no spoken command), keep
+   * capture alive this long; new speech abandons the pending auto-send and
+   * continues the turn. 0 stops and sends immediately. Client-side only —
+   * never sent to the STT backend.
+   */
+  graceMs: number;
 }
+
+export const MAX_SPEECH_SMART_TURN_GRACE_MS = 1500;
+export const MAX_SPEECH_SMART_TURN_TIMEOUT_MS = 10000;
 
 export const DEFAULT_SPEECH_SMART_TURN_SETTINGS: SpeechSmartTurnSettings = {
   enabled: false,
   threshold: 0.95,
   timeoutMs: 3000,
+  graceMs: 0,
 };
+
+function clampSmartTurnNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+  round: boolean,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  const clamped = Math.min(max, Math.max(min, value));
+  return round ? Math.round(clamped) : clamped;
+}
+
+/** Normalize possibly partial/stored Smart Turn settings to valid values. */
+export function cleanSpeechSmartTurnSettings(
+  settings: Partial<SpeechSmartTurnSettings>,
+): SpeechSmartTurnSettings {
+  return {
+    enabled: settings.enabled === true,
+    threshold: clampSmartTurnNumber(
+      settings.threshold,
+      0,
+      1,
+      DEFAULT_SPEECH_SMART_TURN_SETTINGS.threshold,
+      false,
+    ),
+    timeoutMs: clampSmartTurnNumber(
+      settings.timeoutMs,
+      0,
+      MAX_SPEECH_SMART_TURN_TIMEOUT_MS,
+      DEFAULT_SPEECH_SMART_TURN_SETTINGS.timeoutMs,
+      true,
+    ),
+    graceMs: clampSmartTurnNumber(
+      settings.graceMs,
+      0,
+      MAX_SPEECH_SMART_TURN_GRACE_MS,
+      DEFAULT_SPEECH_SMART_TURN_SETTINGS.graceMs,
+      true,
+    ),
+  };
+}
 
 export type GrokSpeechAudioUplinkMode = "pcm16" | "browser-compressed";
 

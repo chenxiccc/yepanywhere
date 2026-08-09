@@ -116,6 +116,7 @@ const EFFORT_LEVELS = [
   "max",
 ] as const satisfies readonly EffortLevel[];
 const MAX_SPEECH_SMART_TURN_TIMEOUT_MS = 10000;
+const MAX_SPEECH_SMART_TURN_GRACE_MS = 1500;
 
 export function parseHostAliasList(rawHosts: unknown[]): {
   hosts: string[];
@@ -653,11 +654,25 @@ function parseSpeechSmartTurnClientDefault(
   ) {
     return null;
   }
-  return {
+  const parsed: SpeechSmartTurnClientDefault = {
     enabled: raw.enabled,
     threshold: raw.threshold,
     timeoutMs: Math.round(raw.timeoutMs),
   };
+  // Optional so pre-grace clients' payloads still parse; absent means the
+  // client-side default (0).
+  if (raw.graceMs !== undefined) {
+    if (
+      typeof raw.graceMs !== "number" ||
+      !Number.isFinite(raw.graceMs) ||
+      raw.graceMs < 0 ||
+      raw.graceMs > MAX_SPEECH_SMART_TURN_GRACE_MS
+    ) {
+      return null;
+    }
+    parsed.graceMs = Math.round(raw.graceMs);
+  }
+  return parsed;
 }
 
 function parseGrokSpeechAudioClientDefault(

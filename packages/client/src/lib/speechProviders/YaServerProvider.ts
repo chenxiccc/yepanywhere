@@ -507,6 +507,7 @@ export class YaServerProvider implements SpeechProvider {
   private streamingStopRequested = false;
   private pendingStreamingFinalPartials: PendingStreamingFinalPartial[] = [];
   private pendingSmartTurnCommand: PendingSmartTurnCommand | null = null;
+  private smartTurnGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private audioFlowWatchdog: ReturnType<typeof setTimeout> | null = null;
   private audioProcessorActive = false;
   private startToken = 0;
@@ -975,6 +976,10 @@ export class YaServerProvider implements SpeechProvider {
         (this.state.status === "receiving" ||
           this.state.status === "finalizing")
       ) {
+        // A close during the command grace window ends the turn as a plain
+        // salvage, never as the held automatic send.
+        this.clearSmartTurnGrace();
+        this.pendingSmartTurnCommand = null;
         const message = "Speech streaming connection closed before final text";
         const salvaged = this.commitStreamingTranscript(
           this.getUncommittedStreamingPreviewText(
@@ -1049,6 +1054,13 @@ export class YaServerProvider implements SpeechProvider {
       const transcript = message.text ?? "";
       const finalPartial =
         message.isFinal === true || message.speechFinal === true;
+      if (this.smartTurnGraceTimer !== null && transcript.trim()) {
+        // Speech resumed inside the command grace window: abandon the pending
+        // automatic send and let the turn continue. A late spoken command
+        // needs no special handling here — the next endpoint re-decides.
+        this.clearSmartTurnGrace();
+        this.pendingSmartTurnCommand = null;
+      }
       if (this.streamingStopRequested && !finalPartial) return;
       const span = getStreamingMessageSpan(message);
       const groupStart = getStreamingMessageGroupStart(message);
@@ -1270,6 +1282,20 @@ export class YaServerProvider implements SpeechProvider {
           : words,
     });
 
+    const graceMs = decision.recognizedCommand
+      ? 0
+      : Math.max(0, this.options.smartTurn?.graceMs ?? 0);
+    if (graceMs > 0) {
+      // Automatic endpoint send (no spoken command): hold the stop while
+      // capture stays live, so resumed speech — including a late spoken
+      // command — can reclaim the turn instead of racing the submit.
+      this.armSmartTurnGrace(graceMs);
+      return;
+    }
+    this.finishSmartTurnStop();
+  }
+
+  private finishSmartTurnStop(): void {
     this.streamingStopRequested = true;
     this.cleanupStreamingMedia();
     this.setState({ status: "finalizing", isListening: false, error: null });
@@ -1278,6 +1304,23 @@ export class YaServerProvider implements SpeechProvider {
     } else {
       this.ws?.close();
       this.ws = null;
+    }
+  }
+
+  private armSmartTurnGrace(graceMs: number): void {
+    this.clearSmartTurnGrace();
+    const token = this.startToken;
+    this.smartTurnGraceTimer = setTimeout(() => {
+      this.smartTurnGraceTimer = null;
+      if (this.disposed || token !== this.startToken) return;
+      this.finishSmartTurnStop();
+    }, graceMs);
+  }
+
+  private clearSmartTurnGrace(): void {
+    if (this.smartTurnGraceTimer !== null) {
+      clearTimeout(this.smartTurnGraceTimer);
+      this.smartTurnGraceTimer = null;
     }
   }
 
@@ -1770,6 +1813,7 @@ export class YaServerProvider implements SpeechProvider {
   private cleanupStreamingMedia(): void {
     this.stopWaveformMonitor?.();
     this.stopWaveformMonitor = null;
+    this.clearSmartTurnGrace();
     this.clearAudioFlowWatchdog();
     this.processor?.disconnect();
     this.audioSource?.disconnect();

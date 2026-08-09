@@ -36,7 +36,9 @@ utterance Smart Turn.
 
 `send`, `cancel`, and `wait` are control words when the selected backend emits
 the required command metadata. A Smart Turn endpoint may send automatically;
-manual non-whitespace editing holds only that automatic endpoint send. Optional
+manual non-whitespace editing holds only that automatic endpoint send, and an
+optional command grace window (see *Command grace window* below) briefly keeps
+capture live after the endpoint so resumed speech reclaims the turn. Optional
 follow-up listening can start another streaming transaction after a speech-
 triggered delivery.
 
@@ -222,6 +224,26 @@ preview and must not advance the committed audio cursor; xAI can emit empty
 When Smart Turn triggers an automatic send from an endpoint event, the provider
 may still deliver additional final text in its done event. YA must commit that
 uncommitted tail before applying the send command metadata.
+
+**Command grace window.** A browser-local Smart Turn setting (`graceMs`,
+0–1500 ms, default 0/off, the "Command grace" slider) delays only the
+*automatic* endpoint send: after an endpoint with no recognized spoken
+command, the provider commits the transcript but keeps capture and the
+recognizer stream live for the window instead of stopping. Any non-empty
+recognizer text arriving inside the window abandons the pending automatic
+send and the turn simply continues — a late spoken `send`/`cancel`/`wait`
+therefore needs no separate matching; it is recognized by the ordinary
+command decision at the next endpoint, whose grace re-arms. If the window
+expires silent, the deferred stop/submit proceeds exactly as the immediate
+path. A recognized spoken command, manual stop, manual delivery, cancel, or
+a connection failure is never held: spoken commands act immediately, and
+during the window the provider state is indistinguishable from active
+listening, so every manual action behaves as it does mid-capture (a manual
+stop or connection loss also clears the pending automatic send rather than
+submitting it). The setting is client-side only — it is not sent in the
+streaming start frame or to xAI. The cost is added latency on every Smart
+Turn auto-send while the window is enabled; the win is that premature
+endpoints and just-too-late commands stop racing the submit.
 
 An automatic Smart Turn endpoint send is held — committed to the draft but not
 submitted — once the user has manually edited the composer during the active

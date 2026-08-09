@@ -1835,7 +1835,7 @@ describe("YA server speech provider", () => {
 
     const provider = new YaServerProvider("ya-grok", "", {
       serverStreaming: true,
-      smartTurn: { enabled: true, threshold: 0.9, timeoutMs: 3000 },
+      smartTurn: { enabled: true, threshold: 0.9, timeoutMs: 3000, graceMs: 0 },
       onResult,
       onInterimResult,
     });
@@ -1885,6 +1885,285 @@ describe("YA server speech provider", () => {
       duration: 1,
     });
     expect(onResult).toHaveBeenLastCalledWith("next phrase", undefined);
+
+    provider.dispose();
+  });
+
+  it("holds the automatic Smart Turn send for the command grace window", async () => {
+    const fakeStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+    const onResult = vi.fn();
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => fakeStream) },
+    });
+
+    class FakeWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 3;
+      static readonly instances: FakeWebSocket[] = [];
+
+      binaryType: BinaryType = "blob";
+      readyState = FakeWebSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+
+      constructor(readonly url: string) {
+        FakeWebSocket.instances.push(this);
+      }
+
+      open() {
+        this.readyState = FakeWebSocket.OPEN;
+        this.onopen?.(new Event("open"));
+      }
+
+      receive(message: unknown) {
+        this.onmessage?.(
+          new MessageEvent("message", { data: JSON.stringify(message) }),
+        );
+      }
+
+      close() {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.onclose?.(new CloseEvent("close"));
+      }
+    }
+
+    class FakeAudioContext {
+      readonly state = "running";
+      readonly sampleRate = 48_000;
+      readonly destination = {};
+      close = vi.fn(async () => undefined);
+      createMediaStreamSource() {
+        return { connect: vi.fn(), disconnect: vi.fn() };
+      }
+      createScriptProcessor() {
+        const node = {
+          connect: vi.fn(() => {
+            queueMicrotask(() =>
+              node.onaudioprocess?.({
+                inputBuffer: { getChannelData: () => new Float32Array(4096) },
+              }),
+            );
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),
+        };
+        return node;
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+
+    const provider = new YaServerProvider("ya-grok", "", {
+      serverStreaming: true,
+      smartTurn: {
+        enabled: true,
+        threshold: 0.9,
+        timeoutMs: 3000,
+        graceMs: 40,
+      },
+      onResult,
+    });
+    provider.start();
+
+    await Promise.resolve();
+    const ws = FakeWebSocket.instances[0]!;
+    ws.open();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const stopFrameCount = () =>
+      ws.send.mock.calls
+        .map(([payload]) =>
+          typeof payload === "string" ? JSON.parse(payload) : payload,
+        )
+        .filter((message) => message?.type === "stop").length;
+
+    ws.receive({
+      type: "interim",
+      text: "hello world",
+      isFinal: true,
+      speechFinal: true,
+      start: 0,
+      duration: 1,
+    });
+
+    // The endpoint's automatic send is pending: transcript committed, but no
+    // stop yet and capture still live for the grace window.
+    expect(onResult).toHaveBeenLastCalledWith("hello world", undefined);
+    expect(stopFrameCount()).toBe(0);
+    expect(provider.getState().isListening).toBe(true);
+
+    await vi.waitFor(() => expect(stopFrameCount()).toBe(1));
+    expect(provider.getState().status).toBe("finalizing");
+
+    ws.receive({
+      type: "final",
+      text: "",
+      transcriptionId: "transcription-grace",
+    });
+    expect(onResult).toHaveBeenLastCalledWith("", {
+      transcriptionId: "transcription-grace",
+      smartTurnCommand: "send",
+      smartTurnAutoSend: true,
+    });
+
+    provider.dispose();
+  });
+
+  it("abandons the pending automatic send when speech resumes in grace", async () => {
+    const fakeStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+    const onResult = vi.fn();
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => fakeStream) },
+    });
+
+    class FakeWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 3;
+      static readonly instances: FakeWebSocket[] = [];
+
+      binaryType: BinaryType = "blob";
+      readyState = FakeWebSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+
+      constructor(readonly url: string) {
+        FakeWebSocket.instances.push(this);
+      }
+
+      open() {
+        this.readyState = FakeWebSocket.OPEN;
+        this.onopen?.(new Event("open"));
+      }
+
+      receive(message: unknown) {
+        this.onmessage?.(
+          new MessageEvent("message", { data: JSON.stringify(message) }),
+        );
+      }
+
+      close() {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.onclose?.(new CloseEvent("close"));
+      }
+    }
+
+    class FakeAudioContext {
+      readonly state = "running";
+      readonly sampleRate = 48_000;
+      readonly destination = {};
+      close = vi.fn(async () => undefined);
+      createMediaStreamSource() {
+        return { connect: vi.fn(), disconnect: vi.fn() };
+      }
+      createScriptProcessor() {
+        const node = {
+          connect: vi.fn(() => {
+            queueMicrotask(() =>
+              node.onaudioprocess?.({
+                inputBuffer: { getChannelData: () => new Float32Array(4096) },
+              }),
+            );
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),
+        };
+        return node;
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+
+    const provider = new YaServerProvider("ya-grok", "", {
+      serverStreaming: true,
+      smartTurn: {
+        enabled: true,
+        threshold: 0.9,
+        timeoutMs: 3000,
+        graceMs: 40,
+      },
+      onResult,
+    });
+    provider.start();
+
+    await Promise.resolve();
+    const ws = FakeWebSocket.instances[0]!;
+    ws.open();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const stopFrameCount = () =>
+      ws.send.mock.calls
+        .map(([payload]) =>
+          typeof payload === "string" ? JSON.parse(payload) : payload,
+        )
+        .filter((message) => message?.type === "stop").length;
+
+    ws.receive({
+      type: "interim",
+      text: "hello world",
+      isFinal: true,
+      speechFinal: true,
+      start: 0,
+      duration: 1,
+    });
+    expect(stopFrameCount()).toBe(0);
+
+    // Resumed speech before the grace deadline reclaims the turn.
+    ws.receive({
+      type: "interim",
+      text: "and more",
+      isFinal: false,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 90));
+    expect(stopFrameCount()).toBe(0);
+    expect(provider.getState().isListening).toBe(true);
+
+    // The continued turn ends at the next endpoint; grace re-arms and then
+    // performs the deferred stop.
+    ws.receive({
+      type: "interim",
+      text: "and more words",
+      isFinal: true,
+      speechFinal: true,
+      start: 1,
+      duration: 1,
+    });
+    expect(onResult).toHaveBeenLastCalledWith("and more words", undefined);
+    await vi.waitFor(() => expect(stopFrameCount()).toBe(1));
 
     provider.dispose();
   });
@@ -2103,7 +2382,7 @@ describe("YA server speech provider", () => {
 
     const provider = new YaServerProvider("ya-grok", "", {
       serverStreaming: true,
-      smartTurn: { enabled: true, threshold: 0.7, timeoutMs: 3000 },
+      smartTurn: { enabled: true, threshold: 0.7, timeoutMs: 3000, graceMs: 0 },
       onResult,
     });
     provider.start();
@@ -2114,6 +2393,7 @@ describe("YA server speech provider", () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    // graceMs is client-side only and must not appear in the start frame.
     expect(JSON.parse(ws.send.mock.calls[0]?.[0] as string)).toMatchObject({
       type: "start",
       backendId: "ya-grok",
@@ -2123,6 +2403,9 @@ describe("YA server speech provider", () => {
         timeoutMs: 3000,
       },
     });
+    expect(
+      JSON.parse(ws.send.mock.calls[0]?.[0] as string).smartTurn,
+    ).not.toHaveProperty("graceMs");
 
     ws.receive({
       type: "interim",
@@ -3553,7 +3836,7 @@ describe("direct xAI speech provider", () => {
     const onResult = vi.fn();
     const onEnd = vi.fn();
     const provider = new DirectXaiStreamingSpeechProvider({
-      smartTurn: { enabled: true, threshold: 0.5, timeoutMs: 1000 },
+      smartTurn: { enabled: true, threshold: 0.5, timeoutMs: 1000, graceMs: 0 },
       onResult,
       onEnd,
     });

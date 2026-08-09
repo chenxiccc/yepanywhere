@@ -1,43 +1,23 @@
 import { useId } from "react";
+import {
+  MAX_SPEECH_FOLLOW_UP_LISTEN_MS,
+  useSpeechCaptureSettings,
+} from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
 import {
-  DEFAULT_SPEECH_SMART_TURN_SETTINGS,
+  cleanSpeechSmartTurnSettings,
+  MAX_SPEECH_SMART_TURN_GRACE_MS,
+  MAX_SPEECH_SMART_TURN_TIMEOUT_MS,
   type SpeechSmartTurnSettings,
 } from "../lib/speechProviders/SpeechProvider";
-import { CommittedRangeInput } from "./ui/CommittedRangeInput";
+import { RangeNumberRow } from "./ui/RangeNumberRow";
 import styles from "./SpeechSmartTurnControls.module.css";
-
-const MAX_SMART_TURN_TIMEOUT_MS = 10000;
 
 interface SpeechSmartTurnControlsProps {
   settings: SpeechSmartTurnSettings;
   onChange: (settings: SpeechSmartTurnSettings) => void;
   compact?: boolean;
   disabled?: boolean;
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function cleanSettings(
-  settings: Partial<SpeechSmartTurnSettings>,
-): SpeechSmartTurnSettings {
-  return {
-    enabled: settings.enabled === true,
-    threshold:
-      typeof settings.threshold === "number" &&
-      Number.isFinite(settings.threshold)
-        ? clampNumber(settings.threshold, 0, 1)
-        : DEFAULT_SPEECH_SMART_TURN_SETTINGS.threshold,
-    timeoutMs:
-      typeof settings.timeoutMs === "number" &&
-      Number.isFinite(settings.timeoutMs)
-        ? Math.round(
-            clampNumber(settings.timeoutMs, 0, MAX_SMART_TURN_TIMEOUT_MS),
-          )
-        : DEFAULT_SPEECH_SMART_TURN_SETTINGS.timeoutMs,
-  };
 }
 
 export function SpeechSmartTurnControls({
@@ -48,23 +28,15 @@ export function SpeechSmartTurnControls({
 }: SpeechSmartTurnControlsProps) {
   const { t } = useI18n();
   const id = useId();
-  const thresholdId = `${id}-threshold`;
-  const thresholdHintId = `${id}-threshold-hint`;
-  const timeoutId = `${id}-timeout`;
-  const clean = cleanSettings(settings);
+  const { followUpListenMs, setFollowUpListenMs } = useSpeechCaptureSettings();
+  const clean = cleanSpeechSmartTurnSettings(settings);
   const update = (patch: Partial<SpeechSmartTurnSettings>) => {
-    onChange(cleanSettings({ ...clean, ...patch }));
+    onChange(cleanSpeechSmartTurnSettings({ ...clean, ...patch }));
   };
   const activate = () => {
     if (!disabled && !clean.enabled) {
       update({ enabled: true });
     }
-  };
-  const commitThreshold = (threshold: number) => {
-    update({ enabled: true, threshold });
-  };
-  const commitTimeout = (timeoutMs: number) => {
-    update({ enabled: true, timeoutMs });
   };
   const body = (
     <div className={styles.body}>
@@ -77,62 +49,57 @@ export function SpeechSmartTurnControls({
         />
         <span>Smart Turn</span>
       </label>
-      <div className={styles.row}>
-        <label htmlFor={thresholdId}>Threshold</label>
-        <CommittedRangeInput
-          id={thresholdId}
-          min="0"
-          max="1"
-          step="0.01"
-          value={clean.threshold}
-          disabled={disabled}
-          onFocus={activate}
-          onPointerDown={activate}
-          onCommit={commitThreshold}
-        />
-        <input
-          type="number"
-          min="0"
-          max="1"
-          step="0.01"
-          value={clean.threshold}
-          disabled={disabled}
-          onFocus={activate}
-          onPointerDown={activate}
-          onChange={(event) => commitThreshold(Number(event.target.value))}
-          aria-describedby={thresholdHintId}
-          aria-label="Smart Turn threshold"
-        />
-        <span id={thresholdHintId} className={styles.hint}>
-          {t("speechSmartTurnThresholdHint")}
-        </span>
-      </div>
-      <div className={styles.row}>
-        <label htmlFor={timeoutId}>Timeout</label>
-        <CommittedRangeInput
-          id={timeoutId}
-          min="0"
-          max="10000"
-          step="100"
-          value={clean.timeoutMs}
-          disabled={disabled}
-          onFocus={activate}
-          onPointerDown={activate}
-          onCommit={commitTimeout}
-        />
-        <input
-          type="number"
-          min="0"
-          max="10000"
-          step="100"
-          value={clean.timeoutMs}
-          disabled={disabled}
-          onFocus={activate}
-          onPointerDown={activate}
-          onChange={(event) => commitTimeout(Number(event.target.value))}
-          aria-label="Smart Turn timeout milliseconds"
-        />
-      </div>
+      <RangeNumberRow
+        id={`${id}-threshold`}
+        label="Threshold"
+        min={0}
+        max={1}
+        step={0.01}
+        value={clean.threshold}
+        disabled={disabled}
+        numberAriaLabel="Smart Turn threshold"
+        hint={t("speechSmartTurnThresholdHint")}
+        onCommit={(threshold) => update({ enabled: true, threshold })}
+        onActivate={activate}
+      />
+      <RangeNumberRow
+        id={`${id}-timeout`}
+        label="Timeout"
+        min={0}
+        max={MAX_SPEECH_SMART_TURN_TIMEOUT_MS}
+        step={100}
+        value={clean.timeoutMs}
+        disabled={disabled}
+        numberAriaLabel="Smart Turn timeout milliseconds"
+        onCommit={(timeoutMs) => update({ enabled: true, timeoutMs })}
+        onActivate={activate}
+      />
+      <RangeNumberRow
+        id={`${id}-grace`}
+        label={t("speechSmartTurnGraceLabel")}
+        min={0}
+        max={MAX_SPEECH_SMART_TURN_GRACE_MS}
+        step={100}
+        value={clean.graceMs}
+        disabled={disabled}
+        numberAriaLabel="Smart Turn command grace milliseconds"
+        hint={t("speechSmartTurnGraceHint")}
+        onCommit={(graceMs) => update({ enabled: true, graceMs })}
+        onActivate={activate}
+      />
+      <RangeNumberRow
+        id={`${id}-follow-up`}
+        label={t("speechSettingsFollowUpListenTitle")}
+        min={0}
+        max={MAX_SPEECH_FOLLOW_UP_LISTEN_MS}
+        step={1000}
+        value={followUpListenMs}
+        disabled={disabled}
+        numberAriaLabel="Follow-up listening milliseconds"
+        hint={t("speechSettingsFollowUpListenDescription")}
+        onCommit={setFollowUpListenMs}
+        onActivate={activate}
+      />
       {clean.enabled && (
         <p className={styles.caption}>{t("speechSmartTurnCaption")}</p>
       )}

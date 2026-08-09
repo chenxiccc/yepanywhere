@@ -521,6 +521,8 @@ export interface SpeechSmartTurnClientDefault {
   enabled: boolean;
   threshold: number;
   timeoutMs: number;
+  /** Post-endpoint command grace window; optional for pre-grace servers. */
+  graceMs?: number;
 }
 
 export interface GrokSpeechAudioClientDefault {

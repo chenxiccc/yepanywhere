@@ -13,7 +13,7 @@ import {
   type FilterOption,
 } from "../../components/FilterDropdown";
 import { SpeechSmartTurnControls } from "../../components/SpeechSmartTurnControls";
-import { SpeechTimingControls } from "../../components/SpeechTimingControls";
+import { SpeechMessagePrefixControls } from "../../components/SpeechMessagePrefixControls";
 import { useModelSettings } from "../../hooks/useModelSettings";
 import { useBrowserXaiSttApiKey } from "../../hooks/useBrowserXaiSttApiKey";
 import { useSpeechCaptureSettings } from "../../hooks/useSpeechCaptureSettings";
@@ -524,11 +524,11 @@ export function SpeechSettings() {
         </SettingsItem>
 
         <SettingsItem
-          label={t("speechSettingsTimingTitle")}
-          description={t("speechSettingsTimingDescription")}
+          label={t("speechSettingsMessagePrefixTitle")}
+          description={t("speechSettingsMessagePrefixDescription")}
           className="model-settings-item"
         >
-          <SpeechTimingControls showFollowUp={supportsSelectedSmartTurn} />
+          <SpeechMessagePrefixControls showDescription={false} />
         </SettingsItem>
       </div>
     </SettingsSection>

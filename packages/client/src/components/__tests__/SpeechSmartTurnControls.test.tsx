@@ -7,6 +7,7 @@ import { I18nProvider } from "../../i18n";
 import type { SpeechSmartTurnSettings } from "../../lib/speechProviders/SpeechProvider";
 import { SpeechSmartTurnControls } from "../SpeechSmartTurnControls";
 import styles from "../SpeechSmartTurnControls.module.css";
+import rowStyles from "../ui/RangeNumberRow.module.css";
 
 afterEach(() => {
   cleanup();
@@ -17,6 +18,7 @@ function SmartTurnHarness() {
     enabled: false,
     threshold: 0.95,
     timeoutMs: 3000,
+    graceMs: 0,
   });
 
   return <SpeechSmartTurnControls settings={settings} onChange={setSettings} />;
@@ -35,7 +37,12 @@ function expectNoLegacyClasses(container: HTMLElement) {
 
 describe("SpeechSmartTurnControls", () => {
   it("uses module classes in full and compact render branches", () => {
-    const settings = { enabled: true, threshold: 0.5, timeoutMs: 3000 };
+    const settings = {
+      enabled: true,
+      threshold: 0.5,
+      timeoutMs: 3000,
+      graceMs: 0,
+    };
     const onChange = vi.fn();
     const { container, rerender } = render(
       <I18nProvider>
@@ -46,7 +53,7 @@ describe("SpeechSmartTurnControls", () => {
     const fullRoot = container.firstElementChild;
     expect(fullRoot?.classList.contains(styles.root!)).toBe(true);
     expect(fullRoot?.querySelector(`.${styles.body}`)).not.toBeNull();
-    expect(fullRoot?.querySelectorAll(`.${styles.row}`)).toHaveLength(2);
+    expect(fullRoot?.querySelectorAll(`.${rowStyles.row}`)).toHaveLength(4);
     expectNoLegacyClasses(container);
 
     rerender(
@@ -66,7 +73,7 @@ describe("SpeechSmartTurnControls", () => {
     expect(summary?.classList.contains(styles.summary!)).toBe(true);
     expect(compactRoot?.querySelector(`.${styles.popover}`)).not.toBeNull();
     expect(compactRoot?.querySelector(`.${styles.body}`)).not.toBeNull();
-    expect(compactRoot?.querySelectorAll(`.${styles.row}`)).toHaveLength(2);
+    expect(compactRoot?.querySelectorAll(`.${rowStyles.row}`)).toHaveLength(4);
 
     fireEvent.click(summary as HTMLElement);
     expect(compactRoot?.hasAttribute("open")).toBe(true);
@@ -75,7 +82,12 @@ describe("SpeechSmartTurnControls", () => {
 
   it("preserves callback updates and disabled controls", () => {
     const onChange = vi.fn();
-    const settings = { enabled: false, threshold: 0.5, timeoutMs: 3000 };
+    const settings = {
+      enabled: false,
+      threshold: 0.5,
+      timeoutMs: 3000,
+      graceMs: 0,
+    };
     const { rerender } = render(
       <I18nProvider>
         <SpeechSmartTurnControls settings={settings} onChange={onChange} />
@@ -89,6 +101,7 @@ describe("SpeechSmartTurnControls", () => {
       enabled: true,
       threshold: 0.72,
       timeoutMs: 3000,
+      graceMs: 0,
     });
 
     onChange.mockClear();
@@ -109,6 +122,14 @@ describe("SpeechSmartTurnControls", () => {
       true,
     );
     expect(screen.getByLabelText("Timeout")).toHaveProperty("disabled", true);
+    expect(screen.getByLabelText("Command grace")).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByLabelText("Follow-up listening")).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
 
   it("enables Smart Turn when the threshold slider is adjusted", () => {
@@ -153,5 +174,25 @@ describe("SpeechSmartTurnControls", () => {
         "Timeout is the max wait. At turn end, say send, cancel, or wait; no command means send.",
       ),
     ).toBeDefined();
+  });
+
+  it("caps the command grace window at 1500 ms", () => {
+    render(
+      <I18nProvider>
+        <SmartTurnHarness />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByLabelText("Command grace").getAttribute("max")).toBe(
+      "1500",
+    );
+    expect(
+      screen
+        .getByLabelText("Smart Turn command grace milliseconds")
+        .getAttribute("max"),
+    ).toBe("1500");
+    expect(
+      screen.getByLabelText("Follow-up listening").getAttribute("max"),
+    ).toBe("30000");
   });
 });
