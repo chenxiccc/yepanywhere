@@ -349,7 +349,8 @@ client through `fetchJSON("/speech/transcribe", ...)`.
   retention contract above.
 - Backend biasing is not wired. There is no `buildBiasingContext()` helper
   feeding Whisper `initial_prompt` or Deepgram `keyterm` values from project
-  and session context.
+  and session context. See *Keyterm Biasing* below for the plumbing status
+  and the command-word assessment.
 - Deepgram streaming partials are not implemented. Deepgram, Whisper, and dummy
   backends still use batch transcription unless a future backend explicitly
   implements the streaming extension.
@@ -396,6 +397,52 @@ client through `fetchJSON("/speech/transcribe", ...)`.
 6. Re-check current provider audio-input support before implementing
    audio-as-modality. Providers that accept audio should get the original
    audio content, while text-only providers keep the transcript-first path.
+
+## Keyterm Biasing
+
+Status 2026-08-09: assessed, deliberately not wired. Revisit when retained
+speech traces show recognition misses that vocabulary bias would plausibly fix.
+
+What the backends offer. xAI STT (batch and streaming) and Deepgram accept a
+repeatable `keyterm` parameter that biases recognition *toward* the listed
+vocabulary (xAI: up to 100 terms, each ≤50 chars; see
+[direct-xai-speech.md](direct-xai-speech.md) for the endpoint facts). Biasing
+is the strongest primitive available: neither backend documents word-level
+confidence, n-best alternatives, or any "score this audio against a command
+list" query, so a resemblance-style constrained-command match cannot be built
+from the API surface — only a thumb on the transcript scale.
+
+YA plumbing status. The batch path is plumbed except at the source:
+`POST /api/speech/transcribe` accepts `keyterms` and both cloud backends
+forward it (`routes/speech.ts`, `xaiSttBackend.ts`, `deepgramBackend.ts`), but
+no client code sends any. The streaming path has no keyterm support at all:
+the client WS start frame, the server's xAI streaming URL builder, and the
+direct-xAI `buildXaiSttUrl` would each need the parameter added.
+
+Candidate uses, in rough value order:
+
+1. **Project/session vocabulary** — the planned `buildBiasingContext()`
+   (Remaining Plan item 4) feeding file names, glossary terms, and session
+   nouns. This is the use keyterm exists for: rare terms the recognizer
+   has no prior for.
+2. **Spoken command words** — biasing `send`/`cancel`/`wait` on streaming
+   Smart Turn input. Assessed below; weaker case than it first appears.
+
+Command-word biasing tradeoff. The command vocabulary is already among the
+most common English words, so the recognizer needs no help on a clean
+utterance; the plausible win is only the turn-end trailing token
+("send" → "sent" style misses). Against that, the bias applies to the whole
+stream, so near-homophones anywhere in ordinary dictation can be pulled toward
+command forms ("sent"→"send", "weight"→"wait") — a transcript-quality cost on
+every utterance to improve a rare boundary token. The command *action* surface
+is partially guarded: mid-utterance text is never a command, a trailing
+`send`/`cancel` needs a >500 ms pause, but `wait` deliberately skips the pause
+gate, and a trailing word biased into `send` after a real pause would submit.
+Net: probably safe at three terms, but unverified — xAI does not document
+bias strength, and we have no observed command-word misrecognition to fix.
+Do not wire it ahead of evidence (same stance as the Smart Turn judging
+layer above). If wired, record the sent keyterms in retained-utterance
+metadata so before/after transcription quality is auditable.
 
 ## Server-Local STT Deployment Plan
 
