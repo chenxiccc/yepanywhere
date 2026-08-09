@@ -293,6 +293,7 @@ class WebClientActivityTest {
     fun backNavigatesWebHistoryBeforeFinishingTheActivity() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
+            awaitJavaScript(scenario, "window.location.pathname", "\"/login\"")
             val initialUrl = evaluateJavaScript(scenario, "window.location.href")
             evaluateJavaScript(
                 scenario,
@@ -301,18 +302,20 @@ class WebClientActivityTest {
                 window.addEventListener("popstate", () => {
                   window.__yaHistoryPopped = true;
                 }, { once: true });
+                const historyUrl = new URL(window.location.href);
+                historyUrl.searchParams.set("android-history-contract", "1");
                 history.pushState(
                   { source: "android-instrumentation" },
                   "",
-                  "/android-history-contract"
+                  historyUrl
                 );
                 true;
                 """.trimIndent(),
             )
             awaitJavaScript(
                 scenario,
-                "window.location.pathname",
-                "\"/android-history-contract\"",
+                "new URL(window.location.href).searchParams.get('android-history-contract')",
+                "\"1\"",
             )
             awaitWebViewCondition(
                 scenario,
