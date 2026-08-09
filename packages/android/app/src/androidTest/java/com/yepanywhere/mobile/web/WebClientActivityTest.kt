@@ -293,43 +293,40 @@ class WebClientActivityTest {
     fun backNavigatesWebHistoryBeforeFinishingTheActivity() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
-            val firstUrl = "https://appassets.androidplatform.net/history-first/"
-            loadHtmlAndAwaitPage(
+            val initialUrl = evaluateJavaScript(scenario, "window.location.href")
+            evaluateJavaScript(
                 scenario,
-                firstUrl,
-                "<html><body>history-first</body></html>",
+                """
+                window.__yaHistoryPopped = false;
+                window.addEventListener("popstate", () => {
+                  window.__yaHistoryPopped = true;
+                }, { once: true });
+                history.pushState(
+                  { source: "android-instrumentation" },
+                  "",
+                  "/android-history-contract"
+                );
+                true;
+                """.trimIndent(),
             )
             awaitJavaScript(
                 scenario,
-                "document.body.textContent",
-                "\"history-first\"",
-            )
-            loadHtmlAndAwaitPage(
-                scenario,
-                "https://appassets.androidplatform.net/history-second/",
-                "<html><body>history-second</body></html>",
-            )
-            awaitJavaScript(
-                scenario,
-                "document.body.textContent",
-                "\"history-second\"",
+                "window.location.pathname",
+                "\"/android-history-contract\"",
             )
             awaitWebViewCondition(
                 scenario,
-                "WebView history did not include the first document",
+                "WebView history did not include the pushed entry",
             ) { view ->
                 view.canGoBack()
             }
 
-            runAndAwaitPage(scenario, firstUrl) { activity ->
+            scenario.onActivity { activity ->
                 activity.onBackPressedDispatcher.onBackPressed()
             }
 
-            awaitJavaScript(
-                scenario,
-                "document.body.textContent",
-                "\"history-first\"",
-            )
+            awaitJavaScript(scenario, "window.__yaHistoryPopped", "true")
+            awaitJavaScript(scenario, "window.location.href", initialUrl)
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
     }
@@ -442,43 +439,6 @@ class WebClientActivityTest {
             "pm clear-permission-flags $packageName $permission user-set user-fixed",
         )
         return device
-    }
-
-    private fun loadHtmlAndAwaitPage(
-        scenario: ActivityScenario<WebClientActivity>,
-        pageUrl: String,
-        html: String,
-    ) {
-        runAndAwaitPage(scenario, pageUrl) { activity ->
-            activity.findViewById<WebView>(R.id.web_client).loadDataWithBaseURL(
-                pageUrl,
-                html,
-                "text/html",
-                Charsets.UTF_8.name(),
-                pageUrl,
-            )
-        }
-    }
-
-    private fun runAndAwaitPage(
-        scenario: ActivityScenario<WebClientActivity>,
-        expectedUrl: String,
-        action: (WebClientActivity) -> Unit,
-    ) {
-        val completed = CountDownLatch(1)
-        scenario.onActivity { activity ->
-            activity.findViewById<WebView>(R.id.web_client).webViewClient =
-                object : WebViewClient() {
-                    override fun onPageFinished(view: WebView, url: String) {
-                        if (url == expectedUrl) completed.countDown()
-                    }
-                }
-            action(activity)
-        }
-        assertTrue(
-            "WebView did not finish loading $expectedUrl",
-            completed.await(10, TimeUnit.SECONDS),
-        )
     }
 
     private fun awaitOrientation(
