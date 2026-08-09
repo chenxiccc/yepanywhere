@@ -49,7 +49,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20.12
-          cache: "pnpm"
       # Advisories triaged as unreachable are listed in pnpm.auditConfig.ignoreGhsas
       # (package.json) with rationale in CLAUDE.md "Known-unreachable advisories".
       # A failure here means a new, untriaged advisory: fix it or triage it in both
