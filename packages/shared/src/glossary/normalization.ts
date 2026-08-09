@@ -15,6 +15,53 @@ interface SourceGrapheme {
   segment: string;
 }
 
+function isAscii(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.charCodeAt(index) > 0x7f) return false;
+  }
+  return true;
+}
+
+function normalizeAsciiSource(text: string): NormalizedGlossarySource {
+  const chars: string[] = [];
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let whitespaceStart: number | null = null;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const codePoint = text.charCodeAt(index);
+    const isWhitespace =
+      codePoint === 0x20 || (codePoint >= 0x09 && codePoint <= 0x0d);
+    if (isWhitespace) {
+      whitespaceStart ??= index;
+      continue;
+    }
+
+    if (whitespaceStart !== null) {
+      chars.push(" ");
+      starts.push(whitespaceStart);
+      ends.push(index);
+      whitespaceStart = null;
+    }
+
+    chars.push(
+      codePoint >= 0x41 && codePoint <= 0x5a
+        ? String.fromCharCode(codePoint + 0x20)
+        : text[index]!,
+    );
+    starts.push(index);
+    ends.push(index + 1);
+  }
+
+  if (whitespaceStart !== null) {
+    chars.push(" ");
+    starts.push(whitespaceStart);
+    ends.push(text.length);
+  }
+
+  return { chars, ends, starts };
+}
+
 function hangulClass(codePoint: number): "L" | "V" | "T" | "LV" | "LVT" | null {
   if (
     (codePoint >= 0x1100 && codePoint <= 0x115f) ||
@@ -95,6 +142,11 @@ function foldGrapheme(grapheme: string): string {
 export function normalizeGlossarySource(
   text: string,
 ): NormalizedGlossarySource {
+  // Node 20's Intl.Segmenter has pathological scaling on long ASCII input.
+  // ASCII code units are already individual graphemes, except CRLF; collapsing
+  // adjacent whitespace gives CRLF the same normalized value and source span.
+  if (isAscii(text)) return normalizeAsciiSource(text);
+
   const chars: string[] = [];
   const starts: number[] = [];
   const ends: number[] = [];
