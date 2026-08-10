@@ -289,6 +289,162 @@ describe("MessageList scroll and follow", () => {
     editableTarget.remove();
   });
 
+  it("navigates to hidden user turns and skips prompts already fully visible", () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "first"),
+          assistantMessage("assistant-1", "answer one"),
+          userMessage("user-2", "second"),
+          assistantMessage("assistant-2", "answer two"),
+          userMessage("user-3", "third"),
+          assistantMessage("assistant-3", "answer three"),
+          userMessage("user-4", "fourth"),
+          userMessage("user-5", "fifth"),
+        ]}
+      />,
+    );
+    const absoluteTops: Record<string, number> = {
+      "user-1": 0,
+      "user-2": 220,
+      "user-3": 400,
+      "user-4": 720,
+      "user-5": 800,
+    };
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 650,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1100,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === container) return rectFor(0, 300);
+        const absoluteTop = this.dataset.renderId
+          ? absoluteTops[this.dataset.renderId]
+          : undefined;
+        return rectFor(
+          absoluteTop === undefined ? 1000 : absoluteTop - container.scrollTop,
+          40,
+        );
+      });
+    container.scrollTo = vi.fn((options: ScrollToOptions) => {
+      if (typeof options.top === "number") container.scrollTop = options.top;
+    }) as typeof container.scrollTo;
+
+    try {
+      fireEvent.keyDown(window, { key: "Home", code: "Home" });
+      expect(container.scrollTop).toBe(388);
+      fireEvent.keyDown(window, {
+        key: "Home",
+        code: "Home",
+        repeat: true,
+      });
+      expect(container.scrollTop).toBe(208);
+
+      container.scrollTop = 100;
+      fireEvent.keyDown(window, { key: "End", code: "End" });
+      expect(container.scrollTop).toBe(388);
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("preserves editor Home/End and offers Alt+Arrow turn accelerators", () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "first"),
+          assistantMessage("assistant-1", "answer one"),
+          userMessage("user-2", "second"),
+        ]}
+      />,
+    );
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    const rectFor = (top: number): DOMRect =>
+      ({
+        top,
+        bottom: top + 40,
+        height: 40,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === container) return rectFor(0);
+        if (this.dataset.renderId === "user-1") {
+          return rectFor(100 - container.scrollTop);
+        }
+        if (this.dataset.renderId === "user-2") {
+          return rectFor(700 - container.scrollTop);
+        }
+        return rectFor(1000 - container.scrollTop);
+      });
+    container.scrollTo = vi.fn((options: ScrollToOptions) => {
+      if (typeof options.top === "number") container.scrollTop = options.top;
+    }) as typeof container.scrollTo;
+    const editableTarget = document.createElement("textarea");
+    document.body.append(editableTarget);
+    editableTarget.focus();
+
+    try {
+      fireEvent.keyDown(editableTarget, { key: "Home", code: "Home" });
+      expect(container.scrollTop).toBe(500);
+      fireEvent.keyDown(editableTarget, {
+        key: "ArrowUp",
+        code: "ArrowUp",
+        altKey: true,
+      });
+      expect(container.scrollTop).toBe(88);
+
+      container.scrollTop = 300;
+      fireEvent.keyDown(editableTarget, { key: "End", code: "End" });
+      expect(container.scrollTop).toBe(300);
+      fireEvent.keyDown(editableTarget, {
+        key: "ArrowDown",
+        code: "ArrowDown",
+        altKey: true,
+      });
+      expect(container.scrollTop).toBe(688);
+    } finally {
+      editableTarget.remove();
+      rectSpy.mockRestore();
+    }
+  });
+
   it("shows a composer follow control when scrolled away from latest", async () => {
     const composerTarget = document.createElement("div");
     composerTarget.className = "session-input-inner";

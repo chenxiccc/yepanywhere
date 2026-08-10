@@ -42,6 +42,8 @@ vi.mock("../../i18n", () => ({
         sessionRecentTranscriptLoaded: "Recent transcript loaded",
         sessionLoadOlderMessages: "Load older messages",
         sessionLoadingOlderMessages: "Loading...",
+        sessionOlderLoadContinuationRequired:
+          "Loaded a large history span without reaching an earlier user turn. Load older messages again to continue.",
         sessionSearchHelpNavigate:
           "{shortcutKeys} prev · ↑↓ matches · click jumps",
         sessionSearchHelpClose: "Enter jump+close · Esc cancel · Aa case",

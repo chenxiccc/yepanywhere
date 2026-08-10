@@ -2550,6 +2550,129 @@ describe("useSessionMessages cache", () => {
     expect(rendered.result.current.pagination?.returnedMessageCount).toBe(2);
   });
 
+  it("loads compact pages through the preceding real user turn", async () => {
+    apiMocks.getSession
+      .mockResolvedValueOnce({
+        ...sessionResponse("current-user"),
+        messages: [
+          {
+            uuid: "current-user",
+            type: "user",
+            timestamp: "2026-05-04T00:00:00.000Z",
+            message: { role: "user", content: "current" },
+          },
+        ],
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "current-user",
+          totalMessageCount: 4,
+          returnedMessageCount: 1,
+          totalCompactions: 2,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("older-assistant"),
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "older-assistant",
+          totalMessageCount: 4,
+          returnedMessageCount: 1,
+          totalCompactions: 1,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("older-user"),
+        messages: [
+          {
+            uuid: "older-user",
+            type: "user",
+            timestamp: "2026-05-03T23:58:00.000Z",
+            message: { role: "user", content: "older request" },
+          },
+        ],
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "older-user",
+          totalMessageCount: 4,
+          returnedMessageCount: 1,
+          totalCompactions: 0,
+        },
+      });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    await act(async () => rendered.result.current.loadOlderMessages());
+
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      undefined,
+      { tailCompactions: 2, beforeMessageId: "current-user" },
+    );
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      3,
+      "proj-1",
+      "sess-1",
+      undefined,
+      { tailCompactions: 2, beforeMessageId: "older-assistant" },
+    );
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["older-user", "older-assistant", "current-user"]);
+    expect(rendered.result.current.olderLoadContinuationRequired).toBe(false);
+  });
+
+  it("pauses a large assistant-only history span with a resumable warning", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      ...sessionResponse("current-user"),
+      messages: [
+        {
+          uuid: "current-user",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "current" },
+        },
+      ],
+      pagination: {
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "cursor-8",
+        totalMessageCount: 20,
+        returnedMessageCount: 1,
+        totalCompactions: 9,
+      },
+    });
+    for (let index = 8; index > 0; index -= 1) {
+      apiMocks.getSession.mockResolvedValueOnce({
+        ...sessionResponse(`assistant-${index}`),
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: `cursor-${index - 1}`,
+          totalMessageCount: 20,
+          returnedMessageCount: 1,
+          totalCompactions: index,
+        },
+      });
+    }
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    await act(async () => rendered.result.current.loadOlderMessages());
+
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(9);
+    expect(rendered.result.current.pagination).toMatchObject({
+      hasOlderMessages: true,
+      truncatedBeforeMessageId: "cursor-0",
+    });
+    expect(rendered.result.current.olderLoadContinuationRequired).toBe(true);
+  });
+
   it("mirrors incremental catch-up messages into the session detail store", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

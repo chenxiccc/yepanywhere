@@ -17,6 +17,21 @@ desktop accelerator for Fork: every real user prompt owns an inline
 2026-08-01 discoverability repair is recorded in
 [`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
 
+## Keyboard turn navigation
+
+The same real-user-turn anchors provide viewport-relative keyboard navigation.
+When focus is outside an editable field, Home jumps upward and End jumps
+downward. Alt+ArrowUp and Alt+ArrowDown provide the same directions even while
+the composer is focused, preserving Home/End's text-editing behavior there.
+Held-key repeat is intentional: every delivered keydown advances again.
+
+A jump skips all user prompts already fully visible in the transcript
+scrollport and selects the nearest prompt outside full visibility in its
+direction. This makes densely spaced prompts one viewport-aware step rather
+than forcing a stop at every already-readable marker. The selected prompt is
+aligned near the top of the scrollport and uses the same motion cue as rail and
+search jumps. PageUp and PageDown remain native viewport-scrolling keys.
+
 ## The bug (root cause)
 
 Each marker's hit/hover target was a **fixed 22px box** (`height:22px;

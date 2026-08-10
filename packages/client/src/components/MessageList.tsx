@@ -102,6 +102,7 @@ import { RenderItemComponent } from "./RenderItemComponent";
 import { AssistantTurnImageGallery } from "./TurnImageGallery";
 import {
   UserTurnNavigator,
+  type UserTurnNavAnchor,
   type UserTurnNavMotionCue,
 } from "./UserTurnNavigator";
 import { CopyTextButton } from "./ui/CopyTextButton";
@@ -252,8 +253,12 @@ const BOTTOM_FOLLOW_VIEWPORT_FRACTION = 0.45;
 const FOLLOW_CATCH_UP_DELAYS_MS = [50, 120, 240, 480, 960, 1600, 2400];
 const SEND_CATCH_UP_DELAYS_MS = [80, 240, 640];
 const TOUCH_SCROLL_CANCEL_THRESHOLD_PX = 6;
+const USER_TURN_NAV_SCROLL_OFFSET_PX = 12;
+const USER_TURN_NAV_VISIBILITY_TOLERANCE_PX = 1;
 const INTERACTIVE_SCROLL_TARGET_SELECTOR =
   "button, input, textarea, select, a[href], [contenteditable='true']";
+const EDITABLE_KEYBOARD_TARGET_SELECTOR =
+  "input, textarea, select, [contenteditable='true']";
 
 function highResolutionNowMs(): number {
   return typeof performance !== "undefined" &&
@@ -331,6 +336,84 @@ function isInteractiveScrollTarget(target: EventTarget | null): boolean {
     target instanceof Element &&
     target.closest(INTERACTIVE_SCROLL_TARGET_SELECTOR) !== null
   );
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(EDITABLE_KEYBOARD_TARGET_SELECTOR) !== null
+  );
+}
+
+function getAdjacentHiddenUserTurnTarget(
+  anchors: readonly UserTurnNavAnchor[],
+  messageList: HTMLDivElement,
+  scrollContainer: HTMLElement,
+  direction: "previous" | "next",
+): string | null {
+  const viewport = scrollContainer.getBoundingClientRect();
+  const alignmentTop = viewport.top + USER_TURN_NAV_SCROLL_OFFSET_PX;
+  let candidate: { id: string; top: number } | null = null;
+
+  for (const anchor of anchors) {
+    const targetId = anchor.targetId ?? anchor.id;
+    const row = findRenderRow(messageList, targetId);
+    if (!row) continue;
+    const rect = row.getBoundingClientRect();
+    const fullyVisible =
+      rect.top >= viewport.top - USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
+      rect.bottom <= viewport.bottom + USER_TURN_NAV_VISIBILITY_TOLERANCE_PX;
+    if (fullyVisible) continue;
+
+    if (
+      direction === "previous" &&
+      rect.top < alignmentTop - USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
+      (!candidate || rect.top > candidate.top)
+    ) {
+      candidate = { id: targetId, top: rect.top };
+    }
+    if (
+      direction === "next" &&
+      rect.top > alignmentTop + USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
+      (!candidate || rect.top < candidate.top)
+    ) {
+      candidate = { id: targetId, top: rect.top };
+    }
+  }
+
+  return candidate?.id ?? null;
+}
+
+function getUserTurnNavigationDirection(
+  event: KeyboardEvent,
+): "previous" | "next" | null {
+  const plainTurnKey =
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.shiftKey &&
+    !isEditableKeyboardTarget(event.target);
+  if (plainTurnKey && (event.key === "Home" || event.code === "Home")) {
+    return "previous";
+  }
+  if (plainTurnKey && (event.key === "End" || event.code === "End")) {
+    return "next";
+  }
+  if (
+    event.altKey &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.getModifierState("AltGraph")
+  ) {
+    if (event.key === "ArrowUp" || event.code === "ArrowUp") {
+      return "previous";
+    }
+    if (event.key === "ArrowDown" || event.code === "ArrowDown") {
+      return "next";
+    }
+  }
+  return null;
 }
 
 function loadSessionThinkingVisible(): boolean {
@@ -566,7 +649,9 @@ interface Props {
   activeWindowTrimRevision?: number;
   /** Whether older messages are currently being loaded */
   loadingOlder?: boolean;
-  /** Callback to load the next chunk of older messages */
+  /** Whether older loading paused at its safety boundary before a user turn */
+  olderLoadContinuationRequired?: boolean;
+  /** Callback to load through older chunks to a user-turn boundary */
   onLoadOlderMessages?: () => void | Promise<void>;
   /** Whether the client transcript is intentionally loaded from a recent tail */
   clientTailActive?: boolean;
@@ -919,6 +1004,7 @@ export const MessageList = memo(function MessageList({
   olderMessagesCursor = null,
   activeWindowTrimRevision = 0,
   loadingOlder = false,
+  olderLoadContinuationRequired = false,
   onLoadOlderMessages,
   clientTailActive = false,
   progressiveRenderEnabled = false,
@@ -2261,6 +2347,30 @@ export const MessageList = memo(function MessageList({
     });
   }, [forceScrollToCurrent]);
 
+  const navigateToAdjacentHiddenUserTurn = useCallback(
+    (direction: "previous" | "next") => {
+      const messageList = containerRef.current;
+      const scrollContainer = messageList?.parentElement;
+      if (!messageList || !scrollContainer) return;
+      const targetId = getAdjacentHiddenUserTurnTarget(
+        getNavigatorAnchors(),
+        messageList,
+        scrollContainer,
+        direction,
+      );
+      if (!targetId) return;
+      reportFollowingBottom(false);
+      updateScrollPositionTimestamp({ atBottom: false });
+      scrollToRenderId(targetId, "auto", "start", true);
+    },
+    [
+      getNavigatorAnchors,
+      reportFollowingBottom,
+      scrollToRenderId,
+      updateScrollPositionTimestamp,
+    ],
+  );
+
   useEffect(() => {
     if (inert) {
       stopSearchArrowRepeat();
@@ -2283,6 +2393,15 @@ export const MessageList = memo(function MessageList({
         event.preventDefault();
         event.stopPropagation();
         scrollToCurrent();
+        return;
+      }
+      const turnNavigationDirection = searchActive
+        ? null
+        : getUserTurnNavigationDirection(event);
+      if (turnNavigationDirection) {
+        event.preventDefault();
+        event.stopPropagation();
+        navigateToAdjacentHiddenUserTurn(turnNavigationDirection);
         return;
       }
       if (isCtrlKeyShortcut(event, "o", "KeyO")) {
@@ -2350,6 +2469,7 @@ export const MessageList = memo(function MessageList({
     getSelectedSearchTargetId,
     handleSearchArrowKey,
     moveSearchSelection,
+    navigateToAdjacentHiddenUserTurn,
     openSearch,
     scrollToCurrent,
     scrollToRenderId,
@@ -3060,6 +3180,11 @@ export const MessageList = memo(function MessageList({
             ) : clientTailActive ? (
               <span className="load-older-status">
                 {t("sessionRecentTranscriptLoaded")}
+              </span>
+            ) : null}
+            {olderLoadContinuationRequired && !loadingOlder ? (
+              <span className="load-older-status" role="status">
+                {t("sessionOlderLoadContinuationRequired")}
               </span>
             ) : null}
             {(hasOlderMessages || conversationWindow.hiddenTurnCount > 0) && (

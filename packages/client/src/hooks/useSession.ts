@@ -972,6 +972,7 @@ export function useSession(
     pagination,
     activeWindowTrimRevision,
     loadingOlder,
+    olderLoadContinuationRequired,
     loadOlderMessages,
     initialScrollSnapshot,
     updateRouteScrollSnapshot,
@@ -2364,7 +2365,8 @@ export function useSession(
     pagination, // Compact-boundary pagination metadata
     activeWindowTrimRevision, // Ephemeral accepted auto-trim render signal
     loadingOlder, // Whether older messages are being loaded
-    loadOlderMessages, // Load next chunk of older messages
+    olderLoadContinuationRequired, // Safety pause before the preceding user turn
+    loadOlderMessages, // Load through older chunks to a user-turn boundary
     initialScrollSnapshot, // Retained same-tab route scroll anchor
     updateRouteScrollSnapshot, // Update retained same-tab route scroll anchor
     updateActiveWindowFollowingBottom, // Immediate active-window follow intent

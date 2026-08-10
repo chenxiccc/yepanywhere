@@ -189,6 +189,7 @@ vi.mock("../useSessionMessages", () => ({
       fetchSessionMetadata,
       pagination: undefined,
       loadingOlder: false,
+      olderLoadContinuationRequired: false,
       loadOlderMessages: vi.fn(async () => {}),
     };
   }),

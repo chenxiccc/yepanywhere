@@ -29,6 +29,8 @@ import {
   type SessionDetailLoadCompleteResult,
   type SessionDetailRevealSnapshotInput,
 } from "../lib/sessionDetail/sessionDetailCoordinator";
+import { isActiveWindowRealUserTurn } from "../lib/sessionDetail/activeWindowTrimPolicy";
+import { getSessionDetailRetentionDefaults } from "../lib/sessionDetail/sessionDetailRetention";
 import { isClientLogCollectionActive } from "../lib/diagnostics";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
@@ -73,6 +75,7 @@ export type { AgentContent, AgentContentMap } from "../lib/sessionDetail/types";
 
 const DEFAULT_INITIAL_TAIL_TURNS = 20;
 const INCREMENTAL_REFRESH_DIAGNOSTIC_INTERVAL_MS = 30_000;
+const OLDER_USER_TURN_LOAD_PAGE_LIMIT = 8;
 
 export type SessionMetadataUpdate =
   | SessionMetadata
@@ -148,7 +151,9 @@ export interface UseSessionMessagesResult {
   activeWindowTrimRevision: number;
   /** Whether older messages are being loaded */
   loadingOlder: boolean;
-  /** Load the next chunk of older messages */
+  /** Whether a safety boundary paused loading before reaching a real user turn */
+  olderLoadContinuationRequired: boolean;
+  /** Load through older chunks until reaching a real user turn or safety boundary */
   loadOlderMessages: () => Promise<void>;
   /** Retained scroll anchor from the last same-tab route visit */
   initialScrollSnapshot: SessionRouteScrollSnapshot | null;
@@ -318,6 +323,13 @@ export function useSessionMessages(
   const [sessionLoadProgress, setSessionLoadProgress] =
     useState<SessionLoadProgress>(() => coordinator.buildLoadProgress("idle"));
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderLoadContinuation, setOlderLoadContinuation] = useState(() => ({
+    routeKey: snapshotKeyString,
+    required: false,
+  }));
+  const olderLoadContinuationRequired =
+    olderLoadContinuation.routeKey === snapshotKeyString &&
+    olderLoadContinuation.required;
 
   // Store-authoritative fields come from reducer-owned state. The remaining ref
   // holds hook-only scroll bookkeeping, which is intentionally not reactive.
@@ -1109,27 +1121,80 @@ export function useSessionMessages(
     ],
   );
 
-  // Load older messages (previous chunk before the current truncation point)
+  // One reader demand advances through compact-boundary pages until it exposes
+  // a real user turn. Bound both pages and newly retained bytes so a pathologically
+  // large tool/assistant span requires an explicit continuation instead of
+  // monopolizing the client.
   const loadOlderMessages = useCallback(async () => {
-    const request = coordinator.buildOlderPageRequest();
-    if (!request.requested) {
+    if (!coordinator.buildOlderPageRequest().requested) {
       return;
     }
     coordinator.suppressActiveWindowTrimForHistoryExpansion();
+    setOlderLoadContinuation({ routeKey: snapshotKeyString, required: false });
     setLoadingOlder(true);
+    const initialBytes = coordinator.getEntryApproxBytes() ?? 0;
+    const additionalByteLimit = Math.max(
+      1,
+      getSessionDetailRetentionDefaults().maxBytes,
+    );
     try {
-      const data = await sourceApi.getSession(request.input);
-      sourceSummary.reportProviderRuntimeStatusSnapshot(
-        coordinator.buildProviderRuntimeStatusSnapshot(data),
-      );
-      coordinator.applyOlderPage(data);
-      reportStoreDivergence("older-page", { session: data.session });
+      const seenCursors = new Set<string>();
+      for (
+        let pageCount = 0;
+        pageCount < OLDER_USER_TURN_LOAD_PAGE_LIMIT;
+        pageCount += 1
+      ) {
+        const request = coordinator.buildOlderPageRequest();
+        if (!request.requested) {
+          break;
+        }
+        const cursor = request.input.beforeMessageId;
+        if (!cursor || seenCursors.has(cursor)) {
+          break;
+        }
+        seenCursors.add(cursor);
+
+        const data = await sourceApi.getSession(request.input);
+        sourceSummary.reportProviderRuntimeStatusSnapshot(
+          coordinator.buildProviderRuntimeStatusSnapshot(data),
+        );
+        coordinator.applyOlderPage(data);
+        reportStoreDivergence("older-page", { session: data.session });
+
+        if (data.messages.some(isActiveWindowRealUserTurn)) {
+          break;
+        }
+        const nextRequest = coordinator.buildOlderPageRequest();
+        if (!nextRequest.requested) {
+          break;
+        }
+        const retainedAdditionalBytes = Math.max(
+          0,
+          (coordinator.getEntryApproxBytes() ?? initialBytes) - initialBytes,
+        );
+        const reachedSafetyBoundary =
+          pageCount + 1 >= OLDER_USER_TURN_LOAD_PAGE_LIMIT ||
+          retainedAdditionalBytes >= additionalByteLimit;
+        if (reachedSafetyBoundary) {
+          setOlderLoadContinuation({
+            routeKey: snapshotKeyString,
+            required: true,
+          });
+          break;
+        }
+      }
     } catch {
       // Silent fail for loading older messages
     } finally {
       setLoadingOlder(false);
     }
-  }, [coordinator, reportStoreDivergence, sourceApi, sourceSummary]);
+  }, [
+    coordinator,
+    reportStoreDivergence,
+    snapshotKeyString,
+    sourceApi,
+    sourceSummary,
+  ]);
 
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
@@ -1210,6 +1275,7 @@ export function useSessionMessages(
     activeWindowTrimRevision:
       storeBackedDetail?.revealed?.activeWindowTrimRevision ?? 0,
     loadingOlder,
+    olderLoadContinuationRequired,
     loadOlderMessages,
     initialScrollSnapshot: selectedInitialScrollSnapshot,
     updateRouteScrollSnapshot,

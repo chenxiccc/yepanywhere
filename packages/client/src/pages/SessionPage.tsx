@@ -557,6 +557,7 @@ function SessionPageContent({
     pagination,
     activeWindowTrimRevision,
     loadingOlder,
+    olderLoadContinuationRequired,
     loadOlderMessages,
     initialScrollSnapshot,
     updateRouteScrollSnapshot,
@@ -5187,6 +5188,7 @@ function SessionPageContent({
                   }
                   activeWindowTrimRevision={activeWindowTrimRevision}
                   loadingOlder={loadingOlder}
+                  olderLoadContinuationRequired={olderLoadContinuationRequired}
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
                   progressiveRenderEnabled={sessionLoadingProgressEnabled}

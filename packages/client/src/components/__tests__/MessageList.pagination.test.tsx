@@ -195,4 +195,30 @@ describe("MessageList older-page pagination", () => {
     );
     expect(onLoadOlderMessages).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps explicit continuation available after the history safety boundary", () => {
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: undefined,
+    });
+    const onLoadOlderMessages = vi.fn();
+    render(
+      <MessageList
+        messages={[userMessage("user-1", "Current request")]}
+        hasOlderMessages={true}
+        olderLoadContinuationRequired={true}
+        onLoadOlderMessages={onLoadOlderMessages}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Loaded a large history span without reaching an earlier user turn. Load older messages again to continue.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load older messages" }),
+    );
+    expect(onLoadOlderMessages).toHaveBeenCalledTimes(1);
+  });
 });
