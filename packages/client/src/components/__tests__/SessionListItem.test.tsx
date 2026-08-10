@@ -878,9 +878,9 @@ describe("SessionListItem links", () => {
     fireEvent.click(screen.getByLabelText("Session options"));
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
-    expect(screen.getByText("Public Read-Only Share")).toBeTruthy();
+    expect(screen.getByText("Public Session Share")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: /Copy Read-Only Snapshot Link/ }),
+      screen.getByRole("button", { name: /Copy Frozen Snapshot Link/ }),
     ).toBeTruthy();
     await waitFor(() => expect(getStatus).toHaveBeenCalled());
     expect(getPublicShares).not.toHaveBeenCalled();

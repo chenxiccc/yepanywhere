@@ -1769,19 +1769,6 @@ details[open] .collapsible__icon {
   text-decoration-color: currentColor;
 }
 
-.source-review-edit-link {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem 0.35rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: 0.78em;
-  line-height: 1.2;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
 .source-review-edit-summary {
   display: inline-flex;
   align-items: center;
@@ -1789,10 +1776,6 @@ details[open] .collapsible__icon {
   gap: 0.25rem 0.5rem;
   max-width: 100%;
   white-space: normal;
-}
-
-.source-review-edit-link:hover {
-  background: var(--bg-hover);
 }
 
 .file-line-count-inline {

@@ -24,6 +24,7 @@ export function useCommitBrowserModel({
   status,
   isWideScreen,
   initialSha,
+  initialPath,
   supportsProjections,
   onProjectionUnavailable,
   t,
@@ -32,6 +33,7 @@ export function useCommitBrowserModel({
   status?: GitStatusInfo;
   isWideScreen: boolean;
   initialSha?: string;
+  initialPath?: string;
   supportsProjections: boolean;
   onProjectionUnavailable: () => void;
   t: TranslationFn;
@@ -46,7 +48,9 @@ export function useCommitBrowserModel({
   const [detail, setDetail] = useState<GitCommitDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(
+    initialPath ?? null,
+  );
   const [compareToHead, setCompareToHead] = useState(false);
   const [comparison, setComparison] = useState<GitRevisionComparison | null>(
     null,
@@ -197,7 +201,7 @@ export function useCommitBrowserModel({
     setLoadingDetail(true);
     setDetailError(null);
     setDetail(null);
-    setSelectedPath(null);
+    setSelectedPath(initialPath ?? null);
     setMessageView(false);
     api
       .getGitCommit(projectId, selectedSha)
@@ -216,7 +220,7 @@ export function useCommitBrowserModel({
     return () => {
       cancelled = true;
     };
-  }, [projectId, selectedSha, t]);
+  }, [initialPath, projectId, selectedSha, t]);
 
   useEffect(() => {
     if (!compareToHead || !selectedSha || !supportsProjections) {
@@ -258,13 +262,20 @@ export function useCommitBrowserModel({
   );
 
   useEffect(() => {
-    if (!isWideScreen) return;
+    const linkedFile = initialPath
+      ? selectedFiles.find(
+          (file) => file.path === initialPath || file.origPath === initialPath,
+        )
+      : undefined;
+    if (!isWideScreen && !linkedFile) return;
     setSelectedPath((current) =>
-      current && selectedFiles.some((file) => file.path === current)
-        ? current
-        : (selectedFiles[0]?.path ?? null),
+      linkedFile
+        ? linkedFile.path
+        : current && selectedFiles.some((file) => file.path === current)
+          ? current
+          : (selectedFiles[0]?.path ?? null),
     );
-  }, [isWideScreen, selectedFiles]);
+  }, [initialPath, isWideScreen, selectedFiles]);
 
   const selectedFile: GitFileChange | null = selectedPath
     ? (selectedFiles.find((file) => file.path === selectedPath) ?? null)

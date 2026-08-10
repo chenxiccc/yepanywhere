@@ -672,6 +672,7 @@ function GitStatusContent({
   const { tab, setTab } = useSourceTab(reviewsEnabled);
   const blameFile = searchParams.get("bf") ?? undefined;
   const commitSha = searchParams.get("rev") ?? undefined;
+  const commitFile = searchParams.get("commitFile") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
   const historyOpen =
     tab === "changes" &&
@@ -796,6 +797,7 @@ function GitStatusContent({
           status={status}
           isWideScreen={isWideScreen}
           initialSha={commitSha}
+          initialPath={commitFile}
           onBlameFile={handleBlameFile}
           captureReviewProjections={reviewsEnabled}
           supportsProjections={supportsProjections}

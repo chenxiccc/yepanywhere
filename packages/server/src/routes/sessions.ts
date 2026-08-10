@@ -1208,6 +1208,53 @@ function isUserAuthoredRequest(message: Message): boolean {
   );
 }
 
+function completedPublicShareMessageCount(options: {
+  messages: Message[];
+  process?: Process;
+  sourceIsExternal: boolean;
+  sourceUpdatedAt: string;
+  hasDurableHistory: boolean;
+}): number {
+  const { messages, process } = options;
+  const sourceIsBusy =
+    options.sourceIsExternal ||
+    process?.state.type === "in-turn" ||
+    process?.state.type === "waiting-input";
+  if (!sourceIsBusy) {
+    return messages.length;
+  }
+
+  // Replay-only messages are a live catch-up buffer, not a durable completed
+  // turn. Before the provider creates its transcript, the stable prefix is
+  // therefore empty.
+  if (!options.hasDurableHistory) {
+    return 0;
+  }
+
+  // A newly resumed process can be active before its first input reaches the
+  // existing transcript. In that window, every persisted row predates the
+  // active turn and is already safe to capture.
+  const sourceUpdatedAt = Date.parse(options.sourceUpdatedAt);
+  if (
+    process &&
+    !Number.isNaN(sourceUpdatedAt) &&
+    sourceUpdatedAt < process.startedAt.getTime()
+  ) {
+    return messages.length;
+  }
+
+  // Provider transcripts are append-only within a turn. While a source is
+  // busy, the latest user-authored request begins the only incomplete suffix;
+  // retaining everything before it captures every completed turn.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message && isUserAuthoredRequest(message)) {
+      return index;
+    }
+  }
+  return 0;
+}
+
 type SessionForkKind =
   | "clone-latest-complete"
   | "before-user-turn"
@@ -2966,6 +3013,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         const latestRecap = latestRecapMessage(recapMessages);
         const newSessionUpdatedAt =
           latestRecap?.timestamp ?? new Date().toISOString();
+        const publicShareCompletedMessageCount =
+          publicShare && fullHistory
+            ? completedPublicShareMessageCount({
+                messages: visibleProcessMessages,
+                process,
+                sourceIsExternal: false,
+                sourceUpdatedAt: newSessionUpdatedAt,
+                hasDurableHistory: false,
+              })
+            : undefined;
         const hasUnread = deps.notificationService
           ? deps.notificationService.hasUnread(sessionId, newSessionUpdatedAt)
           : undefined;
@@ -3007,6 +3064,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           providerRuntimeStatus,
           pendingInputRequest,
           slashCommands,
+          ...(publicShareCompletedMessageCount !== undefined
+            ? {
+                publicShareCapture: {
+                  completedMessageCount: publicShareCompletedMessageCount,
+                },
+              }
+            : {}),
           ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
         });
       }
@@ -3278,6 +3342,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
     }
 
+    const publicShareCompletedMessageCount =
+      publicShare && fullHistory
+        ? completedPublicShareMessageCount({
+            messages: session.messages,
+            process,
+            sourceIsExternal: isExternal,
+            sourceUpdatedAt: session.updatedAt,
+            hasDurableHistory: true,
+          })
+        : undefined;
+
     return c.json({
       session: {
         ...sessionMetadata,
@@ -3314,6 +3389,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       providerRuntimeStatus,
       pendingInputRequest,
       slashCommands,
+      ...(publicShareCompletedMessageCount !== undefined
+        ? {
+            publicShareCapture: {
+              completedMessageCount: publicShareCompletedMessageCount,
+            },
+          }
+        : {}),
       ...(paginationInfo && { pagination: paginationInfo }),
       ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
     });

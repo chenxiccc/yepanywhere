@@ -7,7 +7,8 @@ import {
 } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { StrictMode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicShareProvider } from "../../contexts/PublicShareContext";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
@@ -16,7 +17,25 @@ import { UI_KEYS } from "../../lib/storageKeys";
 import type { FileViewerSource } from "../FileViewer";
 import { FilePathLink, FileViewerModal } from "../FilePathLink";
 
+const mocks = vi.hoisted(() => ({
+  useFileVersionControl: vi.fn(),
+}));
+
+vi.mock("../../hooks/useFileVersionControl", () => ({
+  useFileVersionControl: mocks.useFileVersionControl,
+}));
+
 describe("FilePathLink", () => {
+  beforeEach(() => {
+    mocks.useFileVersionControl.mockReset();
+    mocks.useFileVersionControl.mockImplementation(
+      (_projectId: string, filePath: string) => ({
+        dirty: false,
+        relativePath: filePath,
+      }),
+    );
+  });
+
   afterEach(() => {
     cleanup();
     sessionStorage.clear();
@@ -297,6 +316,47 @@ describe("FilePathLink", () => {
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
   });
 
+  it("links files to their uncommitted and latest-commit diffs", () => {
+    mocks.useFileVersionControl.mockReturnValue({
+      dirty: true,
+      headCommitHash: "head-sha",
+      relativePath: "docs/guide.md",
+    });
+    const containerClick = vi.fn();
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: asserts non-bubbling */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: test-only wrapper */}
+          <div onClick={containerClick}>
+            <FilePathLink
+              projectId="project-id"
+              filePath="docs/guide.md"
+              displayText="guide.md"
+            />
+          </div>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const dirty = screen.getByRole("link", {
+      name: "Open uncommitted diff for docs/guide.md",
+    });
+    const committed = screen.getByRole("link", {
+      name: "Open latest commit diff for docs/guide.md",
+    });
+    expect(dirty.getAttribute("href")).toBe(
+      "/git-status?projectId=project-id&worktreeFile=docs%2Fguide.md",
+    );
+    expect(committed.getAttribute("href")).toBe(
+      "/git-status?projectId=project-id&rev=head-sha&commitFile=docs%2Fguide.md",
+    );
+
+    fireEvent.click(dirty);
+    expect(containerClick).not.toHaveBeenCalled();
+  });
+
   it("opens a context menu that can prefill a new session from the path", () => {
     render(
       <I18nProvider>
@@ -437,5 +497,6 @@ describe("FilePathLink", () => {
     expect(link.getAttribute("href")).toBe(
       `/share/share-secret/file?path=ui-report%2FREADME.md&h=ygraehl&r=wss%3A%2F%2Frelay.graehl.org%2Fws&projectId=${projectId}&line=8&lineEnd=12&view=range`,
     );
+    expect(mocks.useFileVersionControl).not.toHaveBeenCalled();
   });
 });

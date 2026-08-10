@@ -53,7 +53,10 @@ fallback. The pinned Working tree row is always available as the explicit path
 to that empty revision. The detail-level **‹ Commit history** parent link names
 the parent destination without claiming that history was necessarily the
 user's previous view. Legacy `?tab=commits` URLs enter history inside Changes,
-and a `?rev=<sha>` deep link selects its commit.
+and a `?rev=<sha>` deep link selects its commit. A working-tree file link adds
+`?worktreeFile=<path>`; a committed-file link combines `?rev=<sha>` with
+`?commitFile=<path>`. Both select the named file's diff as soon as its corpus is
+available, including the phone drill-in flow.
 
 Desktop uses master-detail panes once history is open; phone layouts drill
 from revisions to files to a full-screen diff and restore the prior list

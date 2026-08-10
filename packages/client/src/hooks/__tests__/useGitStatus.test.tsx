@@ -156,4 +156,17 @@ describe("useGitStatus", () => {
     expect(second.result.current.gitStatus).toEqual(updatedStatus);
     expect(second.result.current.loading).toBe(false);
   });
+
+  it("can retain status without installing a polling interval", async () => {
+    mocks.getGitStatus.mockResolvedValue(gitStatus([]));
+
+    renderHook(() => useGitStatus("project-a", { poll: false }));
+    await settle();
+
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+  });
 });

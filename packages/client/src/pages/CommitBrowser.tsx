@@ -38,6 +38,7 @@ export function CommitBrowser({
   status,
   isWideScreen,
   initialSha,
+  initialPath,
   onBlameFile,
   captureReviewProjections = false,
   supportsProjections = false,
@@ -53,6 +54,8 @@ export function CommitBrowser({
   isWideScreen: boolean;
   /** Direct commit selection, e.g. from an asynchronously populated blame hash. */
   initialSha?: string;
+  /** Direct file selection within the initial commit. */
+  initialPath?: string;
   /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
   onBlameFile?: (path: string) => void;
   captureReviewProjections?: boolean;
@@ -111,6 +114,7 @@ export function CommitBrowser({
     status,
     isWideScreen,
     initialSha,
+    initialPath,
     supportsProjections,
     onProjectionUnavailable,
     t,

@@ -2064,6 +2064,7 @@ export function createApp(options: AppOptions): AppResult {
     type PublicShareSessionDetailEnvelope = {
       messages?: AppSession["messages"];
       pagination?: unknown;
+      publicShareCapture?: { completedMessageCount?: unknown };
       session?: AppSession;
     };
 
@@ -2073,25 +2074,29 @@ export function createApp(options: AppOptions): AppResult {
     ): AppSession | null => {
       if (!body.session || typeof body.session !== "object") return null;
       if (requireCompleteHistory) {
-        if (body.session.ownership?.owner === "self") {
-          throw new PublicShareCaptureError(
-            "Active session history is still changing; retry frozen capture",
-            "source-changed",
-          );
-        }
+        const completedMessageCount =
+          body.publicShareCapture?.completedMessageCount;
         if (
           !Array.isArray(body.messages) ||
           body.pagination !== undefined ||
           body.session.messages !== undefined ||
           !Number.isInteger(body.session.messageCount) ||
           body.session.messageCount < 0 ||
-          body.session.messageCount > body.messages.length
+          body.session.messageCount > body.messages.length ||
+          !Number.isInteger(completedMessageCount) ||
+          (completedMessageCount as number) < 0 ||
+          (completedMessageCount as number) > body.messages.length
         ) {
           throw new PublicShareCaptureError(
             "Session detail did not provide complete history; retry frozen capture",
             "incomplete-history",
           );
         }
+        return {
+          ...body.session,
+          messageCount: completedMessageCount as number,
+          messages: body.messages.slice(0, completedMessageCount as number),
+        };
       }
       return {
         ...body.session,

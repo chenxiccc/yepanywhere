@@ -1917,12 +1917,15 @@ describe("MessageInput", () => {
     expect(onToggleEnabled).toHaveBeenCalledTimes(1);
   });
 
-  it("uses live thinking selection instead of stored defaults in the toolbar", () => {
+  it("keeps live thinking controls enabled while the agent is running", () => {
     const onSetMode = vi.fn();
     renderMessageInput(vi.fn(), {
       supportsThinkingToggle: true,
       thinkingProvider: "claude",
       thinkingModel: "test-model",
+      isRunning: true,
+      isThinking: true,
+      onStop: vi.fn(),
       liveThinkingSelection: {
         mode: "on",
         level: "xhigh",

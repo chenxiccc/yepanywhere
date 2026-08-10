@@ -502,11 +502,22 @@ export class PublicShareService {
         }
         const currentProjection =
           prepareCompleteSessionProjection(currentSession);
-        const currentRevision =
-          await digestStoredSessionProjection(currentProjection);
+        if (currentProjection.messages.length < snapshot.messages.length) {
+          throw new PublicShareCaptureError(
+            "Session history moved behind the frozen capture boundary; retry",
+            "source-changed",
+          );
+        }
+        const currentRevision = await digestStoredSessionProjection({
+          ...snapshot,
+          messages: currentProjection.messages.slice(
+            0,
+            snapshot.messages.length,
+          ),
+        });
         if (currentRevision !== sourceRevision) {
           throw new PublicShareCaptureError(
-            "Session changed during frozen capture; retry",
+            "Session changed before the frozen capture boundary; retry",
             "source-changed",
           );
         }

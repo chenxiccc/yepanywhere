@@ -89,6 +89,30 @@ async function captureChangingSession(service: PublicShareService) {
   return capture;
 }
 
+async function captureGrowingSession(service: PublicShareService) {
+  let readCount = 0;
+  const capture = await service.captureCompleteSession(async () => {
+    readCount += 1;
+    const first = makeRevisionSession("completed");
+    return readCount === 1
+      ? first
+      : makeSession({
+          messageCount: 2,
+          messages: [
+            ...first.messages,
+            {
+              type: "user",
+              uuid: "later-message-id",
+              message: { role: "user", content: "later" },
+              timestamp: "2026-05-01T00:02:00.000Z",
+            },
+          ] as AppSession["messages"],
+        });
+  });
+  if (!capture) throw new Error("Expected growing test session capture");
+  return capture;
+}
+
 async function inspectLegacySessionValue(value: unknown) {
   async function* serialized(): AsyncGenerator<string> {
     yield JSON.stringify(value);
@@ -2255,6 +2279,19 @@ describe("PublicShareService", () => {
     await expect(
       fs.readFile(path.join(testDir, "public-shares", "cleanup.json"), "utf8"),
     ).resolves.toContain('"shareStateIds": []');
+  });
+
+  it("publishes the requested prefix when later turns complete before authority", async () => {
+    const { secret } = await service.createShare({
+      mode: "frozen",
+      title: "Point-in-time prefix",
+      source: { projectId, sessionId: "growing-create" },
+      capture: await captureGrowingSession(service),
+    });
+
+    const stored = await service.getFrozenShareBySecret(secret);
+    expect(stored?.session.messages).toHaveLength(1);
+    expect(stored?.session.messages[0]?.uuid).toBe("stable-message-id");
   });
 
   it("keeps live grants unchanged and collects the failed whole-freeze revision", async () => {

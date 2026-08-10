@@ -1,0 +1,35 @@
+.diffLinks {
+  display: inline-flex;
+  gap: 0.1rem;
+  align-items: center;
+  margin-left: 0.1rem;
+  vertical-align: middle;
+}
+
+.diffLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  opacity: 0.55;
+  transition:
+    color 0.15s,
+    opacity 0.15s;
+}
+
+.diffLink:hover {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  opacity: 1;
+}
+
+.dirty {
+  color: var(--color-warning, #d29922);
+}
+
+.diffLink svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}

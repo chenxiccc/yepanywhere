@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { gunzipSync } from "node:zlib";
 import { dirname, join } from "node:path";
@@ -454,10 +454,12 @@ describe("Sessions API", () => {
         user("u4", "cb3", 10),
       ];
 
+      const sessionFile = join(sessionDir, `${name}.jsonl`);
       await writeFile(
-        join(sessionDir, `${name}.jsonl`),
+        sessionFile,
         `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
       );
+      return sessionFile;
     }
 
     it("defaults no-query detail requests to a compact tail", async () => {
@@ -618,7 +620,26 @@ describe("Sessions API", () => {
       ]);
     });
 
-    it("rejects frozen capture while replay-only active history can change", async () => {
+    it("freezes the durable completed prefix while a later turn is active", async () => {
+      const activeProjectPath = join(testDir, "active-share-project");
+      const activeProjectId = encodeProjectId(activeProjectPath);
+      await mkdir(activeProjectPath);
+      const activeSessionFile = await writeCompactedSession(
+        "sess-existing",
+        activeProjectPath,
+      );
+      await appendFile(
+        activeSessionFile,
+        `${JSON.stringify({
+          type: "assistant",
+          cwd: activeProjectPath,
+          sessionId: "sess-existing",
+          uuid: "a4",
+          parentUuid: "u4",
+          timestamp: "2026-01-01T00:00:11Z",
+          message: { role: "assistant", content: "a4" },
+        })}\n`,
+      );
       let releaseProcess!: () => void;
       const processGate = new Promise<void>((resolve) => {
         releaseProcess = resolve;
@@ -661,14 +682,17 @@ describe("Sessions API", () => {
           isEnabled: () => true,
         } as never,
       });
-      const resumed = await app.request(`/api/projects/${projectId}/sessions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Yep-Anywhere": "true",
+      const resumed = await app.request(
+        `/api/projects/${activeProjectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Yep-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "continue" }),
         },
-        body: JSON.stringify({ message: "continue" }),
-      });
+      );
       expect(resumed.status).toBe(200);
       const { processId } = (await resumed.json()) as { processId: string };
 
@@ -676,14 +700,36 @@ describe("Sessions API", () => {
         await vi.waitFor(
           async () => {
             const detail = await app.request(
-              `/api/projects/${projectId}/sessions/sess-existing?fullHistory=1&fullHistoryReason=test`,
+              `/api/projects/${activeProjectId}/sessions/sess-existing?fullHistory=1&fullHistoryReason=test`,
               { headers: { "X-Yep-Anywhere": "true" } },
             );
             expect(detail.status).toBe(200);
             const body = await detail.json();
             expect(body.session.ownership).toMatchObject({ owner: "self" });
-            expect(JSON.stringify(body.messages)).toContain(
-              "replay-only active marker",
+          },
+          { timeout: 4_000, interval: 25 },
+        );
+        await appendFile(
+          activeSessionFile,
+          `${JSON.stringify({
+            type: "user",
+            cwd: activeProjectPath,
+            sessionId: "sess-existing",
+            uuid: "u5",
+            parentUuid: "a4",
+            timestamp: new Date().toISOString(),
+            message: { role: "user", content: "incomplete active turn" },
+          })}\n`,
+        );
+        await vi.waitFor(
+          async () => {
+            const detail = await app.request(
+              `/api/projects/${activeProjectId}/sessions/sess-existing?fullHistory=1&fullHistoryReason=test`,
+              { headers: { "X-Yep-Anywhere": "true" } },
+            );
+            expect(detail.status).toBe(200);
+            expect(JSON.stringify((await detail.json()).messages)).toContain(
+              "incomplete active turn",
             );
           },
           { timeout: 4_000, interval: 25 },
@@ -696,20 +742,29 @@ describe("Sessions API", () => {
             "X-Yep-Anywhere": "true",
           },
           body: JSON.stringify({
-            projectId,
+            projectId: activeProjectId,
             sessionId: "sess-existing",
             mode: "frozen",
           }),
         });
 
-        expect(frozen.status).toBe(409);
-        await expect(frozen.json()).resolves.toMatchObject({ retryable: true });
+        expect(frozen.status).toBe(200);
+        const frozenBody = (await frozen.json()) as { url: string };
+        const secret = new URL(frozenBody.url).pathname.split("/").at(-1)!;
+        const stored = await publicShareService.getFrozenShareBySecret(secret);
+        expect(stored?.session.messages?.at(-1)?.uuid).toBe("a4");
+        expect(JSON.stringify(stored?.session.messages)).not.toContain(
+          "replay-only active marker",
+        );
+        expect(JSON.stringify(stored?.session.messages)).not.toContain(
+          "incomplete active turn",
+        );
         expect(
           publicShareService.getSessionShareStatus(
-            toUrlProjectId(projectPath),
+            toUrlProjectId(activeProjectPath),
             "sess-existing",
           ).activeCount,
-        ).toBe(0);
+        ).toBe(1);
       } finally {
         releaseProcess();
         await supervisor.abortProcess(processId);

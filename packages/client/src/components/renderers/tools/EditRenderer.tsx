@@ -1,8 +1,3 @@
-import type {
-  EffortLevel,
-  ProviderName,
-  ThinkingConfig,
-} from "@yep-anywhere/shared";
 import {
   memo,
   type ReactNode,
@@ -12,14 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useExpandedDiff } from "../../../hooks/useExpandedDiff";
-import { useRemoteBasePath } from "../../../hooks/useRemoteBasePath";
 import { useVisibilityAwareTextTooltip } from "../../../hooks/useTooltipAppearance";
-import { useI18n } from "../../../i18n";
 import {
   classifyToolError,
   getErrorClassSuffix,
@@ -27,14 +19,9 @@ import {
 } from "../../../lib/classifyToolError";
 import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { createSourceControlNavigationState } from "../../../lib/sourceControlNavigationState";
-import {
-  getPathBasename,
-  getProjectRelativePath,
-  makeDisplayPath,
-  normalizePathSeparators,
-} from "../../../lib/text";
+import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
-import { FilePathLink } from "../../FilePathLink";
+import { FilePathLink, FileVersionControlLinks } from "../../FilePathLink";
 import { SchemaWarning } from "../../SchemaWarning";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
 import {
@@ -166,94 +153,31 @@ function getEditRenderMode(filePaths: string[]): FixedFontRenderMode {
     : "math";
 }
 
-function getDirtyProjectRelativePath(
-  filePath: string,
-  projectPath: string | null,
-): string | null {
-  const projectRelative = getProjectRelativePath(filePath, projectPath);
-  if (projectRelative && projectRelative !== ".") return projectRelative;
-
-  const normalized = normalizePathSeparators(filePath).replace(/^\.\/+/, "");
-  const isAbsolute =
-    normalized.startsWith("/") ||
-    normalized.startsWith("//") ||
-    /^[a-zA-Z]:\//.test(normalized);
-  const leavesProject = normalized === ".." || normalized.startsWith("../");
-  return normalized && !isAbsolute && !leavesProject ? normalized : null;
-}
-
 function SourceControlEditLink({ filePath }: { filePath: string }) {
   const session = useOptionalSessionMetadata();
-  if (!session?.sessionTitle || !session.provider || !filePath) {
+  if (!session?.projectId || !filePath) {
     return null;
   }
-  const relativePath = getDirtyProjectRelativePath(
-    filePath,
-    session.projectPath,
-  );
-  if (!relativePath) return null;
-
+  const navigationState =
+    session.sessionTitle && session.provider
+      ? createSourceControlNavigationState({
+          projectId: session.projectId,
+          id: session.sessionId,
+          title: session.sessionTitle,
+          newSession: {
+            provider: session.provider,
+            ...(session.model ? { model: session.model } : {}),
+            ...(session.thinking ? { thinking: session.thinking } : {}),
+            ...(session.effort ? { effort: session.effort } : {}),
+          },
+        })
+      : undefined;
   return (
-    <SourceControlEditLinkReady
+    <FileVersionControlLinks
       projectId={session.projectId}
-      sessionId={session.sessionId}
-      sessionTitle={session.sessionTitle}
-      provider={session.provider}
-      model={session.model}
-      thinking={session.thinking}
-      effort={session.effort}
-      relativePath={relativePath}
+      filePath={filePath}
+      navigationState={navigationState}
     />
-  );
-}
-
-function SourceControlEditLinkReady({
-  projectId,
-  sessionId,
-  sessionTitle,
-  provider,
-  model,
-  thinking,
-  effort,
-  relativePath,
-}: {
-  projectId: string;
-  sessionId: string;
-  sessionTitle: string;
-  provider: ProviderName;
-  model?: string;
-  thinking?: ThinkingConfig;
-  effort?: EffortLevel;
-  relativePath: string;
-}) {
-  const { t } = useI18n();
-  const basePath = useRemoteBasePath();
-  const params = new URLSearchParams({
-    projectId,
-    worktreeFile: relativePath,
-  });
-  const state = createSourceControlNavigationState({
-    projectId,
-    id: sessionId,
-    title: sessionTitle,
-    newSession: {
-      provider,
-      ...(model ? { model } : {}),
-      ...(thinking ? { thinking } : {}),
-      ...(effort ? { effort } : {}),
-    },
-  });
-
-  return (
-    <Link
-      className="source-review-edit-link"
-      to={`${basePath}/git-status?${params.toString()}`}
-      state={state}
-      title={t("sourceReviewOpenDirtyFile")}
-      onClick={(event) => event.stopPropagation()}
-    >
-      {t("sourceReviewOpenDirtyFile")}
-    </Link>
   );
 }
 

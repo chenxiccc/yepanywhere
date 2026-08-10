@@ -3539,9 +3539,6 @@ export class Supervisor {
         return changed;
       }
       case "effort":
-        if (process.state.type !== "idle") {
-          throw new SessionConfigurationConflictError(["effort"]);
-        }
         return process.setEffort(configuration.nextEffort);
       case null:
         return false;

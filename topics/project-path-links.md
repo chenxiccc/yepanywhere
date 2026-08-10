@@ -267,6 +267,24 @@ first component is a cached `absent` costs one cache hit regardless of its
 length. Scanning character by character would save regex and allocation work,
 not the filesystem I/O that is the actual cost.
 
+## Version-control affordances
+
+An authenticated project-file link may append two compact version-control
+affordances after its path. The dirty affordance appears only when the current
+Git status names that project-relative path and opens its working-tree diff.
+The committed affordance appears only when the current HEAD commit names the
+path and opens that commit's diff against its first parent with the file
+selected. A file can show both. Ordinary activation stays in the current tab;
+native modifier-click and context-menu behavior can open either link elsewhere.
+
+These are capability-gated enrichments of an existing path link. An older
+server receives no unsupported Git request, a non-repository or unmatched path
+stays unchanged, and public-share file links never expose Source Control. The
+status and HEAD-detail reads share retained request state across the many links
+that can be mounted in one transcript and do not create one polling interval per
+link. Edit-tool summaries use this same affordance instead of a separate review
+link.
+
 ## Not yet covered
 
 Turn text and the file viewer's highlighted source run this. Other viewers

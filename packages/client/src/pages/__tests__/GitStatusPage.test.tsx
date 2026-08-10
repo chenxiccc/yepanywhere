@@ -48,7 +48,7 @@ vi.mock("../../api/client", () => ({
 }));
 
 vi.mock("../CommitBrowser", () => ({
-  CommitBrowser: (props: { initialSha?: string }) => {
+  CommitBrowser: (props: { initialPath?: string; initialSha?: string }) => {
     mocks.renderCommitBrowser(props);
     return <div data-testid="commit-browser">commit-history</div>;
   },
@@ -510,6 +510,20 @@ describe("GitStatusPage source header", () => {
     ).toBe("true");
     expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
       expect.objectContaining({ initialSha: "b".repeat(40) }),
+    );
+  });
+
+  it("opens a linked file within the requested commit", async () => {
+    renderPage(
+      "/git-status?projectId=project-a&rev=abc123&commitFile=src%2Fx.ts",
+    );
+
+    expect(await screen.findByTestId("commit-browser")).toBeDefined();
+    expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSha: "abc123",
+        initialPath: "src/x.ts",
+      }),
     );
   });
 

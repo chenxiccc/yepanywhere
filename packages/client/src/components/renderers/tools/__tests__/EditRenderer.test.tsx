@@ -13,6 +13,14 @@ import { UI_KEYS } from "../../../../lib/storageKeys";
 import { TooltipLayer } from "../../../ui/TooltipLayer";
 import { editRenderer } from "../EditRenderer";
 
+const mocks = vi.hoisted(() => ({
+  useFileVersionControl: vi.fn(),
+}));
+
+vi.mock("../../../../hooks/useFileVersionControl", () => ({
+  useFileVersionControl: mocks.useFileVersionControl,
+}));
+
 vi.mock("../../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({
     enabled: false,
@@ -45,6 +53,12 @@ function LocationStateProbe() {
 describe("EditRenderer collapsed preview fallback", () => {
   beforeEach(() => {
     window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+    mocks.useFileVersionControl.mockImplementation(
+      (_projectId: string, filePath: string) => ({
+        dirty: false,
+        relativePath: filePath,
+      }),
+    );
   });
 
   afterEach(() => {
@@ -723,6 +737,10 @@ describe("EditRenderer collapsed preview fallback", () => {
         lines: ["-const x = 1;", "+const x = 2;"],
       },
     ];
+    mocks.useFileVersionControl.mockReturnValue({
+      dirty: true,
+      relativePath: "src/example.ts",
+    });
 
     render(
       <MemoryRouter initialEntries={["/projects/project-1/sessions/session-1"]}>
@@ -757,7 +775,9 @@ describe("EditRenderer collapsed preview fallback", () => {
       </MemoryRouter>,
     );
 
-    const link = screen.getByRole("link", { name: "Review" });
+    const link = screen.getByRole("link", {
+      name: "Open uncommitted diff for src/example.ts",
+    });
     expect(link.getAttribute("href")).toBe(
       "/git-status?projectId=project-1&worktreeFile=src%2Fexample.ts",
     );

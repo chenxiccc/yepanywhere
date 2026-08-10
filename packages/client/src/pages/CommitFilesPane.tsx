@@ -99,7 +99,9 @@ export function CommitFilesPane({
       (file) => !file.path.endsWith("/"),
     );
     const nextFile =
-      selectableFiles.find((file) => file.path === selectedPath) ??
+      selectableFiles.find(
+        (file) => file.path === selectedPath || file.origPath === selectedPath,
+      ) ??
       selectableFiles[0] ??
       null;
     if ((nextFile?.path ?? null) !== selectedPath) {

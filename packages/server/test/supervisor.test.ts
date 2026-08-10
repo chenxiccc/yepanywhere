@@ -13,7 +13,6 @@ import { createControllableIterator, waitFor } from "./process.test-support.js";
 import {
   RetryableSessionLaunchError,
   type ResumeCompactionError,
-  SessionConfigurationConflictError,
   Supervisor,
 } from "../src/supervisor/Supervisor.js";
 import {
@@ -1239,7 +1238,7 @@ describe("Supervisor", () => {
       await supervisorWithProvider.abortProcess(started.id);
     });
 
-    it("rejects an effort change that cannot settle during an active turn", async () => {
+    it("queues an effort change until the active turn completes", async () => {
       let aborted = false;
       let completeTurn = () => {};
       const turnCompleted = new Promise<void>((resolve) => {
@@ -1318,17 +1317,19 @@ describe("Supervisor", () => {
             thinking: { type: "adaptive", display: "summarized" },
             effort: "medium",
           }),
-        ).rejects.toBeInstanceOf(SessionConfigurationConflictError);
+        ).resolves.toBe(process);
         expect(startSession).toHaveBeenCalledTimes(1);
         expect(aborted).toBe(false);
-        expect(process.effort).toBe("low");
+        expect(process.effort).toBe("medium");
+        expect(process.appliedEffort).toBe("low");
         expect(setEffort).not.toHaveBeenCalled();
 
         completeTurn();
         await vi.waitFor(() => {
           expect(process.state.type).toBe("idle");
         });
-        expect(setEffort).not.toHaveBeenCalled();
+        expect(setEffort).toHaveBeenCalledWith("medium");
+        expect(process.appliedEffort).toBe("medium");
       } finally {
         await supervisorWithProvider.abortProcess(process.id);
       }

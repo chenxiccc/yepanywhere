@@ -66,15 +66,20 @@ conversion, and viewer-token freeze—uses a separate required complete-history
 loader. The app adapter requests the real session-detail route with
 `publicShare=1&fullHistory=1`, parses its normal metadata-plus-top-level-messages
 envelope, and rejects missing messages, pagination, truncation, or inconsistent
-message counts as retryable incomplete history. This does not add a field to
-`AppSession` or the public wire protocol. A detail envelope owned by a current
-YA process (`ownership.owner === "self"`) is also rejected as retryable
-`source-changed`: its merged replay can contain messages not yet durable in the
-provider transcript, so it is not a complete immutable source even when the
-returned count is internally consistent. An invalid, disconnected, or otherwise
-ineligible viewer-token freeze is rejected as a no-op before this complete
-loader or any project scan runs; the serialized store mutation still rechecks
-eligibility before retargeting authority.
+message counts as retryable incomplete history. For this internal request only,
+the route also returns the number of messages through the latest completed turn.
+An idle source exposes its complete history. A busy source trims the latest
+user-authored turn and its partial output; replay-only output before the provider
+has created durable history contributes no messages. A newly resumed process
+may expose the durable history that predates its current turn. This marker does
+not add a field to `AppSession` or the public wire protocol.
+
+An active YA or externally observed session must remain eligible for frozen
+sharing. Its capture is the completed-turn prefix described above, not a claim
+that the current mutable turn is complete. An invalid, disconnected, or
+otherwise ineligible viewer-token freeze is rejected as a no-op before this
+complete loader or any project scan runs; the serialized store mutation still
+rechecks eligibility before retargeting authority.
 
 One source read produces one sanitized, recursively immutable `AppSession`
 projection. Presentation authorization is derived from that same projection.
@@ -90,11 +95,12 @@ Frozen publication remains content-before-authority. After the immutable gzip
 revision and optional copy-on-write project tree are complete, but immediately
 before inserting a grant or retargeting whole-session/viewer authority, the
 store invokes a transient validator. The validator performs a second explicit
-complete-history read, builds the same sanitized projection, and compares its
-serialized witness. Missing or partial history and source mismatch are typed,
-retryable capture failures. No new grant is inserted and existing live or
-viewer authority remains unchanged; the durable cleanup journal collects the
-unreferenced attempted revision and project snapshot.
+complete-history read and compares the exact originally captured message prefix.
+Turns appended after the boundary do not invalidate publication; removal or
+mutation within the prefix does. Missing or partial history and prefix mismatch
+are typed, retryable capture failures. No new grant is inserted and existing
+live or viewer authority remains unchanged; the durable cleanup journal collects
+the unreferenced attempted revision and project snapshot.
 
 ## Physical access bounds
 
@@ -287,7 +293,7 @@ Journal collection enumerates the actual frozen-directory children, removes
 it, then trims state metadata. A state directory without a remaining grant never
 recreates a bearer authorization.
 
-The Settings **Public Read-Only Share** toggle remains a destructive global kill
+The Settings **Public Session Sharing** toggle remains a destructive global kill
 switch. The settings routes reserve one shared serial transaction slot on
 request arrival, before parsing, and keep persistence plus each live settings
 effect in that order; the secondary remote-executor persistence route uses the
@@ -312,9 +318,9 @@ Left- and right-click on the broadcast icon open the same management pane at
 the same dropdown-like anchor. The Session menu's Share action opens that pane
 too, using its default placement. In session context, its two-column layout
 keeps five filter rows in the left rail: all projects, this project, and this
-session are mutually exclusive (this session is the default); read-only and
+session are mutually exclusive (this session is the default); frozen and
 live are independent and both default on. Settings management is fixed to all
-projects and exposes only the read-only and live filters. Each
+projects and exposes only the frozen and live filters. Each
 selector uses the same white line-glyph tile, accent fill, and tinted-row
 selected-state grammar as Settings categories; selection does not depend on a
 subtle border alone. The right column lists matching grants with active
@@ -335,7 +341,7 @@ type/location intersection, link count, and active-client count. A second
 click on the same category control revokes; the All projects `×` is therefore
 the direct all-projects/all-types path. Any other in-pane control cancels the
 armed action; outside-click or clicking the broadcast icon dismisses the pane.
-Each listed share carries a compact right-side live/read-only glyph before its
+Each listed share carries a compact right-side live/frozen glyph before its
 copy and smaller red revoke actions.
 
 One mounted manager controller belongs to one backend source. Changing the

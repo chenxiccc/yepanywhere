@@ -184,7 +184,7 @@ describe("SessionShareModal", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Copy Read-Only Snapshot Link/ }),
+      screen.getByRole("button", { name: /Copy Frozen Snapshot Link/ }),
     );
 
     // The promise-valued write is dispatched before the share URL exists, so the
@@ -201,12 +201,12 @@ describe("SessionShareModal", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Read-only link copied to clipboard."),
+        screen.getByText("Public share link copied to clipboard."),
       ).toBeTruthy();
     });
   });
 
-  it("creates and copies a frozen read-only public share in one click", async () => {
+  it("creates and copies a frozen public share in one click", async () => {
     render(
       <I18nProvider>
         <SessionShareModal
@@ -220,7 +220,7 @@ describe("SessionShareModal", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Copy Read-Only Snapshot Link/ }),
+      screen.getByRole("button", { name: /Copy Frozen Snapshot Link/ }),
     );
 
     await waitFor(() => {
@@ -242,12 +242,12 @@ describe("SessionShareModal", () => {
         ),
       ).toBeTruthy();
       expect(
-        screen.getByText("Read-only link copied to clipboard."),
+        screen.getByText("Public share link copied to clipboard."),
       ).toBeTruthy();
     });
   });
 
-  it("creates and copies a live read-only public share in one click", async () => {
+  it("creates and copies a live public share in one click", async () => {
     const onStatusChange = vi.fn();
     render(
       <I18nProvider>
@@ -261,9 +261,7 @@ describe("SessionShareModal", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /Copy Read-Only Live Link/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Copy Live Link/ }));
 
     await waitFor(() => {
       expect(api.createPublicSessionShare).toHaveBeenCalledWith(
@@ -300,13 +298,13 @@ describe("SessionShareModal", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Copy Read-Only Snapshot Link/ }),
+      screen.getByRole("button", { name: /Copy Frozen Snapshot Link/ }),
     );
 
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Read-only link created. Clipboard access was blocked; select the link above to copy it manually.",
+          "Public share link created. Clipboard access was blocked; select the link above to copy it manually.",
         ),
       ).toBeTruthy();
     });
@@ -338,12 +336,12 @@ describe("SessionShareModal", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Copy Read-Only Snapshot Link/ }),
+      screen.getByRole("button", { name: /Copy Frozen Snapshot Link/ }),
     );
 
     await waitFor(() => {
       expect(
-        screen.getByText("Read-only link copied to clipboard."),
+        screen.getByText("Public share link copied to clipboard."),
       ).toBeTruthy();
     });
     expect(writeText).toHaveBeenCalledWith(
@@ -424,7 +422,7 @@ describe("SessionShareModal", () => {
     });
     expect(
       screen.getByText(
-        "Live updates stopped for 1 link(s); they now open as read-only snapshots.",
+        "Live updates stopped for 1 link(s); they now open as frozen snapshots.",
       ),
     ).toBeTruthy();
   });
@@ -524,7 +522,7 @@ describe("SessionShareModal", () => {
       shareType.querySelectorAll('button[aria-pressed="true"]'),
     ).toHaveLength(2);
     expect(screen.getByText(/0 active public viewer/)).toBeTruthy();
-    expect(screen.getByRole("img", { name: "Read-only" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Frozen" })).toBeTruthy();
     expect(api.createPublicSessionShare).not.toHaveBeenCalled();
     expect(screen.getByText(/could not snapshot linked files/i)).toBeTruthy();
 
@@ -538,7 +536,7 @@ describe("SessionShareModal", () => {
     });
     expect(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in All projects for revocation",
+        name: "Review all Frozen share links in All projects for revocation",
       }),
     ).toBeTruthy();
   });
@@ -602,7 +600,7 @@ describe("SessionShareModal", () => {
     await screen.findByText("Build logs");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Create and copy Read-only link",
+        name: "Create and copy Frozen link",
       }),
     );
 
@@ -639,14 +637,14 @@ describe("SessionShareModal", () => {
     await screen.findByText("Build logs");
     vi.mocked(api.getPublicShares).mockClear();
     const createButton = screen.getByRole("button", {
-      name: "Create and copy Read-only link",
+      name: "Create and copy Frozen link",
     });
     const scopeFilter = screen.getByRole("button", {
       name: /^All projects$/,
     });
     const copy = screen.getByRole("button", { name: "Copy public link" });
     const prepare = screen.getByRole("button", {
-      name: "Review all Read-only share links in This session for revocation",
+      name: "Review all Frozen share links in This session for revocation",
     });
 
     fireEvent.click(createButton);
@@ -687,7 +685,7 @@ describe("SessionShareModal", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     ).toBeTruthy();
     expect(
@@ -747,11 +745,11 @@ describe("SessionShareModal", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Create and copy Read-only link",
+        name: "Create and copy Frozen link",
       }),
     );
     expect(
-      await screen.findByText("Read-only link copied to clipboard."),
+      await screen.findByText("Public share link copied to clipboard."),
     ).toBeTruthy();
     expect(writeText).toHaveBeenCalledTimes(2);
 
@@ -759,7 +757,7 @@ describe("SessionShareModal", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(
-      screen.getByText("Read-only link copied to clipboard."),
+      screen.getByText("Public share link copied to clipboard."),
     ).toBeTruthy();
     expect(screen.queryByText("Public link copied to clipboard.")).toBeNull();
     expect(screen.getByRole("listitem").className).not.toContain(
@@ -802,7 +800,7 @@ describe("SessionShareModal", () => {
     await screen.findByText("Build logs");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
 
@@ -815,25 +813,25 @@ describe("SessionShareModal", () => {
       });
       expect(
         screen.getByRole("button", {
-          name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+          name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
         }),
       ).toBeTruthy();
     });
     expect(
       screen.getByText(
-        "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+        "Click again to revoke 1 Frozen share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
       ),
     ).toBeTruthy();
     expect(
       screen
         .getByText(
-          "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+          "Click again to revoke 1 Frozen share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
         )
         .closest("button"),
     ).toBeNull();
     expect(
       screen
-        .getByRole("button", { name: "Read-only" })
+        .getByRole("button", { name: "Frozen" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
@@ -843,7 +841,7 @@ describe("SessionShareModal", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+        name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
       }),
     );
     await waitFor(() => {
@@ -891,12 +889,12 @@ describe("SessionShareModal", () => {
     await screen.findByText("Initial inventory");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Confirm: revoke 2 Read-only share link(s) in This session (0 active client(s))",
+        name: "Confirm: revoke 2 Frozen share link(s) in This session (0 active client(s))",
       }),
     );
 
@@ -938,12 +936,12 @@ describe("SessionShareModal", () => {
     vi.mocked(api.getPublicShares).mockClear();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
 
     await screen.findByRole("button", {
-      name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+      name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
     });
     expect(api.getPublicShares).toHaveBeenCalledTimes(1);
     expect(api.getPublicShares).toHaveBeenCalledWith({
@@ -973,7 +971,7 @@ describe("SessionShareModal", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
 
@@ -1021,11 +1019,11 @@ describe("SessionShareModal", () => {
     await screen.findByText("Build logs");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
     await screen.findByRole("button", {
-      name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+      name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
     });
 
     fireEvent.click(screen.getByRole("button", { name: /^All projects$/ }));
@@ -1036,7 +1034,7 @@ describe("SessionShareModal", () => {
         mode: "frozen",
       });
       expect(
-        screen.queryByText(/Click again to revoke 1 Read-only share link/),
+        screen.queryByText(/Click again to revoke 1 Frozen share link/),
       ).toBeNull();
     });
     expect(api.revokePublicShare).not.toHaveBeenCalled();
@@ -1145,22 +1143,22 @@ describe("SessionShareModal", () => {
     await screen.findByText("Build logs");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
     const confirmation = await screen.findByRole("button", {
-      name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+      name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
     });
     fireEvent.click(
       screen.getByText(
-        "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+        "Click again to revoke 1 Frozen share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
       ),
     );
 
     expect(confirmation).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+        name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
       }),
     ).toBeTruthy();
   });
@@ -1198,11 +1196,11 @@ describe("SessionShareModal", () => {
 
     await screen.findByText("Build logs");
     const create = screen.getByRole("button", {
-      name: "Create and copy Read-only link",
+      name: "Create and copy Frozen link",
     });
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
     expect(create).toHaveProperty("disabled", true);
@@ -1213,7 +1211,7 @@ describe("SessionShareModal", () => {
       totalCount: 1,
     });
     const confirm = await screen.findByRole("button", {
-      name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+      name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
     });
     expect(create).toHaveProperty("disabled", false);
 
@@ -1254,7 +1252,7 @@ describe("SessionShareModal", () => {
     await screen.findByText("Build logs");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "All projects" }));
@@ -1307,11 +1305,11 @@ describe("SessionShareModal", () => {
     await screen.findByText("Initial inventory");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review all Read-only share links in This session for revocation",
+        name: "Review all Frozen share links in This session for revocation",
       }),
     );
     const confirm = await screen.findByRole("button", {
-      name: "Confirm: revoke 2 Read-only share link(s) in This session (0 active client(s))",
+      name: "Confirm: revoke 2 Frozen share link(s) in This session (0 active client(s))",
     });
 
     preparedInventory.items.splice(
@@ -1373,7 +1371,7 @@ describe("SessionShareModal", () => {
     ).toBe("true");
     expect(
       screen
-        .getByRole("button", { name: "Read-only" })
+        .getByRole("button", { name: "Frozen" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(

@@ -208,6 +208,59 @@ describe("CommitBrowser", () => {
     );
   });
 
+  it("opens a directly linked file within the selected commit", async () => {
+    primeApis();
+    getGitCommit.mockResolvedValue({
+      hash: SHA,
+      shortHash: "aaaaaaa",
+      subject: "first commit",
+      authorName: "Dev",
+      authorDate: "2026-07-26T00:00:00Z",
+      body: "",
+      files: [
+        {
+          path: "src/first.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+        {
+          path: "src/linked.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          initialSha={SHA}
+          initialPath="src/linked.ts"
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/linked.ts");
+    await waitFor(() =>
+      expect(
+        document.querySelector(".commit-file-item.selected")?.textContent,
+      ).toContain("src/linked.ts"),
+    );
+    await waitFor(() =>
+      expect(getGitCommitDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({ path: "src/linked.ts" }),
+      ),
+    );
+  });
+
   it("keeps a direct blame-hash revision selected beyond the recent page", async () => {
     primeApis();
     getGitCommit.mockResolvedValue({
