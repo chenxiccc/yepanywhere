@@ -560,12 +560,14 @@ interface Props {
   activeToolApproval?: ActiveToolApproval;
   /** Whether there are older messages not yet loaded */
   hasOlderMessages?: boolean;
+  /** Cursor identifying the next older transcript page */
+  olderMessagesCursor?: string | null;
   /** Ephemeral signal incremented after an accepted active-window prefix trim. */
   activeWindowTrimRevision?: number;
   /** Whether older messages are currently being loaded */
   loadingOlder?: boolean;
   /** Callback to load the next chunk of older messages */
-  onLoadOlderMessages?: () => void;
+  onLoadOlderMessages?: () => void | Promise<void>;
   /** Whether the client transcript is intentionally loaded from a recent tail */
   clientTailActive?: boolean;
   /** Render the recent transcript tail first, then hydrate older rows in batches. */
@@ -914,6 +916,7 @@ export const MessageList = memo(function MessageList({
   markdownAugments,
   activeToolApproval,
   hasOlderMessages = false,
+  olderMessagesCursor = null,
   activeWindowTrimRevision = 0,
   loadingOlder = false,
   onLoadOlderMessages,
@@ -940,6 +943,15 @@ export const MessageList = memo(function MessageList({
   bangCommandHandlers,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const loadOlderBoundaryRef = useRef<HTMLDivElement>(null);
+  const automaticOlderLoadAttemptRef = useRef<string | null>(null);
+  const automaticOlderLoadRequiresExitRef = useRef(false);
+  const pendingOlderPageScrollRef = useRef<{
+    wasAtBottom: boolean;
+    scrollTop: number;
+    scrollHeight: number;
+    anchor: ReturnType<typeof getFirstVisibleRenderAnchor>;
+  } | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const previousInertRef = useRef(inert);
   const isInitialLoadRef = useRef(true);
@@ -982,6 +994,8 @@ export const MessageList = memo(function MessageList({
     if (showThinking === "off") return false;
     return loadSessionThinkingVisible();
   });
+  const [olderPageLoadCompletionRevision, setOlderPageLoadCompletionRevision] =
+    useState(0);
   const [conversationViewEnabled, setConversationViewEnabled] = useState(
     getConversationViewPreference,
   );
@@ -2361,6 +2375,20 @@ export const MessageList = memo(function MessageList({
       return;
     }
 
+    if (fetchesOlderMessages) {
+      const messageList = containerRef.current;
+      const scrollContainer = messageList?.parentElement;
+      pendingOlderPageScrollRef.current =
+        messageList && scrollContainer
+          ? {
+              wasAtBottom: isNearScrollBottom(scrollContainer),
+              scrollTop: scrollContainer.scrollTop,
+              scrollHeight: scrollContainer.scrollHeight,
+              anchor: getFirstVisibleRenderAnchor(messageList, scrollContainer),
+            }
+          : null;
+    }
+
     preserveScrollAfterTranscriptHeightChange(() => {
       if (revealsLoadedTurns) {
         setConversationWindowExpansion((previous) => ({
@@ -2373,7 +2401,20 @@ export const MessageList = memo(function MessageList({
         }));
       }
       if (fetchesOlderMessages) {
-        onLoadOlderMessages();
+        try {
+          const completion = onLoadOlderMessages();
+          if (completion) {
+            const finishOlderPageLoad = () => {
+              setOlderPageLoadCompletionRevision((previous) => previous + 1);
+            };
+            void completion.then(finishOlderPageLoad, finishOlderPageLoad);
+          } else {
+            pendingOlderPageScrollRef.current = null;
+          }
+        } catch (error) {
+          pendingOlderPageScrollRef.current = null;
+          throw error;
+        }
       }
     });
   }, [
@@ -2386,6 +2427,101 @@ export const MessageList = memo(function MessageList({
     onLoadOlderMessages,
     preserveScrollAfterTranscriptHeightChange,
   ]);
+
+  useLayoutEffect(() => {
+    if (olderPageLoadCompletionRevision === 0) return;
+    const pending = pendingOlderPageScrollRef.current;
+    pendingOlderPageScrollRef.current = null;
+    if (!pending) return;
+
+    const messageList = containerRef.current;
+    const scrollContainer = messageList?.parentElement;
+    if (!messageList || !scrollContainer) return;
+    isProgrammaticScrollRef.current = true;
+
+    if (pending.wasAtBottom) {
+      scrollToBottom(scrollContainer);
+    } else {
+      const anchorRow = pending.anchor
+        ? findRenderRow(messageList, pending.anchor.id)
+        : null;
+      if (anchorRow && pending.anchor) {
+        restoreScrollToAnchorRow(
+          scrollContainer,
+          anchorRow,
+          pending.anchor.topOffset,
+        );
+      } else {
+        scrollContainer.scrollTop = Math.max(
+          0,
+          pending.scrollTop +
+            scrollContainer.scrollHeight -
+            pending.scrollHeight,
+        );
+      }
+    }
+    lastHeightRef.current = scrollContainer.scrollHeight;
+    requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = false;
+    });
+  }, [olderPageLoadCompletionRevision, scrollToBottom]);
+
+  const automaticOlderLoadKey = useMemo(() => {
+    const keys: string[] = [];
+    if (
+      effectiveConversationViewEnabled &&
+      conversationWindow.hiddenTurnCount > 0
+    ) {
+      keys.push(
+        `conversation:${conversationViewStateKey ?? "default"}:${conversationWindow.hiddenTurnCount}`,
+      );
+    }
+    if (hasOlderMessages) {
+      keys.push(`page:${olderMessagesCursor ?? "unkeyed"}`);
+    }
+    return keys.length > 0 ? keys.join("|") : null;
+  }, [
+    conversationViewStateKey,
+    conversationWindow.hiddenTurnCount,
+    effectiveConversationViewEnabled,
+    hasOlderMessages,
+    olderMessagesCursor,
+  ]);
+
+  useEffect(() => {
+    if (inert || loadingOlder || !automaticOlderLoadKey) return;
+    const boundary = loadOlderBoundaryRef.current;
+    const scrollContainer = containerRef.current?.parentElement;
+    const Observer = window.IntersectionObserver;
+    if (!boundary || !scrollContainer || !Observer) return;
+
+    const observer = new Observer(
+      (entries) => {
+        const entry = entries.find(
+          (candidate) => candidate.target === boundary,
+        );
+        if (!entry) return;
+        if (pendingOlderPageScrollRef.current) return;
+        if (!entry.isIntersecting) {
+          automaticOlderLoadRequiresExitRef.current = false;
+          if (automaticOlderLoadAttemptRef.current === automaticOlderLoadKey) {
+            automaticOlderLoadAttemptRef.current = null;
+          }
+          return;
+        }
+        if (automaticOlderLoadRequiresExitRef.current) return;
+        if (automaticOlderLoadAttemptRef.current === automaticOlderLoadKey) {
+          return;
+        }
+        automaticOlderLoadAttemptRef.current = automaticOlderLoadKey;
+        automaticOlderLoadRequiresExitRef.current = true;
+        handleLoadOlder();
+      },
+      { root: scrollContainer },
+    );
+    observer.observe(boundary);
+    return () => observer.disconnect();
+  }, [automaticOlderLoadKey, handleLoadOlder, inert, loadingOlder]);
 
   // Track scroll position to determine if user is near bottom.
   // Ignore programmatic scrolls - only user-initiated scrolls should affect auto-scroll state.
@@ -2913,7 +3049,7 @@ export const MessageList = memo(function MessageList({
         {(hasOlderMessages ||
           clientTailActive ||
           conversationWindow.hiddenTurnCount > 0) && (
-          <div className="load-older-messages">
+          <div className="load-older-messages" ref={loadOlderBoundaryRef}>
             {effectiveConversationViewEnabled &&
             conversationWindow.hiddenTurnCount > 0 ? (
               <span className="load-older-status">

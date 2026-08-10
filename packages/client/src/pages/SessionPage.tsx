@@ -5182,6 +5182,9 @@ function SessionPageContent({
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
                   hasOlderMessages={pagination?.hasOlderMessages}
+                  olderMessagesCursor={
+                    pagination?.truncatedBeforeMessageId ?? null
+                  }
                   activeWindowTrimRevision={activeWindowTrimRevision}
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}

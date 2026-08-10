@@ -94,6 +94,16 @@ transcript.
 prefix contains at least N compact boundaries, the older page starts at the
 Nth boundary from the end of that prefix and reports `hasOlderMessages: true`.
 The next older-page request can then fetch the pre-boundary prefix. This may
-make one additional older-page click necessary compared with the former full
-prefix behavior, but it keeps every page shaped like the requested compact
-tail.
+require one additional page compared with the former full-prefix behavior, but
+it keeps every page shaped like the requested compact tail.
+
+The session transcript treats a visible older-page control as demand for that
+page. It automatically requests each `truncatedBeforeMessageId` cursor once
+when the control enters the transcript scrollport, while retaining the button
+as the no-observer and explicit-retry fallback. If a request fails without
+advancing the cursor, leaving and re-entering the boundary permits one new
+automatic attempt; a continuously visible failed cursor does not create a
+retry loop. Each successful prepend preserves the reader's current transcript
+position. A continuously visible boundary does not request a newly returned
+cursor: it must leave and re-enter the scrollport before another automatic
+page load, preventing one upward reveal from draining the bounded history.
