@@ -144,6 +144,41 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-08-10:
+
+- Installed Codex is `0.147.0`; the official `rust-v0.147.0` source is commit
+  `be6e8eac029b183056b7e4402879f15d2c85f61b`. Root compatibility and
+  expected-protocol markers now record `0.147.0`.
+- Regeneration adds `ThreadSection` and changes six files in YA's checked-in
+  app-server subset. Threads replace `isPinned` with section metadata; image
+  generation, encrypted function arguments, MCP read-only hints, and the
+  legacy read-path alias are additive or string-compatible metadata that YA
+  does not consume. Turn start, steer, interrupt, and completion shapes used by
+  YA are unchanged.
+- `ToolRequestUserInputParams.isBlocking` is the one consumed behavioral
+  addition. YA preserves the flag in its pending-input request and treats a
+  missing field from pre-0.147 app servers as blocking, matching Codex's legacy
+  deserialization contract. A non-blocking request is allowed to wait for an
+  explicit browser answer; automatically submitting an empty answer would
+  require a separate interaction/countdown design rather than a compatibility
+  fallback.
+- The no-token `model/list` probe returns the same seven visible models as
+  0.146.0. Sol remains the default; effort, modality, personality, service-tier,
+  and 5.4-to-Terra / 5.4-Mini-to-Luna migration metadata are already covered by
+  YA's catalog normalizer and fallbacks.
+- The active 0.147.0 rollout used for the reported lost-message investigation
+  parses cleanly: 24,395 entries, 132 paired user events, 132 normalized
+  provenanced user turns, no malformed lines, and no audit exceptions. The
+  full local census also had no parse failures; its two exceptions are old
+  April rollouts with pre-existing unpaired events, not 0.147 schema drift.
+- Codex core gained an acknowledged user-input admission helper, but app-server
+  still exposes YA's existing `turn/start` and `turn/steer` response contracts.
+  No new acknowledgement route or response field is available for YA to adopt.
+
+Status: Codex 0.147.0 app-server, model-catalog, and persisted-transcript
+compatibility is refreshed. The earlier active-turn ID recovery remains the
+app-server control fix for heartbeat or other steering races.
+
 Current source refresh, 2026-08-02:
 
 - Installed Codex and npm `@openai/codex` `latest` are `0.146.0`. The official

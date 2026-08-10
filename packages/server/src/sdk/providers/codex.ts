@@ -4047,6 +4047,7 @@ export class CodexProvider implements AgentProvider {
             isOther: question.isOther,
             isSecret: question.isSecret,
           })),
+          isBlocking: requestInput.isBlocking,
           autoResolutionMs: requestInput.autoResolutionMs,
           threadId: requestInput.threadId,
           turnId: requestInput.turnId,
@@ -4929,11 +4930,19 @@ export class CodexProvider implements AgentProvider {
       typeof record.threadId !== "string" ||
       typeof record.turnId !== "string" ||
       typeof record.itemId !== "string" ||
-      !Array.isArray(record.questions)
+      !Array.isArray(record.questions) ||
+      (record.isBlocking !== undefined &&
+        typeof record.isBlocking !== "boolean")
     ) {
       return null;
     }
-    return params as ToolRequestUserInputParams;
+    return {
+      ...(params as ToolRequestUserInputParams),
+      // Codex 0.147 made this field required. Older app-server releases omit
+      // it and defined those requests as blocking.
+      isBlocking:
+        typeof record.isBlocking === "boolean" ? record.isBlocking : true,
+    };
   }
 
   private buildItemEventKey(turnId: string, itemId: string): string {

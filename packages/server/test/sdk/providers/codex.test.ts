@@ -4822,6 +4822,7 @@ describe("CodexProvider Event Normalization", () => {
           threadId: "thread-1",
           turnId: "turn-1",
           itemId: "question-1",
+          isBlocking: false,
           autoResolutionMs: null,
           questions: [
             {
@@ -4854,6 +4855,7 @@ describe("CodexProvider Event Normalization", () => {
     expect(onToolApproval).toHaveBeenCalledWith(
       "AskUserQuestion",
       expect.objectContaining({
+        isBlocking: false,
         questions: [
           expect.objectContaining({
             id: "secret-id",
@@ -4874,6 +4876,54 @@ describe("CodexProvider Event Normalization", () => {
         "secret-id": { answers: ["swordfish"] },
         "checks-id": { answers: ["Unit", "Types"] },
       },
+    });
+  });
+
+  it("treats pre-0.147 user-input requests as blocking", async () => {
+    const onToolApproval = vi.fn(async () => ({
+      behavior: "allow" as const,
+      updatedInput: { answers: { "question-1": "Answer" } },
+    }));
+    const provider = createTestProvider() as unknown as {
+      handleServerRequestApproval: (
+        request: { method: string; id: number; params?: unknown },
+        options: { onToolApproval?: typeof onToolApproval },
+        signal: AbortSignal,
+        permissionMode?: string,
+      ) => Promise<Record<string, unknown>>;
+    };
+
+    const response = await provider.handleServerRequestApproval(
+      {
+        method: "item/tool/requestUserInput",
+        id: 3,
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "question-1",
+          autoResolutionMs: null,
+          questions: [
+            {
+              id: "question-1",
+              header: "Question",
+              question: "Legacy request?",
+              options: null,
+            },
+          ],
+        },
+      },
+      { onToolApproval },
+      new AbortController().signal,
+      "default",
+    );
+
+    expect(onToolApproval).toHaveBeenCalledWith(
+      "AskUserQuestion",
+      expect.objectContaining({ isBlocking: true }),
+      expect.objectContaining({ permissionMode: "default" }),
+    );
+    expect(response).toEqual({
+      answers: { "question-1": { answers: ["Answer"] } },
     });
   });
 });
