@@ -18,7 +18,6 @@ import {
   isUserRejection,
 } from "../../../lib/classifyToolError";
 import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
-import { createSourceControlNavigationState } from "../../../lib/sourceControlNavigationState";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { FilePathLink, FileVersionControlLinks } from "../../FilePathLink";
@@ -158,25 +157,10 @@ function SourceControlEditLink({ filePath }: { filePath: string }) {
   if (!session?.projectId || !filePath) {
     return null;
   }
-  const navigationState =
-    session.sessionTitle && session.provider
-      ? createSourceControlNavigationState({
-          projectId: session.projectId,
-          id: session.sessionId,
-          title: session.sessionTitle,
-          newSession: {
-            provider: session.provider,
-            ...(session.model ? { model: session.model } : {}),
-            ...(session.thinking ? { thinking: session.thinking } : {}),
-            ...(session.effort ? { effort: session.effort } : {}),
-          },
-        })
-      : undefined;
   return (
     <FileVersionControlLinks
       projectId={session.projectId}
       filePath={filePath}
-      navigationState={navigationState}
     />
   );
 }

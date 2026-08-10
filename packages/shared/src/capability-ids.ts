@@ -192,6 +192,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "session-fork-turn-intents",
     introducedIn: "0.7.1",
   },
+  gitFileDiffProjections: {
+    id: 29,
+    direction: "server",
+    name: "git-file-diff-projections",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

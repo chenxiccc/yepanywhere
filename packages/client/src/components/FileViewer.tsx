@@ -2,6 +2,7 @@ import {
   fromUrlProjectId,
   isUrlProjectId,
   type FileContentResponse,
+  type GitFileDiffMode,
 } from "@yep-anywhere/shared";
 import {
   memo,
@@ -16,6 +17,7 @@ import {
 import { api } from "../api/client";
 import { usePublicShareContext } from "../contexts/PublicShareContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import { useFileVersionControl } from "../hooks/useFileVersionControl";
 import { useRegisterQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
@@ -35,6 +37,7 @@ import {
   normalizePathSeparators,
   stripTrailingPathSeparators,
 } from "../lib/text";
+import { GitDiffBody } from "../pages/GitStatusDiffPreview";
 import {
   fetchMediaBlob,
   LocalFileModal,
@@ -43,6 +46,11 @@ import {
   useLocalMediaInlinePreviews,
   useLocalResourceClick,
 } from "./LocalMediaModal";
+import {
+  buildProjectFileViewUrl,
+  FileDiffViewLinks,
+  type FileViewSelection,
+} from "./FileDiffViewLinks";
 import {
   FilePathContextMenu,
   type FileViewPresentation,
@@ -107,6 +115,8 @@ interface FileViewerProps {
   viewMode?: FileViewerMode;
   /** Requested initial representation; ordinary HTML remains source-first. */
   initialPresentation?: FileViewPresentation;
+  /** Exact Git comparison selected for this file, when present. */
+  diffMode?: GitFileDiffMode;
 }
 
 export type FileViewerMode = "full" | "range";
@@ -329,10 +339,40 @@ export const FileViewer = memo(function FileViewer({
   lineEnd,
   viewMode = "full",
   initialPresentation,
+  diffMode,
 }: FileViewerProps) {
   const { t } = useI18n();
   const transport = useCurrentSourceRuntime().transport;
   const publicShareContext = usePublicShareContext();
+  const viewIdentity = `${projectId}\0${filePath}\0${diffMode ?? "source"}`;
+  const [storedView, setStoredView] = useState<{
+    identity: string;
+    view: FileViewSelection;
+  }>(() => ({ identity: viewIdentity, view: diffMode ?? "source" }));
+  const activeView =
+    storedView.identity === viewIdentity
+      ? storedView.view
+      : (diffMode ?? "source");
+  const selectView = useCallback(
+    (view: FileViewSelection) => {
+      setStoredView({ identity: viewIdentity, view });
+    },
+    [viewIdentity],
+  );
+  const diffActive = activeView !== "source";
+  const effectiveLineNumber = diffActive ? undefined : lineNumber;
+  const effectiveLineEnd = diffActive ? undefined : lineEnd;
+  const effectiveViewMode = diffActive ? "full" : viewMode;
+  const fileVersionControl = useFileVersionControl(
+    publicShareContext === null ? projectId : undefined,
+    filePath,
+  );
+  const activeDiffFile =
+    activeView === "worktree"
+      ? fileVersionControl.worktreeFile
+      : activeView === "cumulative"
+        ? fileVersionControl.cumulativeFile
+        : null;
   const sameOriginUrls = transport.capabilities.sameOriginUrls;
   const basePath = useRemoteBasePath();
   const [fileData, setFileData] = useState<FileContentResponse | null>(null);
@@ -359,7 +399,10 @@ export const FileViewer = memo(function FileViewer({
   );
   const sourceStyle = getSourceViewStyle(sourceDensity);
   const fileViewerBodyRef = useRef<HTMLDivElement>(null);
-  useRegisterQuoteableTextSource(fileViewerBodyRef, fileData?.content);
+  useRegisterQuoteableTextSource(
+    fileViewerBodyRef,
+    diffActive ? undefined : fileData?.content,
+  );
   const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const {
     modal: localMediaModal,
@@ -404,29 +447,56 @@ export const FileViewer = memo(function FileViewer({
     const annotated = annotateHighlightedHtmlLines(
       fileData?.highlightedHtml,
       getContentStartLine(fileData),
-      lineNumber,
-      lineEnd,
+      effectiveLineNumber,
+      effectiveLineEnd,
     );
     return compactShikiLineBreaks(annotated);
-  }, [fileData, lineEnd, lineNumber]);
+  }, [effectiveLineEnd, effectiveLineNumber, fileData]);
   useLocalMediaInlinePreviews(
     markdownPreviewRef,
-    showPreview ? renderedMarkdownHtml : null,
+    !diffActive && showPreview ? renderedMarkdownHtml : null,
     mediaSource,
   );
-  const highlightRenderKey = showPreview
-    ? renderedMarkdownHtml
-    : highlightedHtml;
+  const highlightRenderKey =
+    !diffActive && showPreview
+      ? renderedMarkdownHtml
+      : diffActive
+        ? null
+        : highlightedHtml;
+
+  useEffect(() => {
+    if (activeView === "source" || fileVersionControl.loading) return;
+    if (
+      (activeView === "worktree" && !fileVersionControl.worktreeFile) ||
+      (activeView === "cumulative" && !fileVersionControl.cumulativeFile)
+    ) {
+      selectView("source");
+    }
+  }, [activeView, fileVersionControl, selectView]);
 
   useEffect(() => {
     let cancelled = false;
+    if (diffActive) {
+      setFileData(null);
+      setLoading(false);
+      setError(null);
+      setHighlightedLineRef(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     setHighlightedLineRef(null);
 
     // Request highlighting for code files
     source
-      .loadFile(projectId, filePath, true, lineNumber, lineEnd, viewMode)
+      .loadFile(
+        projectId,
+        filePath,
+        true,
+        effectiveLineNumber,
+        effectiveLineEnd,
+        effectiveViewMode,
+      )
       .then((data) => {
         if (!cancelled) {
           setFileData(data);
@@ -456,13 +526,14 @@ export const FileViewer = memo(function FileViewer({
     };
   }, [
     projectId,
+    diffActive,
+    effectiveLineEnd,
+    effectiveLineNumber,
+    effectiveViewMode,
     filePath,
     initialPresentation,
-    lineEnd,
-    lineNumber,
     source,
     t,
-    viewMode,
   ]);
 
   useEffect(() => {
@@ -512,7 +583,7 @@ export const FileViewer = memo(function FileViewer({
 
   // Scroll to highlighted line when it's rendered
   useEffect(() => {
-    if (lineNumber === undefined || !highlightRenderKey) {
+    if (effectiveLineNumber === undefined || !highlightRenderKey) {
       return;
     }
     const highlightedLine =
@@ -529,7 +600,7 @@ export const FileViewer = memo(function FileViewer({
         );
       });
     }
-  }, [highlightRenderKey, highlightedLineRef, lineNumber]);
+  }, [effectiveLineNumber, highlightRenderKey, highlightedLineRef]);
 
   const handleCopy = useCallback(async () => {
     if (fileData?.content === undefined) return;
@@ -566,22 +637,17 @@ export const FileViewer = memo(function FileViewer({
   const absoluteCopyPath = useMemo(() => {
     return getAbsoluteFilePath(filePath, projectPath);
   }, [filePath, projectPath]);
-  const standaloneViewerUrl = useMemo(() => {
-    if (openInNewTabUrl) {
-      return openInNewTabUrl;
-    }
-    const searchParams = new URLSearchParams({ path: filePath });
-    if (lineNumber !== undefined) {
-      searchParams.set("line", String(lineNumber));
-    }
-    if (lineEnd !== undefined) {
-      searchParams.set("lineEnd", String(lineEnd));
-    }
-    if (viewMode === "range") {
-      searchParams.set("view", "range");
-    }
+  const sourceViewerUrl = useMemo(() => {
+    if (openInNewTabUrl) return openInNewTabUrl;
     return toBrowserAppHref(
-      `${basePath}/projects/${projectId}/file?${searchParams}`,
+      buildProjectFileViewUrl({
+        basePath,
+        filePath,
+        lineEnd,
+        lineNumber,
+        projectId,
+        viewMode,
+      }),
     );
   }, [
     basePath,
@@ -591,6 +657,24 @@ export const FileViewer = memo(function FileViewer({
     openInNewTabUrl,
     projectId,
     viewMode,
+  ]);
+  const standaloneViewerUrl = useMemo(() => {
+    if (activeView === "source") return sourceViewerUrl;
+    return toBrowserAppHref(
+      buildProjectFileViewUrl({
+        basePath,
+        diffMode: activeView,
+        filePath: fileVersionControl.relativePath ?? filePath,
+        projectId,
+      }),
+    );
+  }, [
+    activeView,
+    basePath,
+    filePath,
+    fileVersionControl.relativePath,
+    projectId,
+    sourceViewerUrl,
   ]);
   const fileName = getPathBasename(filePath);
   const language = getLanguageFromPath(filePath);
@@ -666,7 +750,11 @@ export const FileViewer = memo(function FileViewer({
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   // Render loading state
-  if (loading) {
+  if (
+    loading ||
+    (!diffActive && !fileData && !error) ||
+    (diffActive && fileVersionControl.loading && !activeDiffFile)
+  ) {
     return (
       <div className="file-viewer">
         <div className="file-viewer-loading">
@@ -677,7 +765,7 @@ export const FileViewer = memo(function FileViewer({
   }
 
   // Render error state
-  if (error || !fileData) {
+  if (!diffActive && (error || !fileData)) {
     return (
       <div className="file-viewer">
         <div className="file-viewer-error">
@@ -687,7 +775,8 @@ export const FileViewer = memo(function FileViewer({
     );
   }
 
-  const { metadata, content } = fileData;
+  const metadata = fileData?.metadata;
+  const content = fileData?.content;
   const isImage = loadedIsImage;
   const canDownload = Boolean(source.fetchRawFileBlob || rawFileUrl);
   const hasMarkdownPreview =
@@ -695,11 +784,39 @@ export const FileViewer = memo(function FileViewer({
     isMarkdownLikeFile(filePath) &&
     !!renderedMarkdownHtml;
   const hasHtmlPreview =
-    content !== undefined && isHtmlLikeFile(filePath, metadata.mimeType);
+    content !== undefined &&
+    metadata !== undefined &&
+    isHtmlLikeFile(filePath, metadata.mimeType);
   const hasFilePreview = hasMarkdownPreview || hasHtmlPreview;
 
   // Render content based on file type
   const renderContent = () => {
+    if (diffActive) {
+      return activeDiffFile ? (
+        <div className={viewerStyles.diffBody}>
+          <GitDiffBody
+            file={activeDiffFile}
+            fileKey={`file-viewer:${activeView}:${activeDiffFile.path}`}
+            projectId={projectId}
+            source={{ kind: "file-projection", mode: activeView }}
+            captureReviewProjections
+            t={t}
+          />
+        </div>
+      ) : (
+        <div className="file-viewer-loading">
+          {t("fileViewerLoading" as never, { name: fileName })}
+        </div>
+      );
+    }
+    if (!fileData || !metadata) {
+      return (
+        <div className="file-viewer-error">
+          {error || t("fileViewerNotFound" as never)}
+        </div>
+      );
+    }
+
     // Image files
     if (isImage) {
       const imageUrl = source.fetchRawFileBlob ? imageObjectUrl : rawFileUrl;
@@ -798,8 +915,11 @@ export const FileViewer = memo(function FileViewer({
       // Fallback: plain code (no syntax highlighting available)
       const lines = content.length > 0 ? content.split("\n") : [];
       const contentStartLine = getContentStartLine(fileData);
-      const highlightStart = lineNumber ?? 0;
-      const highlightEnd = Math.max(highlightStart, lineEnd ?? highlightStart);
+      const highlightStart = effectiveLineNumber ?? 0;
+      const highlightEnd = Math.max(
+        highlightStart,
+        effectiveLineEnd ?? highlightStart,
+      );
       const singleLineHighlight = highlightStart === highlightEnd;
       const contentWindowLabel = getContentWindowLabel(fileData);
 
@@ -822,7 +942,7 @@ export const FileViewer = memo(function FileViewer({
                   {lines.map((line, i) => {
                     const num = contentStartLine + i;
                     const inRange =
-                      lineNumber !== undefined &&
+                      effectiveLineNumber !== undefined &&
                       num >= highlightStart &&
                       num <= highlightEnd;
                     const classes = [
@@ -836,7 +956,8 @@ export const FileViewer = memo(function FileViewer({
                       <div
                         key={`line-${num}`}
                         ref={
-                          lineNumber !== undefined && num === highlightStart
+                          effectiveLineNumber !== undefined &&
+                          num === highlightStart
                             ? (el) => setHighlightedLineRef(el)
                             : undefined
                         }
@@ -865,11 +986,11 @@ export const FileViewer = memo(function FileViewer({
       <div className="file-viewer-binary">
         <p>{t("fileViewerBinary" as never)}</p>
         <p>
-          <strong>{t("fileViewerType" as never)}</strong> {metadata.mimeType}
+          <strong>{t("fileViewerType" as never)}</strong> {metadata?.mimeType}
         </p>
         <p>
           <strong>{t("fileViewerSize" as never)}</strong>{" "}
-          {formatFileSize(metadata.size)}
+          {metadata ? formatFileSize(metadata.size) : ""}
         </p>
         {canDownload && (
           <button
@@ -897,13 +1018,13 @@ export const FileViewer = memo(function FileViewer({
           {displayPath}
         </span>
         <span className="file-viewer-meta">
-          {formatFileSize(metadata.size)}
-          {metadata.isText && content !== undefined && (
+          {metadata ? formatFileSize(metadata.size) : ""}
+          {!diffActive && metadata?.isText && content !== undefined && (
             <>
               {" \u2022 "}
-              {fileData.contentTruncated
+              {fileData?.contentTruncated
                 ? `lines ${getContentStartLine(fileData)}-${getContentEndLine(fileData)}${
-                    fileData.contentTotalLines
+                    fileData?.contentTotalLines
                       ? ` of ${fileData.contentTotalLines}`
                       : ""
                   }`
@@ -915,7 +1036,17 @@ export const FileViewer = memo(function FileViewer({
         </span>
       </div>
       <div className="file-viewer-actions">
-        {hasFilePreview && (
+        {publicShareContext === null && (
+          <FileDiffViewLinks
+            activeView={activeView}
+            availability={fileVersionControl}
+            onSelect={selectView}
+            projectId={projectId}
+            sourceHref={sourceViewerUrl}
+            variant="header"
+          />
+        )}
+        {!diffActive && hasFilePreview && (
           <MarkdownViewToggle
             sourceLabel={t("fileViewerSource" as never)}
             previewLabel={t("fileViewerPreview" as never)}
@@ -924,7 +1055,7 @@ export const FileViewer = memo(function FileViewer({
             onShowPreview={() => setShowPreview(true)}
           />
         )}
-        {metadata.isText && content !== undefined && (
+        {!diffActive && metadata?.isText && content !== undefined && (
           <FileViewerDensityControls
             zoom={viewerDensity.zoom}
             canZoomIn={viewerDensity.canZoomIn}
@@ -933,7 +1064,7 @@ export const FileViewer = memo(function FileViewer({
             onZoomOut={viewerDensity.zoomOut}
           />
         )}
-        {content !== undefined && (
+        {!diffActive && content !== undefined && (
           <button
             type="button"
             className={`file-viewer-action ${copied ? "copied" : ""}`}
@@ -971,7 +1102,7 @@ export const FileViewer = memo(function FileViewer({
             <ExternalLinkIcon />
           </button>
         )}
-        {canDownload && (
+        {!diffActive && canDownload && (
           <button
             type="button"
             className="file-viewer-action"
@@ -1011,7 +1142,7 @@ export const FileViewer = memo(function FileViewer({
     "file-viewer",
     standalone && "file-viewer-standalone",
     fullscreen && "file-viewer-fullscreen",
-    viewMode === "range" && "file-viewer-compact",
+    effectiveViewMode === "range" && "file-viewer-compact",
   ]
     .filter(Boolean)
     .join(" ");

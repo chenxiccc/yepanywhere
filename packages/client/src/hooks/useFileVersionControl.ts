@@ -1,7 +1,8 @@
 import {
-  GIT_SOURCE_REVIEW_CAPABILITY,
+  GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
-  type GitCommitDetail,
+  type GitFileChange,
+  type GitFileProjectionManifest,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { useMemo, useSyncExternalStore } from "react";
@@ -21,75 +22,88 @@ import { useGitStatus } from "./useGitStatus";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
 import { useRetainedVersionInfo } from "./useVersion";
 
-const HEAD_COMMIT_STALE_MS = 30_000;
-const HEAD_COMMIT_TTL_MS = 60_000;
+const FILE_PROJECTIONS_STALE_MS = 5_000;
+const FILE_PROJECTIONS_TTL_MS = 60_000;
 
-function headCommitRetentionKey(
+interface RetainedFileProjectionManifest {
+  statusKey: string;
+  value: GitFileProjectionManifest;
+}
+
+function manifestRetentionKey(
   sourceKey: ClientSummarySourceKey,
   projectId: string,
 ): RouteRetentionKeyInput {
   return {
     sourceKey,
-    routeId: "git-status:file-link-head",
+    routeId: "git-status:file-projections",
     projectId,
   };
 }
 
-function useHeadCommit(
+function useFileProjectionManifest(
+  sourceKey: ClientSummarySourceKey,
   projectId: string | undefined,
-  headHash: string | undefined,
-): GitCommitDetail | null {
-  const sourceKey = useClientSummarySourceKey();
+  statusKey: string | null,
+): {
+  manifest: GitFileProjectionManifest | null;
+  loading: boolean;
+} {
   const retentionKey = useMemo(
-    () => (projectId ? headCommitRetentionKey(sourceKey, projectId) : null),
+    () => (projectId ? manifestRetentionKey(sourceKey, projectId) : null),
     [projectId, sourceKey],
   );
   const retained = useSyncExternalStore(
     subscribeRouteRetention,
     () =>
       retentionKey
-        ? readRouteRetention<GitCommitDetail>(retentionKey, {
+        ? readRouteRetention<RetainedFileProjectionManifest>(retentionKey, {
             touch: false,
             recordDiagnostics: false,
           })
         : null,
     () => null,
   );
-  const current = retained?.hash === headHash ? retained : null;
+  const current = retained?.statusKey === statusKey ? retained.value : null;
 
-  useRetainedClientQuery({
+  const query = useRetainedClientQuery({
     sourceKey,
     key: {
-      endpoint: "git-status:file-link-head",
+      endpoint: "git-status:file-projections",
       projectId: projectId ?? null,
-      headHash: headHash ?? null,
+      statusKey,
     },
-    enabled: Boolean(projectId && headHash),
+    enabled: Boolean(projectId && statusKey),
     hasData: current !== null,
-    staleTimeMs: HEAD_COMMIT_STALE_MS,
-    meta: { projectId, headHash },
+    staleTimeMs: FILE_PROJECTIONS_STALE_MS,
+    meta: { projectId, statusKey },
     fetcher: async (context) => {
       const meta = context.meta as {
         projectId?: string;
-        headHash?: string;
       };
-      if (!meta.projectId || !meta.headHash) {
-        throw new Error("Project and HEAD commit are required");
+      if (!meta.projectId) {
+        throw new Error("Project is required for file projections");
       }
-      return api.getGitCommit(meta.projectId, meta.headHash);
+      return api.getGitFileProjections(meta.projectId);
     },
     applySnapshot: (result, context) => {
-      const meta = context.meta as { projectId?: string };
-      if (!meta.projectId) return;
+      const meta = context.meta as {
+        projectId?: string;
+        statusKey?: string | null;
+      };
+      if (!meta.projectId || !meta.statusKey) return;
       writeRouteRetention(
-        headCommitRetentionKey(context.sourceKey, meta.projectId),
-        result,
-        { ttlMs: HEAD_COMMIT_TTL_MS },
+        manifestRetentionKey(context.sourceKey, meta.projectId),
+        { statusKey: meta.statusKey, value: result },
+        { ttlMs: FILE_PROJECTIONS_TTL_MS },
       );
     },
   });
 
-  return current;
+  return {
+    manifest: current,
+    loading: Boolean(statusKey && !current && !query.error),
+  };
 }
 
 function projectRelativeGitPath(filePath: string): string | null {
@@ -102,24 +116,42 @@ function projectRelativeGitPath(filePath: string): string | null {
   return normalized && !isAbsolute && !leavesProject ? normalized : null;
 }
 
-function changeIncludesPath(
-  path: string,
-  change: { path: string; origPath?: string },
-): boolean {
+function findFile(
+  path: string | null,
+  files: readonly GitFileChange[],
+): GitFileChange | null {
+  if (!path) return null;
   return (
-    change.path === path ||
-    change.origPath === path ||
-    (change.path.endsWith("/") && path.startsWith(change.path))
+    files.find((file) => file.path === path || file.origPath === path) ?? null
   );
+}
+
+function gitStatusKey(status: {
+  recentCommits?: readonly { hash: string }[];
+  files: readonly GitFileChange[];
+}): string {
+  return JSON.stringify([
+    status.recentCommits?.[0]?.hash ?? null,
+    status.files.map((file) => [
+      file.path,
+      file.origPath ?? null,
+      file.status,
+      file.staged,
+      file.linesAdded,
+      file.linesDeleted,
+    ]),
+  ]);
 }
 
 export function useFileVersionControl(
   projectId: string | undefined,
   filePath: string,
 ): {
-  dirty: boolean;
-  headCommitHash?: string;
+  cumulativeFile: GitFileChange | null;
+  loading: boolean;
   relativePath: string | null;
+  supported: boolean;
+  worktreeFile: GitFileChange | null;
 } {
   const sourceKey = useClientSummarySourceKey();
   const version = useRetainedVersionInfo(sourceKey);
@@ -127,37 +159,47 @@ export function useFileVersionControl(
     version,
     GIT_STATUS_ENHANCED_CAPABILITY,
   );
-  const supportsHistory = serverHasCapability(
+  const supported = serverHasCapability(
     version,
-    GIT_SOURCE_REVIEW_CAPABILITY,
+    GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   );
-  const enabledProjectId = supportsStatus ? projectId : undefined;
-  const { gitStatus } = useGitStatus(enabledProjectId, { poll: false });
+  const enabledProjectId = supportsStatus && supported ? projectId : undefined;
+  const {
+    gitStatus,
+    loading: statusLoading,
+    error: statusError,
+  } = useGitStatus(enabledProjectId, { poll: false });
   const relativePath = useMemo(
     () => projectRelativeGitPath(filePath),
     [filePath],
   );
-  const headHash =
-    supportsHistory && gitStatus?.isGitRepo
-      ? gitStatus.recentCommits?.[0]?.hash
-      : undefined;
-  const headCommit = useHeadCommit(enabledProjectId, headHash);
-  const dirty = Boolean(
-    relativePath &&
-      gitStatus?.files.some((change) =>
-        changeIncludesPath(relativePath, change),
-      ),
-  );
-  const headIncludesFile = Boolean(
-    relativePath &&
-      headCommit?.files.some((change) =>
-        changeIncludesPath(relativePath, change),
-      ),
+  const statusKey =
+    gitStatus?.isGitRepo && relativePath ? gitStatusKey(gitStatus) : null;
+  const projection = useFileProjectionManifest(
+    sourceKey,
+    enabledProjectId,
+    statusKey,
   );
 
   return {
-    dirty,
+    cumulativeFile: findFile(
+      relativePath,
+      projection.manifest?.cumulativeFiles ?? [],
+    ),
+    loading: Boolean(
+      projectId &&
+        relativePath &&
+        (version === null ||
+          (enabledProjectId &&
+            (statusLoading ||
+              (!gitStatus && !statusError) ||
+              projection.loading))),
+    ),
     relativePath,
-    ...(headIncludesFile && headHash ? { headCommitHash: headHash } : {}),
+    supported,
+    worktreeFile: findFile(
+      relativePath,
+      projection.manifest?.worktreeFiles ?? [],
+    ),
   };
 }

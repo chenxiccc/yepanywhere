@@ -30,8 +30,11 @@ describe("FilePathLink", () => {
     mocks.useFileVersionControl.mockReset();
     mocks.useFileVersionControl.mockImplementation(
       (_projectId: string, filePath: string) => ({
-        dirty: false,
+        cumulativeFile: null,
+        loading: false,
         relativePath: filePath,
+        supported: false,
+        worktreeFile: null,
       }),
     );
   });
@@ -316,11 +319,25 @@ describe("FilePathLink", () => {
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
   });
 
-  it("links files to their uncommitted and latest-commit diffs", () => {
+  it("links files to exact worktree and cumulative viewer diffs", () => {
     mocks.useFileVersionControl.mockReturnValue({
-      dirty: true,
-      headCommitHash: "head-sha",
+      cumulativeFile: {
+        path: "docs/guide.md",
+        status: "M",
+        staged: false,
+        linesAdded: 2,
+        linesDeleted: 1,
+      },
+      loading: false,
       relativePath: "docs/guide.md",
+      supported: true,
+      worktreeFile: {
+        path: "docs/guide.md",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
     });
     const containerClick = vi.fn();
 
@@ -340,21 +357,44 @@ describe("FilePathLink", () => {
       </I18nProvider>,
     );
 
-    const dirty = screen.getByRole("link", {
-      name: "Open uncommitted diff for docs/guide.md",
+    const worktree = screen.getByRole("link", {
+      name: "View HEAD to working tree diff for docs/guide.md",
     });
-    const committed = screen.getByRole("link", {
-      name: "Open latest commit diff for docs/guide.md",
+    const cumulative = screen.getByRole("link", {
+      name: "View cumulative HEAD^1 to working tree diff for docs/guide.md",
     });
-    expect(dirty.getAttribute("href")).toBe(
-      "/git-status?projectId=project-id&worktreeFile=docs%2Fguide.md",
+    expect(worktree.getAttribute("href")).toBe(
+      "/projects/project-id/file?path=docs%2Fguide.md&diff=worktree",
     );
-    expect(committed.getAttribute("href")).toBe(
-      "/git-status?projectId=project-id&rev=head-sha&commitFile=docs%2Fguide.md",
+    expect(cumulative.getAttribute("href")).toBe(
+      "/projects/project-id/file?path=docs%2Fguide.md&diff=cumulative",
     );
 
-    fireEvent.click(dirty);
+    worktree.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(worktree);
     expect(containerClick).not.toHaveBeenCalled();
+  });
+
+  it("omits viewer diff links when the exact corpus has no path", () => {
+    mocks.useFileVersionControl.mockReturnValue({
+      cumulativeFile: null,
+      loading: false,
+      relativePath: "docs/guide.md",
+      supported: true,
+      worktreeFile: null,
+    });
+
+    render(
+      <I18nProvider>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          displayText="guide.md"
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByLabelText("File versions")).toBeNull();
   });
 
   it("opens a context menu that can prefill a new session from the path", () => {

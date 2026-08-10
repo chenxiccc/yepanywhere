@@ -257,6 +257,41 @@ of a rename. Filtering is case-insensitive and local after the corpus is
 present. On wide layouts, the first visible file becomes the detail when the
 prior selection no longer matches; no match leaves an explicit empty result.
 
+### File-viewer projections
+
+Every project file viewer may expose two exact Git projections in its header.
+**vs HEAD** compares the current `HEAD` tree to the live filesystem. **vs
+HEAD^1** is cumulative: it compares the first parent of `HEAD` to the live
+filesystem, so it includes both the current commit and any staged, unstaged,
+or untracked work. It is not the commit-only `HEAD^1`-to-`HEAD` diff. A
+worktree edit that exactly cancels the current commit's change therefore
+removes that path from the cumulative corpus.
+
+A selector exists only when its complete project-wide Git projection contains
+the path. A clean path has no **vs HEAD** selector; a root commit has no **vs
+HEAD^1** selector; a path with neither net diff has no selector at all.
+Renames match either the old or new path and render as one file projection.
+
+The shared project-file link is the access point in prose and structured
+Read/Edit turns. Hovering the filename reveals the available projections
+beside it; keyboard focus reveals the same links. Touch relies on the viewer
+header. Each target is a real anchor with a standalone URL, so middle-click,
+modifier-click, and browser context-menu opening work normally.
+
+Selecting a projection replaces the source body in the existing file viewer.
+While a diff is active, source line and line-range requests are inapplicable:
+the diff URL omits `line`, `lineEnd`, and `view=range`, and the viewer neither
+loads nor highlights that source window. Returning to **Source** restores the
+original source range. Diff rendering retains full-context, unified/split,
+Markdown-preview, hunk-navigation, and review-projection behavior from the
+shared Source Control renderer.
+
+The permanent `git-file-diff-projections` capability owns
+`GET /api/projects/:projectId/git/file-projections` and
+`POST /api/projects/:projectId/git/file-projection-diff`. Without it the
+client hides all of these selectors and makes no projection request. Existing
+Source Control capability meanings do not expand.
+
 ## Search and compatibility
 
 Files search owns the complete tracked-path corpus up to the explicit 10,000

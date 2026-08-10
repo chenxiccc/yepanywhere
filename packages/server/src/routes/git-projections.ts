@@ -7,8 +7,8 @@ import { Hono } from "hono";
 import { gitDiffReportsBinary } from "../git/binaryDiff.js";
 import { skippedBinaryGitDiffResult } from "../git/diffPreviewGuards.js";
 import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
-import { buildGitFileChanges } from "../git/fileChanges.js";
-import { GIT_DECODE_PATHS_ARGS, runGit, runGitBytes } from "../git/gitExec.js";
+import { readGitDiffFileChanges } from "../git/fileChanges.js";
+import { runGit, runGitBytes } from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { resolveProjectPath } from "./projectParam.js";
 
@@ -161,35 +161,9 @@ function revisionProjection(
 }
 
 async function compareFiles(cwd: string, baseSha: string, headSha: string) {
-  const [nameStatus, numstat] = await Promise.all([
-    runGit(
-      cwd,
-      [
-        ...GIT_DECODE_PATHS_ARGS,
-        "diff",
-        "--name-status",
-        "-z",
-        "-M",
-        baseSha,
-        headSha,
-      ],
-      { maxBuffer: PROJECTION_MAX_BUFFER },
-    ),
-    runGit(
-      cwd,
-      [
-        ...GIT_DECODE_PATHS_ARGS,
-        "diff",
-        "--numstat",
-        "-z",
-        "-M",
-        baseSha,
-        headSha,
-      ],
-      { maxBuffer: PROJECTION_MAX_BUFFER },
-    ),
-  ]);
-  return buildGitFileChanges(nameStatus.stdout, numstat.stdout);
+  return readGitDiffFileChanges(cwd, [baseSha, headSha], {
+    maxBuffer: PROJECTION_MAX_BUFFER,
+  });
 }
 
 async function resolveCommit(cwd: string, rev: string): Promise<string> {

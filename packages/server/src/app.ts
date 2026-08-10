@@ -91,6 +91,7 @@ import { createFilesRoutes } from "./routes/files.js";
 import { createBangCommandsRoutes } from "./routes/bang-commands.js";
 import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitBrowseRoutes } from "./routes/git-browse.js";
+import { createGitFileProjectionRoutes } from "./routes/git-file-projections.js";
 import { createGitProjectionRoutes } from "./routes/git-projections.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlossaryArtifactRoutes } from "./routes/glossary-artifacts.js";
@@ -1810,6 +1811,9 @@ export function createApp(options: AppOptions): AppResult {
 
   // Optional Source Control diff projections.
   app.route("/api/projects", createGitProjectionRoutes({ scanner }));
+
+  // Exact worktree projections shared by file links and file viewers.
+  app.route("/api/projects", createGitFileProjectionRoutes({ scanner }));
 
   // Source-review draft comments (topic: source-review-to-session)
   const reviewCaptureService = new ReviewCaptureService({

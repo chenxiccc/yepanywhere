@@ -573,6 +573,41 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on git-source-review-projections.",
     },
   },
+  gitFileDiffProjections: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitFileDiffProjections.id,
+    name: "git-file-diff-projections",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server exposes exact per-file HEAD-to-worktree and first-parent-to-worktree diff projections for the shared file viewer.",
+    clientFallback:
+      "Hide file-viewer diff selectors, retain ordinary file viewing and Source Control, and make no file-projection request.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/git/file-projections",
+        "POST /api/projects/:projectId/git/file-projection-diff",
+      ],
+      routeModules: ["packages/server/src/routes/git-file-projections.ts"],
+      requestFields: [
+        "gitFileProjectionDiff.mode",
+        "gitFileProjectionDiff.path",
+        "gitFileProjectionDiff.fullContext",
+      ],
+      responseFields: [
+        "gitFileProjections.headSha",
+        "gitFileProjections.baseSha",
+        "gitFileProjections.worktreeFiles",
+        "gitFileProjections.cumulativeFiles",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace self-hosted servers, and the exact cumulative projection has no safe older-server request fallback.",
+    },
+  },
   approvalAuditLog: {
     name: "approvalAuditLog",
     kind: "permanent",
@@ -1324,6 +1359,8 @@ export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitStatusIntegrationOptions.name;
 export const GIT_DIRTY_FILE_EDITOR_CAPABILITY =
   SERVER_CAPABILITIES.gitDirtyFileEditor.name;
+export const GIT_FILE_DIFF_PROJECTIONS_CAPABILITY =
+  SERVER_CAPABILITIES.gitFileDiffProjections.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReview.name;
 export const GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY =

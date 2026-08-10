@@ -2,6 +2,7 @@ import type {
   GitDiffPreviewSkipped,
   GitDiffResult,
   GitFileChange,
+  GitFileDiffMode,
   PatchHunk,
   ReviewCommentRevision,
 } from "@yep-anywhere/shared";
@@ -85,7 +86,8 @@ export type GitDiffSource =
   | { kind: "worktree" }
   | { kind: "working-tree-history" }
   | { kind: "commit"; sha: string }
-  | { kind: "comparison"; baseSha: string; headSha: string };
+  | { kind: "comparison"; baseSha: string; headSha: string }
+  | { kind: "file-projection"; mode: GitFileDiffMode };
 
 const WORKTREE_SOURCE: GitDiffSource = { kind: "worktree" };
 const WORKING_TREE_HISTORY_SOURCE: GitDiffSource = {
@@ -100,14 +102,17 @@ function sourceFromPrimitives(
   kind: GitDiffSource["kind"],
   baseSha: string,
   headSha: string,
+  fileDiffMode: GitFileDiffMode,
 ): GitDiffSource {
   return kind === "commit"
     ? { kind: "commit", sha: baseSha }
     : kind === "comparison"
       ? { kind: "comparison", baseSha, headSha }
-      : kind === "working-tree-history"
-        ? WORKING_TREE_HISTORY_SOURCE
-        : WORKTREE_SOURCE;
+      : kind === "file-projection"
+        ? { kind: "file-projection", mode: fileDiffMode }
+        : kind === "working-tree-history"
+          ? WORKING_TREE_HISTORY_SOURCE
+          : WORKTREE_SOURCE;
 }
 
 function fetchDiffForSource(
@@ -136,6 +141,13 @@ function fetchDiffForSource(
       ...(file.origPath ? { origPath: file.origPath } : {}),
       fullContext,
       ...(ignoreWhitespace ? { ignoreWhitespace: true } : {}),
+    });
+  }
+  if (source.kind === "file-projection") {
+    return api.getGitFileProjectionDiff(projectId, {
+      path: file.path,
+      mode: source.mode,
+      fullContext,
     });
   }
   return api.getGitDiff(projectId, {
@@ -368,11 +380,14 @@ export function GitDiffBody({
         ? source.baseSha
         : "";
   const sourceHeadSha = source.kind === "comparison" ? source.headSha : "";
+  const sourceFileDiffMode =
+    source.kind === "file-projection" ? source.mode : "worktree";
   const requestKey = JSON.stringify([
     fileKey,
     sourceKind,
     sourceBaseSha,
     sourceHeadSha,
+    sourceFileDiffMode,
     ignoreWhitespace,
   ]);
   const [loadState, setLoadState] = useState<{
@@ -420,7 +435,12 @@ export function GitDiffBody({
     fetchDiffForSource(
       projectId,
       file,
-      sourceFromPrimitives(sourceKind, sourceBaseSha, sourceHeadSha),
+      sourceFromPrimitives(
+        sourceKind,
+        sourceBaseSha,
+        sourceHeadSha,
+        sourceFileDiffMode,
+      ),
       undefined,
       ignoreWhitespace,
     )
@@ -463,6 +483,7 @@ export function GitDiffBody({
     sourceKind,
     sourceBaseSha,
     sourceHeadSha,
+    sourceFileDiffMode,
     ignoreWhitespace,
     onProjectionRequestFailure,
     t,
@@ -598,12 +619,19 @@ function GitDiffContent({
         ? source.baseSha
         : "";
   const sourceHeadSha = source.kind === "comparison" ? source.headSha : "";
+  const sourceFileDiffMode =
+    source.kind === "file-projection" ? source.mode : "worktree";
   const commentRevisions = useMemo(
     () =>
       commentRevisionsForSource(
-        sourceFromPrimitives(sourceKind, sourceBaseSha, sourceHeadSha),
+        sourceFromPrimitives(
+          sourceKind,
+          sourceBaseSha,
+          sourceHeadSha,
+          sourceFileDiffMode,
+        ),
       ),
-    [sourceBaseSha, sourceHeadSha, sourceKind],
+    [sourceBaseSha, sourceFileDiffMode, sourceHeadSha, sourceKind],
   );
   // Measure the diff pane (content width, not viewport) so `auto` can pick
   // side-by-side only when two readable code columns fit.
@@ -659,7 +687,12 @@ function GitDiffContent({
       const result = await fetchDiffForSource(
         projectId,
         file,
-        sourceFromPrimitives(sourceKind, sourceBaseSha, sourceHeadSha),
+        sourceFromPrimitives(
+          sourceKind,
+          sourceBaseSha,
+          sourceHeadSha,
+          sourceFileDiffMode,
+        ),
         true,
         ignoreWhitespace,
       );
@@ -696,6 +729,7 @@ function GitDiffContent({
     sourceKind,
     sourceBaseSha,
     sourceHeadSha,
+    sourceFileDiffMode,
     ignoreWhitespace,
     onProjectionRequestFailure,
     t,

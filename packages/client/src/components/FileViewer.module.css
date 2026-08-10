@@ -6,3 +6,8 @@
   border: 0;
   background: var(--bg-primary);
 }
+
+.diffBody {
+  min-height: 100%;
+  background: var(--bg-code);
+}

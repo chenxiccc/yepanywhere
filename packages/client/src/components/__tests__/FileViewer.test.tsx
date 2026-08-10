@@ -13,6 +13,19 @@ import { extractMarkdownSnippetsFromSelection } from "../../lib/markdownSelectio
 import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
 import { FileViewer, type FileViewerSource } from "../FileViewer";
 
+const mocks = vi.hoisted(() => ({
+  useFileVersionControl: vi.fn(),
+}));
+
+vi.mock("../../hooks/useFileVersionControl", () => ({
+  useFileVersionControl: mocks.useFileVersionControl,
+}));
+vi.mock("../../pages/GitStatusDiffPreview", () => ({
+  GitDiffBody: ({ source }: { source: unknown }) => (
+    <div data-testid="file-diff-body">{JSON.stringify(source)}</div>
+  ),
+}));
+
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 const originalGetBoundingClientRect =
   HTMLElement.prototype.getBoundingClientRect;
@@ -66,6 +79,14 @@ function restoreObjectProperty(
 
 describe("FileViewer", () => {
   beforeEach(() => {
+    mocks.useFileVersionControl.mockReset();
+    mocks.useFileVersionControl.mockReturnValue({
+      cumulativeFile: null,
+      loading: false,
+      relativePath: null,
+      supported: false,
+      worktreeFile: null,
+    });
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(),
@@ -74,6 +95,73 @@ describe("FileViewer", () => {
       callback(0);
       return 1;
     });
+  });
+
+  it("makes cumulative diff override source line ranges", async () => {
+    const cumulativeFile = {
+      path: "src/App.ts",
+      status: "M",
+      staged: false,
+      linesAdded: 3,
+      linesDeleted: 1,
+    };
+    mocks.useFileVersionControl.mockReturnValue({
+      cumulativeFile,
+      loading: false,
+      relativePath: "src/App.ts",
+      supported: true,
+      worktreeFile: null,
+    });
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "src/App.ts",
+          size: 12,
+          mimeType: "text/typescript",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "source\n",
+      })),
+    };
+
+    render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="src/App.ts"
+          lineNumber={12}
+          lineEnd={16}
+          viewMode="range"
+          diffMode="cumulative"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    expect((await screen.findByTestId("file-diff-body")).textContent).toContain(
+      '"mode":"cumulative"',
+    );
+    expect(source.loadFile).not.toHaveBeenCalled();
+    const cumulative = screen.getByRole("link", {
+      name: "View cumulative HEAD^1 to working tree diff for src/App.ts",
+    });
+    expect(cumulative.getAttribute("href")).toBe(
+      "/projects/project-id/file?path=src%2FApp.ts&diff=cumulative",
+    );
+    expect(cumulative.getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(screen.getByRole("link", { name: "Source" }));
+    await waitFor(() =>
+      expect(source.loadFile).toHaveBeenCalledWith(
+        "project-id",
+        "src/App.ts",
+        true,
+        12,
+        16,
+        "range",
+      ),
+    );
   });
 
   afterEach(() => {

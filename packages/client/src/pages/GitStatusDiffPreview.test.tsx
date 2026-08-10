@@ -12,11 +12,14 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getGitDiff = vi.fn();
+const getGitFileProjectionDiff = vi.fn();
 const listReviewComments = vi.fn();
 const originalScrollIntoView = Element.prototype.scrollIntoView;
 vi.mock("../api/client", () => ({
   api: {
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
+    getGitFileProjectionDiff: (...args: unknown[]) =>
+      getGitFileProjectionDiff(...args),
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
   },
 }));
@@ -206,6 +209,30 @@ describe("GitDiffBody", () => {
     ).toBeTruthy();
     expect(screen.getByText("2.0 KB")).toBeTruthy();
     expect(screen.getAllByText("assets/icon.png")).toHaveLength(2);
+  });
+
+  it("loads cumulative file-viewer projections through their own route", async () => {
+    getGitFileProjectionDiff.mockResolvedValue(result("cumulative"));
+
+    render(
+      <MemoryRouter>
+        <GitDiffBody
+          file={FILE}
+          fileKey="file-viewer:cumulative:src/live.ts"
+          projectId="p1"
+          source={{ kind: "file-projection", mode: "cumulative" }}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("cumulative");
+    expect(getGitFileProjectionDiff).toHaveBeenCalledWith("p1", {
+      path: "src/live.ts",
+      mode: "cumulative",
+      fullContext: undefined,
+    });
+    expect(getGitDiff).not.toHaveBeenCalled();
   });
 
   it("suppresses binary-looking patch text returned by an older server", async () => {

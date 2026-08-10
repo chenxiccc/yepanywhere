@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../../i18n";
 import { UI_KEYS } from "../../../../lib/storageKeys";
@@ -41,22 +41,16 @@ if (!editRenderer.renderCollapsedPreview) {
 }
 const renderCollapsedPreview = editRenderer.renderCollapsedPreview;
 
-function LocationStateProbe() {
-  const location = useLocation();
-  return (
-    <pre data-testid="location-state">
-      {JSON.stringify({ pathname: location.pathname, state: location.state })}
-    </pre>
-  );
-}
-
 describe("EditRenderer collapsed preview fallback", () => {
   beforeEach(() => {
     window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
     mocks.useFileVersionControl.mockImplementation(
       (_projectId: string, filePath: string) => ({
-        dirty: false,
+        cumulativeFile: null,
+        loading: false,
         relativePath: filePath,
+        supported: false,
+        worktreeFile: null,
       }),
     );
   });
@@ -724,7 +718,7 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(screen.getByRole("button", { name: /Foo\.tsx/i })).toBeDefined();
   });
 
-  it("links an Edit block to its dirty file with this session as the default", async () => {
+  it("links an Edit block to its exact worktree diff", () => {
     if (!editRenderer.renderInteractiveSummary) {
       throw new Error("Edit renderer must provide interactive summary");
     }
@@ -738,8 +732,17 @@ describe("EditRenderer collapsed preview fallback", () => {
       },
     ];
     mocks.useFileVersionControl.mockReturnValue({
-      dirty: true,
+      cumulativeFile: null,
+      loading: false,
       relativePath: "src/example.ts",
+      supported: true,
+      worktreeFile: {
+        path: "src/example.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 1,
+      },
     });
 
     render(
@@ -768,7 +771,6 @@ describe("EditRenderer collapsed preview fallback", () => {
                   renderContext,
                 )}
               />
-              <Route path="/git-status" element={<LocationStateProbe />} />
             </Routes>
           </I18nProvider>
         </SessionMetadataProvider>
@@ -776,35 +778,11 @@ describe("EditRenderer collapsed preview fallback", () => {
     );
 
     const link = screen.getByRole("link", {
-      name: "Open uncommitted diff for src/example.ts",
+      name: "View HEAD to working tree diff for src/example.ts",
     });
     expect(link.getAttribute("href")).toBe(
-      "/git-status?projectId=project-1&worktreeFile=src%2Fexample.ts",
+      "/projects/project-1/file?path=src%2Fexample.ts&diff=worktree",
     );
-    fireEvent.click(link);
-
-    const route = JSON.parse(
-      (await screen.findByTestId("location-state")).textContent ?? "{}",
-    ) as {
-      pathname: string;
-      state: unknown;
-    };
-    expect(route).toEqual({
-      pathname: "/git-status",
-      state: {
-        defaultSession: {
-          projectId: "project-1",
-          id: "session-1",
-          title: "Fix polling",
-          newSession: {
-            provider: "codex",
-            model: "gpt-5.4",
-            thinking: { type: "adaptive", display: "summarized" },
-            effort: "high",
-          },
-        },
-      },
-    });
   });
 
   it("puts all multi-file patch targets in the interactive summary title", () => {

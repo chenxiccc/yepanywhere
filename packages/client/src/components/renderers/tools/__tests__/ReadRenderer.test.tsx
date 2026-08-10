@@ -90,13 +90,13 @@ describe("ReadRenderer", () => {
       </div>,
     );
 
-    const link = screen.getByRole("link", { name: /useGlobalSessions\.ts/i });
+    const link = screen.getByRole("link", {
+      name: "packages/client/src/hooks/useGlobalSessions.ts",
+    });
     expect(link.getAttribute("href")).toBe(
       `/projects/${projectId}/file?path=packages%2Fclient%2Fsrc%2Fhooks%2FuseGlobalSessions.ts`,
     );
-    expect(link.parentElement?.textContent).toContain(
-      "useGlobalSessions.ts 1 lines",
-    );
+    expect(screen.getByRole("link", { name: "1 lines" })).toBeDefined();
   });
 
   it("links partial read summaries and their line counts to the read range", () => {

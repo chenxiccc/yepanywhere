@@ -6,6 +6,7 @@ import type { PatchHunk } from "./types.js";
 
 export {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -74,6 +75,20 @@ export interface GitRevisionComparison {
   headSha: string;
   /** Files whose content differs between the two revisions. */
   files: GitFileChange[];
+}
+
+export type GitFileDiffMode = "worktree" | "cumulative";
+
+/** Exact file-change corpora backing file-viewer diff selectors. */
+export interface GitFileProjectionManifest {
+  /** Resolved HEAD used as the ordinary worktree baseline. */
+  headSha: string | null;
+  /** Resolved first parent of HEAD used as the cumulative baseline. */
+  baseSha: string | null;
+  /** Net changes from HEAD through the current filesystem. */
+  worktreeFiles: GitFileChange[];
+  /** Net changes from HEAD^1 through the current filesystem. */
+  cumulativeFiles: GitFileChange[];
 }
 
 /** One page of commits for the commit browser. */

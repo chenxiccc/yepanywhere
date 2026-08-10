@@ -6,6 +6,8 @@ import type {
   GitCommitSearchRecordsResult,
   GitDiffResult,
   GitFileListResult,
+  GitFileDiffMode,
+  GitFileProjectionManifest,
   GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
@@ -134,6 +136,27 @@ export const gitApi = {
       method: "POST",
       body: JSON.stringify(params),
     }),
+
+  getGitFileProjections: (projectId: string) =>
+    fetchJSON<GitFileProjectionManifest>(
+      `/projects/${projectId}/git/file-projections`,
+    ),
+
+  getGitFileProjectionDiff: (
+    projectId: string,
+    params: {
+      path: string;
+      mode: GitFileDiffMode;
+      fullContext?: boolean;
+    },
+  ) =>
+    fetchJSON<GitDiffResult>(
+      `/projects/${projectId}/git/file-projection-diff`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    ),
 
   getGitBlame: (projectId: string, path: string, rev?: string) => {
     const query = new URLSearchParams({ path });

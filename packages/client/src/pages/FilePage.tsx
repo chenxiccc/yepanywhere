@@ -16,6 +16,7 @@ export function FilePage() {
   const filePath = searchParams.get("path");
   const lineNumber = parsePositiveInteger(searchParams.get("line"));
   const lineEnd = parsePositiveInteger(searchParams.get("lineEnd"));
+  const diffMode = parseFileDiffMode(searchParams.get("diff"));
   const viewMode =
     searchParams.get("view") === "range" ? ("range" as const) : "full";
 
@@ -70,12 +71,17 @@ export function FilePage() {
             lineNumber={lineNumber}
             lineEnd={lineEnd}
             viewMode={viewMode}
+            diffMode={diffMode}
             standalone
           />
         </div>
       </div>
     </GlossaryProjectBoundary>
   );
+}
+
+function parseFileDiffMode(value: string | null) {
+  return value === "worktree" || value === "cumulative" ? value : undefined;
 }
 
 function parsePositiveInteger(value: string | null): number | undefined {

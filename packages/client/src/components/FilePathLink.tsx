@@ -1,17 +1,14 @@
 import { fromUrlProjectId, isUrlProjectId } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import {
   buildPublicShareFileHref,
   usePublicShareContext,
 } from "../contexts/PublicShareContext";
 import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
-import { useFileVersionControl } from "../hooks/useFileVersionControl";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
-import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../lib/markdownSelectionCopy";
@@ -29,6 +26,10 @@ import {
   type FileViewerSource,
 } from "./FileViewer";
 import {
+  buildProjectFileViewUrl,
+  FileVersionControlLinks,
+} from "./FileDiffViewLinks";
+import {
   FilePathContextMenu,
   type FileViewPresentation,
   supportsSourceAndPreview,
@@ -38,6 +39,8 @@ import { createPublicShareFileViewerSource } from "./publicShareFileViewerSource
 import { CopyTextButton } from "./ui/CopyTextButton";
 import { useModalBackGesture } from "./ui/Modal";
 import styles from "./FilePathLink.module.css";
+
+export { FileVersionControlLinks } from "./FileDiffViewLinks";
 
 /**
  * Faint copy-to-clipboard affordance rendered after a pathname. Copies the
@@ -55,116 +58,6 @@ export function FilePathCopyButton({ filePath }: { filePath: string }) {
       className="file-path-copy"
       onClick={(event) => event.stopPropagation()}
     />
-  );
-}
-
-export function FileVersionControlLinks({
-  filePath,
-  navigationState,
-  projectId,
-}: {
-  filePath: string;
-  navigationState?: unknown;
-  projectId: string;
-}) {
-  const viewerFilePath = useMemo(
-    () => getProjectViewerFilePath(projectId, filePath),
-    [filePath, projectId],
-  );
-  const { dirty, headCommitHash, relativePath } = useFileVersionControl(
-    projectId,
-    viewerFilePath,
-  );
-
-  if (!relativePath || (!dirty && !headCommitHash)) {
-    return null;
-  }
-
-  return (
-    <VisibleFileVersionControlLinks
-      dirty={dirty}
-      headCommitHash={headCommitHash}
-      navigationState={navigationState}
-      projectId={projectId}
-      relativePath={relativePath}
-    />
-  );
-}
-
-function VisibleFileVersionControlLinks({
-  dirty,
-  headCommitHash,
-  navigationState,
-  projectId,
-  relativePath,
-}: {
-  dirty: boolean;
-  headCommitHash?: string;
-  navigationState?: unknown;
-  projectId: string;
-  relativePath: string;
-}) {
-  const { t } = useI18n();
-  const basePath = useRemoteBasePath();
-
-  const dirtyParams = new URLSearchParams({
-    projectId,
-    worktreeFile: relativePath,
-  });
-  const headParams = new URLSearchParams({ projectId });
-  if (headCommitHash) {
-    headParams.set("rev", headCommitHash);
-    headParams.set("commitFile", relativePath);
-  }
-
-  return (
-    <span className={styles.diffLinks}>
-      {dirty && (
-        <Link
-          className={`${styles.diffLink} ${styles.dirty}`}
-          to={`${basePath}/git-status?${dirtyParams.toString()}`}
-          state={navigationState}
-          aria-label={t("fileOpenDirtyDiff", { path: relativePath })}
-          title={t("fileOpenDirtyDiff", { path: relativePath })}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M2.5 4.5h5M5 2v5M9 11.5h4.5" />
-            <path d="M2.5 9.5h4v4h-4z" />
-          </svg>
-        </Link>
-      )}
-      {headCommitHash && (
-        <Link
-          className={styles.diffLink}
-          to={`${basePath}/git-status?${headParams.toString()}`}
-          state={navigationState}
-          aria-label={t("fileOpenHeadDiff", { path: relativePath })}
-          title={t("fileOpenHeadDiff", { path: relativePath })}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden="true"
-          >
-            <path d="M4 2v12M12 2v4a2 2 0 0 1-2 2H6a2 2 0 0 0-2 2v4" />
-            <circle cx="4" cy="2" r="1.5" fill="currentColor" stroke="none" />
-            <circle cx="4" cy="14" r="1.5" fill="currentColor" stroke="none" />
-            <circle cx="12" cy="2" r="1.5" fill="currentColor" stroke="none" />
-          </svg>
-        </Link>
-      )}
-    </span>
   );
 }
 
@@ -189,27 +82,6 @@ interface FilePathLinkProps {
   viewMode?: FileViewerMode;
   /** Whether to render the faint copy-path button after the link */
   showCopyButton?: boolean;
-}
-
-function getProjectFileViewUrl(
-  projectId: string,
-  filePath: string,
-  lineNumber?: number,
-  lineEnd?: number,
-  viewMode?: FileViewerMode,
-  basePath = "",
-): string {
-  const params = new URLSearchParams({ path: filePath });
-  if (lineNumber !== undefined) {
-    params.set("line", String(lineNumber));
-  }
-  if (lineEnd !== undefined) {
-    params.set("lineEnd", String(lineEnd));
-  }
-  if (viewMode === "range") {
-    params.set("view", "range");
-  }
-  return `${basePath}/projects/${projectId}/file?${params.toString()}`;
 }
 
 function getProjectPath(projectId: string): string | null {
@@ -307,14 +179,14 @@ export const FilePathLink = memo(function FilePathLink({
     publicShareContext !== null
       ? publicShareFileViewUrl
       : toBrowserAppHref(
-          getProjectFileViewUrl(
-            projectId,
-            viewerFilePath,
-            lineNumber,
-            lineEnd,
-            viewMode,
+          buildProjectFileViewUrl({
             basePath,
-          ),
+            filePath: viewerFilePath,
+            lineEnd,
+            lineNumber,
+            projectId,
+            viewMode,
+          }),
         );
   const publicShareFileViewerSource = useMemo(
     () =>
@@ -380,25 +252,28 @@ export const FilePathLink = memo(function FilePathLink({
 
   return (
     <>
-      <a
-        href={fileViewUrl ?? "#"}
-        className="file-path-link"
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-        {...tooltipAttributes}
-      >
-        <span className="file-path-link-name">{text}</span>
-        {visibleSuffix && (
-          <span className="file-path-link-line">{visibleSuffix}</span>
+      <span className={styles.linkCluster}>
+        <a
+          href={fileViewUrl ?? "#"}
+          className="file-path-link"
+          onClick={handleClick}
+          onContextMenu={handleContextMenu}
+          {...tooltipAttributes}
+        >
+          <span className="file-path-link-name">{text}</span>
+          {visibleSuffix && (
+            <span className="file-path-link-line">{visibleSuffix}</span>
+          )}
+        </a>
+        {showCopyButton && <FilePathCopyButton filePath={viewerFilePath} />}
+        {publicShareContext === null && (
+          <FileVersionControlLinks
+            className={styles.inlineDiffLinks}
+            projectId={projectId}
+            filePath={viewerFilePath}
+          />
         )}
-      </a>
-      {showCopyButton && <FilePathCopyButton filePath={viewerFilePath} />}
-      {publicShareContext === null && (
-        <FileVersionControlLinks
-          projectId={projectId}
-          filePath={viewerFilePath}
-        />
-      )}
+      </span>
       {contextMenu && (
         <FilePathContextMenu
           x={contextMenu.x}

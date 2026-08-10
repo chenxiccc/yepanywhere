@@ -56,6 +56,13 @@ fallback. The earlier `compact-v1` query, `optionalCapabilityBits`, and
 `capabilityExtensions` remain readable for compatibility with intermediate
 source builds, but new clients do not negotiate that representation.
 
+`git-file-diff-projections` owns the exact file-viewer manifest and per-file
+diff routes. Releases `0.6.2` and `0.7.0` have neither route. A client without
+the capability hides every file-viewer diff selector and sends no projection
+request; it does not reuse `git-source-review-projections`, whose advertised
+meaning predates these routes. The capability is permanent and
+version-implied from `0.7.1`.
+
 `serverHasCapability` accepts release implication, encoding-1 IDs, and both
 legacy representations. This union keeps old installed servers usable without
 making a new capability depend on its textual name.
@@ -176,9 +183,10 @@ the same ledger:
 | 26 | server | 0.7.1 | `project-session-defaults` |
 | 27 | server | 0.7.1 | `sidebar-session-resume` |
 | 28 | server | 0.7.1 | `session-fork-turn-intents` |
+| 29 | server | 0.7.1 | `git-file-diff-projections` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 29; retired rows stay in the ledger as reserved IDs.
+ID 30; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 
