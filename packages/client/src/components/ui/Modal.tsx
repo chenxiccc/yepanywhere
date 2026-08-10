@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   type ReactNode,
+  type RefObject,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -30,6 +31,7 @@ interface ModalProps {
   anchorRect?: ModalAnchorRect | null;
   anchorAtAnyWidth?: boolean;
   variant?: "image-viewer";
+  contentRef?: RefObject<HTMLDivElement | null>;
   /**
    * When true, opening pushes a history entry so a browser "back" — the mobile
    * OS back-swipe — dismisses the modal, keeping history balanced. Used by the
@@ -123,6 +125,7 @@ export function Modal({
   anchorRect,
   anchorAtAnyWidth = false,
   closeOnBackGesture,
+  contentRef,
   variant,
 }: ModalProps) {
   const { t } = useI18n();
@@ -277,7 +280,9 @@ export function Modal({
             ×
           </button>
         </div>
-        <div className="modal-content">{children}</div>
+        <div className="modal-content" ref={contentRef}>
+          {children}
+        </div>
       </div>
     </div>
   );

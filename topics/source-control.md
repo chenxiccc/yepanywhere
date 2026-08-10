@@ -221,6 +221,13 @@ live working-tree refresh changes the diff while full context is open, YA
 invalidates and reloads that projection. An older request resolving later
 cannot overwrite the newer projection.
 
+A live working-tree refresh preserves the user's selected Diff/Markdown
+Preview mode and maintains the viewed position on a best-effort basis. Until
+the aligned source-marker projection exists, preserving the relative scrollbar
+position is sufficient. If one refreshed response cannot supply Markdown
+preview content, YA temporarily shows the source diff without clearing the
+user's preview choice; preview resumes when a later response can render it.
+
 Source Control presents a text diff only when the exact Git projection is not
 classified as binary and both file versions are safe UTF-8 text. Git attributes
 that mark a tracked path binary are authoritative; a filename extension alone

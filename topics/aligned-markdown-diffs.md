@@ -16,8 +16,8 @@ Source Control currently returns `GitDiffResult.markdownHtml` by rendering the
 entire new file in `buildGitDiffResultFromBytes`. `GitDiffContent` then replaces
 `UnifiedDiff` or `SideBySideDiff` with one `MarkdownPreview`. The replacement has
 no `data-diff-line` identities and no old-side representation. The toggle also
-retains only a numeric scroll position, so the same offset lands on unrelated
-content after the DOM changes height. <!-- verified: SHA b9c534fb -->
+retains only a relative scrollbar position, so a changed document can still
+land on unrelated content after the DOM changes shape. <!-- verified: 2026-08-10 -->
 
 That behavior violates the representation invariant: **switching between raw
 and rendered diff views must preserve the same Git projection and logical

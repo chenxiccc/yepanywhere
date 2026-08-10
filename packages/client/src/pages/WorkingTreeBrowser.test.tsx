@@ -790,6 +790,155 @@ describe("WorkingTreeBrowser", () => {
     });
   });
 
+  it.each([true, false])(
+    "keeps Markdown preview and relative scroll through dirty refreshes (wide=%s)",
+    async (isWideScreen) => {
+      getGitDiff
+        .mockResolvedValueOnce({
+          diffHtml: "<pre><code>+dirty</code></pre>",
+          structuredPatch: [],
+          markdownHtml: "<p>first rendered dirty file</p>",
+        })
+        .mockResolvedValueOnce({
+          diffHtml: "<pre><code>+dirty again</code></pre>",
+          structuredPatch: [],
+          markdownHtml: "<p>second rendered dirty file</p>",
+        })
+        .mockResolvedValueOnce({
+          diffHtml: "<pre><code>+dirty once more</code></pre>",
+          structuredPatch: [],
+          markdownHtml: "<p>third rendered dirty file</p>",
+        });
+      listReviewComments.mockResolvedValue({
+        comments: [],
+        batches: [],
+        pendingCount: 0,
+      });
+      const dirtyStatus = (linesAdded: number): GitStatusInfo => ({
+        isGitRepo: true,
+        branch: "main",
+        upstream: "origin/main",
+        ahead: 0,
+        behind: 0,
+        isClean: false,
+        files: [
+          {
+            path: "notes/live.md",
+            status: "M",
+            staged: false,
+            linesAdded,
+            linesDeleted: 0,
+          },
+        ],
+        recentCommits: [],
+      });
+      const cleanStatus: GitStatusInfo = {
+        ...dirtyStatus(0),
+        isClean: true,
+        files: [],
+      };
+      const view = (status: GitStatusInfo) => (
+        <MemoryRouter>
+          <WorkingTreeBrowser
+            projectId="p1"
+            status={status}
+            isWideScreen={isWideScreen}
+            t={t}
+          />
+        </MemoryRouter>
+      );
+      const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+        Element.prototype,
+        "scrollHeight",
+      );
+      const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+        Element.prototype,
+        "clientHeight",
+      );
+      Object.defineProperty(Element.prototype, "scrollHeight", {
+        configurable: true,
+        get() {
+          const text = this.textContent ?? "";
+          if (text.includes("third rendered")) return 2_600;
+          if (text.includes("second rendered")) return 1_800;
+          return 1_000;
+        },
+      });
+      Object.defineProperty(Element.prototype, "clientHeight", {
+        configurable: true,
+        get: () => 200,
+      });
+
+      try {
+        const rendered = render(view(dirtyStatus(1)));
+        if (!isWideScreen) {
+          fireEvent.click(
+            screen.getByRole("button", { name: /notes\/live\.md/ }),
+          );
+        }
+        fireEvent.click(
+          await screen.findByRole("button", { name: "gitStatusPreview" }),
+        );
+        expect(
+          screen
+            .getByRole("button", { name: "gitStatusDiff" })
+            .getAttribute("aria-pressed"),
+        ).toBe("true");
+        const scrollRootSelector = isWideScreen
+          ? ".git-diff-preview-body"
+          : ".modal-content";
+        const firstScrollRoot =
+          document.querySelector<HTMLElement>(scrollRootSelector);
+        if (!firstScrollRoot) throw new Error("Diff scroll root is missing");
+        firstScrollRoot.scrollTop = 400;
+
+        rendered.rerender(view(dirtyStatus(2)));
+        await waitFor(() =>
+          expect(
+            document.querySelector<HTMLElement>(scrollRootSelector)?.scrollTop,
+          ).toBe(800),
+        );
+
+        rendered.rerender(view(cleanStatus));
+        await screen.findByText("gitStatusWorkingTreeClean");
+        rendered.rerender(view(dirtyStatus(3)));
+        if (!isWideScreen) {
+          fireEvent.click(
+            screen.getByRole("button", { name: /notes\/live\.md/ }),
+          );
+        }
+
+        expect(
+          await screen.findByRole("button", { name: "gitStatusDiff" }),
+        ).toBeDefined();
+        await waitFor(() =>
+          expect(
+            document.querySelector<HTMLElement>(scrollRootSelector)?.scrollTop,
+          ).toBe(1_200),
+        );
+      } finally {
+        if (scrollHeightDescriptor) {
+          Object.defineProperty(
+            Element.prototype,
+            "scrollHeight",
+            scrollHeightDescriptor,
+          );
+        } else {
+          delete (Element.prototype as { scrollHeight?: number }).scrollHeight;
+        }
+        if (clientHeightDescriptor) {
+          Object.defineProperty(
+            Element.prototype,
+            "clientHeight",
+            clientHeightDescriptor,
+          );
+        } else {
+          delete (Element.prototype as { clientHeight?: number }).clientHeight;
+        }
+      }
+    },
+  );
+
   it.each([false, true])(
     "opens the exact Edit-linked dirty file (wide=%s)",
     async (isWideScreen) => {

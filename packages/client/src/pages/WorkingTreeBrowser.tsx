@@ -47,6 +47,7 @@ import {
   GitDiffPreview,
   type GitDiffPreviewHandle,
   type GitDiffSource,
+  type GitDiffViewState,
 } from "./GitStatusDiffPreview";
 
 type WorktreeState = "staged" | "unstaged" | "both" | "untracked";
@@ -199,6 +200,8 @@ export function WorkingTreeBrowser({
     string | null
   >(null);
   const retainedFileRef = useRef<WorktreeFileChange | null>(null);
+  const retainedDiffViewRef = useRef(new Map<string, GitDiffViewState>());
+  const retainedScrollRatioRef = useRef(new Map<string, number>());
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
@@ -339,6 +342,12 @@ export function WorkingTreeBrowser({
   );
   const selectedFile =
     previewableFiles.find((file) => file.path === selectedPath) ?? null;
+  const retainedDiffView = selectedFile
+    ? retainedDiffViewRef.current.get(selectedFile.path)
+    : undefined;
+  const retainedScrollRatio = selectedFile
+    ? retainedScrollRatioRef.current.get(selectedFile.path)
+    : undefined;
   const linkedFile = initialWorkingTreePath
     ? previewableFiles.find((file) => file.path === initialWorkingTreePath)
     : undefined;
@@ -419,6 +428,19 @@ export function WorkingTreeBrowser({
     },
     [isWideScreen],
   );
+
+  const retainDiffView = useCallback(
+    (fileKey: string, view: GitDiffViewState) => {
+      retainedDiffViewRef.current.set(fileKey, {
+        ...retainedDiffViewRef.current.get(fileKey),
+        ...view,
+      });
+    },
+    [],
+  );
+  const retainScrollRatio = useCallback((fileKey: string, ratio: number) => {
+    retainedScrollRatioRef.current.set(fileKey, ratio);
+  }, []);
 
   const fileMenuActions = useCallback(
     (file: WorktreeFileChange): SourceContextMenuAction[] => {
@@ -593,6 +615,10 @@ export function WorkingTreeBrowser({
             fileKey={selectedFile.path}
             projectId={projectId}
             source={WORKING_TREE_SOURCE}
+            retainedScrollRatio={retainedScrollRatio}
+            retainedDiffView={retainedDiffView}
+            onRetainScrollRatio={retainScrollRatio}
+            onRetainDiffView={retainDiffView}
             headerActions={fileActions}
             onCommentEditorOpenChange={setCommentEditorOpen}
             captureReviewProjections={captureReviewProjections}
@@ -611,6 +637,10 @@ export function WorkingTreeBrowser({
           fileKey={selectedFile.path}
           projectId={projectId}
           source={WORKING_TREE_SOURCE}
+          retainedScrollRatio={retainedScrollRatio}
+          retainedDiffView={retainedDiffView}
+          onRetainScrollRatio={retainScrollRatio}
+          onRetainDiffView={retainDiffView}
           headerActions={fileActions}
           onCommentEditorOpenChange={setCommentEditorOpen}
           captureReviewProjections={captureReviewProjections}

@@ -9,6 +9,7 @@ import type {
 import {
   forwardRef,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -40,6 +41,11 @@ interface GitDiffPreviewRetentionProps {
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
 }
 
+interface GitDiffScrollRetentionProps {
+  retainedScrollRatio?: number;
+  onRetainScrollRatio?: (fileKey: string, ratio: number) => void;
+}
+
 interface DiffPaneHeader {
   title: string;
   path: string;
@@ -58,15 +64,15 @@ interface HunkNavigationHandlers {
   previous: () => boolean;
 }
 
-interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
+interface GitDiffPreviewProps
+  extends GitDiffPreviewRetentionProps,
+    GitDiffScrollRetentionProps {
   file: GitFileChange | null;
   fileKey: string | null;
   projectId: string;
   source?: GitDiffSource;
   /** Actions for the selected file, shown in the pane header (the file banner). */
   headerActions?: ReactNode;
-  retainedScrollTop?: number;
-  onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
   captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
@@ -93,6 +99,17 @@ const WORKTREE_SOURCE: GitDiffSource = { kind: "worktree" };
 const WORKING_TREE_HISTORY_SOURCE: GitDiffSource = {
   kind: "working-tree-history",
 };
+
+function getRelativeScrollRatio(element: HTMLElement): number {
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  if (maxScrollTop === 0) return 0;
+  return Math.min(1, Math.max(0, element.scrollTop / maxScrollTop));
+}
+
+function restoreRelativeScrollRatio(element: HTMLElement, ratio: number): void {
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  element.scrollTop = maxScrollTop * Math.min(1, Math.max(0, ratio));
+}
 
 /**
  * Rebuild a source from its primitives. Effects depend on (kind, sha) rather
@@ -197,9 +214,9 @@ export const GitDiffPreview = forwardRef<
     projectId,
     source = WORKTREE_SOURCE,
     headerActions,
-    retainedScrollTop,
+    retainedScrollRatio,
     retainedDiffView,
-    onRetainScrollTop,
+    onRetainScrollRatio,
     onRetainDiffView,
     onCommentEditorOpenChange,
     captureReviewProjections = false,
@@ -230,20 +247,14 @@ export const GitDiffPreview = forwardRef<
   );
 
   useLayoutEffect(() => {
-    if (!fileKey || !bodyRef.current || typeof retainedScrollTop !== "number") {
-      return;
-    }
-    bodyRef.current.scrollTop = retainedScrollTop;
-  }, [fileKey, retainedScrollTop]);
-
-  useLayoutEffect(() => {
+    const scrollContainer = bodyRef.current;
     return () => {
-      if (!fileKey || !bodyRef.current) {
+      if (!fileKey || !scrollContainer) {
         return;
       }
-      onRetainScrollTop?.(fileKey, bodyRef.current.scrollTop);
+      onRetainScrollRatio?.(fileKey, getRelativeScrollRatio(scrollContainer));
     };
-  }, [fileKey, onRetainScrollTop]);
+  }, [fileKey, onRetainScrollRatio]);
 
   return (
     <section className="git-diff-preview-pane">
@@ -254,6 +265,8 @@ export const GitDiffPreview = forwardRef<
             fileKey={fileKey}
             projectId={projectId}
             source={source}
+            retainedScrollRatio={retainedScrollRatio}
+            scrollContainerRef={bodyRef}
             retainedDiffView={retainedDiffView}
             onRetainDiffView={onRetainDiffView}
             paneHeader={{
@@ -292,7 +305,9 @@ export function GitDiffModal({
   projectId,
   source = WORKTREE_SOURCE,
   headerActions,
+  retainedScrollRatio,
   retainedDiffView,
+  onRetainScrollRatio,
   onRetainDiffView,
   onCommentEditorOpenChange,
   captureReviewProjections = false,
@@ -308,7 +323,9 @@ export function GitDiffModal({
   source?: GitDiffSource;
   /** Actions for the selected file, shown above the diff (the file banner). */
   headerActions?: ReactNode;
+  retainedScrollRatio?: number;
   retainedDiffView?: GitDiffViewState;
+  onRetainScrollRatio?: (fileKey: string, ratio: number) => void;
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
   captureReviewProjections?: boolean;
@@ -318,8 +335,23 @@ export function GitDiffModal({
   t: TranslationFn;
   onClose: () => void;
 }) {
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const scrollContainer = bodyRef.current;
+    return () => {
+      if (!scrollContainer) return;
+      onRetainScrollRatio?.(fileKey, getRelativeScrollRatio(scrollContainer));
+    };
+  }, [fileKey, onRetainScrollRatio]);
+
   return (
-    <Modal title={file.path} onClose={onClose} closeOnBackGesture>
+    <Modal
+      title={file.path}
+      onClose={onClose}
+      closeOnBackGesture
+      contentRef={bodyRef}
+    >
       {headerActions && (
         <div className="git-diff-preview-header-actions">{headerActions}</div>
       )}
@@ -328,6 +360,8 @@ export function GitDiffModal({
         fileKey={fileKey}
         projectId={projectId}
         source={source}
+        retainedScrollRatio={retainedScrollRatio}
+        scrollContainerRef={bodyRef}
         retainedDiffView={retainedDiffView}
         onRetainDiffView={onRetainDiffView}
         onCommentEditorOpenChange={onCommentEditorOpenChange}
@@ -355,6 +389,8 @@ export function GitDiffBody({
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace,
   onProjectionRequestFailure,
+  retainedScrollRatio,
+  scrollContainerRef,
   t,
 }: {
   file: GitFileChange;
@@ -368,6 +404,8 @@ export function GitDiffBody({
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionRequestFailure?: () => void;
+  retainedScrollRatio?: number;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   // Depend on the source's primitives (a fresh `{kind,sha}` object each render
@@ -411,6 +449,32 @@ export function GitDiffBody({
           error: null,
         };
   const { result: diffResult, loading, error } = currentLoad;
+  const visibleDiffResultRef = useRef(diffResult);
+  const pendingScrollRef = useRef<{
+    fileKey: string;
+    ratio: number;
+  } | null>(
+    retainedScrollRatio === undefined
+      ? null
+      : { fileKey, ratio: retainedScrollRatio },
+  );
+  visibleDiffResultRef.current = diffResult;
+
+  useLayoutEffect(() => {
+    pendingScrollRef.current =
+      retainedScrollRatio === undefined
+        ? null
+        : { fileKey, ratio: retainedScrollRatio };
+  }, [fileKey, retainedScrollRatio]);
+
+  useLayoutEffect(() => {
+    const pendingScroll = pendingScrollRef.current;
+    if (!diffResult || pendingScroll?.fileKey !== fileKey) return;
+    const scrollContainer = scrollContainerRef?.current;
+    if (!scrollContainer) return;
+    restoreRelativeScrollRatio(scrollContainer, pendingScroll.ratio);
+    pendingScrollRef.current = null;
+  }, [diffResult, fileKey, scrollContainerRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -446,6 +510,13 @@ export function GitDiffBody({
     )
       .then((result) => {
         if (!cancelled) {
+          const scrollContainer = scrollContainerRef?.current;
+          if (visibleDiffResultRef.current && scrollContainer) {
+            pendingScrollRef.current = {
+              fileKey,
+              ratio: getRelativeScrollRatio(scrollContainer),
+            };
+          }
           setLoadState({
             requestKey,
             result,
@@ -479,6 +550,7 @@ export function GitDiffBody({
   }, [
     projectId,
     file,
+    fileKey,
     requestKey,
     sourceKind,
     sourceBaseSha,
@@ -486,6 +558,7 @@ export function GitDiffBody({
     sourceFileDiffMode,
     ignoreWhitespace,
     onProjectionRequestFailure,
+    scrollContainerRef,
     t,
   ]);
 
@@ -657,9 +730,10 @@ function GitDiffContent({
   }, [viewMode, setViewMode]);
 
   const isMarkdown = /\.(md|markdown)$/i.test(file.path);
-  const hasMarkdownPreview =
-    isMarkdown &&
-    !!(fullContextResult?.markdownHtml || diffResult.markdownHtml);
+  const markdownHtml =
+    fullContextResult?.markdownHtml || diffResult.markdownHtml;
+  const hasMarkdownPreview = isMarkdown && !!markdownHtml;
+  const showingMarkdownPreview = showMarkdownPreview && hasMarkdownPreview;
 
   const retainDiffView = useCallback(
     (view: GitDiffViewState) => {
@@ -756,13 +830,6 @@ function GitDiffContent({
     }
   }, [contextLoading, fullContextResult, loadFullContext, showFullContext]);
 
-  useEffect(() => {
-    if (!hasMarkdownPreview && showMarkdownPreview) {
-      setShowMarkdownPreview(false);
-      retainDiffView({ showMarkdownPreview: false });
-    }
-  }, [hasMarkdownPreview, retainDiffView, showMarkdownPreview]);
-
   // Scroll to first changed line when showing full context
   useEffect(() => {
     if (showFullContext && fullContextResult && contentRef.current) {
@@ -780,8 +847,6 @@ function GitDiffContent({
   const displayResult =
     showFullContext && fullContextResult ? fullContextResult : diffResult;
 
-  const markdownHtml =
-    fullContextResult?.markdownHtml || diffResult.markdownHtml;
   const oversizedHtmlSkip = getOversizedDiffHtmlSkip(displayResult.diffHtml);
   const binaryPatchSkip = useMemo(
     () =>
@@ -800,11 +865,13 @@ function GitDiffContent({
   }, [hunkPosition]);
 
   const renderedHunks = useCallback((): HTMLElement[] => {
-    if (showMarkdownPreview || previewSkipped || !contentRef.current) return [];
+    if (showingMarkdownPreview || previewSkipped || !contentRef.current) {
+      return [];
+    }
     return Array.from(
       contentRef.current.querySelectorAll<HTMLElement>(".line-hunk"),
     );
-  }, [previewSkipped, showMarkdownPreview]);
+  }, [previewSkipped, showingMarkdownPreview]);
 
   const updateHunkPosition = useCallback(() => {
     const content = contentRef.current;
@@ -954,21 +1021,21 @@ function GitDiffContent({
         <button
           type="button"
           className={`diff-context-toggle diff-toolbar-icon-button ${
-            showMarkdownPreview ? "active" : ""
+            showingMarkdownPreview ? "active" : ""
           }`}
           onClick={handleToggleMarkdownPreview}
           title={
-            showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")
+            showingMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")
           }
           aria-label={
-            showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")
+            showingMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")
           }
-          aria-pressed={showMarkdownPreview}
+          aria-pressed={showingMarkdownPreview}
         >
-          <MarkdownModeIcon showDiff={showMarkdownPreview} />
+          <MarkdownModeIcon showDiff={showingMarkdownPreview} />
         </button>
       )}
-      {!showMarkdownPreview && (
+      {!showingMarkdownPreview && (
         <button
           type="button"
           className={`diff-context-toggle diff-toolbar-icon-button ${
@@ -995,7 +1062,7 @@ function GitDiffContent({
           <ContextModeIcon expanded={showFullContext} />
         </button>
       )}
-      {!showMarkdownPreview && (
+      {!showingMarkdownPreview && (
         <button
           type="button"
           className="diff-context-toggle diff-toolbar-icon-button"
@@ -1068,7 +1135,7 @@ function GitDiffContent({
         className="diff-modal-content source-diff-pane diff-gutter-aligned"
         ref={mountContent}
       >
-        {showMarkdownPreview && markdownHtml ? (
+        {showingMarkdownPreview && markdownHtml ? (
           <MarkdownPreview html={markdownHtml} sourcePath={file.path} />
         ) : previewSkipped ? (
           <GitDiffPreviewSkippedState

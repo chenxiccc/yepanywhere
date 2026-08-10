@@ -130,6 +130,47 @@ describe("GitDiffBody", () => {
     expect(await screen.findByText("full-b")).toBeTruthy();
   });
 
+  it("keeps the requested Markdown preview through a source-only refresh", async () => {
+    const markdownFile: GitFileChange = {
+      ...FILE,
+      path: "notes/live.md",
+    };
+    const results: GitDiffResult[] = [
+      {
+        ...result("first diff"),
+        markdownHtml: "<p>first preview</p>",
+      },
+      result("temporary source only"),
+      {
+        ...result("third diff"),
+        markdownHtml: "<p>third preview</p>",
+      },
+    ];
+    getGitDiff.mockImplementation(() => Promise.resolve(results.shift()));
+
+    const view = (file: GitFileChange) => (
+      <MemoryRouter>
+        <GitDiffBody file={file} fileKey="notes/live.md" projectId="p1" t={t} />
+      </MemoryRouter>
+    );
+    const rendered = render(view(markdownFile));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPreview" }),
+    );
+    expect(await screen.findByText("first preview")).toBeTruthy();
+
+    rendered.rerender(view({ ...markdownFile, linesAdded: 2 }));
+    expect(await screen.findByText("temporary source only")).toBeTruthy();
+
+    rendered.rerender(view({ ...markdownFile, linesAdded: 3 }));
+    expect(await screen.findByText("third preview")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "gitStatusDiff" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
   it("keeps file identity readable beside compact glyph controls", async () => {
     getGitDiff.mockResolvedValue(result("compact"));
     listReviewComments.mockResolvedValue({
