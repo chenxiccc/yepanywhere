@@ -844,6 +844,35 @@ describe("MessageInput", () => {
     }
   });
 
+  it("restores compact actions after keyboard voice transcription", () => {
+    const viewport = installMobileKeyboardViewport();
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    try {
+      fireEvent.focus(textarea);
+      act(() => viewport.setHeight(480));
+      expect(
+        document.querySelector(".message-input-keyboard-compact"),
+      ).toBeNull();
+
+      act(() => viewport.setHeight(800));
+      fireEvent.change(textarea, {
+        target: { value: "keyboard voice transcript" },
+      });
+      expect(
+        document.querySelector(".message-input-keyboard-compact"),
+      ).toBeNull();
+
+      act(() => viewport.setHeight(480));
+      expect(
+        document.querySelector(".message-input-keyboard-primary"),
+      ).toBeTruthy();
+      expect(document.querySelector(".message-input-toolbar")).toBeNull();
+    } finally {
+      viewport.restore();
+    }
+  });
+
   it("shows the alternate beside the primary mobile keyboard action", () => {
     const viewport = installMobileKeyboardViewport();
     versionState.version = {

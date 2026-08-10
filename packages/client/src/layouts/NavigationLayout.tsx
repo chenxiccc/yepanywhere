@@ -12,6 +12,7 @@ import { Link, Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { Sidebar, SidebarToggleIcon } from "../components/Sidebar";
 import { GlossaryProjectProvider } from "../contexts/GlossaryContext";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
+import { MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO } from "../lib/mobileKeyboardViewport";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
 import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
 import {
@@ -35,6 +36,18 @@ export interface NavigationLayoutContext {
 
 const NOOP = () => {};
 const SESSION_DOM_LINGER_TTL_MS = 60_000;
+const NON_TEXT_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
 const NavigationLayoutReactContext =
   createContext<NavigationLayoutContext | null>(null);
 
@@ -68,6 +81,44 @@ interface ResponsiveLayoutState {
 
 function getViewportWidth(): number {
   return typeof window === "undefined" ? 1200 : window.innerWidth;
+}
+
+function isKeyboardTextEntry(
+  target: EventTarget | null,
+): target is HTMLElement {
+  if (target instanceof HTMLTextAreaElement) {
+    return !target.disabled && !target.readOnly;
+  }
+  if (target instanceof HTMLInputElement) {
+    return (
+      !target.disabled &&
+      !target.readOnly &&
+      !NON_TEXT_INPUT_TYPES.has(target.type)
+    );
+  }
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
+function getMobileVisualViewportBottomInset(
+  isWideScreen: boolean,
+  activeElement: EventTarget | null = document.activeElement,
+): number {
+  const visualViewport = window.visualViewport;
+  const layoutViewportHeight = window.innerHeight;
+  if (
+    isWideScreen ||
+    !visualViewport ||
+    !isKeyboardTextEntry(activeElement) ||
+    layoutViewportHeight <= 0 ||
+    visualViewport.height >=
+      layoutViewportHeight * MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO
+  ) {
+    return 0;
+  }
+
+  const visualViewportBottom =
+    Math.max(0, visualViewport.offsetTop) + Math.max(0, visualViewport.height);
+  return Math.ceil(Math.max(0, layoutViewportHeight - visualViewportBottom));
 }
 
 function getResponsiveLayoutState(
@@ -183,6 +234,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   const [responsiveLayout, setResponsiveLayout] = useState(() =>
     getResponsiveLayoutState(sidebarWidth),
   );
+  const layoutFrameRef = useRef<HTMLDivElement | null>(null);
   const updateResponsiveLayout = useCallback(() => {
     const next = getResponsiveLayoutState(sidebarWidth);
     setResponsiveLayout((previous) =>
@@ -214,6 +266,44 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   }, [updateResponsiveLayout]);
 
   const { isWideScreen, canShowExpandedSidebar } = responsiveLayout;
+
+  useEffect(() => {
+    const frame = layoutFrameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    const applyInset = (activeElement: EventTarget | null) => {
+      const inset = getMobileVisualViewportBottomInset(
+        isWideScreen,
+        activeElement,
+      );
+      if (inset > 0) {
+        frame.style.paddingBottom = `calc(env(safe-area-inset-bottom, 0px) + ${inset}px)`;
+      } else {
+        frame.style.removeProperty("padding-bottom");
+      }
+    };
+    const updateInset = () => applyInset(document.activeElement);
+    const handleFocusIn = (event: FocusEvent) => applyInset(event.target);
+    const handleFocusOut = (event: FocusEvent) =>
+      applyInset(event.relatedTarget);
+
+    updateInset();
+    window.addEventListener("resize", updateInset);
+    window.visualViewport?.addEventListener("resize", updateInset);
+    window.visualViewport?.addEventListener("scroll", updateInset);
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
+    return () => {
+      window.removeEventListener("resize", updateInset);
+      window.visualViewport?.removeEventListener("resize", updateInset);
+      window.visualViewport?.removeEventListener("scroll", updateInset);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+    };
+  }, [isWideScreen]);
+
   // Auto-collapse if viewport too narrow for expanded sidebar, or if user prefers collapsed
   const effectivelyCollapsed = !isExpanded || !canShowExpandedSidebar;
 
@@ -370,6 +460,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
 
   return (
     <div
+      ref={layoutFrameRef}
       className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${
         isContentFrameRoute ? "content-frame-layout" : ""
       } ${isResizing ? "resizing" : ""}`}

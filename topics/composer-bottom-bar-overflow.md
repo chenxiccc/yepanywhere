@@ -184,6 +184,12 @@ with slack**. Two latch/oscillation traps live here:
   controls stay directly discoverable. Once the draft has submittable text or
   attachments and the viewport is below 80% of its pre-keyboard height, the
   normal toolbar yields to a 48px-high compact action row.
+- While any enabled text entry is focused on a mobile layout and the visual
+  viewport contracts below 80% of the layout viewport, the session shell keeps
+  its bottom chrome above the obscured portion of the layout viewport. It
+  follows visual-viewport resize and pan changes, including a keyboard that
+  hides for voice transcription and then returns. A browser that already
+  resizes the layout viewport receives no second inset.
 - The compact row keeps a stable More affordance so attachments, Stop, and the
   user's other enabled toolbar controls remain discoverable without first
   knowing to dismiss the keyboard. Project Queue is the exception: when the

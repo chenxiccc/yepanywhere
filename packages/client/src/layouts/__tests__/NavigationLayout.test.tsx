@@ -81,7 +81,12 @@ function renderNavigationLayout(path = "/agents") {
           <Route element={<NavigationLayout />}>
             <Route
               path="/agents"
-              element={<div data-testid="route-content" />}
+              element={
+                <div data-testid="route-content">
+                  <textarea aria-label="Composer" />
+                  <input aria-label="Toggle" type="checkbox" />
+                </div>
+              }
             />
           </Route>
         </Routes>
@@ -159,6 +164,63 @@ function enableSessionDomLinger() {
   window.localStorage.setItem(UI_KEYS.sessionDomLinger, "true");
 }
 
+function installMobileVisualViewport(initialHeight = 800) {
+  const previousInnerHeight = Object.getOwnPropertyDescriptor(
+    window,
+    "innerHeight",
+  );
+  const previousVisualViewport = Object.getOwnPropertyDescriptor(
+    window,
+    "visualViewport",
+  );
+  let layoutHeight = initialHeight;
+  let visualHeight = initialHeight;
+  let offsetTop = 0;
+  const visualViewport = new EventTarget();
+  Object.defineProperties(visualViewport, {
+    height: {
+      configurable: true,
+      get: () => visualHeight,
+    },
+    offsetTop: {
+      configurable: true,
+      get: () => offsetTop,
+    },
+  });
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    get: () => layoutHeight,
+  });
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: visualViewport,
+  });
+
+  return {
+    setGeometry(nextHeight: number, nextOffsetTop = 0) {
+      visualHeight = nextHeight;
+      offsetTop = nextOffsetTop;
+      visualViewport.dispatchEvent(new Event("resize"));
+    },
+    setLayoutHeight(nextHeight: number) {
+      layoutHeight = nextHeight;
+      window.dispatchEvent(new Event("resize"));
+    },
+    restore() {
+      if (previousInnerHeight) {
+        Object.defineProperty(window, "innerHeight", previousInnerHeight);
+      } else {
+        Reflect.deleteProperty(window, "innerHeight");
+      }
+      if (previousVisualViewport) {
+        Object.defineProperty(window, "visualViewport", previousVisualViewport);
+      } else {
+        Reflect.deleteProperty(window, "visualViewport");
+      }
+    },
+  };
+}
+
 describe("NavigationLayout", () => {
   beforeEach(() => {
     mocks.GlossaryProjectProvider.mockClear();
@@ -188,6 +250,70 @@ describe("NavigationLayout", () => {
       provider.querySelector('[data-testid="route-content"]'),
     ).toBeTruthy();
     expect(mocks.SidebarSessionFeedsProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps focused text-entry chrome inside a visual-only mobile viewport", () => {
+    const viewport = installMobileVisualViewport();
+    renderNavigationLayout();
+
+    try {
+      const frame = document.querySelector(".session-page") as HTMLElement;
+      const composer = screen.getByRole("textbox", { name: "Composer" });
+
+      act(() => composer.focus());
+      act(() => viewport.setGeometry(480));
+      expect(frame.style.paddingBottom).toContain("320px");
+
+      act(() => viewport.setGeometry(800));
+      fireEvent.change(composer, { target: { value: "voice transcript" } });
+      act(() => viewport.setGeometry(480));
+      expect(frame.style.paddingBottom).toContain("320px");
+
+      act(() => viewport.setGeometry(480, 80));
+      expect(frame.style.paddingBottom).toContain("240px");
+
+      act(() => composer.blur());
+      expect(frame.style.paddingBottom).toBe("");
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("does not double-inset when the layout viewport already resized", () => {
+    const viewport = installMobileVisualViewport();
+    renderNavigationLayout();
+
+    try {
+      const frame = document.querySelector(".session-page") as HTMLElement;
+      const composer = screen.getByRole("textbox", { name: "Composer" });
+
+      act(() => composer.focus());
+      act(() => {
+        viewport.setGeometry(480);
+        viewport.setLayoutHeight(480);
+      });
+
+      expect(frame.style.paddingBottom).toBe("");
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("does not reserve keyboard space for non-text controls", () => {
+    const viewport = installMobileVisualViewport();
+    renderNavigationLayout();
+
+    try {
+      const frame = document.querySelector(".session-page") as HTMLElement;
+      const toggle = screen.getByRole("checkbox", { name: "Toggle" });
+
+      act(() => toggle.focus());
+      act(() => viewport.setGeometry(480));
+
+      expect(frame.style.paddingBottom).toBe("");
+    } finally {
+      viewport.restore();
+    }
   });
 
   it("removes the collapsed desktop rail and restores it from the floating toggle", () => {

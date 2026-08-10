@@ -60,6 +60,7 @@ import {
   filterComposerTurnRecall,
 } from "../lib/composerTurnRecall";
 import { hasCoarsePointer } from "../lib/deviceDetection";
+import { MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO } from "../lib/mobileKeyboardViewport";
 import { focusComposerForSpeechTransition } from "../lib/speechComposerFocus";
 import type {
   SpeechTranscriptionContext,
@@ -205,8 +206,6 @@ interface PendingDraftInputEdit {
   end: number;
   inputType?: string;
 }
-
-const MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO = 0.8;
 
 function getComposerViewportHeight(): number {
   const visualViewportHeight = window.visualViewport?.height;
