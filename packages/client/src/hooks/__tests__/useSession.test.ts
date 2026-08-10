@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type {
   FileChangeEvent,
+  ProcessStateEvent,
   SessionStatusEvent,
   SessionUpdatedEvent,
 } from "../../lib/activityBus";
@@ -46,6 +47,7 @@ let fileActivityOptions:
       onSessionStatusChange?: (event: SessionStatusEvent) => void;
       onSessionUpdated?: (event: SessionUpdatedEvent) => void;
       onFileChange?: (event: FileChangeEvent) => void;
+      onProcessStateChange?: (event: ProcessStateEvent) => void;
       onReconnect?: () => void | Promise<void>;
     }
   | undefined;
@@ -281,6 +283,35 @@ describe("useSession completion reconciliation", () => {
     expect(result.current.processState).toBe("idle");
     expect(result.current.status).toEqual({ owner: "none" });
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("catches up durable messages when activity reports the turn idle", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      fileActivityOptions?.onProcessStateChange?.({
+        type: "process-state-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        activity: "idle",
+        timestamp: "2026-08-10T08:06:29.513Z",
+      });
+    });
+
+    expect(result.current.processState).toBe("idle");
+    expect(result.current.status).toMatchObject({ owner: "self" });
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(2);
   });
 
   it("deduplicates exact broad and focused file facts", () => {

@@ -118,6 +118,13 @@ detached copies of `Process` history. Provider-owned replay state is never
 mutated. File-backed reads, active-process reads, and live finalization use the
 same private-session augmentation boundary and project-file-link context.
 
+The broad activity channel and the owned-session content stream are separate
+subscriptions. When activity reports a turn idle, the client performs an
+immediate durable-transcript catch-up and one trailing catch-up for providers
+whose last persistence write follows the idle event. The idle composer must not
+remain visible beside a transcript tail that predates the completed turn merely
+because the content subscription still appears connected.
+
 Final Markdown ownership now lives in `SessionDetailState.markdownAugments`.
 WebSocket events dispatch through the session-detail reducer, and warm reveal
 and route snapshots retain the map. Duplicate updates remain no-ops, live IDs

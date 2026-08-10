@@ -1515,6 +1515,16 @@ export function useSession(
           pendingInputType: event.pendingInputType ?? null,
         });
         setProcessState(event.activity);
+
+        // Activity and session content travel over separate subscriptions. An
+        // idle event therefore cannot prove that the client received the final
+        // assistant message. Reconcile against the durable transcript at this
+        // boundary, with a trailing pass for providers that finish persistence
+        // just after reporting idle.
+        if (event.activity === "idle") {
+          throttledFetch();
+          throttledFetch();
+        }
       }
 
       // If activity bus says waiting-input but we don't have the request,
@@ -1539,7 +1549,13 @@ export function useSession(
         });
       }
     },
-    [projectId, reportProviderRuntimeStatus, sessionId, setDeferredMessages],
+    [
+      projectId,
+      reportProviderRuntimeStatus,
+      sessionId,
+      setDeferredMessages,
+      throttledFetch,
+    ],
   );
 
   // Handle activity bus reconnection (e.g., after phone screen wake).
