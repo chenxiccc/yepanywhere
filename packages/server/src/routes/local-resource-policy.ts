@@ -167,6 +167,13 @@ export function createLocalResourcePathPolicy(deps: LocalResourcePolicyDeps) {
   async function resolveAllowedFilePath(
     filePath: string,
   ): Promise<LocalResourceFileResult> {
+    return resolveFilePathWithin(filePath, await getAllowedPaths());
+  }
+
+  async function resolveFilePathWithin(
+    filePath: string,
+    allowedPaths: readonly string[],
+  ): Promise<LocalResourceFileResult> {
     const normalizedFilePath = normalizePathForPlatform(filePath);
     if (!isSupportedAbsoluteLocalPath(normalizedFilePath, platform)) {
       return { error: "Path must be absolute", ok: false, status: 400 };
@@ -179,8 +186,7 @@ export function createLocalResourcePathPolicy(deps: LocalResourcePolicyDeps) {
       return { error: "File not found", ok: false, status: 404 };
     }
 
-    const allowed = await getAllowedPaths();
-    const isAllowed = allowed.some((prefix) =>
+    const isAllowed = allowedPaths.some((prefix) =>
       isPathInsideDirectory(resolvedPath, prefix),
     );
     if (!isAllowed) {
@@ -205,7 +211,27 @@ export function createLocalResourcePathPolicy(deps: LocalResourcePolicyDeps) {
     }
   }
 
+  async function findAllowedFilePaths(
+    filePaths: readonly string[],
+  ): Promise<ReadonlySet<string>> {
+    const allowedPaths = await getAllowedPaths();
+    const results = await Promise.all(
+      filePaths.map(async (filePath) => {
+        try {
+          const result = await resolveFilePathWithin(filePath, allowedPaths);
+          return result.ok ? filePath : null;
+        } catch {
+          // Link discovery is advisory. The file endpoint remains the
+          // authoritative click-time check and reports operational failures.
+          return null;
+        }
+      }),
+    );
+    return new Set(results.filter((path): path is string => path !== null));
+  }
+
   return {
+    findAllowedFilePaths,
     getAllowedPaths,
     isAbsolutePath(filePath: string) {
       return isSupportedAbsoluteLocalPath(

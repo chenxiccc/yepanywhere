@@ -16,6 +16,8 @@ link convergence, and performance/visual acceptance are complete. Public
 shares deliberately remain unannotated. Demand-driven source resolution landed
 2026-08-04 and the observed-directory watches it implied landed 2026-08-05, so
 nothing in this feature reaches past the directories resolution actually named.
+External files opened in a session FileViewer gained that session's root
+glossary graph on 2026-08-10.
 
 ## Product contract
 
@@ -58,7 +60,10 @@ to them.
 
 Project-affiliated prose without a source-file path uses the project-root
 `GLOSSARY.md`. A selected Source Control file resolves from its displayed
-target path. A `GLOSSARY.md` never annotates itself.
+target path. A file outside the selected project but opened from an
+authenticated session has no meaningful nested project scope, so it uses that
+session project's root glossary and explicit include graph as project-
+affiliated prose. A `GLOSSARY.md` never annotates itself.
 
 Any project-local path mentioned in a parsed `GLOSSARY.md` whose basename is
 `GLOSSARY.md` is an include edge. Includes are transitive. For each mention,
@@ -227,6 +232,10 @@ Pointer hover uses the ordinary tooltip appearance preference:
 - Native mode keeps a browser-owned `title` hint.
 - Themed mode uses YA's shared tooltip layer, delay, placement, warmth, and
   single-surface ownership.
+
+Holding any pointer button suppresses passive tooltip activation. A native
+selection drag crossing a glossary term therefore remains one uninterrupted
+text-selection gesture; the term explicitly retains `user-select: text`.
 
 Primary activation—tap or click—reveals the same tooltip text and copies that
 exact text to the clipboard. Touch activation therefore has an explicit YA
@@ -552,10 +561,12 @@ ordinary Markdown without glossary annotations.
 Authenticated project-contained Markdown links use the shared FileViewer
 route, including browser new-tab gestures, so project documents retain their
 project/source context and the same glossary boundary. An intercepted link
-opened in a file-viewer modal resolves glossary hints from the linked file's
-project, never from the enclosing session's project. The legacy standalone
-local-file HTML shell remains as a compatibility path for non-project or old
-direct URLs; it has no selected-project authority and remains unannotated.
+opened in a file-viewer modal resolves glossary hints from the FileViewer's
+project context. An authenticated absolute local-file link opened from a
+session uses that session project context and its root glossary/include graph,
+even when the file lies outside the project. The legacy standalone local-file
+HTML shell remains for surfaces with no selected-project authority and stays
+unannotated.
 
 ## Render-boundary implementation plan
 

@@ -67,6 +67,11 @@ function SessionText({ sessionId }: { sessionId: string }) {
   );
 }
 
+function ExternalFileText() {
+  const glossary = useGlossaryArtifact("/tmp/external.md");
+  return <span data-testid="external-glossary-state">{glossary.state}</span>;
+}
+
 describe("GlossaryProjectProvider", () => {
   afterEach(() => {
     cleanup();
@@ -116,5 +121,30 @@ describe("GlossaryProjectProvider", () => {
     expect(screen.getByTestId("glossary-state").textContent).toBe("ready");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(transport.getSubscriptions("glossary")).toHaveLength(1);
+  });
+
+  it("uses the session root glossary graph for external files", async () => {
+    const fetchMock = vi.fn();
+    const fetch = async <T,>(path: string): Promise<T> => {
+      fetchMock(path);
+      expect(path).toBe(
+        `/projects/${encodeURIComponent(PROJECT_ID)}/glossary-artifact`,
+      );
+      return readyResponse() as T;
+    };
+    mocks.runtime = createRuntime(new FakeSourceTransport({ fetch }));
+
+    render(
+      <GlossaryProjectProvider projectId={PROJECT_ID}>
+        <ExternalFileText />
+      </GlossaryProjectProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("external-glossary-state").textContent).toBe(
+        "ready",
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

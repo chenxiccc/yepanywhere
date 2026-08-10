@@ -1339,6 +1339,30 @@ describe("TooltipLayer", () => {
     expect(tooltip.classList).not.toContain(styles.enlarged);
   });
 
+  it("does not activate glossary hover while a text-selection drag is active", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <span
+          data-glossary-term="true"
+          data-tooltip="oracle — Best published system."
+        >
+          oracle
+        </span>
+      </>,
+    );
+
+    fireEvent.pointerOver(screen.getByText("oracle"), {
+      pointerType: "mouse",
+      buttons: 1,
+      clientX: 20,
+      clientY: 30,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS * 2));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   it("leaves activated glossary text selection to the browser", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

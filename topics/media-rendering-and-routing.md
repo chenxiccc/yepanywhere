@@ -91,12 +91,17 @@ and the route it pulls from.
   `FileViewerModal`). Routes: `/api/projects/:id/files` (metadata) and
   `/files/raw` (bytes). Relay-safe **as of the `fetchRawFileBlob` fix**; before
   that the image `<img src>` used the raw URL directly and 404'd in relay mode.
+  Authenticated rendered local-file links also converge here whenever an
+  active session project exists, including allowed absolute files outside that
+  project. The project supplies viewer/glossary context; the shared file-access
+  allow-set remains the authorization boundary.
 - **Local media modal (rendered-text media links)** — click an image/video link
   *inside* rendered Markdown/HTML and a modal shows it. `useLocalResourceClick`
   → `LocalMediaModal` → `/api/local-image`. Relay-safe.
-- **Local file modal (rendered-text file links)** — click a non-media local file
-  link in rendered text; a modal renders text/JSON/log inline, PDFs from a blob
-  URL, and an explicitly selected HTML/Markdown preview in a sandboxed iframe.
+- **Local file modal (rendered-text file links without project context)** —
+  click a non-media local file link on a surface with no active project; a modal
+  renders text/JSON/log inline, PDFs from a blob URL, and an explicitly selected
+  HTML/Markdown preview in a sandboxed iframe.
   `LocalFileModal` → `/api/local-file`. Relay-safe. HTML defaults to source;
   Markdown keeps its established preview default. The sandboxed modal is the
   only permitted HTML preview shape; open/new-tab actions must not escape it to
@@ -106,6 +111,14 @@ and the route it pulls from.
 File-viewer modals own one same-URL browser-history entry: Back dismisses the
 viewer without leaving the underlying session, while opening or React effect
 replay must never traverse pre-modal history.
+
+An authenticated FileViewer modal can be parked without discarding loaded
+content, presentation mode, scroll position, or quoteable source registration.
+Its persistent session-level controller lets the user move between document and
+live session without recovering the original transcript link. Presentation,
+responsive allocation, and the alternative session-list drawer design live in
+[`parked-file-viewer.md`](parked-file-viewer.md). Public-share viewers do not
+offer parking because they have no authenticated session composer.
 
 ### Resource actions and file presentation choice
 

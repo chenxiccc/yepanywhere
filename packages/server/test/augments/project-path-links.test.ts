@@ -130,6 +130,82 @@ afterEach(async () => {
 });
 
 describe("project path index", () => {
+  it("links allowed absolute files through private project viewer routes", async () => {
+    const repo = await createRepo();
+    const index = await getProjectPathIndex(repo);
+    const punctuationPath = "/tmp/report:name,final(1)&notes.md";
+    const resolveAbsoluteFilePaths = vi.fn(
+      async (paths: readonly string[]) =>
+        new Set(
+          paths.filter(
+            (path) => path === "/tmp/report.md" || path === punctuationPath,
+          ),
+        ),
+    );
+
+    const html = await linkifyProjectPaths(
+      "<span>/tmp/report.md /x /tmp/missing.md /tmp/report:name,final(1)&amp;notes.md</span>",
+      {
+        projectId: "project-1",
+        projectPath: repo,
+        index,
+        resolveAbsoluteFilePaths,
+      },
+    );
+
+    expect(resolveAbsoluteFilePaths).toHaveBeenCalledWith([
+      "/tmp/report.md",
+      "/tmp/missing.md",
+      punctuationPath,
+    ]);
+    expect(html).toContain(
+      'href="/projects/project-1/file?path=%2Ftmp%2Freport.md"',
+    );
+    expect(html).toContain('data-ya-private-project-file-link="true"');
+    expect(html).toContain(
+      "path=%2Ftmp%2Freport%3Aname%2Cfinal%281%29%26notes.md",
+    );
+    expect(html).toContain("/tmp/report:name,final(1)&amp;notes.md</a>");
+    expect(html).toContain("/x");
+    expect(html).not.toContain("path=%2Ftmp%2Fmissing.md");
+    index.release();
+  });
+
+  it("does not link an existing prefix of a longer absolute token", async () => {
+    const repo = await createRepo();
+    const index = await getProjectPathIndex(repo);
+    const resolveAbsoluteFilePaths = vi.fn(async () =>
+      Promise.resolve(new Set(["/tmp/report.md"])),
+    );
+    const source = "<span>/tmp/report.md,</span>";
+
+    expect(
+      await linkifyProjectPaths(source, {
+        projectId: "project-1",
+        projectPath: repo,
+        index,
+        resolveAbsoluteFilePaths,
+      }),
+    ).toBe(source);
+    expect(resolveAbsoluteFilePaths).toHaveBeenCalledWith(["/tmp/report.md,"]);
+    index.release();
+  });
+
+  it("does not probe or link absolute paths without an authenticated resolver", async () => {
+    const repo = await createRepo();
+    const index = await getProjectPathIndex(repo);
+    const source = "<span>/tmp/report.md</span>";
+
+    expect(
+      await linkifyProjectPaths(source, {
+        projectId: "project-1",
+        projectPath: repo,
+        index,
+      }),
+    ).toBe(source);
+    index.release();
+  });
+
   it("finds files inside gitignored directories", async () => {
     const repo = await createGitRepo();
     await writeFile(join(repo, "tracked.md"), "# tracked\n");

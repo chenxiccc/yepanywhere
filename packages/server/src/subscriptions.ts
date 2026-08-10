@@ -40,6 +40,10 @@ export interface SubscriptionOptions extends SessionQueueSummaryDeps {
   wantsLiveDeltas?: boolean;
   /** Injectable augmenter factory for deterministic transport tests. */
   createAugmenter?: typeof createStreamAugmenter;
+  /** Authenticated exact probes for bare absolute-path viewer links. */
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
 }
 
 /**
@@ -145,6 +149,7 @@ export function createSessionSubscription(
               projectId: process.projectId,
               projectPath: process.projectPath,
               ...(pathIndex ? { index: pathIndex } : {}),
+              resolveAbsoluteFilePaths: options?.resolveAbsoluteFilePaths,
             },
           },
           taskListAugmenter,

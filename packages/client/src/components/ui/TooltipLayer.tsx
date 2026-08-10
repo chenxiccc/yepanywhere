@@ -687,6 +687,10 @@ export function TooltipLayer() {
 
     const onPointerOver = (event: PointerEvent) => {
       if (!pointerCanHover(event)) return;
+      if (event.buttons !== 0) {
+        hide();
+        return;
+      }
       const dismissedTarget = movementDismissedTargetRef.current;
       if (
         dismissedTarget &&
@@ -716,6 +720,10 @@ export function TooltipLayer() {
     };
     const onPointerMove = (event: PointerEvent) => {
       if (!pointerCanHover(event)) return;
+      if (event.buttons !== 0) {
+        hide();
+        return;
+      }
       const dismissedTarget = movementDismissedTargetRef.current;
       if (
         dismissedTarget &&

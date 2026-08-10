@@ -991,9 +991,14 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
                 response.highlightedHtml = await linkifyProjectPaths(
                   result.html,
                   {
+                    projectId,
                     projectPath: projectRoot,
                     index: pathIndex,
                     selfRelativePath: relativePath,
+                    resolveAbsoluteFilePaths:
+                      deps.strictProjectFileAccess === true
+                        ? undefined
+                        : pathPolicy?.findAllowedFilePaths,
                   },
                 );
               } finally {
@@ -1021,19 +1026,30 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
                   fullInlineContent !== undefined && requestedRange
                     ? 1
                     : (largeRangePreviewSlice?.startLine ?? slice.startLine);
-                const renderedMarkdownHtml = await renderMarkdownFilePreview(
-                  previewContent,
-                  {
-                    localFileBasePath: dirname(filePath),
-                    projectFileLinks: {
-                      projectId,
-                      projectPath: projectRoot,
+                const previewPathIndex = await getProjectPathIndex(projectRoot);
+                let renderedMarkdownHtml: string;
+                try {
+                  renderedMarkdownHtml = await renderMarkdownFilePreview(
+                    previewContent,
+                    {
+                      localFileBasePath: dirname(filePath),
+                      projectFileLinks: {
+                        projectId,
+                        projectPath: projectRoot,
+                        index: previewPathIndex,
+                        resolveAbsoluteFilePaths:
+                          deps.strictProjectFileAccess === true
+                            ? undefined
+                            : pathPolicy?.findAllowedFilePaths,
+                      },
                     },
-                  },
-                  previewStartLine,
-                  requestedRange,
-                  viewMode,
-                );
+                    previewStartLine,
+                    requestedRange,
+                    viewMode,
+                  );
+                } finally {
+                  previewPathIndex.release();
+                }
                 response.renderedMarkdownHtml = renderedMarkdownHtml;
                 response.embeddedMedia = await collectEmbeddedMarkdownMedia(
                   renderedMarkdownHtml,

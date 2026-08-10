@@ -241,6 +241,10 @@ export interface SessionsDeps {
   toolResultMediaStore?: ToolResultMediaStore;
   /** Data directory for local security/audit logs */
   dataDir?: string;
+  /** Authenticated exact probes for bare absolute-path viewer links. */
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
 }
 
 function resolveCompactModelSettings(
@@ -2410,6 +2414,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             projectId: routing.workingProjectId,
             projectPath: routing.workingProject.path,
             ...(pathIndex ? { index: pathIndex } : {}),
+            resolveAbsoluteFilePaths: deps.resolveAbsoluteFilePaths,
           },
         });
       } finally {
@@ -2978,6 +2983,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
                 projectId: effectiveProjectId,
                 projectPath: project.path,
                 ...(pathIndex ? { index: pathIndex } : {}),
+                resolveAbsoluteFilePaths: deps.resolveAbsoluteFilePaths,
               },
             });
           } finally {
@@ -3187,6 +3193,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             projectId: effectiveProjectId,
             projectPath: project.path,
             ...(pathIndex ? { index: pathIndex } : {}),
+            resolveAbsoluteFilePaths: deps.resolveAbsoluteFilePaths,
           },
         });
       } finally {

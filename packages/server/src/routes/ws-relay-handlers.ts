@@ -364,6 +364,10 @@ export interface RelayHandlerDeps {
   dataDir?: string;
   /** Server settings service for relayed speech retention settings (optional) */
   serverSettingsService?: ServerSettingsService;
+  /** Authenticated exact probes for bare absolute-path viewer links. */
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
 }
 
 /**
@@ -991,6 +995,9 @@ export function handleSessionSubscribe(
   send: SendFn,
   supervisor: Supervisor,
   sessionQueuePersistenceService?: SessionQueuePersistenceService,
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>,
 ): void {
   const { subscriptionId, sessionId } = msg;
   const wantsLiveDeltas = msg.wantsLiveDeltas !== false;
@@ -1030,6 +1037,7 @@ export function handleSessionSubscribe(
   const { cleanup } = createSessionSubscription(process, sendEvent, {
     wantsLiveDeltas,
     sessionQueuePersistenceService,
+    resolveAbsoluteFilePaths,
     onError: (err) => {
       console.error("[WS Relay] Error in session subscription:", err);
     },
@@ -1364,6 +1372,9 @@ export function handleSubscribe(
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
   closeConnection?: () => void,
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>,
 ): void {
   const { subscriptionId, channel } = msg;
 
@@ -1385,6 +1396,7 @@ export function handleSubscribe(
         send,
         supervisor,
         sessionQueuePersistenceService,
+        resolveAbsoluteFilePaths,
       );
       break;
 
@@ -1985,6 +1997,7 @@ export async function handleMessage(
           deps.connectedBrowsers,
           deps.browserProfileService,
           () => ws.close(4004, "Legacy browser profile revoked"),
+          deps.resolveAbsoluteFilePaths,
         ),
       onUnsubscribe: async (unsubscribeMsg) =>
         handleUnsubscribe(subscriptions, unsubscribeMsg),

@@ -70,6 +70,13 @@ export interface ProjectFileLinkOptions {
    */
   index?: ProjectPathIndex;
   fileExists?: (absolutePath: string, relativePath: string) => boolean;
+  /**
+   * Resolve bounded batches of absolute-path tokens through the authenticated
+   * local-file allow-set. Omit for every public-share rendering path.
+   */
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
   /** Marks a synchronous filesystem fallback that cannot back retained HTML. */
   onUnversionedLookup?: () => void;
 }
@@ -656,6 +663,23 @@ function renderProjectFileLinkOpen(
     .map(([name, value]) => `${name}="${escapeHtml(value)}"`)
     .join(" ");
   return `<a ${attrs}>`;
+}
+
+/** Render one already-authorized path through the project FileViewer route. */
+export function renderProjectFileViewerLink(
+  projectId: string,
+  filePath: string,
+  label: string,
+): string {
+  const open = renderProjectFileLinkOpen(
+    { projectId, projectPath: "" },
+    { absolutePath: filePath, relativePath: filePath },
+    {
+      privateReference: true,
+      title: `${filePath}\nClick to view, or use a browser link gesture to open this file`,
+    },
+  );
+  return `${open}${escapeHtml(label)}</a>`;
 }
 
 function renderProjectFileCodeLink(text: string): string | null {

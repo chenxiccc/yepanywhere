@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { ConversationViewIcon } from "./ConversationViewIcon";
 import {
@@ -56,6 +57,11 @@ import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import {
+  type FileViewerControllerState,
+  useFileViewerController,
+} from "../lib/fileViewerController";
+import { getPathBasename } from "../lib/text";
+import {
   type EffortLevelOption,
   getEffortLevelLabel,
   getEffortLevelOptions,
@@ -81,6 +87,7 @@ import {
   type SessionIsearchGuideState,
   type SessionIsearchScope,
 } from "../lib/sessionIsearchGuide";
+import toolbarModuleStyles from "./MessageInputToolbar.module.css";
 import {
   DEFAULT_SPEECH_METHOD,
   canSpeechMethodStream,
@@ -678,6 +685,7 @@ export interface MessageInputToolbarViewProps {
   nudgeControl?: ToolbarNudgeControl | null;
   speechControl?: ToolbarSpeechControl | null;
   speechWaveformActive?: boolean;
+  fileViewerController?: FileViewerControllerState | null;
   statusControl?: ToolbarStatusControl | null;
   pendingApproval?: MessageInputToolbarProps["pendingApproval"];
   shortcutsControl: ToolbarShortcutsControl;
@@ -703,6 +711,184 @@ function ToolbarMicrophoneIcon() {
       <line x1="12" y1="19" x2="12" y2="23" />
       <line x1="8" y1="23" x2="16" y2="23" />
     </svg>
+  );
+}
+
+function FileViewerRestoreIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 3.5h10v9H3z" />
+      <path d="M5.5 6.5L8 4l2.5 2.5M8 4v5" />
+    </svg>
+  );
+}
+
+function FileViewerMinimizeIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M3 11.5h10" />
+    </svg>
+  );
+}
+
+function FileViewerCloseIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+function FileViewerToolbarController({
+  controller,
+  t,
+}: {
+  controller: FileViewerControllerState;
+  t: ToolbarTranslate;
+}) {
+  const slotRef = useRef<HTMLSpanElement | null>(null);
+  const floatingRef = useRef<HTMLDivElement | null>(null);
+  const location = `${controller.filePath}${controller.lineSuffix}`;
+
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    const floating = floatingRef.current;
+    if (!slot || !floating || typeof window === "undefined") return;
+
+    floating.dataset.fileViewerState = controller.minimized ? "parked" : "open";
+    let frameId = 0;
+    const updatePosition = () => {
+      frameId = 0;
+      const rect = slot.getBoundingClientRect();
+      floating.style.left = `${rect.left}px`;
+      floating.style.top = `${rect.top}px`;
+      floating.style.width = `${rect.width}px`;
+      floating.style.height = `${rect.height}px`;
+    };
+    const schedulePositionUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updatePosition);
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(schedulePositionUpdate);
+    resizeObserver?.observe(slot);
+    window.addEventListener("resize", schedulePositionUpdate);
+    window.visualViewport?.addEventListener("resize", schedulePositionUpdate);
+    window.visualViewport?.addEventListener("scroll", schedulePositionUpdate);
+    updatePosition();
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", schedulePositionUpdate);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        schedulePositionUpdate,
+      );
+      window.visualViewport?.removeEventListener(
+        "scroll",
+        schedulePositionUpdate,
+      );
+    };
+  }, [controller.minimized]);
+
+  const toggleLabel = controller.minimized
+    ? t("fileViewerRestore", { name: location })
+    : t("fileViewerMinimizeNamed", { name: location });
+  const control = (
+    <div
+      ref={floatingRef}
+      className={`${toolbarModuleStyles.fileViewerController} ${
+        controller.minimized ? toolbarModuleStyles.fileViewerParked : ""
+      }`}
+      role="group"
+      aria-label={t("fileViewerController", { name: location })}
+    >
+      <button
+        type="button"
+        className={toolbarModuleStyles.fileViewerToggle}
+        onClick={
+          controller.minimized ? controller.restore : controller.minimize
+        }
+        title={toggleLabel}
+        aria-label={toggleLabel}
+      >
+        {controller.minimized ? (
+          <FileViewerRestoreIcon />
+        ) : (
+          <FileViewerMinimizeIcon />
+        )}
+        <span
+          className={toolbarModuleStyles.fileViewerLocation}
+          aria-hidden="true"
+        >
+          <span className={toolbarModuleStyles.fileViewerPath}>
+            <bdi>{controller.filePath}</bdi>
+          </span>
+          <span className={toolbarModuleStyles.fileViewerBriefPath}>
+            …/<bdi>{getPathBasename(controller.filePath)}</bdi>
+          </span>
+          {controller.lineSuffix && (
+            <span className={toolbarModuleStyles.fileViewerLine}>
+              {controller.lineSuffix}
+            </span>
+          )}
+        </span>
+      </button>
+      <button
+        type="button"
+        className={toolbarModuleStyles.fileViewerClose}
+        onClick={controller.close}
+        title={t("fileViewerClose", { name: location })}
+        aria-label={t("fileViewerClose", { name: location })}
+      >
+        <FileViewerCloseIcon />
+      </button>
+    </div>
+  );
+
+  return (
+    <>
+      <span
+        ref={slotRef}
+        className={toolbarModuleStyles.fileViewerControllerSlot}
+        data-file-viewer-controller-slot="true"
+        aria-hidden="true"
+      />
+      {typeof document === "undefined"
+        ? null
+        : createPortal(control, document.body)}
+    </>
   );
 }
 
@@ -882,6 +1068,7 @@ export function MessageInputToolbarView({
   nudgeControl,
   speechControl,
   speechWaveformActive = false,
+  fileViewerController = null,
   statusControl,
   pendingApproval,
   shortcutsControl,
@@ -890,6 +1077,15 @@ export function MessageInputToolbarView({
 }: MessageInputToolbarViewProps) {
   const tooltipMode = useTooltipMode();
   const controlPriority = priority ?? DEFAULT_SESSION_TOOLBAR_PRIORITY;
+  const effectivePriority = (
+    key: SessionToolbarVisibilityKey,
+  ): ToolbarNarrowingPriority => {
+    const configured = controlPriority[key];
+    if (fileViewerController && configured === "pin" && key !== "microphone") {
+      return "last";
+    }
+    return configured;
+  };
   // Inline copy always carries `-inline`; append the priority-derived tier (or
   // nothing when pinned). Menu copy carries just the tier. Both mirror each
   // other so a control's inline and menu presentations stay mutually exclusive.
@@ -900,7 +1096,7 @@ export function MessageInputToolbarView({
     [
       ...extra,
       "composer-bottom-overflow-inline",
-      priorityToTierClass(controlPriority[key]),
+      priorityToTierClass(effectivePriority(key)),
     ]
       .filter(Boolean)
       .join(" ");
@@ -908,13 +1104,13 @@ export function MessageInputToolbarView({
     key: SessionToolbarVisibilityKey,
     ...extra: string[]
   ): string => {
-    const tierClass = priorityToTierClass(controlPriority[key]);
+    const tierClass = priorityToTierClass(effectivePriority(key));
     return [...extra, tierClass || "composer-bottom-overflow-pinned"]
       .filter(Boolean)
       .join(" ");
   };
   const isPriorityCollapsible = (key: SessionToolbarVisibilityKey): boolean =>
-    controlPriority[key] !== "pin";
+    effectivePriority(key) !== "pin";
   const shortcutsPopoverOpen = shortcutsControl.open;
   const shortcutSettings =
     shortcutsControl.canSwapEnterAction && shortcutsControl.onSwapEnterAction
@@ -1255,47 +1451,53 @@ export function MessageInputToolbarView({
       actionsControl.send &&
       isPriorityCollapsible("projectQueueNewSessionShortcut"))
   );
-  const bottomOverflowLayoutKey = getComposerToolbarOverflowLayoutSignature({
+  const bottomOverflowLayoutKey = `${getComposerToolbarOverflowLayoutSignature({
     modeSelector:
       visibility.modeSelector && modeControl
-        ? controlPriority.modeSelector
+        ? effectivePriority("modeSelector")
         : "off",
-    attachments: visibility.attachments ? controlPriority.attachments : "off",
+    attachments: visibility.attachments
+      ? effectivePriority("attachments")
+      : "off",
     slashMenu:
-      visibility.slashMenu && slashControl ? controlPriority.slashMenu : "off",
+      visibility.slashMenu && slashControl
+        ? effectivePriority("slashMenu")
+        : "off",
     thinkingToggle:
       visibility.thinkingToggle && thinkingControl
-        ? controlPriority.thinkingToggle
+        ? effectivePriority("thinkingToggle")
         : "off",
     renderMode:
       visibility.renderMode && renderModeControl
-        ? controlPriority.renderMode
+        ? effectivePriority("renderMode")
         : "off",
     conversationView:
       visibility.conversationView && conversationViewControl
-        ? controlPriority.conversationView
+        ? effectivePriority("conversationView")
         : "off",
-    nudge: visibility.nudge && nudgeControl ? controlPriority.nudge : "off",
+    nudge:
+      visibility.nudge && nudgeControl ? effectivePriority("nudge") : "off",
     sessionStatus:
       visibility.sessionStatus && showToolbarStatus && statusControl
-        ? controlPriority.sessionStatus
+        ? effectivePriority("sessionStatus")
         : "off",
     shortcutsHelp: visibility.shortcutsHelp
-      ? controlPriority.shortcutsHelp
+      ? effectivePriority("shortcutsHelp")
       : "off",
     contextUsage:
       visibility.contextUsage && actionsControl.contextUsage
-        ? controlPriority.contextUsage
+        ? effectivePriority("contextUsage")
         : "off",
-    btw: visibility.btw && actionsControl.btw ? controlPriority.btw : "off",
-    steerNow: canToggleSteerNow ? controlPriority.steerNow : "off",
+    btw:
+      visibility.btw && actionsControl.btw ? effectivePriority("btw") : "off",
+    steerNow: canToggleSteerNow ? effectivePriority("steerNow") : "off",
     projectQueue:
       showCurrentSessionProjectQueueButton && actionsControl.send
-        ? controlPriority.projectQueue
+        ? effectivePriority("projectQueue")
         : "off",
     projectQueueNewSessionShortcut:
       showNewSessionProjectQueueButton && actionsControl.send
-        ? controlPriority.projectQueueNewSessionShortcut
+        ? effectivePriority("projectQueueNewSessionShortcut")
         : "off",
     microphone:
       visibility.microphone &&
@@ -1316,7 +1518,7 @@ export function MessageInputToolbarView({
     alternate: !hidePrimaryDeliveryActions && !!actionsControl.send?.alternate,
     stop: showStopButton,
     pending: pendingApproval?.type ?? "off",
-  });
+  })}|fileViewer:${fileViewerController ? "on" : "off"}`;
   const [bottomOverflowOpen, setBottomOverflowOpen] = useState(false);
   const { tier: bottomOverflowTier, setToolbarRef } =
     useMeasuredComposerOverflow({
@@ -1349,7 +1551,11 @@ export function MessageInputToolbarView({
   return (
     <div
       ref={setToolbarRef}
-      className={`message-input-toolbar${applyStatusFloats ? " status-floats" : ""} overflow-tier-${bottomOverflowTier}`}
+      className={`message-input-toolbar${applyStatusFloats ? " status-floats" : ""} overflow-tier-${bottomOverflowTier}${
+        fileViewerController
+          ? ` ${toolbarModuleStyles.fileViewerControllerActive}`
+          : ""
+      }`}
     >
       <div ref={refs?.left} className="message-input-left">
         {visibility.modeSelector && modeControl && (
@@ -1568,6 +1774,9 @@ export function MessageInputToolbarView({
           )}
         {speechWaveformActive && <SpeechWaveform />}
       </div>
+      {fileViewerController && (
+        <FileViewerToolbarController controller={fileViewerController} t={t} />
+      )}
       {renderStatusAges(
         visibility.sessionStatus
           ? inlineTierClass("sessionStatus", "composer-status-ages")
@@ -2357,6 +2566,7 @@ export function MessageInputToolbar({
   pendingApproval,
 }: MessageInputToolbarProps) {
   const { t } = useI18n();
+  const fileViewerController = useFileViewerController();
   const {
     thinkingMode,
     thinkingLevel,
@@ -2919,6 +3129,7 @@ export function MessageInputToolbar({
       visibility={toolbarVisibility}
       priority={toolbarPriority}
       isCompactStatusMode={isCompactStatusMode}
+      fileViewerController={fileViewerController}
       modeControl={
         onModeChange && supportsPermissionMode
           ? {

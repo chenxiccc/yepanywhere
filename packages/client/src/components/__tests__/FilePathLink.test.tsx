@@ -13,6 +13,7 @@ import { PublicShareProvider } from "../../contexts/PublicShareContext";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
 import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
+import { useFileViewerController } from "../../lib/fileViewerController";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { FileViewerSource } from "../FileViewer";
 import { FilePathLink, FileViewerModal } from "../FilePathLink";
@@ -20,6 +21,25 @@ import { FilePathLink, FileViewerModal } from "../FilePathLink";
 const mocks = vi.hoisted(() => ({
   useFileVersionControl: vi.fn(),
 }));
+
+function FileViewerControllerProbe() {
+  const viewer = useFileViewerController();
+  if (!viewer) return null;
+  const location = `${viewer.filePath}${viewer.lineSuffix}`;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={viewer.minimized ? viewer.restore : viewer.minimize}
+      >
+        {viewer.minimized ? `Restore ${location}` : `Park ${location}`}
+      </button>
+      <button type="button" onClick={viewer.close}>
+        {`Close ${location}`}
+      </button>
+    </>
+  );
+}
 
 vi.mock("../../hooks/useFileVersionControl", () => ({
   useFileVersionControl: mocks.useFileVersionControl,
@@ -120,6 +140,91 @@ describe("FilePathLink", () => {
 
     unmount();
     await waitFor(() => expect(historyBack).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps a minimized viewer mounted and restores it", async () => {
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        content: "# Guide",
+        metadata: {
+          isText: true,
+          mimeType: "text/markdown",
+          path: "docs/guide.md",
+          size: 7,
+        },
+        rawUrl: "/api/projects/project-id/files/raw?path=docs%2Fguide.md",
+        renderedMarkdownHtml: "<h1>Guide</h1>",
+      })),
+    };
+
+    render(
+      <I18nProvider>
+        <FileViewerModal
+          projectId="project-id"
+          filePath="docs/guide.md"
+          lineNumber={12}
+          source={source}
+          onClose={() => {}}
+        />
+        <FileViewerControllerProbe />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Minimize file viewer" }),
+    );
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore docs/guide.md:12" }),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(source.loadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not publish viewer controls from a public share", async () => {
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        content: "# Guide",
+        metadata: {
+          isText: true,
+          mimeType: "text/markdown",
+          path: "docs/guide.md",
+          size: 7,
+        },
+        rawUrl: "/share/share-secret/file/raw?path=docs%2Fguide.md",
+        renderedMarkdownHtml: "<h1>Guide</h1>",
+      })),
+    };
+
+    render(
+      <I18nProvider>
+        <PublicShareProvider
+          value={{
+            projectId: "project-id",
+            relayUrl: "wss://relay.example/ws",
+            relayUsername: "viewer",
+            secret: "share-secret",
+          }}
+        >
+          <FileViewerModal
+            projectId="project-id"
+            filePath="docs/guide.md"
+            source={source}
+            onClose={() => {}}
+          />
+          <FileViewerControllerProbe />
+        </PublicShareProvider>
+      </I18nProvider>,
+    );
+
+    await screen.findByRole("dialog");
+    expect(
+      screen.queryByRole("button", { name: "Minimize file viewer" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Park docs\/guide\.md/ }),
+    ).toBeNull();
   });
 
   it("uses only the concise native path hint in native tooltip mode", () => {

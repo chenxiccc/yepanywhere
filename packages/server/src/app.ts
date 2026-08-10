@@ -392,6 +392,10 @@ export interface AppResult {
   glossaryIndexService: GlossaryIndexService;
   /** Global external-session observer and its bounded background diagnostics. */
   externalTracker?: ExternalSessionTracker;
+  /** Authenticated exact probes for bare absolute-path viewer links. */
+  resolveAbsoluteFilePaths: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
 }
 
 function getMessageContentBlocks(message: Message): AppContentBlock[] {
@@ -1642,6 +1646,7 @@ export function createApp(options: AppOptions): AppResult {
       sessionQueuePersistenceService: options.sessionQueuePersistenceService,
       toolResultMediaStore,
       dataDir: options.dataDir,
+      resolveAbsoluteFilePaths: localResourcePathPolicy.findAllowedFilePaths,
     }),
   );
   app.route(
@@ -2444,6 +2449,7 @@ export function createApp(options: AppOptions): AppResult {
     disposeSessionReaders,
     glossaryIndexService,
     externalTracker,
+    resolveAbsoluteFilePaths: localResourcePathPolicy.findAllowedFilePaths,
   };
 }
 

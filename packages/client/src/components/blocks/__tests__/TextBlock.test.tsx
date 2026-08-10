@@ -598,6 +598,52 @@ describe("TextBlock", () => {
     expect(container.contains(overlay)).toBe(false);
   });
 
+  it("opens allowed external files in the session project FileViewer", async () => {
+    apiMocks.getFile.mockResolvedValueOnce({
+      content: "# External doc\n\nUses session glossary context.",
+      metadata: {
+        isText: true,
+        mimeType: "text/markdown",
+        path: "/tmp/external.md",
+        size: 47,
+      },
+      rawUrl: "/api/projects/project-1/files/raw?path=%2Ftmp%2Fexternal.md",
+      renderedMarkdownHtml: "<h1>External doc</h1>",
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId="project-1"
+          projectPath="/workspace/project"
+          sessionId="session-1"
+        >
+          <TextBlock
+            text="[external](/tmp/external.md)"
+            augmentHtml={
+              '<p><a href="/api/local-file?path=%2Ftmp%2Fexternal.md" data-ya-resource="local-file" data-ya-path="/tmp/external.md" data-ya-render-markdown="true">external</a></p>'
+            }
+          />
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "external" }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(apiMocks.getFile).toHaveBeenCalledWith(
+      "project-1",
+      "/tmp/external.md",
+      true,
+      undefined,
+      undefined,
+      "full",
+    );
+    expect(await screen.findByText(/External doc/)).toBeTruthy();
+  });
+
   it("opens generated project-file links in FileViewer", async () => {
     apiMocks.getFile.mockResolvedValueOnce({
       content: "# Project doc\n\nRendered through FileViewer.",

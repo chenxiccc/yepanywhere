@@ -37,9 +37,18 @@ function projectRelativeSourcePath(
   if (!sourcePath || !isUrlProjectId(projectId)) return sourcePath;
   const normalizedSource = sourcePath.replaceAll("\\", "/");
   const normalizedRoot = fromUrlProjectId(projectId).replaceAll("\\", "/");
-  return normalizedSource.startsWith(`${normalizedRoot}/`)
-    ? normalizedSource.slice(normalizedRoot.length + 1)
-    : sourcePath;
+  if (normalizedSource.startsWith(`${normalizedRoot}/`)) {
+    return normalizedSource.slice(normalizedRoot.length + 1);
+  }
+  if (
+    normalizedSource.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalizedSource)
+  ) {
+    // An external file is still session-affiliated prose. It has no meaningful
+    // nested project directory, so it receives the root glossary include graph.
+    return undefined;
+  }
+  return sourcePath;
 }
 
 export function GlossaryProjectProvider({

@@ -73,6 +73,7 @@ let fileExistsIdentities = new WeakMap<(...args: never[]) => unknown, number>();
 function fileExistsIdentity(
   fileExists:
     | ((absolutePath: string, relativePath: string) => boolean)
+    | ((paths: readonly string[]) => Promise<ReadonlySet<string>>)
     | undefined,
 ): number | null {
   if (!fileExists) return null;
@@ -96,6 +97,7 @@ function markdownCacheKey(
     projectLinks?.projectId ?? null,
     projectLinks?.projectPath ?? null,
     fileExistsIdentity(projectLinks?.fileExists),
+    fileExistsIdentity(projectLinks?.resolveAbsoluteFilePaths),
   ]);
 }
 
@@ -205,10 +207,12 @@ async function renderMarkdownToHtmlUncached(
   const linkedHtml =
     index && projectLinks
       ? await linkifyProjectPaths(html, {
+          projectId: projectLinks.projectId,
           projectPath: projectLinks.projectPath,
           index,
           gateLookupsByShape: true,
           onUnversionedLookup: markUnversionedLookup,
+          resolveAbsoluteFilePaths: projectLinks.resolveAbsoluteFilePaths,
         })
       : html;
   return {

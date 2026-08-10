@@ -289,3 +289,5 @@
   and in-session entry.
 - session-wake - Event-driven wake turns: authenticated endpoint + agentctl
   job-completion client (design topic; implementation series to follow).
+- parked-file-viewer - Preserve document reading state while a persistent
+  composer controller or session-list drawer uncovers the live session.

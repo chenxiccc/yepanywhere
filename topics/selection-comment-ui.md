@@ -24,7 +24,7 @@ Topic: selection-comment-ui
 Status: **Phase 1 shipped 2026-06-23; the two early contract gaps fixed
 2026-06-23; the dedicated assistant quote lane fixed 2026-06-25; initial
 Phase 2 scope widening shipped 2026-07-01; portaled modal/file scope shipped
-2026-07-27.**
+2026-07-27; pressed-pointer tooltip suppression landed 2026-08-10.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` button, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until the quote is
@@ -140,6 +140,10 @@ The quote block itself:
   quote to the session composer behind it; on touch it stays visibly pinned
   inside that surface. Modal headers, buttons, labels, and other unregistered
   chrome remain ineligible.
+- Hover tooltips never activate while any pointer button is held. In
+  particular, dragging a native text selection across a glossary term keeps
+  the glossary text selectable and cannot insert a passive tooltip into the
+  gesture; the definition remains available after the button is released.
 - If the composer already holds text, two blank-line-separated newlines come
   first — this is exactly the existing `appendComposerTransferDraft` rule, not
   a new one.

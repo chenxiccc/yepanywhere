@@ -134,6 +134,17 @@ export default async function globalSetup() {
   // Create mock project data for tests that expect a session to exist
   const mockProjectPath = join(E2E_TEMP_DIR, "mockproject");
   mkdirSync(mockProjectPath, { recursive: true });
+  writeFileSync(
+    join(mockProjectPath, "GLOSSARY.md"),
+    [
+      "# Glossary",
+      "",
+      "| term | definition | references |",
+      "| --- | --- | --- |",
+      "| Viewer context | The active session's project context for a viewed file. | |",
+      "",
+    ].join("\n"),
+  );
   const encodedPath = mockProjectPath.replace(/\//g, "-");
   const mockSessionDir = join(E2E_CLAUDE_SESSIONS_DIR, hostname(), encodedPath);
   mkdirSync(mockSessionDir, { recursive: true });
@@ -252,7 +263,13 @@ export default async function globalSetup() {
   );
   writeFileSync(
     join(fileBrowserProjectPath, "README.md"),
-    "# Test Project\n\nThis is a **test** markdown file.",
+    [
+      "# Test Project",
+      "",
+      "This is a **test** markdown file.",
+      "",
+      "Viewer context remains available while reviewing this file.",
+    ].join("\n"),
   );
   writeFileSync(
     join(fileBrowserProjectPath, "src", "index.ts"),
@@ -275,6 +292,39 @@ export default async function globalSetup() {
   );
   console.log(
     `[E2E] Created file-browser fixture at ${fileBrowserProjectPath}`,
+  );
+
+  const absoluteViewerSessionFile = join(
+    mockSessionDir,
+    "file-viewer-absolute-001.jsonl",
+  );
+  const externalReadmePath = join(fileBrowserProjectPath, "README.md");
+  writeFileSync(
+    absoluteViewerSessionFile,
+    [
+      {
+        type: "user",
+        cwd: mockProjectPath,
+        message: { role: "user", content: "Open the external reference" },
+        timestamp: "2026-01-02T00:00:00.000Z",
+        uuid: "viewer-user-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: `Review ${externalReadmePath} and quote the relevant passage.`,
+        },
+        timestamp: "2026-01-02T00:00:01.000Z",
+        uuid: "viewer-assistant-1",
+        parentUuid: "viewer-user-1",
+      },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
+  );
+  console.log(
+    `[E2E] Created absolute-path viewer session at ${absoluteViewerSessionFile}`,
   );
 
   const repoRoot = join(__dirname, "..", "..", "..");

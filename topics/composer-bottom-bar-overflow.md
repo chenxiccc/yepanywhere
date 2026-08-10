@@ -41,6 +41,9 @@ they can reach a control.
   control groups. The waveform is elastic, opportunistic content rather than
   another anchor: it may use any available center width, but must shrink and
   disappear before displacing, reordering, or overlapping anchored controls.
+  It never reserves required or highest-priority width. The stored `pin` value
+  for this non-priority-editable control means that the waveform is enabled,
+  not that the allocator must protect its rendered width.
   When capture is inactive it occupies no row space. It is configurable with
   the other session-toolbar elements and defaults on by deliberate product
   decision: while active it is ordinary microphone feedback, not a new
@@ -78,8 +81,10 @@ they can reach a control.
   Conversation view, heartbeat/pulse, shortcut help, session status, context
   usage, `/btw`, Steer Now, and Project Queue may all collapse when the user
   assigns a non-`pin` priority. Conversation view defaults to the `last` tier
-  once enabled. Send, Stop, pending approvals/questions, microphone, and the
-  active waveform remain inline/pinned by their own contracts.
+  once enabled. Send, Stop, pending approvals/questions, and microphone remain
+  inline/pinned by their own contracts. An active waveform may stay rendered
+  underneath or between controls, but its elastic width does not protect space
+  from them.
 - At squeeze widths, permission mode should use a pure icon/dot presentation
   rather than carrying text such as `Bypass` inline.
 - Overflow priority does not require arbitrary reshuffling of the normal
@@ -261,7 +266,8 @@ with slack**. Two latch/oscillation traps live here:
   context percentage, `/btw`, Steer Now, and Project Queue. Their defaults
   remain `pin`; assigning `first`/`mid`/`last` makes them participate in the
   same measured tier engine as the existing left-side controls. Send, Stop,
-  pending approval/question, microphone, and the active waveform stay pinned.
+  pending approval/question, and microphone stay pinned. The active waveform
+  stays enabled but remains elastic and contributes no required width.
 - Active-microphone waveform landed on 2026-06-19 as a configurable,
   default-on session-toolbar element. It is an elastic child of the
   measured left control list: real YA-controlled capture samples fill whatever

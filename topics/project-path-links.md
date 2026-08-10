@@ -1,12 +1,14 @@
-# Project path links in viewed content
+# File path links in viewed content
 
-> A bare project-relative path appearing in file content is a link, because it
-> names a file that exists here — not because it looks like a path.
+> A bare path appearing in authenticated viewed content becomes a file-viewer
+> link only after the server proves that exact file exists within the applicable
+> file-access boundary.
 
 Topic: project-path-links
 
 Status: **implemented (2026-08-02); demand-driven cache and turn-text
-annotation landed 2026-08-05.** Highlighted file content and assistant turn
+annotation landed 2026-08-05; authenticated absolute-path probes landed
+2026-08-10.** Highlighted file content and assistant turn
 text both link exact project files through a demand-driven, watcher-backed
 directory cache — the same cache that now also decides the inline-code file
 references turn text already linked. Tracked, untracked, and gitignored files
@@ -28,8 +30,21 @@ needs no key-name convention, and cannot link something that is not there. It
 also means the mechanism is safe to run over arbitrary content rather than only
 over JSON.
 
-**Project-relative only.** An absolute path outside the project is not linked
-here; the Markdown viewer's own local-file handling covers authored links.
+**Absolute paths use a separate exact oracle.** A whitespace-delimited token
+beginning with one `/` and containing at least four characters is eligible for
+one direct file probe. The whole token is queried, including legal punctuation,
+so an existing prefix is never linked out of a longer filename. It is never
+added to the project index or discovered by a filesystem crawl.
+The probe uses the same realpath-resolved allow-set and regular-file check as
+the authenticated file endpoint, and click-time fetching repeats that check.
+At most 64 distinct absolute candidates are probed for one completed body.
+Short tokens such as `/x`, network-style `//...` tokens, missing files, and
+files outside the configured allow-set remain plain text.
+
+This absolute-path resolver is absent from both live and frozen public-share
+rendering. Generated absolute links also carry the private-project-link marker
+as defense in depth, so captured or reused authenticated HTML is unwrapped
+rather than granting a share a path or file-existence capability.
 
 ## The index
 
@@ -196,11 +211,12 @@ file with the warm it configured.
 
 Linkification runs server-side over already-highlighted HTML, in the same
 response that produces it, so the client needs no path corpus and no second
-request. A first pass collects distinct candidates, the index resolves them in
-bounded concurrent directory batches, and a second pass rewrites only the
-confirmed files. Matches use the same `renderLocalFileLink` markup the Markdown
-viewer emits, so the existing `data-ya-resource="local-file"` interception
-opens them in the same popup.
+request. A first pass collects distinct candidates. The project index resolves
+relative candidates in bounded directory batches, while the authenticated
+allow-set resolver directly probes bounded absolute candidates. A second pass
+rewrites only confirmed files. Project-relative matches retain the existing
+local-file markup; absolute matches use private project-file markup so both
+open in the FileViewer belonging to the active session project.
 
 Constraints that keep it safe over arbitrary markup:
 
@@ -250,15 +266,15 @@ into cache hits. Batching is also what lets a directory be listed once instead
 of probed per name. `PATH_TOKEN` excludes `:`, so an inline `src/server.ts:42`
 already tokenizes to the `src/server.ts` key the inline-code path needs.
 
-**Gate I/O, not linking.** In prose most words are words, so a token earns a
+**Gate relative-path I/O, not linking.** In prose most words are words, so a token earns a
 filesystem call only by shape: it contains `/`, starts with `.`, or ends in a
 short alphanumeric extension containing a letter — which keeps `1.2.3` a
 version. A token failing that test is still *answered* from what the cache
 already holds, so `Makefile` and `LICENSE` link wherever their directory is
 already listed and only an unlisted one goes unlinked. A token starting with
-`/` is never worth a lookup: only project-relative paths are linked, and that
-is also what a URL becomes once the tokenizer drops its scheme at the colon.
-The file viewer leaves the gate off — every token there came out of a file the
+`/` never enters this project-index path; eligible absolute tokens go through
+the separate bounded allow-set resolver described above. The file viewer leaves
+the relative-path shape gate off — every token there came out of a file the
 reader is already looking at, and one batch groups them by directory anyway.
 
 The gate is a shape test, not a character-level automaton over the trie. The

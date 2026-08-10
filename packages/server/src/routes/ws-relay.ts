@@ -80,6 +80,10 @@ export interface WsRelayDeps {
   dataDir?: string;
   /** Server settings service for relayed speech retention settings (optional) */
   serverSettingsService?: ServerSettingsService;
+  /** Authenticated exact probes for bare absolute-path viewer links. */
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
 }
 
 /**
@@ -123,6 +127,10 @@ export interface AcceptRelayConnectionDeps {
   dataDir?: string;
   /** Server settings service for relayed speech retention settings (optional) */
   serverSettingsService?: ServerSettingsService;
+  /** Authenticated exact probes for bare absolute-path viewer links. */
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
 }
 
 /**
@@ -239,6 +247,7 @@ export function createWsRelayRoutes(
     speechBackendRegistry,
     dataDir,
     serverSettingsService,
+    resolveAbsoluteFilePaths,
   } = deps;
 
   // Build handler dependencies
@@ -261,6 +270,7 @@ export function createWsRelayRoutes(
     speechBackendRegistry,
     dataDir,
     serverSettingsService,
+    resolveAbsoluteFilePaths,
   };
 
   // Return the WebSocket handler with origin validation
@@ -447,6 +457,7 @@ export function createAcceptRelayConnection(
     speechBackendRegistry,
     dataDir,
     serverSettingsService,
+    resolveAbsoluteFilePaths,
   } = deps;
 
   // Build handler dependencies
@@ -469,6 +480,7 @@ export function createAcceptRelayConnection(
     speechBackendRegistry,
     dataDir,
     serverSettingsService,
+    resolveAbsoluteFilePaths,
   };
 
   // Return the accept relay connection handler

@@ -155,6 +155,7 @@ function getFileName(path: string): string {
 function normalizeResourceForProjectContext(
   resource: LocalResourceRef,
   projectContext: ProjectContext | null | undefined,
+  allowExternalLocalFiles = false,
 ): ProjectFileModalTarget | null {
   if (resource.kind === "project-file" && resource.projectId) {
     return {
@@ -173,12 +174,18 @@ function normalizeResourceForProjectContext(
     resource.path,
     projectContext.projectPath,
   );
-  if (!relativePath || relativePath === ".") {
+  const viewerPath =
+    relativePath && relativePath !== "."
+      ? relativePath
+      : allowExternalLocalFiles && isAbsoluteLikePath(resource.path)
+        ? resource.path
+        : null;
+  if (!viewerPath) {
     return null;
   }
 
   return {
-    filePath: relativePath,
+    filePath: viewerPath,
     lineEnd: resource.lineEnd,
     lineNumber: resource.lineNumber,
     projectId: projectContext.projectId,
@@ -984,6 +991,7 @@ function LocalResourceContextMenu({
 export function useLocalResourceClick(
   options: UseLocalResourceClickOptions = {},
 ): UseLocalResourceClickResult {
+  const publicShare = usePublicShareContext();
   const sessionMetadata = useOptionalSessionMetadata();
   const transport = useCurrentSourceRuntime().transport;
   const sameOriginUrls = transport.capabilities.sameOriginUrls;
@@ -1012,6 +1020,7 @@ export function useLocalResourceClick(
     const projectFileTarget = normalizeResourceForProjectContext(
       resource,
       projectContext,
+      publicShare === null,
     );
     if (projectFileTarget) {
       setProjectFileModal({
@@ -1104,6 +1113,7 @@ export function useLocalResourceClick(
     const projectFileTarget = normalizeResourceForProjectContext(
       resource,
       projectContext,
+      publicShare === null,
     );
     if (projectFileTarget) {
       if (shouldPreserveDirectBrowserGesture(e, sameOriginUrls)) {
@@ -1155,6 +1165,7 @@ export function useLocalResourceClick(
       projectFileTarget: normalizeResourceForProjectContext(
         resource,
         projectContext,
+        publicShare === null,
       ),
       url: resource.kind === "project-file" ? target.href : null,
     });

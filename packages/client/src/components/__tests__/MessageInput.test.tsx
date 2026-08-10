@@ -671,6 +671,10 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     toolbarProviderRuntimeAria: `Provider runtime status: ${
       params?.summary ?? ""
     }`,
+    fileViewerController: `File viewer: ${params?.name ?? ""}`,
+    fileViewerMinimizeNamed: `Minimize file viewer: ${params?.name ?? ""}`,
+    fileViewerRestore: `Restore file viewer: ${params?.name ?? ""}`,
+    fileViewerClose: `Close file viewer: ${params?.name ?? ""}`,
   };
   return translations[key] ?? key;
 }) as MessageInputToolbarViewProps["t"];
@@ -5044,6 +5048,109 @@ describe("MessageInput", () => {
       waveform?.parentElement?.classList.contains("message-input-left"),
     ).toBe(true);
     expect(toolbar?.contains(waveform)).toBe(true);
+  });
+
+  it("renders the file viewer controller in the toolbar center gap", () => {
+    const close = vi.fn();
+    const minimize = vi.fn();
+    const restore = vi.fn();
+    const { container } = render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{
+          ...toolbarVisibility,
+          contextUsage: true,
+          microphone: true,
+        }}
+        fileViewerController={{
+          close,
+          filePath: "/workspace/docs/guide.md",
+          id: "viewer-1",
+          lineSuffix: ":12",
+          minimize,
+          minimized: true,
+          restore,
+        }}
+        speechControl={{
+          showMethodSelector: false,
+          methodOptions: [],
+          selectedMethod: "browser-native",
+          onMethodChange: vi.fn(),
+          voiceButton: { kind: "preview" },
+        }}
+        attachmentControl={{ attachmentCount: 0 }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{
+          contextUsage: {
+            inputTokens: 42_000,
+            percentage: 42,
+            contextWindow: 100_000,
+          },
+          send: {
+            onSend: vi.fn(),
+            canSend: true,
+            primaryActionKind: "send",
+            primaryActionLabel: "Send",
+            tooltip: "Send",
+            icon: "↑",
+          },
+        }}
+      />,
+    );
+
+    const controller = screen.getByRole("group", {
+      name: "File viewer: /workspace/docs/guide.md:12",
+    });
+    const slot = container.querySelector(
+      '[data-file-viewer-controller-slot="true"]',
+    );
+    expect(slot?.parentElement).toBe(
+      container.querySelector(".message-input-toolbar"),
+    );
+    expect(slot?.previousElementSibling?.classList).toContain(
+      "message-input-left",
+    );
+    expect(controller.querySelector("bdi")?.textContent).toBe(
+      "/workspace/docs/guide.md",
+    );
+    expect(controller.textContent).toContain(":12");
+    const inlineContext = container.querySelector(
+      ".message-input-actions .context-toolbar-control",
+    );
+    expect(inlineContext?.classList).toContain("composer-bottom-overflow-late");
+    expect(inlineContext?.classList).not.toContain(
+      "composer-bottom-overflow-pinned",
+    );
+    expect(
+      screen.getByRole("button", { name: "voiceInputStartLabel" }).classList,
+    ).not.toContain("composer-bottom-overflow-late");
+    expect(
+      screen.getByRole("button", { name: "Send" }).classList,
+    ).not.toContain("composer-bottom-overflow-late");
+    const restoreButton = screen.getByRole("button", {
+      name: "Restore file viewer: /workspace/docs/guide.md:12",
+    });
+    fireEvent.click(restoreButton);
+    expect(restore).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Close file viewer: /workspace/docs/guide.md:12",
+      }),
+    );
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(minimize).not.toHaveBeenCalled();
   });
 
   it("uses only the custom tooltip on the primary send action", () => {

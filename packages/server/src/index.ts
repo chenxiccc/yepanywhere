@@ -924,6 +924,7 @@ async function startServer() {
     disposeSessionReaders,
     glossaryIndexService,
     externalTracker,
+    resolveAbsoluteFilePaths,
   } = createApp({
     provider: mockProvider,
     realSdk,
@@ -1171,6 +1172,7 @@ async function startServer() {
     speechBackendRegistry,
     dataDir: config.dataDir,
     serverSettingsService,
+    resolveAbsoluteFilePaths,
   });
   app.get("/api/ws", wsRelayHandler);
 
@@ -1195,6 +1197,7 @@ async function startServer() {
     speechBackendRegistry,
     dataDir: config.dataDir,
     serverSettingsService,
+    resolveAbsoluteFilePaths,
   });
   markStartup("relay accept handler configured");
 

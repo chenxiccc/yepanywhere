@@ -1,9 +1,12 @@
 import * as path from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   isPathInsideDirectory,
   isSupportedAbsoluteLocalPath,
   LOCAL_MEDIA_EXTENSIONS,
+  createLocalResourcePathPolicy,
 } from "../../src/routes/local-resource-policy.js";
 
 describe("local resource path policy", () => {
@@ -41,5 +44,31 @@ describe("local resource path policy", () => {
     expect(LOCAL_MEDIA_EXTENSIONS.has(".png")).toBe(true);
     expect(LOCAL_MEDIA_EXTENSIONS.has(".ogv")).toBe(true);
     expect(LOCAL_MEDIA_EXTENSIONS.has(".json")).toBe(false);
+  });
+
+  it("batch-resolves only regular files inside the allow-set", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "ya-resource-policy-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "ya-resource-outside-"));
+    try {
+      const allowedFile = path.join(root, "allowed.md");
+      const outsideFile = path.join(outside, "outside.md");
+      await writeFile(allowedFile, "allowed\n");
+      await writeFile(outsideFile, "outside\n");
+      const policy = createLocalResourcePathPolicy({ allowedPaths: [root] });
+
+      expect(
+        await policy.findAllowedFilePaths([
+          allowedFile,
+          outsideFile,
+          path.join(root, "missing.md"),
+          "/x",
+        ]),
+      ).toEqual(new Set([allowedFile]));
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true }),
+        rm(outside, { recursive: true }),
+      ]);
+    }
   });
 });

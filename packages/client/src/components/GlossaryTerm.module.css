@@ -9,6 +9,7 @@
   letter-spacing: inherit;
   text-decoration: none;
   cursor: help;
+  user-select: text;
 }
 
 .term:hover,

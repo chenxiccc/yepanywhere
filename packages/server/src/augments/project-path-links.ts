@@ -1,6 +1,9 @@
 import { resolve } from "node:path";
 import type { ProjectPathIndex } from "../projects/projectPathIndex.js";
-import { renderLocalFileLink } from "./safe-markdown.js";
+import {
+  renderLocalFileLink,
+  renderProjectFileViewerLink,
+} from "./safe-markdown.js";
 
 /**
  * Turn bare project-relative paths inside highlighted file content into the
@@ -21,11 +24,53 @@ import { renderLocalFileLink } from "./safe-markdown.js";
  */
 const PATH_TOKEN = /[^\s"'`<>&,:;()[\]{}=|]+/g;
 
+/** One absolute token runs from a whitespace boundary to the next whitespace. */
+const ABSOLUTE_PATH_TOKEN = /(?:^|\s)(\/(?!\/)\S+)/g;
+
 /** Trailing punctuation a writer adds that is not part of the path. */
 const TRAILING_NOISE = /[.!?]+$/;
 
 /** Longest trailing run still read as an extension: `.jsonl`, not a hash. */
 const MAX_EXTENSION_LENGTH = 8;
+const MIN_ABSOLUTE_PATH_LENGTH = 4;
+const MAX_ABSOLUTE_PATH_PROBES = 64;
+
+function mayCostAbsoluteLookup(token: string): boolean {
+  return (
+    token.length >= MIN_ABSOLUTE_PATH_LENGTH &&
+    token.startsWith("/") &&
+    !token.startsWith("//")
+  );
+}
+
+function decodeHtmlText(text: string): string {
+  return text.replace(
+    /&(amp|lt|gt|quot|apos|#39|#\d+|#x[\da-f]+);/gi,
+    (entity, name: string) => {
+      switch (name.toLowerCase()) {
+        case "amp":
+          return "&";
+        case "lt":
+          return "<";
+        case "gt":
+          return ">";
+        case "quot":
+          return '"';
+        case "apos":
+        case "#39":
+          return "'";
+        default: {
+          const radix = name[1]?.toLowerCase() === "x" ? 16 : 10;
+          const digits = name.slice(radix === 16 ? 2 : 1);
+          const codePoint = Number.parseInt(digits, radix);
+          return Number.isFinite(codePoint) && codePoint <= 0x10ffff
+            ? String.fromCodePoint(codePoint)
+            : entity;
+        }
+      }
+    },
+  );
+}
 
 /**
  * Whether a token may cost a filesystem call.
@@ -106,6 +151,8 @@ function mapHtmlTextRuns(
 }
 
 export interface ProjectPathLinkOptions {
+  /** Project whose authenticated FileViewer route owns generated links. */
+  projectId?: string;
   /** Absolute path of the project the content belongs to. */
   projectPath: string;
   index: ProjectPathIndex;
@@ -121,6 +168,10 @@ export interface ProjectPathLinkOptions {
   gateLookupsByShape?: boolean;
   /** Marks direct filesystem answers that no live watcher versions. */
   onUnversionedLookup?: () => void;
+  /** Authenticated, allow-set-aware exact probes. Omit for public shares. */
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
 }
 
 /**
@@ -159,12 +210,56 @@ function collectCandidatePaths(
     let match: RegExpExecArray | null = PATH_TOKEN.exec(text);
     while (match !== null) {
       const trimmed = match[0].replace(TRAILING_NOISE, "");
-      if (trimmed && trimmed !== selfRelativePath) candidates.add(trimmed);
+      if (trimmed && !trimmed.startsWith("/") && trimmed !== selfRelativePath) {
+        candidates.add(trimmed);
+      }
       match = PATH_TOKEN.exec(text);
     }
     return text;
   });
   return Array.from(candidates);
+}
+
+function collectAbsoluteCandidatePaths(html: string): string[] {
+  const candidates = new Set<string>();
+  mapHtmlTextRuns(html, (text) => {
+    ABSOLUTE_PATH_TOKEN.lastIndex = 0;
+    let match: RegExpExecArray | null = ABSOLUTE_PATH_TOKEN.exec(text);
+    while (match !== null) {
+      const token = match[1];
+      if (token) candidates.add(decodeHtmlText(token));
+      match = ABSOLUTE_PATH_TOKEN.exec(text);
+    }
+    return text;
+  });
+  return Array.from(candidates);
+}
+
+function linkAbsolutePaths(
+  html: string,
+  projectId: string,
+  existing: ReadonlySet<string>,
+): string {
+  return mapHtmlTextRuns(html, (text) => {
+    ABSOLUTE_PATH_TOKEN.lastIndex = 0;
+    let out = "";
+    let cursor = 0;
+    let match: RegExpExecArray | null = ABSOLUTE_PATH_TOKEN.exec(text);
+    while (match !== null) {
+      const encodedToken = match[1];
+      if (encodedToken) {
+        const token = decodeHtmlText(encodedToken);
+        if (existing.has(token)) {
+          const start = match.index + match[0].length - encodedToken.length;
+          out += text.slice(cursor, start);
+          out += renderProjectFileViewerLink(projectId, token, token);
+          cursor = start + encodedToken.length;
+        }
+      }
+      match = ABSOLUTE_PATH_TOKEN.exec(text);
+    }
+    return cursor === 0 ? text : out + text.slice(cursor);
+  });
 }
 
 /**
@@ -176,24 +271,41 @@ export async function linkifyProjectPaths(
   html: string,
   {
     projectPath,
+    projectId,
     index,
     selfRelativePath,
     gateLookupsByShape,
     onUnversionedLookup,
+    resolveAbsoluteFilePaths,
   }: ProjectPathLinkOptions,
 ): Promise<string> {
   if (!html) return html;
 
-  const candidates = collectCandidatePaths(html, selfRelativePath);
-  if (candidates.length === 0) return html;
-
+  const relativeCandidates = collectCandidatePaths(html, selfRelativePath);
   const worthLookup = gateLookupsByShape
-    ? candidates.filter(mayCostLookup)
-    : candidates;
+    ? relativeCandidates.filter(mayCostLookup)
+    : relativeCandidates;
+  const absoluteCandidates =
+    projectId && resolveAbsoluteFilePaths
+      ? collectAbsoluteCandidatePaths(html)
+          .filter(mayCostAbsoluteLookup)
+          .slice(0, MAX_ABSOLUTE_PATH_PROBES)
+      : [];
+  if (relativeCandidates.length === 0 && absoluteCandidates.length === 0) {
+    return html;
+  }
 
   let existing: Set<string>;
+  let existingAbsolute = new Set<string>();
   try {
-    existing = new Set(await index.findExisting(worthLookup));
+    const [relative, absolute] = await Promise.all([
+      index.findExisting(worthLookup),
+      absoluteCandidates.length > 0
+        ? resolveAbsoluteFilePaths?.(absoluteCandidates)
+        : undefined,
+    ]);
+    existing = new Set(relative);
+    existingAbsolute = new Set(absolute);
   } catch {
     // Link discovery is advisory. An unavailable index must not fail the file
     // view that owns the highlighted source.
@@ -203,18 +315,25 @@ export async function linkifyProjectPaths(
   if (worthLookup.some((path) => index.knownFile(path) === undefined)) {
     onUnversionedLookup?.();
   }
+  if (absoluteCandidates.length > 0) {
+    onUnversionedLookup?.();
+  }
   if (gateLookupsByShape) {
     // A token not worth a lookup is still worth an answer the cache already
     // holds, which is what keeps `Makefile` and `LICENSE` linking.
-    for (const token of candidates) {
+    for (const token of relativeCandidates) {
       if (!mayCostLookup(token) && index.knownFile(token) === true) {
         existing.add(token);
       }
     }
   }
-  if (existing.size === 0) return html;
+  let linkedHtml =
+    projectId && existingAbsolute.size > 0
+      ? linkAbsolutePaths(html, projectId, existingAbsolute)
+      : html;
+  if (existing.size === 0) return linkedHtml;
 
-  return mapHtmlTextRuns(html, (text) => {
+  linkedHtml = mapHtmlTextRuns(linkedHtml, (text) => {
     if (!text) return text;
     PATH_TOKEN.lastIndex = 0;
     let out = "";
@@ -238,4 +357,5 @@ export async function linkifyProjectPaths(
     }
     return cursor === 0 ? text : out + text.slice(cursor);
   });
+  return linkedHtml;
 }

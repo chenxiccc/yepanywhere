@@ -1,5 +1,5 @@
 import { fromUrlProjectId, isUrlProjectId } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import {
@@ -12,6 +12,10 @@ import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../lib/markdownSelectionCopy";
+import {
+  clearFileViewerController,
+  setFileViewerController,
+} from "../lib/fileViewerController";
 import {
   getAbsoluteFilePath,
   getPathBasename,
@@ -351,40 +355,73 @@ export function FileViewerModal({
   onClose: () => void;
 }) {
   const publicShareContext = usePublicShareContext();
+  const minimizedViewerId = useId();
+  const [minimized, setMinimized] = useState(false);
+  const minimize = useCallback(() => setMinimized(true), []);
+  const restore = useCallback(() => setMinimized(false), []);
+  const close = useCallback(() => {
+    clearFileViewerController(minimizedViewerId);
+    setMinimized(false);
+    onClose();
+  }, [minimizedViewerId, onClose]);
+  useEffect(() => {
+    if (publicShareContext !== null) return;
+    setFileViewerController({
+      close,
+      filePath,
+      id: minimizedViewerId,
+      lineSuffix: formatLineSuffix(lineNumber, lineEnd),
+      minimize,
+      minimized,
+      restore,
+    });
+    return () => clearFileViewerController(minimizedViewerId);
+  }, [
+    close,
+    filePath,
+    lineEnd,
+    lineNumber,
+    minimize,
+    minimized,
+    minimizedViewerId,
+    publicShareContext,
+    restore,
+  ]);
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
-      onClose();
+      close();
     }
   };
 
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !minimized) {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        close();
       }
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  }, [close, minimized]);
 
-  useModalBackGesture(onClose, true, "__fileViewerModal");
+  useModalBackGesture(close, !minimized, "__fileViewerModal");
 
   // Prevent body scroll when modal is open
   useEffect(() => {
+    if (minimized) return;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "";
     };
-  }, []);
+  }, [minimized]);
 
   const modalContent = (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click dismisses the modal; Escape is handled globally
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled in useEffect, click is for overlay dismiss
     <div
       className="modal-overlay"
+      aria-hidden={minimized || undefined}
+      style={minimized ? { display: "none" } : undefined}
       onClick={handleOverlayClick}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -406,7 +443,8 @@ export function FileViewerModal({
           initialPresentation={initialPresentation}
           source={source}
           openInNewTabUrl={openInNewTabUrl}
-          onClose={onClose}
+          onClose={close}
+          onMinimize={publicShareContext === null ? minimize : undefined}
         />
       </dialog>
     </div>

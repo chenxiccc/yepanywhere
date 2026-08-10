@@ -105,6 +105,8 @@ interface FileViewerProps {
   source?: FileViewerSource;
   openInNewTabUrl?: string | null;
   onClose?: () => void;
+  /** Temporarily return the modal viewer to the session toolbar. */
+  onMinimize?: () => void;
   /** If true, renders as standalone page layout instead of modal content */
   standalone?: boolean;
   /** Line number to scroll to and highlight (1-indexed) */
@@ -334,6 +336,7 @@ export const FileViewer = memo(function FileViewer({
   source = DEFAULT_FILE_VIEWER_SOURCE,
   openInNewTabUrl,
   onClose,
+  onMinimize,
   standalone = false,
   lineNumber,
   lineEnd,
@@ -398,6 +401,7 @@ export const FileViewer = memo(function FileViewer({
     viewerDensity.density,
   );
   const sourceStyle = getSourceViewStyle(sourceDensity);
+  const projectPath = useMemo(() => getProjectPath(projectId), [projectId]);
   const fileViewerBodyRef = useRef<HTMLDivElement>(null);
   useRegisterQuoteableTextSource(
     fileViewerBodyRef,
@@ -414,7 +418,9 @@ export const FileViewer = memo(function FileViewer({
     closeLocalFileModal,
     closeProjectFileModal,
     contextMenuElement: localResourceContextMenu,
-  } = useLocalResourceClick();
+  } = useLocalResourceClick({
+    projectContext: { projectId, projectPath },
+  });
   const handleLocalResourceKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.key !== " ") return;
@@ -623,7 +629,6 @@ export const FileViewer = memo(function FileViewer({
     );
   }, [filePath, projectId, source]);
 
-  const projectPath = useMemo(() => getProjectPath(projectId), [projectId]);
   const displayPath = useMemo(
     () => makeDisplayPath(filePath, projectPath),
     [filePath, projectPath],
@@ -1102,6 +1107,17 @@ export const FileViewer = memo(function FileViewer({
             <ExternalLinkIcon />
           </button>
         )}
+        {onMinimize && (
+          <button
+            type="button"
+            className="file-viewer-action"
+            onClick={onMinimize}
+            title={t("fileViewerMinimize" as never)}
+            aria-label={t("fileViewerMinimize" as never)}
+          >
+            <MinimizeIcon />
+          </button>
+        )}
         {!diffActive && canDownload && (
           <button
             type="button"
@@ -1337,6 +1353,23 @@ function CloseIcon() {
       aria-hidden="true"
     >
       <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+function MinimizeIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M3 11.5h10" />
     </svg>
   );
 }
