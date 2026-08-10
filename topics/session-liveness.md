@@ -56,6 +56,10 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   creation time does not participate. Eligibility is checked linearly over
   those already-rendered sidebar rows during ordinary renders, with no extra
   timer or session scan.
+- An eligible compact sidebar row orders its trailing content as Resume, then
+  project name. The title is the flexible, truncating region; a minimum-width
+  trailing project region keeps the overflow menu from covering Resume even
+  when the project name is short or absent.
 - Heartbeat turns are idle-timeout checks, not wall-clock ticks. Once a session
   is `verified-idle`, the timeout anchor is the latest real provider/session
   liveness signal, including verified idle/progress, normalized provider

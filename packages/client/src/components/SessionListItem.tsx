@@ -879,7 +879,7 @@ export function SessionListItem({
                   </span>
                 )}
               </span>
-              {showProjectName && projectName && (
+              {!onResume && showProjectName && projectName && (
                 <span className="session-list-item__project-compact">
                   {projectName}
                 </span>
@@ -890,7 +890,25 @@ export function SessionListItem({
         </Link>
       )}
 
-      {onResume && (
+      {mode === "compact" && onResume && (
+        <>
+          <CompactResumeButton
+            onResume={onResume}
+            pending={resumePending}
+            title={t("sidebarSessionResumeTitle")}
+            label={t("sidebarSessionResume")}
+          />
+          <span className={styles.compactResumeTrailing}>
+            {showProjectName && projectName && (
+              <span className="session-list-item__project-compact">
+                {projectName}
+              </span>
+            )}
+          </span>
+        </>
+      )}
+
+      {mode === "card" && onResume && (
         <CompactResumeButton
           onResume={onResume}
           pending={resumePending}

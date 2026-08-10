@@ -1005,4 +1005,33 @@ describe("SessionListItem links", () => {
     expect(unreadBadge.className).toContain(styles.providerChildrenBadgeUnread);
     expect(screen.getByText("yepanywhere")).toBeTruthy();
   });
+
+  it("places compact Resume before project metadata", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-interrupted"
+              projectId="project-1"
+              projectName="yepanywhere"
+              showProjectName
+              title="Interrupted session"
+              provider="claude"
+              mode="compact"
+              onResume={() => {}}
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const resume = screen.getByRole("button", { name: "Resume" });
+    const project = screen.getByText("yepanywhere");
+
+    expect(resume.nextElementSibling).toBe(project.parentElement);
+    expect(project.parentElement?.className).toContain(
+      styles.compactResumeTrailing,
+    );
+  });
 });
