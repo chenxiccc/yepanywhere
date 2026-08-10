@@ -283,6 +283,13 @@ export interface StartSessionResult {
   publishAgentctlSessionId?: (sessionId: string) => void | Promise<void>;
 }
 
+export interface ProviderCommandOutput {
+  /** Collapsed local-command row label. */
+  summary: string;
+  /** Expandable preformatted result sections. */
+  details?: string[];
+}
+
 export interface ProviderCommandResult {
   /**
    * True when the provider owns this command and attempted to dispatch it
@@ -292,6 +299,8 @@ export interface ProviderCommandResult {
   handled: boolean;
   /** Set when `handled` is true but the native dispatch failed. */
   error?: string;
+  /** Optional YA-local result to publish without creating a provider turn. */
+  output?: ProviderCommandOutput;
 }
 
 export interface RealClaudeSDKInterface {

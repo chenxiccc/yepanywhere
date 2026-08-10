@@ -1170,6 +1170,31 @@ describe("compileTranscriptProjection", () => {
     });
   });
 
+  it("preserves structured local-command details", () => {
+    const messages: Message[] = [
+      {
+        uuid: "codex-status",
+        type: "system",
+        subtype: "local_command",
+        content: "/status",
+        details: ["Model: gpt-5.6\nSession: thread-1", "Limits: 24% used"],
+        timestamp: "2026-08-10T00:00:00.000Z",
+      },
+    ];
+
+    const items = compileTranscriptProjection(messages);
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        type: "system",
+        id: "codex-status",
+        subtype: "local_command",
+        content: "/status",
+        details: ["Model: gpt-5.6\nSession: thread-1", "Limits: 24% used"],
+      }),
+    ]);
+  });
+
   it("suppresses durable Claude compact local-command stdout rows", () => {
     const messages: Message[] = [
       {

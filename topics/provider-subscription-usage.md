@@ -38,6 +38,34 @@ Related topics: [provider refresh](provider-refresh.md),
   shared cache prevents a later duplicate when Refresh already supplied the
   value.
 
+## Codex local account commands
+
+Codex `/status` and `/usage` are local account commands, not model prompts.
+YA advertises and intercepts them only for active Codex sessions:
+
+- `/status` combines the resolved session model, working directory,
+  permission mode, provider thread id, latest cumulative session-token
+  snapshot, `account/read`, and `account/rateLimits/read`. A failed account or
+  rate-limit probe leaves the local session fields available and marks only
+  that section unavailable.
+- `/usage [daily|weekly|cumulative]` reads `account/usage/read`. Empty, `day`,
+  and `daily` arguments select the daily view; `week` and `weekly` select the
+  weekly view. Invalid arguments report the accepted forms. Unlike the Codex
+  TUI's interactive no-argument picker, YA's non-interactive `/usage` defaults
+  to daily. YA exposes only this read-only branch; it does not consume account
+  rate-limit reset credits.
+- Account token activity from `/usage` is historical activity, not remaining
+  subscription capacity. Rate-limit windows remain the source of subscription
+  capacity, while per-session token notifications remain the source of context
+  consumption.
+- `account/usage/read` requires ChatGPT-backed Codex authentication. API-key,
+  signed-out, and Amazon Bedrock accounts receive `Sign in with ChatGPT to use
+  /usage.` and do not make the usage request.
+
+Neither command creates a model turn or provider transcript entry. YA emits the
+result as a synthetic `local_command` row into the active session's live and
+short replay streams; it does not claim provider persistence for that row.
+
 ## Client surfaces
 
 The compact binding percentage appears beside model choices in New Session,
@@ -76,7 +104,8 @@ experimental. `ClaudeProvider` contains that instability: the normalizer
 accepts only the fields YA needs and any unavailable or changed response
 degrades to null.
 
-Codex CLI `0.145.0` exposes single- and multi-bucket rate-limit snapshots.
+Codex CLI `0.147.0` exposes single- and multi-bucket rate-limit snapshots,
+account token-activity reads, and account identity reads.
 The general `codex` bucket is provider-wide; named buckets are model-scoped
 only when their provider label resolves to a current catalog model. Existing
 `account/rateLimits/updated` events remain non-terminal telemetry and never

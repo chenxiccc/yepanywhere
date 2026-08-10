@@ -2010,6 +2010,8 @@ describe("Sessions metadata route", () => {
       expect.arrayContaining([
         expect.objectContaining({ name: "compact" }),
         expect.objectContaining({ name: "goal" }),
+        expect.objectContaining({ name: "status" }),
+        expect.objectContaining({ name: "usage" }),
       ]),
     );
   });

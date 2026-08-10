@@ -12,6 +12,13 @@ tool/runtime behavior, compaction, and persistence to `codex app-server` or
 `codex exec resume`, so YA does not need to collect an OpenAI Platform API key
 for the normal Codex path.
 
+Codex CLI can also authenticate with an OpenAI Platform key (for example,
+`OPENAI_API_KEY` piped to `codex login --with-api-key`). That selects API-key
+authentication and API Platform billing; it does not spend a ChatGPT
+subscription allowance. ChatGPT-only account surfaces such as `/usage` are
+therefore unavailable in that mode, even though Codex login and model turns can
+succeed.
+
 The OpenAI Conversations API is not a drop-in replacement for that path because
 it requires API authentication and API billing. It should therefore be treated
 as a future provider family, not as an internal rewrite of the existing `codex`
@@ -58,4 +65,3 @@ The near-term path should still improve visibility, warning, and provider-native
 compact/handoff affordances for the subscription-backed Codex provider. The API
 provider only becomes relevant when YA is ready to own OpenAI API state,
 billing, privacy, tool mapping, and compaction policy directly.
-

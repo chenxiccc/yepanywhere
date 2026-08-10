@@ -181,6 +181,17 @@ function systemLocalCommandContent(content: unknown): string | null {
   return trimmedContent ? trimmedContent : null;
 }
 
+function systemLocalCommandDetails(msg: Message): string[] | undefined {
+  const details = (msg as { details?: unknown }).details;
+  if (!Array.isArray(details)) {
+    return undefined;
+  }
+  const text = details.filter(
+    (detail): detail is string => typeof detail === "string" && !!detail.trim(),
+  );
+  return text.length > 0 ? text : undefined;
+}
+
 function compactMetadataDetail(msg: Message): string | null {
   const metadata = (msg as { compactMetadata?: unknown }).compactMetadata;
   if (!isRecord(metadata)) {
@@ -311,6 +322,7 @@ function processMessage(
           id: msgId,
           subtype,
           content,
+          details: systemLocalCommandDetails(msg),
           sourceMessages: [msg],
           isSubagent: msg.isSubagent,
         });

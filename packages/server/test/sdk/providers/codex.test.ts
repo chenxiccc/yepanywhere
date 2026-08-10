@@ -275,8 +275,108 @@ describe("CodexProvider", () => {
         expect.arrayContaining([
           expect.objectContaining({ name: "compact" }),
           expect.objectContaining({ name: "goal" }),
+          expect.objectContaining({ name: "status" }),
+          expect.objectContaining({ name: "usage" }),
         ]),
       );
+    });
+
+    it("runs status and usage through account RPCs without a model turn", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-account-commands-"));
+      const logPath = join(tempDir, "fake-codex-requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-account-commands",
+        buildFakeCodexAppServer(logPath),
+      );
+      const testProvider = new CodexProvider({ codexPath });
+      const session = await testProvider.startSession({
+        cwd: tempDir,
+        model: "gpt-5.6",
+      });
+
+      try {
+        const init = await session.iterator.next();
+        expect(init.value).toMatchObject({
+          type: "system",
+          subtype: "init",
+          session_id: "thread-1",
+        });
+
+        await expect(session.runProviderCommand?.("status")).resolves.toEqual(
+          expect.objectContaining({
+            handled: true,
+            output: expect.objectContaining({
+              summary: "/status",
+              details: expect.arrayContaining([
+                expect.stringContaining("Model: gpt-5.4-mini"),
+                expect.stringContaining("Account: ChatGPT (plus)"),
+                expect.stringContaining("codex primary (5h): 24% used"),
+              ]),
+            }),
+          }),
+        );
+        await expect(
+          session.runProviderCommand?.("usage", "weekly"),
+        ).resolves.toEqual(
+          expect.objectContaining({
+            handled: true,
+            output: expect.objectContaining({
+              summary: "/usage weekly",
+              details: expect.arrayContaining([
+                expect.stringContaining("Lifetime: 12,345"),
+                expect.stringContaining("week of 2026-08-03  100"),
+                expect.stringContaining("week of 2026-08-10  200"),
+              ]),
+            }),
+          }),
+        );
+
+        const requests = readFakeCodexRequests(logPath);
+        expect(requests.map((request) => request.method)).toEqual(
+          expect.arrayContaining([
+            "account/read",
+            "account/rateLimits/read",
+            "account/usage/read",
+          ]),
+        );
+        expect(
+          requests.some((request) => request.method === "turn/start"),
+        ).toBe(false);
+      } finally {
+        await session.abort();
+        await session.iterator.return?.(undefined);
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports that /usage requires ChatGPT subscription auth", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-api-key-usage-"));
+      const logPath = join(tempDir, "fake-codex-requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-api-key-usage",
+        buildFakeCodexAppServer(logPath, "apiKey"),
+      );
+      const testProvider = new CodexProvider({ codexPath });
+      const session = await testProvider.startSession({ cwd: tempDir });
+
+      try {
+        await session.iterator.next();
+        await expect(session.runProviderCommand?.("usage")).resolves.toEqual({
+          handled: true,
+          output: { summary: "Sign in with ChatGPT to use /usage." },
+        });
+        expect(
+          readFakeCodexRequests(logPath).some(
+            (request) => request.method === "account/usage/read",
+          ),
+        ).toBe(false);
+      } finally {
+        await session.abort();
+        await session.iterator.return?.(undefined);
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should emit error if Codex CLI is not found", async () => {
@@ -1551,11 +1651,15 @@ function runNodeProbe(
   });
 }
 
-function buildFakeCodexAppServer(logPath: string): string {
+function buildFakeCodexAppServer(
+  logPath: string,
+  accountType: "chatgpt" | "apiKey" = "chatgpt",
+): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 
 const logPath = ${JSON.stringify(logPath)};
+const accountType = ${JSON.stringify(accountType)};
 let buffer = "";
 
 function write(payload) {
@@ -1610,6 +1714,47 @@ function handleMessage(message) {
         thread: { id: "thread-1" },
         model: "gpt-5.4-mini",
         reasoningEffort: "low",
+      });
+      break;
+    case "account/read":
+      respond(message.id, {
+        account: accountType === "chatgpt"
+          ? {
+              type: "chatgpt",
+              email: "codex@example.com",
+              planType: "plus",
+            }
+          : { type: "apiKey" },
+        requiresOpenaiAuth: true,
+      });
+      break;
+    case "account/rateLimits/read":
+      respond(message.id, {
+        rateLimits: {
+          limitId: "codex",
+          primary: {
+            usedPercent: 24,
+            windowDurationMins: 300,
+            resetsAt: 1_800_000_000,
+          },
+          secondary: null,
+          planType: "plus",
+        },
+      });
+      break;
+    case "account/usage/read":
+      respond(message.id, {
+        summary: {
+          lifetimeTokens: 12_345,
+          peakDailyTokens: 2_345,
+          longestRunningTurnSec: 90,
+          currentStreakDays: 3,
+          longestStreakDays: 7,
+        },
+        dailyUsageBuckets: [
+          { startDate: "2026-08-09", tokens: 100 },
+          { startDate: "2026-08-10", tokens: 200 },
+        ],
       });
       break;
     case "turn/start":

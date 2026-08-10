@@ -236,10 +236,10 @@ export interface AgentSession {
   setModel?: (model?: string) => Promise<void>;
   /**
    * Run a provider-native slash command out-of-band — dispatched through the
-   * provider's own protocol rather than delivered as a user turn. Codex uses
-   * this for `/compact` (`thread/compact/start`); a `{ handled: false }` result
-   * means the command is not native here and should fall back to normal turn
-   * delivery (as Claude's `/compact` does).
+   * provider's own protocol rather than delivered as a user turn. The result
+   * may start native work or carry YA-local output; `{ handled: false }` means
+   * the command is not native here and should fall back to normal turn delivery
+   * (as Claude's `/compact` does).
    */
   runProviderCommand?: (
     command: string,

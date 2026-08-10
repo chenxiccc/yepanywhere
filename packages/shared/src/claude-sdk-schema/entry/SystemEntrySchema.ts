@@ -159,6 +159,7 @@ const LocalCommandSystemEntrySchema = BaseEntrySchema.extend({
   type: z.literal("system"),
   subtype: z.literal("local_command"),
   content: z.string(),
+  details: z.array(z.string()).optional(),
   level: z.string().optional(),
 });
 

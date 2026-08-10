@@ -378,6 +378,52 @@ describe("Process", () => {
       await process.abort();
     });
 
+    it("publishes provider command output for live delivery and replay", async () => {
+      let resolveIterator!: () => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
+      };
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+        queue: new MessageQueue(),
+        runProviderCommandFn: vi.fn(async () => ({
+          handled: true,
+          output: {
+            summary: "/status",
+            details: ["Model: gpt-5.6"],
+          },
+        })),
+      });
+      const liveMessages: SDKMessage[] = [];
+      const unsubscribe = process.subscribe((event) => {
+        if (event.type === "message") liveMessages.push(event.message);
+      });
+
+      await process.runProviderCommand("status");
+
+      const expected = expect.objectContaining({
+        type: "system",
+        subtype: "local_command",
+        content: "/status",
+        details: ["Model: gpt-5.6"],
+        session_id: "sess-1",
+        isSynthetic: true,
+      });
+      expect(liveMessages).toEqual([expected]);
+      expect(process.getMessageHistory()).toEqual([expected]);
+
+      unsubscribe();
+      resolveIterator?.();
+      await process.abort();
+    });
+
     it("expands cached slash-command emulation before queueing", async () => {
       let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {

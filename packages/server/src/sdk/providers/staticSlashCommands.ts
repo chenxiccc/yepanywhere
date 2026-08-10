@@ -11,6 +11,17 @@ export const CODEX_BUILTIN_COMMANDS: readonly SlashCommand[] = [
     description: "",
     invocation: { kind: "native", prefix: "/" },
   },
+  {
+    name: "status",
+    description: "show current session configuration and token usage",
+    invocation: { kind: "native", prefix: "/" },
+  },
+  {
+    name: "usage",
+    description: "view account token usage",
+    argumentHint: "[daily|weekly|cumulative]",
+    invocation: { kind: "native", prefix: "/" },
+  },
 ];
 
 export function getStaticSlashCommandsForProvider(

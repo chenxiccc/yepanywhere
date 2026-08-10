@@ -92,6 +92,12 @@ import type {
 import type { SandboxPolicy as CodexSandboxPolicy } from "./codex-protocol/generated/v2/SandboxPolicy.js";
 import { createAgentctlSessionEnvBridge } from "./agentctl-session-env.js";
 import {
+  formatCodexStatusCommand,
+  formatCodexUsageCommand,
+  isCodexChatGptAccount,
+  parseCodexUsageView,
+} from "./codex-account-commands.js";
+import {
   bindReloadSafeCodexRuntime,
   claimReloadSafeCodexRuntime,
   isCodexRuntimeHostAvailable,
@@ -299,6 +305,7 @@ interface JsonRpcServerRequest extends JsonRpcNotification {
 }
 
 interface TokenUsageSnapshot {
+  totalTokens: number;
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
@@ -307,6 +314,8 @@ interface TokenUsageSnapshot {
 
 interface CodexTurnRuntimeState {
   threadId: string;
+  resolvedModel: string;
+  latestTokenUsage?: TokenUsageSnapshot;
   activeTurnId: string | null;
   activePermissionMode: PermissionMode;
   turnEffortOverride: EffortLevel | null | undefined;
@@ -1525,6 +1534,7 @@ export class CodexProvider implements AgentProvider {
     const abortController = new AbortController();
     const runtimeState: CodexTurnRuntimeState = {
       threadId: options.resumeSessionId ?? "",
+      resolvedModel: options.model ?? "default",
       activeTurnId: null,
       activePermissionMode: this.normalizePermissionMode(
         options.permissionMode,
@@ -1750,10 +1760,104 @@ export class CodexProvider implements AgentProvider {
         }
         return true;
       },
-      runProviderCommand: async (command): Promise<ProviderCommandResult> => {
-        // Only `/compact` is dispatched natively; every other slash command
-        // falls through to ordinary turn delivery.
+      runProviderCommand: async (
+        command,
+        argument,
+      ): Promise<ProviderCommandResult> => {
         const name = command.trim().replace(/^\/+/, "").toLowerCase();
+        if (name === "status" || name === "usage") {
+          const client = activeClient ?? (await initialActiveClient);
+          if (!client) {
+            return {
+              handled: true,
+              output: {
+                summary: `/${name}`,
+                details: ["Codex session is not ready yet"],
+              },
+            };
+          }
+
+          if (name === "status") {
+            const [accountResult, rateLimitsResult] = await Promise.allSettled([
+              withCodexTimeout(
+                client.request<unknown>("account/read", {
+                  refreshToken: false,
+                }),
+                ACCOUNT_RATE_LIMITS_TIMEOUT_MS,
+                "Codex account status",
+              ),
+              withCodexTimeout(
+                client.request<unknown>("account/rateLimits/read"),
+                ACCOUNT_RATE_LIMITS_TIMEOUT_MS,
+                "Codex account rate limits",
+              ),
+            ]);
+            return {
+              handled: true,
+              output: formatCodexStatusCommand({
+                model: runtimeState.resolvedModel,
+                cwd: options.cwd,
+                permissionMode: runtimeState.activePermissionMode,
+                threadId: runtimeState.threadId,
+                tokenUsage: runtimeState.latestTokenUsage,
+                accountResponse:
+                  accountResult.status === "fulfilled"
+                    ? accountResult.value
+                    : undefined,
+                rateLimitsResponse:
+                  rateLimitsResult.status === "fulfilled"
+                    ? rateLimitsResult.value
+                    : undefined,
+              }),
+            };
+          }
+
+          const view = parseCodexUsageView(argument);
+          if (!view) {
+            return {
+              handled: true,
+              output: {
+                summary: "Usage: /usage [daily|weekly|cumulative]",
+              },
+            };
+          }
+          try {
+            const account = await withCodexTimeout(
+              client.request<unknown>("account/read", {
+                refreshToken: false,
+              }),
+              ACCOUNT_RATE_LIMITS_TIMEOUT_MS,
+              "Codex account status",
+            );
+            if (!isCodexChatGptAccount(account)) {
+              return {
+                handled: true,
+                output: {
+                  summary: "Sign in with ChatGPT to use /usage.",
+                },
+              };
+            }
+            const usage = await withCodexTimeout(
+              client.request<unknown>("account/usage/read"),
+              ACCOUNT_RATE_LIMITS_TIMEOUT_MS,
+              "Codex account token usage",
+            );
+            return {
+              handled: true,
+              output: formatCodexUsageCommand(usage, view),
+            };
+          } catch (error) {
+            log.debug(
+              { error, threadId: runtimeState.threadId },
+              "Codex account token usage is unavailable",
+            );
+            return {
+              handled: true,
+              output: { summary: "Token activity unavailable" },
+            };
+          }
+        }
+
         if (name !== "compact") {
           return { handled: false };
         }
@@ -2137,6 +2241,7 @@ export class CodexProvider implements AgentProvider {
       await appServer.bindRuntimeSession(sessionId);
       agentctlSessionEnvBridge.publishSessionId(sessionId);
       runtimeState.threadId = sessionId;
+      runtimeState.resolvedModel = threadResult.model;
       if (threadResult.sandbox?.type === "workspaceWrite") {
         runtimeState.workspaceWriteSandboxPolicy = threadResult.sandbox;
       }
@@ -2230,6 +2335,7 @@ export class CodexProvider implements AgentProvider {
             const usage = provider.extractTurnUsage(notification.params);
             if (usage) {
               usageByTurnId.set(usage.turnId, usage.snapshot);
+              runtimeState.latestTokenUsage = usage.total;
             }
           }
           provider.updateBackgroundProcessTracking(notification, runtimeState);
@@ -3773,6 +3879,7 @@ export class CodexProvider implements AgentProvider {
   private extractTurnUsage(params: unknown): {
     turnId: string;
     snapshot: TokenUsageSnapshot;
+    total: TokenUsageSnapshot;
   } | null {
     const notification = asCodexThreadTokenUsageUpdatedNotification(params);
     if (!notification) return null;
@@ -3780,9 +3887,20 @@ export class CodexProvider implements AgentProvider {
     return {
       turnId: notification.turnId,
       snapshot: {
+        totalTokens: notification.tokenUsage.last.totalTokens,
         inputTokens: notification.tokenUsage.last.inputTokens,
         outputTokens: notification.tokenUsage.last.outputTokens,
         cachedInputTokens: notification.tokenUsage.last.cachedInputTokens,
+        contextWindow:
+          typeof notification.tokenUsage.modelContextWindow === "number"
+            ? notification.tokenUsage.modelContextWindow
+            : undefined,
+      },
+      total: {
+        totalTokens: notification.tokenUsage.total.totalTokens,
+        inputTokens: notification.tokenUsage.total.inputTokens,
+        outputTokens: notification.tokenUsage.total.outputTokens,
+        cachedInputTokens: notification.tokenUsage.total.cachedInputTokens,
         contextWindow:
           typeof notification.tokenUsage.modelContextWindow === "number"
             ? notification.tokenUsage.modelContextWindow

@@ -2042,11 +2042,12 @@ export class Process {
   }
 
   /**
-   * Dispatch a provider-native slash command out-of-band (e.g. Codex `/compact`
-   * → `thread/compact/start`) instead of delivering it as a user turn. Returns
-   * `{ handled: false }` when the provider does not own the command — including
-   * every provider that does not implement native dispatch (Claude, etc.) — so
-   * the caller can fall back to normal message delivery.
+   * Dispatch a provider-native slash command out-of-band instead of delivering
+   * it as a user turn. A provider may return local output (Codex `/status` and
+   * `/usage`) or start native work (Codex `/compact`). Returns `{ handled:
+   * false }` when the provider does not own the command — including every
+   * provider that does not implement native dispatch (Claude, etc.) — so the
+   * caller can fall back to normal message delivery.
    */
   async runProviderCommand(
     command: string,
@@ -2055,7 +2056,22 @@ export class Process {
     if (!this.runProviderCommandFn) {
       return { handled: false };
     }
-    return this.runProviderCommandFn(command, argument);
+    const result = await this.runProviderCommandFn(command, argument);
+    if (result.handled && result.output) {
+      const synthetic = this.withTimestamp({
+        type: "system",
+        subtype: "local_command",
+        content: result.output.summary,
+        ...(result.output.details ? { details: result.output.details } : {}),
+        session_id: this._sessionId,
+        uuid: randomUUID(),
+        isMeta: false,
+        isSynthetic: true,
+      } as unknown as SDKMessage);
+      this.currentBucket.push(synthetic);
+      this.emit({ type: "message", message: synthetic });
+    }
+    return result;
   }
 
   /**

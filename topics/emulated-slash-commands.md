@@ -34,6 +34,11 @@ as the runtime skills directory.
   A command may be native, provider-text emulated, YA-routed, or unavailable;
   unsupported commands should not silently fall through as ordinary prompt text
   when YA advertised them as commands.
+- A provider-native local command may return structured YA-local output instead
+  of starting a provider turn. YA publishes that output as a synthetic
+  `local_command` row for live delivery and short replay, without writing it to
+  the provider transcript. Once advertised, such a command must either produce
+  its local result or fail visibly; it must never fall through to model text.
 - Emulated commands should preserve the user's argument text verbatim except
   for the declared template substitution. Parsing inside the command belongs to
   the skill/provider behavior, not to the generic rewrite layer.
@@ -96,3 +101,5 @@ recap/goal implementation.
   rewrite that command.
 - An advertised but unsupported YA-routed command fails visibly instead of
   being sent to the provider as plain prompt text.
+- Provider-native local output reaches both a live subscriber and the replay
+  buffer, while the provider receives no user/model turn.
