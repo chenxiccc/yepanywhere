@@ -2446,7 +2446,7 @@ export class Process {
       requestedModel: this.requestedModel,
       serviceTier: this.serviceTier,
       thinking: this._thinking,
-      effort: this._effort,
+      effort: this.effort,
       executor: this.executor,
       pid: this.pid,
       liveness: this.getLivenessSnapshot(),

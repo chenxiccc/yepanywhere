@@ -47,8 +47,8 @@ This text lives in `slashModelIndicatorTitle` and is passed to both:
 | State | Safe actions | Disabled/blocked actions |
 |---|---|---|
 | `idle` | Send, queue, /model, queue mode, `/compact` if exposed | stop (no active turn), tool approval controls |
-| `in-turn` (`status.owner="self"`) | Stop (interrupt/abort), queue/steer depending provider and queue mode, select Claude effort for the next turn, `/compact` if available | /model editing text; model/thinking/service-tier changes that require a restart |
-| `waiting-input` (`status.owner="self"`) | Answer prompt with approval path (`ToolApprovalPanel` or `QuestionAnswerPanel`); select Claude effort for the next turn | regular composer send action; stop is currently off |
+| `in-turn` (`status.owner="self"`) | Stop (interrupt/abort), queue/steer depending provider and queue mode, select effort for the next turn when supported, `/compact` if available | /model editing text; model/thinking/service-tier changes that require a restart |
+| `waiting-input` (`status.owner="self"`) | Answer prompt with approval path (`ToolApprovalPanel` or `QuestionAnswerPanel`); select effort for the next turn when supported | regular composer send action; stop is currently off |
 | `compacting` (overlay) | same as underlying `processState` | model/config substitution text is busy copy only |
 | `needs-attention` | show warning copy and retain manual controls as supported | no automatic idle assumptions |
 | `verified-idle` (liveness) | treat as normal boundary for automation | should not be assumed from `recently-active-unverified` / `long-silent-unverified` |
@@ -101,9 +101,11 @@ root cause of the interrupt is outside YA, because the user cannot distinguish
 3. Keep liveness-derived states visible without turning them into hard action locks.
 4. Never hide or soften a known provider interruption behind generic running,
    stale-spinner, or reconnect copy.
-5. A Claude effort selection made during an active turn is pending next-turn
-   configuration: show the selection immediately, apply its provider control
-   at the idle boundary before queued work, and never interrupt the active turn.
+5. An effort selection made during an active turn is pending next-turn
+   configuration when the provider supports per-turn effort: show the selection
+   immediately, keep it selected across process-info refreshes, apply its
+   provider control at the idle boundary before queued work, and never interrupt
+   the active turn. Claude and Codex both support this contract.
 
 ## Hard abort contract
 

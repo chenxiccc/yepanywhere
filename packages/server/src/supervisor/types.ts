@@ -239,7 +239,7 @@ export interface ProcessInfo {
   provider: ProviderName; // which provider is running this process
   /** Thinking configuration (undefined = thinking disabled) */
   thinking?: ThinkingConfig;
-  /** Effort level for response quality (undefined = SDK default) */
+  /** Selected effort for the next response (undefined = provider default) */
   effort?: EffortLevel;
   /** Provider-visible service tier. undefined means provider/default behavior. */
   serviceTier?: string;

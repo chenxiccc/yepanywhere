@@ -1322,6 +1322,7 @@ describe("Supervisor", () => {
         expect(aborted).toBe(false);
         expect(process.effort).toBe("medium");
         expect(process.appliedEffort).toBe("low");
+        expect(process.getInfo().effort).toBe("medium");
         expect(setEffort).not.toHaveBeenCalled();
 
         completeTurn();

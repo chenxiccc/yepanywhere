@@ -14,6 +14,7 @@ import {
   canonicalInvocationName,
   canonicalizeSkillInvocations,
   createCodexToolCorrelation,
+  type EffortLevel,
   hasInvocationCandidate,
   type ModelInfo,
   type PermissionMode,
@@ -308,6 +309,7 @@ interface CodexTurnRuntimeState {
   threadId: string;
   activeTurnId: string | null;
   activePermissionMode: PermissionMode;
+  turnEffortOverride: EffortLevel | null | undefined;
   workspaceWriteSandboxPolicy: CodexSandboxPolicy | null;
   activeToolCallIds: Set<string>;
   backgroundToolCallIds: Set<string>;
@@ -1483,6 +1485,7 @@ export class CodexProvider implements AgentProvider {
       activePermissionMode: this.normalizePermissionMode(
         options.permissionMode,
       ),
+      turnEffortOverride: options.effort,
       workspaceWriteSandboxPolicy: null,
       activeToolCallIds: new Set(),
       backgroundToolCallIds: new Set(),
@@ -1575,6 +1578,9 @@ export class CodexProvider implements AgentProvider {
       },
       probeLiveness: async () =>
         this.probeCodexLiveness(activeClient, runtimeState),
+      setEffort: async (effort) => {
+        runtimeState.turnEffortOverride = effort ?? null;
+      },
       supportedCommands: async () => {
         if (activeClient) {
           await this.refreshCodexSkills(
@@ -2311,6 +2317,7 @@ export class CodexProvider implements AgentProvider {
             options,
             turnPolicy,
             runtimeState.workspaceWriteSandboxPolicy,
+            runtimeState.turnEffortOverride,
           );
           const turnResult = await appServer.request<TurnStartResponse>(
             "turn/start",
@@ -2853,17 +2860,21 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     turnPolicy: CodexThreadPolicy | null = null,
     workspaceWriteSandboxPolicy: CodexSandboxPolicy | null = null,
+    effortOverride: EffortLevel | null | undefined = options.effort,
   ): TurnStartParams {
     return {
       threadId,
       model: options.model ?? null,
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
       input,
-      effort: this.mapEffortToReasoningEffort(
-        options.effort,
-        options.thinking,
-        options.model,
-      ),
+      effort:
+        effortOverride === null
+          ? null
+          : this.mapEffortToReasoningEffort(
+              effortOverride,
+              options.thinking,
+              options.model,
+            ),
       summary: "auto",
       ...this.buildTurnPermissionParams(
         turnPolicy,

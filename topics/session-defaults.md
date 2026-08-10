@@ -183,6 +183,12 @@ the composer and model panel adopt that process's restored configuration. An
 older server that omits newer state therefore retains its established fallback
 instead of causing the client to clear durable server state.
 
+An effort selection accepted while a turn is active is authoritative pending
+state: process info reports the selected next-turn effort so a browser refresh
+does not replace it with the last provider-observed value. The durable launch
+snapshot continues to report the last applied effort until the provider reaches
+the idle boundary and accepts the pending selection.
+
 **Show thinking** remains a browser display preference. It is deliberately not
 part of the provider launch snapshot and does not move with a session.
 

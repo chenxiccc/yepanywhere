@@ -452,6 +452,46 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
+  it("applies changed effort to the next turn without restarting app-server", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-effort-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-effort",
+      buildFakeCodexPermissionAppServer(logPath),
+    );
+    const testProvider = new CodexProvider({ codexPath });
+    const session = await testProvider.startSession({
+      cwd: tempDir,
+      initialMessage: { text: "low effort turn" },
+      effort: "low",
+    });
+
+    try {
+      await consumeCodexTurn(session.iterator);
+      expect(session.setEffort).toBeTypeOf("function");
+      await session.setEffort?.("high");
+      session.queue.push({ text: "high effort turn" });
+      await consumeCodexTurn(session.iterator);
+
+      const requests = readFakeCodexRequests(logPath);
+      const turnStarts = requests.filter(
+        (request) => request.method === "turn/start",
+      );
+      expect(
+        requests.filter((request) => request.method === "thread/start"),
+      ).toHaveLength(1);
+      expect(new Set(requests.map((request) => request.pid))).toHaveLength(1);
+      expect(turnStarts.map((request) => request.params?.effort)).toEqual([
+        "low",
+        "high",
+      ]);
+    } finally {
+      await session.abort();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("discovers and dispatches Codex skills with canonical text and metadata", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-skills-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
