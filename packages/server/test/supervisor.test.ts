@@ -3190,6 +3190,95 @@ describe("Supervisor", () => {
 
       await replacement?.abort();
     });
+
+    it("waits for provider teardown before starting hard-abort recovery", async () => {
+      let startCount = 0;
+      let releaseFirstAbort: (() => void) | undefined;
+      const firstAbortGate = new Promise<void>((resolve) => {
+        releaseFirstAbort = resolve;
+      });
+      const lifecycle: string[] = [];
+      const interrupt = vi.fn(async () => false);
+
+      const realSdk: RealClaudeSDKInterface = {
+        startSession: async (options) => {
+          startCount++;
+          const runNumber = startCount;
+          lifecycle.push(`start-${runNumber}`);
+          const run = { aborted: false };
+          const queue = new MessageQueue();
+
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id:
+                options.resumeSessionId ??
+                `interrupt-ordered-recovery-${runNumber}`,
+            };
+            await queue[Symbol.asyncIterator]().next();
+            while (!run.aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue,
+            abort: async () => {
+              lifecycle.push(`abort-start-${runNumber}`);
+              if (runNumber === 1) await firstAbortGate;
+              run.aborted = true;
+              lifecycle.push(`abort-finish-${runNumber}`);
+            },
+            interrupt,
+          };
+        },
+      };
+
+      const supervisorWithRealSdk = new Supervisor({
+        realSdk,
+        idleTimeoutMs: 100,
+      });
+
+      const process = await supervisorWithRealSdk.resumeSession(
+        "interrupt-ordered-recovery-session",
+        "/tmp/test",
+        { text: "hi" },
+      );
+      process.queueMessage({ text: "ping", tempId: "temp-ping" });
+
+      const interrupted = supervisorWithRealSdk.interruptProcess(process.id);
+      await vi.waitFor(() => {
+        expect(lifecycle).toContain("abort-start-1");
+      });
+      expect(startCount).toBe(1);
+      expect(process.hasUnverifiedProviderOwnership).toBe(true);
+      await expect(
+        supervisorWithRealSdk.resumeSession(
+          "interrupt-ordered-recovery-session",
+          "/tmp/test",
+          { text: "must not race provider teardown" },
+        ),
+      ).rejects.toThrow(/prior provider teardown is in progress or unverified/);
+
+      releaseFirstAbort?.();
+      await expect(interrupted).resolves.toMatchObject({
+        success: false,
+        supported: true,
+        hardAborted: true,
+      });
+      await vi.waitFor(() => {
+        expect(startCount).toBe(2);
+      });
+      expect(lifecycle.indexOf("abort-finish-1")).toBeLessThan(
+        lifecycle.indexOf("start-2"),
+      );
+
+      await supervisorWithRealSdk
+        .getProcessForSession("interrupt-ordered-recovery-session")
+        ?.abort();
+    });
   });
 
   describe("recaps", () => {

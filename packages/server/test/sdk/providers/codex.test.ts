@@ -794,6 +794,147 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
+  it("resynchronizes and retries a steer after an active-turn mismatch", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-steer-race-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-steer-race",
+      buildFakeCodexAppServerWithTurnIdRace(logPath),
+    );
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "start the mismatched turn" },
+        effort: "low",
+      });
+      consume = (async () => {
+        for await (const _message of session?.iterator ?? []) {
+          // Drain until the interrupt below completes the fake turn.
+        }
+      })();
+
+      await waitForFakeCodexRequest(logPath, "turn/start");
+      expect(await session.steer?.({ text: "deliver this steer" })).toBe(true);
+      await session.interrupt?.();
+
+      const steerRequests = readFakeCodexRequests(logPath).filter(
+        (request) => request.method === "turn/steer",
+      );
+      expect(
+        steerRequests.map((request) => request.params?.expectedTurnId),
+      ).toEqual(["turn-submission", "turn-active"]);
+      expect(
+        readFakeCodexRequests(logPath).find(
+          (request) => request.method === "turn/interrupt",
+        )?.params,
+      ).toMatchObject({ turnId: "turn-active" });
+    } finally {
+      await session?.abort();
+      await consume?.catch(() => undefined);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("resynchronizes and retries an interrupt after an active-turn mismatch", async () => {
+    const tempDir = mkdtempSync(
+      join(tmpdir(), "codex-provider-interrupt-race-"),
+    );
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-interrupt-race",
+      buildFakeCodexAppServerWithTurnIdRace(logPath),
+    );
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "start the mismatched turn" },
+        effort: "low",
+      });
+      consume = (async () => {
+        for await (const _message of session?.iterator ?? []) {
+          // Drain until the retried interrupt completes the fake turn.
+        }
+      })();
+
+      await waitForFakeCodexRequest(logPath, "turn/start");
+      expect(await session.interrupt?.()).toBe(true);
+
+      const interruptRequests = readFakeCodexRequests(logPath).filter(
+        (request) => request.method === "turn/interrupt",
+      );
+      expect(
+        interruptRequests.map((request) => request.params?.turnId),
+      ).toEqual(["turn-submission", "turn-active"]);
+    } finally {
+      await session?.abort();
+      await consume?.catch(() => undefined);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("adopts the active turn id observed in provider notifications", async () => {
+    const tempDir = mkdtempSync(
+      join(tmpdir(), "codex-provider-turn-observation-"),
+    );
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-turn-observation",
+      buildFakeCodexAppServerWithTurnIdRace(logPath, true),
+    );
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "start the mismatched turn" },
+        effort: "low",
+      });
+      const messages: Array<Record<string, unknown>> = [];
+      consume = (async () => {
+        for await (const message of session?.iterator ?? []) {
+          messages.push(message);
+        }
+      })();
+
+      await waitForFakeCodexRequest(logPath, "turn/start");
+      await waitForMessage(messages, (message) =>
+        JSON.stringify(message).includes("observed active turn"),
+      );
+      expect(await session.steer?.({ text: "deliver after observation" })).toBe(
+        true,
+      );
+      await session.interrupt?.();
+
+      const steerRequests = readFakeCodexRequests(logPath).filter(
+        (request) => request.method === "turn/steer",
+      );
+      expect(steerRequests).toHaveLength(1);
+      expect(steerRequests[0]?.params).toMatchObject({
+        expectedTurnId: "turn-active",
+      });
+    } finally {
+      await session?.abort();
+      await consume?.catch(() => undefined);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a clean Codex foreground-tool interrupt", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-tool-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -1493,6 +1634,123 @@ function handleMessage(message) {
           durationMs: null,
         },
       });
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerWithTurnIdRace(
+  logPath: string,
+  notifyActualTurn = false,
+): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+const notifyActualTurn = ${JSON.stringify(notifyActualTurn)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message) {
+  appendFileSync(logPath, JSON.stringify({
+    id: message.id,
+    method: message.method,
+    params: message.params,
+  }) + "\\n");
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function reject(id, message) {
+  write({ id, error: { code: -32600, message } });
+}
+
+function notify(method, params) {
+  write({ method, params });
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "skills/list":
+      respond(message.id, { data: [] });
+      break;
+    case "thread/start":
+      respond(message.id, {
+        thread: { id: "thread-race" },
+        model: "gpt-5.4-mini",
+        reasoningEffort: "low",
+      });
+      break;
+    case "turn/start":
+      respond(message.id, {
+        turn: { id: "turn-submission", status: "inProgress", error: null },
+      });
+      if (notifyActualTurn) {
+        notify("turn/plan/updated", {
+          threadId: "thread-race",
+          turnId: "turn-active",
+          explanation: null,
+          plan: [{ step: "observed active turn", status: "inProgress" }],
+        });
+      }
+      break;
+    case "turn/steer":
+      if (message.params.expectedTurnId !== "turn-active") {
+        reject(
+          message.id,
+          "expected active turn id \`turn-submission\` but found \`turn-active\`",
+        );
+      } else {
+        respond(message.id, { turnId: "turn-active" });
+      }
+      break;
+    case "turn/interrupt":
+      if (message.params.turnId !== "turn-active") {
+        reject(
+          message.id,
+          "expected active turn id turn-submission but found turn-active",
+        );
+      } else {
+        respond(message.id, {});
+        notify("turn/completed", {
+          threadId: "thread-race",
+          turn: {
+            id: "turn-active",
+            items: [],
+            status: "interrupted",
+            error: null,
+            startedAt: null,
+            completedAt: null,
+            durationMs: null,
+          },
+        });
+      }
       break;
     default:
       respond(message.id, {});

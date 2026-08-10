@@ -4863,7 +4863,7 @@ export class Supervisor {
 
     const deferredMessages = await process.drainPendingUserMessages("promoted");
     this.emitSessionAborted(process.sessionId, process.projectId);
-    process.terminate("interrupt fallback abort");
+    await process.terminateAndWait("interrupt fallback abort");
     this.unregisterProcess(process);
     this.recoverDeferredMessagesAfterHardAbort(process, deferredMessages);
     return { success: false, supported: true, hardAborted: true };

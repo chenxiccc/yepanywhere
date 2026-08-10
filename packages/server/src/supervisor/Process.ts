@@ -4049,6 +4049,24 @@ export class Process {
     this.markTerminated(reason);
   }
 
+  /**
+   * Mark this process terminated, then wait until its provider runtime is
+   * verified gone. Replacement ownership must not begin before this resolves.
+   */
+  async terminateAndWait(reason: string): Promise<ProcessAbortResult> {
+    this.lifecycleReapInProgress = true;
+    this.markTerminated(reason);
+    try {
+      return await this.abort();
+    } catch (error) {
+      this.retainLifecycleTeardownFailure(
+        `${reason} provider teardown failed`,
+        error,
+      );
+      throw error;
+    }
+  }
+
   private async requestProviderAbort(): Promise<void> {
     await this.abortFn?.();
   }

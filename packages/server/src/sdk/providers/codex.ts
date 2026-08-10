@@ -315,6 +315,50 @@ interface CodexTurnRuntimeState {
   backgroundToolCallIds: Set<string>;
 }
 
+function getCodexNotificationTurnId(
+  notification: JsonRpcNotification,
+  threadId: string,
+): string | null {
+  if (!notification.params || typeof notification.params !== "object") {
+    return null;
+  }
+  const params = notification.params as Record<string, unknown>;
+  if (params.threadId !== threadId) return null;
+
+  if (
+    notification.method === "turn/started" ||
+    notification.method === "turn/completed"
+  ) {
+    const turn =
+      params.turn && typeof params.turn === "object"
+        ? (params.turn as Record<string, unknown>)
+        : null;
+    return typeof turn?.id === "string" ? turn.id : null;
+  }
+
+  // Any same-thread app-server notification carrying a top-level turnId was
+  // produced for that live turn. Keeping this structural avoids silently
+  // missing a newly added item/delta notification method.
+  return typeof params.turnId === "string" ? params.turnId : null;
+}
+
+function getCodexActiveTurnMismatchId(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const quotedPrefix = "expected active turn id `";
+  const quotedSeparator = "` but found `";
+  if (message.startsWith(quotedPrefix)) {
+    const found = message.slice(quotedPrefix.length).split(quotedSeparator)[1];
+    if (found?.endsWith("`")) return found.slice(0, -1) || null;
+  }
+
+  const plainPrefix = "expected active turn id ";
+  const plainSeparator = " but found ";
+  if (message.startsWith(plainPrefix)) {
+    return message.slice(plainPrefix.length).split(plainSeparator)[1] || null;
+  }
+  return null;
+}
+
 interface CodexSessionSkillInventory {
   skills: SkillMetadata[];
   stale: boolean;
@@ -1617,14 +1661,41 @@ export class CodexProvider implements AgentProvider {
             skillInventory.stale ? "stale" : "current",
           );
           userPrompt = prepared.text;
-          const steerResult = await activeClient.request<TurnSteerResponse>(
-            "turn/steer",
-            {
-              threadId: runtimeState.threadId,
-              input: prepared.input,
-              expectedTurnId: runtimeState.activeTurnId,
-            } satisfies TurnSteerParams,
-          );
+          let expectedTurnId = runtimeState.activeTurnId;
+          let retriedAfterMismatch = false;
+          let steerResult: TurnSteerResponse;
+          while (true) {
+            try {
+              steerResult = await activeClient.request<TurnSteerResponse>(
+                "turn/steer",
+                {
+                  threadId: runtimeState.threadId,
+                  input: prepared.input,
+                  expectedTurnId,
+                } satisfies TurnSteerParams,
+              );
+              break;
+            } catch (error) {
+              const actualTurnId = getCodexActiveTurnMismatchId(error);
+              if (actualTurnId && actualTurnId !== expectedTurnId) {
+                runtimeState.activeTurnId = actualTurnId;
+                if (!retriedAfterMismatch) {
+                  log.warn(
+                    {
+                      threadId: runtimeState.threadId,
+                      expectedTurnId,
+                      actualTurnId,
+                    },
+                    "Resynchronized Codex turn id after steer mismatch",
+                  );
+                  expectedTurnId = actualTurnId;
+                  retriedAfterMismatch = true;
+                  continue;
+                }
+              }
+              throw error;
+            }
+          }
           if (steerResult.turnId) {
             runtimeState.activeTurnId = steerResult.turnId;
           }
@@ -1644,10 +1715,39 @@ export class CodexProvider implements AgentProvider {
       interrupt: async () => {
         if (!activeClient) return false;
         if (!runtimeState.threadId || !runtimeState.activeTurnId) return false;
-        await activeClient.request<TurnInterruptResponse>("turn/interrupt", {
-          threadId: runtimeState.threadId,
-          turnId: runtimeState.activeTurnId,
-        } satisfies TurnInterruptParams);
+        let turnId = runtimeState.activeTurnId;
+        let retriedAfterMismatch = false;
+        while (true) {
+          try {
+            await activeClient.request<TurnInterruptResponse>(
+              "turn/interrupt",
+              {
+                threadId: runtimeState.threadId,
+                turnId,
+              } satisfies TurnInterruptParams,
+            );
+            break;
+          } catch (error) {
+            const actualTurnId = getCodexActiveTurnMismatchId(error);
+            if (actualTurnId && actualTurnId !== turnId) {
+              runtimeState.activeTurnId = actualTurnId;
+              if (!retriedAfterMismatch) {
+                log.warn(
+                  {
+                    threadId: runtimeState.threadId,
+                    expectedTurnId: turnId,
+                    actualTurnId,
+                  },
+                  "Resynchronized Codex turn id after interrupt mismatch",
+                );
+                turnId = actualTurnId;
+                retriedAfterMismatch = true;
+                continue;
+              }
+            }
+            throw error;
+          }
+        }
         return true;
       },
       runProviderCommand: async (command): Promise<ProviderCommandResult> => {
@@ -2137,6 +2237,23 @@ export class CodexProvider implements AgentProvider {
             failureTrace,
             provider.describeNotificationForFailureTrace(notification),
           );
+
+          const observedTurnId = getCodexNotificationTurnId(
+            notification,
+            runtimeState.threadId,
+          );
+          if (observedTurnId && observedTurnId !== runtimeState.activeTurnId) {
+            log.warn(
+              {
+                sessionId,
+                expectedTurnId: runtimeState.activeTurnId,
+                actualTurnId: observedTurnId,
+                notificationMethod: notification.method,
+              },
+              "Resynchronized Codex turn id from provider notification",
+            );
+            runtimeState.activeTurnId = observedTurnId;
+          }
 
           const messages = provider.convertNotificationToSDKMessages(
             notification,

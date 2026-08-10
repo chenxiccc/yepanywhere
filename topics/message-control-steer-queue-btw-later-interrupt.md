@@ -238,6 +238,18 @@ the provider writes the turn. Reload must therefore show the accepted steer,
 then reconcile it with the durable row rather than letting a live assistant
 response appear without the user turn it answers.
 
+`sent` is server acceptance, not proof that the provider consumed the message.
+If Codex rejects a steer because YA's cached active-turn ID is stale, the
+adapter adopts Codex's reported actual ID and retries once. Only a successful
+retry counts as provider steering; otherwise the already accepted message must
+remain queued for a later delivery boundary.
+
+Hard-abort recovery owns the same accepted-message obligation. YA may drain
+pending user messages from the failed process for transfer, but it must keep
+the prior provider ownership claimed until shutdown is verified. A replacement
+process may receive those messages only after that verification, preventing
+two app-server clients from claiming one retained Codex runtime and socket.
+
 A delivered steering turn renders at its delivery point, not its send
 point. In particular, when pending steers are delivered by an interrupt
 (Claude rejects the running tool and consumes the queue), the turn must

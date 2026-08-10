@@ -48,6 +48,21 @@ the native Codex app held his queued message until all six finished.
 So native Codex "steer" ≡ "after next tool call", and native Codex
 "queue" ≡ "at end of turn".
 
+#### Active-turn identity during resume
+
+Codex app-server's `turn/start` response can identify the submitted turn while
+the resumed core is already executing that work under a different active-turn
+ID. Active-turn notifications (`item/*`, plan and token updates, and
+`turn/completed`) are the authoritative live identity for that thread. YA
+adopts the ID observed there before matching completion or sending controls.
+
+If a steer or interrupt races the first authoritative notification, Codex
+rejects the request before acting and reports both the expected and actual
+active-turn IDs. YA adopts the reported actual ID and retries that same control
+once. A second mismatch or any differently shaped error is a real failure:
+steer returns to YA's deferred delivery path, while interrupt proceeds to the
+ordinary verified hard-abort fallback.
+
 ### Claude
 
 Claude Code's command queue supports three priorities on user messages.
@@ -305,7 +320,9 @@ What each side gives YA as the done-signal:
 
 - **Codex:** `turn/completed` notification (status completed / interrupted
   / failed). YA's codex provider maps it to a `result` message →
-  `Process.transitionToIdle()`.
+  `Process.transitionToIdle()`. YA first adopts that notification's turn ID,
+  so a resumed core whose active ID differs from the earlier submission ID
+  cannot strand the process in `in-turn`.
 - **Claude:** the SDK `result` message per turn (YA's idle trigger), plus
   `system/session_state_changed` (`idle`/`running`/`requires_action`),
   plus — for history with no live process — JSONL `stop_reason`
