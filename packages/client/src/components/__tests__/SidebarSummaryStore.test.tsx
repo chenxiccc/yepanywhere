@@ -4,6 +4,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { GlobalSessionItem } from "../../api/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ToastProvider } from "../../contexts/ToastContext";
 import {
   createClientSummaryHostSourceKey,
   reportGlobalSessionsCollectionSnapshot,
@@ -175,13 +176,15 @@ function session(
 function renderSidebar() {
   return render(
     <MemoryRouter>
-      <Sidebar
-        isOpen={true}
-        onClose={() => {}}
-        onNavigate={() => {}}
-        isDesktop={true}
-        isCollapsed={false}
-      />
+      <ToastProvider>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </ToastProvider>
     </MemoryRouter>,
   );
 }
