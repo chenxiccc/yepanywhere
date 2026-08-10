@@ -47,7 +47,7 @@ composer modules so the selected route remains below the build ceiling.
 
 Against the immediately preceding source, the eagerly loaded remote JavaScript
 fell from 2,938,667 bytes to 477,061 bytes. The local entry fell from about
-2.84 MB to 472,214 bytes, with its 492,331-byte `SessionPage` chunk now the
+2.84 MB to 472,214 bytes, with its 491,994-byte `SessionPage` chunk now the
 largest output. Both builds remain below Vite's 500 kB warning boundary,
 resolve `tssrp6a`'s Node `crypto` probe to the browser Web Crypto API, and fail
 on any future Vite warning. The Pages publisher retains old hashed assets,
