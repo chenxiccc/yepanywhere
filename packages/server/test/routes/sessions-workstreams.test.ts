@@ -75,6 +75,7 @@ function createDeps() {
     ),
   } as unknown as WorkstreamService;
   const sessionMetadataService = {
+    getMetadata: vi.fn(() => undefined),
     setProvider: vi.fn(async () => {}),
     setExecutor: vi.fn(async () => {}),
     setInitialPrompt: vi.fn(async () => {}),
@@ -137,7 +138,7 @@ describe("Session workstream routing", () => {
       expect.objectContaining({ text: "start here" }),
       undefined,
       expect.any(Object),
-      { projectId, workstreamId },
+      expect.objectContaining({ projectId, workstreamId }),
     );
     expect(sessionMetadataService.setWorkstream).toHaveBeenCalledWith(
       "session-started",
@@ -166,7 +167,7 @@ describe("Session workstream routing", () => {
       checkoutPath,
       undefined,
       expect.any(Object),
-      { projectId, workstreamId },
+      expect.objectContaining({ projectId, workstreamId }),
     );
     expect(sessionMetadataService.setWorkstream).toHaveBeenCalledWith(
       "session-created",
