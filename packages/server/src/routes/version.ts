@@ -47,6 +47,9 @@ import {
   TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   encodeCompactServerCapabilities,
+  encodeVersionedServerCapabilities,
+  negotiateServerCapabilityEncoding,
+  type CapabilityBitset,
   type ClientDefaults,
   type OptionalServerCapabilityBitset,
   type SessionSandboxAvailability,
@@ -279,8 +282,12 @@ export interface VersionInfo {
   resumeProtocolVersion: number;
   /** Coarse hosted remote UI/server compatibility level. */
   remoteCompatibilityLevel: number;
-  /** Legacy full capability names, returned unless compact-v1 is requested. */
+  /** Legacy full names for clients predating version-based ID negotiation. */
   capabilities?: string[];
+  /** Numeric capability encoding chosen for this client's version. */
+  capabilityEncoding?: number;
+  /** Explicit capability IDs not implied by `current`. */
+  capabilityBits?: CapabilityBitset;
   /** Sparse 32-bit words for optional capabilities in compact-v1 responses. */
   optionalCapabilityBits?: OptionalServerCapabilityBitset;
   /** Names not yet implied by the reported release, chiefly source builds. */
@@ -510,6 +517,12 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
   routes.get("/", async (c) => {
     const currentVersionInfo = await getCurrentVersionInfo();
     const current = currentVersionInfo.version;
+    const clientVersion =
+      c.req.query("clientVersion") ?? c.req.header("X-Yep-Client-Version");
+    const capabilityEncoding = negotiateServerCapabilityEncoding(
+      clientVersion,
+      current,
+    );
     const compactCapabilities = c.req.query("capabilities") === "compact-v1";
     const fresh =
       c.req.query("fresh") === "1" || c.req.query("fresh") === "true";
@@ -545,9 +558,11 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       installSource: currentVersionInfo.installSource,
       resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
       remoteCompatibilityLevel: REMOTE_COMPATIBILITY_LEVEL,
-      ...(compactCapabilities
-        ? encodeCompactServerCapabilities(capabilities, current)
-        : { capabilities }),
+      ...(capabilityEncoding
+        ? encodeVersionedServerCapabilities(capabilities, current)
+        : compactCapabilities
+          ? encodeCompactServerCapabilities(capabilities, current)
+          : { capabilities }),
       sessionSandboxing: sessionSandboxAvailability,
       voiceBackends,
       voiceBackendStatuses,

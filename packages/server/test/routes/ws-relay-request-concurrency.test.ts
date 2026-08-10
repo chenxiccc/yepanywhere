@@ -31,6 +31,72 @@ beforeEach(() => {
  * queue before its response is ready, exactly as it would over plain HTTP.
  */
 describe("WS relay request concurrency", () => {
+  it("records a direct client's versioned capability notification", async () => {
+    const state = createConnectionState();
+    state.connectionPolicy = "local_unrestricted";
+    state.authState = "authenticated";
+    const deps = {
+      app: new Hono<{ Bindings: HttpBindings }>(),
+      baseUrl: "http://localhost",
+      supervisor: {},
+      eventBus: {},
+      uploadManager: {},
+    } as unknown as RelayHandlerDeps;
+
+    await handleMessage(
+      { send: vi.fn(), close: vi.fn() },
+      new Map(),
+      new Map(),
+      state,
+      vi.fn(),
+      JSON.stringify({
+        type: "client_capabilities",
+        version: "0.7.1",
+        capabilityBits: [[0, 2]],
+        formats: [1, 5],
+      }),
+      deps,
+      {},
+    );
+
+    expect(state.clientVersion).toBe("0.7.1");
+    expect(state.clientCapabilityBits).toEqual([[0, 2]]);
+    expect(state.supportedFormats).toEqual(new Set([1, 5]));
+  });
+
+  it("forwards the connection client version to tunneled routes", async () => {
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    app.get("/api/client-version", (c) =>
+      c.json({ version: c.req.header("X-Yep-Client-Version") }),
+    );
+    const state = createConnectionState();
+    state.connectionPolicy = "local_unrestricted";
+    state.authState = "authenticated";
+    state.clientVersion = "0.7.1";
+    const ws = { send: vi.fn(), close: vi.fn() };
+
+    await handleRequest(
+      {
+        type: "request",
+        id: "client-version-request",
+        method: "GET",
+        path: "/api/client-version",
+      },
+      createSendFn(ws, state),
+      ws,
+      app,
+      "http://localhost",
+      state,
+    );
+
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] as string)).toMatchObject({
+      type: "response",
+      id: "client-version-request",
+      status: 200,
+      body: { version: "0.7.1" },
+    });
+  });
+
   it("preserves validated JSON bytes and Server-Timing", async () => {
     const rawBody = '{ "nested": [1, 2], "unicode": "雪" }\n';
     const app = new Hono<{ Bindings: HttpBindings }>();

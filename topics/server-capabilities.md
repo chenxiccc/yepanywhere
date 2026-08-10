@@ -1,45 +1,64 @@
-# Server Capabilities
+# Client And Server Capabilities
 
-> Server capabilities gate optional UI affordances and endpoint usage across
-> new-client / older-server combinations. `/api/version` retains its legacy
-> name list and also supports a negotiated compact representation: release-
-> implied monotonic capabilities, sparse optional-capability bits, and short
-> textual extensions for source builds ahead of their release version.
+> Capabilities gate optional behavior across independently updated clients and
+> servers. From 0.7.1 onward, official capabilities have permanent numeric IDs:
+> release semver implies monotonic support, while sparse bits report optional
+> or source-ahead support. Names remain registry metadata and legacy wire data.
 
 Topic: server-capabilities
 
 ## Source Of Truth
 
-The capability registry lives in
-`packages/shared/src/server-capabilities.ts`. It exports:
+The permanent global ID ledger lives in
+`packages/shared/src/capability-ids.ts`. The server registry in
+`packages/shared/src/server-capabilities.ts` adds lifecycle, advertisement,
+fallback, and route/field/event ownership metadata. Together they export:
 
 - the exact capability string constants;
 - lifecycle and advertisement metadata for each registered capability;
-- the durable optional-bit allocation ledger;
+- the durable client/server ID ledger and sparse-bit helpers;
 - a helper for checking a `/api/version`-style capability source.
 
-The registry metadata is compile-time/shared-code metadata. Do not require
-older servers to return registry metadata at runtime. An old server ignores the
-compact query and returns its existing `capabilities: string[]`; an old client
-sends no compact query and receives that same field from a new server.
+The first application notification on a direct WebSocket, and the first
+encrypted application notification after remote authentication, is
+`client_capabilities`. A 0.7.1+ client includes its `version`,
+its sparse `capabilityBits`, and the existing transport `formats`. Same-origin
+HTTP has no persistent connection state, so every API request carries the same
+value in `X-Yep-Client-Version`. A tunneled request inherits the version
+recorded on its connection.
 
-New clients request `GET /api/version?capabilities=compact-v1` (with `fresh=1`
-when needed). A supporting server omits the legacy list and returns:
+The server chooses the **newest encoding supported by both peers**. Encoding 1
+was introduced with the version-bearing 0.7.1 handshake. A missing or older
+client version selects the legacy name list; a 0.7.1+ client selects encoding
+1. A git-describe source build may still name the preceding release, so the
+newly present version field itself proves encoding-1 support for that source
+client. Future encodings add a later semantic-version cutover and the server
+chooses the highest cutover it implements that the client version reaches.
 
-- `current`, whose release semver implies every registry capability marked
-  `version-implied` with `introducedIn <= current`;
-- `optionalCapabilityBits`, an array of `[wordIndex, bits]` pairs. Empty
-  32-bit words are omitted, while each present word densely represents its 32
-  allocated indices;
-- `capabilityExtensions`, only when an advertised name is not yet implied by
-  `current`. The normal case is a source checkout ahead of the latest release
-  tag. Unknown extension names have no effect on older clients.
+An encoding-1 `/api/version` response omits the capability name list and
+returns:
 
-`serverHasCapability` accepts both representations. Explicit legacy or
-extension names take precedence, then the helper checks a known optional bit or
-the capability's `introducedIn` release. This union keeps partially released
-source builds truthful without making their last Git tag claim unreleased
-contracts.
+- `current`, whose release semver implies every `version-implied` server
+  capability with `introducedIn <= current`;
+- `capabilityEncoding: 1`;
+- `capabilityBits`, sparse `[wordIndex, bits]` pairs. Empty 32-bit words are
+  omitted. Bits explicitly report optional capabilities and monotonic
+  capabilities present in a source build ahead of its release semver.
+
+The same rule applies in the other direction: a server infers permanent client
+capabilities from the client's version and reads bits for optional or
+source-ahead client support. Transport `formats` retain their separate byte
+namespace; they are not capability IDs.
+
+No version-aware peer expects an official 0.7.1+ capability by name. Names are
+still useful in source, diagnostics, and the legacy `capabilities: string[]`
+fallback. The earlier `compact-v1` query, `optionalCapabilityBits`, and
+`capabilityExtensions` remain readable for compatibility with intermediate
+source builds, but new clients do not negotiate that representation.
+
+`serverHasCapability` accepts release implication, encoding-1 IDs, and both
+legacy representations. This union keeps old installed servers usable without
+making a new capability depend on its textual name.
 
 Every capability string advertised from `/api/version` should have a registry
 entry, including permanent static features and dynamic environment/state
@@ -112,28 +131,54 @@ Advertisement is independent from lifecycle:
   server version and its own registry; capabilities introduced after that
   client's build are unknown and irrelevant to it.
 - `optional-bit` is for support that may be disabled, removed, host-dependent,
-  or installation-dependent. Its allocated index is stable forever, including
-  after the capability is retired. Never renumber or reuse a ledger entry.
+  or installation-dependent. Its allocated ID is sent whenever support is
+  present; the ID remains reserved after retirement.
 - `scoped` is for a capability advertised by another payload rather than global
   `/api/version`, such as one immutable public-share representation. It remains
-  an explicit name in that owning payload.
+  an explicit representation name in that owning payload and is outside the
+  global client/server ID namespace.
 
-Optional bit allocations are chronological within their introducing release:
+IDs are global across both directions, chronological within the introducing
+release, and never renumbered or reused. Every global capability introduced in
+0.7.1 or later requires one, including a permanent capability normally implied
+by release version. This lets a source build report the capability numerically
+before its release semver can imply it. The 0.6.x optional-bit assignments seed
+the same ledger:
 
-| Index | Introduced | Capability |
-| ---: | :---: | --- |
-| 0 | 0.6.0 | `voiceInput` |
-| 1 | 0.6.0 | `deviceBridge-available` |
-| 2 | 0.6.0 | `deviceBridge` |
-| 3 | 0.6.0 | `deviceBridge-download` |
-| 4 | 0.6.0 | `deviceBridge-update` |
-| 5 | 0.6.3 | `browser-settings-backup` |
-| 6 | 0.7.1 | `security-client-audit-v1` |
-| 7 | 0.7.1 | `reload-safe-codex-runtime` |
-| 8 | 0.7.1 | `session-sandboxing` |
+| ID | Direction | Introduced | Capability |
+| ---: | :---: | :---: | --- |
+| 0 | server | 0.6.0 | `voiceInput` |
+| 1 | server | 0.6.0 | `deviceBridge-available` |
+| 2 | server | 0.6.0 | `deviceBridge` |
+| 3 | server | 0.6.0 | `deviceBridge-download` |
+| 4 | server | 0.6.0 | `deviceBridge-update` |
+| 5 | server | 0.6.3 | `browser-settings-backup` |
+| 6 | server | 0.7.1 | `security-client-audit-v1` |
+| 7 | server | 0.7.1 | `reload-safe-codex-runtime` |
+| 8 | server | 0.7.1 | `session-sandboxing` |
+| 9 | server | 0.7.1 | `public-share-management` |
+| 10 | server | 0.7.1 | `glossary-tooltips` |
+| 11 | server | 0.7.1 | `progressive-session-catalog` |
+| 12 | server | 0.7.1 | `project-directory-storage-policy` |
+| 13 | server | 0.7.1 | `idle-reap-hours-setting` |
+| 14 | server | 0.7.1 | `tool-result-media-preservation-policy` |
+| 15 | server | 0.7.1 | `git-dirty-file-editor` |
+| 16 | server | 0.7.1 | `git-source-review` |
+| 17 | server | 0.7.1 | `git-source-review-submissions` |
+| 18 | server | 0.7.1 | `git-source-review-projections` |
+| 19 | server | 0.7.1 | `claude-gateway` |
+| 20 | server | 0.7.1 | `claude-gateway-autostart` |
+| 21 | server | 0.7.1 | `claude-gateway-disable-agent` |
+| 22 | server | 0.7.1 | `provider-subscription-usage` |
+| 23 | server | 0.7.1 | `reload-safe-codex-runtime-settings` |
+| 24 | server | 0.7.1 | `host-agent-process-observability` |
+| 25 | server | 0.7.1 | `session-sandboxing-status` |
+| 26 | server | 0.7.1 | `project-session-defaults` |
+| 27 | server | 0.7.1 | `sidebar-session-resume` |
+| 28 | server | 0.7.1 | `session-fork-turn-intents` |
 
-The code ledger, rather than this rendering, is authoritative. Retired rows
-stay in that ledger as reserved indices.
+The code ledger is authoritative. The next client or server capability takes
+ID 29; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 
@@ -278,15 +323,16 @@ unchanged. The complete UI and timing contract is in
 shared registry. Static capabilities can be included directly. Dynamic
 capabilities, such as environment-backed integrations, still use registry
 constants but decide at runtime whether to advertise them. The version route
-passes the resulting name set through `encodeCompactServerCapabilities` only
-after the client explicitly negotiates `compact-v1`; otherwise it returns the
-complete legacy name list.
+uses the client version to select the newest mutual encoding, then passes the
+resulting name set through the matching encoder. Clients without a version get
+the complete legacy name list.
 
 Do not hand-write raw capability strings in the version route when a registry
-constant exists. A new monotonic contract gets `version-implied` advertisement
-metadata. A new dynamic or removable contract first gets the next never-used
-entry in `OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS`, then references that
-index from its registry definition.
+constant exists. Every new global client or server capability first gets the
+next never-used entry in `CAPABILITY_ID_ALLOCATIONS`. A monotonic server
+contract then gets `version-implied` advertisement metadata; a dynamic or
+removable contract gets `optional-bit`. Both registry definitions reference
+the allocated global ID.
 
 ### Snapshot delivery
 
@@ -315,9 +361,11 @@ above.
 
 Client code should use `serverHasCapability` with registry constants or domain
 helpers rather than inspecting names, bits, or semver directly. The helper
-handles old-server name arrays, source-build extensions, optional bits, and
-release implication. Missing transitional capabilities mean "hide or degrade
-the optional feature," not "the server is broken."
+handles old-server name arrays, intermediate compact responses, global ID bits,
+and release implication. Fixtures for 0.7.1+ capabilities should use a server
+version or allocated bit rather than constructing a capability-name list.
+Missing transitional capabilities mean "hide or degrade the optional feature,"
+not "the server is broken."
 
 For visible controls, prefer gating before rendering. A defensive request error
 path is still useful, but it should not be the primary compatibility behavior.
@@ -336,12 +384,13 @@ Periodically audit transitional capabilities:
    code depends on it.
 
 `pnpm capabilities:audit` lists due transitional capabilities, rejects raw
-capability checks outside registry constants/helpers, validates unique durable
-optional-bit allocations and their introduction versions, and verifies that
-every route declared by a capability-owned route module is present in that
-capability's route contract (and vice versa). CI runs the audit. New capability-
-owned feature families should list their route modules in registry metadata so
-later route additions cannot silently escape the advertisement.
+capability checks outside registry constants/helpers, validates global ID
+uniqueness and the 0.7.1 allocation floor, checks optional-bit aliases, and
+verifies that every route declared by a capability-owned route module is
+present in that capability's route contract (and vice versa). CI runs the
+audit. New capability-owned feature families should list their route modules
+in registry metadata so later route additions cannot silently escape the
+advertisement.
 
 The audit complements, rather than replaces, released-server behavior
 fixtures. A capability may be registered perfectly while the client still

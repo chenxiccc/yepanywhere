@@ -42,6 +42,7 @@ import {
   isSrpSessionResumed,
 } from "@yep-anywhere/shared";
 import { getRelayDebugEnabled } from "../../hooks/useDeveloperMode";
+import { getClientVersion } from "../clientVersion";
 import { getOrCreateBrowserProfileId } from "../storageKeys";
 import type { ConnectionManager } from "./ConnectionManager";
 import {
@@ -1476,6 +1477,8 @@ export class SecureConnection implements Connection {
 
     const msg: ClientCapabilities = {
       type: "client_capabilities",
+      version: getClientVersion(),
+      capabilityBits: [],
       formats: formats as ClientCapabilities["formats"],
     };
 

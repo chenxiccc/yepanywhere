@@ -9,6 +9,7 @@ import type {
 import {
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   VOICE_INPUT_CAPABILITY,
+  hasServerCapabilityAdvertisement,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
@@ -2606,9 +2607,8 @@ export function MessageInputToolbar({
   const showStopButton = !!(isRunning && onStop && isThinking && !canSend);
   const showSendButton = !!(onSend && (!showStopButton || canSend));
   const serverVoiceEnabled =
-    versionInfo?.capabilities === undefined
-      ? true
-      : serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
+    !hasServerCapabilityAdvertisement(versionInfo) ||
+    serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
   const speechMethodOptions = useMemo((): FilterOption<SpeechMethodId>[] => {
     const serverBackends = versionInfo?.voiceBackends ?? [];

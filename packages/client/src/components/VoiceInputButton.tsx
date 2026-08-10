@@ -1,5 +1,6 @@
 import {
   VOICE_INPUT_CAPABILITY,
+  hasServerCapabilityAdvertisement,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
@@ -190,9 +191,8 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     followUpListenMs,
   } = useSpeechCaptureSettings();
   const serverVoiceEnabled =
-    versionInfo?.capabilities === undefined
-      ? true
-      : serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
+    !hasServerCapabilityAdvertisement(versionInfo) ||
+    serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
   const speechMethod = useMemo(() => {
     const resolved =
       selectedSpeechMethod !== undefined

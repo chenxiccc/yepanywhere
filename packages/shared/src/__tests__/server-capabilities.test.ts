@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CAPABILITY_ID_ALLOCATIONS,
+  CAPABILITY_ID_ENCODING_VERSION,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
@@ -7,10 +9,23 @@ import {
   VOICE_INPUT_CAPABILITY,
   encodeCompactServerCapabilities,
   encodeOptionalServerCapabilityBits,
+  encodeVersionedServerCapabilities,
+  hasServerCapabilityAdvertisement,
+  negotiateServerCapabilityEncoding,
   serverHasCapability,
 } from "../index.js";
 
 describe("server capability advertisements", () => {
+  it("distinguishes absent legacy advertisements from empty ID sets", () => {
+    expect(hasServerCapabilityAdvertisement({ current: "0.7.0" })).toBe(false);
+    expect(
+      hasServerCapabilityAdvertisement({
+        capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+        capabilityBits: [],
+      }),
+    ).toBe(true);
+  });
+
   it("infers monotonic capabilities from the server release", () => {
     expect(
       serverHasCapability(
@@ -69,6 +84,52 @@ describe("server capability advertisements", () => {
       optionalCapabilityBits: [[0, 1]],
       capabilityExtensions: [PROJECT_SESSION_DEFAULTS_CAPABILITY],
     });
+  });
+
+  it("encodes source-ahead capabilities by permanent ID", () => {
+    const capabilities = [
+      PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      VOICE_INPUT_CAPABILITY,
+    ];
+
+    expect(encodeVersionedServerCapabilities(capabilities, "0.7.1")).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[0, 1]],
+    });
+
+    const sourceAdvertisement = encodeVersionedServerCapabilities(
+      capabilities,
+      "0.7.0-741-gabcdef",
+    );
+    expect(sourceAdvertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [
+        [0, 2 ** CAPABILITY_ID_ALLOCATIONS.projectSessionDefaults.id + 1],
+      ],
+    });
+    expect(
+      serverHasCapability(
+        { current: "0.7.0-741-gabcdef", ...sourceAdvertisement },
+        PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      ),
+    ).toBe(true);
+  });
+
+  it("chooses the newest mutually supported capability encoding", () => {
+    expect(negotiateServerCapabilityEncoding(undefined, "0.7.1")).toBeNull();
+    expect(negotiateServerCapabilityEncoding("0.7.0", "0.7.1")).toBeNull();
+    expect(negotiateServerCapabilityEncoding("0.7.1-beta.1", "0.7.1")).toBe(
+      CAPABILITY_ID_ENCODING_VERSION,
+    );
+    expect(
+      negotiateServerCapabilityEncoding(
+        "0.7.0-741-gabcdef",
+        "0.7.0-750-g1234567",
+      ),
+    ).toBe(CAPABILITY_ID_ENCODING_VERSION);
+    expect(negotiateServerCapabilityEncoding("99.0.0", "0.7.1")).toBe(
+      CAPABILITY_ID_ENCODING_VERSION,
+    );
   });
 
   it("keeps legacy and scoped capability-name checks", () => {

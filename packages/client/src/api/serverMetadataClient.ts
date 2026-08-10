@@ -1,4 +1,5 @@
 import type {
+  CapabilityBitset,
   ClientDefaults,
   OptionalServerCapabilityBitset,
   SessionSandboxAvailability,
@@ -17,6 +18,10 @@ export interface VersionInfo {
   remoteCompatibilityLevel?: number;
   /** Feature capabilities supported by the server. Undefined on older servers. */
   capabilities?: string[];
+  /** Negotiated numeric capability representation. */
+  capabilityEncoding?: number;
+  /** Explicit capability IDs not implied by `current`. */
+  capabilityBits?: CapabilityBitset;
   /** Compact sparse words for optional capabilities. Undefined on older servers. */
   optionalCapabilityBits?: OptionalServerCapabilityBitset;
   /** Capability names not implied by the reported release. */
@@ -92,11 +97,7 @@ export interface GetVersionOptions {
 
 export const serverMetadataApi = {
   getVersion: (options?: GetVersionOptions) =>
-    fetchJSON<VersionInfo>(
-      options?.fresh
-        ? "/version?fresh=1&capabilities=compact-v1"
-        : "/version?capabilities=compact-v1",
-    ),
+    fetchJSON<VersionInfo>(options?.fresh ? "/version?fresh=1" : "/version"),
 
   getServerInfo: () => fetchJSON<ServerInfo>("/server-info"),
 

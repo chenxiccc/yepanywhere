@@ -256,6 +256,7 @@ describe("WebSocket Message Router", () => {
   it("routes message handlers and returns 500 response on handler failure", async () => {
     const send = vi.fn();
     const handlers = {
+      onClientCapabilities: vi.fn(async () => undefined),
       onRequest: vi.fn(async () => {
         throw new Error("boom");
       }),
@@ -285,10 +286,36 @@ describe("WebSocket Message Router", () => {
     });
   });
 
+  it("routes a versioned client capability notification", async () => {
+    const onClientCapabilities = vi.fn(async () => undefined);
+    const handlers = {
+      onClientCapabilities,
+      onRequest: vi.fn(async () => undefined),
+      onSubscribe: vi.fn(async () => undefined),
+      onUnsubscribe: vi.fn(async () => undefined),
+      onUploadStart: vi.fn(async () => undefined),
+      onStagedUploadStart: vi.fn(async () => undefined),
+      onUploadChunk: vi.fn(async () => undefined),
+      onUploadEnd: vi.fn(async () => undefined),
+      onPing: vi.fn(async () => undefined),
+    };
+    const message: RemoteClientMessage = {
+      type: "client_capabilities",
+      version: "0.7.1",
+      capabilityBits: [],
+      formats: [BinaryFormat.JSON, BinaryFormat.TRANSPORT_CHUNK],
+    };
+
+    await routeClientMessageSafely(message, vi.fn(), handlers);
+
+    expect(onClientCapabilities).toHaveBeenCalledWith(message);
+  });
+
   it("routes emulator signaling messages to onDeviceMessage", async () => {
     const send = vi.fn();
     const onDeviceMessage = vi.fn(async () => undefined);
     const handlers = {
+      onClientCapabilities: vi.fn(async () => undefined),
       onRequest: vi.fn(async () => undefined),
       onSubscribe: vi.fn(async () => undefined),
       onUnsubscribe: vi.fn(async () => undefined),

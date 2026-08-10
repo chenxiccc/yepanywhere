@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import {
-  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
-  PROJECT_QUEUE_CAPABILITY,
-} from "@yep-anywhere/shared";
+import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +29,9 @@ const {
   versionState: {
     version: { capabilities: [] as string[] } as {
       capabilities?: string[];
+      capabilityEncoding?: number;
+      capabilityBits?: readonly (readonly [number, number])[];
+      current?: string;
     },
   },
   serverSettingsState: {
@@ -489,7 +489,9 @@ describe("InboxContent", () => {
 
   it("renders capability-gated unread review outcome cards", async () => {
     versionState.version = {
-      capabilities: [GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY],
+      current: "0.7.1",
+      capabilityEncoding: 1,
+      capabilityBits: [],
     };
     serverSettingsState.settings = {
       publicSharesEnabled: false,

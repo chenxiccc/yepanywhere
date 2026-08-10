@@ -510,6 +510,9 @@ export {
   VOICE_INPUT_CAPABILITY,
   encodeCompactServerCapabilities,
   encodeOptionalServerCapabilityBits,
+  encodeVersionedServerCapabilities,
+  hasServerCapabilityAdvertisement,
+  negotiateServerCapabilityEncoding,
   serverHasCapability,
   type CompactServerCapabilityAdvertisement,
   type OptionalServerCapabilityBitset,
@@ -519,7 +522,20 @@ export {
   type ServerCapabilityKind,
   type ServerCapabilityName,
   type ServerCapabilitySource,
+  type VersionedServerCapabilityAdvertisement,
 } from "./server-capabilities.js";
+
+export {
+  CAPABILITY_ID_ALLOCATIONS,
+  CAPABILITY_ID_ENCODING_INTRODUCED_IN,
+  CAPABILITY_ID_ENCODING_VERSION,
+  capabilityBitIsSet,
+  encodeCapabilityIds,
+  isCapabilityBitset,
+  type CapabilityBitset,
+  type CapabilityDirection,
+  type CapabilityIdAllocation,
+} from "./capability-ids.js";
 
 export {
   DEFAULT_IDLE_REAP_HOURS,

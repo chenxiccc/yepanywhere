@@ -1,4 +1,5 @@
 import {
+  CAPABILITY_ID_ENCODING_VERSION,
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
@@ -297,6 +298,44 @@ describe("GET /version", () => {
     expect(serverHasCapability(version, PROJECT_QUEUE_CAPABILITY)).toBe(true);
     expect(serverHasCapability(version, VOICE_INPUT_CAPABILITY)).toBe(true);
     expect(serverHasCapability(version, DEVICE_BRIDGE_CAPABILITY)).toBe(false);
+  });
+
+  it("selects ID capabilities from the client semantic version", async () => {
+    mockFetch(() => new Response(null, { status: 204 }));
+
+    const { createVersionRoutes } = await importVersion();
+    const routes = createVersionRoutes({
+      getSessionSandboxAvailability: async () => ({
+        state: "unsupported-platform",
+        platform: "darwin",
+      }),
+    });
+    const response = await routes.request("/", {
+      headers: { "X-Yep-Client-Version": "0.7.1" },
+    });
+    const version = await response.json();
+
+    expect(version.capabilities).toBeUndefined();
+    expect(version.capabilityEncoding).toBe(CAPABILITY_ID_ENCODING_VERSION);
+    expect(Array.isArray(version.capabilityBits)).toBe(true);
+    expect(serverHasCapability(version, PROJECT_QUEUE_CAPABILITY)).toBe(true);
+    expect(serverHasCapability(version, VOICE_INPUT_CAPABILITY)).toBe(true);
+    expect(serverHasCapability(version, DEVICE_BRIDGE_CAPABILITY)).toBe(false);
+  });
+
+  it("keeps legacy names for a pre-ID client version", async () => {
+    mockFetch(() => new Response(null, { status: 204 }));
+
+    const { createVersionRoutes } = await importVersion();
+    const routes = createVersionRoutes();
+    const response = await routes.request("/", {
+      headers: { "X-Yep-Client-Version": "0.7.0" },
+    });
+    const version = await response.json();
+
+    expect(version.capabilityEncoding).toBeUndefined();
+    expect(version.capabilityBits).toBeUndefined();
+    expect(version.capabilities).toContain(PROJECT_QUEUE_CAPABILITY);
   });
 
   it("reports configured speech backends while validation is pending", async () => {

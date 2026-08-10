@@ -26,6 +26,7 @@ describe("fetchPlainJSON", () => {
     const headers = new Headers(init?.headers);
     expect(headers.get("content-type")).toBe("application/json");
     expect(headers.get("x-yep-anywhere")).toBe("true");
+    expect(headers.get("x-yep-client-version")).toBe("unknown");
     expect(headers.get("x-desktop-token")).toBe("desktop-secret");
   });
 

@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import type { HttpBindings } from "@hono/node-server";
 import type {
   BinaryFormatValue,
+  CapabilityBitset,
   OriginMetadata,
   RelayRequest,
   RelayUploadError,
@@ -175,6 +176,10 @@ export interface ConnectionState extends WsTransportAuthState {
   useBinaryFrames: boolean;
   /** Client's supported binary formats (Phase 3 capabilities) - defaults to [0x01] */
   supportedFormats: Set<BinaryFormatValue>;
+  /** Client build version learned from the first application notification. */
+  clientVersion: string | null;
+  /** Explicit client capability IDs not implied by clientVersion. */
+  clientCapabilityBits: CapabilityBitset;
   /** Browser profile ID from SRP hello (for session tracking) */
   browserProfileId: string | null;
   /** Origin metadata from SRP hello (for session tracking) */
@@ -385,6 +390,8 @@ export function createConnectionState(options?: {
     peerAddress: options?.peerAddress ?? null,
     useBinaryFrames: false,
     supportedFormats: new Set([BinaryFormat.JSON]),
+    clientVersion: null,
+    clientCapabilityBits: [],
     browserProfileId: null,
     originMetadata: null,
     pendingResumeChallenge: null,
@@ -742,6 +749,9 @@ export async function handleRequest(
     requestHeaders.delete("Accept-Encoding");
     requestHeaders.set("X-Yep-Anywhere", "true");
     requestHeaders.set("X-Ws-Relay", "true");
+    if (connState.clientVersion) {
+      requestHeaders.set("X-Yep-Client-Version", connState.clientVersion);
+    }
     if (request.body !== undefined) {
       requestHeaders.set("Content-Type", "application/json");
     }
@@ -1944,6 +1954,14 @@ export async function handleMessage(
 
   const routeClientMessage = async (msg: RemoteClientMessage): Promise<void> =>
     routeClientMessageSafely(msg, send, {
+      onClientCapabilities: (capabilities) => {
+        connState.supportedFormats = new Set(capabilities.formats);
+        connState.clientVersion = capabilities.version ?? null;
+        connState.clientCapabilityBits = capabilities.capabilityBits ?? [];
+        console.log(
+          `[WS Relay] Client capabilities: version=${connState.clientVersion ?? "legacy"}, formats=${[...connState.supportedFormats].map((format) => `0x${format.toString(16).padStart(2, "0")}`).join(", ")}`,
+        );
+      },
       onRequest: async (requestMsg) => {
         // Tunneled HTTP requests are independent: each carries its own id and
         // handleRequest always answers (it never throws). Do not await here —

@@ -58,6 +58,7 @@ describe("WebSocket glossary subscriptions", () => {
     const subscriptions = new Map<string, () => void>();
     const send = vi.fn();
     const handlers = {
+      onClientCapabilities: vi.fn(async () => {}),
       onRequest: vi.fn(async () => {}),
       onSubscribe: vi.fn((message) =>
         handleGlossarySubscribe(subscriptions, message, send, manager),

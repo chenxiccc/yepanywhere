@@ -19,6 +19,7 @@ import type {
   DeviceWebRTCOffer,
 } from "./devices.js";
 import type { StagedAttachmentRef, UploadedFile } from "./upload.js";
+import { isCapabilityBitset, type CapabilityBitset } from "./capability-ids.js";
 
 // Re-export OriginMetadata for convenience
 export type { OriginMetadata } from "./connection.js";
@@ -159,7 +160,7 @@ export interface RelaySpeechEvent {
 import type { BinaryFormatValue } from "./binary-framing.js";
 
 /**
- * Client -> Server: Declare supported binary formats.
+ * Client -> Server: Identify the client and declare transport capabilities.
  *
  * Sent immediately after SRP authentication completes (first encrypted message).
  * Server records supported formats and uses them for outgoing messages.
@@ -167,6 +168,10 @@ import type { BinaryFormatValue } from "./binary-framing.js";
  */
 export interface ClientCapabilities {
   type: "client_capabilities";
+  /** YA client version. Added by the 0.7.1 ID protocol. */
+  version?: string;
+  /** Explicit client capability IDs not implied by `version`. */
+  capabilityBits?: CapabilityBitset;
   /** Supported format bytes (e.g., [0x01, 0x02, 0x03]) */
   formats: BinaryFormatValue[];
 }
@@ -179,7 +184,12 @@ export function isClientCapabilities(msg: unknown): msg is ClientCapabilities {
     typeof msg === "object" &&
     msg !== null &&
     (msg as { type?: unknown }).type === "client_capabilities" &&
-    Array.isArray((msg as { formats?: unknown }).formats)
+    Array.isArray((msg as { formats?: unknown }).formats) &&
+    ((msg as { version?: unknown }).version === undefined ||
+      (typeof (msg as { version?: unknown }).version === "string" &&
+        (msg as { version: string }).version.trim().length > 0)) &&
+    ((msg as { capabilityBits?: unknown }).capabilityBits === undefined ||
+      isCapabilityBitset((msg as { capabilityBits?: unknown }).capabilityBits))
   );
 }
 

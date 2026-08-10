@@ -1,4 +1,7 @@
-import type { RemoteClientMessage } from "@yep-anywhere/shared";
+import type {
+  ClientCapabilities,
+  RemoteClientMessage,
+} from "@yep-anywhere/shared";
 import {
   BinaryEnvelopeError,
   BinaryFormat,
@@ -153,14 +156,6 @@ export async function decodeFrameToParsedMessage(
             return null;
           }
 
-          if (isClientCapabilities(msg)) {
-            connState.supportedFormats = new Set(msg.formats);
-            console.log(
-              `[WS Relay] Client capabilities: formats=${[...connState.supportedFormats].map((f) => `0x${f.toString(16).padStart(2, "0")}`).join(", ")}`,
-            );
-            return null;
-          }
-
           await routeClientMessage(msg);
           return null;
         } catch {
@@ -287,6 +282,7 @@ export async function decodeFrameToParsedMessage(
 }
 
 interface MessageRouteHandlers {
+  onClientCapabilities: (msg: ClientCapabilities) => Promise<void> | void;
   onRequest: (msg: RemoteClientMessage & { type: "request" }) => Promise<void>;
   onSubscribe: (
     msg: RemoteClientMessage & { type: "subscribe" },
@@ -345,6 +341,13 @@ export async function routeClientMessageSafely(
 ): Promise<void> {
   try {
     switch (msg.type) {
+      case "client_capabilities":
+        if (!isClientCapabilities(msg)) {
+          console.warn("[WS Relay] Invalid client capabilities message");
+          break;
+        }
+        await handlers.onClientCapabilities(msg);
+        break;
       case "request":
         await handlers.onRequest(msg);
         break;

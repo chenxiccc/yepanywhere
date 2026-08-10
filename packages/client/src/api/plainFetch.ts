@@ -1,4 +1,5 @@
 import { authEvents } from "../lib/authEvents";
+import { getClientVersion } from "../lib/clientVersion";
 
 export const API_BASE = "/api";
 
@@ -59,6 +60,7 @@ function createPlainFetchHeaders(
     {
       "Content-Type": "application/json",
       "X-Yep-Anywhere": "true",
+      "X-Yep-Client-Version": getClientVersion(),
       ...(token ? { "X-Desktop-Token": token } : {}),
     },
     headers,

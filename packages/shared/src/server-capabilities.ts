@@ -1,52 +1,70 @@
 import { PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY } from "./public-shares.js";
 import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
+import {
+  CAPABILITY_ID_ALLOCATIONS,
+  CAPABILITY_ID_ENCODING_INTRODUCED_IN,
+  CAPABILITY_ID_ENCODING_VERSION,
+  capabilityBitIsSet,
+  encodeCapabilityIds,
+  type CapabilityBitset,
+} from "./capability-ids.js";
 
 export type ServerCapabilityKind = "permanent" | "transitional";
 
 export const OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS = {
-  voiceInput: { name: "voiceInput", index: 0, introducedIn: "0.6.0" },
-  deviceBridgeAvailable: {
-    name: "deviceBridge-available",
-    index: 1,
+  voiceInput: {
+    name: "voiceInput",
+    index: CAPABILITY_ID_ALLOCATIONS.voiceInput.id,
     introducedIn: "0.6.0",
   },
-  deviceBridge: { name: "deviceBridge", index: 2, introducedIn: "0.6.0" },
+  deviceBridgeAvailable: {
+    name: "deviceBridge-available",
+    index: CAPABILITY_ID_ALLOCATIONS.deviceBridgeAvailable.id,
+    introducedIn: "0.6.0",
+  },
+  deviceBridge: {
+    name: "deviceBridge",
+    index: CAPABILITY_ID_ALLOCATIONS.deviceBridge.id,
+    introducedIn: "0.6.0",
+  },
   deviceBridgeDownload: {
     name: "deviceBridge-download",
-    index: 3,
+    index: CAPABILITY_ID_ALLOCATIONS.deviceBridgeDownload.id,
     introducedIn: "0.6.0",
   },
   deviceBridgeUpdate: {
     name: "deviceBridge-update",
-    index: 4,
+    index: CAPABILITY_ID_ALLOCATIONS.deviceBridgeUpdate.id,
     introducedIn: "0.6.0",
   },
   browserSettingsBackup: {
     name: "browser-settings-backup",
-    index: 5,
+    index: CAPABILITY_ID_ALLOCATIONS.browserSettingsBackup.id,
     introducedIn: "0.6.3",
   },
   securityClientAudit: {
     name: SECURITY_CLIENT_AUDIT_CAPABILITY,
-    index: 6,
+    index: CAPABILITY_ID_ALLOCATIONS.securityClientAudit.id,
     introducedIn: "0.7.1",
   },
   reloadSafeCodexRuntime: {
     name: "reload-safe-codex-runtime",
-    index: 7,
+    index: CAPABILITY_ID_ALLOCATIONS.reloadSafeCodexRuntime.id,
     introducedIn: "0.7.1",
   },
   sessionSandboxing: {
     name: "session-sandboxing",
-    index: 8,
+    index: CAPABILITY_ID_ALLOCATIONS.sessionSandboxing.id,
     introducedIn: "0.7.1",
   },
 } as const;
 
-export type OptionalServerCapabilityBitset = readonly (readonly [
-  wordIndex: number,
-  bits: number,
-])[];
+export type OptionalServerCapabilityBitset = CapabilityBitset;
+
+export interface VersionedServerCapabilityAdvertisement {
+  capabilityEncoding: typeof CAPABILITY_ID_ENCODING_VERSION;
+  capabilityBits: CapabilityBitset;
+}
 
 export interface CompactServerCapabilityAdvertisement {
   optionalCapabilityBits: OptionalServerCapabilityBitset;
@@ -61,6 +79,8 @@ export type ServerCapabilityAdvertisement =
 export interface ServerCapabilitySource {
   current?: string;
   capabilities?: readonly string[];
+  capabilityEncoding?: number;
+  capabilityBits?: CapabilityBitset;
   optionalCapabilityBits?: OptionalServerCapabilityBitset;
   capabilityExtensions?: readonly string[];
 }
@@ -78,6 +98,8 @@ export interface ServerCapabilityTransitionalLifecycle {
 }
 
 export interface ServerCapabilityDefinition {
+  /** Stable global ID. Required for global capabilities introduced in 0.7.1+. */
+  id?: number;
   name: string;
   kind: ServerCapabilityKind;
   area:
@@ -141,6 +163,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   publicShareManagement: {
+    id: CAPABILITY_ID_ALLOCATIONS.publicShareManagement.id,
     name: "public-share-management",
     kind: "permanent",
     area: "remoteAccess",
@@ -170,6 +193,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   glossaryTooltips: {
+    id: CAPABILITY_ID_ALLOCATIONS.glossaryTooltips.id,
     name: "glossary-tooltips",
     kind: "permanent",
     area: "rendering",
@@ -200,6 +224,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   progressiveSessionCatalog: {
+    id: CAPABILITY_ID_ALLOCATIONS.progressiveSessionCatalog.id,
     name: "progressive-session-catalog",
     kind: "permanent",
     area: "sessions",
@@ -225,6 +250,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   projectDirectoryStoragePolicy: {
+    id: CAPABILITY_ID_ALLOCATIONS.projectDirectoryStoragePolicy.id,
     name: "project-directory-storage-policy",
     kind: "permanent",
     area: "settings",
@@ -246,6 +272,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   idleReapHoursSetting: {
+    id: CAPABILITY_ID_ALLOCATIONS.idleReapHoursSetting.id,
     name: "idle-reap-hours-setting",
     kind: "permanent",
     area: "settings",
@@ -267,6 +294,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   toolResultMediaPreservationPolicy: {
+    id: CAPABILITY_ID_ALLOCATIONS.toolResultMediaPreservationPolicy.id,
     name: "tool-result-media-preservation-policy",
     kind: "permanent",
     area: "settings",
@@ -398,6 +426,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   gitDirtyFileEditor: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitDirtyFileEditor.id,
     name: "git-dirty-file-editor",
     kind: "permanent",
     area: "gitStatus",
@@ -421,6 +450,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   gitSourceReview: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitSourceReview.id,
     name: "git-source-review",
     kind: "permanent",
     area: "gitStatus",
@@ -460,6 +490,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   gitSourceReviewSubmissions: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitSourceReviewSubmissions.id,
     name: "git-source-review-submissions",
     kind: "permanent",
     area: "gitStatus",
@@ -504,6 +535,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   gitSourceReviewProjections: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitSourceReviewProjections.id,
     name: "git-source-review-projections",
     kind: "transitional",
     area: "gitStatus",
@@ -562,6 +594,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   securityClientAudit: {
+    id: CAPABILITY_ID_ALLOCATIONS.securityClientAudit.id,
     name: SECURITY_CLIENT_AUDIT_CAPABILITY,
     kind: "permanent",
     area: "security",
@@ -595,6 +628,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   browserSettingsBackup: {
+    id: CAPABILITY_ID_ALLOCATIONS.browserSettingsBackup.id,
     name: "browser-settings-backup",
     kind: "permanent",
     area: "settings",
@@ -651,6 +685,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   claudeGateway: {
+    id: CAPABILITY_ID_ALLOCATIONS.claudeGateway.id,
     name: "claude-gateway",
     kind: "transitional",
     area: "providers",
@@ -675,6 +710,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   claudeGatewayAutostart: {
+    id: CAPABILITY_ID_ALLOCATIONS.claudeGatewayAutostart.id,
     name: "claude-gateway-autostart",
     kind: "transitional",
     area: "providers",
@@ -699,6 +735,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   claudeGatewayDisableAgent: {
+    id: CAPABILITY_ID_ALLOCATIONS.claudeGatewayDisableAgent.id,
     name: "claude-gateway-disable-agent",
     kind: "transitional",
     area: "providers",
@@ -723,6 +760,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   providerSubscriptionUsage: {
+    id: CAPABILITY_ID_ALLOCATIONS.providerSubscriptionUsage.id,
     name: "provider-subscription-usage",
     kind: "transitional",
     area: "providers",
@@ -746,6 +784,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   reloadSafeCodexRuntimeSettings: {
+    id: CAPABILITY_ID_ALLOCATIONS.reloadSafeCodexRuntimeSettings.id,
     name: "reload-safe-codex-runtime-settings",
     kind: "permanent",
     area: "providers",
@@ -771,6 +810,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   reloadSafeCodexRuntime: {
+    id: CAPABILITY_ID_ALLOCATIONS.reloadSafeCodexRuntime.id,
     name: "reload-safe-codex-runtime",
     kind: "permanent",
     area: "providers",
@@ -870,6 +910,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   hostAgentProcessObservability: {
+    id: CAPABILITY_ID_ALLOCATIONS.hostAgentProcessObservability.id,
     name: "host-agent-process-observability",
     kind: "permanent",
     area: "localAccess",
@@ -901,6 +942,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   sessionSandboxing: {
+    id: CAPABILITY_ID_ALLOCATIONS.sessionSandboxing.id,
     name: "session-sandboxing",
     kind: "permanent",
     area: "localAccess",
@@ -953,6 +995,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   sessionSandboxingStatus: {
+    id: CAPABILITY_ID_ALLOCATIONS.sessionSandboxingStatus.id,
     name: "session-sandboxing-status",
     kind: "permanent",
     area: "localAccess",
@@ -1003,6 +1046,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   projectSessionDefaults: {
+    id: CAPABILITY_ID_ALLOCATIONS.projectSessionDefaults.id,
     name: "project-session-defaults",
     kind: "permanent",
     area: "settings",
@@ -1035,6 +1079,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   sidebarSessionResume: {
+    id: CAPABILITY_ID_ALLOCATIONS.sidebarSessionResume.id,
     name: "sidebar-session-resume",
     kind: "permanent",
     area: "sessions",
@@ -1082,6 +1127,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   voiceInput: {
+    id: CAPABILITY_ID_ALLOCATIONS.voiceInput.id,
     name: "voiceInput",
     kind: "permanent",
     area: "speech",
@@ -1115,6 +1161,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   deviceBridgeAvailable: {
+    id: CAPABILITY_ID_ALLOCATIONS.deviceBridgeAvailable.id,
     name: "deviceBridge-available",
     kind: "permanent",
     area: "deviceBridge",
@@ -1137,6 +1184,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   deviceBridge: {
+    id: CAPABILITY_ID_ALLOCATIONS.deviceBridge.id,
     name: "deviceBridge",
     kind: "permanent",
     area: "deviceBridge",
@@ -1164,6 +1212,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   deviceBridgeDownload: {
+    id: CAPABILITY_ID_ALLOCATIONS.deviceBridgeDownload.id,
     name: "deviceBridge-download",
     kind: "permanent",
     area: "deviceBridge",
@@ -1187,6 +1236,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   deviceBridgeUpdate: {
+    id: CAPABILITY_ID_ALLOCATIONS.deviceBridgeUpdate.id,
     name: "deviceBridge-update",
     kind: "permanent",
     area: "deviceBridge",
@@ -1211,6 +1261,7 @@ export const SERVER_CAPABILITIES = {
     },
   },
   sessionForkTurnIntents: {
+    id: CAPABILITY_ID_ALLOCATIONS.sessionForkTurnIntents.id,
     name: "session-fork-turn-intents",
     kind: "transitional",
     area: "sessions",
@@ -1348,21 +1399,14 @@ const SERVER_CAPABILITY_DEFINITIONS_BY_NAME = new Map<
 export function encodeOptionalServerCapabilityBits(
   capabilities: readonly string[],
 ): OptionalServerCapabilityBitset {
-  const words = new Map<number, number>();
+  const ids: number[] = [];
   for (const name of capabilities) {
     const advertisement =
       SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name)?.advertisement;
     if (advertisement?.kind !== "optional-bit") continue;
-
-    const wordIndex = Math.floor(advertisement.index / 32);
-    const mask = 2 ** (advertisement.index % 32);
-    const current = words.get(wordIndex) ?? 0;
-    if (Math.floor(current / mask) % 2 === 0) {
-      words.set(wordIndex, current + mask);
-    }
+    ids.push(advertisement.index);
   }
-
-  return [...words.entries()].sort(([left], [right]) => left - right);
+  return encodeCapabilityIds(ids);
 }
 
 export function encodeCompactServerCapabilities(
@@ -1381,6 +1425,65 @@ export function encodeCompactServerCapabilities(
   return {
     optionalCapabilityBits: encodeOptionalServerCapabilityBits(capabilities),
     ...(capabilityExtensions.length > 0 ? { capabilityExtensions } : {}),
+  };
+}
+
+/**
+ * Choose the newest server-capability encoding understood by both peers.
+ *
+ * Stable/prerelease clients use the 0.7.1 cutover. A git-describe source build
+ * may still name the preceding tag; the presence of the version field proves
+ * that this source client implements encoding 1.
+ */
+export function negotiateServerCapabilityEncoding(
+  clientVersion: string | null | undefined,
+  serverVersion: string | null | undefined,
+): typeof CAPABILITY_ID_ENCODING_VERSION | null {
+  if (!parseCapabilityVersion(serverVersion)) return null;
+  const client = parseCapabilityVersion(clientVersion);
+  const introduced = parseCapabilityVersion(
+    CAPABILITY_ID_ENCODING_INTRODUCED_IN,
+  );
+  if (!client || !introduced) return null;
+
+  for (const index of [0, 1, 2] as const) {
+    if (client.parts[index] !== introduced.parts[index]) {
+      return client.parts[index] > introduced.parts[index]
+        ? CAPABILITY_ID_ENCODING_VERSION
+        : isGitDescribeSourceVersion(clientVersion)
+          ? CAPABILITY_ID_ENCODING_VERSION
+          : null;
+    }
+  }
+  return CAPABILITY_ID_ENCODING_VERSION;
+}
+
+export function encodeVersionedServerCapabilities(
+  capabilities: readonly string[],
+  currentVersion: string,
+): VersionedServerCapabilityAdvertisement {
+  const explicitIds: number[] = [];
+  for (const name of capabilities) {
+    const definition = SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name);
+    if (!definition || definition.advertisement.kind === "scoped") {
+      throw new Error(
+        `Global server capability has no ID-encoding contract: ${name}`,
+      );
+    }
+    if (
+      definition.advertisement.kind === "version-implied" &&
+      isVersionAtLeast(currentVersion, definition.introducedIn)
+    ) {
+      continue;
+    }
+    if (definition.id === undefined) {
+      throw new Error(`Server capability has no allocated ID: ${name}`);
+    }
+    explicitIds.push(definition.id);
+  }
+  return {
+    capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+    capabilityBits: encodeCapabilityIds(explicitIds),
   };
 }
 
@@ -1403,34 +1506,45 @@ export function serverHasCapability(
   if (!definition) return false;
 
   if (definition.advertisement.kind === "version-implied") {
-    return isVersionAtLeast(source?.current, definition.introducedIn);
+    return (
+      isVersionAtLeast(source?.current, definition.introducedIn) ||
+      (definition.id !== undefined &&
+        capabilityBitIsSet(source?.capabilityBits, definition.id))
+    );
   }
   if (definition.advertisement.kind === "optional-bit") {
-    return optionalCapabilityBitIsSet(
-      source?.optionalCapabilityBits,
-      definition.advertisement.index,
+    return (
+      capabilityBitIsSet(
+        source?.capabilityBits,
+        definition.advertisement.index,
+      ) ||
+      capabilityBitIsSet(
+        source?.optionalCapabilityBits,
+        definition.advertisement.index,
+      )
     );
   }
   return false;
 }
 
-function optionalCapabilityBitIsSet(
-  bitset: OptionalServerCapabilityBitset | undefined,
-  index: number,
+export function hasServerCapabilityAdvertisement(
+  source: ServerCapabilitySource | null | undefined,
 ): boolean {
-  const wordIndex = Math.floor(index / 32);
-  const mask = 2 ** (index % 32);
-  for (const [candidateWordIndex, bits] of bitset ?? []) {
-    if (
-      candidateWordIndex === wordIndex &&
-      Number.isSafeInteger(bits) &&
-      bits >= 0 &&
-      bits <= 0xffff_ffff
-    ) {
-      return Math.floor(bits / mask) % 2 === 1;
-    }
-  }
-  return false;
+  return (
+    source?.capabilities !== undefined ||
+    source?.capabilityEncoding !== undefined ||
+    source?.capabilityBits !== undefined ||
+    source?.optionalCapabilityBits !== undefined ||
+    source?.capabilityExtensions !== undefined
+  );
+}
+
+function isGitDescribeSourceVersion(
+  version: string | null | undefined,
+): boolean {
+  return /^v?\d+\.\d+\.\d+-\d+-g[0-9a-f]+(?:-dirty)?$/iu.test(
+    version?.trim() ?? "",
+  );
 }
 
 function isVersionAtLeast(

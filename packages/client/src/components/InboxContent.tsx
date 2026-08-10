@@ -423,10 +423,7 @@ export function InboxContent({
     PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   );
   const supportsSourceReviewInbox =
-    (version?.capabilities?.includes(
-      GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
-    ) ??
-      false) &&
+    serverHasCapability(version, GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY) &&
     (serverSettings?.sourceReviewSubmissionsEnabled ?? false);
   const [reviewInbox, setReviewInbox] = useState<ReviewInboxItem[]>([]);
   const [reviewInboxLoading, setReviewInboxLoading] = useState(false);

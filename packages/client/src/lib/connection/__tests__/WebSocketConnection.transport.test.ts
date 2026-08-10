@@ -56,6 +56,8 @@ describe("WebSocketConnection transport chunks", () => {
     );
     expect(capabilities).toEqual({
       type: "client_capabilities",
+      version: "unknown",
+      capabilityBits: [],
       formats: [
         BinaryFormat.JSON,
         BinaryFormat.BINARY_UPLOAD,

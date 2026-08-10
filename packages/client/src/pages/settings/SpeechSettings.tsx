@@ -1,5 +1,6 @@
 import {
   VOICE_INPUT_CAPABILITY,
+  hasServerCapabilityAdvertisement,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
@@ -147,9 +148,8 @@ export function SpeechSettings() {
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
   const serverVoiceEnabled =
-    versionInfo?.capabilities === undefined
-      ? true
-      : serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
+    !hasServerCapabilityAdvertisement(versionInfo) ||
+    serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
   const serverBackends = versionInfo?.voiceBackends ?? [];
   const backendStatuses = versionInfo?.voiceBackendStatuses ?? [];
   const discoverableServerBackends =

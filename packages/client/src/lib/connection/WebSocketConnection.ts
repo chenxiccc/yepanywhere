@@ -17,6 +17,7 @@ import {
   isBinaryData,
 } from "@yep-anywhere/shared";
 import { getDesktopAuthToken } from "../../api/plainFetch";
+import { getClientVersion } from "../clientVersion";
 import type { ConnectionManager } from "./ConnectionManager";
 import { RelayProtocol } from "./RelayProtocol";
 import type {
@@ -241,6 +242,8 @@ export class WebSocketConnection implements Connection {
   private sendCapabilities(): void {
     const message: ClientCapabilities = {
       type: "client_capabilities",
+      version: getClientVersion(),
+      capabilityBits: [],
       formats: [
         BinaryFormat.JSON,
         BinaryFormat.BINARY_UPLOAD,
