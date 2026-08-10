@@ -1,6 +1,8 @@
 import { execSync } from "node:child_process";
+import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { warningFreeBuildLogger } from "./vite-build-policy";
 import { cspPlugin, shouldInlineClientAsset } from "./vite-plugin-csp";
 import { reloadNotify } from "./vite-plugin-reload-notify";
 
@@ -31,11 +33,13 @@ function getGitVersion(): string {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   build: {
     assetsInlineLimit: shouldInlineClientAsset,
   },
   clearScreen: false,
+  customLogger:
+    command === "build" ? warningFreeBuildLogger("Client") : undefined,
   define: {
     __APP_VERSION__: JSON.stringify(getGitVersion()),
     // Injected so the client can detect direct access to the Vite dev port
@@ -55,6 +59,9 @@ export default defineConfig({
     cspPlugin({ isRemote: false }),
   ],
   resolve: {
+    alias: {
+      crypto: resolve(__dirname, "src/lib/connection/browserCrypto.ts"),
+    },
     conditions: ["source"],
   },
   server: {
@@ -74,4 +81,4 @@ export default defineConfig({
     // No proxy needed - backend (port 3400) proxies to us, not the other way around
     // Users access http://localhost:3400 and backend forwards non-API requests here
   },
-});
+}));

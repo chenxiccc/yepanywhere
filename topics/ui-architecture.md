@@ -181,6 +181,14 @@ is in [`client-asset-delivery.md`](client-asset-delivery.md); the implementation
 handoff is
 [`docs/tactical/096-client-route-module-loading.md`](../docs/tactical/096-client-route-module-loading.md).
 
+Implementation status: both browser entries apply this boundary to their page,
+navigation-layout, service-worker, and elective floating-action modules. The
+remote entry also defers its connection gates and redirects. The loading
+boundary keeps module promises stable at module scope, preserves the session
+DOM-linger owner outside `SessionPage`, and routes load failures through the
+existing fatal error boundary. The per-Settings-pane split remains open in
+tactical 096.
+
 ## Settings Pane Conventions
 
 Settings panes apply changes immediately on interaction — the house style

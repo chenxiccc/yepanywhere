@@ -9,6 +9,7 @@ import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { type Plugin, defineConfig } from "vite";
+import { warningFreeBuildLogger } from "./vite-build-policy";
 import { cspPlugin, shouldInlineClientAsset } from "./vite-plugin-csp";
 
 function getGitVersion(): string {
@@ -65,13 +66,18 @@ function serveRemoteHtml(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   clearScreen: false,
+  customLogger:
+    command === "build" ? warningFreeBuildLogger("Remote client") : undefined,
   // Remote builds should not serialize dev-only VITE_* shell variables such as
   // VITE_PORT into the hosted bundle. Keep this to intentional public inputs.
   envPrefix: ["VITE_DEFAULT_RELAY_URL"],
   plugins: [serveRemoteHtml(), react(), cspPlugin({ isRemote: true })],
   resolve: {
+    alias: {
+      crypto: resolve(__dirname, "src/lib/connection/browserCrypto.ts"),
+    },
     conditions: ["source"],
   },
   // Define build-time constants
@@ -104,4 +110,4 @@ export default defineConfig({
     // Allow these hosts to connect
     allowedHosts: ["localhost", ".yepanywhere.com"],
   },
-});
+}));

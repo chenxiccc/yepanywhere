@@ -333,6 +333,14 @@ than suppressing the report; a warning that must stand needs an inline
 justification. DEVELOPMENT.md carries the contributor-facing statement of
 the same policy.
 
+“Pre-existing” is provenance, not an exemption. When a task's checks expose
+warnings or source-format debt that can be safely isolated, clear them in a
+separate cleanup commit instead of carrying them forward or folding them into
+the behavior change. Use the owning formatter for source rewrites (Biome in
+the current TypeScript/JavaScript tree; Ruff wherever a Python surface adopts
+it). If the cleanup cannot be isolated safely, record the exact warning or
+format check and the reason it remains in `gaps/`.
+
 ## Client Console Chatter Budget
 
 When a change touches `packages/client`, or a client console looks

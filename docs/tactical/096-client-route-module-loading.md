@@ -4,10 +4,10 @@
 > by the current route, so New Session, login, and public-share entry do not
 > evaluate unrelated transcript and Settings code first.
 
-Status: Implementation handoff, not yet implemented. Tactical 089 measured the
-current local and remote build graphs and fresh-browser cost. This plan assigns
-route boundaries, Settings search behavior, deployment skew, and verification;
-it does not implement them.
+Status: Top-level local and remote route slice implemented 2026-08-10. Per-
+Settings-pane loading, direct/LAN asset delivery, and the full performance
+matrix remain open. Tactical 089 measured the original local and remote build
+graphs and fresh-browser cost.
 
 Related contracts and plans:
 
@@ -18,7 +18,7 @@ Related contracts and plans:
 - [`033-session-initial-load-performance.md`](033-session-initial-load-performance.md)
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
 
-## Current graph and measured cost
+## Baseline graph and measured cost
 
 `packages/client/src/main.tsx` statically imports 15 page modules, including
 Session, New Session, All Sessions, Agents, Projects, Source Control, Settings,
@@ -27,13 +27,35 @@ about 20 page/gate modules, so a public-share or login entry also reaches most
 of the authenticated application. Inside Settings, `SettingsLayout.tsx`
 statically imports all 21 category panes into `CATEGORY_COMPONENTS`.
 
-The current local production build emits one 2,668,843-byte application
-JavaScript file and 565,170 bytes of CSS. The remote build emits one
+The baseline local production build emitted one 2,668,843-byte application
+JavaScript file and 565,170 bytes of CSS. The remote build emitted one
 2,753,737-byte application file and 566,079 bytes of CSS. The only other
 JavaScript chunks are locale overlays. Its source map reaches 651 sources and
 7.40 MB of source content. Large owners include KaTeX, React DOM, React Router,
 `SessionPage`, `MessageList`, `NewSessionForm`, `MessageInput`, its toolbar, and
 several Settings panes.
+
+## 2026-08-10 top-level route slice
+
+Both browser entrypoints now dynamically acquire their page modules,
+navigation layout, service-worker registration, and elective floating action
+button. The hosted remote entry also defers its connection gates and redirects.
+A stable Suspense/error boundary owns each route load; the session DOM-linger
+callback remains in `NavigationLayout` and points at one module-scoped
+`SessionPage` promise. `SessionPage` separately defers its transcript and
+composer modules so the selected route remains below the build ceiling.
+
+Against the immediately preceding source, the eagerly loaded remote JavaScript
+fell from 2,938,667 bytes to 477,061 bytes. The local entry fell from about
+2.84 MB to 472,214 bytes, with its 492,331-byte `SessionPage` chunk now the
+largest output. Both builds remain below Vite's 500 kB warning boundary,
+resolve `tssrp6a`'s Node `crypto` probe to the browser Web Crypto API, and fail
+on any future Vite warning. The Pages publisher retains old hashed assets,
+satisfying generation retention for the hosted path.
+
+Still open: Settings loads every category pane when its route module opens; the
+direct/LAN server still lacks the asset delivery contract; and the full
+route/device measurement matrix has not run.
 
 This is a real but secondary localhost cost. On an isolated production server
 with browser cache disabled, warm server data produced:

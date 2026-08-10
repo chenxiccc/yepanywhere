@@ -22,6 +22,7 @@ import {
   thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
 import {
+  lazy,
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
@@ -41,14 +42,12 @@ import { ExternalSessionWarning } from "../components/ExternalSessionWarning";
 import { HostIdentityMarker } from "../components/HostIdentityMarker";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
-import {
-  type FullPaneComposerControls,
-  MessageInput,
-  type MessageSubmissionMetadata,
-  type UploadProgress,
+import type {
+  FullPaneComposerControls,
+  MessageSubmissionMetadata,
+  UploadProgress,
 } from "../components/MessageInput";
 import { MessageInputToolbar } from "../components/MessageInputToolbar";
-import { MessageList } from "../components/MessageList";
 import { ModelSwitchModal } from "../components/ModelSwitchModal";
 import { ProcessInfoBody } from "../components/ProcessInfoModal";
 import { ProjectSessionDefaultsModal } from "../components/ProjectSessionDefaultsModal";
@@ -204,6 +203,20 @@ import {
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
 import type { Message, Project } from "../types";
+
+const messageListModule = import("../components/MessageList");
+const messageInputModule = import("../components/MessageInput");
+
+const MessageList = lazy(() =>
+  messageListModule.then(({ MessageList }) => ({
+    default: MessageList,
+  })),
+);
+const MessageInput = lazy(() =>
+  messageInputModule.then(({ MessageInput }) => ({
+    default: MessageInput,
+  })),
+);
 
 const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
 const CLAUDE_HANDOFF_REQUIRED_MESSAGE =

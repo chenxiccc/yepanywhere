@@ -17,21 +17,15 @@
 
 console.log("[RemoteClient] Loading remote-main.tsx entry point");
 
-import { Fragment, StrictMode } from "react";
+import { Fragment, lazy, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 // Toggle to disable StrictMode for easier debugging (avoids double renders)
 const STRICT_MODE = false;
 const Wrapper = STRICT_MODE ? StrictMode : Fragment;
 
-import {
-  BrowserRouter,
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-} from "react-router-dom";
-import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { RouteModule, routeModule } from "./components/RouteModule";
 import { TooltipLayer } from "./components/ui/TooltipLayer";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeFontSize } from "./hooks/useFontSize";
@@ -41,32 +35,149 @@ import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { initializeTooltipAppearance } from "./hooks/useTooltipAppearance";
 import { I18nProvider } from "./i18n";
-import { NavigationLayout, SessionDomLingerRouteMarker } from "./layouts";
-import { ActivityPage } from "./pages/ActivityPage";
-import { AgentsPage } from "./pages/AgentsPage";
-import { BangCommandsPage } from "./pages/BangCommandsPage";
-import { DirectLoginPage } from "./pages/DirectLoginPage";
-import { EmulatorPage } from "./pages/EmulatorPage";
-import { FilePage } from "./pages/FilePage";
-import { GitStatusPage } from "./pages/GitStatusPage";
-import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
-import { HostPickerPage } from "./pages/HostPickerPage";
-import { HostsRoute } from "./pages/HostsPage";
-import { InboxPage } from "./pages/InboxPage";
-import { MultiHostMonitorPage } from "./pages/MultiHostMonitorPage";
-import { NewSessionPage } from "./pages/NewSessionPage";
-import { ProjectsPage } from "./pages/ProjectsPage";
-import { PublicShareFilePage } from "./pages/PublicShareFilePage";
-import { PublicSharePage } from "./pages/PublicSharePage";
-import { RelayConnectionGate } from "./pages/RelayConnectionGate";
-import { RelayLoginPage } from "./pages/RelayLoginPage";
-import { SessionPage } from "./pages/SessionPage";
-import { SettingsLayout } from "./pages/settings";
-import { WorkstreamsPage } from "./pages/WorkstreamsPage";
-import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
-import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
-import { getLegacyRelayRedirectTarget } from "./lib/remoteRoutePaths";
 import "./styles/index.css";
+
+const ConnectionGate = lazy(() =>
+  import("./RemoteApp").then(({ ConnectionGate }) => ({
+    default: ConnectionGate,
+  })),
+);
+const RemoteApp = lazy(() =>
+  import("./RemoteApp").then(({ RemoteApp }) => ({ default: RemoteApp })),
+);
+const UnauthenticatedGate = lazy(() =>
+  import("./RemoteApp").then(({ UnauthenticatedGate }) => ({
+    default: UnauthenticatedGate,
+  })),
+);
+const NavigationLayout = lazy(() =>
+  import("./layouts").then(({ NavigationLayout }) => ({
+    default: NavigationLayout,
+  })),
+);
+const SessionDomLingerRouteMarker = lazy(() =>
+  import("./layouts").then(({ SessionDomLingerRouteMarker }) => ({
+    default: SessionDomLingerRouteMarker,
+  })),
+);
+
+const ActivityPage = lazy(() =>
+  import("./pages/ActivityPage").then(({ ActivityPage }) => ({
+    default: ActivityPage,
+  })),
+);
+const AgentsPage = lazy(() =>
+  import("./pages/AgentsPage").then(({ AgentsPage }) => ({
+    default: AgentsPage,
+  })),
+);
+const BangCommandsPage = lazy(() =>
+  import("./pages/BangCommandsPage").then(({ BangCommandsPage }) => ({
+    default: BangCommandsPage,
+  })),
+);
+const DirectLoginPage = lazy(() =>
+  import("./pages/DirectLoginPage").then(({ DirectLoginPage }) => ({
+    default: DirectLoginPage,
+  })),
+);
+const EmulatorPage = lazy(() =>
+  import("./pages/EmulatorPage").then(({ EmulatorPage }) => ({
+    default: EmulatorPage,
+  })),
+);
+const FilePage = lazy(() =>
+  import("./pages/FilePage").then(({ FilePage }) => ({ default: FilePage })),
+);
+const GitStatusPage = lazy(() =>
+  import("./pages/GitStatusPage").then(({ GitStatusPage }) => ({
+    default: GitStatusPage,
+  })),
+);
+const GlobalSessionsPage = lazy(() =>
+  import("./pages/GlobalSessionsPage").then(({ GlobalSessionsPage }) => ({
+    default: GlobalSessionsPage,
+  })),
+);
+const HostPickerPage = lazy(() =>
+  import("./pages/HostPickerPage").then(({ HostPickerPage }) => ({
+    default: HostPickerPage,
+  })),
+);
+const HostsRoute = lazy(() =>
+  import("./pages/HostsPage").then(({ HostsRoute }) => ({
+    default: HostsRoute,
+  })),
+);
+const InboxPage = lazy(() =>
+  import("./pages/InboxPage").then(({ InboxPage }) => ({
+    default: InboxPage,
+  })),
+);
+const LegacyRelayRouteRedirect = lazy(() =>
+  import("./pages/LegacyRelayRouteRedirect").then(
+    ({ LegacyRelayRouteRedirect }) => ({
+      default: LegacyRelayRouteRedirect,
+    }),
+  ),
+);
+const MultiHostMonitorPage = lazy(() =>
+  import("./pages/MultiHostMonitorPage").then(({ MultiHostMonitorPage }) => ({
+    default: MultiHostMonitorPage,
+  })),
+);
+const ProjectSessionsRedirect = lazy(() =>
+  import("./pages/ProjectSessionsRedirect").then(
+    ({ ProjectSessionsRedirect }) => ({
+      default: ProjectSessionsRedirect,
+    }),
+  ),
+);
+const NewSessionPage = lazy(() =>
+  import("./pages/NewSessionPage").then(({ NewSessionPage }) => ({
+    default: NewSessionPage,
+  })),
+);
+const ProjectsPage = lazy(() =>
+  import("./pages/ProjectsPage").then(({ ProjectsPage }) => ({
+    default: ProjectsPage,
+  })),
+);
+const PublicShareFilePage = lazy(() =>
+  import("./pages/PublicShareFilePage").then(({ PublicShareFilePage }) => ({
+    default: PublicShareFilePage,
+  })),
+);
+const PublicSharePage = lazy(() =>
+  import("./pages/PublicSharePage").then(({ PublicSharePage }) => ({
+    default: PublicSharePage,
+  })),
+);
+const RelayConnectionGate = lazy(() =>
+  import("./pages/RelayConnectionGate").then(({ RelayConnectionGate }) => ({
+    default: RelayConnectionGate,
+  })),
+);
+const RelayLoginPage = lazy(() =>
+  import("./pages/RelayLoginPage").then(({ RelayLoginPage }) => ({
+    default: RelayLoginPage,
+  })),
+);
+const SessionPage = lazy(() =>
+  import("./pages/SessionPage").then(({ SessionPage }) => ({
+    default: SessionPage,
+  })),
+);
+const SettingsLayout = lazy(() =>
+  import("./pages/settings").then(({ SettingsLayout }) => ({
+    default: SettingsLayout,
+  })),
+);
+const WorkstreamsPage = lazy(() =>
+  import("./pages/WorkstreamsPage").then(({ WorkstreamsPage }) => ({
+    default: WorkstreamsPage,
+  })),
+);
 
 // Apply saved preferences before React renders to avoid flash
 initializeTheme();
@@ -78,22 +189,13 @@ initializeContentMaxWidth();
 initializeTooltipAppearance();
 
 // Register SW at startup so PWA install is available without visiting settings
-registerServiceWorkerAtStartup();
+void import("./lib/registerServiceWorker").then(
+  ({ registerServiceWorkerAtStartup }) => registerServiceWorkerAtStartup(),
+);
 
 // Get base URL for router (Vite sets this based on --base flag)
 // Remove trailing slash for BrowserRouter basename
 const basename = import.meta.env.BASE_URL.replace(/\/$/, "") || undefined;
-
-function ProjectRedirect() {
-  const basePath = useRemoteBasePath();
-  return <Navigate to={`${basePath}/sessions`} replace />;
-}
-
-function LegacyRelayRouteRedirect() {
-  const location = useLocation();
-  const target = getLegacyRelayRedirectTarget(location);
-  return <Navigate to={target ?? "/projects"} replace />;
-}
 
 /**
  * Shared app routes used by both direct mode (ConnectionGate) and
@@ -107,45 +209,57 @@ const APP_ROUTES = (
     {/* IMPORTANT: Keep routes in sync with main.tsx — adding a route here? Add it there too! */}
     <Route
       element={
-        <NavigationLayout
-          sessionElement={(route, { parked }) => (
-            <SessionPage
-              key={route.key}
-              projectId={route.projectId}
-              sessionId={route.sessionId}
-              routeLocation={route.location}
-              isDomLingerParked={parked}
-            />
-          )}
-        />
+        <RouteModule>
+          <NavigationLayout
+            sessionElement={(route, { parked }) => (
+              <RouteModule key={route.key}>
+                <SessionPage
+                  projectId={route.projectId}
+                  sessionId={route.sessionId}
+                  routeLocation={route.location}
+                  isDomLingerParked={parked}
+                />
+              </RouteModule>
+            )}
+          />
+        </RouteModule>
       }
     >
-      <Route path="projects" element={<ProjectsPage />} />
+      <Route path="projects" element={routeModule(<ProjectsPage />)} />
       <Route
         path="projects/:projectId/workstreams"
-        element={<WorkstreamsPage />}
+        element={routeModule(<WorkstreamsPage />)}
       />
-      <Route path="projects/:projectId" element={<ProjectRedirect />} />
-      <Route path="sessions" element={<GlobalSessionsPage />} />
-      <Route path="agents" element={<AgentsPage />} />
-      <Route path="inbox" element={<InboxPage />} />
-      <Route path="-/hosts" element={<HostsRoute />} />
-      <Route path="git-status" element={<GitStatusPage />} />
-      <Route path="bang-commands" element={<BangCommandsPage />} />
-      <Route path="devices" element={<EmulatorPage />} />
-      <Route path="devices/:deviceId" element={<EmulatorPage />} />
-      <Route path="settings" element={<SettingsLayout />} />
-      <Route path="settings/:category" element={<SettingsLayout />} />
-      <Route path="new-session" element={<NewSessionPage />} />
-      <Route path="projects/:projectId/file" element={<FilePage />} />
+      <Route
+        path="projects/:projectId"
+        element={routeModule(<ProjectSessionsRedirect />)}
+      />
+      <Route path="sessions" element={routeModule(<GlobalSessionsPage />)} />
+      <Route path="agents" element={routeModule(<AgentsPage />)} />
+      <Route path="inbox" element={routeModule(<InboxPage />)} />
+      <Route path="-/hosts" element={routeModule(<HostsRoute />)} />
+      <Route path="git-status" element={routeModule(<GitStatusPage />)} />
+      <Route path="bang-commands" element={routeModule(<BangCommandsPage />)} />
+      <Route path="devices" element={routeModule(<EmulatorPage />)} />
+      <Route path="devices/:deviceId" element={routeModule(<EmulatorPage />)} />
+      <Route path="settings" element={routeModule(<SettingsLayout />)} />
+      <Route
+        path="settings/:category"
+        element={routeModule(<SettingsLayout />)}
+      />
+      <Route path="new-session" element={routeModule(<NewSessionPage />)} />
+      <Route
+        path="projects/:projectId/file"
+        element={routeModule(<FilePage />)}
+      />
       <Route
         path="projects/:projectId/sessions/:sessionId"
-        element={<SessionDomLingerRouteMarker />}
+        element={routeModule(<SessionDomLingerRouteMarker />)}
       />
     </Route>
 
     {/* Pages with custom layouts */}
-    <Route path="activity" element={<ActivityPage />} />
+    <Route path="activity" element={routeModule(<ActivityPage />)} />
 
     {/* Catch-all redirect to projects (must use ../ to escape splat route's relative resolution) */}
     <Route path="*" element={<Navigate to="../projects" replace />} />
@@ -163,44 +277,69 @@ createRoot(rootElement).render(
     <BrowserRouter basename={basename}>
       <I18nProvider>
         <Routes>
-          <Route path="/share/:secret/file" element={<PublicShareFilePage />} />
-          <Route path="/share/:secret" element={<PublicSharePage />} />
+          <Route
+            path="/share/:secret/file"
+            element={routeModule(<PublicShareFilePage />)}
+          />
+          <Route
+            path="/share/:secret"
+            element={routeModule(<PublicSharePage />)}
+          />
           <Route
             path="/remote/share/:secret/file"
-            element={<PublicShareFilePage />}
+            element={routeModule(<PublicShareFilePage />)}
           />
-          <Route path="/remote/share/:secret" element={<PublicSharePage />} />
-          <Route path="/-/monitor" element={<MultiHostMonitorPage />} />
+          <Route
+            path="/remote/share/:secret"
+            element={routeModule(<PublicSharePage />)}
+          />
+          <Route
+            path="/-/monitor"
+            element={routeModule(<MultiHostMonitorPage />)}
+          />
           <Route
             path="*"
             element={
-              <RemoteApp>
-                <Routes>
-                  {/* Login routes — redirect to app if already connected */}
-                  <Route element={<UnauthenticatedGate />}>
-                    <Route path="/login" element={<HostPickerPage />} />
-                    <Route path="/login/direct" element={<DirectLoginPage />} />
-                    <Route path="/login/relay" element={<RelayLoginPage />} />
-                  </Route>
+              <RouteModule>
+                <RemoteApp>
+                  <Routes>
+                    {/* Login routes — redirect to app if already connected */}
+                    <Route element={routeModule(<UnauthenticatedGate />)}>
+                      <Route
+                        path="/login"
+                        element={routeModule(<HostPickerPage />)}
+                      />
+                      <Route
+                        path="/login/direct"
+                        element={routeModule(<DirectLoginPage />)}
+                      />
+                      <Route
+                        path="/login/relay"
+                        element={routeModule(<RelayLoginPage />)}
+                      />
+                    </Route>
 
-                  {/* Direct mode — requires connection, no relay username in URL */}
-                  <Route element={<ConnectionGate />}>{APP_ROUTES}</Route>
+                    {/* Direct mode — requires connection, no relay username in URL */}
+                    <Route element={routeModule(<ConnectionGate />)}>
+                      {APP_ROUTES}
+                    </Route>
 
-                  {/* Canonical relay routes live under a reserved namespace. */}
-                  <Route
-                    path="/-/relay/:relayUsername"
-                    element={<RelayConnectionGate />}
-                  >
-                    {APP_ROUTES}
-                  </Route>
+                    {/* Canonical relay routes live under a reserved namespace. */}
+                    <Route
+                      path="/-/relay/:relayUsername"
+                      element={routeModule(<RelayConnectionGate />)}
+                    >
+                      {APP_ROUTES}
+                    </Route>
 
-                  {/* Old username-at-root links redirect only when unambiguous. */}
-                  <Route
-                    path="/:legacyRelayUsername/*"
-                    element={<LegacyRelayRouteRedirect />}
-                  />
-                </Routes>
-              </RemoteApp>
+                    {/* Old username-at-root links redirect only when unambiguous. */}
+                    <Route
+                      path="/:legacyRelayUsername/*"
+                      element={routeModule(<LegacyRelayRouteRedirect />)}
+                    />
+                  </Routes>
+                </RemoteApp>
+              </RouteModule>
             }
           />
         </Routes>

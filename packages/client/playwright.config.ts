@@ -1,5 +1,11 @@
 import { defineConfig } from "@playwright/test";
 
+// Playwright forces color for its worker output. Do not pass the contradictory
+// NO_COLOR setting into those workers, which makes Node warn before tests run.
+if (process.env.FORCE_COLOR) {
+  delete process.env.NO_COLOR;
+}
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,

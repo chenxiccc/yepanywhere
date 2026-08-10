@@ -1,14 +1,11 @@
-import { type ReactNode, useEffect } from "react";
+import { lazy, type ReactNode, Suspense, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { BottomOverscrollReload } from "./components/BottomOverscrollReload";
 import { CacheMissBillingToasts } from "./components/CacheMissBillingToasts";
 import { ClientLogRecordingBadge } from "./components/ClientLogRecordingBadge";
-import { CodexUpdatePrompt } from "./components/CodexUpdatePrompt";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { DesktopProviderNotice } from "./components/DesktopProviderNotice";
-import { FloatingActionButton } from "./components/FloatingActionButton";
 import { ReloadBanner, ReloadBannerStack } from "./components/ReloadBanner";
-import { OnboardingWizard } from "./components/onboarding";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
 import {
@@ -28,9 +25,24 @@ import {
   getVisibleReloadBanners,
   useReloadNotifications,
 } from "./hooks/useReloadNotifications";
-import { I18nProvider } from "./i18n";
 import { useClientSummarySourceKey } from "./lib/clientSummaryStore";
 import { initClientLogCollection } from "./lib/diagnostics";
+
+const CodexUpdatePrompt = lazy(() =>
+  import("./components/CodexUpdatePrompt").then(({ CodexUpdatePrompt }) => ({
+    default: CodexUpdatePrompt,
+  })),
+);
+const FloatingActionButton = lazy(() =>
+  import("./components/FloatingActionButton").then(
+    ({ FloatingActionButton }) => ({ default: FloatingActionButton }),
+  ),
+);
+const OnboardingWizard = lazy(() =>
+  import("./components/onboarding").then(({ OnboardingWizard }) => ({
+    default: OnboardingWizard,
+  })),
+);
 
 interface Props {
   children: ReactNode;
@@ -128,40 +140,43 @@ function AppContent({ children }: Props) {
         onReload={reloadFrontend}
       />
       {children}
-      <FloatingActionButton />
+      <Suspense fallback={null}>
+        <FloatingActionButton />
+      </Suspense>
     </>
   );
 }
 
 /**
- * App wrapper that provides global functionality like reload notifications, toasts,
- * and schema validation.
+ * App wrapper that provides global functionality like reload notifications,
+ * toasts, and schema validation. The entrypoint owns I18nProvider so it can
+ * render route-module loading states before this module finishes loading.
  */
 export function App({ children }: Props) {
   const { showWizard, isLoading, completeOnboarding } = useOnboarding();
 
   return (
-    <I18nProvider>
-      <ToastProvider>
-        <AuthProvider>
-          <ClientSummarySourceBinding />
-          <CurrentSourceRuntimeProvider>
-            <HostIdentityProvider>
-              <InboxProvider>
-                <SchemaValidationProvider>
-                  <AppContent>{children}</AppContent>
+    <ToastProvider>
+      <AuthProvider>
+        <ClientSummarySourceBinding />
+        <CurrentSourceRuntimeProvider>
+          <HostIdentityProvider>
+            <InboxProvider>
+              <SchemaValidationProvider>
+                <AppContent>{children}</AppContent>
+                <Suspense fallback={null}>
                   {!disableOnboarding && !isLoading && showWizard && (
                     <OnboardingWizard onComplete={completeOnboarding} />
                   )}
                   {!disableCliUpdateNotifications &&
                     !isLoading &&
                     (disableOnboarding || !showWizard) && <CodexUpdatePrompt />}
-                </SchemaValidationProvider>
-              </InboxProvider>
-            </HostIdentityProvider>
-          </CurrentSourceRuntimeProvider>
-        </AuthProvider>
-      </ToastProvider>
-    </I18nProvider>
+                </Suspense>
+              </SchemaValidationProvider>
+            </InboxProvider>
+          </HostIdentityProvider>
+        </CurrentSourceRuntimeProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
