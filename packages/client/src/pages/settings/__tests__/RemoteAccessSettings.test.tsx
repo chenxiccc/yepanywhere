@@ -190,18 +190,20 @@ describe("RemoteAccessSettings host identity", () => {
 
     fireEvent.change(input, { target: { value: "two" } });
     expect(screen.getByText("hostIdentityInvalid")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "hostIdentitySave" }),
-    ).toHaveProperty("disabled", true);
+    fireEvent.blur(input);
+    expect(mockUpdateSetting).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: "🧡" } });
-    fireEvent.click(screen.getByRole("button", { name: "hostIdentitySave" }));
+    fireEvent.blur(input);
 
     await waitFor(() =>
       expect(mockUpdateSetting).toHaveBeenCalledWith("hostIdentity", {
         icon: "🧡",
       }),
     );
+    expect(
+      screen.queryByRole("button", { name: "hostIdentitySave" }),
+    ).toBeNull();
   });
 
   it("clears the server-owned marker", async () => {

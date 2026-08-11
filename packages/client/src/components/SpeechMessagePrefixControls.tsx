@@ -92,6 +92,7 @@ export function SpeechMessagePrefixControls({
         value={asrAttributionMs}
         disabled={disabled || !speechMessagePrefix}
         numberAriaLabel="Quick-send speech-prefix window milliseconds"
+        unit="ms"
         hint={
           speechMessagePrefix
             ? t("speechSettingsAsrAttributionDescription", {

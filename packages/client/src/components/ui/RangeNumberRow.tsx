@@ -12,6 +12,8 @@ interface RangeNumberRowProps {
   disabled?: boolean;
   /** Accessible name for the numeric input (the range input uses the label). */
   numberAriaLabel: string;
+  /** Short unit rendered immediately after the exact numeric input. */
+  unit?: ReactNode;
   hint?: ReactNode;
   onCommit: (value: number) => void;
   /** Interaction hook fired on focus/pointer-down of either input. */
@@ -31,6 +33,7 @@ export function RangeNumberRow({
   value,
   disabled = false,
   numberAriaLabel,
+  unit,
   hint,
   onCommit,
   onActivate,
@@ -51,19 +54,22 @@ export function RangeNumberRow({
         onCommit={onCommit}
         aria-describedby={hintId}
       />
-      <input
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        onFocus={onActivate}
-        onPointerDown={onActivate}
-        onChange={(event) => onCommit(Number(event.target.value))}
-        aria-describedby={hintId}
-        aria-label={numberAriaLabel}
-      />
+      <span className={styles.numberWrap}>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onFocus={onActivate}
+          onPointerDown={onActivate}
+          onChange={(event) => onCommit(Number(event.target.value))}
+          aria-describedby={hintId}
+          aria-label={numberAriaLabel}
+        />
+        {unit && <span className={styles.unit}>{unit}</span>}
+      </span>
       {hint && (
         <span id={hintId} className={styles.hint}>
           {hint}

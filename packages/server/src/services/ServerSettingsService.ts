@@ -231,7 +231,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   approvalAuditLogEnabled: false,
   publicSharesEnabled: false,
   workstreamsEnabled: false,
-  sourceReviewSubmissionsEnabled: false,
+  sourceReviewSubmissionsEnabled: true,
   sourceReviewResponseTurns: DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS,
   hostProcessObservabilityEnabled: true,
   hostAwakeMode: "off",

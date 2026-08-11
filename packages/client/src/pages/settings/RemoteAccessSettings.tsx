@@ -109,7 +109,9 @@ function HostIdentitySettings({
           className="host-identity-custom"
           onSubmit={(event) => {
             event.preventDefault();
-            if (normalizedDraft) void save({ icon: normalizedDraft });
+            if (normalizedDraft && normalizedDraft !== currentIcon) {
+              void save({ icon: normalizedDraft });
+            }
           }}
         >
           <input
@@ -120,23 +122,24 @@ function HostIdentitySettings({
             placeholder={t("hostIdentityCustomPlaceholder")}
             disabled={disabled || saving}
             onChange={(event) => setDraft(event.target.value)}
+            onBlur={(event) => {
+              const nextTarget = event.relatedTarget;
+              if (
+                nextTarget instanceof HTMLElement &&
+                nextTarget.dataset.hostIdentityClear !== undefined
+              ) {
+                return;
+              }
+              if (normalizedDraft && normalizedDraft !== currentIcon) {
+                void save({ icon: normalizedDraft });
+              }
+            }}
           />
-          <button
-            type="submit"
-            className="settings-button"
-            disabled={
-              disabled ||
-              saving ||
-              normalizedDraft === null ||
-              normalizedDraft === currentIcon
-            }
-          >
-            {t("hostIdentitySave")}
-          </button>
           {currentIcon && (
             <button
               type="button"
               className="settings-button settings-button-secondary"
+              data-host-identity-clear
               disabled={disabled || saving}
               onClick={() => {
                 setDraft("");
@@ -533,32 +536,6 @@ export function RemoteAccessSettings() {
         </SettingsItem>
       )}
 
-      <HideInSettingsSearch>
-        <div
-          className="settings-item"
-          style={{ flexDirection: "column", alignItems: "stretch" }}
-        >
-          <div className="settings-item-info">
-            <strong>{t("advancedYaClientTitle")}</strong>
-            <p>{t("advancedYaClientDescription")}</p>
-            <p className="settings-hint" style={{ wordBreak: "break-all" }}>
-              {t("advancedYaClientEffective", {
-                url: effectiveYaClientBaseUrl,
-              })}
-            </p>
-            <p className="settings-hint" style={{ wordBreak: "break-all" }}>
-              {t("advancedPublicShareViewerEffective", {
-                url: effectiveViewerBaseUrl,
-              })}
-            </p>
-            {publicShareStatus?.yaClientBaseUrlError && (
-              <p className="settings-warning">
-                {publicShareStatus.yaClientBaseUrlError}
-              </p>
-            )}
-          </div>
-        </div>
-      </HideInSettingsSearch>
       {showPublicShareManagement && publicShareManagementSupported && (
         <PublicShareManagerModal
           creationReady={false}
@@ -566,6 +543,32 @@ export function RemoteAccessSettings() {
         />
       )}
     </div>
+  );
+
+  const yaClientInfo = (
+    <HideInSettingsSearch>
+      <div className="form-hint">
+        <p>
+          <strong>{t("advancedYaClientTitle")}</strong>.{" "}
+          {t("advancedYaClientDescription")}
+        </p>
+        <p style={{ wordBreak: "break-all" }}>
+          {t("advancedYaClientEffective", {
+            url: effectiveYaClientBaseUrl,
+          })}
+        </p>
+        <p style={{ wordBreak: "break-all" }}>
+          {t("advancedPublicShareViewerEffective", {
+            url: effectiveViewerBaseUrl,
+          })}
+        </p>
+        {publicShareStatus?.yaClientBaseUrlError && (
+          <p className="settings-warning">
+            {publicShareStatus.yaClientBaseUrlError}
+          </p>
+        )}
+      </div>
+    </HideInSettingsSearch>
   );
 
   const persistSessionsToggle = (
@@ -621,6 +624,7 @@ export function RemoteAccessSettings() {
       <SettingsSection description={t("remoteAccessConnectedDescription")}>
         {hostAwakeConfig}
         {publicShareConfig}
+        {yaClientInfo}
         <div className="settings-group">
           <SettingsItem
             label={t("remoteAccessCurrentHostTitle")}
@@ -676,6 +680,7 @@ export function RemoteAccessSettings() {
         <RemoteAccessSetup
           title={t("remoteAccessConnectedTitle")}
           description={t("remoteAccessSetupDescription")}
+          yaClientInfo={yaClientInfo}
         />
       </HideInSettingsSearch>
       {persistSessionsToggle}

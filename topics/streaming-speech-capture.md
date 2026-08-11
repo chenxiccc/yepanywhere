@@ -145,8 +145,11 @@ settings surface):
   sent and the streaming WebSocket is **not** held open or fed between
   dictations; the WS + frame sending stay strictly per-dictation. Privacy-
   visible (Chrome shows the mic indicator while the idle stream is held) - the
-  explicit, accepted tradeoff of enabling it. Do **not** use a short idle TTL
-  that silently re-incurs the cold-open.
+  explicit, accepted tradeoff of enabling it. On phones and tablets, holding
+  the browser microphone may also prevent the on-screen keyboard's microphone
+  or another voice-input method from opening; Settings copy must warn about
+  that platform interaction. Do **not** use a short idle TTL that silently
+  re-incurs the cold-open.
 
   The warm-mic ownership gate is **page visibility, not focus**. A visible but
   unfocused YA window/tab is still eligible for idle warm ownership because the

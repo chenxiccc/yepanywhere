@@ -26,6 +26,13 @@ describe("isSecretName", () => {
     expect(isSecretName("PORT")).toBe(false);
   });
 
+  it("never lets credential-suffixed variables opt out of redaction", () => {
+    expect(isSecretName("NEW_PROVIDER_API_KEY", false)).toBe(true);
+    expect(isSecretName("DESKTOP_AUTH_TOKEN", false)).toBe(true);
+    expect(isSecretName("AUTH_COOKIE_SECRET", false)).toBe(true);
+    expect(isSecretName("DATABASE_PASSWORD", false)).toBe(true);
+  });
+
   it("lets an explicit false opt a KEY-named var out of redaction", () => {
     expect(isSecretName("YEP_STT_SHARE_XAI_KEY_WITH_CLIENTS", false)).toBe(
       false,
@@ -42,11 +49,23 @@ describe("registry", () => {
     expect(e.secret).toBe(false);
     expect(e.value).toBe("true");
   });
+
+  it("includes operator inputs read outside the central config loader", () => {
+    for (const name of [
+      "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH",
+      "GROK_HOME",
+      "YA_BANG_ACLI_COMPLETERS",
+      "YEP_CLAUDE_PARSE_CACHE_MB",
+      "YEP_TURN_TIMESTAMPS",
+    ]) {
+      expect(() => entry({}, name)).not.toThrow();
+    }
+  });
 });
 
 describe("redactSecretValue", () => {
-  it("reveals only the last three chars of a long-enough value", () => {
-    expect(redactSecretValue("sk-abcdef123xyz")).toBe("⋯xyz");
+  it("reveals only the last four chars of a long-enough value", () => {
+    expect(redactSecretValue("sk-abcdef123wxyz")).toBe("⋯wxyz");
   });
 
   it("reveals nothing for a short value", () => {
@@ -61,7 +80,7 @@ describe("buildEnvSettings", () => {
     const e = entry(env, "ANTHROPIC_API_KEY");
     expect(e.secret).toBe(true);
     expect(e.set).toBe(true);
-    expect(e.value).toBe("⋯ail");
+    expect(e.value).toBe("⋯tail");
     // The serialized report (what the route sends) must not leak the raw value.
     expect(JSON.stringify(buildEnvSettings(env))).not.toContain("supersecret");
   });

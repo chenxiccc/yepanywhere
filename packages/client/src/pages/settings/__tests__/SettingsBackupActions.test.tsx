@@ -42,19 +42,27 @@ describe("SettingsBackupActions", () => {
     vi.clearAllMocks();
   });
 
-  it("shows the empty server slot with Load disabled", async () => {
+  it("shows the empty server slot with Restore disabled", async () => {
     getBrowserSettingsBackup.mockResolvedValue({ backup: null });
 
     renderActions();
 
-    expect(await screen.findByText("No server copy saved")).toBeTruthy();
     expect(
-      (screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
-        .disabled,
+      await screen.findByText("The server settings slot is empty"),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Save from this browser",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(false);
     expect(
-      (screen.getByRole("button", { name: "Load" }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: "Apply to this browser",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -71,9 +79,11 @@ describe("SettingsBackupActions", () => {
     localStorage.setItem(UI_KEYS.theme, "verydark");
     localStorage.setItem(BROWSER_LOCAL_KEYS.xaiSttApiKey, "secret");
     renderActions();
-    await screen.findByText("No server copy saved");
+    await screen.findByText("The server settings slot is empty");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save from this browser" }),
+    );
 
     await waitFor(() =>
       expect(saveBrowserSettingsBackup).toHaveBeenCalledWith({
@@ -84,6 +94,8 @@ describe("SettingsBackupActions", () => {
         },
       }),
     );
-    expect(await screen.findByText(/Saved /)).toBeTruthy();
+    expect(
+      await screen.findByText(/Settings saved to the server slot /),
+    ).toBeTruthy();
   });
 });

@@ -71,21 +71,9 @@ describe("SourceControlSettings", () => {
     });
   });
 
-  it("saves a valid response-turn bound and rejects an invalid draft", () => {
+  it("keeps the response observation bound out of the user-facing pane", () => {
     render(<SourceControlSettings />);
-    const input = screen.getByRole("spinbutton", {
-      name: "sourceReviewResponseTurnsSettingTitle",
-    });
-    fireEvent.change(input, { target: { value: "12" } });
-    fireEvent.blur(input);
-    expect(updateSettings).toHaveBeenCalledWith({
-      sourceReviewResponseTurns: 12,
-    });
-
-    updateSettings.mockClear();
-    fireEvent.change(input, { target: { value: "33" } });
-    fireEvent.blur(input);
-    expect(updateSettings).not.toHaveBeenCalled();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
   });
 
   it("renders nothing without the permanent capability", () => {

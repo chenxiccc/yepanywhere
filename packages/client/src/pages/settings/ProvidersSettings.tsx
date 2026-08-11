@@ -921,16 +921,19 @@ function ClaudeGatewaySettings({
   ]);
 
   return (
-    <SettingsItem
+    <div
       id="provider-claude-gateway-configuration"
-      label={t("providersClaudeGatewayTitle")}
-      description={t("providersClaudeGatewayDescription")}
-      className="settings-item-inline-field"
-      valueText={
-        serverValue ? t("providersClaudeGatewayConfigured") : t("commonOff")
-      }
+      className="settings-subsection"
     >
-      <div className="claude-gateway-settings-control">
+      <h3>{t("providersClaudeGatewayTitle")}</h3>
+      <p className="settings-hint">{t("providersClaudeGatewayDescription")}</p>
+      <form
+        className="claude-gateway-settings-control"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (hasChanges && !isSaving) void handleSave();
+        }}
+      >
         <div className="claude-gateway-settings-row">
           <input
             type="url"
@@ -944,10 +947,9 @@ function ClaudeGatewaySettings({
             aria-label={t("providersClaudeGatewayUrlAria")}
           />
           <button
-            type="button"
+            type="submit"
             className="settings-button"
             disabled={!hasChanges || isSaving}
-            onClick={() => void handleSave()}
           >
             {isSaving ? t("providersSaving") : t("providersSave")}
           </button>
@@ -974,8 +976,8 @@ function ClaudeGatewaySettings({
         <p className="settings-hint">
           {t("providersClaudeGatewayIsolationHint")}
         </p>
-      </div>
-    </SettingsItem>
+      </form>
+    </div>
   );
 }
 
@@ -985,22 +987,28 @@ function ClaudeGatewayDisableAgentSetting() {
   const disabled = settings?.claudeGatewayDisableAgent ?? true;
 
   return (
-    <SettingsItem
+    <div
       id="provider-claude-gateway-disable-agent"
-      as="label"
-      label={t("providersClaudeGatewayDisableAgentTitle")}
-      description={t("providersClaudeGatewayDisableAgentDescription")}
-      valueText={disabled ? t("commonOn") : t("commonOff")}
+      className="settings-subsection"
     >
-      <input
-        type="checkbox"
-        checked={disabled}
-        aria-label={t("providersClaudeGatewayDisableAgentTitle")}
-        onChange={(event) =>
-          void updateSetting("claudeGatewayDisableAgent", event.target.checked)
-        }
-      />
-    </SettingsItem>
+      <label>
+        <input
+          type="checkbox"
+          checked={disabled}
+          aria-label={t("providersClaudeGatewayDisableAgentTitle")}
+          onChange={(event) =>
+            void updateSetting(
+              "claudeGatewayDisableAgent",
+              event.target.checked,
+            )
+          }
+        />{" "}
+        <strong>{t("providersClaudeGatewayDisableAgentTitle")}</strong>
+      </label>
+      <p className="settings-hint">
+        {t("providersClaudeGatewayDisableAgentDescription")}
+      </p>
+    </div>
   );
 }
 
@@ -1374,10 +1382,13 @@ export function ProvidersSettings() {
     const serverInfo = serverProviders.find(
       (p) => p.name === clientProvider.id,
     );
+    if (clientProvider.id === "claude-ollama" && !serverInfo) {
+      return [];
+    }
     if (
-      (clientProvider.id === "claude-gateway" ||
-        clientProvider.id === "claude-ollama") &&
-      !serverInfo
+      clientProvider.id === "claude-gateway" &&
+      !serverInfo &&
+      !supportsClaudeGateway
     ) {
       return [];
     }
@@ -1418,39 +1429,39 @@ export function ProvidersSettings() {
                     value: idleReapHours,
                   })
             }
-            after={
-              <p className="settings-hint">{t("providersIdleReapNeverHint")}</p>
-            }
           >
-            <CommittedRangeNumberInput
-              id="providers-idle-reap-hours-control"
-              min={NEVER_IDLE_REAP_HOURS}
-              max={MAX_IDLE_REAP_HOURS}
-              numberMin={NEVER_IDLE_REAP_HOURS}
-              numberMax={MAX_IDLE_REAP_HOURS}
-              step={1}
-              list="providers-idle-reap-hours-ticks"
-              value={idleReapHours}
-              unit={t("providersIdleReapHoursUnit")}
-              ariaLabel={t("providersIdleReapHoursAria")}
-              snapTextToStep={false}
-              onCommit={(value) => {
-                void updateSetting(
-                  "idleReapHours",
-                  normalizeIdleReapHours(value),
-                );
-              }}
-            />
-            <datalist id="providers-idle-reap-hours-ticks">
-              <option
-                value={NEVER_IDLE_REAP_HOURS}
-                label={t("providersIdleReapNever")}
+            <div>
+              <CommittedRangeNumberInput
+                id="providers-idle-reap-hours-control"
+                min={NEVER_IDLE_REAP_HOURS}
+                max={MAX_IDLE_REAP_HOURS}
+                numberMin={NEVER_IDLE_REAP_HOURS}
+                numberMax={MAX_IDLE_REAP_HOURS}
+                step={1}
+                list="providers-idle-reap-hours-ticks"
+                value={idleReapHours}
+                unit={t("providersIdleReapHoursUnit")}
+                ariaLabel={t("providersIdleReapHoursAria")}
+                snapTextToStep={false}
+                onCommit={(value) => {
+                  void updateSetting(
+                    "idleReapHours",
+                    normalizeIdleReapHours(value),
+                  );
+                }}
               />
-              <option value="0" />
-              <option value="24" />
-              <option value="48" />
-              <option value={MAX_IDLE_REAP_HOURS} />
-            </datalist>
+              <datalist id="providers-idle-reap-hours-ticks">
+                <option
+                  value={NEVER_IDLE_REAP_HOURS}
+                  label={t("providersIdleReapNever")}
+                />
+                <option value="0" />
+                <option value="24" />
+                <option value="48" />
+                <option value={MAX_IDLE_REAP_HOURS} />
+              </datalist>
+              <p className="settings-hint">{t("providersIdleReapNeverHint")}</p>
+            </div>
           </SettingsItem>
         )}
         {providerDisplayList.map((provider) => (
@@ -1459,6 +1470,16 @@ export function ProvidersSettings() {
               id={`provider-${provider.id}`}
               label={provider.displayName}
               description={provider.metadata.description}
+              keywords={
+                provider.id === "claude-gateway"
+                  ? [
+                      "gateway URL",
+                      "start command",
+                      "autostart",
+                      "disable agent",
+                    ]
+                  : undefined
+              }
               after={
                 provider.id === "claude-ollama" &&
                 showClaudeOllamaDeprecation ? (
@@ -1519,6 +1540,18 @@ export function ProvidersSettings() {
                     )}
                   {provider.id === "claude-ollama" && <OllamaSettings />}
                   {provider.id === "grok" && <GrokBuildApiKeySettings />}
+                  {provider.id === "claude-gateway" &&
+                    supportsClaudeGateway && (
+                      <>
+                        <ClaudeGatewaySettings
+                          reloadProviders={reloadProviders}
+                          supportsAutostart={supportsClaudeGatewayAutostart}
+                        />
+                        {supportsClaudeGatewayDisableAgent && (
+                          <ClaudeGatewayDisableAgentSetting />
+                        )}
+                      </>
+                    )}
                   {provider.id === "codex" && provider.installed && (
                     <CodexUpdatePanel />
                   )}
@@ -1555,17 +1588,6 @@ export function ProvidersSettings() {
                 settings={settings}
                 updateSetting={updateSetting}
               />
-            )}
-            {provider.id === "claude" && supportsClaudeGateway && (
-              <>
-                <ClaudeGatewaySettings
-                  reloadProviders={reloadProviders}
-                  supportsAutostart={supportsClaudeGatewayAutostart}
-                />
-                {supportsClaudeGatewayDisableAgent && (
-                  <ClaudeGatewayDisableAgentSetting />
-                )}
-              </>
             )}
             {provider.id === "claude" && supportsAdditionalModels && (
               <ClaudeAdditionalModelsSettings

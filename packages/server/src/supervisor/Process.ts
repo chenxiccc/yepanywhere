@@ -4050,6 +4050,15 @@ export class Process {
     return this.viewerPresence.registerViewer();
   }
 
+  /** True when reload can detach without losing YA-owned queued input. */
+  canDetachForServerReload(): boolean {
+    return (
+      this.detachForServerReloadFn !== null &&
+      this.queueDepth === 0 &&
+      !this.hasVolatileDeferredMessages()
+    );
+  }
+
   /**
    * Terminate the process with a reason (e.g., staleness detection).
    * Unlike abort(), this records the reason for logging/debugging.

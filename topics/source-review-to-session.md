@@ -549,21 +549,25 @@ outcome request. A new server preserves all old request shapes and response
 fields for old clients. This compatibility plan requires maintainer approval
 before any client/server contract edit.
 
-### The new workflow is default-off until deliberately promoted
+### Review visibility is on by default for new installs
 
 Submission directories, site/outcome history, the Reviews mode, and review
-outcome Inbox cards are YA-novel user-visible behavior. They ship behind the
-server-persisted `sourceReviewSubmissionsEnabled` setting, default false;
-missing setting data from an older server also means false. The capability says
-the server can support the workflow, while the setting records that the user
-chose it. Fixing the existing editor overlay and offering a destination for an
-already-invoked immediate submit do not depend on this option.
+outcome Inbox cards remain behind the server-persisted
+`sourceReviewSubmissionsEnabled` setting. The default is true for new installs
+so a user who submits a review can discover its history and eventual response.
+An explicit stored false remains authoritative. Existing installs whose
+persisted default is already false are not silently migrated because the file
+does not distinguish an untouched old default from an intentional choice.
+Missing setting data from an older server still means false in the client. The
+capability says the server can support the workflow; the setting controls its
+visibility, capture history, and outcome tracking. Fixing the existing editor
+overlay and offering a destination for an already-invoked immediate submit do
+not depend on this option.
 
 Enabling the option activates the new submit transaction and its associated UI
-as one contract. Existing explicit settings survive upgrades. Making it
-default-on later requires a separate recorded product decision under
-[Vanilla Defaults](vanilla-defaults.md), not an inference from successful
-implementation.
+as one contract. With no submitted review, enabling it starts no observation
+work. The default-on decision is recorded under
+[Vanilla Defaults](vanilla-defaults.md).
 
 ### Relocation — deferred, but its contract is stated
 

@@ -206,7 +206,7 @@ describe("ServerSettingsService", () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();
 
-    expect(service.getSetting("sourceReviewSubmissionsEnabled")).toBe(false);
+    expect(service.getSetting("sourceReviewSubmissionsEnabled")).toBe(true);
     expect(service.getSetting("sourceReviewResponseTurns")).toBe(8);
 
     await service.updateSettings({
@@ -234,7 +234,7 @@ describe("ServerSettingsService", () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();
 
-    expect(service.getSetting("sourceReviewSubmissionsEnabled")).toBe(false);
+    expect(service.getSetting("sourceReviewSubmissionsEnabled")).toBe(true);
     expect(service.getSetting("sourceReviewResponseTurns")).toBe(8);
   });
 

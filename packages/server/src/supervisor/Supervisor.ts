@@ -1557,6 +1557,7 @@ export class Supervisor {
       iterator,
       queue,
       abort,
+      detachForServerReload,
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
@@ -1581,6 +1582,7 @@ export class Supervisor {
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
+      detachForServerReloadFn: detachForServerReload,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
@@ -2169,6 +2171,7 @@ export class Supervisor {
       iterator,
       queue,
       abort,
+      detachForServerReload,
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
@@ -2192,6 +2195,7 @@ export class Supervisor {
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
+      detachForServerReloadFn: detachForServerReload,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
@@ -5765,6 +5769,12 @@ export class Supervisor {
     );
   }
 
+  private processHasInterruptibleActiveWork(process: Process): boolean {
+    return (
+      this.processHasActiveWork(process) && !process.canDetachForServerReload()
+    );
+  }
+
   /**
    * Emit worker activity event for safe restart indicator.
    * Called when workers are added, removed, or change state.
@@ -5777,7 +5787,7 @@ export class Supervisor {
 
     const interruptibleSessionCount = Array.from(
       this.processes.values(),
-    ).filter((p) => this.processHasActiveWork(p)).length;
+    ).filter((p) => this.processHasInterruptibleActiveWork(p)).length;
     const queuedSessionMessageCount = this.getQueuedSessionMessageCount();
 
     const event: WorkerActivityEvent = {
@@ -6164,7 +6174,7 @@ export class Supervisor {
   } {
     const interruptibleSessionCount = Array.from(
       this.processes.values(),
-    ).filter((p) => this.processHasActiveWork(p)).length;
+    ).filter((p) => this.processHasInterruptibleActiveWork(p)).length;
     return {
       activeWorkers: this.processes.size,
       interruptibleSessionCount,

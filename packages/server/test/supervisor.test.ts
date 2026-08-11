@@ -5833,6 +5833,78 @@ describe("Supervisor", () => {
       }
     });
 
+    it("does not count active reload-safe sessions as interruptible", async () => {
+      vi.useFakeTimers();
+      try {
+        let aborted = false;
+        const queue = new MessageQueue();
+
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "active-reload-safe-session",
+              };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue,
+              abort: () => {
+                aborted = true;
+              },
+              detachForServerReload: async () => {},
+              isProcessAlive: () => !aborted,
+            };
+          },
+        };
+
+        const supervisorWithReloadSafeProcess = new Supervisor({ realSdk });
+        const process = await supervisorWithReloadSafeProcess.startSession(
+          "/tmp/test",
+          { text: "keep running across reload" },
+        );
+        if (!("id" in process)) {
+          throw new Error("expected process");
+        }
+
+        queue.drain();
+        expect(process.state.type).toBe("in-turn");
+        expect(
+          supervisorWithReloadSafeProcess.getWorkerActivity(),
+        ).toMatchObject({
+          activeWorkers: 1,
+          interruptibleSessionCount: 0,
+          hasActiveWork: false,
+        });
+
+        queue.push({ text: "queued input must block detach" });
+        expect(
+          supervisorWithReloadSafeProcess.getWorkerActivity(),
+        ).toMatchObject({
+          activeWorkers: 1,
+          interruptibleSessionCount: 1,
+          queuedSessionMessageCount: 1,
+          hasActiveWork: true,
+        });
+        queue.drain();
+
+        const abortPromise = supervisorWithReloadSafeProcess.abortProcess(
+          process.id,
+        );
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("does not terminate long-silent active sessions without liveness", async () => {
       vi.useFakeTimers();
       try {

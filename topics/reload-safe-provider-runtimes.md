@@ -220,6 +220,9 @@ The proxy adds one lifecycle operation that ordinary providers do not need:
 detach the current Hono generation without calling the provider's `abort`.
 `Process.detachForServerReload` uses that operation only after confirming the
 YA-owned direct queue is empty and no volatile deferred message would be lost.
+Restart-impact reporting applies the same eligibility test: a hosted active
+session is counted as interruptible whenever queued or volatile input prevents
+detach.
 
 ### Sequenced replay and acknowledgement
 
@@ -844,6 +847,10 @@ The server reports reload continuity as host capability plus a blocker-specific
 decision, not merely the saved provider setting. A backend reload is seamless
 only when every active blocker was launched reload-safe, can reattach to the
 current host protocol, and has no volatile queue fact that would be lost.
+Worker activity and Settings restart warnings count only active sessions whose
+provider work the actual reload path would interrupt. An active process with a
+reload-safe detach path is excluded; volatile queued work remains a separate
+restart blocker.
 
 The banner behavior should remain conservative:
 

@@ -1,6 +1,6 @@
 .row {
   display: grid;
-  grid-template-columns: minmax(4rem, auto) minmax(5.5rem, 1fr) 4.4rem;
+  grid-template-columns: minmax(4rem, auto) minmax(5.5rem, 1fr) max-content;
   align-items: center;
   gap: 0.3rem;
   color: var(--text-muted);
@@ -13,7 +13,7 @@
 }
 
 .row input[type="number"] {
-  width: 100%;
+  width: 4.4rem;
   min-width: 0;
   padding: 0.18rem 0.3rem;
   border: 1px solid var(--border-input);
@@ -21,6 +21,18 @@
   color: var(--text-primary);
   background: var(--bg-primary);
   font-size: var(--font-size-sm);
+}
+
+.numberWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.unit {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1;
 }
 
 .row input:disabled {

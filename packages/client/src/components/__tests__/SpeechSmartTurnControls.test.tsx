@@ -194,5 +194,6 @@ describe("SpeechSmartTurnControls", () => {
     expect(
       screen.getByLabelText("Follow-up listening").getAttribute("max"),
     ).toBe("30000");
+    expect(screen.getAllByText("ms")).toHaveLength(3);
   });
 });

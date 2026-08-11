@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
@@ -423,6 +424,16 @@ describe("ProvidersSettings additional models", () => {
     versionState.capabilities = [CLAUDE_GATEWAY_CAPABILITY];
     render(<ProvidersSettings />);
 
+    const gatewayCard = document.querySelector<HTMLElement>(
+      '[data-settings-item="provider-claude-gateway"]',
+    );
+    expect(gatewayCard).not.toBeNull();
+    expect(
+      within(gatewayCard as HTMLElement).getByText(
+        "providersClaudeGatewayTitle",
+      ),
+    ).toBeTruthy();
+
     fireEvent.change(
       screen.getByRole("textbox", {
         name: "providersClaudeGatewayUrlAria",
@@ -437,6 +448,28 @@ describe("ProvidersSettings additional models", () => {
         "http://localhost:4141",
       );
       expect(mockReloadProviders).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("submits Claude Gateway edits through its form", async () => {
+    versionState.capabilities = [CLAUDE_GATEWAY_CAPABILITY];
+    render(<ProvidersSettings />);
+
+    const input = screen.getByRole("textbox", {
+      name: "providersClaudeGatewayUrlAria",
+    });
+    fireEvent.change(input, {
+      target: { value: "http://localhost:4242" },
+    });
+    const form = input.closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith(
+        "claudeGatewayUrl",
+        "http://localhost:4242",
+      );
     });
   });
 

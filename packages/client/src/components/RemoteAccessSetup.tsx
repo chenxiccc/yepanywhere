@@ -11,7 +11,7 @@ import {
   normalizeRelayUrl,
   normalizeYaClientBaseUrl,
 } from "@yep-anywhere/shared";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { type RelayStatus, useRemoteAccess } from "../hooks/useRemoteAccess";
 import { useI18n } from "../i18n";
@@ -25,6 +25,8 @@ export interface RemoteAccessSetupProps {
   description?: string;
   /** Callback when setup completes successfully */
   onSetupComplete?: () => void;
+  /** Derived YA URL status rendered beside the setting that controls it. */
+  yaClientInfo?: ReactNode;
 }
 
 /**
@@ -142,6 +144,7 @@ export function RemoteAccessSetup({
   title = "Remote Access",
   description = "Access your server from anywhere.",
   onSetupComplete,
+  yaClientInfo,
 }: RemoteAccessSetupProps) {
   const { t } = useI18n();
   const {
@@ -637,6 +640,8 @@ export function RemoteAccessSetup({
           </div>
         )}
 
+        {yaClientInfo}
+
         <div className="remote-access-status">
           <span className="status-label">
             {t("remoteSetupStatus" as never)}
@@ -707,11 +712,15 @@ export function RemoteAccessSetup({
                 className="revoke-all-button"
                 onClick={() => revokeAllSessions()}
                 disabled={isSaving}
+                title={t("remoteSetupRevokeEffect" as never)}
               >
                 {t("remoteSetupRevokeAll" as never)}
               </button>
             )}
           </div>
+          <p className="settings-hint">
+            {t("remoteSetupSessionsDescription" as never)}
+          </p>
           {sessions.length === 0 ? (
             <p className="sessions-empty">
               {t("remoteSetupNoSessions" as never)}
@@ -774,6 +783,7 @@ export function RemoteAccessSetup({
                       className="revoke-button"
                       onClick={() => revokeSession(session.sessionId)}
                       disabled={isSaving}
+                      title={t("remoteSetupRevokeEffect" as never)}
                     >
                       {t("remoteSetupRevoke" as never)}
                     </button>
@@ -784,17 +794,19 @@ export function RemoteAccessSetup({
           )}
         </div>
 
-        <div className="remote-access-actions">
-          <button
-            type="submit"
-            className="settings-button"
-            disabled={isSaving || !hasChanges}
-          >
-            {isSaving
-              ? t("remoteSetupSaving" as never)
-              : t("remoteSetupSave" as never)}
-          </button>
-        </div>
+        {hasChanges && (
+          <div className="remote-access-actions">
+            <button
+              type="submit"
+              className="settings-button"
+              disabled={isSaving}
+            >
+              {isSaving
+                ? t("remoteSetupSaving" as never)
+                : t("remoteSetupUpdate" as never)}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

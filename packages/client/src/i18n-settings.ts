@@ -187,6 +187,11 @@ export function getSettingsCategories(
       description: t("settingsEnvironmentDescription"),
     },
     {
+      id: "development",
+      label: t("settingsDevelopmentTitle"),
+      description: t("settingsDevelopmentDescription"),
+    },
+    {
       id: "about",
       label: t("settingsAboutTitle"),
       description: t("settingsAboutDescription"),
@@ -201,15 +206,5 @@ export function getEmulatorCategory(
     id: "emulator",
     label: t("settingsEmulatorTitle"),
     description: t("settingsEmulatorDescription"),
-  };
-}
-
-export function getDevelopmentCategory(
-  t: (key: string) => string,
-): SettingsCategory {
-  return {
-    id: "development",
-    label: t("settingsDevelopmentTitle"),
-    description: t("settingsDevelopmentDescription"),
   };
 }

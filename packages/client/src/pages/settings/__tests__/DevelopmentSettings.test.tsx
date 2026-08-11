@@ -16,6 +16,10 @@ import {
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { DevelopmentSettings } from "../DevelopmentSettings";
 
+let isManualReloadMode = true;
+let interruptibleSessionCount = 0;
+let queuedSessionMessageCount = 0;
+
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({
     ignoredTools: [],
@@ -25,12 +29,14 @@ vi.mock("../../../contexts/SchemaValidationContext", () => ({
 
 vi.mock("../../../hooks/useReloadNotifications", () => ({
   useReloadNotifications: () => ({
-    isManualReloadMode: true,
+    isManualReloadMode,
     pendingReloads: { backend: false },
     connected: true,
     reloadBackend: vi.fn(),
-    unsafeToRestart: false,
-    interruptibleSessionCount: 0,
+    unsafeToRestart:
+      interruptibleSessionCount > 0 || queuedSessionMessageCount > 0,
+    interruptibleSessionCount,
+    queuedSessionMessageCount,
   }),
 }));
 
@@ -50,7 +56,7 @@ vi.mock("../../../hooks/useServerSettings", () => ({
 
 vi.mock("../../../i18n", () => ({
   useI18n: () => ({
-    t: (key: string) =>
+    t: (key: string, params?: Record<string, string | number>) =>
       (
         ({
           developmentSectionTitle: "Development",
@@ -89,9 +95,17 @@ vi.mock("../../../i18n", () => ({
             "Do not retain scroll snapshots",
           developmentRestartTitle: "Restart Server",
           developmentRestartDescription: "Restart the backend server",
+          developmentInterruptedWarning:
+            "{count} active session{suffix}will be interrupted",
+          developmentInterruptedWarningActiveAndQueued:
+            "{activeCount} active session{activeSuffix} and {queuedCount} queued message{queuedSuffix} will be interrupted",
+          developmentInterruptedWarningQueued:
+            "{count} queued message{suffix} will be interrupted",
           developmentRestart: "Restart Server",
         }) as Record<string, string>
-      )[key] ?? key,
+      )[key]?.replaceAll(/\{(\w+)\}/gu, (_match, name: string) =>
+        String(params?.[name] ?? ""),
+      ) ?? key,
   }),
 }));
 
@@ -112,6 +126,9 @@ describe("DevelopmentSettings", () => {
     );
 
   beforeEach(() => {
+    isManualReloadMode = true;
+    interruptibleSessionCount = 0;
+    queuedSessionMessageCount = 0;
     window.localStorage.clear();
     __resetDeveloperModeForTest();
   });
@@ -134,6 +151,29 @@ describe("DevelopmentSettings", () => {
     expect(screen.getByText("Workstreams")).toBeTruthy();
     expect(screen.getByText("Session Scroll Memory")).toBeTruthy();
     expect(screen.queryByText("Store-Backed Session Detail")).toBeNull();
+  });
+
+  it("keeps development settings visible when server restart is unavailable", () => {
+    isManualReloadMode = false;
+
+    renderSettings();
+
+    expect(screen.getByText("Schema Validation")).toBeTruthy();
+    expect(screen.getByText("Browser Diagnostics")).toBeTruthy();
+    expect(screen.queryByText("Restart Server")).toBeNull();
+  });
+
+  it("warns about the work the restart would actually interrupt", () => {
+    interruptibleSessionCount = 1;
+    queuedSessionMessageCount = 2;
+
+    renderSettings();
+
+    expect(
+      screen.getByText(
+        "1 active session and 2 queued messages will be interrupted",
+      ),
+    ).toBeTruthy();
   });
 
   it("exposes the session cursor behavior debug setting", () => {

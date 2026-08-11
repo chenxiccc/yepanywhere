@@ -370,6 +370,7 @@ export function LocalAccessSettings() {
               <div className="file-access-setting-row">
                 <div className="settings-item-info">
                   <strong>{t("fileAccessProjects")}</strong>
+                  <p>{t("fileAccessProjectsDescription")}</p>
                 </div>
                 <label className="toggle-switch">
                   <input

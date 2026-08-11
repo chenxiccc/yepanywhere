@@ -84,6 +84,9 @@ export function SettingsBackupActions() {
       aria-label={t("settingsBackupTitle")}
     >
       <span className="settings-backup-title">{t("settingsBackupTitle")}</span>
+      <span className="settings-backup-status">
+        {t("settingsBackupDescription")}
+      </span>
       <div className="settings-backup-buttons">
         <button
           type="button"

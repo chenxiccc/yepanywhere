@@ -224,6 +224,8 @@ export interface StartSessionResult {
   iterator: AsyncIterableIterator<SDKMessage>;
   queue: AgentMessageQueue;
   abort: () => void | Promise<void>;
+  /** Release only this server's client while a reload-safe provider survives. */
+  detachForServerReload?: () => void | Promise<void>;
   /** Check if the underlying CLI process is still alive (undefined = not available) */
   isProcessAlive?: () => boolean;
   /** OS PID of the spawned agent child process (undefined if not available) */

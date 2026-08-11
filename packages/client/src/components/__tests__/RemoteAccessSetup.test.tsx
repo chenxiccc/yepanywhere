@@ -102,6 +102,9 @@ describe("RemoteAccessSetup YA client URL", () => {
         "https://ya.graehl.org/login/relay?u=ygraehl&r=wss%3A%2F%2Frelay.graehl.org%2Fws",
       );
     });
+    expect(
+      screen.queryByRole("button", { name: "remoteSetupUpdate" }),
+    ).toBeNull();
   });
 
   it("normalizes bare custom YA hosts before saving", async () => {
@@ -118,13 +121,13 @@ describe("RemoteAccessSetup YA client URL", () => {
     fireEvent.change(screen.getByLabelText("remoteSetupCustomYaClientUrl"), {
       target: { value: "ya.graehl.org" },
     });
-    const saveButton = screen.getByRole("button", {
-      name: "remoteSetupSave",
+    const updateButton = screen.getByRole("button", {
+      name: "remoteSetupUpdate",
     }) as HTMLButtonElement;
     await waitFor(() => {
-      expect(saveButton.disabled).toBe(false);
+      expect(updateButton.disabled).toBe(false);
     });
-    fireEvent.click(saveButton);
+    fireEvent.click(updateButton);
 
     await waitFor(() => {
       expect(mockUpdateSetting).toHaveBeenCalledWith(

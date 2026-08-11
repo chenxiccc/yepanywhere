@@ -71,6 +71,7 @@ export function SpeechSmartTurnControls({
         value={clean.timeoutMs}
         disabled={disabled}
         numberAriaLabel="Smart Turn timeout milliseconds"
+        unit="ms"
         onCommit={(timeoutMs) => update({ enabled: true, timeoutMs })}
         onActivate={activate}
       />
@@ -83,6 +84,7 @@ export function SpeechSmartTurnControls({
         value={clean.graceMs}
         disabled={disabled}
         numberAriaLabel="Smart Turn command grace milliseconds"
+        unit="ms"
         hint={t("speechSmartTurnGraceHint")}
         onCommit={(graceMs) => update({ enabled: true, graceMs })}
         onActivate={activate}
@@ -96,6 +98,7 @@ export function SpeechSmartTurnControls({
         value={followUpListenMs}
         disabled={disabled}
         numberAriaLabel="Follow-up listening milliseconds"
+        unit="ms"
         hint={t("speechSettingsFollowUpListenDescription")}
         onCommit={setFollowUpListenMs}
         onActivate={activate}

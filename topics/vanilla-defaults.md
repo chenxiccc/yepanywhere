@@ -68,6 +68,15 @@ novelty must never be the out-of-the-box experience.
 
 ## Known Exceptions
 
+[source-review-to-session](source-review-to-session.md) defaults review
+history and outcome visibility on for new installs. A review is already an
+explicit user action; the default makes its submitted history and eventual
+agent response discoverable in Source Control and Inbox. With no submitted
+review, it performs no response-observation work. The setting remains
+available, explicit stored false remains authoritative, and old stored false
+values are not migrated because they cannot be distinguished from an earlier
+untouched default. Authorized by graehl on 2026-08-11.
+
 [composer-full-pane-editing](composer-full-pane-editing.md) adds a visible
 full-pane toggle to the New Session, editable handoff, and in-session
 composers. The in-session top-right control remains available in the one-line

@@ -32,6 +32,7 @@ export function EnvironmentSettings() {
   useSettingsPaneTitle(t("environmentSectionTitle"));
   const [entries, setEntries] = useState<EnvSettingEntry[] | null>(null);
   const [error, setError] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,10 +49,12 @@ export function EnvironmentSettings() {
     };
   }, []);
 
-  const groups = useMemo(
-    () => (entries ? groupEntries(entries) : []),
-    [entries],
+  const visibleEntries = useMemo(
+    () => entries?.filter((entry) => showAll || entry.set) ?? [],
+    [entries, showAll],
   );
+  const groups = useMemo(() => groupEntries(visibleEntries), [visibleEntries]);
+  const setCount = entries?.filter((entry) => entry.set).length ?? 0;
 
   return (
     <SettingsSection description={t("environmentSectionDescription")}>
@@ -60,6 +63,28 @@ export function EnvironmentSettings() {
           <p className="settings-warning">{t("environmentLoadError")}</p>
         )}
         {!error && entries === null && <p>{t("environmentLoading")}</p>}
+
+        {!error && entries && (
+          <label className={styles.filter}>
+            <span>{t("environmentShowLabel")}</span>
+            <select
+              className="settings-select"
+              value={showAll ? "all" : "set"}
+              onChange={(event) => setShowAll(event.target.value === "all")}
+            >
+              <option value="set">
+                {t("environmentShowSet", { count: setCount })}
+              </option>
+              <option value="all">
+                {t("environmentShowAll", { count: entries.length })}
+              </option>
+            </select>
+          </label>
+        )}
+
+        {!error && entries && !showAll && groups.length === 0 && (
+          <p className="settings-empty">{t("environmentEmptySet")}</p>
+        )}
 
         {groups.map((group) => (
           <div key={group.group} className={`settings-group ${styles.group}`}>

@@ -52,14 +52,17 @@ Client state that must not collide across hosted/remote sources → (2).
 Session/server config that seeds new sessions or must survive on the server →
 (3).
 
-### Explicit browser-settings backup
+### Explicit browser-settings transfer
 
-The Settings navigation exposes one server-stored Save/Load slot for portable
-browser preferences. This is a transfer mechanism layered over (1), not a
-fourth persistence scope: settings remain browser-local until the user presses
-Save, and Load replaces the allowlisted preference set before reloading the
-client. Server-persisted settings in (3) already survive and are not duplicated
-into the backup.
+The Settings category navigation exposes **Transfer browser settings** beneath
+the category list, in both its desktop rail and narrow-screen list. It has one
+server-stored slot for portable browser preferences. This is a manual transfer
+mechanism layered over (1), not continuous synchronization or a fourth
+persistence scope. **Save from this browser** replaces the single server
+snapshot. **Apply to this browser** applies that snapshot to the current
+browser, even when another device created it, replaces the allowlisted local
+preference set, and then reloads the client. Server-persisted settings in (3)
+already survive and are not duplicated into the transfer slot.
 
 The client owns an explicit allowlist. Browser identity, relay/auth and speech
 credentials, source-scoped state, drafts, cache contents and runtime
@@ -67,6 +70,89 @@ measurements, hardware device ids, recent-project history, and legacy migration
 keys never enter the server copy. Hosted clients show the controls only when
 the connected server advertises `browser-settings-backup`; older servers retain
 the ordinary local settings behavior.
+
+## Reviewed settings behavior
+
+The following controls and descriptions were checked against their current
+implementation on 2026-08-11. These are the user-visible contracts the Settings
+UI should state directly.
+
+- **Source Control → Review history and outcomes.** On by default for new
+  installs. It stores exact source captures, review submission history, agent
+  outcomes, and unread review responses; those records power the Source Control
+  Reviews view and Inbox outcomes. Turning it off leaves line comments,
+  Pending Comments, and review submission available, but stops creating exact
+  submission records and checking outcomes automatically. It hides existing
+  Reviews and Inbox outcomes without deleting their stored records. Automatic
+  response observation is a bounded implementation detail of this parent
+  feature; Refresh performs a later manual check.
+- **Agent Context → Tell agents this client renders LaTeX math.** Off by
+  default. The row previews the exact `[Client capabilities]` fragment before
+  opt-in. The fragment takes effect at the next provider start or resume, in
+  the provider's system-prompt context where supported and otherwise in YA's
+  hidden opening context turn.
+- **Remote Access → Host Marker.** Optional and unset by default. Presets apply
+  immediately; a valid custom emoji applies on Enter or blur; Clear removes it.
+  Connected clients show the marker in host-identifying headers and browser
+  tabs.
+- **Remote Access → YA hosted client.** Informational prose beside the URL
+  settings shows the effective hosted-client and public-share routes. It is not
+  an editable settings row.
+- **Remote Access → Remote login credentials.** Lists reusable SRP login
+  credentials, not live sockets and not relay-only connections. Revoke prevents
+  that credential from reconnecting; it does not terminate an already-open
+  socket. Persist remote login credentials controls whether eligible credentials
+  survive a server restart.
+- **Providers → Compact context early.** Off means YA sends no threshold or
+  `/compact` request and leaves provider defaults unchanged. A percentage asks
+  YA to initiate compaction at that context-window threshold.
+- **Providers → Idle harness lifetime.** Sets how long an idle provider harness
+  with no viewer and no feature-owned retention may remain in memory. Running
+  and waiting sessions are outside this timer; `-1` disables idle reaping.
+- **Providers → Claude Gateway.** Gateway URL, optional start command, and Agent
+  denial policy are nested in the Claude Gateway provider card. URL and command
+  edits require explicit confirmation because they control provider launch;
+  Save or Enter submits both fields together.
+- **Speech → Speech backends.** Chooses speech-recognition routing. Smart Turn
+  timeout, command grace, and follow-up listening are durations shown in `ms`.
+  Keep Mic Warm is browser-local and default-off; while a visible tab holds the
+  idle stream, no audio is sent, but mobile on-screen keyboard or voice-input
+  controls may be unavailable.
+- **Environment → Environment variables.** Read-only startup inventory. It
+  shows set documented variables by default and can show the full documented
+  registry. Secret classification and redaction happen on the server before the
+  response reaches the browser; credential-suffixed names can reveal at most
+  their final four characters.
+- **Lifecycle Webhooks.** Default-off, one-shot JSON HTTP delivery when a
+  session becomes idle or ends with an error. The payload includes session and
+  project details plus latest message text. Dry Run still sends the request and
+  marks `dryRun=true`; the receiver owns automation and must honor that flag.
+- **Devices → Browser Profiles.** Shows server-saved browser identity and origin
+  history plus current connected state. Delete history removes only that saved
+  profile/origin record; it does not disconnect or sign out the browser, revoke
+  remote login, or remove Web Push, and a reconnect may recreate the row.
+- **Local Access → File access.** Limits paths authenticated YA file viewers may
+  fetch; it does not restrict agents or terminals. Project folders means every
+  project root discovered by the server. Public shares do not inherit this
+  broad allow-set: their separate route permits only transcript-linked project
+  files and bounded assets referenced by a linked Markdown or HTML file. The
+  built-in hostname allow-set includes localhost, private-network IP addresses,
+  and Tailscale MagicDNS names ending in `.ts.net`.
+- **Local Access → Approval audit log.** Saves explicit approve and deny
+  decisions, including the associated tool inputs or commands, to
+  `logs/approval-decisions.jsonl`. It does not currently audit bypass-mode
+  selection or transitions.
+- **Remote Executors.** The current implementation starts Claude sessions on
+  SSH hosts named by the server account's `~/.ssh/config`. A home-relative
+  local project maps the suffix below that operating-system account's home to
+  the remote SSH account's home; a project outside local home requires the
+  exact same absolute path remotely. The remote Claude CLI owns authentication
+  and may differ in version from the local SDK-managed CLI.
+- **Development / About.** Development is always visible immediately before
+  About; About is last. Restart Server appears only when the development wrapper
+  supports manual backend reload. Its warning counts interruptible active
+  sessions and queued messages; a session is excluded only when its reload-safe
+  provider host can detach without losing YA-owned queued input.
 
 ## Server-definitive settings and constants
 
@@ -237,10 +323,11 @@ that when adding one.
 The category registry is `CATEGORY_COMPONENTS` in
 `packages/client/src/pages/settings/SettingsLayout.tsx`; labels/descriptions come
 from `getSettingsCategories` in `packages/client/src/i18n-settings.ts`. Current
-inventory: `appearance`, `toolbar`, `model`, `message-delivery`,
-`agent-context`, `notifications`, `webhooks`, `devices`, `local-access`,
-`remote`, `providers`, `speech`, `remote-executors`, `emulator`, `environment`,
-`about`, `development`.
+inventory: `appearance`, `performance`, `toolbar`, `model`,
+`message-delivery`, `source-control`, `storage`, `agent-context`,
+`notifications`, `webhooks`, `devices`, `local-access`, `remote`, `providers`,
+`cache-miss-billing`, `speech`, `remote-executors`, `environment`,
+`development`, `about`; `emulator` is added when available.
 
 Placement precedents (the load-bearing ones — choose by *what the user is
 conceptually adjusting*, not where the code lives):

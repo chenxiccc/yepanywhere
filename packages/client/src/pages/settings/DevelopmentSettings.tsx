@@ -62,6 +62,7 @@ export function DevelopmentSettings() {
     reloadBackend,
     unsafeToRestart,
     interruptibleSessionCount,
+    queuedSessionMessageCount,
   } = useReloadNotifications();
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
@@ -147,10 +148,23 @@ export function DevelopmentSettings() {
     await reloadBackend();
   };
 
-  // Only render in manual reload mode (dev mode)
-  if (!isManualReloadMode) {
-    return null;
-  }
+  const restartWarning =
+    interruptibleSessionCount > 0 && queuedSessionMessageCount > 0
+      ? t("developmentInterruptedWarningActiveAndQueued", {
+          activeCount: interruptibleSessionCount,
+          activeSuffix: interruptibleSessionCount !== 1 ? "s" : "",
+          queuedCount: queuedSessionMessageCount,
+          queuedSuffix: queuedSessionMessageCount !== 1 ? "s" : "",
+        })
+      : queuedSessionMessageCount > 0
+        ? t("developmentInterruptedWarningQueued", {
+            count: queuedSessionMessageCount,
+            suffix: queuedSessionMessageCount !== 1 ? "s" : "",
+          })
+        : t("developmentInterruptedWarning", {
+            count: interruptibleSessionCount,
+            suffix: interruptibleSessionCount !== 1 ? "s " : " ",
+          });
 
   return (
     <SettingsSection>
@@ -354,47 +368,44 @@ export function DevelopmentSettings() {
         </div>
       </HideInSettingsSearch>
 
-      <div className="settings-group">
-        <SettingsItem
-          label={t("developmentRestartTitle")}
-          description={t("developmentRestartDescription")}
-          info={
-            <>
-              <strong>{t("developmentRestartTitle")}</strong>
-              <p>
-                {t("developmentRestartDescription")}
-                {pendingReloads.backend && (
-                  <span className="settings-pending">
-                    {" "}
-                    {t("developmentChangesPending")}
-                  </span>
-                )}
-              </p>
-              {unsafeToRestart && (
-                <p className="settings-warning">
-                  {t("developmentInterruptedWarning", {
-                    count: interruptibleSessionCount,
-                    suffix: interruptibleSessionCount !== 1 ? "s " : " ",
-                  })}
+      {isManualReloadMode && (
+        <div className="settings-group">
+          <SettingsItem
+            label={t("developmentRestartTitle")}
+            description={t("developmentRestartDescription")}
+            info={
+              <>
+                <strong>{t("developmentRestartTitle")}</strong>
+                <p>
+                  {t("developmentRestartDescription")}
+                  {pendingReloads.backend && (
+                    <span className="settings-pending">
+                      {" "}
+                      {t("developmentChangesPending")}
+                    </span>
+                  )}
                 </p>
-              )}
-            </>
-          }
-        >
-          <button
-            type="button"
-            className={`settings-button ${unsafeToRestart ? "settings-button-danger" : ""}`}
-            onClick={handleRestartServer}
-            disabled={restarting}
+                {unsafeToRestart && (
+                  <p className="settings-warning">{restartWarning}</p>
+                )}
+              </>
+            }
           >
-            {restarting
-              ? t("developmentRestarting")
-              : unsafeToRestart
-                ? t("developmentRestartAnyway")
-                : t("developmentRestart")}
-          </button>
-        </SettingsItem>
-      </div>
+            <button
+              type="button"
+              className={`settings-button ${unsafeToRestart ? "settings-button-danger" : ""}`}
+              onClick={handleRestartServer}
+              disabled={restarting}
+            >
+              {restarting
+                ? t("developmentRestarting")
+                : unsafeToRestart
+                  ? t("developmentRestartAnyway")
+                  : t("developmentRestart")}
+            </button>
+          </SettingsItem>
+        </div>
+      )}
     </SettingsSection>
   );
 }

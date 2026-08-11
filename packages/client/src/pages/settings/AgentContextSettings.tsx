@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_HEARTBEAT_TURN_TEXT,
   DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES,
+  LATEX_MATH_RENDERING_CLIENT_CAPABILITY,
   buildEffectiveAgentContext,
 } from "@yep-anywhere/shared";
 import { useServerSettings } from "../../hooks/useServerSettings";
@@ -262,6 +263,19 @@ export function AgentContextSettings() {
               aria-label={t("agentContextSuggestedLatexTitle")}
             />
           </label>
+
+          <div
+            className="settings-item"
+            style={{ flexDirection: "column", alignItems: "stretch" }}
+          >
+            <div className="settings-item-info">
+              <strong>{t("agentContextSuggestedLatexPreviewTitle")}</strong>
+              <p>{t("agentContextSuggestedLatexPreviewDescription")}</p>
+            </div>
+            <pre className="settings-command-preview">
+              {`[Client capabilities]\n${LATEX_MATH_RENDERING_CLIENT_CAPABILITY}`}
+            </pre>
+          </div>
 
           <details>
             <summary className="settings-hint">

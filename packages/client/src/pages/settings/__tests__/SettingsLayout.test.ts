@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getSettingsCategories } from "../../../i18n-settings";
 import {
   createSettingsDetailNavigationState,
   SETTINGS_TWO_COLUMN_MIN_WIDTH,
@@ -8,6 +9,14 @@ import {
 } from "../SettingsLayout";
 
 describe("SettingsLayout", () => {
+  it("keeps Development immediately before About", () => {
+    const categoryIds = getSettingsCategories((key) => key).map(
+      (category) => category.id,
+    );
+
+    expect(categoryIds.slice(-2)).toEqual(["development", "about"]);
+  });
+
   it("uses the actual settings-container width for the two-column layout", () => {
     expect(shouldUseSettingsTwoColumn(SETTINGS_TWO_COLUMN_MIN_WIDTH - 1)).toBe(
       false,

@@ -1,0 +1,117 @@
+# Remaining confusing-settings design gaps
+
+The reviewed and verified controls now have their user-visible contracts in
+`topics/settings-ui-placement.md`. The items below need product, data-model, or
+cross-pane interaction decisions before their Settings presentation can be
+truthful.
+
+## Devices, credentials, and live connections
+
+Remote Access currently lists reusable remote-login credentials, while Devices
+lists browser identity/origin history and current connected state. Devices is
+the natural home for identity plus live connection state, but one composite row
+needs a security-client information model that can join profile history,
+current sockets, Web Push, and revocable credentials without treating a display
+name or user agent as proof of one physical device.
+
+Decide whether this becomes one composite Devices pane or two adjacent panes.
+Revoke must remain distinct from disconnect and Delete history. Kyle added
+browser profiles in `0dfba7e6` (2026-01-13) and memory-only-by-default remote
+credentials in `7de3cb45` (2026-02-21).
+
+Richer per-device settings counts, storage bytes, or cumulative session
+activity have no current ownership model. Efficient duration accounting needs
+a stable authenticated identity plus aggregation rules for concurrent tabs and
+sessions. Choose a concrete user decision these metrics would support before
+adding ongoing tracking.
+
+## Unsaved provider-launch configuration
+
+Claude Gateway URL and start-command edits correctly require explicit Save;
+Enter also submits them. Leaving with edits needs a consistent Save / Discard /
+Stay contract, but Settings has no shared dirty-form navigation guard. A full
+guard must cover category clicks, sidebar links, browser Back, and tab close;
+browser unload cannot await an asynchronous server save.
+
+Decide whether Save may delay all in-app navigation and whether tab close uses
+only the browser's native discard warning. A Gateway-only guard would establish
+inconsistent form behavior. graehl introduced the optional Gateway URL in
+`2d570447` (2026-07-27) and start command in `ea00bcbd` (2026-07-28).
+
+## Environment registry completeness
+
+Credential suffixes are now mandatorily redacted, and several confirmed
+operator inputs were added, but the Environment registry remains hand-kept.
+Requiring every `process.env` read would be wrong: HOME, PATH, launch markers,
+child outputs, and internal test/control variables are not operator settings.
+
+Choose either a typed operator-input registry consumed by config readers or an
+explicit exclusion ledger checked against static environment reads. Without
+one, new debug and development variables can silently miss the pane. graehl
+added the Environment pane in `038b0e1c` (2026-06-19).
+
+## Local Access transaction boundary
+
+Local Access combines network rebinding, authentication, allowed hosts, and
+file-viewer paths behind Apply Changes, unlike ordinary immediate Settings plus
+Undo. A bind or authentication change may need validation and redirect, while
+file access and allowed hosts already support runtime updates. The listening
+port is launch-owned and therefore read-only in this form.
+
+Decide whether to split network/auth into an explicit transactional form and
+make ordinary server settings immediate, or document a category-level
+transaction exception. Kyle added the configurable file-viewer sources in
+`9de67900` (2026-06-17).
+
+## Bypass-mode audit coverage
+
+Approval audit logging now accurately describes explicit approve/deny events,
+but bypass mode is at least as security-relevant and is not logged. Define one
+event schema for sessions created or resumed in bypass and live permission-mode
+transitions, including actor/source where known without duplicating state for
+every tool call.
+
+Decide whether the broader security audit shares the approval-log toggle/file
+or has independent retention. graehl added the original audit in `d1d46d3b`
+(2026-05-03); Kyle made it configurable and default-off in `02fc240d`
+(2026-07-05).
+
+## Remote executor provider and path contract
+
+The current implementation runs Claude over SSH, but the new-session executor
+selector is not provider-gated. A non-Claude session can retain an executor
+value that Codex and other providers do not use. Windows local-home translation
+also needs an explicit remote-platform mapping; a backslash suffix cannot be
+assumed valid on a POSIX host.
+
+Decide whether to restrict the selector and persisted default to Claude or
+build a provider-neutral remote-execution contract. Kyle added Remote Executors
+in `d7f51330` (2026-01-14).
+
+## Ambient provider keys and metered billing
+
+Grok Build requires an explicit opt-in before inheriting `XAI_API_KEY`, but
+Claude and Codex still inherit `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` without an
+equivalent decision. Those keys may take precedence over subscription login
+and silently move work to metered billing. Adding equivalent opt-ins is safer
+but can break installations that intentionally depend on ambient keys.
+
+Decide migration/default behavior, how provider auth status reports the
+credential that will win, and whether remote executors follow the same choice.
+graehl added the Grok opt-in in `5efd593e` (2026-06-01).
+
+## Cache Billing cannot explain an empty result
+
+The final record path exists, but observations are silently dropped when
+provider usage fields are absent, no warm/fork expectation exists, input is
+below the 50k threshold, or hit/miss evidence is ambiguous. Two empty lists
+therefore cannot distinguish a broken provider signal from no eligible
+expectation, an under-threshold classification, or a broken monitor.
+
+Add bounded stage counters and last-observation diagnostics before changing the
+classifier: usage-bearing messages, expected-warm entries, missing usage,
+threshold/unclassified drops, and emitted records per provider. Then use those
+observations to decide whether the byte-identical/fresh-window policy is valid.
+graehl added the default-off monitor in `1a50f72f` (2026-06-30).
+
+Found 2026-08-11 while reviewing Settings clarity with graehl.

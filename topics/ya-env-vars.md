@@ -12,6 +12,16 @@ contract and curates the *meaningful* operator-facing vars. Deep tuning knobs
 (session-index timings, codex rescan intervals, cache TTLs) live only in
 `config.ts`.
 
+The read-only **Environment variables** Settings pane is the operator-facing
+inventory. It defaults to set variables only and can switch to all documented
+variables. Its registry includes operator inputs read outside `loadConfig`,
+while excluding ordinary inherited system variables and YA-private launch or
+child-session markers. Secret values are redacted on the server before the
+report reaches a browser. Names ending in `_KEY`, `_TOKEN`, `_SECRET`, or
+`_PASSWORD` are always secret even if a future registry descriptor incorrectly
+opts out. A set secret may show only its final four characters; the full value
+never enters the report.
+
 The development wrapper's `YEP_DEV_WRAPPER_*` and Codex lifecycle host's
 `YEP_CODEX_RUNTIME_*` variables are private control-plane inputs, not operator
 settings. Startup harvests them for their owning modules and removes them from

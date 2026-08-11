@@ -173,35 +173,37 @@ export function YaCompactContextEarlyControl({
       ]}
       valueText={valueHint}
       className={className ?? "settings-item--wide-control"}
-      after={<span className="settings-hint">{valueHint}</span>}
     >
-      <span className="output-appearance-slider-row">
-        <CommittedRangeInput
-          min={0}
-          max={99}
-          step={1}
-          value={draft}
-          disabled={disabled}
-          aria-label={t("modelSettingsCompactThresholdTitle")}
-          onDraftChange={setDraft}
-          onCommit={commit}
-        />
-        <span className="output-appearance-number-wrap">
-          <input
-            type="number"
-            className="settings-input-small output-appearance-number"
+      <div>
+        <span className="output-appearance-slider-row">
+          <CommittedRangeInput
             min={0}
             max={99}
             step={1}
             value={draft}
             disabled={disabled}
             aria-label={t("modelSettingsCompactThresholdTitle")}
-            onChange={(e) => setDraft(Number(e.target.value))}
-            onBlur={() => commit(draft)}
+            onDraftChange={setDraft}
+            onCommit={commit}
           />
-          <span className="output-appearance-unit">%</span>
+          <span className="output-appearance-number-wrap">
+            <input
+              type="number"
+              className="settings-input-small output-appearance-number"
+              min={0}
+              max={99}
+              step={1}
+              value={draft}
+              disabled={disabled}
+              aria-label={t("modelSettingsCompactThresholdTitle")}
+              onChange={(e) => setDraft(Number(e.target.value))}
+              onBlur={() => commit(draft)}
+            />
+            <span className="output-appearance-unit">%</span>
+          </span>
         </span>
-      </span>
+        <span className="settings-hint">{valueHint}</span>
+      </div>
     </SettingsItem>
   );
 }
