@@ -616,7 +616,7 @@ export class SessionMetadataService {
    * Get the provider for a session.
    * Returns undefined if the provider was never explicitly saved.
    */
-  getProvider(sessionId: string): string | undefined {
+  getProvider(sessionId: string): ProviderName | undefined {
     return this.getMetadata(sessionId)?.provider;
   }
 

@@ -6,7 +6,10 @@
  */
 
 import type {
+  EffortLevel,
+  PermissionMode,
   ProviderChildSessionSummary,
+  ThinkingConfig,
   UnifiedSession,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -90,6 +93,18 @@ export interface LoadedSession {
 }
 
 /**
+ * Best-effort provider transcript evidence used only when a session predates
+ * the complete server-owned launch-settings snapshot.
+ */
+export interface RecoveredSessionLaunchSettings {
+  permissionMode?: PermissionMode;
+  requestedModel?: string;
+  serviceTier?: string;
+  thinking?: ThinkingConfig;
+  effort?: EffortLevel;
+}
+
+/**
  * Common interface for session readers across providers.
  *
  * Provider-specific readers may have additional methods beyond this interface.
@@ -133,6 +148,15 @@ export interface ISessionReader {
     sessionId: string,
     projectId: UrlProjectId,
   ): Promise<SessionListSummary | null>;
+
+  /**
+   * Recover the latest launch-relevant provider context for a pre-snapshot
+   * session. Reading is side-effect free; successful process launch owns the
+   * later metadata write.
+   */
+  getRecoveredLaunchSettings?(
+    sessionId: string,
+  ): Promise<RecoveredSessionLaunchSettings | null>;
 
   /**
    * Get full session with messages.

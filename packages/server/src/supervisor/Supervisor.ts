@@ -51,6 +51,7 @@ import {
   messageTimestampMs,
   toDurableRecapMessage,
 } from "../sessions/recap-overlays.js";
+import type { RecoveredSessionLaunchSettings } from "../sessions/types.js";
 import { normalizeSlashCommandName } from "../sdk/slashCommandEmulation.js";
 import type {
   ClaudeSDK,
@@ -627,6 +628,12 @@ export type OnSessionSummaryCallback = (
   projectId: UrlProjectId,
 ) => Promise<SessionSummary | null>;
 
+export type RecoverSessionLaunchSettingsCallback = (
+  sessionId: string,
+  projectId: UrlProjectId,
+  provider: ProviderName | undefined,
+) => Promise<RecoveredSessionLaunchSettings | null | undefined>;
+
 /** Delays for initial title/messageCount reconciliation after session creation */
 const INITIAL_RECONCILE_DELAYS_MS = [1000, 3000] as const;
 
@@ -665,6 +672,8 @@ export interface SupervisorOptions {
   ) => void;
   /** Callback to fetch session summary for initial metadata reconciliation */
   onSessionSummary?: OnSessionSummaryCallback;
+  /** Best-effort transcript recovery for sessions without a launch snapshot. */
+  recoverSessionLaunchSettings?: RecoverSessionLaunchSettingsCallback;
   /** Callback to read the current heartbeat-turn settings for a session */
   getHeartbeatTurnSettings?: (
     sessionId: string,
@@ -738,6 +747,7 @@ export class Supervisor {
     provider: ProviderName,
   ) => void;
   private onSessionSummary?: OnSessionSummaryCallback;
+  private recoverSessionLaunchSettings?: RecoverSessionLaunchSettingsCallback;
   private staleCheckTimer: ReturnType<typeof setInterval>;
   private getHeartbeatTurnSettings?: (
     sessionId: string,
@@ -804,6 +814,7 @@ export class Supervisor {
     this.getSessionChildEnv = options.getSessionChildEnv;
     this.onContextWindowObserved = options.onContextWindowObserved;
     this.onSessionSummary = options.onSessionSummary;
+    this.recoverSessionLaunchSettings = options.recoverSessionLaunchSettings;
     this.getHeartbeatTurnSettings = options.getHeartbeatTurnSettings;
     this.getHeartbeatTurnCandidates = options.getHeartbeatTurnCandidates;
     this.getHeartbeatWaitingSessionIds = options.getHeartbeatWaitingSessionIds;
@@ -898,23 +909,71 @@ export class Supervisor {
    * Resolve a cold process launch from request overrides, the durable
    * per-session snapshot, legacy model metadata, then server/provider defaults.
    */
-  private resolveColdLaunchSettings(
+  private async resolveColdLaunchSettings(
+    projectId: UrlProjectId,
     sessionId: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
-  ): { permissionMode: PermissionMode; modelSettings: ModelSettings } {
+  ): Promise<{ permissionMode: PermissionMode; modelSettings: ModelSettings }> {
     const durable =
       this.sessionMetadataService?.getEffectiveLaunchSettings(sessionId);
-    const requestedModel =
-      modelSettings?.requestedModel ??
-      modelSettings?.model ??
-      durable?.requestedModel ??
-      this.sessionMetadataService?.getRequestedModel(sessionId);
+    const explicitRequestedModel =
+      modelSettings?.requestedModel ?? modelSettings?.model;
+    const legacyRequestedModel = durable
+      ? undefined
+      : this.sessionMetadataService?.getRequestedModel(sessionId);
+    const needsRecovery =
+      !durable &&
+      (permissionMode === undefined ||
+        (explicitRequestedModel === undefined &&
+          legacyRequestedModel === undefined) ||
+        modelSettings?.thinking === undefined);
+    let recovered: RecoveredSessionLaunchSettings | undefined;
+    if (needsRecovery && this.recoverSessionLaunchSettings) {
+      const provider =
+        modelSettings?.providerName ??
+        this.sessionMetadataService?.getProvider?.(sessionId);
+      try {
+        recovered =
+          (await this.recoverSessionLaunchSettings(
+            sessionId,
+            projectId,
+            provider,
+          )) ?? undefined;
+      } catch (error) {
+        getLogger().debug(
+          {
+            event: "session_launch_settings_recovery_failed",
+            sessionId,
+            projectId,
+            provider,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Falling back after session launch settings recovery failed",
+        );
+      }
+    }
+
+    const inheritedRequestedModel = durable
+      ? (durable.requestedModel ?? undefined)
+      : (legacyRequestedModel ?? recovered?.requestedModel);
+    const requestedModel = explicitRequestedModel ?? inheritedRequestedModel;
+    const inheritedServiceTier = durable
+      ? (durable.serviceTier ?? undefined)
+      : recovered?.serviceTier;
+    const inheritedThinking = durable
+      ? (durable.thinking ?? undefined)
+      : recovered?.thinking;
+    const inheritedEffort = durable
+      ? (durable.effort ?? undefined)
+      : recovered?.effort;
     const thinkingWasRequested = modelSettings?.thinking !== undefined;
 
     return {
       permissionMode:
-        permissionMode ?? durable?.permissionMode ?? this.defaultPermissionMode,
+        permissionMode ??
+        (durable ? durable.permissionMode : recovered?.permissionMode) ??
+        this.defaultPermissionMode,
       modelSettings: {
         ...modelSettings,
         requestedModel: requestedModel ?? undefined,
@@ -922,12 +981,11 @@ export class Supervisor {
           requestedModel && requestedModel !== "default"
             ? requestedModel
             : undefined,
-        serviceTier:
-          modelSettings?.serviceTier ?? durable?.serviceTier ?? undefined,
-        thinking: modelSettings?.thinking ?? durable?.thinking ?? undefined,
+        serviceTier: modelSettings?.serviceTier ?? inheritedServiceTier,
+        thinking: modelSettings?.thinking ?? inheritedThinking,
         effort: thinkingWasRequested
           ? modelSettings?.effort
-          : (modelSettings?.effort ?? durable?.effort ?? undefined),
+          : (modelSettings?.effort ?? inheritedEffort),
       },
     };
   }
@@ -1458,7 +1516,8 @@ export class Supervisor {
         }
 
         const projectId = encodeProjectId(projectPath);
-        const resolved = this.resolveColdLaunchSettings(
+        const resolved = await this.resolveColdLaunchSettings(
+          projectId,
           resumeSessionId,
           permissionMode,
           modelSettings,
@@ -2959,7 +3018,8 @@ export class Supervisor {
         }
       }
 
-      const resolved = this.resolveColdLaunchSettings(
+      const resolved = await this.resolveColdLaunchSettings(
+        projectId,
         sessionId,
         permissionMode,
         modelSettings,
@@ -6076,7 +6136,8 @@ export class Supervisor {
     requireProviderSessionId = false,
   ): Promise<Process> {
     const resolved = resumeSessionId
-      ? this.resolveColdLaunchSettings(
+      ? await this.resolveColdLaunchSettings(
+          projectId,
           resumeSessionId,
           permissionMode,
           modelSettings,

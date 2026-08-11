@@ -1870,16 +1870,239 @@ describe("Supervisor", () => {
       ).resolves.toBe(true);
     });
 
-    it("keeps legacy sessions conservative and does not save failed launches", async () => {
+    it("persists recovered settings after a successful cold launch", async () => {
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const message of queue) {
+              if (aborted) return;
+              void message;
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+          };
+        },
+      );
+      const provider = {
+        ...testProvider(startSession),
+        name: "codex" as const,
+        displayName: "Codex",
+      };
+      const metadata = createLaunchSettingsMetadata();
+      const recoverSessionLaunchSettings = vi.fn(async () => ({
+        permissionMode: "bypassPermissions" as const,
+        requestedModel: "gpt-5.6-sol",
+        thinking: {
+          type: "adaptive" as const,
+          display: "summarized" as const,
+        },
+        effort: "xhigh" as const,
+      }));
+      const supervisorWithMetadata = new Supervisor({
+        provider,
+        idleTimeoutMs: 60_000,
+        sessionMetadataService: metadata.service,
+        recoverSessionLaunchSettings,
+      });
+
+      const first = await supervisorWithMetadata.reactivateSession(
+        "/tmp/test",
+        "recovered-session",
+        undefined,
+        { providerName: "codex" },
+      );
+
+      expect(recoverSessionLaunchSettings).toHaveBeenCalledWith(
+        "recovered-session",
+        encodeProjectId("/tmp/test"),
+        "codex",
+      );
+      expect(startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resumeSessionId: "recovered-session",
+          permissionMode: "bypassPermissions",
+          model: "gpt-5.6-sol",
+          thinking: { type: "adaptive", display: "summarized" },
+          effort: "xhigh",
+        }),
+      );
+      expect(metadata.current()).toEqual({
+        schemaVersion: 1,
+        revision: 1,
+        permissionMode: "bypassPermissions",
+        requestedModel: "gpt-5.6-sol",
+        serviceTier: null,
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "xhigh",
+      });
+
+      await expect(supervisorWithMetadata.abortProcess(first.id)).resolves.toBe(
+        true,
+      );
+      const second = await supervisorWithMetadata.reactivateSession(
+        "/tmp/test",
+        "recovered-session",
+        undefined,
+        { providerName: "codex" },
+      );
+      expect(recoverSessionLaunchSettings).toHaveBeenCalledTimes(1);
+      expect(startSession).toHaveBeenCalledTimes(2);
+      await expect(
+        supervisorWithMetadata.abortProcess(second.id),
+      ).resolves.toBe(true);
+    });
+
+    it("treats a complete durable snapshot as authoritative", async () => {
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const message of queue) {
+              if (aborted) return;
+              void message;
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+          };
+        },
+      );
+      const provider = {
+        ...testProvider(startSession),
+        name: "codex" as const,
+        displayName: "Codex",
+      };
+      const metadata = createLaunchSettingsMetadata({
+        schemaVersion: 1,
+        revision: 3,
+        permissionMode: "plan",
+        requestedModel: null,
+        serviceTier: null,
+        thinking: null,
+        effort: null,
+      });
+      const recoverSessionLaunchSettings = vi.fn(async () => ({
+        permissionMode: "bypassPermissions" as const,
+        requestedModel: "gpt-5.6-sol",
+        thinking: { type: "adaptive" as const },
+        effort: "xhigh" as const,
+      }));
+      const supervisorWithMetadata = new Supervisor({
+        provider,
+        sessionMetadataService: metadata.service,
+        recoverSessionLaunchSettings,
+      });
+
+      const process = await supervisorWithMetadata.reactivateSession(
+        "/tmp/test",
+        "durable-default-session",
+        undefined,
+        { providerName: "codex" },
+      );
+
+      expect(recoverSessionLaunchSettings).not.toHaveBeenCalled();
+      expect(startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permissionMode: "plan",
+          model: undefined,
+          thinking: undefined,
+          effort: undefined,
+        }),
+      );
+      expect(metadata.current()?.revision).toBe(3);
+      await expect(
+        supervisorWithMetadata.abortProcess(process.id),
+      ).resolves.toBe(true);
+    });
+
+    it("lets explicit cold settings override transcript recovery", async () => {
+      const startSession = vi.fn(async () => {
+        throw new Error("stop after resolution");
+      });
+      const provider = {
+        ...testProvider(startSession),
+        name: "codex" as const,
+        displayName: "Codex",
+      };
+      const metadata = createLaunchSettingsMetadata();
+      const recoverSessionLaunchSettings = vi.fn(async () => ({
+        permissionMode: "bypassPermissions" as const,
+        requestedModel: "recovered-model",
+        thinking: { type: "adaptive" as const },
+        effort: "xhigh" as const,
+      }));
+      const supervisorWithMetadata = new Supervisor({
+        provider,
+        sessionMetadataService: metadata.service,
+        recoverSessionLaunchSettings,
+      });
+
+      await expect(
+        supervisorWithMetadata.reactivateSession(
+          "/tmp/test",
+          "explicit-recovery-session",
+          "default",
+          {
+            providerName: "codex",
+            requestedModel: "explicit-model",
+            thinking: { type: "disabled" },
+          },
+        ),
+      ).rejects.toThrow("stop after resolution");
+
+      expect(startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permissionMode: "default",
+          model: "explicit-model",
+          thinking: { type: "disabled" },
+          effort: undefined,
+        }),
+      );
+      expect(recoverSessionLaunchSettings).not.toHaveBeenCalled();
+      expect(metadata.current()).toBeUndefined();
+    });
+
+    it("keeps YA model metadata and does not save failed recovered launches", async () => {
       const legacy = createLaunchSettingsMetadata(undefined, "sonnet");
       const startSession = vi.fn(async () => {
         throw new Error("provider rejected launch");
       });
       const provider = testProvider(startSession);
+      const recoverSessionLaunchSettings = vi.fn(async () => ({
+        permissionMode: "bypassPermissions" as const,
+        requestedModel: "gpt-5.6-sol",
+        thinking: { type: "adaptive" as const },
+        effort: "xhigh" as const,
+      }));
       const supervisorWithMetadata = new Supervisor({
         provider,
         sessionMetadataService: legacy.service,
         defaultPermissionMode: "default",
+        recoverSessionLaunchSettings,
       });
 
       await expect(
@@ -1887,8 +2110,43 @@ describe("Supervisor", () => {
       ).rejects.toThrow("provider rejected launch");
       expect(startSession).toHaveBeenCalledWith(
         expect.objectContaining({
+          permissionMode: "bypassPermissions",
+          model: "sonnet",
+          thinking: { type: "adaptive" },
+          effort: "xhigh",
+        }),
+      );
+      expect(recoverSessionLaunchSettings).toHaveBeenCalledOnce();
+      expect(legacy.current()).toBeUndefined();
+    });
+
+    it("falls back conservatively when transcript recovery fails", async () => {
+      const legacy = createLaunchSettingsMetadata(undefined, "sonnet");
+      const startSession = vi.fn(async () => {
+        throw new Error("provider rejected launch");
+      });
+      const recoverSessionLaunchSettings = vi.fn(async () => {
+        throw new Error("transcript unavailable");
+      });
+      const supervisorWithMetadata = new Supervisor({
+        provider: testProvider(startSession),
+        sessionMetadataService: legacy.service,
+        defaultPermissionMode: "default",
+        recoverSessionLaunchSettings,
+      });
+
+      await expect(
+        supervisorWithMetadata.reactivateSession(
+          "/tmp/test",
+          "unreadable-legacy-session",
+        ),
+      ).rejects.toThrow("provider rejected launch");
+      expect(startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
           permissionMode: "default",
           model: "sonnet",
+          thinking: undefined,
+          effort: undefined,
         }),
       );
       expect(legacy.current()).toBeUndefined();

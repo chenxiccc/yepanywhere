@@ -365,6 +365,135 @@ describe("CodexSessionReader - OSS Support", () => {
     });
   });
 
+  it("recovers launch settings from the latest Codex turn context", async () => {
+    const sessionId = "recovered-launch-settings";
+    const now = new Date().toISOString();
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: now,
+        payload: {
+          cwd: "/test/project",
+          approval_policy: "on-request",
+          sandbox_policy: { type: "workspace-write" },
+          model: "gpt-5.4",
+          effort: "none",
+        },
+      }),
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: now,
+        payload: {
+          cwd: "/test/project",
+          approval_policy: "never",
+          sandbox_policy: { type: "danger-full-access" },
+          model: "gpt-5.6-sol",
+          effort: "xhigh",
+        },
+      }),
+    ];
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      `${lines.join("\n")}\n`,
+    );
+
+    await expect(reader.getRecoveredLaunchSettings(sessionId)).resolves.toEqual(
+      {
+        permissionMode: "bypassPermissions",
+        requestedModel: "gpt-5.6-sol",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "xhigh",
+      },
+    );
+    expect(reader.getEntryCacheStats()).toEqual({
+      sessions: 0,
+      entries: 0,
+      sourceBytes: 0,
+      partialLineBytes: 0,
+    });
+  });
+
+  it.each([
+    {
+      name: "Plan and disabled thinking",
+      approvalPolicy: "on-request",
+      sandboxType: "read-only",
+      effort: "none",
+      expected: {
+        permissionMode: "plan",
+        requestedModel: "gpt-5",
+        thinking: { type: "disabled" },
+      },
+    },
+    {
+      name: "ambiguous workspace write",
+      approvalPolicy: "on-request",
+      sandboxType: "workspace-write",
+      effort: "minimal",
+      expected: {
+        permissionMode: "default",
+        requestedModel: "gpt-5",
+      },
+    },
+    {
+      name: "incomplete Bypass evidence",
+      approvalPolicy: "never",
+      sandboxType: "workspace-write",
+      effort: undefined,
+      expected: {
+        permissionMode: "default",
+        requestedModel: "gpt-5",
+      },
+    },
+  ])(
+    "recovers $name conservatively",
+    async ({ approvalPolicy, sandboxType, effort, expected }) => {
+      const sessionId = `recovered-${sandboxType}-${approvalPolicy}-${effort ?? "unset"}`;
+      const now = new Date().toISOString();
+      const lines = [
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "turn_context",
+          timestamp: now,
+          payload: {
+            cwd: "/test/project",
+            approval_policy: approvalPolicy,
+            sandbox_policy: { type: sandboxType },
+            model: "gpt-5",
+            ...(effort ? { effort } : {}),
+          },
+        }),
+      ];
+      await writeFile(
+        join(testDir, `${sessionId}.jsonl`),
+        `${lines.join("\n")}\n`,
+      );
+
+      await expect(
+        reader.getRecoveredLaunchSettings(sessionId),
+      ).resolves.toEqual(expected);
+    },
+  );
+
   it("skips plugin-prefixed startup instructions when deriving titles", async () => {
     const sessionId = "plugin-prefixed-startup-title";
     const now = new Date().toISOString();

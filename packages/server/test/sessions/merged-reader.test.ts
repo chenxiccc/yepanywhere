@@ -51,3 +51,31 @@ describe("MergedSessionReader provider child freshness", () => {
     expect(reader.listAcceptedProviderChildSessions("parent")).toBeUndefined();
   });
 });
+
+describe("MergedSessionReader launch settings recovery", () => {
+  it("uses the first authoritative root that contains recovery evidence", async () => {
+    const missing = vi.fn(async () => null);
+    const recovered = vi.fn(async () => ({
+      permissionMode: "bypassPermissions" as const,
+      requestedModel: "gpt-5.6-sol",
+    }));
+    const trailing = vi.fn(async () => ({
+      permissionMode: "default" as const,
+    }));
+    const reader = new MergedSessionReader([
+      { getRecoveredLaunchSettings: missing } as unknown as ISessionReader,
+      { getRecoveredLaunchSettings: recovered } as unknown as ISessionReader,
+      { getRecoveredLaunchSettings: trailing } as unknown as ISessionReader,
+    ]);
+
+    await expect(reader.getRecoveredLaunchSettings("session")).resolves.toEqual(
+      {
+        permissionMode: "bypassPermissions",
+        requestedModel: "gpt-5.6-sol",
+      },
+    );
+    expect(missing).toHaveBeenCalledWith("session");
+    expect(recovered).toHaveBeenCalledWith("session");
+    expect(trailing).not.toHaveBeenCalled();
+  });
+});

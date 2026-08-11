@@ -1171,6 +1171,20 @@ export function createApp(options: AppOptions): AppResult {
           )
       : undefined,
     onSessionSummary: getSessionSummary,
+    recoverSessionLaunchSettings: async (sessionId, projectId, provider) => {
+      const project = await scanner.getProject(projectId);
+      if (!project) return undefined;
+      const recoveryProvider = provider ?? project.provider;
+      if (recoveryProvider !== "codex" && recoveryProvider !== "codex-oss") {
+        return undefined;
+      }
+      const reader = readerFactory({
+        ...project,
+        provider: recoveryProvider,
+        sessionDir: codexSessionsDir,
+      });
+      return reader.getRecoveredLaunchSettings?.(sessionId);
+    },
     getHeartbeatTurnSettings:
       options.serverSettingsService || options.sessionMetadataService
         ? (sessionId) => {

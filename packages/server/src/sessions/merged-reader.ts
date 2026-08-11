@@ -8,6 +8,7 @@ import type {
   GetSessionSummaryOptions,
   ISessionReader,
   LoadedSession,
+  RecoveredSessionLaunchSettings,
   SessionListSummary,
 } from "./types.js";
 
@@ -75,6 +76,16 @@ export class MergedSessionReader implements ISessionReader {
         projectId,
       );
       if (summary) return summary;
+    }
+    return null;
+  }
+
+  async getRecoveredLaunchSettings(
+    sessionId: string,
+  ): Promise<RecoveredSessionLaunchSettings | null> {
+    for (const reader of this.readers) {
+      const settings = await reader.getRecoveredLaunchSettings?.(sessionId);
+      if (settings) return settings;
     }
     return null;
   }

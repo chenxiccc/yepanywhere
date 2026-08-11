@@ -165,15 +165,36 @@ depend on one browser's storage.
 permission mode, exact requested-model token, service tier, thinking mode, and
 effort with a session-local monotonic revision. A process lifetime is not a
 settings lifetime: every replacement process for an existing session starts
-from that record. A replacement process resolves
-an explicit validated request first, then this durable record, then applicable
-legacy model metadata, and finally the conservative server/provider default.
-Legacy absence never grants Bypass. A live configuration response is successful
-only after the provider applies the selection and the metadata writer flushes a
-snapshot containing it. Explicit reactivation metadata changes for provider,
-executor, recap, prompt suggestion, and sandbox selection flush in that same
-serialized transaction. If a write fails, YA retains the actual live state as
-pending and retries it without repeating an already-applied provider change.
+from that record. A replacement process resolves an explicit validated request
+first, then this complete durable record (including intentional null/provider-
+default values), then applicable pre-snapshot evidence, and finally the
+conservative server/provider default. Existing YA requested-model metadata
+precedes provider transcript inference because it records the user's exact YA
+selection token.
+
+For a Codex session that predates the complete snapshot, the first later cold
+launch lazily reads the latest valid transcript `turn_context`. Its non-empty
+model and supported effort are recoverable. `none` recovers disabled thinking;
+a supported named effort recovers adaptive summarized thinking with that
+effort. Exact `never` plus danger-full-access recovers Bypass, and exact
+`on-request` plus read-only recovers Plan. Ask and Accept Edits both produce
+`on-request` plus workspace-write, so that pair and every incomplete or unknown
+pair recover as conservative Ask. Legacy absence or ambiguity never grants
+Bypass. Unsupported/absent effort remains unknown rather than being coerced.
+
+Recovery is read-only until process launch succeeds. The complete effective
+settings actually used by a successful launch then become authoritative and
+are written as revision 1 through the ordinary snapshot path; failure or
+cancellation writes nothing, and later cold launches use the snapshot instead
+of reinterpreting the transcript. Merely listing, rendering, scanning, or
+indexing old sessions does not migrate them.
+
+A live configuration response is successful only after the provider applies
+the selection and the metadata writer flushes a snapshot containing it.
+Explicit reactivation metadata changes for provider, executor, recap, prompt
+suggestion, and sandbox selection flush in that same serialized transaction.
+If a write fails, YA retains the actual live state as pending and retries it
+without repeating an already-applied provider change.
 
 Browser-local permission/model state remains useful for immediate stopped-row
 presentation and compatibility with older servers, while global thinking and

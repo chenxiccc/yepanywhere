@@ -620,6 +620,7 @@ export const CodexTurnContextPayloadSchema = z.object({
   approval_policy: z.string(),
   sandbox_policy: CodexSandboxPolicySchema.optional(),
   model: z.string().optional(),
+  effort: z.string().optional(),
   summary: z.string().optional(),
 });
 

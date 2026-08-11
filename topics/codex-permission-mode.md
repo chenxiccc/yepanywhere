@@ -109,6 +109,35 @@ and a profile must not weaken the table above.
   approval/sandbox fields sent. Launch-time values are insufficient after a
   live switch.
 
+## Pre-Snapshot Resume Recovery
+
+Codex `turn_context` is also the compatibility source for a YA session created
+before `SessionMetadata.effectiveLaunchSettings` existed. Only the latest valid
+context is relevant: a session may change model, effort, and permission mode
+between turns.
+
+The reverse mapping is deliberately narrower than launch mapping:
+
+| Latest Codex evidence | Recovered YA mode |
+| --- | --- |
+| `never` + danger-full-access | Bypass |
+| `on-request` + read-only | Plan |
+| `on-request` + workspace-write | Ask |
+| incomplete, mismatched, or unknown values | Ask |
+
+Ask and Accept Edits share the same Codex-native pair, so a rollout cannot
+prove which YA selection produced it. Recovery chooses Ask. No partial or
+unfamiliar transcript evidence may grant Bypass. This use of provider-reported
+policy preserves the last requested behavior when the pair is unambiguous; it
+does not turn the rollout into proof that native or outer sandbox enforcement
+succeeded.
+
+Reading recovery evidence does not mutate session metadata. Once a cold resume
+successfully starts Codex with the resolved settings, that actual process state
+is authoritative and the ordinary complete launch snapshot is persisted. A
+failed launch persists nothing, and a complete existing snapshot always wins
+over transcript inference, including its intentional provider-default values.
+
 ## Turn-Boundary Semantics
 
 Codex app-server supports approval and sandbox overrides on `turn/start`.

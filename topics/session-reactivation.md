@@ -99,15 +99,22 @@ resume:
   its manual-termination field so older clients remain compatible.
 - **Durable settings:** `SessionMetadata.effectiveLaunchSettings` is a complete,
   versioned snapshot of the last successfully applied process launch policy.
-  Resolution is explicit request, durable snapshot, legacy requested-model
-  metadata, then conservative server/provider defaults. Configuration success
-  waits for provider application and for the coalesced metadata writer to flush
-  the snapshot containing that state. Explicit provider, executor, recap,
-  prompt suggestion, and sandbox metadata uses the same per-session transaction
-  and receives a final durability flush before the response. A failed write
-  leaves the live state in place and pending for retry; it is not reported as
-  rolled back or successful. Identical reattach snapshots do not advance the
-  session-local revision, but do retry a prior failed write.
+  Resolution is explicit request, complete durable snapshot, pre-snapshot YA
+  requested-model metadata and provider evidence, then conservative
+  server/provider defaults. For Codex, the first cold launch of a session with
+  no snapshot recovers its latest rollout model, unambiguous approval/sandbox
+  pair, and supported reasoning effort. Ask/Accept-Edits ambiguity resolves to
+  Ask and incomplete evidence never grants Bypass. Recovery itself is
+  read-only; the settings used by a successful launch become authoritative and
+  are saved through the normal snapshot boundary, while a failed launch writes
+  nothing. Configuration success waits for provider application and for the
+  coalesced metadata writer to flush the snapshot containing that state.
+  Explicit provider, executor, recap, prompt suggestion, and sandbox metadata
+  uses the same per-session transaction and receives a final durability flush
+  before the response. A failed write leaves the live state in place and
+  pending for retry; it is not reported as rolled back or successful. Identical
+  reattach snapshots do not advance the session-local revision, but do retry a
+  prior failed write.
 - Coverage: `supervisor.test.ts` asserts message-less resume, immediate idle
   liveness, ownership, idempotency, first-message wake, ordinary idle reaping,
   and recovered patient-message promotion.

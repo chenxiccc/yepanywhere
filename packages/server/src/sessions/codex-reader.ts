@@ -18,7 +18,10 @@ import {
   type CodexSessionEntry,
   type CodexSessionMetaEntry,
   type CodexTurnContextEntry,
+  type EffortLevel,
+  type PermissionMode,
   type ProviderChildSessionSummary,
+  type ThinkingConfig,
   type UrlProjectId,
   getModelContextWindow,
   parseCodexSessionEntry,
@@ -74,6 +77,7 @@ import {
   type GetSessionOptions,
   type ISessionReader,
   type LoadedSession,
+  type RecoveredSessionLaunchSettings,
   type SessionListSummary,
   type SessionSummaryReadMode,
   toSessionListSummary,
@@ -324,6 +328,7 @@ interface CodexSummaryContextCandidate {
 interface CodexSummaryState {
   metaEntry?: CodexSessionMetaEntry;
   firstTurnContext?: CodexTurnContextEntry;
+  latestTurnContext?: CodexTurnContextEntry;
   firstEventUserTitle?: CodexSummaryTitleCandidate;
   firstLegacyResponseUserTitle?: CodexSummaryTitleCandidate;
   pendingResponseUser?: CodexUserResponseEntry;
@@ -332,6 +337,56 @@ interface CodexSummaryState {
   assistantMessageCount: number;
   model?: string;
   contextCandidate?: CodexSummaryContextCandidate;
+}
+
+const RECOVERABLE_CODEX_EFFORTS = new Set<EffortLevel>([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+function isRecoverableCodexEffort(value: string): value is EffortLevel {
+  return RECOVERABLE_CODEX_EFFORTS.has(value as EffortLevel);
+}
+
+function recoverCodexPermissionMode(
+  turnContext: CodexTurnContextEntry,
+): PermissionMode {
+  const approvalPolicy = turnContext.payload.approval_policy;
+  const sandboxType = turnContext.payload.sandbox_policy?.type;
+  if (approvalPolicy === "never" && sandboxType === "danger-full-access") {
+    return "bypassPermissions";
+  }
+  if (approvalPolicy === "on-request" && sandboxType === "read-only") {
+    return "plan";
+  }
+  return "default";
+}
+
+function recoverCodexLaunchSettings(
+  turnContext: CodexTurnContextEntry | undefined,
+): RecoveredSessionLaunchSettings | null {
+  if (!turnContext) return null;
+
+  const model = turnContext.payload.model?.trim();
+  const effort = turnContext.payload.effort;
+  let thinking: ThinkingConfig | undefined;
+  let recoveredEffort: EffortLevel | undefined;
+  if (effort === "none") {
+    thinking = { type: "disabled" };
+  } else if (effort && isRecoverableCodexEffort(effort)) {
+    thinking = { type: "adaptive", display: "summarized" };
+    recoveredEffort = effort;
+  }
+
+  return {
+    permissionMode: recoverCodexPermissionMode(turnContext),
+    ...(model ? { requestedModel: model } : {}),
+    ...(thinking ? { thinking } : {}),
+    ...(recoveredEffort ? { effort: recoveredEffort } : {}),
+  };
 }
 
 interface CodexSummaryStreamRead {
@@ -770,6 +825,26 @@ export class CodexSessionReader implements ISessionReader {
       readMode: "head",
     });
     return summary ? toSessionListSummary(summary) : null;
+  }
+
+  async getRecoveredLaunchSettings(
+    sessionId: string,
+  ): Promise<RecoveredSessionLaunchSettings | null> {
+    const sessionFile = await this.findSessionFile(sessionId);
+    if (!sessionFile) return null;
+
+    try {
+      const stats = await stat(sessionFile.filePath);
+      const read = await this.readSummaryStream(
+        sessionId,
+        sessionFile.filePath,
+        stats,
+        "full",
+      );
+      return recoverCodexLaunchSettings(read.state.latestTurnContext);
+    } catch {
+      return null;
+    }
   }
 
   async getSession(
@@ -1764,6 +1839,7 @@ export class CodexSessionReader implements ISessionReader {
 
     if (entry.type === "turn_context") {
       state.firstTurnContext ??= entry;
+      state.latestTurnContext = entry;
       if (entry.payload.model) {
         state.model = entry.payload.model;
       }
