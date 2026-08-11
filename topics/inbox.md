@@ -132,14 +132,17 @@ back to unread without a new visible provider message. See
 
 ## Project Queue Visibility
 
-Inbox can show Project Queue work only when the work targets an existing session
-row. `getActiveProjectQueueSessionIds` includes queued and dispatching
-Project Queue items whose target is `existing-session`, and those sessions land
-in `active` if they were not already in `needsAttention`.
+`getActiveProjectQueueSessionIds` includes queued and dispatching Project Queue
+items whose target is `existing-session`, and those sessions land in `active`
+if they were not already in `needsAttention`. Inbox renders them as ordinary
+session rows with a Project Queue `Q` decoration.
 
-A queued Project Queue item for a new session has no session row yet. It belongs
-on the Project Queue surfaces until promotion creates the session, so Inbox
-must not invent a placeholder session row for it.
+A pending Project Queue item targeting a new session has no session row yet.
+The client renders the queue record itself at the start of the `active` tier;
+it does not invent or return a placeholder session from the Inbox route. The
+row shows the queued prompt, project, age, and queue status, links to the
+Projects page with that item highlighted, and labels `New session` beside the
+`Q` decoration so it remains distinguishable from existing-session rows.
 
-Client-side decorations, such as draft badges or Project Queue badges, may make
-Inbox rows more informative, but they do not change the server tiering contract.
+These client-side queue rows and decorations make Inbox more informative, but
+they do not change the server tiering contract.

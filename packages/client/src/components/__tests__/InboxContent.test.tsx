@@ -389,7 +389,9 @@ describe("InboxContent", () => {
 
     expect(mockUseProjectQueues).toHaveBeenCalledWith(["project-1"]);
     expect(screen.getByText("Build the docs")).toBeTruthy();
-    expect(screen.getByText("projectQueueTargetNewSession")).toBeTruthy();
+    const targetLabel = screen.getByText("projectQueueTargetNewSession");
+    expect(targetLabel.parentElement?.textContent).toContain("Q");
+    expect(screen.getAllByText("projectQueueTargetNewSession")).toHaveLength(1);
     expect(screen.getByText("projectQueueStatusQueued")).toBeTruthy();
 
     const link = screen.getByRole("link", { name: /Build the docs/ });

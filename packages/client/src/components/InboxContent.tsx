@@ -196,6 +196,9 @@ function InboxProjectQueueItem({
       <Link className={styles.queueItemLink} to={href}>
         <span className={styles.queueItemTitleRow}>
           <strong className={styles.queueItemTitle}>{title}</strong>
+          <span className={styles.queueItemTargetBadge}>
+            {t("projectQueueTargetNewSession")}
+          </span>
           <span
             className="session-project-queue-badge"
             title={t("projectQueueSidebarBadge")}
@@ -210,7 +213,6 @@ function InboxProjectQueueItem({
           {!hideProjectName && (
             <span className={styles.queueItemProject}>{projectName}</span>
           )}
-          <span>{t("projectQueueTargetNewSession")}</span>
           {age && <span>{age}</span>}
           <span
             className={`${styles.queueItemStatus} ${QUEUE_STATUS_CLASSES[item.status]}`}
