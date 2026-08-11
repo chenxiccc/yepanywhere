@@ -7,10 +7,12 @@
 
 Topic: agent-context-injection
 
-Status: current-behavior contract plus proposal. The provider placement and
-compaction findings below describe current behavior. The prepared-boot manager
-and protected boot capsule are proposals only; neither is approved for
-implementation or enabled by a setting.
+Status: current-behavior contract plus proposed mechanisms. The provider
+placement and compaction findings below describe current behavior. The optional
+personal `~/agents` special-launch integration is an accepted direction for
+internal coordination but is not implemented. The general prepared-boot manager
+and protected boot capsule remain unapproved proposals; none is enabled by a
+setting.
 
 Related topics: [cache-aware session bootstrap](cache-aware-session-bootstrap.md),
 [provider context economics](provider-context-economics.md),
@@ -19,6 +21,12 @@ Related topics: [cache-aware session bootstrap](cache-aware-session-bootstrap.md
 [synthetic-turn injection](synthetic-turn-injection.md),
 [settings UI placement](settings-ui-placement.md), and
 [federated super sessions](federated-super-sessions.md).
+
+The personal instruction-corpus counterpart is
+[`graehl/agents` agent-instructions](https://github.com/graehl/agents/blob/master/topics/agent-instructions.md#modeling-agent-capability-and-tendency).
+It owns policy selection, model/harness tendency patches, and ablation; this
+topic owns provider placement, launch mechanics, and compaction evidence. YA
+does not depend on that repository for ordinary users.
 
 ## Scope and vocabulary
 
@@ -513,6 +521,41 @@ actual request, pays an extra analysis turn, and binds its output to one task
 lineage. It is also a concrete implementation candidate for the protected
 compaction capsule below, provided task completion and unrelated-request
 transitions start a clean session or explicitly retire the compiled state.
+
+### Optional `~/agents` launch integration
+
+The initial integration target is a seamless personal launch path for an
+operator who normally selects one flagship model, or one of a small pair, for
+each harness. It is opt-in and inert when `~/agents` is absent; the broader YA
+user base need not install or understand that instruction corpus.
+
+The compilation boundary is a harness × model × effort profile, optionally
+refined by project, request class, or one actual request. `~/agents` owns which
+policy sources and model-specific corrections belong in the profile. YA owns
+putting the compiled bytes into what the selected harness treats as its
+authoritative global `AGENTS.md` world-state and verifying what happens at
+compaction, resume, fork, and changed environment selection. The corresponding
+deferred compiler/install work is tracked in the
+[`graehl/agents` durable-boot gap](https://github.com/graehl/agents/blob/master/gaps/agent-specific-durable-boot-compilation.md).
+
+Supported activation shapes may differ by harness:
+
+- install the generated flagship profile into the harness's normal global
+  new-session slot; source changes then require reinstall, and status should
+  detect stale source hashes rather than relying only on operator memory;
+- pass a generated boot path through a supported launch argument or environment
+  variable, which permits clean profile switching; or
+- write the canonical slot just in time for launch when the harness is verified
+  to snapshot those bytes into its durable session cache.
+
+These are alternatives, not a portability promise. Before restoring a
+temporary slot, establish whether later compaction reconstructs from the
+captured bytes or rereads the live path. Preserve and restore every prior
+target, keep generated artifacts and manifests in YA/app or instruction-repo
+state rather than the selected project, and test each adapter in a synthetic
+home. The installed-profile path is intentionally allowed: for a stable
+flagship choice, reinstalling after instruction changes may be simpler and more
+reliable than a per-launch override.
 
 ## Protected compaction capsule
 
