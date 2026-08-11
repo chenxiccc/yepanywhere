@@ -117,6 +117,12 @@ codex --version
 pnpm codex:protocol:check
 ```
 
+Protocol generation gives each invocation an ephemeral `CODEX_HOME` under the
+repository's `node_modules/.cache`. This keeps Codex's startup-time arg0
+janitor away from the shared home used by live sessions, while preserving all
+Codex stderr as verification output. The ephemeral home and generated output
+must be removed after both successful checks and detected protocol drift.
+
 For a no-token model catalog check, query `codex app-server --listen
 stdio://`, send `initialize`, send `initialized`, then call `model/list`.
 `scripts/probe-codex-app-server-turns.mjs` is useful for steering/interrupt
@@ -308,10 +314,10 @@ Current source refresh, 2026-07-09:
   catalog for 0.124 through 0.143 installs.
 - Compact model badges use semantic glyphs for the named 5.6 variants:
   `Cd ☀` (Sol), `Cd ♁` (Terra), and `Cd ☾` (Luna).
-- Codex's best-effort shared arg0-temp janitor still emits a known
-  `Directory not empty` warning while concurrent Codex sessions populate that
-  directory. The protocol check itself completes cleanly and reports the
-  generated subset up to date.
+- Codex's best-effort shared arg0-temp janitor emitted `Directory not empty`
+  while concurrent Codex sessions populated the shared home. Protocol
+  generation now uses an isolated ephemeral Codex home, so routine checks stay
+  warning-free without hiding other Codex stderr.
 
 Status: Codex 0.144 compatibility, GPT-5.6 model defaults/catalog, and compact
 glyphs refreshed; no additional provider runtime change is required.

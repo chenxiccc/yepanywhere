@@ -30,6 +30,7 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
+const CODEX_HOME_CACHE_ROOT = join(REPO_ROOT, "node_modules", ".cache");
 
 const SUBSET_ROOT = join(
   REPO_ROOT,
@@ -151,10 +152,11 @@ function parseMode(argv) {
   return "update";
 }
 
-function runCodex(args) {
+function runCodex(args, codexHome) {
   const result = spawnSync("codex", args, {
     cwd: REPO_ROOT,
     encoding: "utf-8",
+    env: { ...process.env, CODEX_HOME: codexHome },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -336,21 +338,31 @@ function writeSubsetArtifacts(sourceTypesDir, subsetDir, subsetIndexFile) {
 
 function main() {
   const mode = parseMode(process.argv.slice(2));
-  const tempRoot = mkdtempSync(join(tmpdir(), "codex-protocol-"));
-  const generatedTypesDir = join(tempRoot, "types");
-  const generatedSubsetDir = join(tempRoot, "subset");
-  const generatedSubsetIndex = join(tempRoot, "subset-index.ts");
+  let codexHome;
+  let tempRoot;
 
   try {
+    mkdirSync(CODEX_HOME_CACHE_ROOT, { recursive: true });
+    codexHome = mkdtempSync(
+      join(CODEX_HOME_CACHE_ROOT, "codex-protocol-home-"),
+    );
+    tempRoot = mkdtempSync(join(tmpdir(), "codex-protocol-"));
+    const generatedTypesDir = join(tempRoot, "types");
+    const generatedSubsetDir = join(tempRoot, "subset");
+    const generatedSubsetIndex = join(tempRoot, "subset-index.ts");
+
     mkdirSync(generatedTypesDir, { recursive: true });
 
-    runCodex([
-      "app-server",
-      "generate-ts",
-      "--experimental",
-      "--out",
-      generatedTypesDir,
-    ]);
+    runCodex(
+      [
+        "app-server",
+        "generate-ts",
+        "--experimental",
+        "--out",
+        generatedTypesDir,
+      ],
+      codexHome,
+    );
     writeSubsetArtifacts(
       generatedTypesDir,
       generatedSubsetDir,
@@ -386,7 +398,8 @@ function main() {
           console.log("  ~ index.ts");
         }
         console.error("Run `pnpm codex:protocol:update` to refresh.");
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       console.log("Codex protocol subset artifacts are up to date.");
@@ -401,7 +414,12 @@ function main() {
     );
     console.log(`Output: ${relative(REPO_ROOT, SUBSET_ROOT)}`);
   } finally {
-    rmSync(tempRoot, { recursive: true, force: true });
+    if (tempRoot) {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+    if (codexHome) {
+      rmSync(codexHome, { recursive: true, force: true });
+    }
   }
 }
 
