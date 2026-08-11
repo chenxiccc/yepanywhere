@@ -371,6 +371,8 @@ export interface DeviceBridgeStatus {
 }
 
 export interface VersionRouteOptions {
+  /** Test/service override for the process-generation version snapshot. */
+  getCurrentVersionInfo?: () => Promise<CurrentVersionInfo>;
   /** Whether the signed security-client audit routes are mounted. */
   securityClientAuditAvailable?: boolean;
   /** Whether the browser-settings backup storage route is mounted. */
@@ -494,7 +496,7 @@ export function getServerCompatibilityInfo(
 ): Promise<ServerCompatibilityInfo> {
   const clientDefaults = options?.getClientDefaults?.();
   return Promise.all([
-    getCurrentVersionInfo(),
+    (options?.getCurrentVersionInfo ?? getCurrentVersionInfo)(),
     (
       options?.getSessionSandboxAvailability ??
       getLocalSessionSandboxAvailability
@@ -517,7 +519,9 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
   const routes = new Hono();
 
   routes.get("/", async (c) => {
-    const currentVersionInfo = await getCurrentVersionInfo();
+    const currentVersionInfo = await (
+      options?.getCurrentVersionInfo ?? getCurrentVersionInfo
+    )();
     const current = currentVersionInfo.version;
     const clientVersion =
       c.req.query("clientVersion") ?? c.req.header("X-Yep-Client-Version");

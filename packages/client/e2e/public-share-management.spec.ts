@@ -20,6 +20,16 @@ async function putJson(baseURL: string, pathname: string, body: unknown) {
   }
 }
 
+async function deleteResource(baseURL: string, pathname: string) {
+  const response = await fetch(`${baseURL}${pathname}`, {
+    method: "DELETE",
+    headers: { "X-Yep-Anywhere": "true" },
+  });
+  if (!response.ok) {
+    throw new Error(`DELETE ${pathname} failed: ${await response.text()}`);
+  }
+}
+
 async function postJson(baseURL: string, pathname: string, body: unknown) {
   const response = await fetch(`${baseURL}${pathname}`, {
     method: "POST",
@@ -55,6 +65,10 @@ test("left and right click open the same share manager", async ({
     relayUrl: "ws://127.0.0.1:9/ws",
   });
   await putJson(baseURL, "/api/settings", { publicSharesEnabled: true });
+  await deleteResource(
+    baseURL,
+    `/api/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}`,
+  );
   for (const mode of ["frozen", "live"] as const) {
     await postJson(baseURL, "/api/public-shares", {
       projectId,
@@ -103,7 +117,7 @@ test("left and right click open the same share manager", async ({
     dialog.getByRole("button", { name: "This session", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    dialog.getByRole("button", { name: "Read-only", exact: true }),
+    dialog.getByRole("button", { name: "Frozen", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
     dialog.getByRole("button", { name: "Live", exact: true }),
@@ -113,7 +127,7 @@ test("left and right click open the same share manager", async ({
   ).toHaveCount(0);
   await expect(
     dialog.getByRole("button", {
-      name: "Review all Read-only share links in This session for revocation",
+      name: "Review all Frozen share links in This session for revocation",
     }),
   ).toBeEnabled();
   await expect(
@@ -128,7 +142,7 @@ test("left and right click open the same share manager", async ({
   ).toBeEnabled();
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
   await expect(dialog.getByRole("img", { name: "Live" })).toBeVisible();
-  await expect(dialog.getByRole("img", { name: "Read-only" })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: "Frozen" })).toBeVisible();
   await expect(page.getByText("2 matching public link(s)")).toBeVisible();
   const dialogBox = await dialog.boundingBox();
   expect(dialogBox).not.toBeNull();
@@ -146,22 +160,22 @@ test("left and right click open the same share manager", async ({
   const captureDirectory = process.env.YEP_PUBLIC_SHARE_CAPTURE_DIR;
   await dialog
     .getByRole("button", {
-      name: "Review all Read-only share links in This session for revocation",
+      name: "Review all Frozen share links in This session for revocation",
     })
     .click();
   await expect(
     dialog.getByRole("button", {
-      name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+      name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
     }),
   ).toBeEnabled();
   await expect(
     dialog.getByText(
-      "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+      "Click again to revoke 1 Frozen share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
     ),
   ).toBeVisible();
   await expect(
     dialog.getByRole("button", {
-      name: /Click again to revoke 1 Read-only/,
+      name: /Click again to revoke 1 Frozen/,
     }),
   ).toHaveCount(0);
   if (captureDirectory) {

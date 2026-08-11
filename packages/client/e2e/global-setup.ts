@@ -400,6 +400,10 @@ export default async function globalSetup() {
     cwd: repoRoot,
     env: {
       ...process.env,
+      // Global first-run overlays are outside this suite's contracts and can
+      // arrive after a page-specific readiness check, obscuring its controls.
+      VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS: "true",
+      VITE_DISABLE_ONBOARDING: "true",
       VITE_E2E_SOURCE_TRANSPORT_SMOKE: "true",
     },
     stdio: "inherit",

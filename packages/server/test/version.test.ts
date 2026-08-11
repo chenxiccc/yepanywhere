@@ -305,6 +305,10 @@ describe("GET /version", () => {
 
     const { createVersionRoutes } = await importVersion();
     const routes = createVersionRoutes({
+      getCurrentVersionInfo: async () => ({
+        version: "0.7.1",
+        installSource: "source",
+      }),
       getSessionSandboxAvailability: async () => ({
         state: "unsupported-platform",
         platform: "darwin",

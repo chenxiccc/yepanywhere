@@ -60,7 +60,10 @@ async function dragNativeScrollbarToMiddle(page: Page, transcript: Locator) {
       top: rect.top,
     };
   });
-  expect(metrics.offsetWidth - metrics.clientWidth).toBeGreaterThan(0);
+  test.skip(
+    metrics.offsetWidth - metrics.clientWidth <= 0,
+    "Browser uses overlay scrollbars, so no native gutter is available to drag",
+  );
 
   const trackHeight = metrics.clientHeight;
   const thumbHeight = Math.max(
