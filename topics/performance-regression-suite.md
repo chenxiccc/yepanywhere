@@ -22,6 +22,9 @@ marker-family sweep must be clean before measurement. After every repetition
 and on failure or signal paths, `perf-sweep --kill --kill-group` is followed by
 a report-only verification. Surviving debris fails the run even when reaping
 succeeds, because it is evidence of a harness or measured-lifecycle defect.
+Before starting a measured leg, orchestration removes or rejects its prior
+output target; a crashed invocation must never be classified from a stale
+nonempty result left by an earlier run.
 
 The server driver uses public HTTP routes and the maintenance listener. Heap
 ratchets use an inspector-requested full garbage collection followed by the
@@ -411,10 +414,10 @@ had a fixed 200 ms watcher debounce; current source checks on the leading edge
 and keeps the delayed check as validation. React commit-to-readable covers the
 rendered transcript projection after state is queued.
 
-The significant phases, their cache/invalidation contracts, and concrete
-recovery seams are maintained in `gaps/perf-regressions-survey.md`. Ratchets
-cover the current major phase values without treating nested MessageList spans
-as additive peers of their queued-to-commit parent.
+The significant phases, cache/invalidation contracts, and recovered seams are
+maintained in the sections below. Ratchets cover the current major phase values
+without treating nested MessageList spans as additive peers of their
+queued-to-commit parent.
 
 ### 2026-08-08 augmentation recovery
 
@@ -525,8 +528,10 @@ unsubscribe.
 
 This recovers the rescan and focused-watch ownership legs of P09 structurally.
 The broad activity subscription still forwards every file event to every
-subscriber. Filtering that protocol on the server remains a separate
-client/server compatibility change and is not claimed by this slice.
+subscriber. The remaining defect and its client/server compatibility boundary
+are tracked in
+[`gaps/global-activity-stream-file-fanout.md`](../gaps/global-activity-stream-file-fanout.md);
+server-side filtering is not claimed by this slice.
 
 ### 2026-08-08 browser-native memory attribution
 

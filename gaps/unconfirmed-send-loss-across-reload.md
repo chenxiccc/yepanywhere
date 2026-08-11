@@ -13,11 +13,13 @@ browser-local pending row nor the server's unconfirmed echo survives every
 reload/restart boundary, and current diagnostics persist no receipt that can
 identify the last completed boundary after the fact.
 
-The fix belongs at the shared submission invariant, not in Smart Turn: retain a
-submission receipt keyed by session and client temp ID until durable transcript
-confirmation, then expose recovery or safe resend when confirmation never
-arrives. If that changes the client/server wire contract, perform the required
-stable-release capability review first.
+The shared receipt, reload/restart, idempotent resend, and compatibility
+contracts are maintained in
+[`topics/remote-browser-diagnostics.md` § Milestone 0](../topics/remote-browser-diagnostics.md#milestone-0--durable-submission-receipts).
+Provider echo reconciliation remains documented in
+[`topics/stream-durable-id-dedup.md`](../topics/stream-durable-id-dedup.md).
+This gap remains open until durable server evidence can distinguish accepted,
+delivered, rejected, and still-unconfirmed submissions across reload/restart.
 
 Found 2026-08-10 while fixing mobile composer controls hidden by a software
 keyboard.

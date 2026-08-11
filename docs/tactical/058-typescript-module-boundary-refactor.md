@@ -222,6 +222,34 @@ Phase 3 scope note:
   move-only module-boundary cleanup. Revive it through the session-detail/source
   runtime plans when those semantics are the priority.
 
+## Open seam inventory: later hub growth
+
+[`gaps/oversized-hub-modules.md`](../../gaps/oversized-hub-modules.md) records
+later feature growth in four files already governed by this worklog. Size alone
+does not authorize a split; use these cohesive seams when work next opens the
+owning behavior:
+
+- `Process.ts`: effort-control serialization, deferred-queue persistence, and
+  Codex terminal-status construction are separate candidates. Queue persistence
+  extends deferred slice 5.3; the other two need new Phase 5 rows and their own
+  lifecycle/streaming tripwire review before movement.
+- `MessageInput.tsx`: bang completion/menu ownership and the recall drawer each
+  communicate with the composer through a narrow text/ref surface. Add separate
+  Phase 2 slices when either feature is next modified; preserve keyboard,
+  focus, undo, and measured toolbar behavior.
+- `clientSummaryState.ts`: session-id aliasing, record merge, and projection
+  rewrites around `mergeRemappedSessionRecords` form a candidate remap module.
+  It extends slice 3.2 only if the reducer update stays behavior-identical and
+  the full remap fixture matrix moves with it.
+- `SessionPage.tsx`: recall wiring and navigation-state consumption are the
+  remaining named candidates after the landed pure-helper, `/btw`, attachment,
+  and sticky-card slices. Choose one feature boundary per follow-up rather than
+  another general page-helper module.
+
+Remove a candidate from this section when its slice lands or fresh inspection
+shows the seam is no longer coherent. Delete the gap only when all four
+recorded ownership defects are resolved or replaced by narrower gaps.
+
 ## Phase 4: Provider Adapter Splits
 
 Provider files are large, but they touch upstream-facing behavior. Prefer

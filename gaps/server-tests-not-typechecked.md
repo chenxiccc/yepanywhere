@@ -16,7 +16,7 @@ Worth fixing because the gap hides drift: a `SessionsDeps` change that
 breaks every test harness in the package still passes `pnpm typecheck`,
 and the failure only surfaces as a confusing runtime error later.
 
-The fix is not just flipping the exclude — that turns on ten-plus
-existing errors at once. Either fix those call sites in the same change,
-or add a separate `tsconfig.test.json` and a `typecheck:test` script so
-the ratchet can start clean and tighten.
+The staged cleanup and warning-free ratchet are maintained in
+[`docs/tactical/107-server-test-typechecking.md`](../docs/tactical/107-server-test-typechecking.md).
+This gap remains open until every server test file participates in a root or CI
+typecheck.

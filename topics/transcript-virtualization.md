@@ -237,6 +237,33 @@ The JS spacer-window design below remains research, not the chosen fallback. It
 preserves a continuous synthetic scroll range but shares the same hard geometry
 and anchoring problems that invalidated the CSS shortcut.
 
+### Open architecture: whole-session search across a bounded window
+
+The current in-session Ctrl+R, Ctrl+S, and Ctrl+Alt+S search operates only on
+loaded render items. The bounded defect is tracked in
+[`gaps/isearch-stops-at-loaded-transcript.md`](../gaps/isearch-stops-at-loaded-transcript.md):
+an exhausted reverse search can request older user-turn-bounded pages and rerun
+the existing projection while preserving query, direction, selection, and
+scroll restoration.
+
+A later whole-session search design should avoid making repeated search load
+and retain every full message. One option is a server-owned session digest in
+which each durable searchable row contributes a stable source id/cursor,
+searchable excerpt, and approximate rendered or cumulative height. Selecting a
+digest match would hydrate a bounded real-transcript window around its cursor,
+preserve search state, and replace estimated geometry with measured row heights
+as content mounts. The loaded rows remain authoritative; height metadata is an
+approximation and cannot become a layout contract.
+
+Before choosing an endpoint, compare a compact digest transferred once for
+client-side search with server-side query results plus a coarse full-session
+height index. A digest makes repeated search responsive but may remain large
+for extreme sessions. Server-side queries bound transfer but add round trips
+and require explicit ordering and version consistency while the transcript
+grows. This is a single-session windowing concern. The independent
+cross-session corpus and indexing proposal remains in
+[`all-session-content-search.md`](all-session-content-search.md).
+
 ### Research design: JS windowed rendering
 
 Render only rows near the viewport (plus a small overscan); replace off-screen

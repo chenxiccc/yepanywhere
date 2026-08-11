@@ -123,6 +123,29 @@ may coexist as redundant access points over one viewer state: drawer for
 document presence and the composer controller for fast toggle/close. Supporting
 both must not duplicate document state or let the two controls disagree.
 
+## Open ownership defect: rich-text replacement
+
+The current file link owns both its local open state and the mounted modal.
+When session rich text replaces that link component, React destroys an open or
+parked viewer even though the user did not close it. Reproduction evidence is
+tracked in
+[`gaps/rich-text-replacement-closes-file-viewer.md`](../gaps/rich-text-replacement-closes-file-viewer.md).
+
+The repair belongs at the session ownership boundary established above:
+
+- mount one stable session-level viewer host and keep the open viewer
+  descriptor there;
+- make every authenticated file-link surface invoke that host rather than
+  mounting its own modal;
+- keep history-entry ownership with the host so link replacement cannot leave
+  stale viewer history or close the wrong file; and
+- cover replacement while open and parked, opening a second file, browser
+  history navigation, and an explicit close.
+
+This work changes viewer ownership, not only presentation. The gap remains open
+until every authenticated file-link caller uses the shared host and replacement
+no longer changes viewer lifetime.
+
 ## Evaluation
 
 The first trial is successful only if captures and interaction checks show all

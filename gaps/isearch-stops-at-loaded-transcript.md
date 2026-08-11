@@ -13,22 +13,11 @@ match, the beginning of history, or an explicit safety boundary. A likely fix
 is to let an exhausted reverse search request older user-turn-bounded pages,
 then rerun the existing projection without closing the search panel.
 
-A broader mitigation worth preferring over search-triggered full-message loads
-is a server-owned session digest. Each durable turn or searchable row would
-contribute a stable source ID/cursor, a searchable excerpt, and a rough rendered
-height or cumulative-height estimate. The client could then search the whole
-session and place the current scrollbar/turn-rail UI approximately without
-retaining every full message. Selecting a digest match would hydrate a bounded
-real-transcript window around its cursor, preserve the search query and
-selection, and replace estimated geometry with measured row heights as content
-mounts. Height is deliberately approximate metadata, not a layout contract;
-the loaded rows remain authoritative.
-
-Before choosing the endpoint shape, compare fetching one compact digest for
-client-side search against server-side query results plus a coarse full-session
-height index. The former makes repeated Ctrl+R/Ctrl+S responsive but may still
-be large for extreme sessions; the latter bounds transfer but adds query
-round-trips and needs explicit result ordering/version consistency while the
-session grows.
+The broader digest/index and geometry options now live under
+[`topics/transcript-virtualization.md` § Whole-session search across a bounded window](../topics/transcript-virtualization.md#open-architecture-whole-session-search-across-a-bounded-window).
+The separate cross-session substring-search proposal is
+[`topics/all-session-content-search.md`](../topics/all-session-content-search.md).
+Neither architecture proposal blocks the bounded search-triggered pagination
+repair described here.
 
 Found 2026-08-10 while extending older-history loading and keyboard turn navigation.

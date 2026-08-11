@@ -53,13 +53,34 @@ storage, network bodies, or a command channel.
 First make user actions traceable without any browser inspection:
 
 1. The browser assigns an immutable submission id before sending a composer or
-   queue action.
+   queue action and reuses it for a transport retry of that same submission.
 2. The server returns and durably records the same id with `serverReceivedAt`,
-   accepted routing intent, and durable queue id when applicable.
+   accepted routing intent, durable queue id when applicable, and the last
+   completed delivery boundary.
 3. The UI exposes a compact lifecycle: sending, server accepted, queued or
    provider-delivered, paused after restart, rejected, or deleted.
 4. Browser, server, and provider traces use that identity rather than message
    text or timestamps.
+
+[`gaps/unconfirmed-send-loss-across-reload.md`](../gaps/unconfirmed-send-loss-across-reload.md)
+tracks the current failure: browser-local and process-local optimistic echoes
+can disappear without proving whether the server accepted the submission. The
+receipt remains until a durable provider transcript row confirms delivery or a
+terminal rejection/deletion is recorded. Reload and restart reconstruct the
+same state from server evidence; they must not silently convert an unconfirmed
+submission into either delivered or absent.
+
+Recovery must be explicit and idempotent. A safe resend reuses or supersedes
+the original submission identity under a server-owned rule so a late provider
+confirmation cannot create a duplicate. Existing provider-specific echo
+reconciliation remains useful evidence but does not replace this shared
+client/server boundary; see
+[`stream-durable-id-dedup.md`](stream-durable-id-dedup.md).
+
+This milestone changes a core delivery contract. Before the client depends on
+new receipt fields or routes, inspect the core stable-release horizon and
+approve a new exact capability or protocol gate. Without that gate, a new
+client must retain current behavior and make no unsupported receipt request.
 
 This would have answered whether the missing `publish` command reached YA even
 if live tab inspection was unavailable. It is independently useful and should

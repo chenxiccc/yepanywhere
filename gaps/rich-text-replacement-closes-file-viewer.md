@@ -12,11 +12,9 @@ startup: its first ordinary click opens the viewer briefly, then the viewer is
 gone before its file content appears; immediate repeats against the warmed
 server pass. Waiting for network idle does not prevent it.
 
-The owning fix is to move the open viewer descriptor and mounted modal to a
-stable session-level host, with file links invoking that one host. Cover link
-replacement while the viewer is open and parked, history-entry ownership, and
-opening a second file. This is larger than the toolbar flex correction because
-all authenticated file-link callers and modal history ownership share the
-boundary.
+The owning invariant and remediation are maintained in
+[`topics/parked-file-viewer.md` § Open ownership defect](../topics/parked-file-viewer.md#open-ownership-defect-rich-text-replacement).
+This gap remains open until all authenticated file links use the stable
+session-level viewer host and link replacement preserves viewer lifetime.
 
 Found 2026-08-11 while reproducing the parked viewer's desktop toolbar overlap.

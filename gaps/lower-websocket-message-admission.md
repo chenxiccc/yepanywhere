@@ -9,10 +9,10 @@ send one complete encrypted frame and the relay cannot inspect their capability
 negotiation.
 
 A lower allowance would tighten worst-case message buffering, parsing work, and
-malicious authenticated input. Before lowering it, confirm the supported release
-corpus no longer needs complete frames above the proposed threshold, check relay
-telemetry or representative traffic sizes, and run the large assistant/upload
-browser cases with that threshold on every affected direct and relay parser.
-The mechanical change is small once that compatibility evidence exists.
+malicious authenticated input. The compatibility decisions, rollout boundary,
+and verification work are maintained in
+[`docs/tactical/105-transport-message-admission.md`](../docs/tactical/105-transport-message-admission.md).
+This gap remains open until that plan establishes and lands a lower limit
+across every direct and relay parser.
 
 Found 2026-08-06 while adding negotiated large-message transport chunks.
