@@ -88,9 +88,12 @@ UI should state directly.
   feature; Refresh performs a later manual check.
 - **Agent Context → Tell agents this client renders LaTeX math.** Off by
   default. The row previews the exact `[Client capabilities]` fragment before
-  opt-in. The fragment takes effect at the next provider start or resume, in
-  the provider's system-prompt context where supported and otherwise in YA's
-  hidden opening context turn.
+  opt-in. The fragment recommends explicit `\( ... \)` inline and `\[ ... \]`
+  display delimiters; rendering still accepts dollar delimiters for
+  compatibility. YA composes the fragment before free-form global
+  instructions at provider launch. Claude uses its system-prompt extension;
+  other adapters prefix the first provider-facing user message, with current
+  resume coverage differing by provider.
 - **Remote Access → Host Marker.** Optional and unset by default. Presets apply
   immediately; a valid custom emoji applies on Enter or blur; Clear removes it.
   Connected clients show the marker in host-identifying headers and browser

@@ -20,6 +20,7 @@ Related:
 [source transport](source-transport.md),
 [session ownership](session-ownership.md),
 [provider context economics](provider-context-economics.md),
+[agent context injection](agent-context-injection.md),
 [prompt-cache keepalive](prompt-cache-keepalive.md),
 [portable transcript compiler](portable-transcript-compiler.md), and
 [vanilla defaults](vanilla-defaults.md).
@@ -529,6 +530,14 @@ Therefore:
 
 > Byte-identical provider request prefix matters; byte-identical JSONL alone
 > does not.
+
+The provider-specific source-role and compaction matrix is documented in
+[provider compaction contracts](agent-context-injection.md#provider-compaction-contracts).
+Migration-time correction of inherited cwd, date, repository, permission, and
+tool facts must follow
+[freshness repair after fork](agent-context-injection.md#freshness-repair-after-fork).
+For reusable request-free prefixes, see the opt-in
+[prepare-only boot manager](agent-context-injection.md#prepare-only-boot-manager).
 
 A portable launch fingerprint should cover at least:
 

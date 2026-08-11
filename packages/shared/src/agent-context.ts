@@ -3,7 +3,7 @@ export interface AgentContextHints {
 }
 
 export const LATEX_MATH_RENDERING_CLIENT_CAPABILITY =
-  "The client renders Markdown, including inline LaTeX math with \\( ... \\) and display math with $$ ... $$. When explaining equations or formulas, prefer LaTeX math notation where it improves clarity.";
+  "The client renders Markdown, including LaTeX math. Prefer \\( ... \\) for inline math and \\[ ... \\] for display math. Use LaTeX notation where it improves clarity.";
 
 export function buildEffectiveAgentContext({
   globalInstructions,

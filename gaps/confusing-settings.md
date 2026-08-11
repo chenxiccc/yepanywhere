@@ -114,4 +114,26 @@ threshold/unclassified drops, and emitted records per provider. Then use those
 observations to decide whether the byte-identical/fresh-window policy is valid.
 graehl added the default-off monitor in `1a50f72f` (2026-06-30).
 
+## Agent Context placement differs across providers
+
+The LaTeX capability row says the fragment applies on every provider start or
+resume and is absent from the visible conversation. Claude does append it to
+the system prompt on both paths. Codex, Codex OSS, and the legacy Gemini adapter
+prefix it only for a new provider session, while Pi, OpenCode, Grok ACP, and
+Gemini ACP prefix the first new user message even after resume.
+
+For adapters without a system-prompt extension, the fragment is not a separate
+hidden turn: it is prepended to the provider-facing first user message. YA's
+optimistic live echo retains the original text and deduplicates the adapter
+echo, but no stripping contract guarantees that provider-persisted transcript
+text cannot expose the prefix during later reconciliation.
+
+Choose whether to normalize resume injection and durable transcript
+presentation across providers or make the Settings copy provider-specific.
+The current provider and compaction evidence is maintained in
+[agent context injection](../topics/agent-context-injection.md#current-ya-placement).
+Kyle introduced the default-off setting and current provider composition in
+`77d8f697` (2026-06-13); graehl added the always-visible fragment preview and
+expanded placement copy in `9e35d054` (2026-08-11).
+
 Found 2026-08-11 while reviewing Settings clarity with graehl.

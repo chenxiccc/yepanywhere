@@ -5,6 +5,12 @@ import {
 } from "../src/agent-context.js";
 
 describe("buildEffectiveAgentContext", () => {
+  it("recommends explicit LaTeX delimiters", () => {
+    expect(LATEX_MATH_RENDERING_CLIENT_CAPABILITY).toBe(
+      "The client renders Markdown, including LaTeX math. Prefer \\( ... \\) for inline math and \\[ ... \\] for display math. Use LaTeX notation where it improves clarity.",
+    );
+  });
+
   it("preserves plain global instructions when no hints are enabled", () => {
     expect(
       buildEffectiveAgentContext({

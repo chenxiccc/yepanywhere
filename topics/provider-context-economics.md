@@ -12,6 +12,7 @@ Related topics: [session-context-actions](session-context-actions.md),
 [cost-efficiency](cost-efficiency.md),
 [prompt-cache-keepalive](prompt-cache-keepalive.md),
 [cache-aware-session-bootstrap](cache-aware-session-bootstrap.md),
+[agent-context-injection](agent-context-injection.md),
 [federated-super-sessions](federated-super-sessions.md),
 [forged-transcript-handoff](forged-transcript-handoff.md)
 

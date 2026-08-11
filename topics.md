@@ -295,5 +295,9 @@
   externally visible behavior that the UI can state with confidence.
 - cache-aware-session-bootstrap - Proposal for a provider-aware opening
   protocol that places YA capability hints before the first user request.
+- agent-context-injection - Provider-specific placement and compaction
+  durability for YA, harness, and project instructions, plus cache-compatible
+  prepare-only boot, request-conditioned AGENTS compilation, and
+  protected-capsule proposals.
 - all-session-content-search - Proposal for incremental literal search over
   visible user and assistant text across sessions and projects.
