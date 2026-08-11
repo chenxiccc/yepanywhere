@@ -19,7 +19,8 @@ function descriptorRoot(
   platform: NodeJS.Platform = process.platform,
 ): string | null {
   if (platform === "linux") return "/proc/self/fd";
-  if (platform === "darwin") return "/dev/fd";
+  // macOS exposes open descriptors through /dev/fd, but directory
+  // descriptors there cannot be traversed as /dev/fd/<fd>/<child>.
   return null;
 }
 

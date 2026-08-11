@@ -824,11 +824,10 @@ describe("public share public routes", () => {
       },
       capture: {
         ...(await captureSession(service, snapshot)),
-        presentation: await buildPublicSharePresentation(
-          snapshot,
-          projectRoot,
-          publicProjectId,
-        ),
+        presentation: {
+          version: 1,
+          authorizedPaths: ["ui-report/README.md", "ui-report/plot.png"],
+        },
       },
     });
     const fetchProjectFile = vi.fn(

@@ -7,7 +7,7 @@ import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { createFilesRoutes } from "../../src/routes/files.js";
 import { openProjectRelativeFile } from "../../src/utils/projectFileAccess.js";
 
-describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")(
+describe.skipIf(process.platform !== "linux")(
   "descriptor-bound project file access",
   () => {
     let testDir: string;
@@ -82,6 +82,20 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")(
 
       expect(response.status).toBe(200);
       await expect(response.text()).resolves.toBe("safe");
+    });
+  },
+);
+
+describe.skipIf(process.platform === "linux")(
+  "unsupported descriptor-bound project file access",
+  () => {
+    it("fails closed when the host cannot traverse directory descriptors", async () => {
+      await expect(
+        openProjectRelativeFile(
+          path.join(os.tmpdir(), "unused-project-root"),
+          "note.txt",
+        ),
+      ).resolves.toBeNull();
     });
   },
 );

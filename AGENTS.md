@@ -5,6 +5,22 @@ amendment to these instructions: read it before acting in this repo — it
 defines request verbs such as `push` and `publish` and their standing
 constraints. A clone without the file loses nothing.
 
+## Cross-Platform Behavior And Tests
+
+Treat Linux, macOS, and Windows as supported development targets. Code and
+tests must not assume that the current host's filesystem, descriptor, process,
+or shell behavior is portable. Pay particular attention to path syntax and
+case handling, symlinks, `/proc` and `/dev/fd`, permissions and file locking,
+signals and process trees, executable discovery, temporary directories, and
+shell availability.
+
+For every OS-sensitive change, either use portable APIs and cover all three
+platforms, or make the narrower capability explicit: document it, gate native
+tests by platform or capability, and test the supported fallback on the other
+platforms. Passing on one contributor's OS is not sufficient evidence. When
+other-OS validation is unavailable, state that limitation in the handoff.
+Never weaken a security boundary merely to make another platform pass.
+
 Before fielding a user request to improve **stability**, **performance**, or **security**, read `ARCHITECTURE.md` first. Check whether the issue is already addressed in the large-scope refactor proposals or the per-doc cleanup tables, and whether a relevant trigger condition has now been met. If the proposed work would touch a load-bearing piece named in `ARCHITECTURE.md` (fan-out, replay buffer, streaming throttle, transport framing, auth state), prefer reading the linked detailed doc and surfacing the existing trade-off to the user before writing code.
 
 ## Performance Measurement Hosts

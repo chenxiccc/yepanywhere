@@ -1871,30 +1871,36 @@ describe("PublicShareService", () => {
     ]);
   });
 
-  it("aborts a frozen share when project capture fails unexpectedly", async () => {
-    await expect(
-      service.createShare({
-        mode: "frozen",
-        source: {
-          projectId,
-          sessionId: "session-1",
-          projectName: "project",
-          provider: "codex",
-        },
-        capture: {
-          ...(await captureSession(service)),
-          projectRoot: path.join(testDir, "missing-project"),
-        },
-      }),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    expect(service.getValidShareCount()).toBe(0);
-    await expect(
-      fs.readdir(path.join(testDir, "public-shares", "shares")),
-    ).resolves.toEqual([]);
-    await expect(
-      fs.readFile(path.join(testDir, "public-shares", "cleanup.json"), "utf8"),
-    ).resolves.toContain('"shareStateIds": []');
-  });
+  it.skipIf(cowDescriptorRoot() === null)(
+    "aborts a frozen share when project capture fails unexpectedly",
+    async () => {
+      await expect(
+        service.createShare({
+          mode: "frozen",
+          source: {
+            projectId,
+            sessionId: "session-1",
+            projectName: "project",
+            provider: "codex",
+          },
+          capture: {
+            ...(await captureSession(service)),
+            projectRoot: path.join(testDir, "missing-project"),
+          },
+        }),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      expect(service.getValidShareCount()).toBe(0);
+      await expect(
+        fs.readdir(path.join(testDir, "public-shares", "shares")),
+      ).resolves.toEqual([]);
+      await expect(
+        fs.readFile(
+          path.join(testDir, "public-shares", "cleanup.json"),
+          "utf8",
+        ),
+      ).resolves.toContain('"shareStateIds": []');
+    },
+  );
 
   it.each([
     ["beforeAtomicRename", false],
