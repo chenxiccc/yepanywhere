@@ -1,5 +1,8 @@
 import { useNotifyInApp } from "../hooks/useNotifyInApp";
-import { usePushNotifications } from "../hooks/usePushNotifications";
+import {
+  PUSH_PERMISSION_REQUEST_TIMED_OUT,
+  usePushNotifications,
+} from "../hooks/usePushNotifications";
 import { useI18n } from "../i18n";
 
 /**
@@ -18,6 +21,10 @@ export function PushNotificationToggle() {
     unsubscribe,
   } = usePushNotifications();
   const { notifyInApp, setNotifyInApp } = useNotifyInApp();
+  const displayedError =
+    error === PUSH_PERMISSION_REQUEST_TIMED_OUT
+      ? t("pushTogglePermissionRequestTimedOut")
+      : error;
 
   const handleToggle = async () => {
     if (isSubscribed) {
@@ -77,7 +84,7 @@ export function PushNotificationToggle() {
         <div className="settings-item-info">
           <strong>{t("pushToggleTitle")}</strong>
           <p>{t("pushToggleDescription")}</p>
-          {error && <p className="settings-error">{error}</p>}
+          {displayedError && <p className="settings-error">{displayedError}</p>}
         </div>
         <label className="toggle-switch">
           <input

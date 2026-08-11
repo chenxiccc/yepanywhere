@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { toBrowserAssetHref } from "../lib/appHref";
 import {
@@ -17,6 +17,12 @@ const SW_PATH = toBrowserAssetHref("sw.js");
 // In production, SW is always enabled
 // In dev mode, check server setting (allows runtime toggle via settings UI)
 const IS_DEV = import.meta.env.DEV;
+const NOTIFICATION_PERMISSION_REQUEST_TIMEOUT_MS = 60_000;
+
+export const PUSH_PERMISSION_REQUEST_TIMED_OUT =
+  "push-permission-request-timed-out";
+
+class NotificationPermissionRequestTimeoutError extends Error {}
 
 interface PushState {
   isSupported: boolean;
@@ -48,6 +54,9 @@ export function usePushNotifications() {
 
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
+  const permissionRequestReconcilerRef = useRef<
+    ((permission: NotificationPermission) => void) | null
+  >(null);
 
   // Check browser API support (separate from server-side enablement)
   const hasBrowserSupport =
@@ -178,6 +187,61 @@ export function usePushNotifications() {
     };
   }, [registration]);
 
+  // Permission can change in browser chrome while YA is backgrounded. Keep
+  // the displayed permission aligned when the document becomes active again.
+  useEffect(() => {
+    if (!hasBrowserSupport) return;
+
+    const reconcilePermission = () => {
+      const permission = Notification.permission;
+      if (permission !== "default") {
+        permissionRequestReconcilerRef.current?.(permission);
+      }
+      setState((current) => {
+        if (permission === current.permission) return current;
+        return {
+          ...current,
+          permission,
+          error:
+            permission === "granted" &&
+            current.error === PUSH_PERMISSION_REQUEST_TIMED_OUT
+              ? null
+              : current.error,
+        };
+      });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") reconcilePermission();
+    };
+
+    window.addEventListener("focus", reconcilePermission);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", reconcilePermission);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [hasBrowserSupport]);
+
+  const requestNotificationPermission = useCallback(async () => {
+    let timeoutId: number | undefined;
+    try {
+      return await Promise.race([
+        Notification.requestPermission(),
+        new Promise<NotificationPermission>((resolve) => {
+          permissionRequestReconcilerRef.current = resolve;
+        }),
+        new Promise<never>((_resolve, reject) => {
+          timeoutId = window.setTimeout(() => {
+            reject(new NotificationPermissionRequestTimeoutError());
+          }, NOTIFICATION_PERMISSION_REQUEST_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      permissionRequestReconcilerRef.current = null;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    }
+  }, []);
+
   // Subscribe to push notifications
   const subscribe = useCallback(async () => {
     if (!registration) {
@@ -189,7 +253,7 @@ export function usePushNotifications() {
 
     try {
       // Request notification permission
-      const permission = await Notification.requestPermission();
+      const permission = await requestNotificationPermission();
       setState((s) => ({ ...s, permission }));
 
       if (permission !== "granted") {
@@ -232,6 +296,14 @@ export function usePushNotifications() {
       }));
       notifyPushSubscriptionChanged();
     } catch (err) {
+      if (err instanceof NotificationPermissionRequestTimeoutError) {
+        setState((s) => ({
+          ...s,
+          isLoading: false,
+          error: PUSH_PERMISSION_REQUEST_TIMED_OUT,
+        }));
+        return;
+      }
       console.error("[usePushNotifications] Subscribe error:", err);
       setState((s) => ({
         ...s,
@@ -239,7 +311,7 @@ export function usePushNotifications() {
         error: err instanceof Error ? err.message : "Failed to subscribe",
       }));
     }
-  }, [registration]);
+  }, [registration, requestNotificationPermission]);
 
   // Unsubscribe from push notifications
   const unsubscribe = useCallback(async () => {

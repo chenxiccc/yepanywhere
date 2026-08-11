@@ -1932,6 +1932,7 @@
   "pushToggleDevModeHint": "To enable push on this device in dev mode, restart with VITE_ENABLE_SW=true.",
   "pushToggleTroubleshooting": "Troubleshooting guide",
   "pushToggleBlocked": "Notifications are blocked. Enable them in your browser settings to receive Web Push notifications.",
+  "pushTogglePermissionRequestTimedOut": "The browser did not finish the permission request. Check this site's notification permission in your browser settings, then try again.",
   "pushToggleDescription": "Subscribe this browser to notifications from this YA server.",
   "pushToggleNotifyInAppTitle": "Notify while YA is open",
   "pushToggleNotifyInAppDescription": "Show notifications while a YA window is focused, except for the session already visible.",

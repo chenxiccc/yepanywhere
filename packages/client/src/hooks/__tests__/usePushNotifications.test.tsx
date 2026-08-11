@@ -2,9 +2,13 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usePushNotifications } from "../usePushNotifications";
+import {
+  PUSH_PERMISSION_REQUEST_TIMED_OUT,
+  usePushNotifications,
+} from "../usePushNotifications";
 
 const mocks = vi.hoisted(() => ({
+  getPushPublicKey: vi.fn(),
   getServerSettings: vi.fn(),
   unsubscribePush: vi.fn(),
 }));
@@ -28,6 +32,8 @@ describe("usePushNotifications", () => {
     mocks.getServerSettings.mockResolvedValue({
       settings: { serviceWorkerEnabled: true },
     });
+    mocks.getPushPublicKey.mockReset();
+    mocks.getPushPublicKey.mockResolvedValue({ publicKey: "AQ" });
     mocks.unsubscribePush.mockReset();
     mocks.unsubscribePush.mockResolvedValue({
       success: true,
@@ -60,6 +66,7 @@ describe("usePushNotifications", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     localStorage.clear();
     vi.unstubAllGlobals();
     if (serviceWorkerDescriptor) {
@@ -93,5 +100,73 @@ describe("usePushNotifications", () => {
       expect(result.current.toggle.isSubscribed).toBe(false);
     });
     expect(mocks.unsubscribePush).toHaveBeenCalledWith("profile-1");
+  });
+
+  it("recovers when the browser permission request never settles", async () => {
+    subscription = null;
+    let resolvePermission:
+      | ((permission: NotificationPermission) => void)
+      | undefined;
+    vi.mocked(Notification.requestPermission).mockReturnValue(
+      new Promise<NotificationPermission>((resolve) => {
+        resolvePermission = resolve;
+      }),
+    );
+    const { result } = renderHook(() => usePushNotifications());
+
+    await waitFor(() => {
+      expect(result.current.isSupported).toBe(true);
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    vi.useFakeTimers();
+    let subscribePromise: Promise<void> | undefined;
+    act(() => {
+      subscribePromise = result.current.subscribe();
+    });
+    expect(result.current.isLoading).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+      await subscribePromise;
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBe(PUSH_PERMISSION_REQUEST_TIMED_OUT);
+
+    await act(async () => {
+      resolvePermission?.("granted");
+      await Promise.resolve();
+    });
+    expect(mocks.getPushPublicKey).not.toHaveBeenCalled();
+    expect(result.current.isSubscribed).toBe(false);
+    expect(result.current.error).toBe(PUSH_PERMISSION_REQUEST_TIMED_OUT);
+  });
+
+  it("settles a pending request from permission changed in browser settings", async () => {
+    Object.assign(Notification, { permission: "default" });
+    vi.mocked(Notification.requestPermission).mockReturnValue(
+      new Promise<NotificationPermission>(() => {}),
+    );
+    const { result } = renderHook(() => usePushNotifications());
+
+    await waitFor(() => {
+      expect(result.current.permission).toBe("default");
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    let subscribePromise: Promise<void> | undefined;
+    act(() => {
+      subscribePromise = result.current.subscribe();
+    });
+    Object.assign(Notification, { permission: "denied" });
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await subscribePromise;
+    });
+
+    expect(result.current.permission).toBe("denied");
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBe("Notification permission denied");
   });
 });

@@ -187,6 +187,14 @@ The inventory must remain truthful across its browser/server boundary:
   lease immediately, while a cached document may establish one new lease on
   `pageshow`.
 
+Browser permission enrollment must also remain recoverable. While the browser
+permission request is pending, YA disables the subscription control to prevent
+duplicate enrollment. If that browser promise has not settled after 60
+seconds, YA re-enables the control with guidance to check the site's browser
+permission and try again; a late result from the timed-out attempt must not
+silently subscribe. Returning focus or visibility to YA resynchronizes the
+displayed permission with browser settings.
+
 Automated contracts cover the complete subscribed server audience and these
 recipient decisions: no focused window displays, an unfocused window displays,
 a focused window suppresses by default, the focused-window opt-in displays for
