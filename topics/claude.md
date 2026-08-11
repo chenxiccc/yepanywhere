@@ -1,7 +1,8 @@
 # Claude Provider Control
 
-> YA's Claude-specific control surface distinguishes sessions YA can actively
-> configure from sessions it can only observe through provider transcript files.
+> Claude-specific behavior is YA behavior that applies only to its Claude Code
+> integration: process ownership and control, transcript and resume handling,
+> model and settings surfaces, and gateway routing.
 
 Topic: claude
 

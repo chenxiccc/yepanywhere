@@ -30,7 +30,9 @@ Topic: glossary
 Scan `topics/*.md` from repo root, excluding companion files such as
 `*.evidence.md`. For each topic doc with an H1 followed by a `> ` blockquote
 lede, use the space-joined lede as the glossary definition and link the row as
-`[<name>](topics/<name>.md)`. Write the term as `**<name>**`.
+`[<name>](topics/<name>.md)`. Write the term as `**<name>**` unless its
+existing row deliberately extends that basename as `**<name>-<qualifier>**`
+to prevent an over-broad highlight; preserve that more precise surface.
 
 When a topic doc lacks a lede, either keep a concise curated row in
 `GLOSSARY.md` or normalize the topic doc by adding a body-preserving lede from
