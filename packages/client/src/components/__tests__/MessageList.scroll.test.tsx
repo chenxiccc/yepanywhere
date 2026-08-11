@@ -841,6 +841,90 @@ describe("MessageList scroll and follow", () => {
     composerTarget.remove();
   });
 
+  it("keeps following visible thinking after a user send", () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    class CapturingResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: CapturingResizeObserver,
+    });
+
+    const firstThought = codexThinkingMessage(
+      "thinking-1",
+      "Initial visible thought",
+      "2026-08-10T03:04:40.000Z",
+      true,
+    );
+    const confirmedSteer = userMessage("steer-1", "Clarify the diff scope");
+    const { container, rerender } = render(
+      <MessageList provider="codex" isProcessing={true} messages={[]} />,
+    );
+    let scrollHeight = 1000;
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    container.scrollTo = vi.fn((options: ScrollToOptions) => {
+      container.scrollTop = Number(options.top ?? 0);
+    }) as typeof container.scrollTo;
+
+    rerender(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[firstThought]}
+      />,
+    );
+    fireEvent.wheel(container, { deltaY: -120 });
+    rerender(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[firstThought, confirmedSteer]}
+        scrollTrigger={1}
+      />,
+    );
+    expect(container.scrollTop).toBe(500);
+
+    scrollHeight = 1400;
+    rerender(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[
+          codexThinkingMessage(
+            "thinking-1",
+            "Initial visible thought\nReasoning after the accepted steer",
+            "2026-08-10T03:04:40.000Z",
+            true,
+          ),
+          confirmedSteer,
+        ]}
+        scrollTrigger={1}
+      />,
+    );
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+
+    expect(container.scrollTop).toBe(900);
+  });
+
   it("does not follow visible thinking deltas until Follow is clicked", async () => {
     const composerTarget = document.createElement("div");
     composerTarget.className = "session-input-inner";

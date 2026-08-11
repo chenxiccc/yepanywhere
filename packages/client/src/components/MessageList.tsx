@@ -2904,7 +2904,9 @@ export const MessageList = memo(function MessageList({
   // Force scroll to bottom when scrollTrigger changes (user sent a message)
   useEffect(() => {
     if (scrollTrigger > 0) {
-      forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS);
+      forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS, {
+        allowThinkingDeltas: true,
+      });
     }
   }, [forceScrollToCurrent, scrollTrigger]);
 

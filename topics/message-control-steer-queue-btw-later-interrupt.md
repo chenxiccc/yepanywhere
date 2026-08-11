@@ -237,6 +237,11 @@ the provider turn boundary, even when a long-running tool outlives the ordinary
 the provider writes the turn. Reload must therefore show the accepted steer,
 then reconcile it with the durable row rather than letting a live assistant
 response appear without the user turn it answers.
+Accepting a direct or steering send also rejoins the live viewport tail.
+Subsequent visible thinking growth continues that follow until an explicit
+wheel, touch, keyboard, or scrollbar gesture cancels it; confirming the
+optimistic row must not make the accepted turn appear to vanish above the
+viewport.
 
 `sent` is server acceptance, not proof that the provider consumed the message.
 If Codex rejects a steer because YA's cached active-turn ID is stale, the
