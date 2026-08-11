@@ -237,6 +237,12 @@ the provider turn boundary, even when a long-running tool outlives the ordinary
 the provider writes the turn. Reload must therefore show the accepted steer,
 then reconcile it with the durable row rather than letting a live assistant
 response appear without the user turn it answers.
+Until that durable counterpart arrives or explicit cancellation succeeds, a
+persisted-tail replacement must retain the optimistic echo as a transient
+overlay. A tail snapshot may predate the provider write that confirms the send;
+it is authoritative for its persisted window, but its omission cannot revoke a
+server-accepted user turn. A later replacement containing the durable row must
+collapse the overlay into that row rather than render two user turns.
 Accepting a direct or steering send also rejoins the live viewport tail.
 Subsequent visible thinking growth continues that follow until an explicit
 wheel, touch, keyboard, or scrollbar gesture cancels it; confirming the

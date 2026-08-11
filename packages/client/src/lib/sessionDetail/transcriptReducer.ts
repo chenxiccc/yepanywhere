@@ -108,6 +108,21 @@ function mergePersistedMessagesForProvider(
   return maybeReconcileApprox(result.messages, provider);
 }
 
+function replacePersistedTailForProvider(
+  previousMessages: Message[],
+  taggedMessages: Message[],
+  provider: string | undefined,
+): Message[] {
+  let messages = taggedMessages;
+  for (const previousMessage of previousMessages) {
+    if (!isUnconfirmedSelfSend(previousMessage)) {
+      continue;
+    }
+    messages = mergeStreamMessage(messages, previousMessage).messages;
+  }
+  return maybeReconcileApprox(messages, provider);
+}
+
 export function clearStreamingPlaceholderMessages(
   messages: Message[],
 ): Message[] {
@@ -706,7 +721,8 @@ export function reduceSessionDetailState(
 
     case "replaceTailWindow": {
       const taggedMessages = tagJsonlMessages(action.messages);
-      const messages = maybeReconcileApprox(
+      const messages = replacePersistedTailForProvider(
+        state.messages,
         taggedMessages,
         action.session.provider,
       );
