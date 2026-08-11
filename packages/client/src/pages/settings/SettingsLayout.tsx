@@ -281,6 +281,7 @@ export function SettingsLayout() {
   };
 
   const handleCategoryClick = (categoryId: string, jumpToItemId?: string) => {
+    setSearchQuery("");
     const openedFromList =
       !category || shouldPopSettingsDetailBack(location.state);
     const navigationState = createSettingsDetailNavigationState(openedFromList);
@@ -296,12 +297,10 @@ export function SettingsLayout() {
   };
 
   const handleSearchOpenCategory = (categoryId: string) => {
-    setSearchQuery("");
     handleCategoryClick(categoryId);
   };
 
   const handleSearchJumpToItem = (categoryId: string, itemId: string) => {
-    setSearchQuery("");
     handleCategoryClick(categoryId, itemId);
   };
 

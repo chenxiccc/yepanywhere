@@ -27,7 +27,8 @@ principle this design follows).
   no network round-trip. Semantics are token-AND substring: the query
   splits on whitespace and every token must appear, case-insensitively, in
   the row's searchable text. Esc or the ✕ affordance clears the query and
-  restores the normal view.
+  restores the normal view. Selecting any category also clears the query, so
+  the destination pane never remains hidden behind stale search results.
 - **Credential isolation.** Browser or password-manager autofill must never
   populate the query. The field owns a dedicated search form, separate from
   credential inputs mounted by settings panes, and opts out of autocomplete.
@@ -114,6 +115,18 @@ are memo-isolated and do not re-render per keystroke. This surface is
 typing-rate, not streaming-rate; no further coalescing is required.
 
 ## Known limitations / candidate refinements
+
+- **Explicit confirmation and larger jump targets are pending.** A setting
+  that deliberately requires confirmation (for example, provider or remote-
+  access connection data) must expose that confirmation inside its search-
+  result block: Enter submits the edit, and a visible Save action is reachable
+  there. Separately, clicking a result row's non-control background should
+  perform the existing jump-to-setting behavior without stealing clicks from
+  the live control or interfering with text selection. The destination setting
+  remains centered when space permits and always receives the temporary
+  outline flash, including when no scroll movement is possible. This pending
+  work is tracked by
+  [`settings-search-confirmation-and-row-navigation`](../gaps/settings-search-confirmation-and-row-navigation.md).
 
 - Rows using a custom `info` body match on their declared strings but do
   not highlight inside the custom markup.
