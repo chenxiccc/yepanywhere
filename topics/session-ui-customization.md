@@ -165,8 +165,7 @@ and section spacing rather than text rendering.
 Sidebar session rows in both Compact and Comfortable density modes reserve no
 permanent lane for their hover-only overflow menu. The menu is vertically
 centered over its own row and may temporarily cover trailing project/status
-metadata; resting rows keep that width available to the session title. Eligible
-Resume rows likewise use only the action and project label's natural widths.
+metadata; resting rows keep that width available to the session title.
 
 ### UI size
 

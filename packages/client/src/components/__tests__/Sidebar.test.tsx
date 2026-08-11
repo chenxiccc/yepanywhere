@@ -3,7 +3,6 @@
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
-  SIDEBAR_SESSION_RESUME_CAPABILITY,
   type ProjectQueueItemSummary,
   type ProjectQueueProjectStatus,
 } from "@yep-anywhere/shared";
@@ -24,7 +23,6 @@ const {
   mockGlobalLoadMore,
   mockMoveItemToTop,
   mockPromoteNow,
-  mockReactivateSession,
   mockRemoteConnectionState,
   mockStarredLoadMore,
   mockToggleExpanded,
@@ -52,7 +50,6 @@ const {
   mockGlobalLoadMore: vi.fn(),
   mockMoveItemToTop: vi.fn(),
   mockPromoteNow: vi.fn(),
-  mockReactivateSession: vi.fn(),
   mockRemoteConnectionState: {
     value: null as null | { disconnect: ReturnType<typeof vi.fn> },
   },
@@ -75,12 +72,6 @@ const {
   },
   versionState: {
     capabilities: [] as string[],
-  },
-}));
-
-vi.mock("../../api/client", () => ({
-  api: {
-    reactivateSession: mockReactivateSession,
   },
 }));
 
@@ -249,9 +240,6 @@ vi.mock("../../i18n", () => ({
         projectQueueTargetNewSession: "New session",
         projectQueueUnknownProject: "Unknown project",
         sidebarSessionResume: "Resume",
-        sidebarSessionResumeTitle:
-          "Resume this interrupted session without sending a message",
-        sidebarSessionResumeFailed: "Failed to resume session: {message}",
         sidebarPendingSessionResumeTitle:
           "Resume Project Queue dispatch with this pending session first",
         sidebarPendingSessionResumeFailed:
@@ -278,15 +266,11 @@ vi.mock("../SessionListItem", () => ({
     title,
     activity,
     hasProjectQueue,
-    onResume,
-    resumePending,
   }: {
     sessionId: string;
     title: string;
     activity?: string;
     hasProjectQueue?: boolean;
-    onResume?: () => void | Promise<void>;
-    resumePending?: boolean;
   }) => (
     <li data-testid={`session-${sessionId}`} data-activity={activity ?? ""}>
       {title}
@@ -294,15 +278,6 @@ vi.mock("../SessionListItem", () => ({
         <span data-testid={`thinking-${sessionId}`}>Thinking</span>
       ) : null}
       {hasProjectQueue ? <span>Q</span> : null}
-      {onResume ? (
-        <button
-          type="button"
-          onClick={() => void onResume()}
-          disabled={resumePending}
-        >
-          Resume
-        </button>
-      ) : null}
     </li>
   ),
 }));
@@ -397,8 +372,6 @@ describe("Sidebar collapsed toggle", () => {
     mockMoveItemToTop.mockReset();
     mockMoveItemToTop.mockResolvedValue(undefined);
     mockPromoteNow.mockReset();
-    mockReactivateSession.mockReset();
-    mockReactivateSession.mockResolvedValue({ processId: "process-1" });
     mockShowToast.mockReset();
     mockRemoteConnectionState.value = null;
     mockGlobalLoadMore.mockReset();
@@ -538,65 +511,6 @@ describe("Sidebar collapsed toggle", () => {
 
     expect(screen.getByText("Session 13")).toBeDefined();
     expect(screen.queryByText("Show more")).toBeNull();
-  });
-
-  it("offers one-click Resume only for recent unowned non-terminated sessions", async () => {
-    versionState.capabilities = [SIDEBAR_SESSION_RESUME_CAPABILITY];
-    globalSessionsState.sessions = [
-      makeSession(
-        "eligible",
-        new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(),
-      ),
-      makeSession(
-        "too-old",
-        new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(),
-      ),
-      makeSession("manual", new Date().toISOString(), {
-        autoResumeDisabled: true,
-      }),
-      makeSession("live", new Date().toISOString(), {
-        ownership: { owner: "self", processId: "process-live" },
-      }),
-    ];
-
-    renderSidebar();
-
-    expect(
-      screen.getByTestId("session-eligible").querySelector("button")
-        ?.textContent,
-    ).toBe("Resume");
-    expect(
-      screen.getByTestId("session-too-old").querySelector("button"),
-    ).toBeNull();
-    expect(
-      screen.getByTestId("session-manual").querySelector("button"),
-    ).toBeNull();
-    expect(
-      screen.getByTestId("session-live").querySelector("button"),
-    ).toBeNull();
-
-    fireEvent.click(
-      screen.getByTestId("session-eligible").querySelector("button") as Element,
-    );
-    await waitFor(() => {
-      expect(mockReactivateSession).toHaveBeenCalledWith(
-        "project-1",
-        "eligible",
-      );
-    });
-  });
-
-  it("hides one-click Resume when the server capability is absent", () => {
-    globalSessionsState.sessions = [
-      makeSession("eligible", new Date().toISOString()),
-    ];
-
-    renderSidebar();
-
-    expect(
-      screen.getByTestId("session-eligible").querySelector("button"),
-    ).toBeNull();
-    expect(mockReactivateSession).not.toHaveBeenCalled();
   });
 
   it("marks sidebar rows that have Project Queue items", () => {

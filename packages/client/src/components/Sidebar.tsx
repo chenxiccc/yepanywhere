@@ -3,13 +3,12 @@ import {
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
-  SIDEBAR_SESSION_RESUME_CAPABILITY,
   type ProjectQueueItemSummary,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api, type GlobalSessionItem } from "../api/client";
+import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useNewSessionDraft } from "../hooks/useDrafts";
 import { useProjectQueues } from "../hooks/useProjectQueues";
@@ -28,7 +27,6 @@ import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { useToastContext } from "../contexts/ToastContext";
-import { activityBus } from "../lib/activityBus";
 import { toBrowserAppHref } from "../lib/appHref";
 import { bangHistoryViewEnabled } from "../lib/bangCommandAvailability";
 import { buildFrontendReloadUrl } from "../lib/frontendReload";
@@ -107,20 +105,6 @@ const EMPTY_PROJECT_QUEUE_PROJECTS: readonly {
   snapshotObservedAt?: number;
 }[] = [];
 const EMPTY_PROJECT_QUEUE_SESSION_IDS: ReadonlySet<string> = new Set();
-const SIDEBAR_RESUME_RECENT_MS = 10 * 60 * 60 * 1000;
-
-function canResumeFromSidebar(
-  session: GlobalSessionItem,
-  now: number,
-): boolean {
-  const updatedAt = new Date(session.updatedAt).getTime();
-  return (
-    session.ownership.owner === "none" &&
-    session.autoResumeDisabled !== true &&
-    Number.isFinite(updatedAt) &&
-    updatedAt > now - SIDEBAR_RESUME_RECENT_MS
-  );
-}
 
 /**
  * A session is "active" while its agent is mid-turn or waiting on input. Active
@@ -444,10 +428,6 @@ export function Sidebar({
     versionInfo,
     PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   );
-  const supportsSidebarSessionResume = serverHasCapability(
-    versionInfo,
-    SIDEBAR_SESSION_RESUME_CAPABILITY,
-  );
   const supportsDeviceBridgeNav =
     serverHasCapability(versionInfo, DEVICE_BRIDGE_CAPABILITY) ||
     serverHasCapability(versionInfo, DEVICE_BRIDGE_DOWNLOAD_CAPABILITY);
@@ -701,35 +681,6 @@ export function Sidebar({
     [olderSessionRecords],
   );
 
-  const resumeEligibilityNow = Date.now();
-  const [resumingSessionIds, setResumingSessionIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const handleResumeSession = useCallback(
-    async (session: SidebarSessionItem) => {
-      if (resumingSessionIds.has(session.id)) return;
-      setResumingSessionIds((current) => new Set(current).add(session.id));
-      try {
-        await api.reactivateSession(session.projectId, session.id);
-        activityBus.emitLocal("refresh", undefined);
-      } catch (error) {
-        showToast(
-          t("sidebarSessionResumeFailed", {
-            message: error instanceof Error ? error.message : String(error),
-          }),
-          "error",
-        );
-      } finally {
-        setResumingSessionIds((current) => {
-          const next = new Set(current);
-          next.delete(session.id);
-          return next;
-        });
-      }
-    },
-    [resumingSessionIds, showToast, t],
-  );
-
   const sidebarProjectIds = useMemo(
     () => [
       ...new Set(
@@ -966,10 +917,7 @@ export function Sidebar({
   // section render sites (starred / recent / older, each with a hidden-dups
   // sublist) stay identical. `createdAt` + `model` + `lastAgentText` feed the
   // hover card.
-  const renderCompactSession = (
-    session: SidebarSessionItem,
-    allowResume: boolean,
-  ) => {
+  const renderCompactSession = (session: SidebarSessionItem) => {
     const hasProjectQueue = projectQueuedSessionIds.has(session.id);
     return (
       <SessionListItem
@@ -1005,14 +953,6 @@ export function Sidebar({
         hasProjectQueue={hasProjectQueue}
         publicShareCreationReady={publicShareCreationReady}
         publicShareManagementAvailable={publicShareManagementAvailable}
-        onResume={
-          allowResume &&
-          supportsSidebarSessionResume &&
-          canResumeFromSidebar(session, resumeEligibilityNow)
-            ? () => handleResumeSession(session)
-            : undefined
-        }
-        resumePending={resumingSessionIds.has(session.id)}
       />
     );
   };
@@ -1323,9 +1263,7 @@ export function Sidebar({
               />
               {starredExpanded && (
                 <ul id="sidebar-starred-list" className="sidebar-session-list">
-                  {filteredStarredSessions.map((session) =>
-                    renderCompactSession(session, true),
-                  )}
+                  {filteredStarredSessions.map(renderCompactSession)}
                 </ul>
               )}
             </div>
@@ -1348,12 +1286,8 @@ export function Sidebar({
                   id="sidebar-last-24-hours-list"
                   className="sidebar-session-list"
                 >
-                  {recentPinned.map((session) =>
-                    renderCompactSession(session, true),
-                  )}
-                  {visibleRecent.map((session) =>
-                    renderCompactSession(session, true),
-                  )}
+                  {recentPinned.map(renderCompactSession)}
+                  {visibleRecent.map(renderCompactSession)}
                   {hiddenRecent.length > 0 && (
                     <li className="sidebar-hidden-dups">
                       <button
@@ -1369,9 +1303,7 @@ export function Sidebar({
                       </button>
                       {showHiddenRecent && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
-                          {hiddenRecent.map((session) =>
-                            renderCompactSession(session, true),
-                          )}
+                          {hiddenRecent.map(renderCompactSession)}
                         </ul>
                       )}
                     </li>
@@ -1395,9 +1327,7 @@ export function Sidebar({
               />
               {olderExpanded && (
                 <ul id="sidebar-older-list" className="sidebar-session-list">
-                  {visibleOlder.map((session) =>
-                    renderCompactSession(session, false),
-                  )}
+                  {visibleOlder.map(renderCompactSession)}
                   {hiddenOlder.length > 0 && (
                     <li className="sidebar-hidden-dups">
                       <button
@@ -1413,9 +1343,7 @@ export function Sidebar({
                       </button>
                       {showHiddenOlder && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
-                          {hiddenOlder.map((session) =>
-                            renderCompactSession(session, false),
-                          )}
+                          {hiddenOlder.map(renderCompactSession)}
                         </ul>
                       )}
                     </li>

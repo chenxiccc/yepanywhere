@@ -120,13 +120,13 @@ auto-resumed from its rollout three times in one day):
   `blockResume: true` on `POST /api/processes/:id/abort`. After shutdown is
   verified, the server clears the session's heartbeat opt-in and persists an
   `autoResumeDisabled` YA metadata marker checked by the shared automatic-
-  resume gate. The unowned heartbeat candidate scan, cold fork-recap route,
-  and sidebar Resume affordance all obey it. Provider transcripts are never
-  renamed or hidden: the session remains in history and can be deliberately
-  continued through its full session page. Explicitly re-enabling heartbeat
-  turns clears the marker because that fresh opt-in authorizes automatic
-  turns. If persisting the exemption fails, the abort response reports that
-  the process stopped but automatic resume was not disabled.
+  resume gate. The unowned heartbeat candidate scan and cold fork-recap route
+  both obey it. Provider transcripts are never renamed or hidden: the session
+  remains in history and can be deliberately continued through its full
+  session page. Explicitly re-enabling heartbeat turns clears the marker
+  because that fresh opt-in authorizes automatic turns. If persisting the
+  exemption fails, the abort response reports that the process stopped but
+  automatic resume was not disabled.
 - The session-page Stop fallback abort, btw-aside cleanup aborts, and internal
   process-rotation aborts do **not** block resume; only the explicit Kill
   gesture opts in.

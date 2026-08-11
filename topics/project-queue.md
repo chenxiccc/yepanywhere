@@ -175,11 +175,10 @@ predate the compatibility marker and can expose partial Project Queue behavior
 to newer hosted clients.
 
 After restart-paused dispatch, each queued new-session row in the sidebar's
-Pending Sessions section exposes the same compact Resume control used by
-interrupted session rows. It atomically resumes global dispatch and moves that
-item to the head of its own project's queue. The ordinary scheduler still
-decides when it may launch; Resume is not Force start. Failed items retain
-their explicit Retry flow instead.
+Pending Sessions section exposes a compact Resume control. It atomically
+resumes global dispatch and moves that item to the head of its own project's
+queue. The ordinary scheduler still decides when it may launch; Resume is not
+Force start. Failed items retain their explicit Retry flow instead.
 
 When the button is visible by user preference, the UI should still suppress it
 when Project Queue adds no useful semantics:

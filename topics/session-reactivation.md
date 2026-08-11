@@ -14,12 +14,12 @@ supervisor; this work exposed it as a public `Supervisor.reactivateSession`, a
 `POST …/reactivate` route, and a client Activate button. See *As built* below.
 
 Naming: the model panel's button label is **"Activate"** because it makes an
-inactive process available for configuration. The sidebar's one-click recovery
-label is **"Resume"** because its user intent is to continue an interrupted
-session. Both call the server **reactivate** primitive. Avoid "reattach" — there
-is no live process to attach to; reactivation spawns a *fresh* harness process
-bound to the session id and replays its history. "Revive" is an acceptable
-synonym. Candidate glossary row.
+inactive process available for configuration. Older clients labeled the now-
+retired sidebar shortcut **"Resume"** because its user intent was to continue
+an interrupted session. Both called the server **reactivate** primitive. Avoid
+"reattach" — there is no live process to attach to; reactivation spawns a
+*fresh* harness process bound to the session id and replays its history.
+"Revive" is an acceptable synonym. Candidate glossary row.
 <!-- unconfirmed: 2026-06-16 -->
 
 ## Motivation
@@ -91,13 +91,12 @@ resume:
   note becomes an Activate button (`onActivate`); `SessionPage` calls reactivate
   and flips `status` to `{ owner: "self", processId }`, after which the existing
   `processId`-keyed effect loads models and the full options replace the note.
-- **Sidebar recovery:** a capability-gated Resume button appears only in the
-  **Starred** and **Last 24 Hours** sections, for an unowned session whose last
-  activity is less than ten hours old and whose `autoResumeDisabled` marker is
-  not set. Creation time is irrelevant. The sidebar checks those
-  already-rendered rows linearly during ordinary renders; there is no timer or
-  additional session scan. Without `sidebar-session-resume`, the client hides
-  the control and makes no reactivation request.
+- **Sidebar recovery retired:** current clients keep session rows as navigation
+  and status surfaces; they never issue message-less reactivation from the
+  sidebar. Explicit activation remains in the full session's model panel, and
+  sending a message still resumes an unowned session with that turn. Servers
+  continue advertising the permanent `sidebar-session-resume` capability and
+  its manual-termination field so older clients remain compatible.
 - **Durable settings:** `SessionMetadata.effectiveLaunchSettings` is a complete,
   versioned snapshot of the last successfully applied process launch policy.
   Resolution is explicit request, durable snapshot, legacy requested-model

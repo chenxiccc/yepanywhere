@@ -1012,7 +1012,7 @@ describe("SessionListItem links", () => {
     expect(screen.getByText("yepanywhere")).toBeTruthy();
   });
 
-  it("places compact Resume before project metadata", () => {
+  it("keeps compact session rows free of Resume actions", () => {
     render(
       <I18nProvider>
         <MemoryRouter>
@@ -1025,19 +1025,18 @@ describe("SessionListItem links", () => {
               title="Interrupted session"
               provider="claude"
               mode="compact"
-              onResume={() => {}}
             />
           </ul>
         </MemoryRouter>
       </I18nProvider>,
     );
 
-    const resume = screen.getByRole("button", { name: "Resume" });
     const project = screen.getByText("yepanywhere");
+    const sessionLink = screen.getByRole("link", {
+      name: /Interrupted session/i,
+    });
 
-    expect(resume.nextElementSibling).toBe(project.parentElement);
-    expect(project.parentElement?.className).toContain(
-      styles.compactResumeTrailing,
-    );
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+    expect(sessionLink.contains(project)).toBe(true);
   });
 });
