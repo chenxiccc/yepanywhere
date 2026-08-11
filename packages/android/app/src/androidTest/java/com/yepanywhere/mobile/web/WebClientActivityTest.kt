@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.Instrumentation.ActivityResult
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.webkit.WebView
@@ -17,8 +18,8 @@ import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.yepanywhere.mobile.R
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -127,18 +128,7 @@ class WebClientActivityTest {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 val device = checkNotNull(permissionDevice)
-                val allowButtonSelector = By.res(
-                    "com.android.permissioncontroller:id/permission_allow_button",
-                )
-                val allowButton = device.wait(
-                    Until.findObject(allowButtonSelector),
-                    10_000,
-                ) ?: throw AssertionError("Notification permission dialog did not appear")
-                allowButton.click()
-                assertTrue(
-                    "Notification permission dialog did not close after Allow",
-                    device.wait(Until.gone(allowButtonSelector), 5_000),
-                )
+                grantNotificationPermission(device)
                 awaitJavaScript(
                     scenario,
                     """
@@ -426,11 +416,46 @@ class WebClientActivityTest {
         val device = UiDevice.getInstance(instrumentation)
         val packageName = instrumentation.targetContext.packageName
         val permission = Manifest.permission.POST_NOTIFICATIONS
-        device.executeShellCommand("pm revoke $packageName $permission")
+        instrumentation.uiAutomation.revokeRuntimePermission(packageName, permission)
         device.executeShellCommand(
             "pm clear-permission-flags $packageName $permission user-set user-fixed",
         )
         return device
+    }
+
+    private fun grantNotificationPermission(device: UiDevice) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val targetContext = instrumentation.targetContext
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val allowButtonSelector = By.res(
+            "com.android.permissioncontroller:id/permission_allow_button",
+        )
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        var clickAttempts = 0
+        var nextClickAt = 0L
+
+        while (System.nanoTime() < deadline) {
+            if (targetContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+
+            val now = System.nanoTime()
+            val allowButton = device.findObject(allowButtonSelector)
+            if (allowButton != null && now >= nextClickAt) {
+                try {
+                    allowButton.click()
+                    clickAttempts += 1
+                    nextClickAt = now + TimeUnit.SECONDS.toNanos(1)
+                } catch (_: StaleObjectException) {
+                    // The permission controller replaced its accessibility tree; retry the live node.
+                }
+            }
+            Thread.sleep(100)
+        }
+
+        throw AssertionError(
+            "Android did not grant notification permission after $clickAttempts Allow attempts",
+        )
     }
 
     private fun awaitOrientation(
