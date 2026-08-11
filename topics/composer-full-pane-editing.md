@@ -13,6 +13,10 @@ Topic: composer-full-pane-editing
   only the independent one-line collapse state.
 - The visible controls' tooltips and the in-session `?` shortcuts panel identify
   `Ctrl+U` as the shared maximize/restore accelerator.
+- On New Session and handoff composers, the attachment action retains the
+  leading left toolbar position. The lower-frequency full-pane toggle follows
+  the other auxiliary controls so it does not replace an established action's
+  muscle-memory target.
 - Follow and the in-session maximize/restore control keep the same horizontal
   anchors when the composer changes between its ordinary and one-line states.
   Collapsed-field actions fit below that stable control group instead of moving

@@ -1933,6 +1933,16 @@ describe("NewSessionForm", () => {
     const expandButton = screen.getByRole("button", {
       name: "Expand composer",
     });
+    const attachButton = screen.getByRole("button", {
+      name: "newSessionAttachFiles",
+    });
+    const auxiliaryToolbar = expandButton.closest(
+      ".new-session-form-toolbar-left",
+    );
+    expect(attachButton.compareDocumentPosition(expandButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(auxiliaryToolbar?.lastElementChild).toBe(expandButton);
     expect(expandButton.title).toBe("Expand composer (Ctrl+U)");
     fireEvent.click(expandButton);
     expect(expandButton.getAttribute("aria-pressed")).toBe("true");

@@ -3088,16 +3088,6 @@ export function NewSessionForm({
       </div>
       <div className="new-session-form-toolbar">
         <div className="new-session-form-toolbar-left">
-          {!compact && !composerMuted && (
-            <FullPaneComposerToggle
-              expanded={fullPane}
-              className={`toolbar-button ${styles.fullPaneToggle}`}
-              onToggle={() => {
-                toggleFullPane();
-                textareaRef.current?.focus();
-              }}
-            />
-          )}
           {allowAttachments && (
             <>
               <input
@@ -3183,6 +3173,16 @@ export function NewSessionForm({
                 />
               }
               triggerTitle={t("composerModelChipTitle")}
+            />
+          )}
+          {!compact && !composerMuted && (
+            <FullPaneComposerToggle
+              expanded={fullPane}
+              className={`toolbar-button ${styles.fullPaneToggle}`}
+              onToggle={() => {
+                toggleFullPane();
+                textareaRef.current?.focus();
+              }}
             />
           )}
         </div>
