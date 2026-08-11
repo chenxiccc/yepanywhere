@@ -30,6 +30,7 @@ const nativeHoverCardShowDelayStore = createLocalStorageValue(
 
 export interface HoverCardAppearance {
   showDelayMs: number;
+  warmShowDelayMs: number;
   maxHeightPx: number;
 }
 
@@ -58,6 +59,7 @@ function readStoredNumber(key: string, fallback: number): number {
 function loadHoverCardAppearance(): HoverCardAppearance {
   return {
     showDelayMs: DEFAULT_HOVERCARD_SHOW_DELAY_MS,
+    warmShowDelayMs: DEFAULT_TOOLTIP_DELAY_MS,
     maxHeightPx: normalizeMaxHeight(
       readStoredNumber(
         UI_KEYS.sessionHoverCardMaxHeightPx,
@@ -91,6 +93,7 @@ export function useHoverCardSettings(): HoverCardAppearance {
       tooltipMode === "native"
         ? nativeDelayMs
         : tooltipDelayMs * SESSION_HOVERCARD_DELAY_MULTIPLIER,
+    warmShowDelayMs: tooltipDelayMs,
   };
 }
 

@@ -31,7 +31,7 @@ export function SessionHoverCardTarget({
   className?: string;
 }) {
   const record = useSessionCollectionRecord(sessionId);
-  const { showDelayMs, maxHeightPx } = useHoverCardSettings();
+  const { showDelayMs, warmShowDelayMs, maxHeightPx } = useHoverCardSettings();
   const targetRef = useRef<HTMLSpanElement>(null);
   const {
     anchor,
@@ -43,6 +43,7 @@ export function SessionHoverCardTarget({
   } = useSessionHoverCardController({
     targetRef,
     showDelayMs,
+    warmShowDelayMs,
     refreshPreview: {
       projectId: fallback.projectId,
       sessionId,

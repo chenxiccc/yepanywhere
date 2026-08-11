@@ -206,7 +206,7 @@
   "appearanceGeneratedTitleLengthUnit": "chars",
   "appearanceGeneratedTitleLengthReset": "Reset generated title length",
   "appearanceTooltipDelayTitle": "Tooltip Style and Delay",
-  "appearanceTooltipDelayDescription": "Theme-matched tooltips appear after the pointer rests for this delay. Session preview cards wait three times longer; moving to an adjacent tooltip after one opens is instant.",
+  "appearanceTooltipDelayDescription": "Theme-matched tooltips appear after the pointer rests for this delay. Session preview cards wait three times longer and retain this delay between adjacent rows; ordinary adjacent tooltips remain instant after one opens.",
   "appearanceTooltipModeTitle": "Tooltip style",
   "appearanceTooltipModeThemed": "Themed",
   "appearanceTooltipModeNative": "Native",

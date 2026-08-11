@@ -22,7 +22,9 @@ import {
 } from "./useTooltipAppearance";
 
 export interface SessionHoverCardAnchor {
+  rowLeft: number;
   rowTop: number;
+  rowRight: number;
   rowBottom: number;
   cursorX: number;
 }
@@ -38,6 +40,7 @@ interface PreviewRefresh {
 interface SessionHoverCardControllerOptions<T extends HTMLElement> {
   targetRef: RefObject<T | null>;
   showDelayMs: number;
+  warmShowDelayMs: number;
   enabled?: boolean;
   refreshPreview?: PreviewRefresh;
 }
@@ -45,6 +48,7 @@ interface SessionHoverCardControllerOptions<T extends HTMLElement> {
 export function useSessionHoverCardController<T extends HTMLElement>({
   targetRef,
   showDelayMs,
+  warmShowDelayMs,
   enabled = true,
   refreshPreview,
 }: SessionHoverCardControllerOptions<T>) {
@@ -64,6 +68,7 @@ export function useSessionHoverCardController<T extends HTMLElement>({
   }
   const hoverCardId = hoverCardIdRef.current;
   const [anchor, setAnchor] = useState<SessionHoverCardAnchor | null>(null);
+  const anchorRef = useRef<SessionHoverCardAnchor | null>(null);
 
   const clearShowTimer = useCallback(() => {
     if (!showTimerRef.current) return;
@@ -81,6 +86,7 @@ export function useSessionHoverCardController<T extends HTMLElement>({
   const clear = useCallback(() => {
     clearShowTimer();
     releaseVisibility();
+    anchorRef.current = null;
     setAnchor(null);
   }, [clearShowTimer, releaseVisibility]);
 
@@ -116,22 +122,24 @@ export function useSessionHoverCardController<T extends HTMLElement>({
       return;
     }
     clearShowTimer();
-    refreshIdlePreview();
-    showTimerRef.current = setTimeout(
-      () => {
-        showTimerRef.current = null;
-        const rect = targetRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        announceActiveSessionHoverCard(hoverCardId);
-        visibilityTokenRef.current ??= beginTooltipVisibility(clear);
-        setAnchor({
-          rowTop: rect.top,
-          rowBottom: rect.bottom,
-          cursorX: cursorXRef.current ?? rect.right,
-        });
-      },
-      isTooltipWarm() ? 0 : showDelayMs,
-    );
+    const delayMs = isTooltipWarm() ? warmShowDelayMs : showDelayMs;
+    showTimerRef.current = setTimeout(() => {
+      showTimerRef.current = null;
+      const rect = targetRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      refreshIdlePreview();
+      announceActiveSessionHoverCard(hoverCardId);
+      visibilityTokenRef.current ??= beginTooltipVisibility(clear);
+      const nextAnchor = {
+        rowLeft: rect.left,
+        rowTop: rect.top,
+        rowRight: rect.right,
+        rowBottom: rect.bottom,
+        cursorX: cursorXRef.current ?? rect.right,
+      };
+      anchorRef.current = nextAnchor;
+      setAnchor(nextAnchor);
+    }, delayMs);
   }, [
     clear,
     clearShowTimer,
@@ -140,6 +148,7 @@ export function useSessionHoverCardController<T extends HTMLElement>({
     refreshIdlePreview,
     showDelayMs,
     targetRef,
+    warmShowDelayMs,
   ]);
 
   useEffect(
@@ -173,11 +182,14 @@ export function useSessionHoverCardController<T extends HTMLElement>({
     [schedule],
   );
 
-  const onPointerMove = useCallback<PointerEventHandler<T>>((event) => {
-    if (event.pointerType !== "touch") {
+  const onPointerMove = useCallback<PointerEventHandler<T>>(
+    (event) => {
+      if (event.pointerType === "touch") return;
       cursorXRef.current = event.clientX;
-    }
-  }, []);
+      if (!anchorRef.current) schedule();
+    },
+    [schedule],
+  );
 
   const onPointerLeave = useCallback<PointerEventHandler<T>>(
     (event) => {

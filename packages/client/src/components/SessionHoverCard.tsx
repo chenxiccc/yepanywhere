@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ProviderName } from "@yep-anywhere/shared";
 import type { AgentActivity } from "../hooks/useFileActivity";
+import type { SessionHoverCardAnchor } from "../hooks/useSessionHoverCardController";
 import type { PendingInputType, SessionStatus } from "../types";
 import { DEFAULT_HOVERCARD_MAX_HEIGHT_PX } from "../hooks/useHoverCardAppearance";
 import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
@@ -15,12 +16,35 @@ import styles from "./SessionHoverCard.module.css";
 const GAP_PX = 4;
 const MARGIN_PX = 8;
 const CURSOR_OFFSET_PX = 14;
+const TARGET_INLINE_GAP_PX = 8;
+
+export function getSessionHoverCardLeft({
+  rowLeft,
+  rowRight,
+  cursorX,
+  cardWidth,
+  viewportWidth,
+}: Pick<SessionHoverCardAnchor, "rowLeft" | "rowRight" | "cursorX"> & {
+  cardWidth: number;
+  viewportWidth: number;
+}): number {
+  const maxLeft = Math.max(MARGIN_PX, viewportWidth - cardWidth - MARGIN_PX);
+  const rightOfTarget = rowRight + TARGET_INLINE_GAP_PX;
+  if (rightOfTarget + cardWidth <= viewportWidth - MARGIN_PX) {
+    return rightOfTarget;
+  }
+
+  const leftOfTarget = rowLeft - TARGET_INLINE_GAP_PX - cardWidth;
+  if (leftOfTarget >= MARGIN_PX) return leftOfTarget;
+
+  return Math.min(Math.max(cursorX + CURSOR_OFFSET_PX, MARGIN_PX), maxLeft);
+}
 
 interface SessionHoverCardProps {
   /** Stable id used by the owning row to recognize pointer transfers. */
   hoverCardId: string;
-  /** Viewport-fixed row geometry + cursor x; the card picks below/above. */
-  anchor: { rowTop: number; rowBottom: number; cursorX: number };
+  /** Viewport-fixed row geometry + cursor x for placement fallback. */
+  anchor: SessionHoverCardAnchor;
   /** The full first user turn, shown turn-styled and line-clamped to fit. */
   prompt: string;
   /**
@@ -63,8 +87,8 @@ interface Placement {
  * status line (provider+model badge, project, age, status). Portaled + fixed
  * so it never clips in the scrolling sidebar. It remains pointer-selectable so
  * copied text comes from the visible card, not from page content behind it.
- * Prefers below the row + right of the cursor, flipping above when the content
- * is too tall to fit below.
+ * Prefers below the row and beyond its horizontal edge, flipping above or to
+ * the other side when needed and using the cursor only when neither side fits.
  */
 export function SessionHoverCard({
   hoverCardId,
@@ -101,7 +125,7 @@ export function SessionHoverCard({
     void contentMeasurementKey;
     const el = ref.current;
     if (!el) return;
-    const { rowTop, rowBottom, cursorX } = anchor;
+    const { rowTop, rowBottom } = anchor;
     const naturalHeight = el.scrollHeight;
     const width = el.offsetWidth;
     const spaceBelow = Math.max(
@@ -130,10 +154,11 @@ export function SessionHoverCard({
 
     const usedHeight = Math.min(naturalHeight, maxHeight);
     const top = below ? rowBottom + GAP_PX : rowTop - GAP_PX - usedHeight;
-    const left = Math.min(
-      Math.max(cursorX + CURSOR_OFFSET_PX, MARGIN_PX),
-      window.innerWidth - width - MARGIN_PX,
-    );
+    const left = getSessionHoverCardLeft({
+      ...anchor,
+      cardWidth: width,
+      viewportWidth: window.innerWidth,
+    });
     setPlacement({ top: Math.max(MARGIN_PX, top), left, maxHeight, loosened });
   }, [anchor, contentMeasurementKey, maxHeightPx]);
 

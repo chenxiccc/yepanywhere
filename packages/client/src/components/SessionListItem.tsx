@@ -4,6 +4,10 @@ import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
 import { useHoverCardSettings } from "../hooks/useHoverCardAppearance";
 import { useSessionHoverCardController } from "../hooks/useSessionHoverCardController";
+import {
+  useTooltipMode,
+  useVisibilityAwareTextTooltip,
+} from "../hooks/useTooltipAppearance";
 import { useI18n } from "../i18n";
 import { activityBus } from "../lib/activityBus";
 import { toBrowserAppHref } from "../lib/appHref";
@@ -220,12 +224,14 @@ export function SessionListItem({
   // Hover card for every list surface (sidebar compact + all-sessions / search
   // cards): a rich hover panel (full first user turn, status line, and the most
   // recent agent turn). The panel (SessionHoverCard) self-positions from this
-  // row geometry + cursor x — below the row and right of the cursor, flipping
-  // above when it would not fit below.
+  // row geometry, preferring open space beyond the row before it falls back to
+  // a cursor-relative viewport clamp.
   const {
     showDelayMs: hoverCardShowDelayMs,
+    warmShowDelayMs: hoverCardWarmShowDelayMs,
     maxHeightPx: hoverCardMaxHeightPx,
   } = useHoverCardSettings();
+  const tooltipMode = useTooltipMode();
   const liRef = useRef<HTMLLIElement>(null);
   // True while this row's ... menu is open; suppresses new card shows.
   const menuOpenRef = useRef(false);
@@ -444,9 +450,10 @@ export function SessionListItem({
   // drops out when its timestamp is unknown/default.
   const hoverAgeLabel = formatSessionHoverAge(updatedAt, createdAt);
 
-  // Hover card fires on every list surface (sidebar compact + all-sessions /
-  // search cards); it only needs a provider to badge.
-  const showHoverCard = !!provider;
+  // Themed mode may enrich every provider-backed list row with a rich preview.
+  // Native mode stays browser-owned and falls back to the title only when the
+  // rendered row actually clips it.
+  const showHoverCard = !!provider && tooltipMode === "themed";
 
   // The full first user turn (body) and the most recent agent turn (reply)
   // shown in the replacement tooltip.
@@ -459,6 +466,17 @@ export function SessionListItem({
       : initialPrompt || fullTitle || displayTitle || ""
   ).trim();
   const hoverLastAgent = lastAgentText?.trim() || undefined;
+  const knownOmittedTitle =
+    !showHoverCard &&
+    !hasEffectiveCustomTitle &&
+    fullTitle &&
+    fullTitle !== displayTitle
+      ? titleTooltip
+      : null;
+  const titleTooltipAttributes = useVisibilityAwareTextTooltip<HTMLElement>(
+    showHoverCard ? null : titleTooltip,
+    knownOmittedTitle,
+  );
 
   const {
     anchor: previewPos,
@@ -470,6 +488,7 @@ export function SessionListItem({
   } = useSessionHoverCardController({
     targetRef: liRef,
     showDelayMs: hoverCardShowDelayMs,
+    warmShowDelayMs: hoverCardWarmShowDelayMs,
     enabled: showHoverCard,
     refreshPreview: {
       projectId,
@@ -694,7 +713,10 @@ export function SessionListItem({
           {mode === "card" ? (
             // Card mode: title on one line, meta on second line
             <>
-              <strong className="session-list-item__title">
+              <strong
+                className="session-list-item__title"
+                {...titleTooltipAttributes}
+              >
                 {isStarred && <StarIcon filled size={12} />}
                 {showCardThinkingIndicator && <ThinkingIndicator />}
                 {isBtwAside && (
@@ -714,9 +736,7 @@ export function SessionListItem({
                     /btw
                   </span>
                 )}
-                <span title={showHoverCard ? undefined : titleTooltip}>
-                  {visibleTitle}
-                </span>
+                <span>{visibleTitle}</span>
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
                 {hasProjectQueue && (
                   <span
@@ -818,7 +838,10 @@ export function SessionListItem({
             <>
               <span className="session-list-item__title-row">
                 {isStarred && <StarIcon filled />}
-                <span className="session-list-item__title-text">
+                <span
+                  className="session-list-item__title-text"
+                  {...titleTooltipAttributes}
+                >
                   {isNewSession && <ThinkingIndicator />}
                   {isBtwAside && (
                     // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
@@ -837,9 +860,7 @@ export function SessionListItem({
                       /btw
                     </span>
                   )}
-                  <span title={showHoverCard ? undefined : titleTooltip}>
-                    {visibleTitle}
-                  </span>
+                  <span>{visibleTitle}</span>
                 </span>
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
                 {hasProjectQueue && (

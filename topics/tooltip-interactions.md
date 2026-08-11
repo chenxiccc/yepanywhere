@@ -61,9 +61,11 @@ remain custom in either mode:
   do not schedule the rich tooltip. In Themed mode it participates in shared
   timing and visibility ownership. Native mode preserves its immediate custom
   hover reveal.
-- A session hover card previews session content and status. It remains a custom
-  card in both modes; Themed mode derives its first-open delay from the shared
-  setting, while Native mode retains its independent legacy/default delay.
+- A session hover card previews session content and status. Session-list rows
+  render that rich card only in Themed mode. In Native mode they expose the
+  ordinary browser title only when the visible session title is actually
+  clipped; a fully visible title has no hover surface. Non-list destinations
+  that use the card as a confirmation preview remain custom in either mode.
   Touch pointer entry and touch-generated compatibility mouse events do not
   open or warm the card. Session-switch links in the Recent Sessions dropdown
   likewise attach their full-title hint only after non-touch pointer entry, so
@@ -137,12 +139,15 @@ the correctness mechanism: target-aware non-obscuring placement remains
 optional presentation polish and must never replace the unrelated-control
 guard.
 
-The session preview hover card is intentionally slower and does not require
-pointer rest: its first reveal waits three times the configured delay (150 ms
-by default), so a casual pass across a session list remains quiet. After one
-card opens, scanning neighboring session rows switches cards immediately. In
-`Native` mode this YA-rendered card retains its existing 150 ms default or a
-legacy stored card delay.
+The session preview hover card is intentionally slower and requires pointer
+rest: pointer movement before its first reveal restarts the three-times-
+configured delay (150 ms by default), so a casual pass across a session list
+remains quiet. After one card opens, scanning neighboring session rows retains
+the configured base delay instead of switching a large surface instantly. A
+zero configured delay remains an explicit request for instant reveals. When
+horizontal room permits, the card opens beyond the row's right or left edge so
+it does not cover the session list; cursor-relative viewport-clamped placement
+is the fallback when neither side fits.
 
 ## Themed presentation
 
@@ -301,7 +306,10 @@ not the surface into a card.
   visual hint is not also exposed as a duplicate accessible description.
 - Native mode leaves ordinary browser titles intact.
 - Valid slider/number edits select themed mode; an empty number draft does not.
-- Session hover cards use the 3× first-open delay and immediate warm switching.
+- Themed session-list hover cards require pointer rest, use the 3× first-open
+  delay, and retain the configured base delay for warm switching. Native
+  session-list rows render no rich card and expose only clipped titles through
+  ordinary browser tooltips.
 - Touch activation of a session row or Recent Sessions link navigates without
   opening, warming, or leaving behind a session preview or text tooltip.
 - Secondary-click inside passive tooltip bounds copies/enlarges the full text

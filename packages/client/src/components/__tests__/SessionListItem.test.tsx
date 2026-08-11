@@ -12,7 +12,10 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { DEFAULT_HOVERCARD_SHOW_DELAY_MS } from "../../hooks/useHoverCardAppearance";
-import { clearTooltipWarmth } from "../../hooks/useTooltipAppearance";
+import {
+  clearTooltipWarmth,
+  DEFAULT_TOOLTIP_DELAY_MS,
+} from "../../hooks/useTooltipAppearance";
 import { I18nProvider } from "../../i18n";
 import { activityBus } from "../../lib/activityBus";
 import { UI_KEYS } from "../../lib/storageKeys";
@@ -304,7 +307,8 @@ describe("SessionListItem links", () => {
     );
   });
 
-  it("attaches the recoverable title to the visible title owner", () => {
+  it("attaches a measured native hint to the visible title owner", () => {
+    localStorage.setItem(UI_KEYS.tooltipMode, "native");
     render(
       <I18nProvider>
         <MemoryRouter>
@@ -323,10 +327,43 @@ describe("SessionListItem links", () => {
     );
 
     const link = screen.getByRole("link", { name: /Custom title/ });
-    expect(link.getAttribute("title")).toBeNull();
-    expect(screen.getByText("Custom title").getAttribute("title")).toBe(
-      "Custom title",
+    const title = link.querySelector<HTMLElement>(
+      ".session-list-item__title-text",
     );
+    expect(title).toBeTruthy();
+    expect(link.getAttribute("title")).toBeNull();
+    expect(title?.getAttribute("title")).toBeNull();
+
+    fireEvent.pointerEnter(title!, { pointerType: "mouse", clientX: 20 });
+    expect(title?.getAttribute("title")).toBe("Custom title");
+  });
+
+  it("exposes a known truncated card title in native mode", () => {
+    localStorage.setItem(UI_KEYS.tooltipMode, "native");
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="A visibly shortened title..."
+              fullTitle="A visibly shortened title with its omitted ending"
+              provider="claude"
+              mode="card"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const title = screen
+      .getByText("A visibly shortened title...")
+      .closest("strong");
+    expect(title?.getAttribute("title")).toBe(
+      "A visibly shortened title with its omitted ending",
+    );
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("shows a card-mode thinking dot when requested for active rows", () => {
@@ -454,6 +491,48 @@ describe("SessionListItem links", () => {
     expect(screen.getByText("Delayed hover prompt")).toBeTruthy();
   });
 
+  it("restarts the session preview delay until the pointer rests", () => {
+    vi.useFakeTimers();
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Rested hover"
+              initialPrompt="Rested hover prompt"
+              provider="claude"
+              status={{ owner: "self", processId: "pid-1" }}
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const item = screen
+      .getByRole("link", { name: /Rested hover/ })
+      .closest("li");
+    expect(item).toBeTruthy();
+
+    fireEvent.pointerEnter(item!, { pointerType: "mouse", clientX: 20 });
+    act(() => {
+      vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS - 1);
+    });
+    fireEvent.pointerMove(item!, { pointerType: "mouse", clientX: 24 });
+    act(() => {
+      vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS - 1);
+    });
+    expect(screen.queryByText("Rested hover prompt")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByText("Rested hover prompt")).toBeTruthy();
+  });
+
   it("ignores touch compatibility mouse events for session hover previews", () => {
     vi.useFakeTimers();
 
@@ -489,10 +568,12 @@ describe("SessionListItem links", () => {
     expect(screen.queryByText("Touch navigation prompt")).toBeNull();
   });
 
-  it("preserves the stored hover-card delay in native tooltip mode", () => {
+  it("uses only an ellipsis-aware title hint in native tooltip mode", () => {
     vi.useFakeTimers();
     localStorage.setItem(UI_KEYS.tooltipMode, "native");
-    localStorage.setItem(UI_KEYS.sessionHoverCardShowDelayMs, "300");
+    const refreshSpy = vi
+      .spyOn(api, "refreshSessionPreview")
+      .mockResolvedValue(undefined as never);
 
     render(
       <I18nProvider>
@@ -516,10 +597,40 @@ describe("SessionListItem links", () => {
       .getByRole("link", { name: /Native delay/ })
       .closest("li");
     fireEvent.pointerEnter(item!, { pointerType: "mouse", clientX: 20 });
-    act(() => vi.advanceTimersByTime(299));
+    act(() => vi.advanceTimersByTime(1_000));
     expect(screen.queryByText("Native delay prompt")).toBeNull();
-    act(() => vi.advanceTimersByTime(1));
-    expect(screen.getByText("Native delay prompt")).toBeTruthy();
+    expect(refreshSpy).not.toHaveBeenCalled();
+
+    const title = item?.querySelector<HTMLElement>(
+      ".session-list-item__title-text",
+    );
+    expect(title).toBeTruthy();
+    let scrollWidth = 100;
+    Object.defineProperties(title!, {
+      clientHeight: { configurable: true, value: 20 },
+      clientWidth: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 20 },
+      scrollWidth: { configurable: true, get: () => scrollWidth },
+    });
+    title!.getBoundingClientRect = () =>
+      ({
+        bottom: 30,
+        height: 20,
+        left: 10,
+        right: 110,
+        top: 10,
+        width: 100,
+      }) as DOMRect;
+
+    fireEvent.pointerEnter(title!, { pointerType: "mouse", clientX: 20 });
+    expect(title?.getAttribute("title")).toBeNull();
+
+    scrollWidth = 200;
+    fireEvent.pointerEnter(title!, { pointerType: "mouse", clientX: 20 });
+    expect(title?.getAttribute("title")).toBe("Native delay");
+    expect(title?.getAttribute("data-tooltip")).toBeNull();
+
+    refreshSpy.mockRestore();
   });
 
   it("keeps a session hover preview open while the pointer is over the card", () => {
@@ -568,7 +679,7 @@ describe("SessionListItem links", () => {
     expect(screen.queryByText("Selectable recap text")).toBeNull();
   });
 
-  it("switches immediately between session previews after the first opens", () => {
+  it("retains the configured delay between warm session previews", () => {
     vi.useFakeTimers();
 
     render(
@@ -625,9 +736,13 @@ describe("SessionListItem links", () => {
       clientX: 20,
     });
     act(() => {
-      vi.advanceTimersByTime(0);
+      vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS - 1);
     });
     expect(screen.queryByText("First session prompt")).toBeNull();
+    expect(screen.queryByText("Second session prompt")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(screen.getByText("Second session prompt")).toBeTruthy();
   });
 
@@ -772,7 +887,7 @@ describe("SessionListItem links", () => {
     emitSpy.mockRestore();
   });
 
-  it("refreshes the preview on hover, before the show delay elapses", () => {
+  it("refreshes an idle preview only when the rested card is due", () => {
     vi.useFakeTimers();
     const refreshSpy = vi
       .spyOn(api, "refreshSessionPreview")
@@ -798,7 +913,14 @@ describe("SessionListItem links", () => {
     const item = screen.getByRole("link", { name: /Idle row/ }).closest("li");
     fireEvent.pointerEnter(item!, { pointerType: "mouse", clientX: 20 });
 
-    // Fires immediately on hover, not gated behind the show delay.
+    expect(refreshSpy).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS - 1);
+    });
+    expect(refreshSpy).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(refreshSpy).toHaveBeenCalledWith("project-1", "session-1");
 
     refreshSpy.mockRestore();
