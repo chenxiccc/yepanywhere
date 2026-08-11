@@ -26,6 +26,44 @@ export function resolveProviderRuntimeWorkerPath(env = process.env) {
   return override ? resolve(override) : workerEntrypoint;
 }
 
+const AGENT_LAUNCH_ENV_NAMES = [
+  "YEP_AGENT_HARNESS",
+  "YEP_AGENT_INITIAL_MODEL",
+  "YEP_AGENT_INITIAL_EFFORT",
+];
+
+function agentHarness(providerName) {
+  switch (providerName) {
+    case "claude-gateway":
+    case "claude-ollama":
+      return "claude";
+    case "codex-oss":
+      return "codex";
+    case "gemini-acp":
+      return "gemini";
+    default:
+      return providerName;
+  }
+}
+
+export function withAgentLaunchEnvironment(
+  providerName,
+  options,
+  baseEnvironment = {},
+) {
+  const environment = { ...baseEnvironment };
+  for (const name of AGENT_LAUNCH_ENV_NAMES) delete environment[name];
+
+  environment.YEP_AGENT_HARNESS = agentHarness(providerName);
+  const model =
+    typeof options?.model === "string" ? options.model.trim() : undefined;
+  const effort =
+    typeof options?.effort === "string" ? options.effort.trim() : undefined;
+  if (model) environment.YEP_AGENT_INITIAL_MODEL = model;
+  if (effort) environment.YEP_AGENT_INITIAL_EFFORT = effort;
+  return environment;
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -380,6 +418,21 @@ export class ProviderRuntimeHost {
     );
     removePathIfPresent(socketPath);
 
+    const options = request.options ?? {};
+    const agentLaunchEnvironment = withAgentLaunchEnvironment(
+      providerName,
+      options,
+      process.env,
+    );
+    const workerOptions = {
+      ...options,
+      remoteEnv: withAgentLaunchEnvironment(
+        providerName,
+        options,
+        options.remoteEnv,
+      ),
+    };
+
     const child = spawn(
       process.execPath,
       ["--import", "tsx", "--conditions", "source", this.workerPath],
@@ -388,7 +441,7 @@ export class ProviderRuntimeHost {
         detached: true,
         stdio: ["pipe", "inherit", "inherit", "ipc"],
         env: {
-          ...process.env,
+          ...agentLaunchEnvironment,
           YEP_PROVIDER_WORKER_SOCKET: socketPath,
           YEP_PROVIDER_WORKER_TOKEN: this.token,
           YEP_PROVIDER_WORKER_RUNTIME_ID: runtimeId,
@@ -496,7 +549,7 @@ export class ProviderRuntimeHost {
     child.stdin.end(
       JSON.stringify({
         providerName,
-        options: request.options ?? {},
+        options: workerOptions,
         runtimeConfig: request.runtimeConfig ?? {},
       }),
     );

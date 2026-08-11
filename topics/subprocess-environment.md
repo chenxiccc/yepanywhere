@@ -32,6 +32,11 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
   server setting does not mutate an already-running provider process. Dynamic
   data needed by later grandchildren requires a provider-supported control
   channel or an explicit bridge such as the local `agentctl` `BASH_ENV` file.
+- The shared provider host replaces ambient `YEP_AGENT_HARNESS`,
+  `YEP_AGENT_INITIAL_MODEL`, and `YEP_AGENT_INITIAL_EFFORT` values with its
+  launch snapshot before creating a worker. Model and effort markers describe
+  the initial launch only; the later session-id bridge remains separate because
+  new canonical YA ids are not known at process creation.
 
 ## Shell-startup contracts
 

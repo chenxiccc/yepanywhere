@@ -104,6 +104,12 @@ server.listen(socketPath, () => {
     metadata: {
       queueDepth: 0,
       capabilities: {},
+      agentLaunchEnvironment: {
+        harness: process.env.YEP_AGENT_HARNESS,
+        model: process.env.YEP_AGENT_INITIAL_MODEL,
+        effort: process.env.YEP_AGENT_INITIAL_EFFORT,
+      },
+      remoteAgentLaunchEnvironment: launchRequest.options.remoteEnv,
     },
   });
 });

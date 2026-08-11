@@ -100,6 +100,17 @@ set legacy value supplies it, and every listed legacy key is deleted.
 
 ## Child launch markers
 
+`YEP_AGENT_HARNESS` identifies the harness family launched by YA's shared
+provider host (`claude`, `codex`, `gemini`, `grok`, `opencode`, or `pi`).
+`YEP_AGENT_INITIAL_MODEL` and `YEP_AGENT_INITIAL_EFFORT` record the explicit
+model and effort selected at that launch; they are omitted when YA has no
+explicit value and intentionally remain unchanged after a live model or effort
+switch. The host replaces inherited values at the worker boundary and applies
+the same launch facts to remote-provider environments. These are trusted
+child-session outputs, not operator inputs. `AGENTCTL_SESSION_ID` remains the
+canonical YA session-id marker: a resume may have it at launch, while a new
+session receives it later through the session environment bridge.
+
 `YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN` are YA-owned outputs for a
 supervised provider session, not operator inputs. The URL is an opaque,
 session-specific POST target; the bearer token authorizes only that session's

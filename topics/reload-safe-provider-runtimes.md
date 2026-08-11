@@ -194,6 +194,13 @@ worker started after a reload therefore uses current provider code; an existing
 worker finishes its current lifetime with the code and launch facts it started
 with.
 
+The host also stamps each worker with YA-owned harness, initial-model, and
+initial-effort environment markers, replacing any ambient copies inherited
+from the wrapper. Local provider descendants inherit that snapshot; remote
+provider launches receive the same values through their explicit remote
+environment. The initial model and effort remain launch history when a live
+session changes either setting.
+
 One worker per session is an isolation boundary, not merely an implementation
 convenience. A provider crash or stuck event loop cannot corrupt another
 session's replay or request ledger, and the host can reap one complete process

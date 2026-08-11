@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ProviderRuntimeHost,
   resolveProviderRuntimeWorkerPath,
+  withAgentLaunchEnvironment,
 } from "../../../../../scripts/provider-runtime-host.mjs";
 import {
   closeProviderRuntimeHostRegistration,
@@ -34,6 +35,41 @@ describe("resolveProviderRuntimeWorkerPath", () => {
     expect(resolveProviderRuntimeWorkerPath({})).toMatch(
       /provider-runtime-worker\.ts$/,
     );
+  });
+});
+
+describe("withAgentLaunchEnvironment", () => {
+  it("replaces inherited markers with the provider launch facts", () => {
+    expect(
+      withAgentLaunchEnvironment(
+        "claude-gateway",
+        { model: "gpt-5.6-sol", effort: "high" },
+        {
+          KEEP_ME: "yes",
+          YEP_AGENT_HARNESS: "codex",
+          YEP_AGENT_INITIAL_MODEL: "ambient-model",
+          YEP_AGENT_INITIAL_EFFORT: "ambient-effort",
+        },
+      ),
+    ).toEqual({
+      KEEP_ME: "yes",
+      YEP_AGENT_HARNESS: "claude",
+      YEP_AGENT_INITIAL_MODEL: "gpt-5.6-sol",
+      YEP_AGENT_INITIAL_EFFORT: "high",
+    });
+  });
+
+  it("removes unavailable optional launch facts", () => {
+    expect(
+      withAgentLaunchEnvironment(
+        "pi",
+        {},
+        {
+          YEP_AGENT_INITIAL_MODEL: "ambient-model",
+          YEP_AGENT_INITIAL_EFFORT: "ambient-effort",
+        },
+      ),
+    ).toEqual({ YEP_AGENT_HARNESS: "pi" });
   });
 });
 
@@ -68,6 +104,52 @@ afterEach(async () => {
 });
 
 describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
+  it("injects the same launch identity locally and remotely", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    temporaryPaths.push(runtimeRoot);
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath: join(runtimeRoot, "host.sock"),
+      token: "test-token",
+      workerPath: fixtureWorker,
+    });
+    await host.start();
+    const owner = { destroy() {} };
+    host.registeredServers.set("one", owner);
+
+    const launched = await host.handleRequest(
+      {
+        token: "test-token",
+        protocolVersion: 1,
+        op: "launch",
+        generation: "one",
+        providerName: "claude-gateway",
+        projectPath: runtimeRoot,
+        options: {
+          cwd: runtimeRoot,
+          model: "gpt-5.6-sol",
+          effort: "high",
+          remoteEnv: { REMOTE_KEEP_ME: "yes" },
+        },
+      },
+      owner,
+    );
+
+    expect(launched.worker.agentLaunchEnvironment).toEqual({
+      harness: "claude",
+      model: "gpt-5.6-sol",
+      effort: "high",
+    });
+    expect(launched.worker.remoteAgentLaunchEnvironment).toEqual({
+      REMOTE_KEEP_ME: "yes",
+      YEP_AGENT_HARNESS: "claude",
+      YEP_AGENT_INITIAL_MODEL: "gpt-5.6-sol",
+      YEP_AGENT_INITIAL_EFFORT: "high",
+    });
+
+    await host.shutdown("launch environment test complete");
+  });
+
   it("retains a worker for replacement and reaps it after attach timeout", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
     temporaryPaths.push(runtimeRoot);

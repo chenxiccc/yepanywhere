@@ -72,6 +72,14 @@ enabled `[Client capabilities]` fragments before the free-form
 | Codex OSS and legacy Gemini | same ordinary-user prefix | yes | no |
 | Pi, OpenCode, Grok ACP, Gemini ACP | same ordinary-user prefix | yes | yes, on the first message after process launch |
 
+Shared-hosted provider processes also receive YA-owned
+`YEP_AGENT_HARNESS`, `YEP_AGENT_INITIAL_MODEL`, and
+`YEP_AGENT_INITIAL_EFFORT` launch markers. The latter two record explicit
+initial selections and do not change after live model or effort updates. These
+markers let an installed global boot route known launch facts without
+re-deriving them from a provider transcript; they do not implement the proposed
+request-conditioned boot compiler or change instruction placement.
+
 The non-Claude prefix has this provider-facing shape:
 
 ```text
