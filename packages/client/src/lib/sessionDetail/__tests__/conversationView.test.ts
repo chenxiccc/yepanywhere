@@ -260,6 +260,28 @@ describe("compactCommandActivityPreview", () => {
       ),
     ).toBe("vitest run app.test.ts");
   });
+
+  it("keeps separators inside quoted and escaped arguments", () => {
+    expect(
+      compactCommandActivityPreview(
+        'rg -n "1100|innerWidth|ResizeObserver|resize" /repo/src',
+      ),
+    ).toBe('rg -n "1100|innerWidth|ResizeObserver|resize" src');
+    expect(compactCommandActivityPreview("printf 'left;right'")).toBe(
+      "printf 'left;right'",
+    );
+    expect(compactCommandActivityPreview("printf left\\|right")).toBe(
+      "printf left\\|right",
+    );
+  });
+
+  it("still separates real shell pipelines", () => {
+    expect(
+      compactCommandActivityPreview(
+        "cd /repo && rg needle /repo/src | head -20",
+      ),
+    ).toBe("rg needle src");
+  });
 });
 
 describe("windowConversationViewItems", () => {

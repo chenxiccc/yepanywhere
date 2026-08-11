@@ -131,12 +131,59 @@ function compactPathToken(token: string): string {
   return quote ? `${quote}${basename}${quote}` : basename;
 }
 
+function splitShellPreviewSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaping = false;
+
+  const finishSegment = () => {
+    const segment = current.trim();
+    if (segment) segments.push(segment);
+    current = "";
+  };
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (!char) continue;
+
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      current += char;
+      escaping = true;
+      continue;
+    }
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    const next = command[index + 1];
+    if (char === ";" || char === "|" || (char === "&" && next === "&")) {
+      finishSegment();
+      if ((char === "|" || char === "&") && next === char) index += 1;
+      continue;
+    }
+    current += char;
+  }
+  finishSegment();
+  return segments;
+}
+
 export function compactCommandActivityPreview(command: string): string {
-  const segments = command
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(/\s*(?:&&|\|\||;|\|)\s*/)
-    .filter(Boolean);
+  const segments = splitShellPreviewSegments(
+    command.replace(/\s+/g, " ").trim(),
+  );
   const segment =
     segments.find((candidate) => !SETUP_COMMAND.test(candidate)) ??
     segments[0] ??
