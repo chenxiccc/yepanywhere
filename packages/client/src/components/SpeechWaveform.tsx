@@ -1,9 +1,16 @@
 import { useLayoutEffect, useRef } from "react";
 import { attachSpeechWaveformRenderer } from "../lib/speechWaveform";
+import styles from "./SpeechWaveform.module.css";
 
 const SILENCE_DB = -80;
 const CLIP_PEAK = 0.8;
 const CLIP_DB = 20 * Math.log10(CLIP_PEAK);
+const PREVIEW_SAMPLES = Float32Array.from({ length: 96 }, (_, index) => {
+  const envelope = 0.2 + 0.8 * Math.sin((Math.PI * index) / 95) ** 2;
+  return (
+    envelope * (0.42 * Math.sin(index * 0.43) + 0.21 * Math.sin(index * 1.17))
+  );
+});
 
 function normalizedAmplitude(peak: number): number {
   if (peak <= 0) return 0;
@@ -81,7 +88,7 @@ function drawWaveform(
   context.fill();
 }
 
-export function SpeechWaveform() {
+export function SpeechWaveform({ preview = false }: { preview?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useLayoutEffect(() => {
@@ -92,37 +99,48 @@ export function SpeechWaveform() {
     let halfHeights = new Float32Array(0);
     const color = getComputedStyle(canvas).color;
     context.fillStyle = color;
-    const detachRenderer = attachSpeechWaveformRenderer(
-      (samples, sampleCount) => {
-        const bounds = canvas.getBoundingClientRect();
-        const width = Math.max(0, bounds.width);
-        const height = Math.max(0, bounds.height);
-        const requiredColumns = Math.max(1, Math.ceil(width)) + 1;
-        if (halfHeights.length < requiredColumns) {
-          halfHeights = new Float32Array(requiredColumns);
-        }
-        drawWaveform(
-          canvas,
-          context,
-          samples,
-          sampleCount,
-          halfHeights,
-          width,
-          height,
-          color,
-        );
-      },
-    );
+    const render = (samples: Float32Array, sampleCount: number) => {
+      const bounds = canvas.getBoundingClientRect();
+      const width = Math.max(0, bounds.width);
+      const height = Math.max(0, bounds.height);
+      const requiredColumns = Math.max(1, Math.ceil(width)) + 1;
+      if (halfHeights.length < requiredColumns) {
+        halfHeights = new Float32Array(requiredColumns);
+      }
+      drawWaveform(
+        canvas,
+        context,
+        samples,
+        sampleCount,
+        halfHeights,
+        width,
+        height,
+        color,
+      );
+    };
+    if (preview) {
+      render(PREVIEW_SAMPLES, PREVIEW_SAMPLES.length);
+      const resizeObserver =
+        typeof ResizeObserver === "undefined"
+          ? null
+          : new ResizeObserver(() =>
+              render(PREVIEW_SAMPLES, PREVIEW_SAMPLES.length),
+            );
+      resizeObserver?.observe(canvas);
+      return () => resizeObserver?.disconnect();
+    }
+    const detachRenderer = attachSpeechWaveformRenderer(render);
     return detachRenderer;
-  }, []);
+  }, [preview]);
 
   return (
     <div
-      className="composer-speech-waveform"
+      className={`${styles.waveform} composer-speech-waveform`}
       data-composer-elastic="true"
+      data-speech-waveform="true"
       aria-hidden="true"
     >
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} className={styles.canvas} />
     </div>
   );
 }

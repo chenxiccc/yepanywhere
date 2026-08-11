@@ -120,6 +120,15 @@ condensed conversation presentation users already encounter in the Codex and
 Claude harnesses. Existing browser-local mode and toolbar-presence choices
 remain authoritative.
 
+[mic-button-speech-ui](mic-button-speech-ui.md) ships the configurable live
+microphone waveform default-on, with toolbar-button backgrounds at 70% opacity
+over it by default. It appears only during an explicit YA-controlled microphone
+capture, uses real audio samples, and changes no submitted text or provider
+behavior; browser-native Web Speech receives no fabricated waveform. Users may
+hide it or set button backgrounds anywhere from fully transparent to fully
+opaque. Authorized by graehl on 2026-08-11 so microphone feedback is
+discoverable without requiring users to predict the useful opacity first.
+
 [media-rendering-and-routing](media-rendering-and-routing.md) compact
 multi-image galleries ship default-on as a browser-local Appearance preference.
 For an assistant turn with at least two eligible images, the preference enables

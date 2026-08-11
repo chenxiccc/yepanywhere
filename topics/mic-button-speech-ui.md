@@ -549,20 +549,29 @@ rather than shrinking behind the glyph. Its resting scale includes the
 microphone stroke extending beyond the path's nominal bounds. This is
 deliberately activity-driven, not a fabricated volume meter;
 browser-native Web Speech exposes sound/speech events but not audio samples.
-While capture is active, the configurable live waveform uses whatever measured
-center space remains between the bottom row's anchored control groups; it
-yields before moving or overlapping those controls. The animated mic and
-changing status copy are the only persistent capture indicators: neither the
-session composer nor the new-session composer draws a pulsing red strip across
-its top edge. Overflow behavior remains as specified in
-[composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md). The
-waveform is a default-on element in Appearance → Session toolbar. The
-waveform is available for YA-controlled capture paths, where YA receives real
-audio samples; browser-native Web Speech does not expose its microphone samples
-and therefore does not show a fabricated waveform. When the waveform is shown,
-the desktop `Speak now…` / `Listening…` text beside the mic is suppressed as
-redundant; starting, finalizing, and error text remain useful state feedback.
-Waveform
+While capture is active, the configurable live waveform is a non-interactive
+backdrop across the toolbar's left and center span. It owns no required width
+and never displaces or covers the right-side status and delivery controls.
+Empty gaps over that span remain completely clear: there is no translucent
+toolbar-wide veil. Each actual control paints only its own background at the
+browser-local **Button background opacity over waveform** value (0–100% in 5%
+steps, default 70%). Icons, labels, borders, focus indicators, and hit targets
+remain fully solid. The parked or open file-viewer controller follows the same
+background opacity even though it is portaled for stable positioning. If
+starting, finalizing, or error status text ever coincides with the waveform,
+the text receives a fully opaque backing; red error text is never drawn
+directly over the waveform.
+
+The animated mic and changing status copy are the only persistent capture
+indicators: neither the session composer nor the new-session composer draws a
+pulsing red strip across its top edge. Overflow behavior remains as specified
+in [composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md). The
+waveform is a default-on element in Toolbar settings. It is available for
+YA-controlled capture paths, where YA receives real audio samples;
+browser-native Web Speech does not expose its microphone samples and therefore
+does not show a fabricated waveform. When the waveform is shown, the desktop
+`Speak now…` / `Listening…` text beside the mic is suppressed as redundant;
+starting, finalizing, and error text remain useful state feedback. Waveform
 amplitude uses a bounded decibel scale, saturates at 80% input amplitude, and
 may reach the toolbar's exact top and bottom bounds without a rectangular
 background or outline. The visible sample count is a client-side presentation

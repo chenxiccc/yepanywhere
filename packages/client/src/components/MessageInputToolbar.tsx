@@ -12,7 +12,7 @@ import {
   hasServerCapabilityAdvertisement,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import type { MouseEvent, RefObject, TouchEvent } from "react";
+import type { CSSProperties, MouseEvent, RefObject, TouchEvent } from "react";
 import {
   type Dispatch,
   type SetStateAction,
@@ -54,6 +54,10 @@ import {
   useSessionToolbarPresence,
 } from "../hooks/useSessionToolbarPresence";
 import { useVersion } from "../hooks/useVersion";
+import {
+  DEFAULT_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT,
+  useWaveformButtonBackgroundOpacity,
+} from "../hooks/useWaveformButtonBackgroundOpacity";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import {
@@ -685,6 +689,8 @@ export interface MessageInputToolbarViewProps {
   nudgeControl?: ToolbarNudgeControl | null;
   speechControl?: ToolbarSpeechControl | null;
   speechWaveformActive?: boolean;
+  speechWaveformPreview?: boolean;
+  waveformButtonBackgroundOpacityPercent?: number;
   fileViewerController?: FileViewerControllerState | null;
   statusControl?: ToolbarStatusControl | null;
   pendingApproval?: MessageInputToolbarProps["pendingApproval"];
@@ -770,9 +776,11 @@ function FileViewerCloseIcon() {
 function FileViewerToolbarController({
   controller,
   t,
+  waveformButtonBackgroundOpacityPercent,
 }: {
   controller: FileViewerControllerState;
   t: ToolbarTranslate;
+  waveformButtonBackgroundOpacityPercent?: number;
 }) {
   const slotRef = useRef<HTMLSpanElement | null>(null);
   const floatingRef = useRef<HTMLDivElement | null>(null);
@@ -830,7 +838,18 @@ function FileViewerToolbarController({
       ref={floatingRef}
       className={`${toolbarModuleStyles.fileViewerController} ${
         controller.minimized ? toolbarModuleStyles.fileViewerParked : ""
+      }${
+        waveformButtonBackgroundOpacityPercent === undefined
+          ? ""
+          : ` ${toolbarModuleStyles.fileViewerControllerWaveformActive}`
       }`}
+      style={
+        waveformButtonBackgroundOpacityPercent === undefined
+          ? undefined
+          : ({
+              "--waveform-control-surface-opacity": `${waveformButtonBackgroundOpacityPercent}%`,
+            } as CSSProperties)
+      }
       role="group"
       aria-label={t("fileViewerController", { name: location })}
     >
@@ -1004,6 +1023,7 @@ function ThinkingToolbarControl({
       <button
         type="button"
         className={`thinking-toggle-button ${control.mode !== "off" ? `active ${control.mode}` : ""}`}
+        data-thinking-mode={control.mode}
         onClick={(event) => {
           if (suppressTouchClickRef.current) {
             suppressTouchClickRef.current = false;
@@ -1068,6 +1088,8 @@ export function MessageInputToolbarView({
   nudgeControl,
   speechControl,
   speechWaveformActive = false,
+  speechWaveformPreview = false,
+  waveformButtonBackgroundOpacityPercent = DEFAULT_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT,
   fileViewerController = null,
   statusControl,
   pendingApproval,
@@ -1076,6 +1098,16 @@ export function MessageInputToolbarView({
   hidePrimaryDeliveryActions = false,
 }: MessageInputToolbarViewProps) {
   const tooltipMode = useTooltipMode();
+  const normalizedWaveformButtonBackgroundOpacity = Math.min(
+    100,
+    Math.max(0, waveformButtonBackgroundOpacityPercent),
+  );
+  const waveformBackdropActive = speechWaveformActive;
+  const waveformBackdropStyle = waveformBackdropActive
+    ? ({
+        "--waveform-control-surface-opacity": `${normalizedWaveformButtonBackgroundOpacity}%`,
+      } as CSSProperties)
+    : undefined;
   const controlPriority = priority ?? DEFAULT_SESSION_TOOLBAR_PRIORITY;
   const effectivePriority = (
     key: SessionToolbarVisibilityKey,
@@ -1555,228 +1587,258 @@ export function MessageInputToolbarView({
         fileViewerController
           ? ` ${toolbarModuleStyles.fileViewerControllerActive}`
           : ""
+      }${
+        waveformBackdropActive
+          ? ` ${toolbarModuleStyles.waveformBackdropActive}`
+          : ""
       }`}
+      data-waveform-button-background-opacity={
+        waveformBackdropActive
+          ? normalizedWaveformButtonBackgroundOpacity
+          : undefined
+      }
+      style={waveformBackdropStyle}
     >
-      <div ref={refs?.left} className="message-input-left">
-        {visibility.modeSelector && modeControl && (
-          <span className={inlineTierClass("modeSelector")}>
-            <ModeSelector
-              mode={modeControl.mode}
-              onModeChange={modeControl.onModeChange}
-              modes={modeControl.modes}
-              changesApplyNextTurn={modeControl.changesApplyNextTurn}
-              modeChangePending={modeControl.modeChangePending}
-            />
-          </span>
-        )}
-        {visibility.attachments && (
-          <button
-            type="button"
-            className={inlineTierClass("attachments", "attach-button")}
-            onClick={attachmentControl.onAttachClick}
-            disabled={!attachmentControl.canAttach}
-            title={
-              attachmentControl.canAttach
-                ? t("toolbarAttachFiles")
-                : t("toolbarAttachDisabled")
-            }
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
-            {attachmentControl.attachmentCount > 0 && (
-              <span className="attach-count">
-                {attachmentControl.attachmentCount}
-              </span>
-            )}
-          </button>
-        )}
-        {visibility.slashMenu && slashControl && (
-          <span className={inlineTierClass("slashMenu")}>
-            <SlashCommandButton
-              commands={slashControl.commands}
-              onSelectCommand={slashControl.onSelectCommand}
-              disabled={slashControl.disabled}
-            />
-          </span>
-        )}
-        {visibility.thinkingToggle && thinkingControl && (
-          <span className={inlineTierClass("thinkingToggle")}>
-            <ThinkingToolbarControl control={thinkingControl} t={t} />
-          </span>
-        )}
-        {visibility.renderMode && renderModeControl && (
-          <button
-            type="button"
-            className={inlineTierClass(
-              "renderMode",
-              "render-mode-toolbar-button",
-              renderModeControl.state === "rendered"
-                ? "is-rendered"
-                : renderModeControl.state === "mixed"
-                  ? "is-mixed"
-                  : "",
-            )}
-            onClick={renderModeControl.onToggle}
-            title={renderModeControl.title}
-            aria-label={renderModeControl.title}
-            aria-pressed={
-              renderModeControl.state === "mixed"
-                ? "mixed"
-                : renderModeControl.state === "rendered"
-            }
-          >
-            <RenderModeGlyph />
-          </button>
-        )}
-        {visibility.conversationView && conversationViewControl && (
-          <button
-            type="button"
-            className={inlineTierClass(
-              "conversationView",
-              "conversation-view-toolbar-button",
-              conversationViewControl.enabled ? "active" : "",
-            )}
-            onClick={conversationViewControl.onToggle}
-            title={conversationViewControl.title}
-            aria-label={conversationViewControl.title}
-            aria-pressed={conversationViewControl.enabled}
-          >
-            <ConversationViewIcon />
-          </button>
-        )}
-        {visibility.nudge && nudgeControl && (
-          <button
-            type="button"
-            className={inlineTierClass(
-              "nudge",
-              "heartbeat-toolbar-button",
-              nudgeControl.enabled ? "active" : "",
-            )}
-            onClick={nudgeControl.onClick}
-            onContextMenu={nudgeControl.onContextMenu}
-            onTouchStart={nudgeControl.onTouchStart}
-            onTouchEnd={nudgeControl.onTouchEnd}
-            onTouchCancel={nudgeControl.onClearTouch}
-            onTouchMove={nudgeControl.onClearTouch}
-            title={nudgeControl.title}
-            aria-label={nudgeControl.title}
-            aria-pressed={nudgeControl.enabled}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="miter"
-              aria-hidden="true"
-            >
-              <path className="heartbeat-baseline" d="M0.75 15H7" />
-              <path
-                className="heartbeat-excursion"
-                d="M7 15l2-5 2 9 4-16 3 12"
+      <div
+        className={`${toolbarModuleStyles.waveformRegion}${
+          speechWaveformPreview
+            ? ` ${toolbarModuleStyles.waveformPreviewRegion}`
+            : ""
+        }`}
+      >
+        <div ref={refs?.left} className="message-input-left">
+          {visibility.modeSelector && modeControl && (
+            <span className={inlineTierClass("modeSelector")}>
+              <ModeSelector
+                mode={modeControl.mode}
+                onModeChange={modeControl.onModeChange}
+                modes={modeControl.modes}
+                changesApplyNextTurn={modeControl.changesApplyNextTurn}
+                modeChangePending={modeControl.modeChangePending}
               />
-              <path className="heartbeat-baseline" d="M18 15h5.25" />
-            </svg>
-          </button>
-        )}
-        {visibility.microphone &&
-          speechControl?.voiceButton?.kind === "preview" && (
-            <SpeechControlMenu
-              showMethodSelector={speechControl.showMethodSelector}
-              methodOptions={speechControl.methodOptions}
-              selectedMethod={selectedSpeechMethod}
-              onMethodChange={speechControl.onMethodChange}
-              smartTurnSettings={speechControl.smartTurnSettings}
-              onSmartTurnSettingsChange={
-                speechControl.onSmartTurnSettingsChange
-              }
-              smartTurnDisabled={speechControl.smartTurnDisabled}
-              trigger={
-                <button
-                  type="button"
-                  className="voice-input-button"
-                  disabled={speechControl.voiceButton.disabled}
-                  title={t("voiceInputStart" as never)}
-                  aria-label={t("voiceInputStartLabel" as never)}
-                >
-                  <ToolbarMicrophoneIcon />
-                </button>
-              }
-            />
+            </span>
           )}
-        {visibility.microphone &&
-          speechControl?.voiceButton?.kind === "live" &&
-          speechControl.voiceButton.ref && (
-            <SpeechControlMenu
-              showMethodSelector={speechControl.showMethodSelector}
-              methodOptions={speechControl.methodOptions}
-              selectedMethod={selectedSpeechMethod}
-              onMethodChange={speechControl.onMethodChange}
-              smartTurnSettings={speechControl.smartTurnSettings}
-              onSmartTurnSettingsChange={
-                speechControl.onSmartTurnSettingsChange
+          {visibility.attachments && (
+            <button
+              type="button"
+              className={inlineTierClass("attachments", "attach-button")}
+              onClick={attachmentControl.onAttachClick}
+              disabled={!attachmentControl.canAttach}
+              title={
+                attachmentControl.canAttach
+                  ? t("toolbarAttachFiles")
+                  : t("toolbarAttachDisabled")
               }
-              smartTurnDisabled={speechControl.smartTurnDisabled}
-              onBeforeOpen={() => {
-                if (speechControl.voiceButton?.kind !== "live") return;
-                speechControl.voiceButton.onListeningStop?.();
-                speechControl.voiceButton.ref?.current?.stopAndFinalize();
-                speechControl.voiceButton.onInterimTranscript("");
-              }}
-              onBeforeCaptureChange={() => {
-                if (speechControl.voiceButton?.kind !== "live") return;
-                speechControl.voiceButton.onListeningStop?.();
-                speechControl.voiceButton.ref?.current?.stopAndFinalize();
-                speechControl.voiceButton.onInterimTranscript("");
-              }}
-              onPointerNearTrigger={() =>
-                speechControl.voiceButton?.kind === "live"
-                  ? speechControl.voiceButton.ref?.current?.prewarm?.()
-                  : undefined
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+              {attachmentControl.attachmentCount > 0 && (
+                <span className="attach-count">
+                  {attachmentControl.attachmentCount}
+                </span>
+              )}
+            </button>
+          )}
+          {visibility.slashMenu && slashControl && (
+            <span className={inlineTierClass("slashMenu")}>
+              <SlashCommandButton
+                commands={slashControl.commands}
+                onSelectCommand={slashControl.onSelectCommand}
+                disabled={slashControl.disabled}
+              />
+            </span>
+          )}
+          {visibility.thinkingToggle && thinkingControl && (
+            <span className={inlineTierClass("thinkingToggle")}>
+              <ThinkingToolbarControl control={thinkingControl} t={t} />
+            </span>
+          )}
+          {visibility.renderMode && renderModeControl && (
+            <button
+              type="button"
+              className={inlineTierClass(
+                "renderMode",
+                "render-mode-toolbar-button",
+                renderModeControl.state === "rendered"
+                  ? "is-rendered"
+                  : renderModeControl.state === "mixed"
+                    ? "is-mixed"
+                    : "",
+              )}
+              onClick={renderModeControl.onToggle}
+              title={renderModeControl.title}
+              aria-label={renderModeControl.title}
+              aria-pressed={
+                renderModeControl.state === "mixed"
+                  ? "mixed"
+                  : renderModeControl.state === "rendered"
               }
-              trigger={
-                <VoiceInputButton
-                  ref={speechControl.voiceButton.ref}
-                  onTranscript={speechControl.voiceButton.onTranscript}
-                  onInterimTranscript={
-                    speechControl.voiceButton.onInterimTranscript
-                  }
-                  onListeningStart={speechControl.voiceButton.onListeningStart}
-                  onListeningStop={speechControl.voiceButton.onListeningStop}
-                  onPendingSpeechChange={
-                    speechControl.voiceButton.onPendingSpeechChange
-                  }
-                  onTranscriptionSettled={
-                    speechControl.voiceButton.onTranscriptionSettled
-                  }
-                  disabled={speechControl.voiceButton.disabled}
-                  speechMethod={speechControl.voiceButton.speechMethod}
-                  getTranscriptionContext={
-                    speechControl.voiceButton.getTranscriptionContext
-                  }
-                  smartTurn={speechControl.voiceButton.smartTurn}
-                  showWaveform={speechControl.voiceButton.showWaveform}
+            >
+              <RenderModeGlyph />
+            </button>
+          )}
+          {visibility.conversationView && conversationViewControl && (
+            <button
+              type="button"
+              className={inlineTierClass(
+                "conversationView",
+                "conversation-view-toolbar-button",
+                conversationViewControl.enabled ? "active" : "",
+              )}
+              onClick={conversationViewControl.onToggle}
+              title={conversationViewControl.title}
+              aria-label={conversationViewControl.title}
+              aria-pressed={conversationViewControl.enabled}
+            >
+              <ConversationViewIcon />
+            </button>
+          )}
+          {visibility.nudge && nudgeControl && (
+            <button
+              type="button"
+              className={inlineTierClass(
+                "nudge",
+                "heartbeat-toolbar-button",
+                nudgeControl.enabled ? "active" : "",
+              )}
+              onClick={nudgeControl.onClick}
+              onContextMenu={nudgeControl.onContextMenu}
+              onTouchStart={nudgeControl.onTouchStart}
+              onTouchEnd={nudgeControl.onTouchEnd}
+              onTouchCancel={nudgeControl.onClearTouch}
+              onTouchMove={nudgeControl.onClearTouch}
+              title={nudgeControl.title}
+              aria-label={nudgeControl.title}
+              aria-pressed={nudgeControl.enabled}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="miter"
+                aria-hidden="true"
+              >
+                <path className="heartbeat-baseline" d="M0.75 15H7" />
+                <path
+                  className="heartbeat-excursion"
+                  d="M7 15l2-5 2 9 4-16 3 12"
                 />
-              }
-            />
+                <path className="heartbeat-baseline" d="M18 15h5.25" />
+              </svg>
+            </button>
           )}
-        {speechWaveformActive && <SpeechWaveform />}
+          {visibility.microphone &&
+            speechControl?.voiceButton?.kind === "preview" && (
+              <SpeechControlMenu
+                showMethodSelector={speechControl.showMethodSelector}
+                methodOptions={speechControl.methodOptions}
+                selectedMethod={selectedSpeechMethod}
+                onMethodChange={speechControl.onMethodChange}
+                smartTurnSettings={speechControl.smartTurnSettings}
+                onSmartTurnSettingsChange={
+                  speechControl.onSmartTurnSettingsChange
+                }
+                smartTurnDisabled={speechControl.smartTurnDisabled}
+                trigger={
+                  <button
+                    type="button"
+                    className="voice-input-button"
+                    disabled={speechControl.voiceButton.disabled}
+                    title={t("voiceInputStart" as never)}
+                    aria-label={t("voiceInputStartLabel" as never)}
+                  >
+                    <ToolbarMicrophoneIcon />
+                  </button>
+                }
+              />
+            )}
+          {visibility.microphone &&
+            speechControl?.voiceButton?.kind === "live" &&
+            speechControl.voiceButton.ref && (
+              <SpeechControlMenu
+                showMethodSelector={speechControl.showMethodSelector}
+                methodOptions={speechControl.methodOptions}
+                selectedMethod={selectedSpeechMethod}
+                onMethodChange={speechControl.onMethodChange}
+                smartTurnSettings={speechControl.smartTurnSettings}
+                onSmartTurnSettingsChange={
+                  speechControl.onSmartTurnSettingsChange
+                }
+                smartTurnDisabled={speechControl.smartTurnDisabled}
+                onBeforeOpen={() => {
+                  if (speechControl.voiceButton?.kind !== "live") return;
+                  speechControl.voiceButton.onListeningStop?.();
+                  speechControl.voiceButton.ref?.current?.stopAndFinalize();
+                  speechControl.voiceButton.onInterimTranscript("");
+                }}
+                onBeforeCaptureChange={() => {
+                  if (speechControl.voiceButton?.kind !== "live") return;
+                  speechControl.voiceButton.onListeningStop?.();
+                  speechControl.voiceButton.ref?.current?.stopAndFinalize();
+                  speechControl.voiceButton.onInterimTranscript("");
+                }}
+                onPointerNearTrigger={() =>
+                  speechControl.voiceButton?.kind === "live"
+                    ? speechControl.voiceButton.ref?.current?.prewarm?.()
+                    : undefined
+                }
+                trigger={
+                  <VoiceInputButton
+                    ref={speechControl.voiceButton.ref}
+                    onTranscript={speechControl.voiceButton.onTranscript}
+                    onInterimTranscript={
+                      speechControl.voiceButton.onInterimTranscript
+                    }
+                    onListeningStart={
+                      speechControl.voiceButton.onListeningStart
+                    }
+                    onListeningStop={speechControl.voiceButton.onListeningStop}
+                    onPendingSpeechChange={
+                      speechControl.voiceButton.onPendingSpeechChange
+                    }
+                    onTranscriptionSettled={
+                      speechControl.voiceButton.onTranscriptionSettled
+                    }
+                    disabled={speechControl.voiceButton.disabled}
+                    speechMethod={speechControl.voiceButton.speechMethod}
+                    getTranscriptionContext={
+                      speechControl.voiceButton.getTranscriptionContext
+                    }
+                    smartTurn={speechControl.voiceButton.smartTurn}
+                    showWaveform={speechControl.voiceButton.showWaveform}
+                  />
+                }
+              />
+            )}
+        </div>
+        {fileViewerController && (
+          <FileViewerToolbarController
+            controller={fileViewerController}
+            t={t}
+            waveformButtonBackgroundOpacityPercent={
+              waveformBackdropActive
+                ? normalizedWaveformButtonBackgroundOpacity
+                : undefined
+            }
+          />
+        )}
+        {speechWaveformActive && (
+          <SpeechWaveform preview={speechWaveformPreview} />
+        )}
       </div>
-      {fileViewerController && (
-        <FileViewerToolbarController controller={fileViewerController} t={t} />
-      )}
       {renderStatusAges(
         visibility.sessionStatus
           ? inlineTierClass("sessionStatus", "composer-status-ages")
@@ -2588,6 +2650,8 @@ export function MessageInputToolbar({
   const { providers } = useProviders();
   const { visibility: toolbarVisibility, priority: toolbarPriority } =
     useSessionToolbarPresence();
+  const { waveformButtonBackgroundOpacityPercent } =
+    useWaveformButtonBackgroundOpacity();
   const { conversationViewEnabled, setConversationViewEnabled } =
     useConversationView();
   const renderMode = useOptionalRenderModeContext();
@@ -3236,6 +3300,9 @@ export function MessageInputToolbar({
         toolbarVisibility.waveform &&
         speechCaptureActive &&
         selectedSpeechMethod !== DEFAULT_SPEECH_METHOD
+      }
+      waveformButtonBackgroundOpacityPercent={
+        waveformButtonBackgroundOpacityPercent
       }
       statusControl={{
         showToolbarStatus,

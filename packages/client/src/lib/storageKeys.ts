@@ -61,6 +61,8 @@ export const UI_KEYS = {
     "yep-anywhere-wider-conversation-activity-previews-enabled",
   glossaryHints: "yep-anywhere-glossary-hints-enabled",
   sessionToolbarPresence: "yep-anywhere-session-toolbar-presence",
+  waveformButtonBackgroundOpacityPercent:
+    "yep-anywhere-waveform-button-background-opacity-percent",
   // Legacy pre-presence keys, read once for migration then removed.
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
   sessionToolbarPriority: "yep-anywhere-session-toolbar-priority",

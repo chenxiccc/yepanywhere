@@ -5554,26 +5554,6 @@ a.linkified-url:hover {
   flex: 1;
 }
 
-.composer-speech-waveform {
-  box-sizing: border-box;
-  height: var(--composer-primary-control-size);
-  min-width: 0;
-  flex: 1 1 0;
-  margin-left: calc(-1 * var(--composer-control-gap));
-  padding-left: var(--composer-control-gap);
-  overflow: hidden;
-  color: rgb(239, 68, 68);
-  opacity: 0.82;
-  pointer-events: none;
-  align-self: center;
-}
-
-.composer-speech-waveform canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 /* Attach button */
 .attach-button {
   display: flex;

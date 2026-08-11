@@ -5017,7 +5017,7 @@ describe("MessageInput", () => {
     expect(indicator?.closest("button")).toBe(null);
   });
 
-  it("renders the active speech waveform in the toolbar center slot", () => {
+  it("renders the active waveform behind the toolbar's left and center span", () => {
     const { container } = render(
       <MessageInputToolbarView
         t={toolbarT}
@@ -5046,8 +5046,19 @@ describe("MessageInput", () => {
     expect(waveform).toBeTruthy();
     expect(
       waveform?.parentElement?.classList.contains("message-input-left"),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      waveform?.parentElement?.querySelector(".message-input-left"),
+    ).toBeTruthy();
     expect(toolbar?.contains(waveform)).toBe(true);
+    expect(
+      toolbar?.getAttribute("data-waveform-button-background-opacity"),
+    ).toBe("70");
+    expect(
+      (toolbar as HTMLElement).style.getPropertyValue(
+        "--waveform-control-surface-opacity",
+      ),
+    ).toBe("70%");
   });
 
   it("renders the file viewer controller in the toolbar center gap", () => {
@@ -5071,6 +5082,8 @@ describe("MessageInput", () => {
           minimized: true,
           restore,
         }}
+        speechWaveformActive
+        waveformButtonBackgroundOpacityPercent={35}
         speechControl={{
           showMethodSelector: false,
           methodOptions: [],
@@ -5116,7 +5129,7 @@ describe("MessageInput", () => {
     const slot = container.querySelector(
       '[data-file-viewer-controller-slot="true"]',
     );
-    expect(slot?.parentElement).toBe(
+    expect(slot?.parentElement?.parentElement).toBe(
       container.querySelector(".message-input-toolbar"),
     );
     expect(slot?.previousElementSibling?.classList).toContain(
@@ -5126,6 +5139,11 @@ describe("MessageInput", () => {
       "/workspace/docs/guide.md",
     );
     expect(controller.textContent).toContain(":12");
+    expect(
+      (controller as HTMLElement).style.getPropertyValue(
+        "--waveform-control-surface-opacity",
+      ),
+    ).toBe("35%");
     const inlineContext = container.querySelector(
       ".message-input-actions .context-toolbar-control",
     );

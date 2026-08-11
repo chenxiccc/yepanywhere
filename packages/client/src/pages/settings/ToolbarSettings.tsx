@@ -21,6 +21,12 @@ import {
   type SessionToolbarVisibilityKey,
   useSessionToolbarPresence,
 } from "../../hooks/useSessionToolbarPresence";
+import {
+  MAX_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT,
+  MIN_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT,
+  useWaveformButtonBackgroundOpacity,
+  WAVEFORM_BUTTON_BACKGROUND_OPACITY_STEP_PERCENT,
+} from "../../hooks/useWaveformButtonBackgroundOpacity";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
@@ -33,6 +39,7 @@ import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { HideInSettingsSearch } from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
+import toolbarSettingsStyles from "./ToolbarSettings.module.css";
 
 const BUSY_COMPOSER_DEFAULT_ACTIONS: BusyComposerDefaultAction[] = [
   "steer",
@@ -198,6 +205,10 @@ export function ToolbarSettings() {
   const { version } = useVersion();
   const { conversationViewTurnLimit, setConversationViewTurnLimit } =
     useConversationViewTurnLimit();
+  const {
+    waveformButtonBackgroundOpacityPercent,
+    setWaveformButtonBackgroundOpacityPercent,
+  } = useWaveformButtonBackgroundOpacity();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
   const supportsProjectQueueNewSessionShortcutSetting =
     serverSupportsProjectQueueNewSessionShortcutSetting(version);
@@ -215,6 +226,7 @@ export function ToolbarSettings() {
             busyComposerDefaultAction,
             collapsedComposerButton,
             conversationViewTurnLimit,
+            waveformButtonBackgroundOpacityPercent,
           }
         : null,
     [
@@ -223,6 +235,7 @@ export function ToolbarSettings() {
       conversationViewTurnLimit,
       settings,
       toolbarPresence,
+      waveformButtonBackgroundOpacityPercent,
     ],
   );
   const restoreUndoState = useCallback(
@@ -232,6 +245,9 @@ export function ToolbarSettings() {
         setControlPresence(key as SessionToolbarVisibilityKey, value);
       }
       setConversationViewTurnLimit(snapshot.conversationViewTurnLimit);
+      setWaveformButtonBackgroundOpacityPercent(
+        snapshot.waveformButtonBackgroundOpacityPercent,
+      );
       void updateSettings({
         clientDefaults: {
           busyComposerDefaultAction: snapshot.busyComposerDefaultAction,
@@ -241,7 +257,12 @@ export function ToolbarSettings() {
         // surfaced via the hook's error state
       });
     },
-    [setControlPresence, setConversationViewTurnLimit, updateSettings],
+    [
+      setControlPresence,
+      setConversationViewTurnLimit,
+      setWaveformButtonBackgroundOpacityPercent,
+      updateSettings,
+    ],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
 
@@ -427,6 +448,28 @@ export function ToolbarSettings() {
       <span className="session-toolbar-control-copy">
         <strong>{control.title}</strong>
         <span>{control.description}</span>
+        {control.key === "waveform" && (
+          <span className={toolbarSettingsStyles.waveformOpacityControl}>
+            <span className={toolbarSettingsStyles.waveformOpacityCopy}>
+              <strong>
+                {t("appearanceToolbarWaveformButtonOpacityTitle")}
+              </strong>
+              <span>
+                {t("appearanceToolbarWaveformButtonOpacityDescription")}
+              </span>
+            </span>
+            <CommittedRangeNumberInput
+              id="waveform-control-background-opacity"
+              min={MIN_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT}
+              max={MAX_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT}
+              step={WAVEFORM_BUTTON_BACKGROUND_OPACITY_STEP_PERCENT}
+              value={waveformButtonBackgroundOpacityPercent}
+              unit={t("appearanceToolbarWaveformButtonOpacityUnit")}
+              ariaLabel={t("appearanceToolbarWaveformButtonOpacityTitle")}
+              onCommit={setWaveformButtonBackgroundOpacityPercent}
+            />
+          </span>
+        )}
       </span>
       <span className="session-toolbar-control-actions">
         <ControlPresenceSlider

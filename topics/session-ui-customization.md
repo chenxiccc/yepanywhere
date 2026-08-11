@@ -56,6 +56,15 @@ explicitly switches Conversation view on; a view that opens already active
 condenses all loaded turns. Revealing earlier turns changes only the mounted
 transcript view, not this default. See
 [conversation-view.md](conversation-view.md).
+The **Live Microphone Waveform** control defaults shown and includes a nested,
+browser-local **Button background opacity over waveform** slider. It covers
+0–100% in 5% steps and defaults to 70%. The live toolbar preview paints a static
+waveform at the current value, including when no microphone capture is active,
+so the effect is visible before the user dictates. The opacity preference is
+included in **Transfer browser settings** backups. It stays beside the waveform
+presence control rather than moving to Appearance because it has no effect
+without that specific toolbar element and the combined preview is the useful
+editing surface.
 Narrowing priority is derived by `useSessionToolbarPresence` and is editable
 for controls the runtime overflow menu can actually reveal: the left-side
 controls, shortcut help, `sessionStatus`, `contextUsage`, `btw`, `steerNow`,

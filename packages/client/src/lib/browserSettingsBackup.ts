@@ -48,6 +48,7 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.widerConversationActivityPreviews,
   UI_KEYS.glossaryHints,
   UI_KEYS.sessionToolbarPresence,
+  UI_KEYS.waveformButtonBackgroundOpacityPercent,
   UI_KEYS.tooltipMode,
   UI_KEYS.tooltipDelayMs,
   // Retained so an older server copy can still seed the shared delay.

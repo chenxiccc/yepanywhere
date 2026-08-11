@@ -141,4 +141,46 @@ describe("speech waveform", () => {
     });
     expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
   });
+
+  it("draws a static settings preview without subscribing to live audio", () => {
+    const requestAnimationFrame = vi.fn(() => 1);
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const context = {
+      beginPath: vi.fn(),
+      clearRect: vi.fn(),
+      closePath: vi.fn(),
+      fill: vi.fn(),
+      fillStyle: "",
+      lineTo: vi.fn(),
+      moveTo: vi.fn(),
+      setTransform: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+      context,
+    );
+    vi.spyOn(
+      HTMLCanvasElement.prototype,
+      "getBoundingClientRect",
+    ).mockReturnValue({
+      bottom: 36,
+      height: 36,
+      left: 0,
+      right: 120,
+      top: 0,
+      width: 120,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    render(<SpeechWaveform preview />);
+    expect(context.fill).toHaveBeenCalledOnce();
+
+    act(() => {
+      publishSpeechWaveformSamples(Float32Array.from([0.8, -0.8]));
+    });
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(context.fill).toHaveBeenCalledOnce();
+  });
 });

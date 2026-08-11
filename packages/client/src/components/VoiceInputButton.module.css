@@ -55,7 +55,7 @@
   margin-inline: 2px;
 }
 
-.inlineWaveform :global(.composer-speech-waveform) {
+.inlineWaveform [data-speech-waveform="true"] {
   height: 100%;
   min-width: 0;
   max-width: 78px;

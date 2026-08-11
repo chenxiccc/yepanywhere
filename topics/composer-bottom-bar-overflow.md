@@ -36,14 +36,15 @@ they can reach a control.
   space. Avoid mobile-only absolute positioning or `display: contents` wrappers
   for row participants such as shortcut help (`?`) and context percentage,
   because they can overlap while the responsive model thinks space remains.
-- While microphone capture is active, an enabled live waveform should occupy
-  the measured free interval between the bottom row's left- and right-aligned
-  control groups. The waveform is elastic, opportunistic content rather than
-  another anchor: it may use any available center width, but must shrink and
-  disappear before displacing, reordering, or overlapping anchored controls.
-  It never reserves required or highest-priority width. The stored `pin` value
-  for this non-priority-editable control means that the waveform is enabled,
-  not that the allocator must protect its rendered width.
+- While microphone capture is active, an enabled live waveform should fill the
+  backdrop behind the bottom row's left controls and free center interval. It
+  is elastic, non-interactive content rather than another anchor: it never
+  reserves required or highest-priority width and must not displace, reorder,
+  or cover right-side status and delivery controls. Empty gaps above it remain
+  clear. Only actual control backgrounds use the configured waveform opacity;
+  their foregrounds, borders, focus indicators, and hit targets stay solid.
+  The stored `pin` value for this non-priority-editable control means that the
+  waveform is enabled, not that the allocator must protect its rendered width.
   When capture is inactive it occupies no row space. It is configurable with
   the other session-toolbar elements and defaults on by deliberate product
   decision: while active it is ordinary microphone feedback, not a new
@@ -269,10 +270,11 @@ with slack**. Two latch/oscillation traps live here:
   pending approval/question, and microphone stay pinned. The active waveform
   stays enabled but remains elastic and contributes no required width.
 - Active-microphone waveform landed on 2026-06-19 as a configurable,
-  default-on session-toolbar element. It is an elastic child of the
-  measured left control list: real YA-controlled capture samples fill whatever
-  center width remains, while measurement excludes the elastic width and the
-  fully collapsed child consumes no extra control gap. Its client renderer
+  default-on session-toolbar element. On 2026-08-11 it became the backdrop for
+  the left and center toolbar span, with browser-local control-background
+  opacity from 0–100% and a 70% default. Real YA-controlled capture samples
+  fill that span without adding measured demand; the ordinary controls remain
+  measured in flow and the inactive waveform consumes no space. Its renderer
   derives sample-vertex count from the measured pixel width and uses the full
   toolbar control height. Canvas drawing is browser-paint-paced, capped at
   60 fps, and coalesces intermediate audio updates instead of accumulating

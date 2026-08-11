@@ -339,6 +339,9 @@ conceptually adjusting*, not where the code lives):
   `AppearanceSettings.tsx` / `useOutputAppearance`; see
   [tooltip-interactions](tooltip-interactions.md).
 - **Toolbar** — which **commands / affordances** are shown in the toolbar.
+  A presentation value with no meaning outside one toolbar affordance may stay
+  nested under that affordance when its live specimen is the evaluation
+  surface; **Button background opacity over waveform** is the narrow precedent.
   `ToolbarSettings.tsx`.
 - **Model + new-session defaults / options** — things **set on session start**:
   default model, permission mode, thinking config, and UI elements that seed a

@@ -16,6 +16,10 @@ import {
   DEFAULT_CONVERSATION_VIEW_TURN_LIMIT,
   setConversationViewTurnLimit,
 } from "../../../hooks/useConversationView";
+import {
+  DEFAULT_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT,
+  setWaveformButtonBackgroundOpacityPercent,
+} from "../../../hooks/useWaveformButtonBackgroundOpacity";
 import { ToolbarSettings } from "../ToolbarSettings";
 
 const state = vi.hoisted(() => {
@@ -138,6 +142,11 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarMicrophoneDescription: "Show microphone",
           appearanceToolbarWaveformTitle: "Live Microphone Waveform",
           appearanceToolbarWaveformDescription: "Show waveform",
+          appearanceToolbarWaveformButtonOpacityTitle:
+            "Button background opacity over waveform",
+          appearanceToolbarWaveformButtonOpacityDescription:
+            "Keep button foregrounds solid",
+          appearanceToolbarWaveformButtonOpacityUnit: "%",
           appearanceToolbarShortcutsTitle: "Shortcuts Help",
           appearanceToolbarShortcutsDescription: "Show shortcuts",
           appearanceToolbarContextTitle: "Context Usage",
@@ -199,6 +208,9 @@ describe("ToolbarSettings", () => {
     state.version = { capabilities: [] };
     state.presence = { ...state.defaultPresence };
     setConversationViewTurnLimit(DEFAULT_CONVERSATION_VIEW_TURN_LIMIT);
+    setWaveformButtonBackgroundOpacityPercent(
+      DEFAULT_WAVEFORM_BUTTON_BACKGROUND_OPACITY_PERCENT,
+    );
   });
 
   afterEach(() => {
@@ -261,8 +273,9 @@ describe("ToolbarSettings", () => {
   it("shows a presence slider for every control row", () => {
     render(<ToolbarSettings />);
 
-    // 15 control-presence sliders plus the Conversation View history slider.
-    expect(screen.getAllByRole("slider")).toHaveLength(16);
+    // 15 control-presence sliders plus Conversation View history and waveform
+    // button-background opacity.
+    expect(screen.getAllByRole("slider")).toHaveLength(17);
     // Overflow-supported controls get the full notch scale...
     expect(
       screen
@@ -294,6 +307,26 @@ describe("ToolbarSettings", () => {
     fireEvent.pointerUp(slider);
 
     expect(slider.value).toBe("150");
+  });
+
+  it("configures browser-local button opacity beside the waveform control", () => {
+    render(<ToolbarSettings />);
+
+    const waveformRow = screen
+      .getByText("Live Microphone Waveform")
+      .closest(".session-toolbar-control-row");
+    expect(waveformRow).toBeTruthy();
+    const slider = within(
+      waveformRow as HTMLElement,
+    ).getByRole<HTMLInputElement>("slider", {
+      name: "Button background opacity over waveform",
+    });
+    expect(slider.value).toBe("70");
+
+    fireEvent.change(slider, { target: { value: "40" } });
+    fireEvent.pointerUp(slider);
+
+    expect(slider.value).toBe("40");
   });
 
   it("keeps hidden overflow controls priority-editable", () => {
