@@ -33,6 +33,7 @@ async function capture(page: Page, name: string) {
 
 for (const viewport of [
   { name: "desktop", width: 1920, height: 1080 },
+  { name: "desktop-1024", width: 1024, height: 768 },
   { name: "mobile", width: 375, height: 812 },
 ] as const) {
   test(`minimizes and restores an external file viewer at ${viewport.name} width`, async ({
@@ -77,6 +78,16 @@ for (const viewport of [
     const controller = page.getByRole("group", { name: /File viewer:/ });
     await expect(controller).toBeVisible();
     await expect(controller).toContainText("README.md");
+    const [leftControlsBox, controllerBox] = await Promise.all([
+      page.locator(".message-input-left").boundingBox(),
+      controller.boundingBox(),
+    ]);
+    if (!leftControlsBox || !controllerBox) {
+      throw new Error("Expected toolbar controls to have layout boxes");
+    }
+    expect(controllerBox.x).toBeGreaterThanOrEqual(
+      leftControlsBox.x + leftControlsBox.width,
+    );
     await expect(
       controller.getByRole("button", { name: /Minimize file viewer:/ }),
     ).toBeVisible();

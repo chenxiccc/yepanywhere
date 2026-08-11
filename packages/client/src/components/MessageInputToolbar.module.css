@@ -1,5 +1,5 @@
 .fileViewerControllerActive :global(.message-input-left) {
-  flex-grow: 0;
+  flex: 0 0 auto;
 }
 
 .fileViewerControllerActive :global(.composer-status-ages) {
