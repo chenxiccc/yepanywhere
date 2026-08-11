@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -292,6 +292,63 @@ export default async function globalSetup() {
   );
   console.log(
     `[E2E] Created file-browser fixture at ${fileBrowserProjectPath}`,
+  );
+
+  // A dedicated clean Git project keeps Source Control browser tests isolated
+  // from fixtures that other specs intentionally mutate.
+  const sourceControlProjectPath = join(E2E_TEMP_DIR, "source-control-project");
+  mkdirSync(sourceControlProjectPath, { recursive: true });
+  writeFileSync(
+    join(sourceControlProjectPath, "README.md"),
+    "# Source Control browser fixture\n",
+  );
+  execFileSync("git", ["init", "--initial-branch=main"], {
+    cwd: sourceControlProjectPath,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["add", "README.md"], {
+    cwd: sourceControlProjectPath,
+    stdio: "ignore",
+  });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=YA E2E",
+      "-c",
+      "user.email=ya-e2e@example.invalid",
+      "commit",
+      "-m",
+      "Seed source control fixture",
+    ],
+    {
+      cwd: sourceControlProjectPath,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: "2026-01-03T00:00:00Z",
+        GIT_COMMITTER_DATE: "2026-01-03T00:00:00Z",
+      },
+      stdio: "ignore",
+    },
+  );
+  const sourceControlSessionDir = join(
+    E2E_CLAUDE_SESSIONS_DIR,
+    hostname(),
+    sourceControlProjectPath.replace(/[/\\:]/g, "-"),
+  );
+  mkdirSync(sourceControlSessionDir, { recursive: true });
+  writeFileSync(
+    join(sourceControlSessionDir, "source-control-clean-001.jsonl"),
+    JSON.stringify({
+      type: "user",
+      cwd: sourceControlProjectPath,
+      message: { role: "user", content: "Inspect the clean repository" },
+      timestamp: "2026-01-03T00:00:01.000Z",
+      uuid: "source-control-user-1",
+    }),
+  );
+  console.log(
+    `[E2E] Created clean Source Control fixture at ${sourceControlProjectPath}`,
   );
 
   const absoluteViewerSessionFile = join(

@@ -43,6 +43,7 @@ import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useSourceControlCleanLanding } from "../hooks/useSourceControlCleanLanding";
 import { BlameBrowser } from "./BlameBrowser";
 import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
@@ -674,12 +675,15 @@ function GitStatusContent({
   const commitSha = searchParams.get("rev") ?? undefined;
   const commitFile = searchParams.get("commitFile") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
+  const { sourceControlCleanLanding } = useSourceControlCleanLanding();
   const historyOpen =
     tab === "changes" &&
     (searchParams.get("history") === "1" ||
       searchParams.get("tab") === "commits" ||
       commitSha !== undefined ||
-      (status.isClean && worktreeFile === undefined));
+      (status.isClean &&
+        worktreeFile === undefined &&
+        sourceControlCleanLanding === "latest-commit"));
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [showProjectionNotice, setShowProjectionNotice] = useState(false);
   const projectionNoticeNeedsPortal = useMediaQuery("(max-width: 600px)");

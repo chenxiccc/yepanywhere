@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerSettings } from "../../../api/client";
+import { setSourceControlCleanLandingPreference } from "../../../hooks/useSourceControlCleanLanding";
+import { UI_KEYS } from "../../../lib/storageKeys";
 import { SourceControlSettings } from "../SourceControlSettings";
 
 const { state, updateSettings } = vi.hoisted(() => ({
@@ -46,6 +48,8 @@ vi.mock("../SettingsUndoContext", () => ({
 
 describe("SourceControlSettings", () => {
   beforeEach(() => {
+    localStorage.clear();
+    setSourceControlCleanLandingPreference("working-tree");
     state.settings = {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
@@ -58,6 +62,21 @@ describe("SourceControlSettings", () => {
   });
 
   afterEach(cleanup);
+
+  it("defaults the clean Changes landing to Working tree status", () => {
+    render(<SourceControlSettings />);
+    const select = screen.getByRole("combobox", {
+      name: "sourceControlCleanLandingTitle",
+    }) as HTMLSelectElement;
+
+    expect(select.value).toBe("working-tree");
+    fireEvent.change(select, { target: { value: "latest-commit" } });
+
+    expect(select.value).toBe("latest-commit");
+    expect(localStorage.getItem(UI_KEYS.sourceControlCleanLanding)).toBe(
+      "latest-commit",
+    );
+  });
 
   it("keeps submissions default-off and saves an explicit opt-in", () => {
     render(<SourceControlSettings />);

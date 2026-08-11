@@ -5785,20 +5785,6 @@ pre.code-highlighter-plain,
   outline-offset: -2px;
 }
 
-.commit-list-item.working-tree {
-  border-left: 2px solid var(--warning-color);
-  background: color-mix(in srgb, var(--warning-color) 6%, transparent);
-}
-
-.commit-list-item.working-tree.selected {
-  background: color-mix(in srgb, var(--warning-color) 13%, transparent);
-}
-
-.working-tree-label {
-  color: var(--warning-color);
-  font-weight: 600;
-}
-
 .worktree-file-state {
   flex-shrink: 0;
   padding: 1px 4px;

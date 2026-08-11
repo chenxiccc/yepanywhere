@@ -30,9 +30,10 @@ recovery.
 The navigation surface has these modes:
 
 - **Changes** is the default quick check and owns both the current
-  HEAD-to-filesystem state and commit history. A dirty repository selects its
-  pinned **Working tree** revision; a clean repository selects its newest
-  commit while keeping Working tree available.
+  HEAD-to-filesystem state and commit history. **Working tree status** is its
+  normal landing at every repository state. A browser-local preference may
+  instead select the newest commit when the repository is clean; Working tree
+  remains available as a pinned revision.
 - **Files** searches tracked paths and opens file content immediately, then
   enriches its blame column asynchronously when provenance becomes available.
 - **Pending Comments** is the unsubmitted accumulator owned by
@@ -45,18 +46,26 @@ The navigation surface has these modes:
   in *Header hierarchy* below must be re-verified at phone width rather than
   assumed to still fit.
 
-Normal Source Control navigation opens Changes. A dirty repository selects
-Working tree; a clean repository selects the newest commit at desktop and phone
-widths and marks its detail with a small **Working tree clean** badge. If the
-repository has no commits, the clean Working tree confirmation remains the
-fallback. The pinned Working tree row is always available as the explicit path
-to that empty revision. The detail-level **‹ Commit history** parent link names
-the parent destination without claiming that history was necessarily the
-user's previous view. Legacy `?tab=commits` URLs enter history inside Changes,
-and a `?rev=<sha>` deep link selects its commit. A working-tree file link adds
+Normal Source Control navigation opens Changes with Working tree selected. A
+clean repository renders its quiet clean-state confirmation at desktop and
+phone widths; a dirty repository renders its changed files. The browser-local
+**When the working tree is clean** preference may choose **Latest commit**
+instead of the default **Working tree status** landing. If the repository has
+no commits, the clean Working tree confirmation remains the fallback.
+
+The preference applies only when navigation did not already identify an
+explicit source target. The detail-level **‹ Commit history** parent link,
+legacy `?tab=commits` URL, and `?history=1` open history inside Changes; a
+`?rev=<sha>` deep link selects its commit. A working-tree file link adds
 `?worktreeFile=<path>`; a committed-file link combines `?rev=<sha>` with
 `?commitFile=<path>`. Both select the named file's diff as soon as its corpus is
 available, including the phone drill-in flow.
+
+The pinned Working tree row remains available in history and reflects its
+actual state: clean uses calm success/neutral treatment and explicit clean
+copy, while dirty uses warning treatment with its changed-file count. Selected
+commit detail identifies only the commit; repository cleanliness remains in
+the Source Control identity header and is not repeated as commit metadata.
 
 Desktop uses master-detail panes once history is open; phone layouts drill
 from revisions to files to a full-screen diff and restore the prior list

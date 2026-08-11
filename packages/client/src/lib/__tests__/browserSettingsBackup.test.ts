@@ -15,6 +15,7 @@ describe("browser settings backup", () => {
     localStorage.setItem(UI_KEYS.theme, "verydark");
     localStorage.setItem(UI_KEYS.sidebarMinimized, "true");
     localStorage.setItem(UI_KEYS.sidebarSpacing, "compact");
+    localStorage.setItem(UI_KEYS.sourceControlCleanLanding, "latest-commit");
     localStorage.setItem(UI_KEYS.tooltipMode, "native");
     localStorage.setItem(UI_KEYS.tooltipDelayMs, "80");
     localStorage.setItem(UI_KEYS.conversationViewTurnLimit, "150");
@@ -33,6 +34,7 @@ describe("browser settings backup", () => {
       [UI_KEYS.theme]: "verydark",
       [UI_KEYS.sidebarMinimized]: "true",
       [UI_KEYS.sidebarSpacing]: "compact",
+      [UI_KEYS.sourceControlCleanLanding]: "latest-commit",
       [UI_KEYS.tooltipMode]: "native",
       [UI_KEYS.tooltipDelayMs]: "80",
       [UI_KEYS.conversationViewTurnLimit]: "150",

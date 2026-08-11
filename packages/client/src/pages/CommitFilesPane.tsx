@@ -28,7 +28,6 @@ import { writeClipboardText } from "../lib/clipboard";
 import { reflowCommitMessage } from "../lib/reflowCommitMessage";
 import type { TranslationFn } from "../i18n";
 import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
-import styles from "./CommitFilesPane.module.css";
 
 const EMPTY_REVIEW_STATES = new Map<string, ReviewSiteStateSummary[]>();
 
@@ -44,7 +43,6 @@ export function CommitFilesPane({
   loading,
   detailError,
   compareToHead,
-  workingTreeClean = false,
   isWideScreen,
   messageView,
   selectedFiles,
@@ -70,7 +68,6 @@ export function CommitFilesPane({
   loading: boolean;
   detailError: string | null;
   compareToHead: boolean;
-  workingTreeClean?: boolean;
   isWideScreen: boolean;
   messageView: boolean;
   selectedFiles: GitFileChange[];
@@ -139,24 +136,17 @@ export function CommitFilesPane({
             >
               {detail?.subject ?? selectedCommit?.subject ?? "…"}
             </span>
-            <span className={styles.metaRow}>
-              <span
-                className="source-detail-title"
-                title={
-                  selectedCommit
-                    ? `${selectedCommit.hash}\n${formatCommitDateTime(
-                        selectedCommit.authorDate,
-                      )}`
-                    : selectedSha
-                }
-              >
-                {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
-              </span>
-              {workingTreeClean && (
-                <span className={styles.cleanBadge}>
-                  {t("gitStatusWorkingTreeClean")}
-                </span>
-              )}
+            <span
+              className="source-detail-title"
+              title={
+                selectedCommit
+                  ? `${selectedCommit.hash}\n${formatCommitDateTime(
+                      selectedCommit.authorDate,
+                    )}`
+                  : selectedSha
+              }
+            >
+              {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
             </span>
           </span>
           <button

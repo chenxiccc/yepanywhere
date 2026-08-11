@@ -1,0 +1,21 @@
+.dirty {
+  border-left: 2px solid var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 6%, transparent);
+}
+
+.dirtySelected {
+  background: color-mix(in srgb, var(--warning-color) 13%, transparent);
+}
+
+.dirtyLabel,
+.cleanLabel {
+  font-weight: 600;
+}
+
+.dirtyLabel {
+  color: var(--warning-color);
+}
+
+.cleanLabel {
+  color: var(--success-color);
+}

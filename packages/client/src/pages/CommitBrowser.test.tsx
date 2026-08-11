@@ -492,6 +492,9 @@ describe("CommitBrowser", () => {
     );
 
     expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    const workingTreeRow = document.querySelector(".commit-list-working-tree");
+    expect(workingTreeRow?.textContent).toContain("sourceUncommitted");
+    expect(workingTreeRow?.textContent).toContain("sourceChangedFileCount");
     await waitFor(() =>
       expect(getGitDiff).toHaveBeenCalledWith(
         "p1",
@@ -530,11 +533,15 @@ describe("CommitBrowser", () => {
     ) as HTMLButtonElement;
     expect(workingTreeRow.classList.contains("selected")).toBe(false);
     expect(commitRow.classList.contains("selected")).toBe(true);
-    expect(await screen.findByText("gitStatusWorkingTreeClean")).toBeDefined();
+    expect(screen.getByText("gitStatusClean")).toBeDefined();
+    expect(screen.getByText("sourceWorkingTreeCleanDescription")).toBeDefined();
+    expect(screen.queryByText("sourceUncommitted")).toBeNull();
+    expect(screen.queryByText("gitStatusWorkingTreeClean")).toBeNull();
 
     fireEvent.click(workingTreeRow);
     expect(workingTreeRow.classList.contains("selected")).toBe(true);
     expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(await screen.findByText("gitStatusWorkingTreeClean")).toBeDefined();
     expect(screen.getByText("first commit")).toBeDefined();
   });
 
@@ -553,7 +560,7 @@ describe("CommitBrowser", () => {
     );
 
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
-    expect(await screen.findByText("gitStatusWorkingTreeClean")).toBeDefined();
+    expect(screen.queryByText("gitStatusWorkingTreeClean")).toBeNull();
     expect(document.querySelector(".commit-revisions-column")).toBeNull();
   });
 

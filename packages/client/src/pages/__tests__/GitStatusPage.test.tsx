@@ -15,6 +15,7 @@ import {
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "@yep-anywhere/shared";
 import selectorStyles from "../../components/ProjectSelector.module.css";
+import { setSourceControlCleanLandingPreference } from "../../hooks/useSourceControlCleanLanding";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
 import type { Project } from "../../types";
 import { GitStatusPage } from "../GitStatusPage";
@@ -228,6 +229,8 @@ const CORE_GIT_COMPATIBILITY_RELEASES = [
 ] as const;
 
 beforeEach(() => {
+  localStorage.clear();
+  setSourceControlCleanLandingPreference("working-tree");
   resetRouteRetentionForTests();
   mocks.checkGitRemote.mockReset();
   mocks.getGitIntegrationOptions.mockReset();
@@ -341,7 +344,27 @@ describe("GitStatusPage source header", () => {
     expect(screen.queryByTestId("commit-browser")).toBeNull();
   });
 
-  it("lands on commit history when Changes is clean", async () => {
+  it("lands on Working tree status when Changes is clean", async () => {
+    mocks.useGitStatus.mockReturnValue({
+      gitStatus: { ...status(), isClean: true, files: [] },
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderPage();
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(screen.queryByTestId("commit-browser")).toBeNull();
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabChanges/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("lands on the latest commit when the clean preference opts in", async () => {
+    setSourceControlCleanLandingPreference("latest-commit");
     mocks.useGitStatus.mockReturnValue({
       gitStatus: { ...status(), isClean: true, files: [] },
       loading: false,
@@ -353,11 +376,6 @@ describe("GitStatusPage source header", () => {
 
     expect(await screen.findByTestId("commit-browser")).toBeDefined();
     expect(screen.queryByTestId("working-tree-browser")).toBeNull();
-    expect(
-      screen
-        .getByRole("tab", { name: /sourceTabChanges/ })
-        .getAttribute("aria-selected"),
-    ).toBe("true");
   });
 
   it("gates diff projections without blocking ordinary Source Control", async () => {

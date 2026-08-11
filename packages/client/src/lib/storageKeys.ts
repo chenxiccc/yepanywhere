@@ -37,6 +37,7 @@ export const UI_KEYS = {
   tabSize: "yep-anywhere-tab-size",
   contentMaxWidth: "yep-anywhere-content-max-width",
   commitReadWatermarks: "yep-anywhere-commit-read-watermarks",
+  sourceControlCleanLanding: "yep-anywhere-source-control-clean-landing",
   sidebarWidth: "yep-anywhere-sidebar-width",
   sidebarExpanded: "yep-anywhere-sidebar-expanded",
   sidebarMinimized: "yep-anywhere-sidebar-minimized",
