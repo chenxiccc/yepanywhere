@@ -505,6 +505,7 @@ export class YaServerProvider implements SpeechProvider {
   private streamingCommittedGroups: StreamingCommittedGroup[] = [];
   private streamingCurrentPreviewTranscript = "";
   private streamingStopRequested = false;
+  private streamingStartMessageSent = false;
   private pendingStreamingFinalPartials: PendingStreamingFinalPartial[] = [];
   private pendingSmartTurnCommand: PendingSmartTurnCommand | null = null;
   private smartTurnGraceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -752,6 +753,7 @@ export class YaServerProvider implements SpeechProvider {
     if (!AudioContextCtor || typeof WebSocket === "undefined") {
       throw new Error("Streaming speech capture is not supported");
     }
+    this.streamingStartMessageSent = false;
 
     // Greppable startup timing so a multi-second "connecting" window can be
     // localized to a specific step (mic acquisition vs. socket vs. resume vs.
@@ -933,6 +935,7 @@ export class YaServerProvider implements SpeechProvider {
               : undefined,
         }),
       );
+      this.streamingStartMessageSent = true;
       socketReady = true;
       for (const frame of pendingFrames) {
         if (ws.readyState === WebSocket.OPEN) {
@@ -1708,10 +1711,16 @@ export class YaServerProvider implements SpeechProvider {
 
   stop(): void {
     if (this.disposed) return;
+    const streamingStartupPending =
+      this.options.serverStreaming === true &&
+      !this.streamingStartMessageSent &&
+      this.state.status !== "idle" &&
+      this.state.status !== "error";
     if (
       this.state.status === "starting" ||
       (this.state.status === "receiving" && this.state.isListening) ||
-      this.state.status === "reconnecting"
+      this.state.status === "reconnecting" ||
+      streamingStartupPending
     ) {
       this.startToken += 1;
       this.cleanupMedia(false);

@@ -283,6 +283,13 @@ the next provider stream only after the previous `transcript.done` resolves.
 That follow-up must preserve the user's click-time insertion target and flush
 the buffered audio without dropping first words.
 
+A stop before YA has sent the streaming start message is startup cancellation,
+even if the browser audio clock has already produced a frame and the Mic briefly
+showed listening. It invalidates the startup owner, closes a late socket, and
+returns idle without an error or transcript. Once the start message has been
+sent, Stop retains the flush/finalize behavior above; a subsequent connection
+failure remains a real error unless existing transcript salvage applies.
+
 The governing visible-speech action invariant is that an explicit composer
 action operates on exactly the text projected when the user invokes it,
 including an underlined interim at its visible insertion or replacement span.

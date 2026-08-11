@@ -961,6 +961,99 @@ describe("YA server speech provider", () => {
     expect(provider.getState().status).toBe("idle");
   });
 
+  it("cancels after audio starts but before the streaming socket is ready", async () => {
+    const fakeStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => fakeStream) },
+    });
+
+    class FakeWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 3;
+      static readonly instances: FakeWebSocket[] = [];
+      readyState = FakeWebSocket.CONNECTING;
+      bufferedAmount = 0;
+      binaryType: BinaryType = "blob";
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+      close = vi.fn(() => {
+        this.readyState = FakeWebSocket.CLOSED;
+      });
+      constructor(readonly url: string) {
+        FakeWebSocket.instances.push(this);
+      }
+    }
+
+    class FakeAudioContext {
+      readonly state = "running";
+      readonly sampleRate = 48_000;
+      readonly destination = {};
+      close = vi.fn(async () => undefined);
+      createMediaStreamSource() {
+        return { connect: vi.fn(), disconnect: vi.fn() };
+      }
+      createScriptProcessor() {
+        const node = {
+          connect: vi.fn(() => {
+            queueMicrotask(() =>
+              node.onaudioprocess?.({
+                inputBuffer: { getChannelData: () => new Float32Array(4096) },
+              }),
+            );
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),
+        };
+        return node;
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const onEnd = vi.fn();
+    const onError = vi.fn();
+    const provider = new YaServerProvider("ya-grok", "", {
+      serverStreaming: true,
+      onEnd,
+      onError,
+    });
+
+    provider.start();
+    await waitForProviderStatus(provider, "listening");
+    const socket = FakeWebSocket.instances[0]!;
+    expect(socket.onerror).not.toBeNull();
+    provider.stop();
+
+    expect(provider.getState()).toMatchObject({
+      status: "idle",
+      isListening: false,
+      error: null,
+    });
+    expect(onEnd).toHaveBeenCalledTimes(1);
+
+    socket.onerror?.(new Event("error"));
+
+    expect(socket.send).not.toHaveBeenCalled();
+    expect(socket.close).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+    expect(provider.getState().status).toBe("idle");
+    provider.dispose();
+  });
+
   it("passes the selected microphone device to batch capture", async () => {
     const fakeStream = {
       getTracks: () => [],
