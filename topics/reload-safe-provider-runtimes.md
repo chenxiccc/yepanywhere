@@ -457,9 +457,12 @@ One Hono generation controls a runtime at a time:
 5. It connects to the private app-server socket and calls `thread/resume`.
    Codex returns the running-thread snapshot and replays pending server
    requests, including approvals.
-6. YA reconstructs one `Process` projection, reconciles the snapshot with
-   durable provider history by provider item identity, and resumes ordinary
-   client subscription catch-up under the same canonical YA session id.
+6. YA reconstructs one `Process` projection and resumes ordinary client
+   subscription catch-up under the same canonical YA session id. The active
+   snapshot is not a second event log: completed items converge through the
+   provider-durable REST catch-up triggered by reconnect, while only
+   result-backed items whose snapshot status is explicitly `inProgress` are
+   restored into the new live stream before later provider deltas arrive.
 
 Codex supplies no YA event cursor. Events emitted while Hono is absent must be
 present in the running-thread snapshot or subsequent provider persistence; the
@@ -879,11 +882,12 @@ Continuity must be proved rather than inferred from a surviving PID. Existing
 Codex-native checks cover new-thread and durable-resume launches through its host;
 API-triggered active-turn reload with the same app-server, YA session, thread,
 and turn identities; active snapshot completion; a second post-reload turn; no
-duplicate transcript rows; an active turn crossing wrapper `SIGHUP`; terminal
-idle teardown; and deterministic attach-timeout and owner-loss teardown. The
-shared host repeats the lifecycle proof with a deterministic fake worker and
-provider-specific integration smokes. The remaining cases are an extended
-hardening matrix:
+duplicate transcript rows; a large active snapshot with stale historical
+`inProgress` turns, completed output, compaction markers, and one unfinished
+tool; an active turn crossing wrapper `SIGHUP`; terminal idle teardown; and
+deterministic attach-timeout and owner-loss teardown. The shared host repeats
+the lifecycle proof with a deterministic fake worker and provider-specific
+integration smokes. The remaining cases are an extended hardening matrix:
 
 1. With the Codex setting off, prove new and resumed Codex sessions use the
    shared worker; with it on, prove they retain the current native socket host.
@@ -900,9 +904,11 @@ hardening matrix:
    spawning overlapping Hono generations.
 5. Prove the Hono PID changed while the wrapper, host, app-server, canonical YA
    session, Codex thread, and Codex turn did not.
-6. Reconnect and `thread/resume` from the new server. Assert the active snapshot
-   includes all completed items and accumulated agent text through the attach
-   point, then observe later deltas and one final `turn/completed`.
+6. Reconnect and `thread/resume` from the new server. Assert Codex's active
+   snapshot includes all completed items and accumulated agent text through the
+   attach point, but YA republishes only explicitly unfinished result-backed
+   items. Assert completed items arrive through durable REST catch-up, then
+   observe later deltas and one final `turn/completed`.
 7. Exercise an approval that is pending across the disconnect or arrives while
    no Hono server is attached; prove it appears once and its response reaches
    Codex. Expire the attach grace in a second run and prove the approval is

@@ -169,6 +169,12 @@ equality is graded by whether the live item has a durable counterpart:
   item while it is active. Prefer changes that do not alter row count, group
   boundaries, navigation anchors, or stable identity. Once the persisted
   counterpart is available, the item settles to the durable representation.
+- **Reload-safe snapshots are reconciliation, not replay.** A native provider
+  snapshot may contain the whole completed active-turn prefix. Reattaching YA
+  must not publish that prefix as freshly observed live activity. Browser
+  reconnect already triggers provider-durable REST catch-up; the replacement
+  live stream restores only result-backed items whose snapshot status is
+  explicitly in progress, then consumes later provider deltas normally.
 - **Truly ephemeral live items — allowed.** Thinking deltas, transient status,
   progress, and other provider events that are never persisted may appear and
   disappear near the live tail when they are useful. They are not evidence

@@ -2426,40 +2426,58 @@ export class CodexProvider implements AgentProvider {
         } as SDKMessage;
       };
 
-      const resumedActiveTurn =
+      const resumedActiveTurns =
         reloadSafeRuntime && options.resumeSessionId
-          ? [...threadResult.thread.turns]
-              .reverse()
-              .find((turn) => turn.status === "inProgress")
-          : undefined;
+          ? threadResult.thread.turns.filter(
+              (turn) => turn.status === "inProgress",
+            )
+          : [];
+      const resumedActiveTurn =
+        resumedActiveTurns[resumedActiveTurns.length - 1];
       if (resumedActiveTurn) {
+        let restoredUnfinishedItemCount = 0;
+        let skippedDurableItemCount = 0;
+        let ignoredItemCount = 0;
         for (const item of resumedActiveTurn.items) {
           const normalized = this.normalizeThreadItem(item);
-          if (!normalized) continue;
-          const sourceEvent =
+          if (!normalized) {
+            ignoredItemCount += 1;
+            continue;
+          }
+          const isUnfinishedResultBackedItem =
             this.isResultBackedThreadItem(normalized) &&
             "status" in normalized &&
-            normalized.status === "in_progress"
-              ? "item/started"
-              : "item/completed";
-          if (sourceEvent === "item/started") {
-            this.recordLiveResultBackedToolItem(
-              liveEventState,
-              resumedActiveTurn.id,
-              normalized.id,
-            );
+            normalized.status === "in_progress";
+          if (!isUnfinishedResultBackedItem) {
+            skippedDurableItemCount += 1;
+            continue;
           }
+
+          restoredUnfinishedItemCount += 1;
+          this.recordLiveResultBackedToolItem(
+            liveEventState,
+            resumedActiveTurn.id,
+            normalized.id,
+          );
           for (const message of this.convertItemToSDKMessages(
             normalized,
             sessionId,
             resumedActiveTurn.id,
-            sourceEvent,
+            "item/started",
           )) {
             yield message;
           }
         }
         log.info(
-          { sessionId, turnId: resumedActiveTurn.id },
+          {
+            sessionId,
+            turnId: resumedActiveTurn.id,
+            activeTurnCount: resumedActiveTurns.length,
+            snapshotItemCount: resumedActiveTurn.items.length,
+            restoredUnfinishedItemCount,
+            skippedDurableItemCount,
+            ignoredItemCount,
+          },
           "Rejoined active Codex app-server turn",
         );
         yield* consumeTurn(this, resumedActiveTurn);

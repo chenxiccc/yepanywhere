@@ -286,6 +286,35 @@ describe("useSession completion reconciliation", () => {
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
   });
 
+  it("catches up Codex persistence after the stream reconnects", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "connected",
+        sessionId: "sess-1",
+        state: "in-turn",
+        provider: "codex",
+      });
+    });
+    expect(fetchNewMessages).not.toHaveBeenCalled();
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "connected",
+        sessionId: "sess-1",
+        state: "in-turn",
+        provider: "codex",
+      });
+    });
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
   it("catches up durable messages when activity reports the turn idle", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

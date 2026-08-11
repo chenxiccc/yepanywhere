@@ -14,9 +14,18 @@ import {
 
 const temporaryPaths: string[] = [];
 
+interface FakeSocketCodexScenario {
+  resumedTurns?: unknown[];
+  notificationsAfterResume?: Array<{
+    method: string;
+    params: unknown;
+  }>;
+}
+
 async function createFakeSocketCodex(
   runtimeRoot: string,
   logPath: string,
+  scenario: FakeSocketCodexScenario = {},
 ): Promise<string> {
   const require = createRequire(import.meta.url);
   const wsModuleUrl = pathToFileURL(require.resolve("ws")).href;
@@ -31,6 +40,10 @@ import wsPackage from ${JSON.stringify(wsModuleUrl)};
 const { WebSocketServer } = wsPackage;
 
 const logPath = ${JSON.stringify(logPath)};
+const resumedTurns = ${JSON.stringify(scenario.resumedTurns ?? [])};
+const notificationsAfterResume = ${JSON.stringify(
+      scenario.notificationsAfterResume ?? [],
+    )};
 const listen = process.argv[process.argv.indexOf("--listen") + 1];
 const socketPath = listen.slice("unix://".length);
 try { rmSync(socketPath); } catch (error) {
@@ -63,10 +76,13 @@ webSockets.on("connection", (socket) => {
         break;
       case "thread/resume":
         respond(socket, message.id, {
-          thread: { id: message.params.threadId, turns: [] },
+          thread: { id: message.params.threadId, turns: resumedTurns },
           model: "gpt-5.4-mini",
           reasoningEffort: "low",
         });
+        for (const notification of notificationsAfterResume) {
+          socket.send(JSON.stringify({ jsonrpc: "2.0", ...notification }));
+        }
         break;
       default:
         respond(socket, message.id, {});
@@ -100,14 +116,94 @@ afterEach(async () => {
 const describeOnLinux = process.platform === "linux" ? describe : describe.skip;
 
 describeOnLinux("CodexProvider reload-safe resume", () => {
-  it("launches an enabled resumed session through the lifecycle host", async () => {
+  it("restores only unfinished state from a large active snapshot", async () => {
     const runtimeRoot = await mkdtemp(
       join(tmpdir(), "codex-resume-host-test-"),
     );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const logPath = join(runtimeRoot, "requests.jsonl");
-    const fakeCodex = await createFakeSocketCodex(runtimeRoot, logPath);
+    const completedMessages = Array.from({ length: 240 }, (_, index) => ({
+      id: `completed-message-${index}`,
+      type: "agentMessage",
+      text: `Completed snapshot message ${index}`,
+    }));
+    const completedCompactions = Array.from({ length: 8 }, (_, index) => ({
+      id: `completed-compaction-${index}`,
+      type: "contextCompaction",
+    }));
+    const fakeCodex = await createFakeSocketCodex(runtimeRoot, logPath, {
+      resumedTurns: [
+        {
+          id: "stale-active-turn",
+          items: [
+            {
+              id: "stale-completed-message",
+              type: "agentMessage",
+              text: "Old stale turn output",
+            },
+          ],
+          status: "inProgress",
+          error: null,
+        },
+        {
+          id: "current-active-turn",
+          items: [
+            ...completedMessages,
+            ...completedCompactions,
+            {
+              id: "completed-command",
+              type: "commandExecution",
+              command: "printf complete",
+              aggregatedOutput: "complete",
+              exitCode: 0,
+              status: "completed",
+            },
+            {
+              id: "running-command",
+              type: "commandExecution",
+              command: "sleep 5",
+              aggregatedOutput: "",
+              status: "inProgress",
+            },
+          ],
+          status: "inProgress",
+          error: null,
+        },
+      ],
+      notificationsAfterResume: [
+        {
+          method: "item/completed",
+          params: {
+            threadId: "existing-thread",
+            turnId: "current-active-turn",
+            item: {
+              id: "running-command",
+              type: "commandExecution",
+              command: "sleep 5",
+              aggregatedOutput: "done",
+              exitCode: 0,
+              status: "completed",
+            },
+          },
+        },
+        {
+          method: "turn/completed",
+          params: {
+            threadId: "existing-thread",
+            turn: {
+              id: "current-active-turn",
+              items: [],
+              status: "completed",
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              durationMs: null,
+            },
+          },
+        },
+      ],
+    });
     const host = new CodexRuntimeHost({
       runtimeDir: runtimeRoot,
       controlSocketPath,
@@ -147,6 +243,35 @@ describeOnLinux("CodexProvider reload-safe resume", () => {
         subtype: "init",
         session_id: "existing-thread",
       });
+      const resumedMessages: Array<Record<string, unknown>> = [];
+      for (let index = 0; index < 12; index += 1) {
+        const next = await session.iterator.next();
+        if (next.done) break;
+        const message = next.value as unknown as Record<string, unknown>;
+        resumedMessages.push(message);
+        if (message.type === "result") break;
+      }
+      expect(resumedMessages.at(-1)).toMatchObject({ type: "result" });
+      expect(
+        resumedMessages.filter((message) => message.uuid === "running-command"),
+      ).toHaveLength(2);
+      expect(resumedMessages).toContainEqual(
+        expect.objectContaining({
+          type: "user",
+          uuid: "running-command-result",
+        }),
+      );
+      expect(resumedMessages).not.toContainEqual(
+        expect.objectContaining({ uuid: "completed-command" }),
+      );
+      expect(resumedMessages).not.toContainEqual(
+        expect.objectContaining({
+          uuid: "completed-message-0-current-active-turn",
+        }),
+      );
+      expect(resumedMessages).not.toContainEqual(
+        expect.objectContaining({ subtype: "compact_boundary" }),
+      );
       expect([...host.runtimes.values()]).toEqual([
         expect.objectContaining({
           sessionId: "existing-thread",
