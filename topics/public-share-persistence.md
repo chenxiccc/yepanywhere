@@ -484,6 +484,13 @@ rescanning other sessions or viewers; the process-wide cap also bounds any
 engine-dependent scan inside the ordered set. Capacity eviction affects
 approximate presence/count history only and never blocks a valid public read or
 changes frozen/disconnected viewer authority.
+The bounded access-ordered `Set` is deliberate pending whole-server profiling.
+On Node 24/V8 13.6, a constructed tombstone-heavy oldest lookup measured about
+1.72 microseconds, while replacing it with intrusive recency links retained
+about 19 extra bytes per modeled record (roughly 76 KiB at the cap) and would
+spread unlink invariants across every removal path. Reconsider the structure
+only if production profiling makes viewer-heartbeat maintenance material; then
+compare it with an intrusive doubly linked list under the same workload.
 
 Authenticated inventory and revocation are exposed by the dedicated
 `public-share-management` route module. Inventory uses stable keyset pagination
