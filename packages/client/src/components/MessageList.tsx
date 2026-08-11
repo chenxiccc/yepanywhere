@@ -2734,6 +2734,10 @@ export const MessageList = memo(function MessageList({
       const rect = container.getBoundingClientRect();
       if (event.clientX >= rect.right - scrollbarWidth) {
         stopFollowingForUserScroll(container);
+        // Native scrollbar focus differs across browser/platform pairs. Make
+        // the explicit transcript gesture own subsequent native page keys
+        // instead of leaving them attached to the composer or document body.
+        container.focus({ preventScroll: true });
       }
     };
 

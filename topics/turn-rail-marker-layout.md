@@ -31,6 +31,11 @@ direction. This makes densely spaced prompts one viewport-aware step rather
 than forcing a stop at every already-readable marker. The selected prompt is
 aligned near the top of the scrollport and uses the same motion cue as rail and
 search jumps. PageUp and PageDown remain native viewport-scrolling keys.
+Dragging the transcript's native scrollbar makes that scrollport the focus
+owner (without adding it to sequential Tab navigation), so native PageUp and
+PageDown keep targeting the transcript instead of a previously focused composer
+or a browser-dependent document fallback. Editable controls retain their page
+keys until the user makes that explicit scrollbar gesture.
 
 ## The bug (root cause)
 

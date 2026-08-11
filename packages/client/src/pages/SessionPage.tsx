@@ -5061,7 +5061,7 @@ function SessionPageContent({
             : ""
         }`}
       >
-        <main className="session-messages">
+        <main className="session-messages" tabIndex={-1}>
           {loading ? (
             <div className="loading">
               <div>{t("sessionLoading")}</div>

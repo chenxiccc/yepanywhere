@@ -20,6 +20,51 @@ import { MessageList } from "../MessageList";
 installMessageListTestEnvironment();
 
 describe("MessageList scroll and follow", () => {
+  it("focuses the transcript after a native scrollbar gesture", () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "inspect this"),
+          assistantMessage("assistant-1", "Visible answer"),
+        ]}
+      />,
+    );
+    container.tabIndex = -1;
+    Object.defineProperty(container, "clientWidth", {
+      configurable: true,
+      value: 380,
+    });
+    Object.defineProperty(container, "offsetWidth", {
+      configurable: true,
+      value: 400,
+    });
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
+      bottom: 500,
+      height: 500,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    composer.focus();
+
+    fireEvent(
+      container,
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        clientX: 395,
+      }),
+    );
+
+    expect(document.activeElement).toBe(container);
+  });
+
   it("keeps a clicked activity summary fixed while scrolled up", async () => {
     setConversationViewPreference(true);
     const { container } = render(
