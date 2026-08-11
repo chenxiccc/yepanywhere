@@ -10,12 +10,16 @@ const execFileAsync = promisify(execFile);
 export const GIT_DECODE_PATHS_ARGS = ["-c", "core.quotePath=false"];
 
 const DEFAULT_MAX_BUFFER = 1024 * 1024;
+const GIT_EXEC_PREFIX = ["--no-optional-locks", "-C"];
 
 /**
- * Run `git -C <cwd> <args>` and resolve its `{ stdout, stderr }`. The shared
- * git exec primitive for the read-only git surfaces (status + browse). No
- * shell — args are passed as an array, so there is no quoting/injection
- * surface. stdout is NOT trimmed; callers trim as needed.
+ * Run `git --no-optional-locks -C <cwd> <args>` and resolve its
+ * `{ stdout, stderr }`. The shared git exec primitive disables opportunistic
+ * index refreshes and maintenance so observation never briefly locks a
+ * project against concurrent user or agent Git work. Explicit mutations still
+ * take their required locks. No shell — args are passed as an array, so there
+ * is no quoting/injection surface. stdout is NOT trimmed; callers trim as
+ * needed.
  *
  * `maxBuffer` defaults to 1 MB (fine for status/diff); pass a larger value for
  * `log`/`blame`/`show` whose output can exceed it.
@@ -29,7 +33,7 @@ export async function runGit(
     maxBuffer?: number;
   },
 ): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync("git", ["-C", cwd, ...args], {
+  return execFileAsync("git", [...GIT_EXEC_PREFIX, cwd, ...args], {
     maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
     timeout: options?.timeout ?? 10_000,
     ...(options?.disableTerminalPrompt
@@ -51,7 +55,7 @@ export async function runGitBytes(
     maxBuffer?: number;
   },
 ): Promise<{ stdout: Buffer; stderr: Buffer }> {
-  return (await execFileAsync("git", ["-C", cwd, ...args], {
+  return (await execFileAsync("git", [...GIT_EXEC_PREFIX, cwd, ...args], {
     encoding: "buffer",
     maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
     timeout: options?.timeout ?? 10_000,

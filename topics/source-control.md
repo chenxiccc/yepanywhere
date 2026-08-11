@@ -27,6 +27,12 @@ integration, conflict resolution, and recovery remain agent work unless a
 separate proposal justifies one operation's preconditions, feedback, and
 recovery.
 
+Every Git subprocess launched through Source Control disables Git's optional
+locks. Passive status, diff, history, and file observation must not
+opportunistically refresh the index or briefly create `.git/index.lock` while
+an agent or the user is doing concurrent Git work. Explicit Pull, Push, and
+review-object mutations still take every lock Git requires for correctness.
+
 The navigation surface has these modes:
 
 - **Changes** is the default quick check and owns both the current
