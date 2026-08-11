@@ -1001,8 +1001,14 @@ describe("SessionListItem links", () => {
     expect(readBadge.className).not.toContain(
       styles.providerChildrenBadgeUnread,
     );
+    expect(readBadge.getAttribute("title")).toBe(
+      "2 provider subagents\nFirst delegated task\nSecond delegated task",
+    );
     expect(unreadBadge.textContent).toBe("1");
     expect(unreadBadge.className).toContain(styles.providerChildrenBadgeUnread);
+    expect(unreadBadge.getAttribute("title")).toBe(
+      "1 provider subagent\nNew delegated task",
+    );
     expect(screen.getByText("yepanywhere")).toBeTruthy();
   });
 

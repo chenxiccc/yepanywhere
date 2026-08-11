@@ -37,11 +37,13 @@ describe("SessionMenu CSS module contracts", () => {
   it("keeps the caller and global hooks alongside module classes", () => {
     const { container } = renderMenu({
       className: "session-list-item__menu",
+      overlayTrigger: true,
     });
     const wrapper = container.firstElementChild as HTMLElement;
     const trigger = screen.getByRole("button", { name: "Session options" });
 
     expect(wrapper.classList.contains(styles.wrapper ?? "")).toBe(true);
+    expect(wrapper.classList.contains(styles.overlayTrigger ?? "")).toBe(true);
     expect(wrapper.classList.contains("session-menu-wrapper")).toBe(true);
     expect(wrapper.classList.contains("session-list-item__menu")).toBe(true);
     expect(wrapper.classList.contains("is-open")).toBe(false);

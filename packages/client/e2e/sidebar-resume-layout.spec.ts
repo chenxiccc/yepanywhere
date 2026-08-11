@@ -6,11 +6,11 @@ import { expect, test } from "./fixtures.js";
 test.use({ serviceWorkers: "block" });
 
 async function dismissOnboardingIfVisible(page: Page) {
-  const dialog = page.getByText("Welcome to yepanywhere");
+  const skipAll = page.locator(".onboarding-skip-all");
   await page.waitForTimeout(250);
-  if (!(await dialog.isVisible().catch(() => false))) return;
-  await page.getByRole("button", { name: "Skip all" }).click({ force: true });
-  await expect(dialog).not.toBeVisible();
+  if (!(await skipAll.isVisible().catch(() => false))) return;
+  await skipAll.click({ force: true });
+  await expect(skipAll).not.toBeVisible();
 }
 
 async function openSidebar(page: Page, baseURL: string) {
@@ -24,6 +24,22 @@ async function openSidebar(page: Page, baseURL: string) {
   await expect(sidebar).toBeVisible();
 }
 
+async function setSidebarSpacing(
+  page: Page,
+  baseURL: string,
+  spacing: "compact" | "comfortable",
+) {
+  await page.goto(baseURL);
+  await page.evaluate((value) => {
+    window.localStorage.setItem("yep-anywhere-sidebar-spacing", value);
+  }, spacing);
+  await openSidebar(page, baseURL);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-sidebar-spacing",
+    spacing,
+  );
+}
+
 async function findResumeRow(page: Page) {
   const resume = page.getByRole("button", { name: "Resume" }).first();
   await expect(resume).toBeVisible();
@@ -32,28 +48,46 @@ async function findResumeRow(page: Page) {
   return row;
 }
 
-async function expectResumeClearOfMenu(row: Locator) {
-  await row.hover();
-
+async function expectDenseOverlayLayout(row: Locator) {
   const resume = row.getByRole("button", { name: "Resume" });
   const project = row.locator(".session-list-item__project-compact");
   const menu = row.getByRole("button", { name: "Session options" });
+  const menuWrapper = menu.locator("xpath=parent::*");
   const titleLink = row.getByRole("link");
 
-  const [resumeBox, projectBox, menuBox, titleBox] = await Promise.all([
+  const [rowBox, resumeBox, projectBox, titleBox] = await Promise.all([
+    row.boundingBox(),
     resume.boundingBox(),
     project.boundingBox(),
-    menu.boundingBox(),
     titleLink.boundingBox(),
   ]);
 
+  expect(rowBox).not.toBeNull();
   expect(resumeBox).not.toBeNull();
   expect(projectBox).not.toBeNull();
-  expect(menuBox).not.toBeNull();
   expect(titleBox).not.toBeNull();
   expect(resumeBox!.x + resumeBox!.width).toBeLessThanOrEqual(projectBox!.x);
-  expect(resumeBox!.x + resumeBox!.width).toBeLessThanOrEqual(menuBox!.x);
+  expect(projectBox!.x - (resumeBox!.x + resumeBox!.width)).toBeLessThanOrEqual(
+    16,
+  );
+  const resumeStyle = await resume.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      marginRight: style.marginRight,
+      minWidth: style.minWidth,
+    };
+  });
+  expect(resumeStyle).toEqual({ marginRight: "0px", minWidth: "auto" });
   expect(titleBox!.width).toBeGreaterThan(0);
+  await expect(menuWrapper).toHaveCSS("position", "absolute");
+
+  await row.hover();
+  const menuBox = await menu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect(menuBox!.y + menuBox!.height / 2).toBeCloseTo(
+    rowBox!.y + rowBox!.height / 2,
+    0,
+  );
 }
 
 async function capture(page: Page, name: string) {
@@ -66,17 +100,25 @@ async function capture(page: Page, name: string) {
   });
 }
 
-test("keeps compact Resume before the project and clear of the menu", async ({
+test("keeps sidebar Resume dense and overlays the row menu", async ({
   page,
   baseURL,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await openSidebar(page, baseURL);
-  await expectResumeClearOfMenu(await findResumeRow(page));
-  await capture(page, "sidebar-resume-desktop-1920x1080.png");
+  await setSidebarSpacing(page, baseURL, "comfortable");
+  await expectDenseOverlayLayout(await findResumeRow(page));
+  await capture(page, "sidebar-resume-comfortable-desktop-1920x1080.png");
+
+  await setSidebarSpacing(page, baseURL, "compact");
+  await expectDenseOverlayLayout(await findResumeRow(page));
+  await capture(page, "sidebar-resume-compact-desktop-1920x1080.png");
 
   await page.setViewportSize({ width: 375, height: 812 });
-  await openSidebar(page, baseURL);
-  await expectResumeClearOfMenu(await findResumeRow(page));
-  await capture(page, "sidebar-resume-mobile-375x812.png");
+  await setSidebarSpacing(page, baseURL, "compact");
+  await expectDenseOverlayLayout(await findResumeRow(page));
+  await capture(page, "sidebar-resume-compact-mobile-375x812.png");
+
+  await setSidebarSpacing(page, baseURL, "comfortable");
+  await expectDenseOverlayLayout(await findResumeRow(page));
+  await capture(page, "sidebar-resume-comfortable-mobile-375x812.png");
 });

@@ -1,9 +1,7 @@
 .button {
   flex: 0 0 auto;
   align-self: center;
-  min-width: 3.25rem;
-  margin-right: var(--space-1);
-  padding: 2px var(--space-2);
+  padding: 2px var(--space-1);
   border: 1px solid var(--border-input);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);

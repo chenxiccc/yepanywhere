@@ -4,6 +4,10 @@
   flex-shrink: 0;
 }
 
+.overlayTrigger {
+  position: absolute;
+}
+
 .trigger {
   display: flex;
   align-items: center;

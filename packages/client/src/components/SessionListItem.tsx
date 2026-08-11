@@ -548,6 +548,18 @@ export function SessionListItem({
     parentSessionId && isBtwAside
       ? buildBtwAsideParentHref(basePath, projectId, parentSessionId, sessionId)
       : null;
+  const providerChildrenLabel = t(
+    providerChildren.length === 1
+      ? "providerChildrenCountOne"
+      : "providerChildrenCountMany",
+    { count: providerChildren.length },
+  );
+  const providerChildrenTooltip = [
+    providerChildrenLabel,
+    ...providerChildren.map(
+      (child) => child.title || child.agentType || t("providerChildFallback"),
+    ),
+  ].join("\n");
 
   const handleBtwBadgeClick = useCallback(
     (e: React.MouseEvent<HTMLSpanElement>) => {
@@ -784,14 +796,7 @@ export function SessionListItem({
                 <span
                   className="session-list-item__provider-children"
                   role="list"
-                  aria-label={t(
-                    providerChildren.length === 1
-                      ? "providerChildrenCountOne"
-                      : "providerChildrenCountMany",
-                    {
-                      count: providerChildren.length,
-                    },
-                  )}
+                  aria-label={providerChildrenLabel}
                 >
                   {providerChildren.map((child) => (
                     <span
@@ -858,22 +863,8 @@ export function SessionListItem({
                       hasUnread ? styles.providerChildrenBadgeUnread : ""
                     }`}
                     role="img"
-                    title={providerChildren
-                      .map(
-                        (child) =>
-                          child.title ||
-                          child.agentType ||
-                          t("providerChildFallback"),
-                      )
-                      .join("\n")}
-                    aria-label={t(
-                      providerChildren.length === 1
-                        ? "providerChildrenCountOne"
-                        : "providerChildrenCountMany",
-                      {
-                        count: providerChildren.length,
-                      },
-                    )}
+                    title={providerChildrenTooltip}
+                    aria-label={providerChildrenLabel}
                   >
                     {providerChildren.length}
                   </span>
@@ -939,6 +930,7 @@ export function SessionListItem({
             publicShareMenuVisible ? () => setShowShareModal(true) : undefined
           }
           useEllipsisIcon
+          overlayTrigger
           useFixedPositioning
           onOpenChange={handleMenuOpenChange}
           className="session-list-item__menu"

@@ -48,14 +48,15 @@ and project counts.
 
 Provider child summaries are nested beneath the parent process on **Agents**.
 Session-list cards repeat the child descriptions, while compact sidebar rows
-show the child count as a number-only pill with the descriptions in the tooltip.
-The pill uses ordinary sidebar text sizing and retains a visible gap before the
-project label; neither glyph density nor title truncation may make the count or
-project name overlap. A read row uses a quiet grey pill; the existing session
-unread state strengthens its fill and weight, then viewing the session settles
-it again without a separate child-count acknowledgement state. Every row
-navigates to the parent YA session, where the existing Task/Agent renderer owns
-expansion of the actual child transcript.
+show the child count as a number-only pill. Its tooltip begins with an explicit
+"N provider subagent(s)" label, followed by the child descriptions. The pill
+uses ordinary sidebar text sizing and retains a visible gap before the project
+label; neither glyph density nor title truncation may make the count or project
+name overlap. A read row uses a quiet grey pill; the existing session unread
+state strengthens its fill and weight, then viewing the session settles it
+again without a separate child-count acknowledgement state. Every row navigates
+to the parent YA session, where the existing Task/Agent renderer owns expansion
+of the actual child transcript.
 
 This is not optional YA-novel behavior under
 [vanilla-defaults](vanilla-defaults.md): it restores visibility for work the

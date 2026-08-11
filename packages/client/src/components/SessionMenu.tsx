@@ -63,6 +63,8 @@ export interface SessionMenuProps {
   onShare?: () => void | Promise<void>;
   /** Additional class for the wrapper */
   className?: string;
+  /** Remove the trigger from layout so its caller can overlay it on a row. */
+  overlayTrigger?: boolean;
   /** Use fixed positioning for dropdown (escapes overflow clipping) */
   useFixedPositioning?: boolean;
   /** Notified when the menu opens/closes so callers can react to open state. */
@@ -98,6 +100,7 @@ export function SessionMenu({
   onShare,
   useEllipsisIcon = false,
   className = "",
+  overlayTrigger = false,
   useFixedPositioning = false,
   onOpenChange,
 }: SessionMenuProps) {
@@ -268,6 +271,7 @@ export function SessionMenu({
 
   const wrapperClasses = [
     styles.wrapper,
+    overlayTrigger && styles.overlayTrigger,
     "session-menu-wrapper",
     className,
     isOpen && "is-open",

@@ -6,8 +6,7 @@
   display: flex;
   flex: 0 1 auto;
   align-items: center;
-  justify-content: flex-end;
-  min-width: 3.25rem;
+  min-width: 0;
   max-width: 100px;
   overflow: hidden;
 }
