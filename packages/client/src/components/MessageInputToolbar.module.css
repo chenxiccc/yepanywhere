@@ -15,6 +15,34 @@
   gap: var(--composer-toolbar-gap);
 }
 
+.thinkingControl {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.thinkingMenu {
+  position: absolute;
+  z-index: 120;
+  bottom: calc(100% + 0.35rem);
+  left: 0;
+  display: grid;
+  box-sizing: border-box;
+  width: min(18rem, var(--thinking-menu-max-inline-size, calc(100vw - 1.5rem)));
+  gap: var(--space-3);
+  padding: var(--space-3);
+  transform: translateX(var(--thinking-menu-inline-shift, 0px));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.thinkingMenuHint {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .waveformBackdropActive .waveformRegion {
   isolation: isolate;
 }

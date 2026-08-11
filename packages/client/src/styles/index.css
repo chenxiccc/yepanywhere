@@ -4428,8 +4428,7 @@ a.linkified-url:hover {
 }
 
 .composer-bottom-overflow-menu-group .mode-selector-container,
-.composer-bottom-overflow-menu-group .slash-command-container,
-.composer-bottom-overflow-menu-group .thinking-toolbar-control {
+.composer-bottom-overflow-menu-group .slash-command-container {
   flex: 0 0 auto;
 }
 
@@ -5890,27 +5889,6 @@ a.linkified-url:hover {
   white-space: nowrap;
 }
 
-.thinking-toolbar-control {
-  position: relative;
-  display: inline-flex;
-  flex: 0 0 auto;
-}
-
-.thinking-toolbar-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 0.35rem);
-  z-index: 120;
-  display: grid;
-  gap: var(--space-3);
-  width: min(18rem, calc(100vw - 1.5rem));
-  padding: var(--space-3);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
-}
-
 /* Shared thinking-controls layout (new-session inline + toolbar popover).
    Sections are separated by more space than the gap that binds each
    subhead to its own options, so an all-caps subhead reads as the start
@@ -5992,11 +5970,6 @@ a.linkified-url:hover {
   border-style: dashed;
   border-color: var(--border-input);
   color: var(--text-secondary);
-}
-
-.thinking-toolbar-menu-hint {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
 }
 
 .thinking-effort-selector {

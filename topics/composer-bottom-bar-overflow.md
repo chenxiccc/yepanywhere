@@ -52,6 +52,11 @@ they can reach a control.
 - Use a stable, tappable overflow (`...`) affordance, likely near the middle of
   the composer bottom row.
 - Tapping `...` opens a popup/fold-out row; tapping `...` again dismisses it.
+- Panels opened from a bottom-row control stay inside the current visual
+  viewport with a 12 px inline gutter, whether the control is in the ordinary
+  row or a copy in the opened overflow strip. Their box width includes padding
+  and borders, and their inline position is remeasured while open when the
+  trigger, panel, or visual viewport changes.
 - The opened state is still one bottom-row control strip, not a detached
   explanatory panel: the `...` affordance remains selected at its stable anchor,
   and hidden icon buttons unfold next to it. Use the available side space around

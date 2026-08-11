@@ -942,6 +942,8 @@ function getToolbarThinkingTitle(
   return t("toolbarThinkingTitle", { current });
 }
 
+const THINKING_MENU_VIEWPORT_GUTTER_PX = 12;
+
 function ThinkingToolbarControl({
   control,
   t,
@@ -951,6 +953,7 @@ function ThinkingToolbarControl({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressTouchClickRef = useRef(false);
   const title = getToolbarThinkingTitle(t, control);
@@ -977,6 +980,75 @@ function ThinkingToolbarControl({
       document.removeEventListener("mousedown", handleMouseDown);
     };
   }, [close, open]);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const menu = menuRef.current;
+    if (!open || !root || !menu || typeof window === "undefined") return;
+
+    let frameId = 0;
+    const updateInlinePosition = () => {
+      frameId = 0;
+      menu.style.setProperty("--thinking-menu-inline-shift", "0px");
+      const viewport = window.visualViewport;
+      const viewportLeft = viewport?.offsetLeft ?? 0;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      menu.style.setProperty(
+        "--thinking-menu-max-inline-size",
+        `${Math.max(0, viewportWidth - THINKING_MENU_VIEWPORT_GUTTER_PX * 2)}px`,
+      );
+
+      const rect = menu.getBoundingClientRect();
+      const minLeft = viewportLeft + THINKING_MENU_VIEWPORT_GUTTER_PX;
+      const maxLeft =
+        viewportLeft +
+        viewportWidth -
+        THINKING_MENU_VIEWPORT_GUTTER_PX -
+        rect.width;
+      const targetLeft =
+        maxLeft < minLeft
+          ? minLeft
+          : Math.min(Math.max(rect.left, minLeft), maxLeft);
+      menu.style.setProperty(
+        "--thinking-menu-inline-shift",
+        `${targetLeft - rect.left}px`,
+      );
+    };
+    const scheduleInlinePositionUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateInlinePosition);
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleInlinePositionUpdate);
+    resizeObserver?.observe(root);
+    resizeObserver?.observe(menu);
+    window.addEventListener("resize", scheduleInlinePositionUpdate);
+    window.visualViewport?.addEventListener(
+      "resize",
+      scheduleInlinePositionUpdate,
+    );
+    window.visualViewport?.addEventListener(
+      "scroll",
+      scheduleInlinePositionUpdate,
+    );
+    updateInlinePosition();
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleInlinePositionUpdate);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        scheduleInlinePositionUpdate,
+      );
+      window.visualViewport?.removeEventListener(
+        "scroll",
+        scheduleInlinePositionUpdate,
+      );
+    };
+  }, [open]);
 
   const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -1019,7 +1091,7 @@ function ThinkingToolbarControl({
   );
 
   return (
-    <div className="thinking-toolbar-control" ref={rootRef}>
+    <div className={toolbarModuleStyles.thinkingControl} ref={rootRef}>
       <button
         type="button"
         className={`thinking-toggle-button ${control.mode !== "off" ? `active ${control.mode}` : ""}`}
@@ -1048,7 +1120,12 @@ function ThinkingToolbarControl({
         </span>
       </button>
       {open && (
-        <div className="thinking-toolbar-menu" role="menu">
+        <div
+          className={toolbarModuleStyles.thinkingMenu}
+          data-testid="thinking-toolbar-menu"
+          ref={menuRef}
+          role="menu"
+        >
           <ThinkingControlsPanel
             mode={control.mode}
             modeOptions={control.modeOptions}
@@ -1064,7 +1141,7 @@ function ThinkingToolbarControl({
             onSelect={close}
             optionRole="menuitemradio"
           />
-          <div className="thinking-toolbar-menu-hint">
+          <div className={toolbarModuleStyles.thinkingMenuHint}>
             {t("toolbarThinkingAppliesNextTurn")}
           </div>
         </div>
