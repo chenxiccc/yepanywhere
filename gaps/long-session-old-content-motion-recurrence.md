@@ -24,16 +24,42 @@ This is not yet a demonstrated defect. Keep it open only as the recurrence
 stub: a report after `5b976d6c` should first distinguish transient viewport
 motion from transcript data reinsertion.
 
+## Related live-tail signal
+
+Before the server/page reload that activated the current fixes, a direct Codex
+steer's optimistic echo appeared in Conversation View and then usually
+disappeared on the next Conversation View update during high-rate thinking and
+tool activity. Reload restored the user row, and the provider had already
+responded to it. After reload, an ordinary-rate session kept the accepted steer
+visible immediately, well before the busy provider responded. The observed
+failure is therefore not initial echo omission; a later live-view update
+invalidated the visible result, and the current fixes appear to mitigate at
+least that path.
+
+This proves delivery and persistence for the reported steer, but it does not
+identify whether the pre-reload live view removed the row from client data or
+only lost its viewport position. The update-driven disappearance most directly
+matches the stale persisted-tail replacement fixed by `4feffd93`; the
+fast-burst follow race in
+[`topics/scrollback-view-stability.md`](../topics/scrollback-view-stability.md)
+can leave the row in the DOM but move it above the visible tail. Treat a repeat
+on the reloaded client as new evidence; ordinary-rate behavior alone does not
+exercise the burst race.
+
 ## Evidence to collect on recurrence
 
 - Record whether the event followed a backend reattach, a natural compaction,
-  or both, and whether the view was following the bottom.
+  or both, whether the view was following the bottom, and whether output was
+  arriving in a fast burst.
 - Sample animation-frame `scrollTop`, `scrollHeight`, bottom gap, and first/last
   visible render ids across transcript mutations. Also record active-window
   trim revisions and JavaScript scroll writes without transcript content.
 - Compare the canonical message ids immediately before and after the event. If
   they remain stable while visible ids move, investigate geometry; if old ids
   are newly inserted, return to stream/persisted reconciliation.
+- For a disappearing steer, separately record whether its canonical/render id
+  remains in the DOM. Presence distinguishes the fast-burst follow race from a
+  stale-tail replacement without relying on the visual impression alone.
 
 ## Paths that can close it
 
