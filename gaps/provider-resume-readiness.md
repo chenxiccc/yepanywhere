@@ -14,11 +14,10 @@ That distinction matters most for exactly the fail-closed case the Grok load
 path now enforces: refusing to silently create a fresh session is only useful
 if the caller learns the refusal promptly.
 
-Not fixed in place because the readiness boundary belongs to the shared
-`Process`/`Supervisor` lifecycle, not to one provider, and those files were
-being actively changed by concurrent server-performance work when this was
-found. The fix wants a provider-neutral "native session attached" signal that
-resume can await or surface, rather than a Grok-specific patch at the route.
+The provider-neutral attachment settlement and route behavior are planned in
+[`docs/tactical/104-provider-session-identity-and-reactivation.md`](../docs/tactical/104-provider-session-identity-and-reactivation.md).
+This remains open until resume can distinguish process admission from accepted
+native-session attachment.
 
 Found 2026-08-05 while replacing Grok's unstable `session/resume` with the
 stable `session/load` path (see `topics/grok.md`).

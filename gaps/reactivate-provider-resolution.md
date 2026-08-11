@@ -23,10 +23,11 @@ sessions (`GrokSessionReader` and friends are imported into the same route
 module for exactly that purpose), so the missing piece is using that fallback
 here rather than a new mechanism.
 
-Not fixed in place: the change belongs to the shared route/supervisor
-reactivation path, which overlapped active server-performance work when this
-was found, and it deserves its own coverage for each native reader rather than
-riding along with a Grok adapter change.
+The shared existing-session identity resolver and cross-provider coverage are
+planned in
+[`docs/tactical/104-provider-session-identity-and-reactivation.md`](../docs/tactical/104-provider-session-identity-and-reactivation.md).
+This remains open until unqualified reactivation uses exact native evidence
+instead of the selected project's default provider.
 
 Found 2026-08-05 while replacing Grok's unstable `session/resume` with the
 stable `session/load` path (see `topics/grok.md`).

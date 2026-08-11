@@ -32,12 +32,8 @@ makes the bad state non-fatal — the loop is broken and a stale transcript
 pointer self-heals to the working project — but does not stop the bad pointer
 from being written, nor fix the wrong resume cwd.
 
-**Fix sketch:** Add a codex cwd-native transcript-project resolver (mirror
-grok's `GrokSessionReader.getSessionProjectPath` / the route's
-`getGrokNativeProjectId`) that returns `encodeProjectId(session_meta.cwd)` for
-a session id. Use it (a) in the move endpoint to derive `transcriptProjectId`
-authoritatively instead of `process?.projectId`, and (b) to validate/repair
-the resume cwd so a codex resume runs under the rollout's own directory. A
-validation-by-summary check is insufficient because
-`findSessionSummaryAcrossProviders` locates codex sessions by id globally, so
-a wrong candidate project still "resolves".
+**Planned remediation:**
+[`docs/tactical/104-provider-session-identity-and-reactivation.md`](../docs/tactical/104-provider-session-identity-and-reactivation.md)
+defines one provider/transcript/working-project resolver for the move, resume,
+and reactivate paths. This gap remains open until transcript location no longer
+falls back to a process launch project or an arbitrary request URL.
