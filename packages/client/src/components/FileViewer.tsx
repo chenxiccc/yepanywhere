@@ -1012,8 +1012,8 @@ export const FileViewer = memo(function FileViewer({
 
   // Header with file info and actions
   const header = (
-    <div className="file-viewer-header">
-      <div className="file-viewer-info">
+    <div className={`file-viewer-header ${viewerStyles.header}`}>
+      <div className={`file-viewer-info ${viewerStyles.info}`}>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: right-click opens the file action menu; left-click behavior stays on explicit toolbar buttons */}
         <span
           className="file-viewer-path"
@@ -1040,7 +1040,7 @@ export const FileViewer = memo(function FileViewer({
           )}
         </span>
       </div>
-      <div className="file-viewer-actions">
+      <div className={`file-viewer-actions ${viewerStyles.actions}`}>
         {publicShareContext === null && (
           <FileDiffViewLinks
             activeView={activeView}
@@ -1110,7 +1110,7 @@ export const FileViewer = memo(function FileViewer({
         {onMinimize && (
           <button
             type="button"
-            className="file-viewer-action"
+            className={`file-viewer-action file-viewer-minimize ${viewerStyles.minimizeButton}`}
             onClick={onMinimize}
             title={t("fileViewerMinimize" as never)}
             aria-label={t("fileViewerMinimize" as never)}
@@ -1130,7 +1130,7 @@ export const FileViewer = memo(function FileViewer({
         )}
         <button
           type="button"
-          className="file-viewer-action"
+          className={`file-viewer-action file-viewer-fullscreen-toggle ${viewerStyles.fullscreenButton}`}
           onClick={() => setFullscreen(!fullscreen)}
           title={
             fullscreen

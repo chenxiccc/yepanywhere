@@ -427,8 +427,10 @@ export function FileViewerModal({
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops propagation, keyboard handled globally */}
       <dialog
-        className={`modal file-viewer-modal ${
-          viewMode === "range" ? "file-viewer-modal-compact" : ""
+        className={`modal file-viewer-modal ${styles.fileViewerModal} ${
+          viewMode === "range"
+            ? `file-viewer-modal-compact ${styles.fileViewerModalCompact}`
+            : ""
         }`}
         {...QUOTE_SELECTION_ROOT_ATTRIBUTES}
         open
@@ -450,6 +452,13 @@ export function FileViewerModal({
     </div>
   );
 
+  const portalHost =
+    publicShareContext === null
+      ? (document.querySelector<HTMLElement>(
+          ".navigation-route-layer.is-active .session-page",
+        ) ?? document.querySelector<HTMLElement>(".session-page"))
+      : null;
+
   return createPortal(
     publicShareContext ? (
       modalContent
@@ -458,6 +467,6 @@ export function FileViewerModal({
         {modalContent}
       </GlossaryProjectBoundary>
     ),
-    document.body,
+    portalHost ?? document.body,
   );
 }

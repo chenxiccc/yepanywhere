@@ -5061,10 +5061,12 @@ describe("MessageInput", () => {
     ).toBe("70%");
   });
 
-  it("renders the file viewer controller in the toolbar center gap", () => {
+  it("renders the file viewer controller in the toolbar center gap", async () => {
     const close = vi.fn();
     const minimize = vi.fn();
     const restore = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
     const { container } = render(
       <MessageInputToolbarView
         t={toolbarT}
@@ -5160,6 +5162,11 @@ describe("MessageInput", () => {
     const restoreButton = screen.getByRole("button", {
       name: "Restore file viewer: /workspace/docs/guide.md:12",
     });
+    fireEvent.contextMenu(restoreButton);
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("/workspace/docs/guide.md");
+    });
+    expect(restore).not.toHaveBeenCalled();
     fireEvent.click(restoreButton);
     expect(restore).toHaveBeenCalledTimes(1);
     fireEvent.click(
@@ -5169,6 +5176,61 @@ describe("MessageInput", () => {
     );
     expect(close).toHaveBeenCalledTimes(1);
     expect(minimize).not.toHaveBeenCalled();
+  });
+
+  it("parks an open file viewer before running a toolbar action", () => {
+    const minimize = vi.fn();
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{ ...toolbarVisibility, microphone: true }}
+        fileViewerController={{
+          close: vi.fn(),
+          filePath: "/workspace/docs/guide.md",
+          id: "viewer-1",
+          lineSuffix: ":12",
+          minimize,
+          minimized: false,
+          restore: vi.fn(),
+        }}
+        speechControl={{
+          showMethodSelector: false,
+          methodOptions: [],
+          selectedMethod: "browser-native",
+          onMethodChange: vi.fn(),
+          voiceButton: {
+            kind: "live",
+            ref: { current: null },
+            onTranscript: () => undefined,
+            onInterimTranscript: vi.fn(),
+            speechMethod: "browser-native",
+          },
+        }}
+        attachmentControl={{ attachmentCount: 0 }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "voice" }));
+
+    expect(minimize).toHaveBeenCalledTimes(1);
+    expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
+    expect(minimize.mock.invocationCallOrder[0]).toBeLessThan(
+      mockVoiceToggle.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("uses only the custom tooltip on the primary send action", () => {

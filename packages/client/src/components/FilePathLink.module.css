@@ -5,6 +5,35 @@
   vertical-align: middle;
 }
 
+.fileViewerModal {
+  width: min(calc(100vw - 0.75rem), 1200px);
+  max-width: 1200px;
+  height: min(92vh, calc(100dvh - 0.75rem));
+  max-height: min(92vh, calc(100dvh - 0.75rem));
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.fileViewerModal :global(.file-viewer) {
+  height: 100%;
+}
+
+.fileViewerModalCompact {
+  height: auto;
+  max-height: min(92vh, calc(100dvh - 0.75rem));
+}
+
+.fileViewerModalCompact :global(.file-viewer) {
+  height: auto;
+  max-height: inherit;
+}
+
+.fileViewerModalCompact :global(.file-viewer-body) {
+  flex: 0 1 auto;
+  max-height: calc(92vh - 3.25rem);
+}
+
 .inlineDiffLinks {
   visibility: hidden;
   max-width: 0;
@@ -28,5 +57,43 @@
 @media (hover: none) {
   .inlineDiffLinks {
     display: none;
+  }
+}
+
+@media (max-width: 800px) {
+  :global(.modal-overlay):has(.fileViewerModal) {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .fileViewerModal {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border: none;
+    border-radius: 0;
+  }
+
+  @supports (height: 100dvh) {
+    .fileViewerModal {
+      height: 100dvh;
+      max-height: 100dvh;
+    }
+  }
+
+  .fileViewerModalCompact {
+    height: auto;
+    max-height: 100dvh;
+  }
+
+  .fileViewerModalCompact :global(.file-viewer-body) {
+    max-height: calc(100dvh - 3.75rem);
+  }
+
+  .fileViewerModal :global(.file-viewer-body) {
+    box-sizing: border-box;
+    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
   }
 }

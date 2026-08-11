@@ -269,6 +269,15 @@ export default async function globalSetup() {
       "This is a **test** markdown file.",
       "",
       "Viewer context remains available while reviewing this file.",
+      "",
+      "## Scroll clearance specimen",
+      "",
+      ...Array.from(
+        { length: 60 },
+        (_, index) => `Scrollable paragraph ${index + 1}.`,
+      ),
+      "",
+      "End of file viewer clearance specimen.",
     ].join("\n"),
   );
   writeFileSync(

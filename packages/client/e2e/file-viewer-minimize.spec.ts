@@ -34,6 +34,7 @@ async function capture(page: Page, name: string) {
 for (const viewport of [
   { name: "desktop", width: 1920, height: 1080 },
   { name: "desktop-1024", width: 1024, height: 768 },
+  { name: "tablet-800", width: 800, height: 900 },
   { name: "mobile", width: 375, height: 812 },
 ] as const) {
   test(`minimizes and restores an external file viewer at ${viewport.name} width`, async ({
@@ -60,10 +61,21 @@ for (const viewport of [
     );
     await expect(absoluteLink).toBeVisible({ timeout: 10000 });
     await dismissOnboardingIfVisible(page);
+    // Let the initial transcript's rich-text replacement settle so this spec
+    // isolates viewer presentation rather than the separately tracked stable-
+    // owner defect in gaps/rich-text-replacement-closes-file-viewer.md.
+    await page.waitForTimeout(750);
     await absoluteLink.click();
 
     const viewer = page.locator(".file-viewer");
     await expect(viewer).toBeVisible();
+    if (viewport.width <= 800) {
+      const modalBox = await page.locator(".file-viewer-modal").boundingBox();
+      expect(modalBox?.x).toBe(0);
+      expect(modalBox?.y).toBe(0);
+      expect(modalBox?.width).toBe(viewport.width);
+      expect(modalBox?.height).toBe(viewport.height);
+    }
     await expect(
       viewer.getByText("Test Project", { exact: true }),
     ).toBeVisible();
@@ -91,8 +103,108 @@ for (const viewport of [
     await expect(
       controller.getByRole("button", { name: /Minimize file viewer:/ }),
     ).toBeVisible();
+    if (viewport.width <= 800) {
+      await expect(
+        page.locator(".message-input-toolbar .voice-input-button"),
+      ).toBeVisible();
+      await expect(
+        page.locator(".message-input-toolbar .send-button-with-help"),
+      ).toBeVisible();
+    }
 
     await capture(page, `${viewport.name}-open`);
+    if (viewport.name === "desktop") {
+      const modeButton = page.locator(".message-input-toolbar .mode-button");
+      await expect(modeButton).toBeVisible();
+      const modeButtonBox = await modeButton.boundingBox();
+      if (!modeButtonBox) {
+        throw new Error("Expected permission mode button to have a layout box");
+      }
+      const modeButtonIsHitTarget = await page.evaluate(
+        ({ x, y }) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest(".message-input-toolbar .mode-button") !== null,
+        {
+          x: modeButtonBox.x + modeButtonBox.width / 2,
+          y: modeButtonBox.y + modeButtonBox.height / 2,
+        },
+      );
+      expect(modeButtonIsHitTarget).toBe(true);
+      await page.mouse.click(
+        modeButtonBox.x + modeButtonBox.width / 2,
+        modeButtonBox.y + modeButtonBox.height / 2,
+      );
+      await expect(viewer).not.toBeVisible();
+      await expect(controller).toBeVisible();
+      await expect(page.locator(".mode-selector-dropdown")).toBeVisible();
+      await capture(page, "desktop-toolbar-action-parked");
+      await page.keyboard.press("Escape");
+      await controller
+        .getByRole("button", { name: /Restore file viewer:/ })
+        .click();
+      await expect(viewer).toBeVisible();
+    } else {
+      const conversationButton = page.locator(
+        ".message-input-toolbar .conversation-view-toolbar-button",
+      );
+      await expect(conversationButton).toBeVisible();
+      const conversationButtonBox = await conversationButton.boundingBox();
+      if (!conversationButtonBox) {
+        throw new Error("Expected conversation button to have a layout box");
+      }
+      const conversationButtonIsHitTarget = await page.evaluate(
+        ({ x, y }) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest(
+              ".message-input-toolbar .conversation-view-toolbar-button",
+            ) !== null,
+        {
+          x: conversationButtonBox.x + conversationButtonBox.width / 2,
+          y: conversationButtonBox.y + conversationButtonBox.height / 2,
+        },
+      );
+      expect(conversationButtonIsHitTarget).toBe(true);
+      const pressedBefore =
+        await conversationButton.getAttribute("aria-pressed");
+      await page.mouse.click(
+        conversationButtonBox.x + conversationButtonBox.width / 2,
+        conversationButtonBox.y + conversationButtonBox.height / 2,
+      );
+      await expect(viewer).not.toBeVisible();
+      await expect(controller).toBeVisible();
+      await expect(conversationButton).toHaveAttribute(
+        "aria-pressed",
+        pressedBefore === "true" ? "false" : "true",
+      );
+      await controller
+        .getByRole("button", { name: /Restore file viewer:/ })
+        .click();
+      await expect(viewer).toBeVisible();
+    }
+    if (viewport.width <= 800) {
+      const viewerBody = viewer.locator(".file-viewer-body");
+      const finalLine = viewer.getByText(
+        "End of file viewer clearance specimen.",
+        { exact: true },
+      );
+      await viewerBody.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect(finalLine).toBeVisible();
+      const [finalLineBox, toolbarBox] = await Promise.all([
+        finalLine.boundingBox(),
+        page.locator(".message-input-toolbar").boundingBox(),
+      ]);
+      if (!finalLineBox || !toolbarBox) {
+        throw new Error("Expected final line and toolbar to have layout boxes");
+      }
+      expect(finalLineBox.y + finalLineBox.height).toBeLessThanOrEqual(
+        toolbarBox.y,
+      );
+      await capture(page, `${viewport.name}-scrolled-bottom`);
+    }
     await viewer.getByRole("button", { name: "Minimize file viewer" }).click();
     await expect(viewer).not.toBeVisible();
 

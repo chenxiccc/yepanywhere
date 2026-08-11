@@ -11,3 +11,86 @@
   min-height: 100%;
   background: var(--bg-code);
 }
+
+@media (max-width: 800px) {
+  .header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: start;
+    gap: 0.25rem 0.5rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .info {
+    min-width: 0;
+  }
+
+  .info :global(.file-viewer-path) {
+    display: -webkit-box;
+    overflow: hidden;
+    word-break: break-word;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .info :global(.file-viewer-meta) {
+    white-space: nowrap;
+  }
+
+  .actions {
+    grid-row: 1;
+    grid-column: 2;
+    align-self: start;
+  }
+}
+
+@media (max-width: 480px) {
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(3, max-content) repeat(3, 32px);
+    grid-template-rows: repeat(2, 26px);
+    grid-auto-flow: row;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .minimizeButton {
+    grid-row: 1;
+    grid-column: 4;
+  }
+
+  .fullscreenButton {
+    grid-row: 1;
+    grid-column: 5;
+  }
+
+  .actions :global(.file-viewer-close) {
+    grid-row: 1;
+    grid-column: 6;
+  }
+
+  .actions :global(.file-viewer-density-controls) {
+    grid-row: 2;
+    grid-column: 4 / 7;
+    justify-self: stretch;
+    height: 26px;
+    box-sizing: border-box;
+  }
+
+  .minimizeButton,
+  .fullscreenButton,
+  .actions :global(.file-viewer-close),
+  .actions :global(.file-viewer-density-controls .file-viewer-action) {
+    width: 32px;
+    height: 26px;
+  }
+
+  .actions :global(.file-viewer-close) {
+    margin-left: 0;
+  }
+
+  .actions :global(.file-viewer-close svg) {
+    width: 18px;
+    height: 18px;
+  }
+}

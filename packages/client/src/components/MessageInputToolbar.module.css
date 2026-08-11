@@ -6,6 +6,31 @@
   margin-left: 0;
 }
 
+.fileViewerOpen {
+  position: relative;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+:global(.message-input-wrapper) :global(.message-input-toolbar).fileViewerOpen {
+  /* Override the phone layout's static toolbar position so z-index applies. */
+  position: relative;
+}
+
+:global(.navigation-route-layer.is-active):has(.fileViewerOpen) {
+  /* Release the active route's stacking level while its toolbar and viewer
+     overlay must be hit-tested in one stack. */
+  z-index: auto;
+}
+
+.fileViewerOpen :global(button:not(:disabled)),
+.fileViewerOpen :global(a[href]),
+.fileViewerOpen :global(input:not(:disabled)),
+.fileViewerOpen :global(select:not(:disabled)),
+.fileViewerOpen :global([role="button"]:not([aria-disabled="true"])) {
+  pointer-events: auto;
+}
+
 .waveformRegion {
   position: relative;
   display: flex;

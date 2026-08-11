@@ -68,7 +68,14 @@ was.
 - The conventional minimize control remains in the viewer header. Activating
   it reveals and briefly pulses the bottom controller, giving a spatial cue for
   where the viewer went. The bottom toggle is also directly usable while the
-  viewer is open.
+  viewer is open. Right-clicking the bottom toggle copies the underlying file
+  path (without its displayed line suffix) and does not change viewer state.
+- While the viewer is open, activating another enabled composer-toolbar action
+  parks the viewer and performs that action with the same trusted click. The
+  parking transition must not consume or replay the activation: a Mic click,
+  for example, still starts voice input under browser user-activation rules.
+  Existing parking through the viewer-header minimize control or the bottom
+  file toggle remains unchanged.
 - V1 inserts the reserved slot between the left and right control groups and
   lets it grow through the measured center gap. Its DOM position after the left
   group is not a fixed visual edge anchor. With ample space, a central or
@@ -84,16 +91,30 @@ was.
   path text yields before either toggle or close becomes unusable. The toolbar
   overflow allocator, not a viewport-width guess, decides which ordinary
   controls make room.
+- The file-viewer modal uses the available viewport width up to its 1200px
+  reading cap rather than reserving a percentage gutter. At 800px and below it
+  becomes edge-to-edge and full-height. Its compact header reserves the first
+  row's right column for actions while the path and metadata wrap on the left;
+  the path uses at most two lines and the metrics remain on one. At 480px and
+  below the actions use a two-row grid. The three-column window block keeps
+  minimize, fullscreen, and close on top and the atomic `− N +` zoom control
+  across the same columns below. Those equal-width window cells are short
+  rectangles whose combined width aligns with the zoom group, with close at
+  top-right; remaining actions fill the cells to their left. The scrollable
+  document reserves the overlaid composer row plus the bottom safe area, so
+  its final line can always scroll completely above those controls.
 - Its reduced form reuses the existing measured narrowing and overflow system;
   it does not introduce another user-configurable priority tier. Send and Mic
   remain non-displaceable, while the controller may move any other optional
   inline toolbar control into the existing overflow menu as needed, including a
   control that would otherwise be pinned.
 
-The open-state controller may be painted in a top-level layer at the exact
-rectangle reserved by its toolbar slot. This keeps it operable above the file
-viewer overlay without moving the toolbar itself above the overlay or exposing
-unrelated composer controls.
+The open-state controller and enabled composer-toolbar actions may be painted
+above the file-viewer overlay. Only the controls themselves receive pointer
+events there: transparent gaps remain part of the overlay, so clicking empty
+toolbar space retains normal backdrop dismissal. The toolbar parks during
+click capture and leaves the original event to reach the selected action;
+synthetic click replay would lose browser user activation.
 
 ## Alternative: replace the session-list drawer
 

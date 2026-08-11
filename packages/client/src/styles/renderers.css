@@ -4532,37 +4532,6 @@ pre.code-highlighter-plain code {
 }
 
 /* ==========================================================================
-   File Viewer Modal - extends base modal styles
-   ========================================================================== */
-
-.file-viewer-modal .file-viewer {
-  height: 100%;
-}
-
-.file-viewer-modal {
-  height: min(92vh, calc(100dvh - 0.75rem));
-  max-height: min(92vh, calc(100dvh - 0.75rem));
-  min-height: 0;
-  overflow: hidden;
-  padding: 0;
-}
-
-.file-viewer-modal-compact {
-  height: auto;
-  max-height: min(92vh, calc(100dvh - 0.75rem));
-}
-
-.file-viewer-modal-compact .file-viewer {
-  height: auto;
-  max-height: inherit;
-}
-
-.file-viewer-modal-compact .file-viewer-body {
-  flex: 0 1 auto;
-  max-height: calc(92vh - 3.25rem);
-}
-
-/* ==========================================================================
    File Page (Standalone)
    ========================================================================== */
 
@@ -4629,34 +4598,7 @@ pre.code-highlighter-plain code {
 }
 
 /* Mobile adjustments */
-@media (max-width: 600px) {
-  .file-viewer-modal {
-    height: 100vh;
-    height: 100dvh;
-    max-height: 100vh;
-    max-height: 100dvh;
-  }
-
-  .file-viewer-modal-compact {
-    height: auto;
-    max-height: 100dvh;
-  }
-
-  .file-viewer-modal-compact .file-viewer-body {
-    max-height: calc(100dvh - 3.75rem);
-  }
-
-  .file-viewer-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-    padding: 0.25rem 0.5rem;
-  }
-
-  .file-viewer-actions {
-    align-self: flex-end;
-  }
-
+@media (max-width: 800px) {
   .file-viewer-code {
     min-width: max-content;
     width: max-content;

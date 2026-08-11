@@ -60,6 +60,7 @@ import {
 } from "../hooks/useWaveformButtonBackgroundOpacity";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
+import { writeClipboardText } from "../lib/clipboard";
 import {
   type FileViewerControllerState,
   useFileViewerController,
@@ -859,6 +860,10 @@ function FileViewerToolbarController({
         onClick={
           controller.minimized ? controller.restore : controller.minimize
         }
+        onContextMenu={(event) => {
+          event.preventDefault();
+          void writeClipboardText(controller.filePath);
+        }}
         title={toggleLabel}
         aria-label={toggleLabel}
       >
@@ -1656,6 +1661,15 @@ export function MessageInputToolbarView({
       openShortcutSettings();
     }, 520);
   };
+  const handleToolbarClickCapture = (event: MouseEvent<HTMLDivElement>) => {
+    if (!fileViewerController || fileViewerController.minimized) return;
+    if (!(event.target instanceof Element)) return;
+    const action = event.target.closest(
+      "button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [role='button']:not([aria-disabled='true'])",
+    );
+    if (!action || !event.currentTarget.contains(action)) return;
+    fileViewerController.minimize();
+  };
 
   return (
     <div
@@ -1663,6 +1677,10 @@ export function MessageInputToolbarView({
       className={`message-input-toolbar${applyStatusFloats ? " status-floats" : ""} overflow-tier-${bottomOverflowTier}${
         fileViewerController
           ? ` ${toolbarModuleStyles.fileViewerControllerActive}`
+          : ""
+      }${
+        fileViewerController && !fileViewerController.minimized
+          ? ` ${toolbarModuleStyles.fileViewerOpen}`
           : ""
       }${
         waveformBackdropActive
@@ -1675,6 +1693,7 @@ export function MessageInputToolbarView({
           : undefined
       }
       style={waveformBackdropStyle}
+      onClickCapture={handleToolbarClickCapture}
     >
       <div
         className={`${toolbarModuleStyles.waveformRegion}${
