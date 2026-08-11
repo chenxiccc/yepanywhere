@@ -15,6 +15,7 @@ See also:
 - [`session-summary-fidelity.md`](session-summary-fidelity.md)
 - [`session-index-validation.md`](session-index-validation.md)
 - [`session-hovercard-recent-activity.md`](session-hovercard-recent-activity.md)
+- [`all-session-content-search.md`](all-session-content-search.md)
 - [`client-global-store.md`](client-global-store.md)
 - [`inbox.md`](inbox.md)
 - [`architecture-mandates.md`](architecture-mandates.md)

@@ -291,3 +291,9 @@
   job-completion client (design topic; implementation series to follow).
 - parked-file-viewer - Preserve document reading state while a persistent
   composer controller or session-list drawer uncovers the live session.
+- settings-ui-placement - Reviewed settings copy, placement, defaults, and
+  externally visible behavior that the UI can state with confidence.
+- cache-aware-session-bootstrap - Proposal for a provider-aware opening
+  protocol that places YA capability hints before the first user request.
+- all-session-content-search - Proposal for incremental literal search over
+  visible user and assistant text across sessions and projects.
