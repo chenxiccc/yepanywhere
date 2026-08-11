@@ -25,7 +25,7 @@ import {
 } from "@yep-anywhere/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { createApp } from "../../src/app.js";
+import { createApp } from "../setup/create-app.js";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";
 import { createWsRelayRoutes } from "../../src/routes/ws-relay.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";

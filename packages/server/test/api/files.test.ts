@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createApp } from "../../src/app.js";
+import { createApp } from "../setup/create-app.js";
 import { canonicalizeProjectPath } from "../../src/projects/paths.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";

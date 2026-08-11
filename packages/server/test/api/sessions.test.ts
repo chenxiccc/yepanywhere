@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createApp } from "../../src/app.js";
+import { createApp } from "../setup/create-app.js";
 import { MockClaudeSDK, createMockScenario } from "../../src/sdk/mock.js";
 import {
   closeProviderRuntimeHostRegistration,

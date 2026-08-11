@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { SessionMetadataService } from "../../src/metadata/SessionMetadataService.js";
 import { encodeProjectId } from "../../src/projects/paths.js";
 import { createSessionWakeRoutes } from "../../src/routes/session-wake.js";
-import { createApp } from "../../src/app.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import type { ServerSettingsService } from "../../src/services/ServerSettingsService.js";
 import {
   SessionWakeService,
   loadOrCreateSessionWakeSecret,
 } from "../../src/services/SessionWakeService.js";
+import { createApp } from "../setup/create-app.js";
 
 function request(token: string, body: unknown): RequestInit {
   return {

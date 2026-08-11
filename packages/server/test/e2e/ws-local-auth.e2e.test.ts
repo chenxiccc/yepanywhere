@@ -12,7 +12,7 @@ import type {
 import { decodeJsonFrame, encodeJsonFrame } from "@yep-anywhere/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { createApp } from "../../src/app.js";
+import { createApp } from "../setup/create-app.js";
 import { AuthService } from "../../src/auth/AuthService.js";
 import { SESSION_COOKIE_NAME } from "../../src/auth/routes.js";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";

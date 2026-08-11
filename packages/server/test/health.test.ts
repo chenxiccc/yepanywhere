@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { app, createApp } from "../src/app.js";
+import { app } from "../src/app.js";
 import { MockClaudeSDK, MockServerClaudeProvider } from "../src/sdk/mock.js";
+import { createApp } from "./setup/create-app.js";
 
 describe("GET /health", () => {
   it("returns ok status", async () => {

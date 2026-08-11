@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { SessionIndexService } from "../../src/indexes/index.js";
 import type { SessionMetadataService } from "../../src/metadata/SessionMetadataService.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
-import { createApp } from "../../src/app.js";
 import { createProcessesRoutes } from "../../src/routes/processes.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
@@ -16,6 +15,7 @@ import type {
   Project,
   SessionSummary,
 } from "../../src/supervisor/types.js";
+import { createApp } from "../setup/create-app.js";
 
 function createProject(): Project {
   return {

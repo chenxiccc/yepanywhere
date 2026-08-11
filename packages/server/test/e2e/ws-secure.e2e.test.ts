@@ -48,7 +48,7 @@ import {
 } from "tssrp6a";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { createApp } from "../../src/app.js";
+import { createApp } from "../setup/create-app.js";
 import { AuthService } from "../../src/auth/AuthService.js";
 import {
   decrypt,
