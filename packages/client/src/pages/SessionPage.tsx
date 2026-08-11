@@ -6,7 +6,6 @@ import type {
   ProviderName,
   ProjectQueueItemSummary,
   ProjectQueueStagedAttachments,
-  PublicSessionShareSessionStatusResponse,
   SlashCommand,
   ThinkingMode,
   TranscriptDisplayObject,
@@ -94,6 +93,7 @@ import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
+import { usePublicSessionShareStatus } from "../hooks/usePublicSessionShareStatus";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -218,7 +218,6 @@ const MessageInput = lazy(() =>
   })),
 );
 
-const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
 const CLAUDE_HANDOFF_REQUIRED_MESSAGE =
   "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
 const EMPTY_PROJECT_QUEUE_PROJECT_IDS: readonly string[] = [];
@@ -1916,8 +1915,13 @@ function SessionPageContent({
   );
   const [shareModalAnchor, setShareModalAnchor] =
     useState<ModalAnchorRect | null>(null);
-  const [publicShareStatus, setPublicShareStatus] =
-    useState<PublicSessionShareSessionStatusResponse | null>(null);
+  const { status: publicShareStatus, updateStatus: setPublicShareStatus } =
+    usePublicSessionShareStatus({
+      enabled: publicSharesEnabled,
+      projectId,
+      sessionId: actualSessionId,
+      storageState: publicShareGlobalStatus?.storageState,
+    });
   const canCreatePublicShares = publicShareGlobalStatus?.canCreate ?? false;
   const publicShareManagementAvailable = serverHasCapability(
     versionInfo,
@@ -4269,59 +4273,6 @@ function SessionPageContent({
     },
     [handleShareIndicatorClick, publicShareManagementAvailable],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    setPublicShareStatus(null);
-
-    if (
-      !publicSharesEnabled ||
-      (publicShareGlobalStatus?.storageState !== undefined &&
-        publicShareGlobalStatus.storageState !== "ready")
-    ) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const refreshPublicShareStatus = async () => {
-      try {
-        const nextStatus = await api.getPublicSessionShareStatus(
-          projectId,
-          actualSessionId,
-        );
-        if (!cancelled) {
-          setPublicShareStatus(nextStatus);
-        }
-      } catch {
-        if (!cancelled) {
-          setPublicShareStatus(null);
-        }
-      } finally {
-        if (!cancelled) {
-          timer = setTimeout(
-            refreshPublicShareStatus,
-            PUBLIC_SHARE_STATUS_POLL_MS,
-          );
-        }
-      }
-    };
-
-    void refreshPublicShareStatus();
-
-    return () => {
-      cancelled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, [
-    actualSessionId,
-    projectId,
-    publicShareGlobalStatus?.storageState,
-    publicSharesEnabled,
-  ]);
 
   const handleToggleHeartbeat = useCallback(async () => {
     const previousEnabled = heartbeatTurnsEnabled;

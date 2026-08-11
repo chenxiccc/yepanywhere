@@ -353,6 +353,11 @@ controller. Losing the advertised management capability unmounts and closes the
 Settings manager immediately; restoring capability does not reopen it without a
 new user action.
 
+While public sharing is ready, an open session polls its compact owner status
+every five seconds. A structurally unchanged response preserves the existing
+client-state identity and does not rerender the session page; changed share or
+viewer counts replace the status immediately.
+
 Legacy migration is record-at-a-time and streaming. It must not `readFile`,
 `JSON.parse`, or `JSON.stringify` the complete aggregate or one huge embedded
 body. The streaming reader validates the complete JSON grammar even for ignored
