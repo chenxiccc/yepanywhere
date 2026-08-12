@@ -433,6 +433,110 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     }
   });
 
+  it("does not report acceptance before its recovery receipt is durable", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-receipt-"));
+    temporaryPaths.push(runtimeRoot);
+    const controlSocketPath = join(runtimeRoot, "host.sock");
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath,
+      token: "receipt-token",
+      workerPath: fixtureWorker,
+      publishTurnReceipts: () => {
+        throw new Error("receipt disk unavailable");
+      },
+    });
+    await host.start();
+
+    const records = await collectProviderHostStream(
+      {
+        descriptor: { controlSocketPath, hostProtocolVersion: 2 },
+        token: "receipt-token",
+      },
+      {
+        op: "sessionTurn",
+        submissionId: "receipt-failure",
+        target: {
+          harness: "claude",
+          providerSessionId: "receipt-provider-session",
+        },
+        message: { text: "require durable acceptance" },
+        launch: {
+          providerName: "claude",
+          projectPath: runtimeRoot,
+          options: {},
+          runtimeConfig: {},
+        },
+      },
+    );
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        type: "error",
+        outcome: "uncertain-after-acceptance",
+        accepted: true,
+        error: expect.stringContaining("acceptance receipt"),
+      }),
+    ]);
+    await waitUntil(() => host.runtimes.size === 0);
+    await host.shutdown("receipt failure test complete");
+  });
+
+  it("reports uncertainty when the terminal receipt cannot be persisted", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-receipt-"));
+    temporaryPaths.push(runtimeRoot);
+    const controlSocketPath = join(runtimeRoot, "host.sock");
+    let receiptWrites = 0;
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath,
+      token: "terminal-receipt-token",
+      workerPath: fixtureWorker,
+      publishTurnReceipts: () => {
+        receiptWrites += 1;
+        if (receiptWrites === 2) throw new Error("receipt disk unavailable");
+      },
+    });
+    await host.start();
+
+    const records = await collectProviderHostStream(
+      {
+        descriptor: { controlSocketPath, hostProtocolVersion: 2 },
+        token: "terminal-receipt-token",
+      },
+      {
+        op: "sessionTurn",
+        submissionId: "terminal-receipt-failure",
+        target: {
+          harness: "claude",
+          providerSessionId: "terminal-receipt-provider-session",
+        },
+        message: { text: "require a durable terminal receipt" },
+        launch: {
+          providerName: "claude",
+          projectPath: runtimeRoot,
+          options: {},
+          runtimeConfig: {},
+        },
+      },
+    );
+
+    expect(records.map((record) => record.type)).toEqual([
+      "accepted",
+      "providerEvent",
+      "providerEvent",
+      "providerEvent",
+      "error",
+    ]);
+    expect(records.at(-1)).toMatchObject({
+      outcome: "uncertain-after-acceptance",
+      accepted: true,
+      error: expect.stringContaining("terminal receipt"),
+    });
+    await waitUntil(() => host.runtimes.size === 0);
+    await host.shutdown("terminal receipt failure test complete");
+  });
+
   it("recovers only a stale host with verified process identities", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-stale-"));
     temporaryPaths.push(runtimeRoot);

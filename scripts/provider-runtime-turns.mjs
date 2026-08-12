@@ -198,6 +198,12 @@ export class ProviderRuntimeTurnLedger {
         submission.acceptTimer = null;
         submission.state = "accepted";
         submission.acceptedAt = new Date().toISOString();
+        try {
+          this.persistReceipt(submission);
+        } catch (error) {
+          this.failReceiptPersistence(submission, error);
+          return true;
+        }
         this.append(submission, {
           type: "accepted",
           submissionId,
@@ -207,7 +213,6 @@ export class ProviderRuntimeTurnLedger {
           yaSessionId: runtime.yaSessionId,
           acceptedAt: submission.acceptedAt,
         });
-        this.persistReceipt(submission);
         return true;
       case "sessionTurnStarted":
         return true;
@@ -408,6 +413,20 @@ export class ProviderRuntimeTurnLedger {
       acceptedAt: submission.acceptedAt,
       terminalAt: submission.terminalAt,
     };
+    try {
+      this.persistReceipt(submission, outcome, receipt);
+    } catch (error) {
+      this.append(submission, {
+        type: "error",
+        submissionId: submission.submissionId,
+        outcome: "uncertain-after-acceptance",
+        accepted: true,
+        error: `Could not persist the terminal receipt: ${errorMessage(error)}`,
+        terminalAt: submission.terminalAt,
+      });
+      this.onTerminal(runtime, "uncertain-after-acceptance");
+      return;
+    }
     this.append(submission, {
       type: "terminal",
       submissionId: submission.submissionId,
@@ -415,8 +434,30 @@ export class ProviderRuntimeTurnLedger {
       ...(fields.error ? { error: fields.error } : {}),
       receipt,
     });
-    this.persistReceipt(submission, outcome, receipt);
     this.onTerminal(runtime, outcome);
+  }
+
+  failReceiptPersistence(submission, error) {
+    submission.state = "terminal";
+    submission.terminalAt = new Date().toISOString();
+    this.clearTimers(submission);
+    const runtime = submission.runtime;
+    if (runtime?.child.connected) {
+      runtime.child.send({
+        type: "interruptSessionTurn",
+        submissionId: submission.submissionId,
+      });
+    }
+    this.releaseRuntime(submission);
+    this.append(submission, {
+      type: "error",
+      submissionId: submission.submissionId,
+      outcome: "uncertain-after-acceptance",
+      accepted: true,
+      error: `Could not persist the acceptance receipt: ${errorMessage(error)}`,
+      terminalAt: submission.terminalAt,
+    });
+    this.onTerminal(runtime, "uncertain-after-acceptance");
   }
 
   timeout(submissionId) {
@@ -468,6 +509,7 @@ export class ProviderRuntimeTurnLedger {
   }
 
   persistReceipt(submission, outcome, receipt) {
+    const previousReceipts = new Map(this.receipts);
     this.receipts.set(submission.submissionId, {
       submissionId: submission.submissionId,
       state: submission.state,
@@ -478,7 +520,12 @@ export class ProviderRuntimeTurnLedger {
       receipt,
     });
     this.pruneReceipts();
-    this.writeReceipts([...this.receipts.values()]);
+    try {
+      this.writeReceipts([...this.receipts.values()]);
+    } catch (error) {
+      this.receipts = previousReceipts;
+      throw error;
+    }
   }
 
   prune(maxSubmissions = MAX_RETAINED_SUBMISSIONS) {
