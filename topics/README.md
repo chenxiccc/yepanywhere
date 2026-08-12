@@ -99,3 +99,5 @@
 - Session wake turns (authenticated automation endpoint queues a user turn
   into one session; agentctl job-completion client, resume-on-wake gates,
   provider-CLI fallback rules)
+- User authorization attestations (sketch: opt-in signed turns or a Linux-
+  bounded capability inbox for only predeclared authorization gates)

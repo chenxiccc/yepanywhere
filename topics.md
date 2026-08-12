@@ -303,3 +303,5 @@
   visible user and assistant text across sessions and projects.
 - source-review-followups - Optional clarification, discussion,
   source-comment, and gap annotations for a future review-sweep workflow.
+- user-authorization-attestation - Sketch of opt-in signed user turns or a
+  Linux-bounded capability inbox for only predeclared authorization gates.
