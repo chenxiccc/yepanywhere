@@ -97,6 +97,8 @@ export interface SessionMetadata {
   promptSuggestionMode?: PromptSuggestionMode;
   /** Browser-away duration before YA asks the live process for a recap. */
   recapAfterSeconds?: number;
+  /** Explicit Stop/Terminate suppresses recaps until a fresh user turn. */
+  recapPausedUntilUserTurn?: boolean;
   /** Settled YA host filesystem confinement for every launch of this session. */
   sandboxLevel?: SessionSandboxLevel;
   /** Opaque key for the canonical project's private provider runtime state. */
@@ -733,6 +735,7 @@ export class SessionMetadataService {
       promptSuggestionMode?: PromptSuggestionMode | null;
       recapAfterSeconds?: number | null;
       recapMode?: RecapMode | null;
+      recapPausedUntilUserTurn?: boolean;
     },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
@@ -821,6 +824,11 @@ export class SessionMetadataService {
         result.recapMode = updates.recapMode ?? undefined;
       }
 
+      if (updates.recapPausedUntilUserTurn !== undefined) {
+        result.recapPausedUntilUserTurn =
+          updates.recapPausedUntilUserTurn || undefined;
+      }
+
       return result;
     });
     await this.save();
@@ -892,6 +900,9 @@ export class SessionMetadataService {
     }
     if (updated.recapMode) {
       cleaned.recapMode = updated.recapMode;
+    }
+    if (updated.recapPausedUntilUserTurn) {
+      cleaned.recapPausedUntilUserTurn = updated.recapPausedUntilUserTurn;
     }
     if (updated.sandboxLevel) {
       cleaned.sandboxLevel = updated.sandboxLevel;

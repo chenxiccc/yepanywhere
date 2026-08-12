@@ -71,6 +71,13 @@ supervisor must uphold:
    reported as "cancelled by new activity", not logged as a failure
    (`Supervisor.ts` catch in `requestForkedRecap`).
 
+   Stop/Interrupt and Terminate are stronger cancellation boundaries: both
+   abort an in-flight fork, drop a deferred request before the parent reaches
+   idle, and persist a session-level recap pause. Away-timer requests remain
+   rejected across process replacement or server restart until a fresh
+   user-authored turn is accepted. Hidden control and automatic heartbeat turns
+   do not lift the pause.
+
 4. **Suppress empty recaps.** No recent assistant text since the user
    left ⇒ no recap (`getRecentAssistantText`). The floor is raised to the
    latest persisted recap for the session (`recapFloorMs`, applied at
@@ -129,6 +136,12 @@ The session-keyed route resolves the trigger:
   evict a live worker** to revive a different session, so at capacity it skips
   rather than preempts. The revived recap passes `{revived:true}` to bypass the
   native-wait + emptiness gate (point 4).
+- A durable `recapPausedUntilUserTurn` marker blocks both live dispatch and
+  cold revival after Stop/Interrupt or Terminate. A fresh user-authored turn on
+  the current or replacement process clears that marker; hidden/internal turns
+  and automatic heartbeat turns do not. Terminate's separate
+  `autoResumeDisabled` and heartbeat settings are unchanged by this
+  recap-specific clear.
 
 Because the timer only exists for the session a client is *displaying*, an
 unfocused / list-only session never time-triggers a recap — the focus scoping
@@ -256,6 +269,9 @@ waiting for idle and then using `process.sessionId` for detail/list assertions.
 - A fork request while `in-turn` does not start a generator until idle.
 - A parent turn starting mid-generation aborts the generator turn (no
   late `away_summary` emitted after the new turn began).
+- Stop/Interrupt or Terminate drops a deferred or in-flight fork and keeps
+  session-keyed away requests suppressed across process replacement/restart
+  until a fresh visible user turn is accepted.
 - A recap with no assistant output since the user left emits nothing.
 - A recap with no assistant output since the last emitted recap emits
   nothing, even when the away window reaches back before that recap.

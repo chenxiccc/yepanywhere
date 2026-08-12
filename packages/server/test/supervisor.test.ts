@@ -44,6 +44,7 @@ function createLaunchSettingsMetadata(
     ),
   };
   const service = {
+    getMetadata: () => undefined,
     getEffectiveLaunchSettings: () => current,
     getRequestedModel: () =>
       current ? (current.requestedModel ?? undefined) : legacyRequestedModel,
@@ -3231,6 +3232,11 @@ describe("Supervisor", () => {
           "interrupt-fallback-session",
         ),
       ).toBeUndefined();
+      expect(
+        supervisorWithRealSdk.isRecapPausedUntilUserTurn(
+          "interrupt-fallback-session",
+        ),
+      ).toBe(true);
     });
 
     it("times out a stalled interrupt before hard-aborting", async () => {
@@ -3540,6 +3546,76 @@ describe("Supervisor", () => {
   });
 
   describe("recaps", () => {
+    it("persists a recap pause and clears only it on a fresh user turn", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      let aborted = false;
+      const provider = testProvider(async (options) => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: options.resumeSessionId ?? "recap-pause-session",
+          };
+          for await (const message of queue) {
+            if (aborted) return;
+            void message;
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort: () => {
+            aborted = true;
+            queue.push({ text: "__abort__" });
+          },
+        };
+      });
+      const recapSupervisor = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+        sessionMetadataService: metadata.service,
+      });
+      const process = await recapSupervisor.reactivateSession(
+        "/tmp/test",
+        "recap-pause-session",
+        undefined,
+        { providerName: "claude", recapMode: "fork" },
+      );
+      metadata.writes.updateMetadata.mockClear();
+
+      await recapSupervisor.pauseRecapsUntilUserTurn(process.id);
+
+      expect(
+        recapSupervisor.isRecapPausedUntilUserTurn("recap-pause-session"),
+      ).toBe(true);
+      expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
+        "recap-pause-session",
+        { recapPausedUntilUserTurn: true },
+      );
+
+      process.queueMessage({
+        text: "continue intentionally",
+        metadata: { serverReceivedAt: new Date().toISOString() },
+      });
+
+      await vi.waitFor(() => {
+        expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
+          "recap-pause-session",
+          { recapPausedUntilUserTurn: false },
+        );
+      });
+      expect(
+        recapSupervisor.isRecapPausedUntilUserTurn("recap-pause-session"),
+      ).toBe(false);
+      expect(metadata.writes.updateMetadata.mock.calls).toEqual([
+        ["recap-pause-session", { recapPausedUntilUserTurn: true }],
+        ["recap-pause-session", { recapPausedUntilUserTurn: false }],
+      ]);
+
+      await process.abort();
+    });
+
     it("falls back to tailed recap generation when forked recap cannot fork", async () => {
       const generateSummary = vi.fn(async (request) => ({
         text:

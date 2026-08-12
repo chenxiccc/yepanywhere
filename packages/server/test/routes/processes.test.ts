@@ -112,6 +112,7 @@ describe("Processes Routes", () => {
   });
 
   it("returns PID shutdown verification for an aborted process", async () => {
+    const pauseRecapsUntilUserTurn = vi.fn(async () => true);
     const abortProcessWithVerification = vi.fn(async () => ({
       processId: "proc-1",
       sessionId: "sess-1",
@@ -121,6 +122,7 @@ describe("Processes Routes", () => {
     }));
     const routes = createProcessesRoutes({
       supervisor: {
+        pauseRecapsUntilUserTurn,
         abortProcessWithVerification,
       } as unknown as Supervisor,
       scanner: {} as ProjectScanner,
@@ -132,6 +134,7 @@ describe("Processes Routes", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(pauseRecapsUntilUserTurn).toHaveBeenCalledWith("proc-1");
     await expect(response.json()).resolves.toEqual({
       aborted: true,
       processId: "proc-1",
@@ -143,6 +146,7 @@ describe("Processes Routes", () => {
   });
 
   it("exempts the session from auto-resume when the kill opts in", async () => {
+    const pauseRecapsUntilUserTurn = vi.fn(async () => true);
     const abortProcessWithVerification = vi.fn(async () => ({
       processId: "proc-1",
       sessionId: "sess-1",
@@ -156,6 +160,7 @@ describe("Processes Routes", () => {
     }));
     const routes = createProcessesRoutes({
       supervisor: {
+        pauseRecapsUntilUserTurn,
         abortProcessWithVerification,
         getProcess: vi.fn(() => ({
           sessionId: "sess-1",
@@ -174,6 +179,7 @@ describe("Processes Routes", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(pauseRecapsUntilUserTurn).toHaveBeenCalledWith("proc-1");
     expect(blockSessionResume).toHaveBeenCalledWith({
       sessionId: "sess-1",
     });
@@ -186,9 +192,49 @@ describe("Processes Routes", () => {
     });
   });
 
+  it("disables heartbeat turns through the app's terminate policy", async () => {
+    const updateMetadata = vi.fn(async () => undefined);
+    const { app, supervisor } = createApp({
+      sdk: new MockClaudeSDK(),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({ heartbeatTurnsEnabled: true })),
+        getProvider: vi.fn(() => "codex"),
+        updateMetadata,
+      } as unknown as SessionMetadataService,
+    });
+    vi.spyOn(supervisor, "abortProcessWithVerification").mockResolvedValue({
+      processId: "proc-1",
+      sessionId: "sess-1",
+      verifiedStopped: true,
+      verification: "provider",
+    });
+
+    const response = await app.request("/api/processes/proc-1/abort", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Yep-Anywhere": "true",
+      },
+      body: JSON.stringify({ blockResume: true }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(updateMetadata).toHaveBeenCalledWith("sess-1", {
+      heartbeatTurnsEnabled: false,
+      autoResumeDisabled: true,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      resumeExemption: {
+        heartbeatDisabled: true,
+        autoResumeDisabled: true,
+      },
+    });
+  });
+
   it("reports when shutdown succeeds but the resume exemption fails", async () => {
     const routes = createProcessesRoutes({
       supervisor: {
+        pauseRecapsUntilUserTurn: vi.fn(async () => true),
         abortProcessWithVerification: vi.fn(async () => ({
           processId: "proc-1",
           sessionId: "sess-1",
@@ -226,6 +272,7 @@ describe("Processes Routes", () => {
     const blockSessionResume = vi.fn();
     const routes = createProcessesRoutes({
       supervisor: {
+        pauseRecapsUntilUserTurn: vi.fn(async () => true),
         abortProcessWithVerification: vi.fn(async () => ({
           processId: "proc-1",
           sessionId: "sess-1",
@@ -255,6 +302,7 @@ describe("Processes Routes", () => {
   it("reports a failed shutdown verification instead of claiming success", async () => {
     const routes = createProcessesRoutes({
       supervisor: {
+        pauseRecapsUntilUserTurn: vi.fn(async () => true),
         abortProcessWithVerification: vi.fn(async () => {
           throw new Error("Provider PID 43210 is still running after abort");
         }),

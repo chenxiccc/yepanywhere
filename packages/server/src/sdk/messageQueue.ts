@@ -77,6 +77,15 @@ export function concatUserMessages(
   if (tempIds.length) combined.tempIds = tempIds;
   const priority = mostUrgentPriority(messages);
   if (priority) combined.priority = priority;
+  if (
+    messages.every(
+      (message) =>
+        message.recapResumeHandled === true ||
+        message.automaticSource === "heartbeat",
+    )
+  ) {
+    combined.recapResumeHandled = true;
+  }
   if (allImages.length) combined.images = allImages;
   if (allDocs.length) combined.documents = allDocs;
   if (allAttachments.length) combined.attachments = allAttachments;

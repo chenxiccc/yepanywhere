@@ -288,6 +288,7 @@ export interface ProcessAbortResult {
 // Process events for subscribers
 export type ProcessEvent =
   | { type: "message"; message: SDKMessage }
+  | { type: "user-turn-accepted" }
   | { type: "state-change"; state: ProcessState }
   | { type: "liveness-update" }
   | {

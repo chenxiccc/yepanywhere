@@ -5834,6 +5834,7 @@ describe("Session-keyed away-recap route", () => {
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => ({ id: "p1", isTerminated: false })),
+        isRecapPausedUntilUserTurn: vi.fn(() => false),
         requestRecap,
       } as unknown as SessionsDeps["supervisor"],
     });
@@ -5862,6 +5863,7 @@ describe("Session-keyed away-recap route", () => {
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => null),
+        isRecapPausedUntilUserTurn: vi.fn(() => false),
         reactivateSession,
         requestRecap,
       } as unknown as SessionsDeps["supervisor"],
@@ -5900,6 +5902,7 @@ describe("Session-keyed away-recap route", () => {
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => null),
+        isRecapPausedUntilUserTurn: vi.fn(() => false),
         reactivateSession,
         requestRecap,
       } as unknown as SessionsDeps["supervisor"],
@@ -5924,12 +5927,44 @@ describe("Session-keyed away-recap route", () => {
     expect(requestRecap).not.toHaveBeenCalled();
   });
 
+  it("does not revive a session while recaps await a fresh user turn", async () => {
+    const reactivateSession = vi.fn();
+    const requestRecap = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        isRecapPausedUntilUserTurn: vi.fn(() => true),
+        reactivateSession,
+        requestRecap,
+      } as unknown as SessionsDeps["supervisor"],
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({
+          provider: "claude" as ProviderName,
+          recapMode: "fork" as const,
+          recapPausedUntilUserTurn: true,
+        })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(recapPath, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      supported: true,
+      emitted: false,
+      reason: "recaps paused until next user turn",
+    });
+    expect(reactivateSession).not.toHaveBeenCalled();
+    expect(requestRecap).not.toHaveBeenCalled();
+  });
+
   it("skips a cold session whose recap mode is not fork (no revival)", async () => {
     const reactivateSession = vi.fn();
     const requestRecap = vi.fn();
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => null),
+        isRecapPausedUntilUserTurn: vi.fn(() => false),
         reactivateSession,
         requestRecap,
       } as unknown as SessionsDeps["supervisor"],
@@ -5956,6 +5991,7 @@ describe("Session-keyed away-recap route", () => {
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => null),
+        isRecapPausedUntilUserTurn: vi.fn(() => false),
         reactivateSession,
         requestRecap,
       } as unknown as SessionsDeps["supervisor"],

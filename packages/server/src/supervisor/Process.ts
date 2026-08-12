@@ -905,6 +905,7 @@ export class Process {
    */
   private recapInFlight = false;
   private pendingRecapRequest: PendingRecapRequest | null = null;
+  private recapPausedUntilUserTurn = false;
   private lastNativeRecap: NativeRecapRecord | null = null;
   private nativeRecapWaiters = new Set<() => void>();
   private providerRuntimeStatus: ProviderRuntimeStatus = null;
@@ -1265,6 +1266,15 @@ export class Process {
 
   get recapAfterSeconds(): number {
     return this._recapAfterSeconds;
+  }
+
+  get isRecapPausedUntilUserTurn(): boolean {
+    return this.recapPausedUntilUserTurn;
+  }
+
+  pauseRecapsUntilUserTurn(): void {
+    this.recapPausedUntilUserTurn = true;
+    this.pendingRecapRequest = null;
   }
 
   get helperSideModel(): string {
@@ -2710,6 +2720,13 @@ export class Process {
     provider: AgentProvider,
     options?: { sinceMs?: number | null },
   ): Promise<RecapRequestResult> {
+    if (this.recapPausedUntilUserTurn) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recaps paused until next user turn",
+      };
+    }
     if (this._recapMode === "off") {
       return {
         supported: true,
@@ -2769,6 +2786,13 @@ export class Process {
     provider: AgentProvider,
     options?: { sinceMs?: number | null },
   ): Promise<RecapRequestResult> {
+    if (this.recapPausedUntilUserTurn) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recaps paused until next user turn",
+      };
+    }
     if (!provider.supportsRecaps || !provider.generateSummary) {
       return {
         supported: false,
@@ -3087,6 +3111,22 @@ export class Process {
     return null;
   }
 
+  private acceptRecapResumeSignal(message: UserMessage): UserMessage {
+    if (message.recapResumeHandled === true) {
+      return message;
+    }
+
+    if (
+      !isHiddenInjectedMessage(message) &&
+      message.automaticSource !== "heartbeat" &&
+      message.metadata?.serverReceivedAt !== undefined
+    ) {
+      this.recapPausedUntilUserTurn = false;
+      this.emit({ type: "user-turn-accepted" });
+    }
+    return { ...message, recapResumeHandled: true };
+  }
+
   /**
    * Queue already-expanded provider text. The emitted user echo and the SDK
    * queue entry must be the same logical turn so live SSE and later transcript
@@ -3228,8 +3268,9 @@ export class Process {
     position?: number;
     error?: string;
   } {
+    const acceptedMessage = this.acceptRecapResumeSignal(message);
     return this.queuePreparedMessage(
-      this.prepareProviderMessage(message, options?.composeAnchor),
+      this.prepareProviderMessage(acceptedMessage, options?.composeAnchor),
       { allowSteer: options?.allowSteer },
     );
   }
@@ -3419,6 +3460,7 @@ export class Process {
     if (inputError) {
       return { success: false, deferred: false, error: inputError };
     }
+    const acceptedMessage = this.acceptRecapResumeSignal(message);
     const canPromoteIfReady = !!(
       options?.promoteIfReady &&
       this.messageQueue &&
@@ -3426,13 +3468,13 @@ export class Process {
       // elsewhere durable patient intent uses ordinary deferred timing and
       // promotes immediately like any other deferred turn.
       !usesPatientDeliveryPath(
-        { message, timestamp: new Date().toISOString() },
+        { message: acceptedMessage, timestamp: new Date().toISOString() },
         this.provider,
       ) &&
       this._state.type === "idle"
     );
     if (canPromoteIfReady) {
-      const result = this.queueMessage(message);
+      const result = this.queueMessage(acceptedMessage);
       if (!result.success) {
         return {
           deferred: false,
@@ -3457,7 +3499,7 @@ export class Process {
           },
         );
       }
-      this.emitDeferredQueueChange("promoted", message.tempId);
+      this.emitDeferredQueueChange("promoted", acceptedMessage.tempId);
       return {
         success: true,
         deferred: false,
@@ -3468,7 +3510,7 @@ export class Process {
 
     const lastSeenHead = this.lastSeenAssistantHead();
     const entry: DeferredQueueEntry = {
-      message,
+      message: acceptedMessage,
       timestamp: options?.timestamp ?? new Date().toISOString(),
       ...(lastSeenHead ? { lastSeenHead } : {}),
       ...(options?.persistedQueueId
@@ -3477,7 +3519,7 @@ export class Process {
     };
     this.deferredQueue.push(entry);
     this.persistPatientDeferredEntry(entry);
-    this.emitDeferredQueueChange("queued", message.tempId);
+    this.emitDeferredQueueChange("queued", acceptedMessage.tempId);
     return { success: true, deferred: true };
   }
 

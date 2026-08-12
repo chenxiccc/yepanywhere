@@ -195,6 +195,7 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     const blockResume = body.blockResume === true;
 
     try {
+      await deps.supervisor.pauseRecapsUntilUserTurn(processId);
       const result =
         await deps.supervisor.abortProcessWithVerification(processId);
       if (!result) {

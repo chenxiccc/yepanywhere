@@ -4520,6 +4520,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // side-session/native recaps need in-memory recent text a revived process
     // lacks. Other modes simply skip until the session is live again.
     const metadata = deps.sessionMetadataService?.getMetadata?.(sessionId);
+    if (deps.supervisor.isRecapPausedUntilUserTurn(sessionId)) {
+      return c.json({
+        supported: true,
+        emitted: false,
+        reason: "recaps paused until next user turn",
+      });
+    }
     if (!isAutomaticSessionResumeAllowed(metadata)) {
       return c.json({
         supported: true,

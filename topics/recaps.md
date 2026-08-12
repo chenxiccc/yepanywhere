@@ -53,6 +53,17 @@ cancellation on activity) and the current trigger/threshold gaps.
   is never revived for a recap; Activate, Send, and equivalent user actions
   remain deliberate continuation paths. See [fork-recap.md](fork-recap.md) for
   the revive/no-preempt lifecycle.
+- Stop/Interrupt and Terminate are explicit recap boundaries. Either action
+  cancels a recap deferred behind the active turn, aborts an in-flight forked
+  recap, and durably rejects later time-based recap requests until YA accepts a
+  fresh user-authored turn for that session. The pause survives provider
+  process replacement and server restart; hidden/internal and automatic
+  heartbeat turns do not clear it. This recap pause is separate from heartbeat
+  policy: Interrupt leaves
+  heartbeat eligibility unchanged, while Terminate's existing resume exemption
+  disables heartbeat turns and automatic resume. A fresh user turn clears the
+  recap pause after either action; it does not implicitly re-enable heartbeat
+  turns disabled by Terminate. See [heartbeat.md](heartbeat.md).
 - Recap configuration is durable. `recapAfterSeconds` and `recapMode` are
   persisted in session metadata, so a session's recap preference survives a
   process death / reactivation and is what tells a cold session whether and how
@@ -250,6 +261,12 @@ Remaining probes:
   since the user left does not surface in the message list.
 - A second return event with no assistant output since the last emitted
   recap does not generate or surface a second recap.
+- Stop/Interrupt and Terminate drop a recap deferred behind the active turn and
+  reject later away-timer requests until a fresh visible user turn is accepted,
+  including after process replacement or server restart. Hidden control and
+  automatic heartbeat turns do not clear the pause.
+- Interrupt does not change heartbeat eligibility. Terminate clears heartbeat
+  opt-in and blocks automatic resume through its separate durable exemption.
 - Two persisted overlay recaps with no provider content between them
   render as one row (the newest); with provider content between them,
   both render, the older inline at the point it covered.

@@ -794,6 +794,7 @@ export class Supervisor {
   // topics/recaps.md.
   private forkedRecapInFlight = new Map<string, AbortController>();
   private pendingForkedRecapRequests = new Map<string, number | null>();
+  private recapPausedSessionIds = new Set<string>();
 
   constructor(options: SupervisorOptions) {
     this.provider = options.provider ?? null;
@@ -2814,6 +2815,7 @@ export class Supervisor {
     };
 
     const process = new Process(iterator, options);
+    this.observeProcessEvents(process);
 
     // Queue the initial message
     process.queueMessage(message);
@@ -3479,6 +3481,66 @@ export class Supervisor {
     void this.requestForkedRecap(process, provider, sinceMs).then((result) =>
       this.handleRecapResult(process, result),
     );
+  }
+
+  isRecapPausedUntilUserTurn(sessionId: string): boolean {
+    return (
+      this.recapPausedSessionIds.has(sessionId) ||
+      this.sessionMetadataService?.getMetadata(sessionId)
+        ?.recapPausedUntilUserTurn === true
+    );
+  }
+
+  async pauseRecapsUntilUserTurn(processId: string): Promise<boolean> {
+    const process = this.processes.get(processId);
+    if (!process) {
+      return false;
+    }
+
+    process.pauseRecapsUntilUserTurn();
+    this.cancelInFlightForkedRecap(process);
+    this.recapPausedSessionIds.add(process.sessionId);
+    try {
+      await this.sessionMetadataService?.updateMetadata(process.sessionId, {
+        recapPausedUntilUserTurn: true,
+      });
+    } catch (error) {
+      getLogger().warn(
+        {
+          event: "session_recap_pause_persistence_failed",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to persist recap pause",
+      );
+    }
+    return true;
+  }
+
+  private resumeRecapsAfterUserTurn(process: Process): void {
+    if (!this.isRecapPausedUntilUserTurn(process.sessionId)) {
+      return;
+    }
+
+    this.recapPausedSessionIds.delete(process.sessionId);
+    void this.sessionMetadataService
+      ?.updateMetadata(process.sessionId, {
+        recapPausedUntilUserTurn: false,
+      })
+      .catch((error) => {
+        getLogger().warn(
+          {
+            event: "session_recap_resume_persistence_failed",
+            sessionId: process.sessionId,
+            processId: process.id,
+            projectId: process.projectId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to persist recap resume",
+        );
+      });
   }
 
   getProcess(processId: string): Process | undefined {
@@ -4523,7 +4585,10 @@ export class Supervisor {
       return blockedAtMs;
     }
 
-    const result = await this.queueProcessMessage(process, { text });
+    const result = await this.queueProcessMessage(process, {
+      text,
+      automaticSource: "heartbeat",
+    });
     if (result.success) {
       log.info(
         {
@@ -4622,6 +4687,7 @@ export class Supervisor {
 
     const result = await this.queueProcessMessage(process, {
       text: `${FORCED_HEARTBEAT_INTERRUPT_PREAMBLE}\n\n${details.text}`,
+      automaticSource: "heartbeat",
     });
     log.warn(
       {
@@ -4687,7 +4753,7 @@ export class Supervisor {
     const result = await this.resumeSession(
       candidate.sessionId,
       candidate.projectPath,
-      { text },
+      { text, automaticSource: "heartbeat" },
       undefined,
       {
         providerName: candidate.provider,
@@ -4877,6 +4943,8 @@ export class Supervisor {
     const process = this.processes.get(processId);
     if (!process) return { success: false, supported: false };
 
+    await this.pauseRecapsUntilUserTurn(processId);
+
     // Check if the process supports interrupt
     if (!process.supportsInterrupt) {
       return { success: false, supported: false };
@@ -4948,6 +5016,13 @@ export class Supervisor {
         supported: false,
         emitted: false,
         reason: "process not found",
+      };
+    }
+    if (this.isRecapPausedUntilUserTurn(process.sessionId)) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recaps paused until next user turn",
       };
     }
     const sandboxError = getSessionSandboxSettingsError(
@@ -5151,7 +5226,9 @@ export class Supervisor {
     }
     this.observedProcessIds.add(process.id);
     process.subscribe((event) => {
-      if (
+      if (event.type === "user-turn-accepted") {
+        this.resumeRecapsAfterUserTurn(process);
+      } else if (
         event.type === "mode-change" ||
         event.type === "configuration-applied"
       ) {
@@ -5220,6 +5297,9 @@ export class Supervisor {
         // The old temp ID mapping is retained (no delete)
         const oldIdWasPublished =
           this.sessionToProcess.get(event.oldSessionId) === process.id;
+        if (this.recapPausedSessionIds.delete(event.oldSessionId)) {
+          this.recapPausedSessionIds.add(event.newSessionId);
+        }
         this.sessionToProcess.set(event.newSessionId, process.id);
         this.everOwnedSessions.add(event.newSessionId);
         void this.sessionMetadataService

@@ -701,6 +701,25 @@ describe("SessionMetadataService", () => {
 
       expect(newService.getRecapMode("session-1")).toBe("fork");
     });
+
+    it("persists and clears the recap pause across restarts", async () => {
+      await service.initialize();
+      await service.updateMetadata("session-1", {
+        recapPausedUntilUserTurn: true,
+      });
+
+      const newService = new SessionMetadataService({ dataDir: testDir });
+      await newService.initialize();
+
+      expect(newService.getMetadata("session-1")).toEqual({
+        recapPausedUntilUserTurn: true,
+      });
+
+      await newService.updateMetadata("session-1", {
+        recapPausedUntilUserTurn: false,
+      });
+      expect(newService.getMetadata("session-1")).toBeUndefined();
+    });
   });
 
   describe("recapMessages", () => {

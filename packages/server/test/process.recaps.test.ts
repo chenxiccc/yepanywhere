@@ -233,6 +233,69 @@ describe("Process", () => {
       await process.abort();
     });
 
+    it("drops a deferred recap after Stop until a fresh user turn", async () => {
+      const controller = createControllableIterator();
+      const generateSummary = vi.fn(async () => ({ text: "summary" }));
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        recapsEnabled: true,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "init",
+        session_id: "sess-1",
+      });
+      controller.push({ type: "assistant", message: { content: "during" } });
+      await waitFor(() =>
+        expect(process.getRecentAssistantText()).toEqual(["during"]),
+      );
+
+      await expect(
+        process.requestRecap(createRecapProvider(generateSummary)),
+      ).resolves.toMatchObject({
+        emitted: false,
+        reason: "recap deferred until turn completes",
+      });
+
+      process.pauseRecapsUntilUserTurn();
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+
+      expect(generateSummary).not.toHaveBeenCalled();
+      await expect(
+        process.requestRecap(createRecapProvider(generateSummary)),
+      ).resolves.toMatchObject({
+        emitted: false,
+        reason: "recaps paused until next user turn",
+      });
+
+      process.queueMessage({
+        text: "automatic heartbeat",
+        automaticSource: "heartbeat",
+      });
+      expect(process.isRecapPausedUntilUserTurn).toBe(true);
+
+      process.queueMessage({
+        text: "/compact",
+        metadata: { hidden: true },
+      });
+      expect(process.isRecapPausedUntilUserTurn).toBe(true);
+
+      process.queueMessage({
+        text: "continue",
+        metadata: { serverReceivedAt: new Date().toISOString() },
+      });
+      expect(process.isRecapPausedUntilUserTurn).toBe(false);
+
+      controller.finish();
+      await process.abort();
+    });
+
     it("resolves same-as-main helper model for recap generation", async () => {
       const controller = createControllableIterator();
       const generateSummary = vi.fn(async (request) => ({

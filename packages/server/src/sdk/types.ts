@@ -95,6 +95,10 @@ export type TimestampedSDKMessage<T extends SDKMessage = SDKMessage> = T & {
 
 export interface UserMessage {
   text: string;
+  /** YA-internal automatic-turn source; never treated as fresh user intent. */
+  automaticSource?: "heartbeat";
+  /** YA-internal guard so deferred/recovered delivery is not re-accepted. */
+  recapResumeHandled?: true;
   images?: string[]; // base64 or file paths
   documents?: string[];
   /** File attachments with paths for agent to access via Read tool */

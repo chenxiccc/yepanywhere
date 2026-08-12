@@ -165,3 +165,6 @@ auto-resumed from its rollout three times in one day):
   updated the stored liveness timestamp.
 - Client UI movement alone does not refresh provider progress or reset the
   synthetic heartbeat quiet-period anchor.
+- Explicit Kill/Terminate clears heartbeat opt-in and persists the automatic-
+  resume exemption, so neither a live nor unowned heartbeat turn can follow.
+  Session-page Stop/Interrupt does not change heartbeat eligibility.
