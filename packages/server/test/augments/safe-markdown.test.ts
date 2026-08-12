@@ -440,6 +440,62 @@ describe("renderSafeMarkdown — local file links", () => {
     expect(html).toContain('class="local-media-inline-preview"');
   });
 
+  it("resolves extensionless document images to bounded format candidates", () => {
+    const probed: string[] = [];
+    const options = {
+      localFileBasePath: "/workspace/project/docs",
+      projectFileLinks: {
+        projectId: "project-1",
+        projectPath: "/workspace/project",
+        fileExists: (_absolutePath: string, relativePath: string) => {
+          probed.push(relativePath);
+          return relativePath === "docs/assets/frontier.png";
+        },
+      },
+    };
+
+    const placeholder = renderSafeMarkdown(
+      "![frontier](assets/frontier)",
+      options,
+    );
+    const direct = renderSafeMarkdown("![frontier](assets/frontier)", {
+      ...options,
+      inlineLocalImages: true,
+    });
+
+    expect(probed.slice(0, 2)).toEqual([
+      "docs/assets/frontier.svg",
+      "docs/assets/frontier.png",
+    ]);
+    expect(placeholder).toContain(
+      'data-media-path="/workspace/project/docs/assets/frontier.png"',
+    );
+    expect(direct).toContain(
+      'src="/api/local-image?path=%2Fworkspace%2Fproject%2Fdocs%2Fassets%2Ffrontier.png"',
+    );
+    expect(direct).toContain(
+      'data-ya-path="/workspace/project/docs/assets/frontier.png"',
+    );
+  });
+
+  it("prefers SVG when an extensionless document image has several formats", () => {
+    const html = renderSafeMarkdown("![frontier](assets/frontier)", {
+      localFileBasePath: "/workspace/project/docs",
+      projectFileLinks: {
+        projectId: "project-1",
+        projectPath: "/workspace/project",
+        fileExists: (_absolutePath, relativePath) =>
+          relativePath === "docs/assets/frontier.svg" ||
+          relativePath === "docs/assets/frontier.png",
+      },
+    });
+
+    expect(html).toContain(
+      'data-media-path="/workspace/project/docs/assets/frontier.svg"',
+    );
+    expect(html).not.toContain("frontier.png");
+  });
+
   it("can emit direct local images for standalone rendered documents", () => {
     const html = renderSafeMarkdown("![diagram](assets/diagram.svg)", {
       localFileBasePath: "/workspace/project/docs",

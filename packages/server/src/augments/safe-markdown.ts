@@ -27,6 +27,15 @@ const IMAGE_EXTENSIONS = new Set([
   "svg",
 ]);
 
+const EXTENSIONLESS_IMAGE_CANDIDATES = [
+  "svg",
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+] as const;
+
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "avi", "mkv", "ogv"]);
 
 const MEDIA_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS]);
@@ -539,6 +548,56 @@ function projectFileExists(
     : defaultProjectFileExists(absolutePath);
 }
 
+function localMarkdownImageExists(absolutePath: string): boolean {
+  const projectOptions = activeRenderOptions.projectFileLinks;
+  if (!projectOptions) {
+    return defaultProjectFileExists(absolutePath);
+  }
+
+  const flavor = getProjectPathFlavor(projectOptions.projectPath);
+  const projectRoot = resolveProjectPath(
+    projectOptions.projectPath,
+    "",
+    flavor,
+  );
+  const normalizedPath = resolveProjectPath(absolutePath, "", flavor);
+  if (!isPathInsideProject(normalizedPath, projectRoot, flavor)) {
+    return defaultProjectFileExists(normalizedPath);
+  }
+
+  const relativePath = relativeProjectPath(
+    projectRoot,
+    normalizedPath,
+    flavor,
+  ).replaceAll("\\", "/");
+  return projectFileExists(projectOptions, normalizedPath, relativePath);
+}
+
+function resolveLocalMarkdownImage(
+  reference: LocalPathReference,
+): { ext: string; reference: LocalPathReference } | null {
+  const exactExtension = getExtension(reference.filePath);
+  if (MEDIA_EXTENSIONS.has(exactExtension)) {
+    return { ext: exactExtension, reference };
+  }
+
+  const fileName = getFileName(reference.filePath);
+  if (fileName.includes(".")) {
+    return null;
+  }
+
+  for (const ext of EXTENSIONLESS_IMAGE_CANDIDATES) {
+    const candidate = {
+      ...reference,
+      filePath: `${reference.filePath}.${ext}`,
+    };
+    if (localMarkdownImageExists(candidate.filePath)) {
+      return { ext, reference: candidate };
+    }
+  }
+  return null;
+}
+
 function resolveProjectFileCodeReference(
   text: string,
   options: ProjectFileLinkOptions,
@@ -998,12 +1057,13 @@ function renderImage(
   );
   const localPath = resolveLocalMarkdownHref(href);
   if (localPath) {
-    const ext = getExtension(localPath.filePath);
-    if (MEDIA_EXTENSIONS.has(ext)) {
+    const resolvedImage = resolveLocalMarkdownImage(localPath);
+    if (resolvedImage) {
+      const { ext, reference } = resolvedImage;
       if (activeRenderOptions.inlineLocalImages && IMAGE_EXTENSIONS.has(ext)) {
-        return renderDirectLocalImage(localPath.filePath, text, title);
+        return renderDirectLocalImage(reference.filePath, text, title);
       }
-      return renderLocalMediaLink(localPath, text, ext);
+      return renderLocalMediaLink(reference, text, ext);
     }
     return escapeHtml(text || getFileName(localPath.filePath));
   }

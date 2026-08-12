@@ -165,6 +165,41 @@ describe("Files API", () => {
       );
     });
 
+    it("embeds the resolved SVG for an extensionless document image", async () => {
+      const svg = '<svg width="320" height="180"></svg>';
+      await writeFile(
+        join(projectPath, "docs", "extensionless.md"),
+        "# Figures\n\n![Frontier](assets/frontier)",
+      );
+      await writeFile(join(projectPath, "docs", "assets", "frontier.svg"), svg);
+      await writeFile(
+        join(projectPath, "docs", "assets", "frontier.png"),
+        Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      );
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=docs/extensionless.md&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      const svgPath = await realpath(
+        join(projectPath, "docs", "assets", "frontier.svg"),
+      );
+      expect(json.renderedMarkdownHtml).toContain(
+        `data-media-path="${svgPath}"`,
+      );
+      expect(json.renderedMarkdownHtml).not.toContain("frontier.png");
+      expect(json.embeddedMedia?.[svgPath]).toEqual({
+        data: Buffer.from(svg).toString("base64"),
+        mimeType: "image/svg+xml",
+      });
+    });
+
     it("wraps requested Markdown preview line ranges", async () => {
       const { app } = createApp({
         sdk: mockSdk,
