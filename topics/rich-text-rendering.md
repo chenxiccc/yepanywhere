@@ -345,7 +345,9 @@ formulas as literal text, matching the experience in their editor.
   inline, as a tooltip, or as a compact note after the rendered fragment. A
   future higher-fidelity range marker path should render the document in whole
   chunks with renderer-provided or coarse source-line alignment, then place range
-  markers against that rendered output.
+  markers against that rendered output. The broader `.qmd`, caption,
+  cross-reference, figure-layout, and optional delayed-render work is tracked in
+  [`gaps/quarto-aware-document-view.md`](../gaps/quarto-aware-document-view.md).
 - Edit diff rich render does not yet inline-expand image links. This would help
   Markdown edits that add or update `![image](...)`, but it should share the
   local-media hydration path rather than adding a second image loader.
