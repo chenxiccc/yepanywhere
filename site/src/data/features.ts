@@ -256,6 +256,22 @@ export const features = [
     sourceRefs: ["README.md", "site/src/pages/spring-2026.astro"],
   },
   {
+    id: "headless-provider-control",
+    title: "Headless provider control",
+    summary:
+      "Run the provider layer without the web UI, or submit one bounded turn to an incumbent provider worker through the same host Hono uses.",
+    category: "providers",
+    status: "experimental",
+    docsPath: "/docs/provider-host-control",
+    availability:
+      "Linux source checkouts: non-watch pnpm dev or foreground pnpm provider-host. Other launches keep ordinary in-server provider ownership.",
+    sourceRefs: [
+      "topics/provider-host-api.md",
+      "scripts/provider-runtime-host.mjs",
+      "packages/server/src/routes/provider-host.ts",
+    ],
+  },
+  {
     id: "subscription-plan-access",
     title: "Use your existing subscriptions",
     summary:

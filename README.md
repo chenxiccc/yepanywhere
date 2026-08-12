@@ -27,6 +27,10 @@ limits when the provider exposes them.
 - **Persistent, interoperable sessions** — View and resume compatible work from
   CLIs, VS Code, and first-party desktop apps. Client disconnects do not stop
   server-owned processes.
+- **Separately usable provider layer** — On Linux source checkouts, run the
+  provider host with the non-watch development wrapper or by itself in a
+  foreground terminal, then submit bounded turns through its stable
+  [headless local protocol](topics/provider-host-api.md).
 - **Mobile supervision** — Approve tools, answer questions, upload files and
   photos, use voice input, and receive attention notifications.
 - **Multi-agent coordination** — Use the tiered inbox, global activity view,

@@ -62,6 +62,12 @@ export const docsNavigation: DocsNavSection[] = [
         description: "See stable and experimental agent integrations.",
       },
       {
+        path: "/docs/provider-host-control",
+        title: "Headless provider control",
+        description:
+          "Use the experimental Linux provider layer without the web UI.",
+      },
+      {
         path: "/docs/sessions-and-approvals",
         title: "Sessions and approvals",
         description:

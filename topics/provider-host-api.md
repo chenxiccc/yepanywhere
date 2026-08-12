@@ -11,7 +11,8 @@ attach-or-start recovery, bounded auxiliary session turns, and an authenticated
 Hono adapter are implemented on Linux. The non-watch development wrapper
 attaches to a compatible incumbent host or starts one, and Codex uses the
 shared provider host rather than a separate native host. Public feature copy
-remains gated on fresh-host end-to-end verification.
+labels this source-checkout surface experimental and points back to this exact
+availability and fallback contract.
 
 Related:
 [reload-safe provider runtimes](reload-safe-provider-runtimes.md),
@@ -324,3 +325,21 @@ version, while the permanent capability ledger retains all prior assignments.
   worker, provider process group, socket, descriptor, or token artifact behind.
 - Host absence degrades to ordinary in-Hono sessions; it never weakens network
   admission or makes the provider-host socket remotely reachable.
+
+## Verification evidence
+
+On 2026-08-12 an isolated non-watch wrapper started from the current source
+tree published a private protocol-v2 descriptor and registered its fresh Hono
+generation. A local socket submission launched the deterministic Claude-labeled
+worker, emitted accepted plus three ordered provider events, and completed with
+watermark 3. A second submission through the authenticated Hono adapter reached
+the same runtime id and completed with the same record sequence. The version
+route advertised `provider-host-control` during registration. Terminal wrapper
+shutdown closed the server, maintenance, and Vite ports; removed the descriptor,
+token, lock, and control socket; and left no smoke descendant.
+
+This is end-to-end integration evidence for wrapper, host, worker queue,
+adapter, receipt, and cleanup behavior. Provider-specific real-runtime smokes
+remain release confidence for each upstream adapter; the same-worker queue and
+identity fencing are the non-forking mechanism rather than transcript
+observation.

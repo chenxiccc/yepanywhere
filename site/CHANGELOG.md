@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Document the experimental Linux provider host as a separately usable layer,
+  including its foreground launch, stable same-user local protocol,
+  authenticated Hono adapter, and bounded single-worker turn semantics.
+
 ### Changed
 - Classify Source Control as stable and complete its public description with
   working-tree and commit navigation, tracked-file search and blame,

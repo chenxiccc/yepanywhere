@@ -83,10 +83,11 @@ volatile queued input; **Reload When Safe** remains the fallback otherwise.
 
 The provider host listens on private mode-0600 Unix sockets using
 token-authenticated, versioned JSONL. Stable same-user discovery, foreground
-headless startup, and attach-or-start recovery are implemented. The remaining
-control layer adds a host-mediated session-turn operation and authenticated
-Hono adapter for remote use. Worker sockets remain private, and auxiliary
-clients never become a second Hono controller. See
+headless startup, attach-or-start recovery, bounded host-mediated session
+turns, and the authenticated Hono adapter are implemented. Worker sockets
+remain private; auxiliary clients submit through the incumbent worker queue,
+never acknowledge Hono's replay stream, and never become a second Hono
+controller. See
 [`topics/provider-host-api.md`](topics/provider-host-api.md) and
 [`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md).
 
@@ -114,7 +115,8 @@ section below for what would have to change at higher fan-out.
   replay, cleanup, availability gates, and verification matrix.
 - [`topics/provider-host-api.md`](topics/provider-host-api.md) — current private
   host/worker protocols, stable same-user discovery, headless bootstrap,
-  attach-or-start recovery, and the session-turn control contract.
+  attach-or-start recovery, bounded session turns, receipts, and the
+  authenticated Hono adapter.
 - [`topics/cross-host-delegation.md`](topics/cross-host-delegation.md) — broad
   product direction for browser-known hosts, directed server-to-server grants,
   and separate native worker sessions as a useful step before session

@@ -14,9 +14,10 @@ Codex OSS all use the shared provider host. The former
 `codexReloadSafeSessions` setting remains accepted and stored for compatibility
 but is inert and hidden from the current client.
 
-Stable same-user discovery, headless startup, and verified attach-or-start
-recovery are implemented. Auxiliary session-turn access is specified in
-[provider host API](provider-host-api.md) and remains in progress.
+Stable same-user discovery, headless startup, verified attach-or-start
+recovery, bounded auxiliary session turns, and the authenticated Hono adapter
+are implemented. The exact control and fallback contract is in
+[provider host API](provider-host-api.md).
 
 The retired Codex-native contract was proved with real active-turn reloads
 through both the API and wrapper `SIGHUP`, a second turn after reattach,
@@ -27,6 +28,13 @@ real-runtime smokes in the verification matrix remain release evidence rather
 than missing architecture. An isolated wrapper smoke also proved that both
 historical hosts survived `SIGHUP` while the Hono PID changed, then both exited
 on terminal wrapper `SIGTERM`.
+
+The provider-control path has separate fresh-wrapper evidence: local-socket and
+authenticated-Hono submissions reached one deterministic Claude-labeled worker
+and returned ordered terminal receipts, then terminal wrapper shutdown removed
+every endpoint and descendant. This proves the shared lifecycle and
+single-worker turn path without claiming a fresh provider-specific production
+smoke for every adapter.
 
 Related:
 [server message routing](../docs/project/server-message-routing.md),
