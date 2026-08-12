@@ -1,6 +1,6 @@
 ---
 title: Files and source control
-description: Review files and diffs remotely while keeping file access and Git mutations deliberately bounded.
+description: Review files, Git history, and line comments remotely while keeping file access and repository mutations deliberately bounded.
 ---
 
 Yep Anywhere turns file paths, edits, and repository state into reviewable
@@ -29,8 +29,17 @@ Inspect the exact proposed change before approving or publishing it.
 ## Source Control page
 
 The Source Control page is a review workbench, not a complete Git client. It
-shows working-tree changes, selected diffs, repository files, and recent
-commits. Mutating actions are explicit:
+opens on the current working tree and can navigate recent commits and their
+changed files. The **Files** view searches tracked paths and adds line-by-line
+blame when provenance is available.
+
+Click a line in a diff or blame view to leave a persistent review comment.
+**Pending Comments** collects those notes across files and revisions; submit a
+coherent bundle to a new or existing agent session when the review is ready.
+**Reviews** retains the frozen submitted source, target session, follow-up
+discussion, and resolution state so later review does not lose its history.
+
+Repository-mutating actions remain deliberately narrow and explicit:
 
 - **Check remote** fetches tracking state without modifying the working tree.
 - **Pull** attempts a safe fast-forward and stops when changes diverge or would

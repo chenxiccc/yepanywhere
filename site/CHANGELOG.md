@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Classify Source Control as stable and complete its public description with
+  working-tree and commit navigation, tracked-file search and blame,
+  line-comment review bundles sent to agents, and the deliberately bounded
+  remote, pull, and push actions.
+
 ## [site-v1.9.0] - 2026-08-01
 
 ### Fixed

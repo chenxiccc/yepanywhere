@@ -347,13 +347,14 @@ export const features = [
     id: "source-control",
     title: "Source control UI",
     summary:
-      "Browse changes, diffs, repository files, blame, and recent commits, with explicit check-remote, fast-forward pull, and push actions.",
+      "Browse working-tree and commit diffs, search tracked files and blame, send line-comment review bundles to agents, and explicitly check remote, fast-forward pull, or push.",
     category: "review",
-    status: "experimental",
+    status: "stable",
     docsPath: "/docs/files-and-source-control",
     featured: true,
     sourceRefs: [
       "topics/source-control.md",
+      "topics/source-review-to-session.md",
       "site/src/pages/spring-2026.astro",
     ],
   },

@@ -73,6 +73,15 @@ These registries are editorial release claims, not runtime negotiation. They
 must not replace server capability gates, provider adapter contracts, or
 hosted-client compatibility checks.
 
+Source Control is a stable feature. Its entry and guide present an inspection
+and agent-direction workbench: working-tree and commit diffs, tracked-file
+search and blame, and persistent line comments submitted as coherent
+agent-session reviews. Its only direct repository mutations are explicit
+fast-forward Pull and Push; Check remote updates observation without modifying
+the working tree. Do not imply a general-purpose Git client with staging,
+commit, branch surgery, integration, conflict resolution, discard, or recovery
+controls.
+
 Every registry entry has a stable id, concise public copy, an owning docs path,
 and repository source references for review. A build fails on duplicate ids,
 unknown relationships, missing docs destinations, nonexistent repository
