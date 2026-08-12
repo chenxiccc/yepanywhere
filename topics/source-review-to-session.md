@@ -51,6 +51,8 @@ home "stands" or is the established convention, this amendment wins.
 
 Related topics: [selection-comment-ui](selection-comment-ui.md) (the
 quote-comment ancestor — but see the gesture difference below),
+[source-review-followups](source-review-followups.md) (dormant agent-authored
+annotations for later review sweeps),
 [floating-new-session-composer](floating-new-session-composer.md) (the
 first-turn launch path), [local-file-source-highlighting](local-file-source-highlighting.md)
 (highlighted read-only file previews),
@@ -353,10 +355,13 @@ entry.
 
 **Addressed and unchanged are different axes.** YA compares each entry's
 captured neighborhood with current state, ignoring whitespace-only changes. An
-entry can be addressed by a `wont_fix` or `question` outcome while its code is
-unchanged. Reviews and changed-file rows show both the open/addressed state and
-an independent unchanged indicator, so "the agent answered without editing"
-does not become the contradictory claim that the comment is unaddressed.
+entry can be addressed by a **No change** or **Question** outcome while its code
+is unchanged. The version-1 response schema stores No change under its legacy
+machine token, `wont_fix`; prompts and UI do not present that issue-tracker
+wording as the human disposition. Reviews and changed-file rows show both the
+open/addressed state and an independent unchanged indicator, so "the agent
+answered without editing" does not become the contradictory claim that the
+comment is unaddressed.
 
 ### The persisted site model precedes submission persistence
 
@@ -408,6 +413,10 @@ conflict and is never overwritten.
 `response.json` contains `{ version, submissionId, outcomes,
 suggestedTitle? }`. Every outcome names an exact `{ siteId, entryId }`, one of
 the machine values `done`, `wont_fix`, or `question`, and bounded free text.
+The persisted `wont_fix` value is presented as **No change** and covers both
+"no source change was requested" and "a source change was considered but is
+not needed." Keeping the version-1 token preserves existing response files;
+its narrower name does not define the user-facing semantics.
 One valid response revision covers every entry in `request.json` exactly once.
 Unknown, missing, or duplicate ids; an incorrect submission id or version; an
 oversized file; or invalid/truncated JSON rejects the entire revision without
@@ -418,6 +427,12 @@ file adds nothing. A later valid complete revision appends history only for
 outcomes whose disposition or text changed; omission never erases a prior
 outcome. A "why no change yet" explanation is the outcome text linked to the
 authoring session, not a reviewer comment and not another pending entry.
+
+Optional clarification, discussion, source-comment, and gap annotations are
+not part of this response contract. The dormant proposal in
+[Source review follow-ups](source-review-followups.md) keeps them orthogonal to
+the per-comment disposition and forbids adding them to review prompts until YA
+has a workflow that intends to receive and act on them.
 
 ### Response observation is per delivery, bounded, and explicit
 
@@ -1406,8 +1421,9 @@ resolves. The remaining genuinely open items are labeled as such.
   a batch archives its comments — "handled" from the reviewer's side — but
   the agent's actual outcomes never flow back. The seeded prompt already
   instructs the agent to report a per-comment disposition
-  (done / won't-fix / question) in its reply; nothing captures that onto the
-  archived comments. The aspiration: each archived comment shows a one-line
+  (done / no change / question; version 1 stores No change as `wont_fix`) in
+  its reply; nothing captures that onto the archived comments. The aspiration:
+  each archived comment shows a one-line
   disposition in the comments view, beside its batch/session link, so
   "submitted" and "actually resolved" stop being conflated. Feasible shape:
   the bundled review message additionally instructs the agent to emit an

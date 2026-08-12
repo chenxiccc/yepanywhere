@@ -301,3 +301,5 @@
   protected-capsule proposals.
 - all-session-content-search - Proposal for incremental literal search over
   visible user and assistant text across sessions and projects.
+- source-review-followups - Optional clarification, discussion,
+  source-comment, and gap annotations for a future review-sweep workflow.

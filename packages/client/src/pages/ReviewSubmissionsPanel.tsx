@@ -597,7 +597,7 @@ function dispositionLabel(
   disposition: ReviewSite["outcomes"][number]["disposition"],
   t: TranslationFn,
 ): string {
-  if (disposition === "wont_fix") return t("sourceReviewOutcomeWontFix");
+  if (disposition === "wont_fix") return t("sourceReviewOutcomeNoChange");
   if (disposition === "question") return t("sourceReviewOutcomeQuestion");
   return t("sourceReviewOutcomeDone");
 }

@@ -380,7 +380,7 @@ function reviewDispositionLabel(
   disposition: ReviewInboxItem["outcomes"][number]["disposition"],
   t: Translate,
 ): string {
-  if (disposition === "wont_fix") return t("sourceReviewOutcomeWontFix");
+  if (disposition === "wont_fix") return t("sourceReviewOutcomeNoChange");
   if (disposition === "question") return t("sourceReviewOutcomeQuestion");
   return t("sourceReviewOutcomeDone");
 }

@@ -73,7 +73,9 @@ export function composeSubmissionReviewTurn(
   }
   out.push(
     "Record one outcome for every request entry in `response.json` in that directory. " +
-      "Use version 1, this submissionId, and disposition `done`, `wont_fix`, or `question` with bounded explanatory text; replace the file atomically.",
+      "Use version 1 and this submissionId. Set each disposition to `done`, `question`, " +
+      "or the version-1 token `wont_fix` for **No change** when no source change was requested or needed. " +
+      "Include bounded explanatory text; replace the file atomically.",
   );
   return `${out.join("\n").trimEnd()}\n`;
 }
@@ -89,7 +91,7 @@ export function composeReviewTurn(input: ComposeReviewTurnInput): string {
     `${followUp ? "A further" : "A"} source review: ${n} comment${
       n === 1 ? "" : "s"
     } left on diff lines. Address each one and report a per-comment disposition ` +
-      "(done / won't-fix / question). The full structured review is in " +
+      "(done / no change / question). The full structured review is in " +
       `\`${reviewFileRelPath}\`.`,
   );
   out.push("");

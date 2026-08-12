@@ -1365,7 +1365,7 @@
   "sourceReviewCaptureUnavailableTooLarge": "The captured source is too large to display.",
   "sourceReviewCaptureUnavailableMissing": "The captured source object is unavailable.",
   "sourceReviewOutcomeDone": "Done",
-  "sourceReviewOutcomeWontFix": "Won’t fix",
+  "sourceReviewOutcomeNoChange": "No change",
   "sourceReviewOutcomeQuestion": "Question",
   "sourceReviewOutcomeSession": "Open response session",
   "sourceReviewFollowUp": "Follow-up comment",

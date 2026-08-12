@@ -83,6 +83,9 @@ describe("composeReviewTurn", () => {
     expect(prompt).not.toContain("review-comments.json");
     expect(prompt).toContain("site-1/entry-1");
     expect(prompt).toContain("response.json");
+    expect(prompt).toContain(
+      "version-1 token `wont_fix` for **No change** when no source change was requested or needed",
+    );
   });
   it("includes the read-current-state instruction and review-file reference", () => {
     const prompt = composeReviewTurn({

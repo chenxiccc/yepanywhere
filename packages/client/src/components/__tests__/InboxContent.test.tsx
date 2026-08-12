@@ -530,6 +530,7 @@ describe("InboxContent", () => {
     expect(
       await screen.findByText("The stable protocol still needs this field."),
     ).toBeTruthy();
+    expect(screen.getByText("sourceReviewOutcomeNoChange")).toBeTruthy();
     expect(
       screen
         .getByRole("link", { name: "Compatibility review" })

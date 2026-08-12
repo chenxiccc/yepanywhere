@@ -255,6 +255,7 @@ describe("ReviewSubmissionsPanel", () => {
 
     expect(await screen.findByText("sourceReviewStateAddressed")).toBeTruthy();
     expect(screen.getByText("sourceReviewSourceUnchanged")).toBeTruthy();
+    expect(screen.getByText("sourceReviewOutcomeNoChange")).toBeTruthy();
     expect(
       screen.getByText("The compatibility contract requires this shape."),
     ).toBeTruthy();
