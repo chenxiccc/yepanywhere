@@ -59,6 +59,39 @@ linked docs when the details change.
   unrelated to the separate desktop Tauri application. iOS follows later with
   SwiftUI.
 
+## Provider runtime ownership and reload
+
+On a capable Linux non-watch development launch, `scripts/dev.js` owns a shared
+provider host outside the replaceable Hono process. One worker per session owns
+the real provider adapter, SDK/TUI transport, message queue, callbacks, and
+sequenced output; Hono's `Process` talks to it through an `AgentSession` proxy.
+When that host is unavailable, provider ownership remains inside Hono and the
+ordinary safe-restart behavior applies.
+
+Shared-host use is capability-driven and automatic, not a user toggle. The
+current tree still has one default-off Codex setting that selects a separate
+Codex-native lifecycle host; its approved retirement will make that stored
+field inert and leave the shared host as the sole reload-safe runtime owner.
+Until the retirement lands, an enabled setting continues to select the native
+path for eligible new or resumed Codex sessions.
+
+**Safe Reload replaces Hono only.** Existing shared-host workers intentionally
+keep the provider code and launch facts they started with. A newly launched
+worker uses current provider code, a targeted worker relaunch updates that one
+session, and a full wrapper reboot is the only operation that guarantees every
+provider worker adopted provider-layer changes. The UI's immediate reload is
+available only when each active blocker has a detachable hosted owner and no
+volatile queued input; **Reload When Safe** remains the fallback otherwise.
+
+The provider host already listens on private mode-0600 Unix sockets using
+token-authenticated, versioned JSONL. The approved next layer makes the host
+discoverable to same-user headless clients, adds a host-mediated session-turn
+operation, and supplies an authenticated Hono adapter for remote use. Worker
+sockets remain private, and auxiliary clients never become a second Hono
+controller. See
+[`topics/provider-host-api.md`](topics/provider-host-api.md) and
+[`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md).
+
 Single-user / small-team scale is assumed throughout — see the cleanups
 section below for what would have to change at higher fan-out.
 
@@ -79,9 +112,12 @@ section below for what would have to change at higher fan-out.
   provider-specific portable bundle and active ownership between trusted YA
   peers while the client follows the same session identity.
 - [`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md)
-  — Codex-first proposal for moving live provider protocol ownership outside
-  the replaceable development backend so an active turn can survive reload
-  under the same YA session identity.
+  — implemented wrapper-lifetime provider ownership, Hono reattachment,
+  replay, cleanup, availability gates, and verification matrix.
+- [`topics/provider-host-api.md`](topics/provider-host-api.md) — current private
+  host/worker protocols plus the approved same-user local control API,
+  headless bootstrap, Hono attach-or-start recovery, and Codex-native
+  convergence.
 - [`topics/cross-host-delegation.md`](topics/cross-host-delegation.md) — broad
   product direction for browser-known hosts, directed server-to-server grants,
   and separate native worker sessions as a useful step before session
@@ -233,38 +269,6 @@ implementation. Each entry should make the trigger explicit so the proposal
 isn't enacted prematurely. Where an entry mentions a possible library, treat
 that as one option among the three above (library / minimal hand-rolled /
 bespoke), not a recommendation.
-
-### Reload-safe provider runtime ownership
-
-**Problem today.** The replaceable Hono server owns each live provider
-connection and the in-memory `Process` state needed to interpret and control
-it. An immediate development reload therefore interrupts an active turn;
-**Reload When Safe** avoids the interruption only by waiting for active work
-and volatile queues to drain.
-
-**Proposal.** Behind a default-off Codex provider setting, let the stable
-`scripts/dev.js` wrapper own a Linux-only lifecycle host with one private Unix-
-socket app-server per eligible session. A replacement Hono generation
-reattaches directly through native running-thread resume; explicit HUP/API
-reload preserves the runtime, while terminal wrapper shutdown and owner loss
-use bounded verified reaping. Keep safe restart everywhere the capability is
-absent. See
-[`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md).
-
-**Cost.** Cross-process discovery, native snapshot reconciliation, approval
-preservation, single-controller fencing, sandbox isolation, wrapper/host
-failure handling, and bounded idle/terminal teardown. Providers without a
-reconnectable native service would require a later YA worker that owns their
-SDK object, not merely a detached CLI PID.
-
-**Benefit.** The development backend can load changed code immediately without
-stopping eligible active agent turns, then reconstruct the same visible YA
-session when it returns.
-
-**Trigger.** The default-off Codex implementation is approved after an observed
-reload interruption, verified upstream rejoin support, and lifecycle review. A
-general provider-runtime extraction waits for the Codex smoke and separate
-provider-specific continuity proofs.
 
 ### Outbound buffering / per-listener async dispatch
 

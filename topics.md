@@ -258,8 +258,10 @@
   distribution claims, public docs ownership, and the marketing analytics
   boundary.
 - reload-safe-provider-runtimes - Wrapper-owned provider protocol runtimes
-  that can keep active turns alive across a development backend reload;
-  Codex-first Linux proposal.
+  that keep active turns alive across a development Hono reload, with bounded
+  reattachment and cleanup.
+- provider-host-api - Same-user local control of wrapper-owned provider
+  workers, headless bootstrap, and authenticated Hono adaptation.
 - project-path-links - Filesystem-authoritative project path membership and
   highlighted-source linkification.
 - performance-regression-suite - Capacity-keyed black-box latency, memory,

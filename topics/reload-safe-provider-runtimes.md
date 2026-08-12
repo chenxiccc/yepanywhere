@@ -14,6 +14,13 @@ participates in the shared host just like Claude, Gemini, Grok, OpenCode, Pi,
 and Codex OSS. The selection is made on each new or resumed provider launch;
 it never converts an already-live runtime.
 
+Approved next direction: retire the Codex-native alternate and make the shared
+provider host the sole reload-safe backend. The existing setting remains
+accepted and stored for compatibility but becomes inert; this is a separate
+convergence decision, not part of the shared host's same-session safety. Stable
+same-user discovery, headless startup, and auxiliary session-turn access are
+specified in [provider host API](provider-host-api.md).
+
 The Codex-native contract has been proved with real active-turn reloads through
 both the API and wrapper `SIGHUP`, a second turn after reattach, terminal
 wrapper cleanup, and deterministic owner-loss tests. The shared host has
@@ -32,6 +39,7 @@ Related:
 [session sandboxing](session-sandboxing.md),
 [subprocess environment](subprocess-environment.md),
 [settings placement](settings-ui-placement.md),
+[provider host API](provider-host-api.md),
 [core service API](core-service-api.md), and
 [federated super sessions](federated-super-sessions.md).
 
@@ -89,6 +97,12 @@ The existing **Reload When Safe** flow remains the required fallback for
 already-running ordinary sessions, volatile queued work, an unavailable or
 incompatible host, and any session that cannot detach cleanly. Changing the
 Codex setting never attempts to adopt a live process.
+
+Safe Reload replaces Hono, not existing provider workers. A surviving worker
+keeps the provider code and launch facts it started with. New workers load
+current code, a targeted worker relaunch updates one session, and only a full
+wrapper reboot guarantees that every hosted provider worker adopted a
+provider-layer change.
 
 ## Baseline Ownership And Failure Path
 
