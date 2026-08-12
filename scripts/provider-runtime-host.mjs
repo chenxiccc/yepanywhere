@@ -2,12 +2,26 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  PROVIDER_HOST_PROTOCOL_VERSION,
+  acquireProviderHostLock,
+  captureProcessIdentity,
+  createProviderHostSourceIdentity,
+  createProviderHostToken,
+  discoverProviderHost,
+  ensurePrivateProviderHostDirectory,
+  readLinuxProcessStartTime,
+  recoverProviderHost,
+  removeProviderHostArtifacts,
+  resolveProviderHostPaths,
+  writeProviderHostDescriptor,
+} from "./provider-runtime-discovery.mjs";
 
-const HOST_PROTOCOL_VERSION = 1;
+const HOST_PROTOCOL_VERSION = PROVIDER_HOST_PROTOCOL_VERSION;
 const WORKER_READY_TIMEOUT_MS = 30_000;
 const COOPERATIVE_STOP_MS = 5_000;
 const TERM_GRACE_MS = 1_500;
@@ -92,24 +106,8 @@ function isProcessGroupAlive(processGroupId) {
   }
 }
 
-function readProcessStartTime(pid) {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const commandEnd = stat.lastIndexOf(")");
-    if (commandEnd < 0) return null;
-    const fields = stat
-      .slice(commandEnd + 1)
-      .trim()
-      .split(/\s+/);
-    return fields[19] ?? null;
-  } catch (error) {
-    if (error?.code === "ENOENT" || error?.code === "ESRCH") return null;
-    throw error;
-  }
-}
-
 function captureProcessGroup(processGroupId) {
-  const leaderStartTime = readProcessStartTime(processGroupId);
+  const leaderStartTime = readLinuxProcessStartTime(processGroupId);
   if (!leaderStartTime) {
     throw new Error(
       `Cannot capture provider process group ${processGroupId} identity`,
@@ -120,7 +118,7 @@ function captureProcessGroup(processGroupId) {
 
 function isOwnedProcessGroupAlive(target) {
   if (!isProcessGroupAlive(target.processGroupId)) return false;
-  const currentStartTime = readProcessStartTime(target.processGroupId);
+  const currentStartTime = readLinuxProcessStartTime(target.processGroupId);
   return (
     currentStartTime === null || currentStartTime === target.leaderStartTime
   );
@@ -188,6 +186,7 @@ export class ProviderRuntimeHost {
     notifyWrapper = () => {},
     workerPath = workerEntrypoint,
     terminateGroup = terminateProcessGroup,
+    publishDescriptor = () => {},
   }) {
     this.runtimeDir = runtimeDir;
     this.controlSocketPath = controlSocketPath;
@@ -196,6 +195,7 @@ export class ProviderRuntimeHost {
     this.sendToWrapper = notifyWrapper;
     this.workerPath = workerPath;
     this.terminateGroup = terminateGroup;
+    this.publishDescriptor = publishDescriptor;
     this.runtimes = new Map();
     this.runtimeIdsBySessionId = new Map();
     this.retainedProcessGroups = new Map();
@@ -230,11 +230,23 @@ export class ProviderRuntimeHost {
       this.server.listen(this.controlSocketPath);
     });
     chmodSync(this.controlSocketPath, 0o600);
+    this.refreshDescriptor();
     this.notifyWrapper({
       type: "ready",
       protocolVersion: HOST_PROTOCOL_VERSION,
       controlSocketPath: this.controlSocketPath,
     });
+  }
+
+  refreshDescriptor() {
+    const processGroups = new Map(this.retainedProcessGroups);
+    for (const entry of this.runtimes.values()) {
+      processGroups.set(entry.processGroupId, entry.processGroup);
+      for (const [processGroupId, target] of entry.providerProcessGroups) {
+        processGroups.set(processGroupId, target);
+      }
+    }
+    this.publishDescriptor({ processGroups: [...processGroups.values()] });
   }
 
   handleConnection(socket) {
@@ -516,6 +528,16 @@ export class ProviderRuntimeHost {
       void this.handleRuntimeExit(runtimeId);
     });
 
+    try {
+      this.refreshDescriptor();
+    } catch (error) {
+      await this.terminateRuntime(
+        runtimeId,
+        "provider host descriptor publication failed",
+      ).catch(() => {});
+      throw error;
+    }
+
     const ready = new Promise((resolve, reject) => {
       const finish = (fn) => {
         clearTimeout(timeout);
@@ -585,6 +607,7 @@ export class ProviderRuntimeHost {
     ) {
       const target = captureProcessGroup(message.processGroupId);
       this.retainedProcessGroups.set(message.processGroupId, target);
+      this.refreshDescriptor();
       this.notifyWrapper({
         type: "runtimeTargets",
         runtimeId: `provider-resource-${message.processGroupId}`,
@@ -626,6 +649,7 @@ export class ProviderRuntimeHost {
         processGroupId,
         captureProcessGroup(processGroupId),
       );
+      this.refreshDescriptor();
       this.notifyRuntimeTargets(entry);
     } catch (error) {
       if (isProcessGroupAlive(processGroupId)) throw error;
@@ -900,6 +924,7 @@ export class ProviderRuntimeHost {
       this.runtimeIdsBySessionId.delete(entry.sessionId);
     }
     removePathIfPresent(entry.socketPath);
+    this.refreshDescriptor();
     this.notifyWrapper({
       type: "runtimeExited",
       runtimeId: entry.runtimeId,
@@ -930,6 +955,7 @@ export class ProviderRuntimeHost {
         [...this.retainedProcessGroups.values()].map(this.terminateGroup),
       );
       this.retainedProcessGroups.clear();
+      this.refreshDescriptor();
       failures.push(
         ...retainedResults.filter((result) => result.status === "rejected"),
       );
@@ -956,43 +982,142 @@ export class ProviderRuntimeHost {
 }
 
 async function main() {
-  const runtimeDir = process.env.YEP_PROVIDER_RUNTIME_DIR;
-  const controlSocketPath = process.env.YEP_PROVIDER_RUNTIME_SOCKET;
-  const token = process.env.YEP_PROVIDER_RUNTIME_TOKEN;
-  if (!runtimeDir || !controlSocketPath || !token) {
+  const headless = process.argv.includes("--headless");
+  const unexpectedArguments = process.argv
+    .slice(2)
+    .filter((argument) => argument !== "--headless" && argument !== "--help");
+  if (unexpectedArguments.length > 0) {
+    throw new Error(`Unknown option: ${unexpectedArguments[0]}`);
+  }
+  if (process.argv.includes("--help")) {
+    process.stdout.write(
+      "Usage: node scripts/provider-runtime-host.mjs --headless\n\n" +
+        "Start the Linux provider host in the foreground. The stable local\n" +
+        "descriptor and private capability token are created automatically.\n",
+    );
+    return;
+  }
+  if (!headless && typeof process.send !== "function") {
+    throw new Error("Use --headless when starting the provider host directly");
+  }
+  const stablePaths = resolveProviderHostPaths();
+  if (!stablePaths) {
+    throw new Error("The provider runtime host is available only on Linux");
+  }
+  const runtimeDir =
+    process.env.YEP_PROVIDER_RUNTIME_DIR ?? stablePaths.runtimeDir;
+  const paths = {
+    runtimeDir,
+    controlSocketPath:
+      process.env.YEP_PROVIDER_RUNTIME_SOCKET ??
+      join(runtimeDir, basename(stablePaths.controlSocketPath)),
+    descriptorPath:
+      process.env.YEP_PROVIDER_RUNTIME_DESCRIPTOR ??
+      join(runtimeDir, basename(stablePaths.descriptorPath)),
+    tokenPath:
+      process.env.YEP_PROVIDER_RUNTIME_TOKEN_FILE ??
+      join(runtimeDir, basename(stablePaths.tokenPath)),
+    lockPath:
+      process.env.YEP_PROVIDER_RUNTIME_LOCK ??
+      join(runtimeDir, basename(stablePaths.lockPath)),
+    recoveryLockPath:
+      process.env.YEP_PROVIDER_RUNTIME_RECOVERY_LOCK ??
+      join(runtimeDir, basename(stablePaths.recoveryLockPath)),
+  };
+  ensurePrivateProviderHostDirectory(paths.runtimeDir);
+  let discovery = await discoverProviderHost(paths);
+  if (discovery.state === "available") {
+    throw new Error("A provider host is already starting or running");
+  }
+  if (discovery.state === "unresponsive") {
+    const recovery = await recoverProviderHost(paths, discovery.descriptor);
+    process.stderr.write(
+      `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}\n`,
+    );
+    discovery = await discoverProviderHost(paths);
+  }
+  if (discovery.state !== "absent") {
     throw new Error(
-      "YEP_PROVIDER_RUNTIME_DIR, YEP_PROVIDER_RUNTIME_SOCKET, and YEP_PROVIDER_RUNTIME_TOKEN are required",
+      `Provider host startup stopped at ${discovery.state}${discovery.error ? `: ${discovery.error}` : ""}`,
     );
   }
+  const owner = captureProcessIdentity();
+  const releaseHostLock = acquireProviderHostLock(paths, owner);
+  const descriptorId = randomUUID();
+  const startedAt = new Date().toISOString();
+  const workerPath = resolveProviderRuntimeWorkerPath();
+  const cleanupStableState = () => {
+    removeProviderHostArtifacts(paths);
+    releaseHostLock();
+  };
+  let token;
+  let identities;
+  try {
+    token = createProviderHostToken(paths.tokenPath);
+    identities = createProviderHostSourceIdentity({
+      projectRoot: rootDir,
+      hostPath: fileURLToPath(import.meta.url),
+      workerPath,
+    });
+  } catch (error) {
+    cleanupStableState();
+    throw error;
+  }
   const host = new ProviderRuntimeHost({
-    runtimeDir,
-    controlSocketPath,
+    runtimeDir: paths.runtimeDir,
+    controlSocketPath: paths.controlSocketPath,
     token,
-    workerPath: resolveProviderRuntimeWorkerPath(),
+    workerPath,
+    publishDescriptor({ processGroups }) {
+      writeProviderHostDescriptor(paths, {
+        descriptorId,
+        hostProtocolVersion: HOST_PROTOCOL_VERSION,
+        features: ["runtime-control"],
+        controlSocketPath: paths.controlSocketPath,
+        tokenFilePath: paths.tokenPath,
+        owner,
+        startedAt,
+        ...identities,
+        processGroups,
+      });
+    },
     notifyWrapper(message) {
       if (typeof process.send === "function" && process.connected) {
         process.send(message);
       }
     },
   });
+  let shutdownPromise;
   const shutdown = (reason) => {
-    void host
+    shutdownPromise ??= host
       .shutdown(reason)
-      .then(() => process.exit(0))
+      .then(() => {
+        cleanupStableState();
+        process.exit(0);
+      })
       .catch((error) => {
         process.stderr.write(`[ProviderRuntimeHost] ${errorMessage(error)}\n`);
         process.exit(1);
       });
+    void shutdownPromise;
   };
   process.on("message", (message) => {
     if (message?.type === "shutdown") shutdown(message.reason);
   });
-  process.on("disconnect", () => shutdown("wrapper IPC closed"));
+  if (!headless && typeof process.send === "function") {
+    process.on("disconnect", () => shutdown("wrapper IPC closed"));
+  }
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
-  await host.start();
+  try {
+    await host.start();
+  } catch (error) {
+    cleanupStableState();
+    throw error;
+  }
+  const mode = headless ? "headless" : "wrapper";
   process.stdout.write(
-    `[ProviderRuntimeHost] Listening at ${basename(controlSocketPath)}\n`,
+    `[ProviderRuntimeHost] ${mode} host listening at ${basename(paths.controlSocketPath)}\n`,
   );
 }
 

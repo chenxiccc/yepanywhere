@@ -2,19 +2,21 @@
 
 > Reload-safe provider runtimes keep active local Linux sessions running across
 > replacement of YA's Hono server by placing each live provider protocol owner
-> under a wrapper-lifetime host; terminal wrapper shutdown still reaps every
-> hosted provider process within a bounded deadline.
+> under a durable host outside Hono; shutdown of that host's wrapper or
+> foreground terminal still reaps every hosted provider process within a
+> bounded deadline.
 
 Topic: reload-safe-provider-runtimes
 
-Status: **implemented for the Linux non-watch development wrapper.** Codex,
-Claude, Gemini, Grok, OpenCode, Pi, and Codex OSS all use the shared provider
-host. The former `codexReloadSafeSessions` setting remains accepted and stored
-for compatibility but is inert and hidden from the current client.
+Status: **implemented on Linux for the non-watch development wrapper and the
+foreground headless host.** Codex, Claude, Gemini, Grok, OpenCode, Pi, and
+Codex OSS all use the shared provider host. The former
+`codexReloadSafeSessions` setting remains accepted and stored for compatibility
+but is inert and hidden from the current client.
 
-Stable same-user discovery, headless startup, and auxiliary session-turn
-access are specified in [provider host API](provider-host-api.md) and remain
-the next implementation step.
+Stable same-user discovery, headless startup, and verified attach-or-start
+recovery are implemented. Auxiliary session-turn access is specified in
+[provider host API](provider-host-api.md) and remains in progress.
 
 The retired Codex-native contract was proved with real active-turn reloads
 through both the API and wrapper `SIGHUP`, a second turn after reattach,
@@ -52,7 +54,9 @@ to interpret or control it.
 
 The shared backend places one provider worker around one `AgentSession`:
 
-1. `scripts/dev.js` owns one provider host for its complete wrapper lifetime.
+1. `scripts/dev.js` discovers and attaches to one provider host, starting it as
+   a wrapper-owned child only when no compatible host exists. `pnpm
+   provider-host` can instead own the same host in a foreground terminal.
 2. The host owns a dedicated worker process for each hosted YA session. The
    worker imports the provider adapter, owns its SDK query/client, message
    queue, child transport, callbacks, and sandbox, and continuously drains the
@@ -63,9 +67,9 @@ The shared backend places one provider worker around one `AgentSession`:
 4. On wrapper `SIGHUP`, Hono detaches that proxy without aborting the worker.
    The replacement generation claims the same worker under the same canonical
    YA session id and resumes from the worker's sequenced event buffer.
-5. On terminal wrapper shutdown or wrapper/host ownership loss, the host closes
-   every worker and the worker closes its provider session; bounded TERM/KILL
-   cleanup remains authoritative if cooperative shutdown fails.
+5. On terminal shutdown or loss of the host's wrapper/terminal owner, the host
+   closes every worker and the worker closes its provider session; bounded
+   TERM/KILL cleanup remains authoritative if cooperative shutdown fails.
 
 This is not provider-native process adoption. A Claude CLI PID still cannot be
 adopted by a new SDK `Query`; the point is that the original `Query` survives
@@ -78,9 +82,11 @@ Codex setting never attempts to adopt a live process.
 
 Safe Reload replaces Hono, not existing provider workers. A surviving worker
 keeps the provider code and launch facts it started with. New workers load
-current code, a targeted worker relaunch updates one session, and only a full
-wrapper reboot guarantees that every hosted provider worker adopted a
-provider-layer change.
+current code, a targeted worker relaunch updates one session, and a
+provider-host reboot guarantees that every hosted provider worker adopted a
+provider-layer change. A full wrapper reboot provides that guarantee when the
+wrapper owns the host, but not when it merely attached to a separately owned
+foreground host.
 
 ## Baseline Ownership And Failure Path
 
@@ -141,7 +147,8 @@ can supervise a real runtime owner; they cannot replace one.
 
 ## Shared Provider-Host Architecture
 
-The wrapper, not a Hono generation, is the terminal owner:
+The host's foreground launcher or development wrapper, never a Hono
+generation, is the terminal owner:
 
 ```text
 scripts/dev.js (one operator-started YA lifetime)
@@ -155,10 +162,12 @@ scripts/dev.js (one operator-started YA lifetime)
   |         +-- AgentSession + provider child/transport
 ```
 
-`SIGHUP` means "replace Hono" only. `SIGINT`, `SIGTERM`, ordinary wrapper exit,
-wrapper/host control loss, and terminal cleanup mean "end the complete YA
-lifetime" and therefore end every provider worker and provider descendant. The
-host is not a machine daemon and does not survive the wrapper that created it.
+For a wrapper-owned host, `SIGHUP` means "replace Hono" only. `SIGINT`,
+`SIGTERM`, ordinary wrapper exit, wrapper/host control loss, and terminal
+cleanup mean "end this host lifetime" and therefore end every provider worker
+and provider descendant. A separately started foreground host may survive a
+wrapper that merely attached to it, but it is not a machine daemon and ends
+with its own terminal owner.
 
 ### Stable host and per-session workers
 
@@ -781,19 +790,20 @@ The server continues to accept, store, and return
 render it, and the native-host availability capability is no longer
 advertised. Its capability ids remain reserved for their original meanings.
 
-The shared host is enabled on Linux under the non-watch development wrapper
-only. Host capability requires:
+The shared host is enabled on Linux under the non-watch development wrapper or
+through `pnpm provider-host`. Host capability requires:
 
 - `process.platform === "linux"`;
-- launch through the recognized development wrapper/lifecycle host;
+- launch through the recognized development wrapper or foreground host;
 - the exact compatible host protocol;
 - a private, connectable runtime socket;
-- wrapper-generation registration; and
-- bounded owner-loss cleanup owned by the wrapper and host.
+- wrapper-generation registration for Hono control; and
+- bounded owner-loss cleanup owned by the host and its terminal owner.
 
 macOS, Windows, direct `pnpm --filter server dev` launches, unsupported Linux
-environments, and failed probes retain ordinary in-Hono provider ownership and
-the existing safe-restart/explicit-interruption choices.
+environments, and failed or ambiguous probes retain ordinary in-Hono provider
+ownership and the existing safe-restart/explicit-interruption choices. An
+ambiguous stable descriptor is not removed or replaced.
 
 Any later use of `systemd-run --user`, Linux abstract sockets, `/proc`, cgroup
 inspection, `PR_SET_PDEATHSIG`, or Linux signal/process-group assumptions is
@@ -988,14 +998,15 @@ protocol; systemd is one explicitly Linux-gated way to host it.
 development backend reload, and the existing safe-restart delay is not always
 acceptable.
 
-**Implemented foundation:** the wrapper-owned shared host, one complete
-provider worker per session, the `AgentSession` proxy and sequenced
-replay/request protocol, two-phase claim/attach across Hono generations,
-worker-owned provider sandboxing, terminal wrapper-resource reaping, and
+**Implemented foundation:** stable headless discovery and verified recovery,
+the shared host, one complete provider worker per session, the `AgentSession`
+proxy and sequenced replay/request protocol, two-phase claim/attach across Hono
+generations, worker-owned provider sandboxing, terminal resource reaping, and
 provider-neutral routing including Codex.
 
-**Still not implied:** survival across terminal/full-wrapper restart, a
-machine-persistent daemon, enabling the mechanism outside Linux, sharing one
+**Still not implied:** survival after the provider host's terminal owner ends,
+a machine-persistent daemon, enabling the mechanism outside Linux, sharing one
 provider process across sandbox boundaries, or replacing the existing safe-
-restart flow. The retained Codex setting never attempts to adopt or reroute a
-live process.
+restart flow. A separately owned foreground host may outlive a Hono wrapper;
+that does not make it reboot-persistent. The retained Codex setting never
+attempts to adopt or reroute a live process.

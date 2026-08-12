@@ -6,11 +6,11 @@
 
 Topic: provider-host-api
 
-Status: the private host and worker protocols are implemented on Linux under
-the non-watch development wrapper, and Codex now uses that shared host rather
-than a separate native host. Stable discovery, headless bootstrap, auxiliary
-session-turn access, and the Hono adapter described below are approved but not
-yet implemented.
+Status: stable same-user discovery, foreground headless bootstrap, and
+attach-or-start recovery are implemented on Linux. The non-watch development
+wrapper attaches to a compatible incumbent host or starts one, and Codex uses
+the shared provider host rather than a separate native host. Auxiliary
+session-turn access and the Hono adapter described below remain in progress.
 
 Related:
 [reload-safe provider runtimes](reload-safe-provider-runtimes.md),
@@ -51,13 +51,23 @@ remains useful for authenticated remote callers.
 
 ## Current topology and protocols
 
-On supported launches, `scripts/dev.js` creates a private runtime directory,
-random token, and Unix control socket, then starts
-`scripts/provider-runtime-host.mjs` as a wrapper-owned IPC child. The directory
-is mode 0700 and the socket is mode 0600. Hono receives the endpoint and token
-through private environment state.
+On Linux, `pnpm provider-host` starts
+`scripts/provider-runtime-host.mjs` in the foreground without Hono or Vite.
+The host publishes `host.json`, `token`, `host.lock`, and `control.sock` under
+`$YEP_PROVIDER_HOST_RUNTIME_DIR`, then `$XDG_RUNTIME_DIR`, with a private
+per-user temporary-runtime fallback. The directory is mode 0700 and the
+descriptor, token, and socket are mode 0600. The descriptor records owner and
+worker process identities plus source/build identity without exposing the
+token value.
 
-Host protocol version 1 is newline-delimited JSON over the control socket.
+The Linux non-watch `scripts/dev.js` path probes that descriptor before
+starting Hono. It attaches to a compatible host, starts one when absent, or
+performs verified bounded recovery when an identified host is nonresponsive.
+Hono receives the discovered endpoint and token through private environment
+state. A host started by the wrapper retains wrapper IPC as its terminal-owner
+channel; a separately started foreground host retains its terminal instead.
+
+Host protocol version 2 is newline-delimited JSON over the control socket.
 Every request carries a request id, token, Hono generation, and protocol
 version. The implemented operations are:
 
@@ -78,10 +88,10 @@ state, approvals, completion, and failure. Acknowledgement advances only after
 the Hono `Process` consumes an event, so reload replay can repeat a boundary but
 cannot silently discard an unacknowledged suffix.
 
-These are real local listeners rather than anonymous provider pipes. What is
-private today is discovery and authorization: the wrapper creates a temporary
-endpoint/token, Hono is the only accepted controller, and wrapper IPC loss
-terminates the host.
+These are real local listeners rather than anonymous provider pipes. Stable
+discovery remains same-user local: the token stays in an owner-only file, the
+host never binds TCP, worker sockets remain undiscoverable private endpoints,
+and only the controller operations are currently reachable.
 
 ## Same-session and fork contract
 

@@ -16,16 +16,8 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createServer as createNetServer } from "node:net";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -33,6 +25,11 @@ import {
   devBindKey,
   reapObsoleteDevInstances,
 } from "./dev-instance-provenance.mjs";
+import {
+  discoverProviderHost,
+  recoverProviderHost,
+  resolveProviderHostPaths,
+} from "./provider-runtime-discovery.mjs";
 import { exitIfUnsafeHome } from "./safe-home.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -180,27 +177,10 @@ const env = {
 
 const reloadSafeRuntimeHostsEnabled =
   process.platform === "linux" && !backendWatch;
-const providerRuntimeDir = reloadSafeRuntimeHostsEnabled
-  ? mkdtempSync(join(tmpdir(), "ya-provider-runtime-"))
-  : null;
-if (providerRuntimeDir) chmodSync(providerRuntimeDir, 0o700);
-const providerRuntimeHostSocket = providerRuntimeDir
-  ? join(providerRuntimeDir, "host.sock")
-  : null;
-const providerRuntimeHostToken = providerRuntimeDir
-  ? randomBytes(32).toString("base64url")
+const providerHostPaths = reloadSafeRuntimeHostsEnabled
+  ? resolveProviderHostPaths(env)
   : null;
 const wrapperToken = randomBytes(32).toString("base64url");
-
-if (
-  providerRuntimeDir &&
-  providerRuntimeHostSocket &&
-  providerRuntimeHostToken
-) {
-  env.YEP_PROVIDER_RUNTIME_DIR = providerRuntimeDir;
-  env.YEP_PROVIDER_RUNTIME_SOCKET = providerRuntimeHostSocket;
-  env.YEP_PROVIDER_RUNTIME_TOKEN = providerRuntimeHostToken;
-}
 
 let wrapperState = "starting";
 let serverChild = null;
@@ -391,54 +371,128 @@ function spawnManaged(command, childArgs, options) {
   });
 }
 
+function configureProviderHostEnvironment(connection) {
+  if (!providerHostPaths) return;
+  env.YEP_PROVIDER_RUNTIME_DIR = providerHostPaths.runtimeDir;
+  env.YEP_PROVIDER_RUNTIME_SOCKET = connection.descriptor.controlSocketPath;
+  env.YEP_PROVIDER_RUNTIME_TOKEN = connection.token;
+  env.YEP_PROVIDER_RUNTIME_DESCRIPTOR = providerHostPaths.descriptorPath;
+  env.YEP_PROVIDER_RUNTIME_TOKEN_FILE = providerHostPaths.tokenPath;
+}
+
+async function waitForProviderHost(timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  let discovery = await discoverProviderHost(providerHostPaths);
+  while (
+    (discovery.state === "absent" || discovery.state === "unresponsive") &&
+    Date.now() < deadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    discovery = await discoverProviderHost(providerHostPaths);
+  }
+  return discovery;
+}
+
 async function startProviderRuntimeHost() {
-  if (!reloadSafeRuntimeHostsEnabled) return;
+  if (!providerHostPaths) return;
+  let discovery = await discoverProviderHost(providerHostPaths);
+  if (discovery.state === "available") {
+    configureProviderHostEnvironment(discovery);
+    console.log("[ProviderRuntimeHost] Attached to the existing host");
+    return;
+  }
+  if (discovery.state === "unresponsive") {
+    const recovery = await recoverProviderHost(
+      providerHostPaths,
+      discovery.descriptor,
+    );
+    console.error(
+      `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}`,
+    );
+    discovery = await discoverProviderHost(providerHostPaths);
+  }
+  if (discovery.state !== "absent") {
+    throw new Error(
+      `Provider runtime host is ${discovery.state}${discovery.error ? `: ${discovery.error}` : ""}`,
+    );
+  }
+
+  const hostEnvironment = {
+    ...env,
+    YEP_PROVIDER_HOST_RUNTIME_DIR: providerHostPaths.runtimeDir,
+    YEP_PROVIDER_RUNTIME_DIR: providerHostPaths.runtimeDir,
+    YEP_PROVIDER_RUNTIME_SOCKET: providerHostPaths.controlSocketPath,
+    YEP_PROVIDER_RUNTIME_DESCRIPTOR: providerHostPaths.descriptorPath,
+    YEP_PROVIDER_RUNTIME_TOKEN_FILE: providerHostPaths.tokenPath,
+    YEP_PROVIDER_RUNTIME_LOCK: providerHostPaths.lockPath,
+    YEP_PROVIDER_RUNTIME_RECOVERY_LOCK: providerHostPaths.recoveryLockPath,
+  };
+  delete hostEnvironment.YEP_PROVIDER_RUNTIME_TOKEN;
   const host = spawn(
     process.execPath,
     [join(__dirname, "provider-runtime-host.mjs")],
     {
       cwd: rootDir,
-      env,
+      env: hostEnvironment,
       detached: !isWindows,
       stdio: ["ignore", "inherit", "inherit", "ipc"],
     },
   );
   providerRuntimeHostChild = host;
 
-  await new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (fn) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      host.off("message", onMessage);
-      host.off("error", onError);
-      host.off("exit", onExitBeforeReady);
-      fn();
-    };
-    const onMessage = (message) => {
-      if (message?.type === "ready") finish(resolve);
-    };
-    const onError = (error) => finish(() => reject(error));
-    const onExitBeforeReady = (code, signal) =>
-      finish(() =>
-        reject(
-          new Error(
-            `Provider runtime host exited before ready (code=${code}, signal=${signal})`,
-          ),
-        ),
-      );
-    const timeout = setTimeout(
-      () =>
+  try {
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        host.off("message", onMessage);
+        host.off("error", onError);
+        host.off("exit", onExitBeforeReady);
+        fn();
+      };
+      const onMessage = (message) => {
+        if (message?.type === "ready") finish(resolve);
+      };
+      const onError = (error) => finish(() => reject(error));
+      const onExitBeforeReady = (code, signal) =>
         finish(() =>
-          reject(new Error("Provider runtime host startup timed out")),
-        ),
-      5_000,
+          reject(
+            new Error(
+              `Provider runtime host exited before ready (code=${code}, signal=${signal})`,
+            ),
+          ),
+        );
+      const timeout = setTimeout(
+        () =>
+          finish(() =>
+            reject(new Error("Provider runtime host startup timed out")),
+          ),
+        5_000,
+      );
+      host.on("message", onMessage);
+      host.once("error", onError);
+      host.once("exit", onExitBeforeReady);
+    });
+  } catch (error) {
+    if (providerRuntimeHostChild === host) providerRuntimeHostChild = null;
+    const concurrentHost = await waitForProviderHost();
+    if (concurrentHost.state === "available") {
+      configureProviderHostEnvironment(concurrentHost);
+      console.log("[ProviderRuntimeHost] Attached after a concurrent start");
+      return;
+    }
+    throw error;
+  }
+
+  discovery = await waitForProviderHost();
+  if (discovery.state !== "available") {
+    throw new Error(
+      `Provider runtime host did not publish a usable descriptor (${discovery.state})`,
     );
-    host.on("message", onMessage);
-    host.once("error", onError);
-    host.once("exit", onExitBeforeReady);
-  });
+  }
+  configureProviderHostEnvironment(discovery);
 
   host.on("message", (message) => {
     if (message?.type === "runtimeLaunched") {
@@ -695,14 +749,6 @@ async function shutdownWrapper(reason, exitCode = 0) {
     await stopManagedChild(clientChild, "Vite").catch((error) =>
       failures.push(error),
     );
-
-    if (providerRuntimeDir && existsSync(providerRuntimeDir)) {
-      try {
-        rmSync(providerRuntimeDir, { recursive: true });
-      } catch (error) {
-        failures.push(error);
-      }
-    }
 
     for (const failure of failures) {
       console.error(`[Shutdown] ${errorMessage(failure)}`);

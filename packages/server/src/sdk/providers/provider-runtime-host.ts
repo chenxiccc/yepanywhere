@@ -22,7 +22,7 @@ import type { ProviderRuntimeSnapshot } from "./index.js";
 
 const HOST_REQUEST_TIMEOUT_MS = 15_000;
 const WORKER_RPC_TIMEOUT_MS = 30_000;
-const HOST_PROTOCOL_VERSION = 1;
+const HOST_PROTOCOL_VERSION = 2;
 const WORKER_PROTOCOL_VERSION = 1;
 // The host's default attach deadline is 30 seconds. Keep launch routing pinned
 // until that owner has either been reclaimed or reaped.

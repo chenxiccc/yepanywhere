@@ -33,6 +33,7 @@
     "perf:regression:browser": "node scripts/perf-suite/run.mjs --checkout . --scenario fleet-small --driver browser --label working-tree",
     "perf:regression:specialized": "node scripts/perf-suite/run.mjs --checkout . --scenario specialized-contracts --driver specialized --label working-tree",
     "dev": "node scripts/dev.js",
+    "provider-host": "node scripts/provider-runtime-host.mjs --headless",
     "staging": "node scripts/staging.js",
     "dev:auto": "pnpm --filter server dev & pnpm --filter client dev",
     "dev-tailscale": "tailscale serve --bg 3400 && pnpm dev",

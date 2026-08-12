@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,16 @@ import {
   resolveProviderRuntimeWorkerPath,
   withAgentLaunchEnvironment,
 } from "../../../../../scripts/provider-runtime-host.mjs";
+// @ts-expect-error Stable discovery intentionally runs as plain Node ESM.
+import {
+  captureProcessIdentity,
+  createProviderHostToken,
+  discoverProviderHost,
+  readLinuxProcessStartTime,
+  recoverProviderHost,
+  resolveProviderHostPaths,
+  writeProviderHostDescriptor,
+} from "../../../../../scripts/provider-runtime-discovery.mjs";
 import {
   closeProviderRuntimeHostRegistration,
   initializeProviderRuntimeHost,
@@ -20,6 +31,10 @@ const temporaryPaths: string[] = [];
 const fixtureWorker = join(
   dirname(fileURLToPath(import.meta.url)),
   "fixtures/fake-provider-runtime-worker.mjs",
+);
+const providerHostEntrypoint = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../../scripts/provider-runtime-host.mjs",
 );
 
 describe("resolveProviderRuntimeWorkerPath", () => {
@@ -84,6 +99,39 @@ async function waitUntil(
   }
 }
 
+async function waitForChildExit(
+  child: ReturnType<typeof spawn>,
+  timeoutMs = 3_000,
+): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { code: child.exitCode, signal: child.signalCode };
+  }
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("child exit timed out"));
+    }, timeoutMs);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ code, signal });
+    });
+  });
+}
+
+async function waitForAvailableHost(
+  paths: NonNullable<ReturnType<typeof resolveProviderHostPaths>>,
+  timeoutMs = 3_000,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    const discovery = await discoverProviderHost(paths, { timeoutMs: 250 });
+    if (discovery.state === "available") return discovery;
+    if (Date.now() >= deadline) {
+      throw new Error(`provider host stayed ${discovery.state}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 function processGroupAlive(processGroupId: number): boolean {
   try {
     process.kill(-processGroupId, 0);
@@ -104,6 +152,213 @@ afterEach(async () => {
 });
 
 describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
+  it("publishes one private stable descriptor for a foreground host", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-stable-"));
+    temporaryPaths.push(runtimeRoot);
+    const paths = resolveProviderHostPaths({
+      YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+    });
+    if (!paths) throw new Error("expected Linux provider host paths");
+    const host = spawn(
+      process.execPath,
+      [providerHostEntrypoint, "--headless"],
+      {
+        cwd: dirname(providerHostEntrypoint),
+        env: {
+          ...process.env,
+          YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+          YEP_PROVIDER_RUNTIME_WORKER_PATH: fixtureWorker,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    try {
+      const connection = await waitForAvailableHost(paths);
+      expect(connection.descriptor).toMatchObject({
+        descriptorVersion: 1,
+        hostProtocolVersion: 2,
+        features: ["runtime-control"],
+        controlSocketPath: paths.controlSocketPath,
+        tokenFilePath: paths.tokenPath,
+        owner: {
+          pid: host.pid,
+          startTime: expect.any(String),
+        },
+        sourceIdentity: {
+          projectRoot: expect.any(String),
+          hostSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          workerSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        },
+        buildIdentity: expect.any(String),
+      });
+      for (const path of [
+        paths.descriptorPath,
+        paths.tokenPath,
+        paths.controlSocketPath,
+      ]) {
+        expect((await stat(path)).mode & 0o077).toBe(0);
+      }
+
+      const duplicate = spawn(
+        process.execPath,
+        [providerHostEntrypoint, "--headless"],
+        {
+          cwd: dirname(providerHostEntrypoint),
+          env: {
+            ...process.env,
+            YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+            YEP_PROVIDER_RUNTIME_WORKER_PATH: fixtureWorker,
+          },
+          stdio: ["ignore", "ignore", "pipe"],
+        },
+      );
+      const duplicateError: Buffer[] = [];
+      duplicate.stderr?.on("data", (chunk: Buffer) => {
+        duplicateError.push(chunk);
+      });
+      expect((await waitForChildExit(duplicate)).code).toBe(1);
+      expect(Buffer.concat(duplicateError).toString("utf8")).toContain(
+        "already starting or running",
+      );
+    } finally {
+      if (host.exitCode === null && host.signalCode === null) {
+        host.kill("SIGTERM");
+      }
+      await waitForChildExit(host).catch(() => {
+        host.kill("SIGKILL");
+      });
+    }
+
+    await waitUntil(() => !existsSync(paths.descriptorPath));
+    expect(existsSync(paths.controlSocketPath)).toBe(false);
+    expect(existsSync(paths.tokenPath)).toBe(false);
+    expect(existsSync(paths.lockPath)).toBe(false);
+  });
+
+  it("recovers only a stale host with verified process identities", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-stale-"));
+    temporaryPaths.push(runtimeRoot);
+    const paths = resolveProviderHostPaths({
+      YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+    });
+    if (!paths) throw new Error("expected Linux provider host paths");
+    const owner = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      {
+        stdio: "ignore",
+      },
+    );
+    const worker = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { detached: true, stdio: "ignore" },
+    );
+    if (!owner.pid || !worker.pid)
+      throw new Error("fixture process did not start");
+
+    try {
+      await waitUntil(
+        () =>
+          readLinuxProcessStartTime(owner.pid ?? 0) !== null &&
+          readLinuxProcessStartTime(worker.pid ?? 0) !== null,
+      );
+      const ownerIdentity = captureProcessIdentity(owner.pid);
+      const workerStartTime = readLinuxProcessStartTime(worker.pid);
+      if (!workerStartTime) throw new Error("worker identity unavailable");
+      createProviderHostToken(paths.tokenPath);
+      writeProviderHostDescriptor(paths, {
+        descriptorId: "stale-host",
+        hostProtocolVersion: 2,
+        features: ["runtime-control"],
+        controlSocketPath: paths.controlSocketPath,
+        tokenFilePath: paths.tokenPath,
+        owner: ownerIdentity,
+        startedAt: new Date().toISOString(),
+        sourceIdentity: { projectRoot: runtimeRoot },
+        buildIdentity: "test",
+        processGroups: [
+          {
+            processGroupId: worker.pid,
+            leaderStartTime: workerStartTime,
+          },
+        ],
+      });
+      await writeFile(paths.lockPath, `${JSON.stringify(ownerIdentity)}\n`, {
+        mode: 0o600,
+      });
+      const discovery = await discoverProviderHost(paths, { timeoutMs: 50 });
+      expect(discovery.state).toBe("unresponsive");
+      if (discovery.state !== "unresponsive") return;
+
+      await expect(
+        recoverProviderHost(paths, discovery.descriptor),
+      ).resolves.toEqual({
+        outcome: "interrupted-by-host-recovery",
+        descriptorId: "stale-host",
+        processGroupCount: 1,
+      });
+
+      await waitUntil(() => !processGroupAlive(worker.pid ?? 0));
+      expect(readLinuxProcessStartTime(owner.pid)).toBeNull();
+      expect(existsSync(paths.descriptorPath)).toBe(false);
+      expect(existsSync(paths.tokenPath)).toBe(false);
+      expect(existsSync(paths.lockPath)).toBe(false);
+    } finally {
+      if (owner.exitCode === null && owner.signalCode === null) {
+        owner.kill("SIGKILL");
+      }
+      if (processGroupAlive(worker.pid)) process.kill(-worker.pid, "SIGKILL");
+    }
+  });
+
+  it("fails closed when a stale descriptor PID identity is ambiguous", async () => {
+    const runtimeRoot = await mkdtemp(
+      join(tmpdir(), "provider-host-ambiguous-"),
+    );
+    temporaryPaths.push(runtimeRoot);
+    const paths = resolveProviderHostPaths({
+      YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+    });
+    if (!paths) throw new Error("expected Linux provider host paths");
+    const owner = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      {
+        stdio: "ignore",
+      },
+    );
+    if (!owner.pid) throw new Error("fixture process did not start");
+
+    try {
+      createProviderHostToken(paths.tokenPath);
+      writeProviderHostDescriptor(paths, {
+        descriptorId: "ambiguous-host",
+        hostProtocolVersion: 2,
+        features: ["runtime-control"],
+        controlSocketPath: paths.controlSocketPath,
+        tokenFilePath: paths.tokenPath,
+        owner: { pid: owner.pid, startTime: "not-the-current-process" },
+        startedAt: new Date().toISOString(),
+        sourceIdentity: { projectRoot: runtimeRoot },
+        buildIdentity: "test",
+        processGroups: [],
+      });
+      const discovery = await discoverProviderHost(paths, { timeoutMs: 50 });
+      expect(discovery.state).toBe("unresponsive");
+      if (discovery.state !== "unresponsive") return;
+
+      await expect(
+        recoverProviderHost(paths, discovery.descriptor),
+      ).rejects.toThrow("PID identity is ambiguous");
+      expect(readLinuxProcessStartTime(owner.pid)).not.toBeNull();
+      expect(existsSync(paths.descriptorPath)).toBe(true);
+    } finally {
+      owner.kill("SIGKILL");
+    }
+  });
+
   it("injects the same launch identity locally and remotely", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
     temporaryPaths.push(runtimeRoot);
@@ -120,7 +375,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 1,
+        protocolVersion: 2,
         op: "launch",
         generation: "one",
         providerName: "claude-gateway",
@@ -167,7 +422,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 1,
+        protocolVersion: 2,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -215,7 +470,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 1,
+        protocolVersion: 2,
         op: "launch",
         generation: "one",
         providerName: "pi",
@@ -245,7 +500,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     host.registeredServers.set("one", owner);
     const launchRequest = {
       token: "test-token",
-      protocolVersion: 1,
+      protocolVersion: 2,
       op: "launch",
       generation: "one",
       providerName: "claude",
@@ -287,7 +542,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const first = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 1,
+        protocolVersion: 2,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -311,7 +566,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const second = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 1,
+        protocolVersion: 2,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -358,7 +613,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     host.registeredServers.set("one", owner);
     const launchRequest = {
       token: "test-token",
-      protocolVersion: 1,
+      protocolVersion: 2,
       op: "launch",
       generation: "one",
       providerName: "claude",
@@ -405,7 +660,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 1,
+        protocolVersion: 2,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -444,7 +699,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       await host.handleRequest(
         {
           token: "test-token",
-          protocolVersion: 1,
+          protocolVersion: 2,
           op: "retainProcessGroup",
           generation: "one",
           processGroupId: resource.pid,

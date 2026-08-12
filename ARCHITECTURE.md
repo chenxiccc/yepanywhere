@@ -69,26 +69,24 @@ When that host is unavailable, provider ownership remains inside Hono and the
 ordinary safe-restart behavior applies.
 
 Shared-host use is capability-driven and automatic, not a user toggle. The
-current tree still has one default-off Codex setting that selects a separate
-Codex-native lifecycle host; its approved retirement will make that stored
-field inert and leave the shared host as the sole reload-safe runtime owner.
-Until the retirement lands, an enabled setting continues to select the native
-path for eligible new or resumed Codex sessions.
+former Codex-native setting remains accepted and stored for compatibility, but
+is inert and hidden; Codex uses the shared host like every other provider.
 
 **Safe Reload replaces Hono only.** Existing shared-host workers intentionally
 keep the provider code and launch facts they started with. A newly launched
 worker uses current provider code, a targeted worker relaunch updates that one
-session, and a full wrapper reboot is the only operation that guarantees every
-provider worker adopted provider-layer changes. The UI's immediate reload is
+session, and a provider-host reboot guarantees every provider worker adopted
+provider-layer changes (a full wrapper reboot does this when the wrapper owns
+the host). The UI's immediate reload is
 available only when each active blocker has a detachable hosted owner and no
 volatile queued input; **Reload When Safe** remains the fallback otherwise.
 
-The provider host already listens on private mode-0600 Unix sockets using
-token-authenticated, versioned JSONL. The approved next layer makes the host
-discoverable to same-user headless clients, adds a host-mediated session-turn
-operation, and supplies an authenticated Hono adapter for remote use. Worker
-sockets remain private, and auxiliary clients never become a second Hono
-controller. See
+The provider host listens on private mode-0600 Unix sockets using
+token-authenticated, versioned JSONL. Stable same-user discovery, foreground
+headless startup, and attach-or-start recovery are implemented. The remaining
+control layer adds a host-mediated session-turn operation and authenticated
+Hono adapter for remote use. Worker sockets remain private, and auxiliary
+clients never become a second Hono controller. See
 [`topics/provider-host-api.md`](topics/provider-host-api.md) and
 [`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md).
 
@@ -115,9 +113,8 @@ section below for what would have to change at higher fan-out.
   — implemented wrapper-lifetime provider ownership, Hono reattachment,
   replay, cleanup, availability gates, and verification matrix.
 - [`topics/provider-host-api.md`](topics/provider-host-api.md) — current private
-  host/worker protocols plus the approved same-user local control API,
-  headless bootstrap, Hono attach-or-start recovery, and Codex-native
-  convergence.
+  host/worker protocols, stable same-user discovery, headless bootstrap,
+  attach-or-start recovery, and the session-turn control contract.
 - [`topics/cross-host-delegation.md`](topics/cross-host-delegation.md) — broad
   product direction for browser-known hosts, directed server-to-server grants,
   and separate native worker sessions as a useful step before session
