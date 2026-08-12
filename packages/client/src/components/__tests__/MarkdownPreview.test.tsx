@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import type { ClipboardEvent } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "../MarkdownPreview";
 
 describe("MarkdownPreview", () => {
@@ -8,13 +9,18 @@ describe("MarkdownPreview", () => {
     cleanup();
   });
 
-  it("copies semantic HTML without renderer presentation", () => {
+  it("leaves copy ownership to the containing document viewer", () => {
+    const handleCopy = vi.fn((event: ClipboardEvent) => {
+      expect(event.defaultPrevented).toBe(false);
+    });
     render(
-      <MarkdownPreview
-        html={
-          '<table class="source-table"><tbody><tr><th style="color: red">Header</th></tr></tbody></table>'
-        }
-      />,
+      <div onCopy={handleCopy}>
+        <MarkdownPreview
+          html={
+            '<table class="source-table"><tbody><tr><th style="color: red">Header</th></tr></tbody></table>'
+          }
+        />
+      </div>,
     );
     const preview = screen.getByRole("region", { name: "Markdown preview" });
     const rendered = preview.querySelector(".markdown-rendered");
@@ -24,17 +30,13 @@ describe("MarkdownPreview", () => {
     const range = document.createRange();
     range.selectNodeContents(rendered);
     document.getSelection()?.addRange(range);
-    const copied = new Map<string, string>();
+    const setData = vi.fn();
 
     fireEvent.copy(rendered, {
-      clipboardData: {
-        setData: (type: string, value: string) => copied.set(type, value),
-      },
+      clipboardData: { setData },
     });
 
-    expect(copied.get("text/html")).toBe(
-      "<table><tbody><tr><th>Header</th></tr></tbody></table>",
-    );
-    expect(copied.get("text/plain")).toBe("Header");
+    expect(handleCopy).toHaveBeenCalledOnce();
+    expect(setData).not.toHaveBeenCalled();
   });
 });

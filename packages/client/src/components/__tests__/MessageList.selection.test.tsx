@@ -12,6 +12,7 @@ import {
   recapMessage,
   userMessage,
 } from "./MessageList.test-support";
+import { MarkdownPreview } from "../MarkdownPreview";
 import { MessageList } from "../MessageList";
 import { Modal } from "../ui/Modal";
 
@@ -24,6 +25,17 @@ function QuoteableModal() {
   return (
     <Modal title="Expanded edit" onClose={() => {}}>
       <p ref={textRef}>Modal selected text</p>
+    </Modal>
+  );
+}
+
+function QuoteableMarkdownModal() {
+  const previewRef = useQuoteableTextSource<HTMLDivElement>("# Modal heading");
+  return (
+    <Modal title="Rendered document" onClose={() => {}}>
+      <div ref={previewRef}>
+        <MarkdownPreview html="<h1>Modal heading</h1>" />
+      </div>
     </Modal>
   );
 }
@@ -328,6 +340,34 @@ describe("MessageList selection and copy", () => {
     fireEvent.click(quoteButton);
 
     expect(onQuoteSelection).toHaveBeenCalledWith("> Modal selected text\n");
+  });
+
+  it("copies rendered document selections as source markdown", () => {
+    render(
+      <>
+        <MessageList
+          messages={[assistantMessage("assistant-1", "Transcript text")]}
+        />
+        <QuoteableMarkdownModal />
+      </>,
+    );
+
+    const heading = screen.getByRole("heading", { name: "Modal heading" });
+    const headingText = heading.firstChild;
+    expect(headingText).toBeTruthy();
+
+    const range = document.createRange();
+    range.selectNodeContents(headingText as Node);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const setData = vi.fn();
+    fireEvent.copy(heading, {
+      clipboardData: { setData },
+    });
+
+    expect(setData).toHaveBeenCalledWith("text/plain", "# Modal heading");
   });
 
   it("moves the selected-text quote button to the composer edge on mobile", async () => {

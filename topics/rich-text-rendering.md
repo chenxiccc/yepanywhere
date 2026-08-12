@@ -151,16 +151,22 @@ file links should therefore inherit the same source/preview controls,
 large-file windowing, hline span markers, scrollbars, copy affordance, media
 hydration, and public-share capability scoping.
 
-Native rich-text copy from rendered Markdown—both full previews and
-Σ-rendered fixed-font/diff views—must not carry YA's display presentation into
-the destination. The `copy` handler serializes the selected rendered fragment
-as semantic HTML, stripping CSS classes, inline styles, stylesheet elements,
-and legacy color attributes. Fixed-font views keep the existing source-aware
-`text/plain` fallback. Neither path relies on Chromium's default computed-style
-clipboard payload, which can transfer only part of a foreground/background
-pair into editors such as Jira. Table headers and inline/block code still
-declare paired themed colors for correct rendering inside YA; those
-declarations never enter the explicit clipboard HTML.
+Ordinary copy from a rendered Markdown file preview uses the registered source
+mapping and writes the best aligned Markdown span to `text/plain`. It must not
+be preempted by the preview's rich-text serializer: source-preserving
+`Ctrl/Cmd+C` is the default document-copy contract. An explicit semantic-HTML
+selection action will be the companion for users who want the rendered
+projection.
+
+Semantic rich-text copy from Σ-rendered fixed-font/diff views must not carry
+YA's display presentation into the destination. Its handler serializes the
+selected rendered fragment as semantic HTML, stripping CSS classes, inline
+styles, stylesheet elements, and legacy color attributes, while keeping the
+existing source-aware `text/plain` fallback. It does not rely on Chromium's
+default computed-style clipboard payload, which can transfer only part of a
+foreground/background pair into editors such as Jira. Table headers and
+inline/block code still declare paired themed colors for correct rendering
+inside YA; those declarations never enter the explicit clipboard HTML.
 
 KaTeX display output contains both an accessible MathML branch and its styled
 visual HTML branch. Semantic clipboard HTML keeps only the MathML branch before
