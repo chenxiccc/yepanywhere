@@ -26,6 +26,7 @@ import type {
   AgentSession,
   ProviderName,
   ProviderSessionOptions,
+  ProviderSessionOptionsUpdateResult,
   StartSessionOptions,
 } from "./types.js";
 import {
@@ -492,7 +493,7 @@ class ProviderRuntimeWorker {
       started: false,
     };
     this.auxiliarySubmission = auxiliarySubmission;
-    let sessionOptionsResult;
+    let sessionOptionsResult: ProviderSessionOptionsUpdateResult;
     try {
       sessionOptionsResult = this.session.setSessionOptions
         ? await this.session.setSessionOptions(requestedSessionOptions)
