@@ -17,6 +17,7 @@ try {
 const sockets = new Set();
 let attachedCount = 0;
 let acknowledgedSequence = 0;
+let activeSubmissionId;
 const server = createServer((socket) => {
   sockets.add(socket);
   socket.setEncoding("utf8");
@@ -93,6 +94,65 @@ function shutdown() {
 }
 
 process.on("message", (message) => {
+  if (message?.type === "sessionTurn") {
+    if (activeSubmissionId) {
+      process.send?.({
+        type: "sessionTurnRejected",
+        submissionId: message.submissionId,
+        outcome: "busy",
+        error: "fake provider is busy",
+      });
+      return;
+    }
+    activeSubmissionId = message.submissionId;
+    process.send?.({
+      type: "sessionTurnAccepted",
+      submissionId: message.submissionId,
+    });
+    process.send?.({
+      type: "sessionTurnStarted",
+      submissionId: message.submissionId,
+    });
+    const events = [
+      {
+        type: "user",
+        uuid: `fake-${message.submissionId}`,
+        message: { role: "user", content: message.message.text },
+      },
+      {
+        type: "assistant",
+        message: { role: "assistant", content: "fake response" },
+      },
+      { type: "result", subtype: "success" },
+    ];
+    events.forEach((event, index) => {
+      process.send?.({
+        type: "sessionTurnEvent",
+        submissionId: message.submissionId,
+        sequence: index + 1,
+        message: event,
+      });
+    });
+    process.send?.({
+      type: "sessionTurnTerminal",
+      submissionId: message.submissionId,
+      outcome: "completed",
+      providerSessionId: launchRequest.options.resumeSessionId,
+      lastProviderEventSequence: events.length,
+    });
+    activeSubmissionId = undefined;
+  }
+  if (
+    message?.type === "interruptSessionTurn" &&
+    message.submissionId === activeSubmissionId
+  ) {
+    process.send?.({
+      type: "sessionTurnTerminal",
+      submissionId: message.submissionId,
+      outcome: "interrupted",
+    });
+    activeSubmissionId = undefined;
+  }
   if (message?.type === "shutdown") shutdown();
 });
 process.on("disconnect", shutdown);
@@ -102,6 +162,7 @@ server.listen(socketPath, () => {
   process.send?.({
     type: "ready",
     metadata: {
+      sessionId: launchRequest.options.resumeSessionId,
       queueDepth: 0,
       capabilities: {},
       agentLaunchEnvironment: {

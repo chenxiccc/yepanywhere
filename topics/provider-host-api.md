@@ -6,11 +6,12 @@
 
 Topic: provider-host-api
 
-Status: stable same-user discovery, foreground headless bootstrap, and
-attach-or-start recovery are implemented on Linux. The non-watch development
-wrapper attaches to a compatible incumbent host or starts one, and Codex uses
-the shared provider host rather than a separate native host. Auxiliary
-session-turn access and the Hono adapter described below remain in progress.
+Status: stable same-user discovery, foreground headless bootstrap,
+attach-or-start recovery, and bounded auxiliary session turns are implemented
+on Linux. The non-watch development wrapper attaches to a compatible incumbent
+host or starts one, and Codex uses the shared provider host rather than a
+separate native host. The authenticated Hono adapter described below remains
+in progress.
 
 Related:
 [reload-safe provider runtimes](reload-safe-provider-runtimes.md),
@@ -72,7 +73,9 @@ Every request carries a request id, token, Hono generation, and protocol
 version. The implemented operations are:
 
 - `status` and `registerServer`;
-- `launch`, `bind`, `list`, `claim`, and `confirmAttach`;
+- `launch`, `launchOrClaim`, `bind`, `list`/`inventory`, `claim`, and
+  `confirmAttach`;
+- streamed `sessionTurn`, `sessionTurnStatus`, and `interruptSessionTurn`;
 - `setViewerPresence`, `release`, and `terminate`; and
 - `retainProcessGroup` for host-owned auxiliary provider resources.
 
@@ -91,7 +94,8 @@ cannot silently discard an unacknowledged suffix.
 These are real local listeners rather than anonymous provider pipes. Stable
 discovery remains same-user local: the token stays in an owner-only file, the
 host never binds TCP, worker sockets remain undiscoverable private endpoints,
-and only the controller operations are currently reachable.
+and auxiliary callers reach workers only through the host's bounded turn
+operation.
 
 ## Same-session and fork contract
 
@@ -110,7 +114,7 @@ interactions against one provider session can create different-parent
 branches. A future caller may deliberately accept that risk when no host is
 available; the host protocol itself never manufactures that fallback.
 
-## Approved reachable local protocol
+## Reachable local protocol
 
 The stable local surface extends the host control socket rather than exposing
 worker sockets or raw provider-child stdin. A client first authenticates to the
@@ -119,7 +123,8 @@ host descriptor, negotiates a protocol version, then issues one streamed
 
 ```json
 {
-  "id": "client-generated-id",
+  "id": "request-correlation-id",
+  "submissionId": "client-generated-retry-id",
   "op": "sessionTurn",
   "protocolVersion": 2,
   "token": "local-capability",
@@ -140,8 +145,8 @@ The stream flushes records as they occur:
 {"id":"...","type":"terminal","outcome":"completed","receipt":{}}
 ```
 
-Exact field additions remain backward-compatible within the negotiated
-version. The required meanings are:
+Additive fields remain backward-compatible within the negotiated version. The
+implemented meanings are:
 
 - `accepted` means the worker queue durably accepted the identified
   submission; a caller must not fall back to another transport afterward;
@@ -152,6 +157,44 @@ version. The required meanings are:
   provider-transcript watermark/receipt available; and
 - a disconnect before `accepted` is safe to retry, while a disconnect after it
   requires receipt lookup rather than automatic duplicate submission.
+
+The caller-generated `submissionId` is the retry identity. Reusing it with the
+same target, message, and launch request replays the current host's retained
+records; reusing it with different content returns
+`submission-id-conflict`. The host retains up to 1,000 submissions and receipt
+rows for 24 hours. After a host restart, use `sessionTurnStatus` to inspect the
+persisted receipt rather than resubmitting the id.
+
+Acceptance has a 15-second deadline. The default whole-turn deadline is 30
+minutes and callers may request between one second and two hours. Provider
+output is bounded at 10,000 records or 64 MiB; crossing either limit requests
+interruption and terminates the observable result as
+`uncertain-after-acceptance`. Socket backpressure pauses writes to that
+listener while records remain bounded in the submission ledger. Disconnecting
+a listener never cancels an accepted turn; `interruptSessionTurn` is the
+explicit cancellation operation.
+
+An auxiliary submission is accepted only while the incumbent worker is alive,
+idle, has an exactly observable queue-yield boundary, and has no pending
+approval. While it is active, Hono may remain the approval controller but
+cannot queue or steer another provider turn. Without an attached Hono
+controller, a new provider approval is reported, denied, and terminates the
+auxiliary result as `provider-approval-required`. The auxiliary stream observes
+provider events but never acknowledges Hono's replay buffer.
+
+Local `launchOrClaim` and the optional `sessionTurn.launch` object may resume a
+matching provider worker when no incumbent exists. The requested harness must
+match the provider adapter, and worker startup must report the exact requested
+durable provider id. The HTTP adapter deliberately has no launch authority. An
+auxiliary-launched worker returns to a 30-second idle teardown deadline after
+its turn; an uncertain accepted result reaps that worker immediately.
+
+The structured control outcomes include `unavailable`, `incompatible`,
+`ownership-unknown`, `busy`, `timed-out-before-acceptance`,
+`uncertain-after-acceptance`, `provider-approval-required`, and
+`interrupted-by-host-recovery`. A verified nonresponsive-host replacement
+rewrites every persisted accepted receipt to the recovery outcome before the
+replacement starts.
 
 Harness plus durable provider session id is the portable address. A supplied
 YA session id is a stronger cross-check, not a replacement; disagreement is a

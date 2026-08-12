@@ -15,14 +15,18 @@ import {
   discoverProviderHost,
   ensurePrivateProviderHostDirectory,
   readLinuxProcessStartTime,
+  readProviderHostReceipts,
   recoverProviderHost,
   removeProviderHostArtifacts,
   resolveProviderHostPaths,
   writeProviderHostDescriptor,
+  writeProviderHostReceipts,
 } from "./provider-runtime-discovery.mjs";
+import { ProviderRuntimeTurnLedger } from "./provider-runtime-turns.mjs";
 
 const HOST_PROTOCOL_VERSION = PROVIDER_HOST_PROTOCOL_VERSION;
 const WORKER_READY_TIMEOUT_MS = 30_000;
+const MAX_CONTROL_REQUEST_BYTES = 1024 * 1024;
 const COOPERATIVE_STOP_MS = 5_000;
 const TERM_GRACE_MS = 1_500;
 const KILL_VERIFY_MS = 1_000;
@@ -84,6 +88,18 @@ function delay(ms) {
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function controlError(outcome, message) {
+  const error = new Error(message);
+  error.outcome = outcome;
+  return error;
+}
+
+function errorOutcome(error, fallback = "rejected") {
+  return error && typeof error === "object" && typeof error.outcome === "string"
+    ? error.outcome
+    : fallback;
 }
 
 function removePathIfPresent(path) {
@@ -160,6 +176,9 @@ function publicRuntimeEntry(entry) {
     hostProtocolVersion: HOST_PROTOCOL_VERSION,
     runtimeId: entry.runtimeId,
     sessionId: entry.sessionId,
+    harness: entry.harness,
+    providerSessionId: entry.providerSessionId,
+    yaSessionId: entry.yaSessionId,
     providerName: entry.providerName,
     projectPath: entry.projectPath,
     socketPath: entry.socketPath,
@@ -174,6 +193,7 @@ function publicRuntimeEntry(entry) {
     detachedAt: entry.detachedAt,
     reattach: entry.reattach,
     worker: entry.workerMetadata,
+    acceptsSessionTurns: entry.state !== "closing" && !entry.activeSubmissionId,
   };
 }
 
@@ -187,6 +207,8 @@ export class ProviderRuntimeHost {
     workerPath = workerEntrypoint,
     terminateGroup = terminateProcessGroup,
     publishDescriptor = () => {},
+    initialTurnReceipts = [],
+    publishTurnReceipts = () => {},
   }) {
     this.runtimeDir = runtimeDir;
     this.controlSocketPath = controlSocketPath;
@@ -203,6 +225,29 @@ export class ProviderRuntimeHost {
     this.connections = new Set();
     this.server = null;
     this.shuttingDown = null;
+    this.turnLedger = new ProviderRuntimeTurnLedger({
+      resolveRuntime: (request) => this.resolveTurnRuntime(request),
+      initialReceipts: initialTurnReceipts,
+      writeReceipts: publishTurnReceipts,
+      onTerminal: (runtime, outcome) => {
+        if (!runtime?.auxiliaryOwned || runtime.state === "closing") return;
+        if (outcome === "uncertain-after-acceptance") {
+          void this.terminateRuntime(
+            runtime.runtimeId,
+            "headless session turn ended without a terminal provider receipt",
+          ).catch((error) => {
+            process.stderr.write(
+              `[ProviderRuntimeHost] Failed to reap uncertain runtime ${runtime.runtimeId}: ${errorMessage(error)}\n`,
+            );
+          });
+          return;
+        }
+        this.armAttachDeadline(
+          runtime,
+          "headless provider runtime stayed idle",
+        );
+      },
+    });
   }
 
   notifyWrapper(message) {
@@ -257,6 +302,17 @@ export class ProviderRuntimeHost {
 
     socket.on("data", (chunk) => {
       buffer += chunk;
+      if (Buffer.byteLength(buffer) > MAX_CONTROL_REQUEST_BYTES) {
+        buffer = "";
+        socket.end(
+          `${JSON.stringify({
+            ok: false,
+            outcome: "rejected",
+            error: "Provider runtime host request exceeds 1 MiB",
+          })}\n`,
+        );
+        return;
+      }
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const rawLine of lines) {
@@ -269,6 +325,33 @@ export class ProviderRuntimeHost {
           socket.write(
             `${JSON.stringify({ ok: false, error: "Invalid JSON request" })}\n`,
           );
+          continue;
+        }
+        if (request.op === "sessionTurn") {
+          try {
+            this.validateRequest(request);
+            void this.turnLedger.open(request, socket).catch((error) => {
+              socket.end(
+                `${JSON.stringify({
+                  id: request.id,
+                  type: "error",
+                  outcome: errorOutcome(error),
+                  accepted: false,
+                  error: errorMessage(error),
+                })}\n`,
+              );
+            });
+          } catch (error) {
+            socket.end(
+              `${JSON.stringify({
+                id: request.id,
+                type: "error",
+                outcome: errorOutcome(error),
+                accepted: false,
+                error: errorMessage(error),
+              })}\n`,
+            );
+          }
           continue;
         }
         void this.handleRequest(request, socket)
@@ -286,6 +369,7 @@ export class ProviderRuntimeHost {
               `${JSON.stringify({
                 id: request.id,
                 ok: false,
+                outcome: errorOutcome(error),
                 error: errorMessage(error),
               })}\n`,
             );
@@ -305,15 +389,7 @@ export class ProviderRuntimeHost {
   }
 
   async handleRequest(request, socket) {
-    if (request?.token !== this.token) {
-      throw new Error("Unauthorized provider runtime host request");
-    }
-    if (typeof request?.op !== "string") {
-      throw new Error("Missing provider runtime host operation");
-    }
-    if (request.protocolVersion !== HOST_PROTOCOL_VERSION) {
-      throw new Error("Incompatible provider runtime host protocol");
-    }
+    this.validateRequest(request);
 
     switch (request.op) {
       case "status":
@@ -322,6 +398,7 @@ export class ProviderRuntimeHost {
           runtimeCount: this.runtimes.size,
           retainedProcessGroupCount: this.retainedProcessGroups.size,
           shuttingDown: this.shuttingDown !== null,
+          features: ["runtime-control", "session-turn"],
         };
       case "registerServer": {
         const generation = this.requireString(request.generation, "generation");
@@ -335,12 +412,26 @@ export class ProviderRuntimeHost {
       }
       case "launch":
         return await this.launch(request);
+      case "launchOrClaim":
+        return await this.launchOrClaim(request);
       case "bind":
         return await this.bind(request);
       case "list":
+      case "inventory":
         return [...this.runtimes.values()]
-          .filter((entry) => entry.sessionId && this.isRuntimeClaimable(entry))
+          .filter(
+            (entry) =>
+              entry.providerSessionId && this.isRuntimeClaimable(entry),
+          )
           .map(publicRuntimeEntry);
+      case "sessionTurnStatus":
+        return this.turnLedger.status(
+          this.requireString(request.submissionId, "submissionId"),
+        );
+      case "interruptSessionTurn":
+        return this.turnLedger.interrupt(
+          this.requireString(request.submissionId, "submissionId"),
+        );
       case "claim":
         return this.claim(request);
       case "confirmAttach":
@@ -361,6 +452,21 @@ export class ProviderRuntimeHost {
         throw new Error(
           `Unknown provider runtime host operation: ${request.op}`,
         );
+    }
+  }
+
+  validateRequest(request) {
+    if (request?.token !== this.token) {
+      throw new Error("Unauthorized provider runtime host request");
+    }
+    if (typeof request?.op !== "string") {
+      throw new Error("Missing provider runtime host operation");
+    }
+    if (request.protocolVersion !== HOST_PROTOCOL_VERSION) {
+      throw controlError(
+        "incompatible",
+        "Incompatible provider runtime host protocol",
+      );
     }
   }
 
@@ -387,12 +493,107 @@ export class ProviderRuntimeHost {
     return entry;
   }
 
-  async launch(request) {
+  matchingTurnRuntimes(target) {
+    if (!target || typeof target !== "object") {
+      throw new Error("Missing session-turn target");
+    }
+    const harness = this.requireString(target.harness, "target.harness");
+    const providerSessionId = this.requireString(
+      target.providerSessionId,
+      "target.providerSessionId",
+    );
+    const yaSessionId =
+      typeof target.yaSessionId === "string" && target.yaSessionId
+        ? target.yaSessionId
+        : undefined;
+    const providerMatches = [...this.runtimes.values()].filter(
+      (entry) =>
+        this.isRuntimeClaimable(entry) &&
+        entry.harness === harness &&
+        entry.providerSessionId === providerSessionId,
+    );
+    if (
+      yaSessionId &&
+      providerMatches.some((entry) => entry.yaSessionId !== yaSessionId)
+    ) {
+      throw controlError(
+        "ownership-unknown",
+        "target.yaSessionId does not own the requested provider session",
+      );
+    }
+    return providerMatches;
+  }
+
+  async resolveTurnRuntime(request) {
+    const matches = this.matchingTurnRuntimes(request.target);
+    if (matches.length > 1) {
+      throw controlError(
+        "ownership-unknown",
+        "Session-turn target matches multiple provider runtimes",
+      );
+    }
+    if (matches.length === 1) return matches[0];
+    if (!request.launch) return null;
+    return await this.launchOrClaim(
+      {
+        target: request.target,
+        launch: request.launch,
+      },
+      true,
+    );
+  }
+
+  async launchOrClaim(request, returnEntry = false) {
+    const matches = this.matchingTurnRuntimes(request.target);
+    if (matches.length > 1) {
+      throw controlError(
+        "ownership-unknown",
+        "Provider target matches multiple runtimes",
+      );
+    }
+    if (matches.length === 1) {
+      return returnEntry ? matches[0] : publicRuntimeEntry(matches[0]);
+    }
+    const launch = request.launch;
+    if (!launch || typeof launch !== "object") return null;
+    const providerName = this.requireString(
+      launch.providerName,
+      "launch.providerName",
+    );
+    if (agentHarness(providerName) !== request.target.harness) {
+      throw new Error("Launch provider does not match the target harness");
+    }
+    const entry = await this.launch(
+      {
+        auxiliaryOwned: true,
+        providerName,
+        projectPath: launch.projectPath,
+        providerSessionId: request.target.providerSessionId,
+        yaSessionId: request.target.yaSessionId,
+        sessionId:
+          request.target.yaSessionId ?? request.target.providerSessionId,
+        options: {
+          ...(launch.options ?? {}),
+          cwd: launch.projectPath,
+          resumeSessionId: request.target.providerSessionId,
+        },
+        runtimeConfig: launch.runtimeConfig ?? {},
+        reattach: launch.reattach ?? {},
+      },
+      true,
+    );
+    return returnEntry ? entry : publicRuntimeEntry(entry);
+  }
+
+  async launch(request, returnEntry = false) {
     if (this.shuttingDown) {
       throw new Error("Provider runtime host is shutting down");
     }
-    const generation = this.requireString(request.generation, "generation");
-    if (!this.registeredServers.has(generation)) {
+    const auxiliaryOwned = request.auxiliaryOwned === true;
+    const generation = auxiliaryOwned
+      ? undefined
+      : this.requireString(request.generation, "generation");
+    if (generation && !this.registeredServers.has(generation)) {
       throw new Error(`Server generation ${generation} is not registered`);
     }
     const providerName = this.requireString(
@@ -404,6 +605,14 @@ export class ProviderRuntimeHost {
       typeof request.sessionId === "string" && request.sessionId
         ? request.sessionId
         : undefined;
+    const providerSessionId =
+      typeof request.providerSessionId === "string" && request.providerSessionId
+        ? request.providerSessionId
+        : sessionId;
+    const yaSessionId =
+      typeof request.yaSessionId === "string" && request.yaSessionId
+        ? request.yaSessionId
+        : sessionId;
     if (sessionId) {
       const existing = this.runtimeForSession(sessionId);
       if (existing) {
@@ -470,6 +679,9 @@ export class ProviderRuntimeHost {
     const entry = {
       runtimeId,
       sessionId,
+      harness: agentHarness(providerName),
+      providerSessionId,
+      yaSessionId,
       providerName,
       projectPath,
       socketPath,
@@ -480,6 +692,7 @@ export class ProviderRuntimeHost {
       child,
       state: "starting",
       attachedServerGeneration: generation,
+      auxiliaryOwned,
       controllerAttached: false,
       startedAt,
       unviewedSince: startedAt,
@@ -492,6 +705,7 @@ export class ProviderRuntimeHost {
       workerMetadata: undefined,
       attachTimer: null,
       terminationPromise: null,
+      activeSubmissionId: undefined,
     };
     this.runtimes.set(runtimeId, entry);
     if (sessionId) this.runtimeIdsBySessionId.set(sessionId, runtimeId);
@@ -580,18 +794,39 @@ export class ProviderRuntimeHost {
       const readyMessage = await ready;
       entry.workerMetadata = readyMessage.metadata;
       if (
+        typeof readyMessage.metadata?.sessionId === "string" &&
+        readyMessage.metadata.sessionId
+      ) {
+        if (
+          entry.providerSessionId &&
+          entry.providerSessionId !== readyMessage.metadata.sessionId
+        ) {
+          throw controlError(
+            "ownership-unknown",
+            "Provider worker resumed a different durable session identity",
+          );
+        }
+        entry.providerSessionId = readyMessage.metadata.sessionId;
+      }
+      if (
         Number.isInteger(readyMessage.providerPid) &&
         readyMessage.providerPid > 1
       ) {
         this.rememberProviderProcessGroup(entry, readyMessage.providerPid);
       }
-      this.armAttachDeadline(
-        entry,
-        entry.sessionId
-          ? "provider runtime controller did not attach"
-          : "provider runtime identity was not bound",
-      );
-      return publicRuntimeEntry(entry);
+      if (entry.auxiliaryOwned) {
+        entry.state = "detached";
+        entry.detachedAt = new Date().toISOString();
+        this.armAttachDeadline(entry, "headless provider runtime stayed idle");
+      } else {
+        this.armAttachDeadline(
+          entry,
+          entry.sessionId
+            ? "provider runtime controller did not attach"
+            : "provider runtime identity was not bound",
+        );
+      }
+      return returnEntry ? entry : publicRuntimeEntry(entry);
     } catch (error) {
       await this.terminateRuntime(runtimeId, "launch failure").catch(() => {});
       throw error;
@@ -599,6 +834,12 @@ export class ProviderRuntimeHost {
   }
 
   async handleWorkerMessage(entry, message) {
+    if (this.turnLedger.handleWorkerMessage(entry, message)) {
+      if (message.type === "sessionTurnAccepted") {
+        this.clearAttachDeadline(entry);
+      }
+      return;
+    }
     if (
       message?.type === "retainedProcessGroup" &&
       Number.isInteger(message.processGroupId) &&
@@ -620,6 +861,8 @@ export class ProviderRuntimeHost {
       await this.bind({
         runtimeId: entry.runtimeId,
         sessionId: message.sessionId,
+        providerSessionId: message.sessionId,
+        yaSessionId: message.sessionId,
       });
       return;
     }
@@ -674,12 +917,26 @@ export class ProviderRuntimeHost {
   async bind(request) {
     const runtimeId = this.requireString(request.runtimeId, "runtimeId");
     const sessionId = this.requireString(request.sessionId, "sessionId");
+    const providerSessionId =
+      typeof request.providerSessionId === "string" && request.providerSessionId
+        ? request.providerSessionId
+        : sessionId;
+    const yaSessionId =
+      typeof request.yaSessionId === "string" && request.yaSessionId
+        ? request.yaSessionId
+        : sessionId;
     const entry = this.runtimes.get(runtimeId);
     if (!entry || !this.isRuntimeClaimable(entry)) {
       throw new Error(`Unknown or dead provider runtime ${runtimeId}`);
     }
     if (entry.sessionId && entry.sessionId !== sessionId) {
       throw new Error(`Provider runtime ${runtimeId} is already bound`);
+    }
+    if (
+      entry.providerSessionId &&
+      entry.providerSessionId !== providerSessionId
+    ) {
+      throw new Error(`Provider runtime ${runtimeId} has a different identity`);
     }
     const duplicate = this.runtimeForSession(sessionId);
     if (duplicate && duplicate.runtimeId !== runtimeId) {
@@ -699,10 +956,15 @@ export class ProviderRuntimeHost {
       throw new Error(`Provider session ${sessionId} already has a runtime`);
     }
     entry.sessionId = sessionId;
+    entry.providerSessionId = providerSessionId;
+    entry.yaSessionId = yaSessionId;
     this.runtimeIdsBySessionId.set(sessionId, runtimeId);
     if (entry.controllerAttached) {
       entry.state = "attached";
       this.clearAttachDeadline(entry);
+    } else if (entry.auxiliaryOwned) {
+      entry.state = "detached";
+      this.armAttachDeadline(entry, "headless provider runtime stayed idle");
     } else {
       entry.state = "starting";
       this.armAttachDeadline(
@@ -732,6 +994,7 @@ export class ProviderRuntimeHost {
       );
     }
     this.markViewerDetached(entry);
+    entry.auxiliaryOwned = false;
     entry.attachedServerGeneration = generation;
     entry.controllerAttached = false;
     entry.state = "starting";
@@ -826,6 +1089,7 @@ export class ProviderRuntimeHost {
     }
     const target = captureProcessGroup(processGroupId);
     this.retainedProcessGroups.set(processGroupId, target);
+    this.refreshDescriptor();
     this.notifyWrapper({
       type: "runtimeTargets",
       runtimeId: `provider-resource-${processGroupId}`,
@@ -879,6 +1143,7 @@ export class ProviderRuntimeHost {
     if (entry.terminationPromise) return await entry.terminationPromise;
     entry.state = "closing";
     this.clearAttachDeadline(entry);
+    this.turnLedger.runtimeEnded(entry);
     entry.terminationPromise = (async () => {
       if (entry.child.connected) {
         try {
@@ -943,6 +1208,7 @@ export class ProviderRuntimeHost {
   async shutdown(reason = "wrapper shutdown") {
     if (this.shuttingDown) return await this.shuttingDown;
     this.shuttingDown = (async () => {
+      this.turnLedger.shutdown("interrupted");
       for (const socket of this.registeredServers.values()) socket.destroy();
       this.registeredServers.clear();
       const results = await Promise.allSettled(
@@ -1023,6 +1289,9 @@ async function main() {
     recoveryLockPath:
       process.env.YEP_PROVIDER_RUNTIME_RECOVERY_LOCK ??
       join(runtimeDir, basename(stablePaths.recoveryLockPath)),
+    receiptPath:
+      process.env.YEP_PROVIDER_RUNTIME_RECEIPTS ??
+      join(runtimeDir, basename(stablePaths.receiptPath)),
   };
   ensurePrivateProviderHostDirectory(paths.runtimeDir);
   let discovery = await discoverProviderHost(paths);
@@ -1032,7 +1301,7 @@ async function main() {
   if (discovery.state === "unresponsive") {
     const recovery = await recoverProviderHost(paths, discovery.descriptor);
     process.stderr.write(
-      `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}\n`,
+      `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}; interrupted submissions=${recovery.interruptedSubmissionIds.length}\n`,
     );
     discovery = await discoverProviderHost(paths);
   }
@@ -1052,6 +1321,7 @@ async function main() {
   };
   let token;
   let identities;
+  let initialTurnReceipts;
   try {
     token = createProviderHostToken(paths.tokenPath);
     identities = createProviderHostSourceIdentity({
@@ -1059,6 +1329,7 @@ async function main() {
       hostPath: fileURLToPath(import.meta.url),
       workerPath,
     });
+    initialTurnReceipts = readProviderHostReceipts(paths);
   } catch (error) {
     cleanupStableState();
     throw error;
@@ -1068,11 +1339,15 @@ async function main() {
     controlSocketPath: paths.controlSocketPath,
     token,
     workerPath,
+    initialTurnReceipts,
+    publishTurnReceipts(receipts) {
+      writeProviderHostReceipts(paths, receipts);
+    },
     publishDescriptor({ processGroups }) {
       writeProviderHostDescriptor(paths, {
         descriptorId,
         hostProtocolVersion: HOST_PROTOCOL_VERSION,
-        features: ["runtime-control"],
+        features: ["runtime-control", "session-turn"],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
         owner,

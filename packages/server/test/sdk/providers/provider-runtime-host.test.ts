@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,9 +18,12 @@ import {
   createProviderHostToken,
   discoverProviderHost,
   readLinuxProcessStartTime,
+  readProviderHostReceipts,
   recoverProviderHost,
+  requestProviderHost,
   resolveProviderHostPaths,
   writeProviderHostDescriptor,
+  writeProviderHostReceipts,
 } from "../../../../../scripts/provider-runtime-discovery.mjs";
 import {
   closeProviderRuntimeHostRegistration,
@@ -132,6 +136,65 @@ async function waitForAvailableHost(
   }
 }
 
+async function collectProviderHostStream(
+  connection: {
+    descriptor: { controlSocketPath: string; hostProtocolVersion: number };
+    token: string;
+  },
+  request: Record<string, unknown>,
+): Promise<Array<Record<string, unknown>>> {
+  const socket = createConnection(connection.descriptor.controlSocketPath);
+  socket.setEncoding("utf8");
+  let buffer = "";
+  const records: Array<Record<string, unknown>> = [];
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("provider host stream timed out"));
+    }, 5_000);
+    socket.on("connect", () => {
+      socket.write(
+        `${JSON.stringify({
+          id: "test-request",
+          token: connection.token,
+          protocolVersion: connection.descriptor.hostProtocolVersion,
+          ...request,
+        })}\n`,
+      );
+    });
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const record = JSON.parse(line) as Record<string, unknown>;
+        records.push(record);
+        if (record.type === "terminal" || record.type === "error") {
+          clearTimeout(timeout);
+          socket.destroy();
+          resolve(records);
+        }
+      }
+    });
+    socket.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    socket.on("close", () => {
+      if (
+        records.some(
+          (record) => record.type === "terminal" || record.type === "error",
+        )
+      ) {
+        return;
+      }
+      clearTimeout(timeout);
+      reject(new Error("provider host stream closed before a terminal record"));
+    });
+  });
+}
+
 function processGroupAlive(processGroupId: number): boolean {
   try {
     process.kill(-processGroupId, 0);
@@ -178,7 +241,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       expect(connection.descriptor).toMatchObject({
         descriptorVersion: 1,
         hostProtocolVersion: 2,
-        features: ["runtime-control"],
+        features: ["runtime-control", "session-turn"],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
         owner: {
@@ -236,6 +299,140 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     expect(existsSync(paths.lockPath)).toBe(false);
   });
 
+  it("launches and exchanges a bounded turn without Hono", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-turn-"));
+    temporaryPaths.push(runtimeRoot);
+    const paths = resolveProviderHostPaths({
+      YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+    });
+    if (!paths) throw new Error("expected Linux provider host paths");
+    const host = spawn(
+      process.execPath,
+      [providerHostEntrypoint, "--headless"],
+      {
+        cwd: dirname(providerHostEntrypoint),
+        env: {
+          ...process.env,
+          YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+          YEP_PROVIDER_RUNTIME_WORKER_PATH: fixtureWorker,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    try {
+      const connection = await waitForAvailableHost(paths);
+      const request = {
+        op: "sessionTurn",
+        submissionId: "headless-turn-1",
+        target: {
+          harness: "claude",
+          providerSessionId: "durable-provider-session",
+          yaSessionId: "canonical-ya-session",
+        },
+        message: { text: "answer from the incumbent worker" },
+        launch: {
+          providerName: "claude",
+          projectPath: runtimeRoot,
+          options: {},
+          runtimeConfig: {},
+        },
+      };
+      const records = await collectProviderHostStream(connection, request);
+      expect(records.map((record) => record.type)).toEqual([
+        "accepted",
+        "providerEvent",
+        "providerEvent",
+        "providerEvent",
+        "terminal",
+      ]);
+      expect(records[0]).toMatchObject({
+        submissionId: "headless-turn-1",
+        harness: "claude",
+        providerSessionId: "durable-provider-session",
+        yaSessionId: "canonical-ya-session",
+      });
+      expect(records.at(-1)).toMatchObject({
+        outcome: "completed",
+        receipt: {
+          providerSessionId: "durable-provider-session",
+          lastProviderEventSequence: 3,
+        },
+      });
+
+      const replay = await collectProviderHostStream(connection, request);
+      expect(replay).toEqual(records);
+      await expect(
+        requestProviderHost(
+          {
+            controlSocketPath: connection.descriptor.controlSocketPath,
+            token: connection.token,
+            protocolVersion: connection.descriptor.hostProtocolVersion,
+          },
+          { op: "inventory" },
+        ),
+      ).resolves.toHaveLength(1);
+      const conflict = await collectProviderHostStream(connection, {
+        ...request,
+        message: { text: "a different request with the same id" },
+      });
+      expect(conflict.at(-1)).toMatchObject({
+        type: "error",
+        outcome: "submission-id-conflict",
+        accepted: false,
+      });
+      const ownershipMismatch = await collectProviderHostStream(connection, {
+        ...request,
+        submissionId: "headless-turn-owner-mismatch",
+        target: {
+          ...request.target,
+          yaSessionId: "not-the-owning-ya-session",
+        },
+      });
+      expect(ownershipMismatch.at(-1)).toMatchObject({
+        type: "error",
+        outcome: "ownership-unknown",
+        accepted: false,
+      });
+      const incompatible = await collectProviderHostStream(connection, {
+        ...request,
+        submissionId: "headless-turn-incompatible",
+        protocolVersion: 999,
+      });
+      expect(incompatible.at(-1)).toMatchObject({
+        type: "error",
+        outcome: "incompatible",
+        accepted: false,
+      });
+
+      const codexRecords = await collectProviderHostStream(connection, {
+        op: "sessionTurn",
+        submissionId: "headless-codex-turn",
+        target: {
+          harness: "codex",
+          providerSessionId: "durable-codex-session",
+        },
+        message: { text: "use the same provider-neutral host path" },
+        launch: {
+          providerName: "codex",
+          projectPath: runtimeRoot,
+          options: {},
+          runtimeConfig: {},
+        },
+      });
+      expect(codexRecords.at(-1)).toMatchObject({
+        type: "terminal",
+        outcome: "completed",
+        receipt: { providerSessionId: "durable-codex-session" },
+      });
+    } finally {
+      if (host.exitCode === null && host.signalCode === null) {
+        host.kill("SIGTERM");
+      }
+      await waitForChildExit(host).catch(() => host.kill("SIGKILL"));
+    }
+  });
+
   it("recovers only a stale host with verified process identities", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-stale-"));
     temporaryPaths.push(runtimeRoot);
@@ -288,6 +485,14 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       await writeFile(paths.lockPath, `${JSON.stringify(ownerIdentity)}\n`, {
         mode: 0o600,
       });
+      writeProviderHostReceipts(paths, [
+        {
+          submissionId: "accepted-before-recovery",
+          state: "accepted",
+          accepted: true,
+          acceptedAt: "2026-08-12T00:00:00.000Z",
+        },
+      ]);
       const discovery = await discoverProviderHost(paths, { timeoutMs: 50 });
       expect(discovery.state).toBe("unresponsive");
       if (discovery.state !== "unresponsive") return;
@@ -298,6 +503,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
         outcome: "interrupted-by-host-recovery",
         descriptorId: "stale-host",
         processGroupCount: 1,
+        interruptedSubmissionIds: ["accepted-before-recovery"],
       });
 
       await waitUntil(() => !processGroupAlive(worker.pid ?? 0));
@@ -305,6 +511,13 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       expect(existsSync(paths.descriptorPath)).toBe(false);
       expect(existsSync(paths.tokenPath)).toBe(false);
       expect(existsSync(paths.lockPath)).toBe(false);
+      expect(readProviderHostReceipts(paths)).toEqual([
+        expect.objectContaining({
+          submissionId: "accepted-before-recovery",
+          state: "terminal",
+          outcome: "interrupted-by-host-recovery",
+        }),
+      ]);
     } finally {
       if (owner.exitCode === null && owner.signalCode === null) {
         owner.kill("SIGKILL");

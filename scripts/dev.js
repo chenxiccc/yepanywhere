@@ -378,6 +378,7 @@ function configureProviderHostEnvironment(connection) {
   env.YEP_PROVIDER_RUNTIME_TOKEN = connection.token;
   env.YEP_PROVIDER_RUNTIME_DESCRIPTOR = providerHostPaths.descriptorPath;
   env.YEP_PROVIDER_RUNTIME_TOKEN_FILE = providerHostPaths.tokenPath;
+  env.YEP_PROVIDER_RUNTIME_RECEIPTS = providerHostPaths.receiptPath;
 }
 
 async function waitForProviderHost(timeoutMs = 5_000) {
@@ -407,7 +408,7 @@ async function startProviderRuntimeHost() {
       discovery.descriptor,
     );
     console.error(
-      `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}`,
+      `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}; interrupted submissions=${recovery.interruptedSubmissionIds.length}`,
     );
     discovery = await discoverProviderHost(providerHostPaths);
   }
@@ -426,6 +427,7 @@ async function startProviderRuntimeHost() {
     YEP_PROVIDER_RUNTIME_TOKEN_FILE: providerHostPaths.tokenPath,
     YEP_PROVIDER_RUNTIME_LOCK: providerHostPaths.lockPath,
     YEP_PROVIDER_RUNTIME_RECOVERY_LOCK: providerHostPaths.recoveryLockPath,
+    YEP_PROVIDER_RUNTIME_RECEIPTS: providerHostPaths.receiptPath,
   };
   delete hostEnvironment.YEP_PROVIDER_RUNTIME_TOKEN;
   const host = spawn(

@@ -67,6 +67,7 @@ export function resolveProviderHostPaths(
     tokenPath: join(runtimeDir, "token"),
     lockPath: join(runtimeDir, "host.lock"),
     recoveryLockPath: join(runtimeDir, "recovery.lock"),
+    receiptPath: join(runtimeDir, "turn-receipts.json"),
   };
 }
 
@@ -190,6 +191,31 @@ export function writeProviderHostDescriptor(paths, descriptor) {
       ...descriptor,
     })}\n`,
   );
+}
+
+export function readProviderHostReceipts(paths) {
+  if (!existsSync(paths.receiptPath)) return [];
+  assertPrivateOwnedPath(paths.receiptPath, "file");
+  const value = JSON.parse(readFileSync(paths.receiptPath, "utf8"));
+  if (!Array.isArray(value)) {
+    throw new Error("Invalid provider host receipt store");
+  }
+  if (
+    value.some(
+      (receipt) =>
+        !receipt ||
+        typeof receipt !== "object" ||
+        typeof receipt.submissionId !== "string" ||
+        typeof receipt.state !== "string",
+    )
+  ) {
+    throw new Error("Invalid provider host receipt record");
+  }
+  return value;
+}
+
+export function writeProviderHostReceipts(paths, receipts) {
+  writePrivateFileAtomic(paths.receiptPath, `${JSON.stringify(receipts)}\n`);
 }
 
 export function readLinuxProcessStartTime(pid) {
@@ -541,6 +567,27 @@ export async function recoverProviderHost(paths, expectedDescriptor) {
     for (const target of current.processGroups) {
       await terminateOwnedProcessGroup(target);
     }
+    const recoveredAt = new Date().toISOString();
+    const receipts = readProviderHostReceipts(paths);
+    const interruptedSubmissionIds = [];
+    const recoveredReceipts = receipts.map((receipt) => {
+      if (receipt.state !== "accepted") return receipt;
+      interruptedSubmissionIds.push(receipt.submissionId);
+      return {
+        ...receipt,
+        state: "terminal",
+        terminalAt: recoveredAt,
+        outcome: "interrupted-by-host-recovery",
+        receipt: {
+          ...receipt.receipt,
+          acceptedAt: receipt.acceptedAt,
+          terminalAt: recoveredAt,
+        },
+      };
+    });
+    if (interruptedSubmissionIds.length > 0) {
+      writeProviderHostReceipts(paths, recoveredReceipts);
+    }
     if (existsSync(paths.descriptorPath)) {
       const finalDescriptor = readProviderHostDescriptor(paths);
       if (finalDescriptor.descriptorId !== current.descriptorId) {
@@ -559,6 +606,7 @@ export async function recoverProviderHost(paths, expectedDescriptor) {
       outcome: "interrupted-by-host-recovery",
       descriptorId: current.descriptorId,
       processGroupCount: current.processGroups.length,
+      interruptedSubmissionIds,
     };
   } finally {
     releaseRecoveryLock();

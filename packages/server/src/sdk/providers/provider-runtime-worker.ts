@@ -55,6 +55,15 @@ interface PendingApproval {
   removeAbortListener: () => void;
 }
 
+interface AuxiliarySubmission {
+  submissionId: string;
+  messageUuid: string;
+  tempId: string;
+  started: boolean;
+  terminalOutcome?: string;
+  lastProviderEventSequence?: number;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -101,7 +110,11 @@ class ProviderRuntimeWorker {
   private shuttingDown: Promise<void> | null = null;
   private unsubscribeQueueDepth: (() => void) | null = null;
   private unsubscribeQueueRemoved: (() => void) | null = null;
+  private unsubscribeQueueYielded: (() => void) | null = null;
   private lastProviderPid: number | undefined;
+  private observesQueueYield = false;
+  private activeProviderTurn = false;
+  private auxiliarySubmission: AuxiliarySubmission | null = null;
 
   constructor(
     private readonly socketPath: string,
@@ -267,6 +280,35 @@ class ProviderRuntimeWorker {
             message.uuid ? [message.uuid] : [],
           ),
         });
+        const auxiliary = this.auxiliarySubmission;
+        if (
+          auxiliary &&
+          !auxiliary.started &&
+          messages.some((message) => message.uuid === auxiliary.messageUuid)
+        ) {
+          this.finishAuxiliarySubmission("interrupted");
+        }
+      });
+    }
+    if (typeof concrete.subscribeYielded === "function") {
+      this.observesQueueYield = true;
+      this.unsubscribeQueueYielded = concrete.subscribeYielded((messages) => {
+        this.activeProviderTurn = true;
+        const auxiliary = this.auxiliarySubmission;
+        if (
+          !auxiliary ||
+          !messages.some((message) => message.uuid === auxiliary.messageUuid)
+        ) {
+          return;
+        }
+        auxiliary.started = true;
+        if (messages.length > 1) {
+          auxiliary.terminalOutcome = "uncertain-after-acceptance";
+        }
+        this.sendParent({
+          type: "sessionTurnStarted",
+          submissionId: auxiliary.submissionId,
+        });
       });
     }
   }
@@ -281,6 +323,7 @@ class ProviderRuntimeWorker {
         };
         this.reportProviderPid();
         this.bufferEvent(message);
+        if (message.type === "result") this.activeProviderTurn = false;
       }
       this.providerAlive = false;
       write(this.attachedSocket, { type: "complete" });
@@ -323,6 +366,139 @@ class ProviderRuntimeWorker {
       message,
       providerActivity: this.providerActivity,
       providerRetention: this.providerRetention,
+    });
+    const auxiliary = this.auxiliarySubmission;
+    if (!auxiliary?.started) return;
+    auxiliary.lastProviderEventSequence = sequence;
+    this.sendParent({
+      type: "sessionTurnEvent",
+      submissionId: auxiliary.submissionId,
+      sequence,
+      message,
+    });
+    if (message.type === "result") {
+      const providerFailed =
+        Boolean(message.error) ||
+        /error|fail/i.test(String(message.subtype ?? ""));
+      this.finishAuxiliarySubmission(
+        auxiliary.terminalOutcome ??
+          (providerFailed ? "provider-failed" : "completed"),
+        providerFailed
+          ? errorMessage(message.error ?? message.subtype)
+          : undefined,
+      );
+    }
+  }
+
+  handleParentMessage(message: unknown): void {
+    if (!message || typeof message !== "object" || !("type" in message)) return;
+    if (message.type === "sessionTurn") {
+      this.acceptAuxiliarySubmission(message as Record<string, unknown>);
+      return;
+    }
+    if (message.type === "interruptSessionTurn") {
+      void this.interruptAuxiliarySubmission(
+        String((message as Record<string, unknown>).submissionId ?? ""),
+      );
+    }
+  }
+
+  private acceptAuxiliarySubmission(message: Record<string, unknown>): void {
+    const submissionId = String(message.submissionId ?? "");
+    const userMessage = message.message as UserMessage | undefined;
+    const reject = (outcome: string, error: string) =>
+      this.sendParent({
+        type: "sessionTurnRejected",
+        submissionId,
+        outcome,
+        error,
+      });
+    if (!submissionId || !userMessage || typeof userMessage.text !== "string") {
+      reject("rejected", "Invalid session-turn submission");
+      return;
+    }
+    if (!userMessage.text.trim()) {
+      reject("rejected", "Session-turn text is empty");
+      return;
+    }
+    if (!this.providerAlive || !this.session) {
+      reject("unavailable", "Provider session is not alive");
+      return;
+    }
+    if (!this.observesQueueYield) {
+      reject(
+        "unavailable",
+        "Provider queue cannot prove the session-turn start boundary",
+      );
+      return;
+    }
+    if (
+      this.auxiliarySubmission ||
+      this.activeProviderTurn ||
+      this.queueDepth > 0
+    ) {
+      reject("busy", "Provider session is not idle");
+      return;
+    }
+    if (this.pendingApprovals.size > 0) {
+      reject(
+        "provider-approval-required",
+        "Provider approval is already pending",
+      );
+      return;
+    }
+    const messageUuid = randomUUID();
+    const tempId = `provider-host:${submissionId}`;
+    this.auxiliarySubmission = {
+      submissionId,
+      messageUuid,
+      tempId,
+      started: false,
+    };
+    this.requireSession().queue.push({
+      ...userMessage,
+      uuid: messageUuid,
+      tempId,
+    });
+    this.sendParent({ type: "sessionTurnAccepted", submissionId });
+  }
+
+  private async interruptAuxiliarySubmission(
+    submissionId: string,
+  ): Promise<void> {
+    const auxiliary = this.auxiliarySubmission;
+    if (!auxiliary || auxiliary.submissionId !== submissionId) return;
+    if (!auxiliary.started) {
+      const queue = this.requireSession().queue as MessageQueue;
+      queue.removeByTempId(auxiliary.tempId);
+      if (this.auxiliarySubmission === auxiliary) {
+        this.finishAuxiliarySubmission("interrupted");
+      }
+      return;
+    }
+    if (!this.session?.interrupt) {
+      auxiliary.terminalOutcome = "uncertain-after-acceptance";
+      return;
+    }
+    auxiliary.terminalOutcome = "interrupted";
+    try {
+      await this.session.interrupt();
+    } catch {
+      auxiliary.terminalOutcome = "uncertain-after-acceptance";
+    }
+  }
+
+  private finishAuxiliarySubmission(outcome: string, error?: string): void {
+    const auxiliary = this.auxiliarySubmission;
+    if (!auxiliary) return;
+    this.auxiliarySubmission = null;
+    this.sendParent({
+      type: "sessionTurnTerminal",
+      submissionId: auxiliary.submissionId,
+      outcome,
+      error,
+      providerSessionId: this.session?.sessionId,
+      lastProviderEventSequence: auxiliary.lastProviderEventSequence,
     });
   }
 
@@ -456,6 +632,9 @@ class ProviderRuntimeWorker {
       return;
     }
     if (request.type === "queuePush") {
+      if (this.auxiliarySubmission) {
+        throw new Error("A provider-host session turn is already active");
+      }
       this.requireSession().queue.push(request.message as UserMessage);
       return;
     }
@@ -498,6 +677,9 @@ class ProviderRuntimeWorker {
         return undefined;
       }
       case "steer":
+        if (this.auxiliarySubmission) {
+          throw new Error("A provider-host session turn is already active");
+        }
         return await session.steer?.(args[0] as UserMessage);
       case "setMaxThinkingTokens":
         return await session.setMaxThinkingTokens?.(args[0] as number | null);
@@ -518,6 +700,9 @@ class ProviderRuntimeWorker {
           (args[0] ?? undefined) as string | undefined,
         );
       case "runProviderCommand":
+        if (this.auxiliarySubmission) {
+          throw new Error("A provider-host session turn is already active");
+        }
         return await session.runProviderCommand?.(
           String(args[0]),
           (args[1] ?? undefined) as string | undefined,
@@ -540,6 +725,25 @@ class ProviderRuntimeWorker {
   ): Promise<ToolApprovalResult> {
     const requestId = randomUUID();
     return new Promise((resolve) => {
+      const auxiliary = this.auxiliarySubmission;
+      if (auxiliary?.started) {
+        this.sendParent({
+          type: "sessionTurnApproval",
+          submissionId: auxiliary.submissionId,
+          requestId,
+          toolName,
+          controlledBy: this.attachedSocket ? "hono" : null,
+        });
+        if (!this.attachedSocket) {
+          auxiliary.terminalOutcome = "provider-approval-required";
+          resolve({
+            behavior: "deny",
+            message: "No Hono approval controller is attached",
+            interrupt: true,
+          });
+          return;
+        }
+      }
       const onAbort = () => {
         if (!this.pendingApprovals.delete(requestId)) return;
         write(this.attachedSocket, { type: "approvalCancelled", requestId });
@@ -624,6 +828,9 @@ class ProviderRuntimeWorker {
       this.unsubscribeQueueDepth = null;
       this.unsubscribeQueueRemoved?.();
       this.unsubscribeQueueRemoved = null;
+      this.unsubscribeQueueYielded?.();
+      this.unsubscribeQueueYielded = null;
+      this.finishAuxiliarySubmission("interrupted");
       await Promise.resolve(this.session?.abort()).catch(() => {});
       for (const socket of this.connections) socket.destroy();
       this.connections.clear();
@@ -656,6 +863,7 @@ async function main(): Promise<void> {
       .catch(() => process.exit(1));
   };
   process.on("message", (message: unknown) => {
+    worker.handleParentMessage(message);
     if (
       message &&
       typeof message === "object" &&
