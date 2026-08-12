@@ -154,7 +154,6 @@ import {
   getProvider,
   isProviderRuntimeHostAvailable,
 } from "./sdk/providers/index.js";
-import { isCodexRuntimeHostAvailable } from "./sdk/providers/codex-runtime-host.js";
 import type { AgentProvider } from "./sdk/providers/types.js";
 import type {
   ClaudeSDK,
@@ -452,9 +451,6 @@ export function createApp(options: AppOptions): AppResult {
     codexCliPath: options.codexCliPath,
     getClaudeAdditionalModels: () =>
       options.serverSettingsService?.getSetting("claudeAdditionalModels"),
-    getCodexReloadSafeSessions: () =>
-      options.serverSettingsService?.getSetting("codexReloadSafeSessions") ??
-      false,
     isClaudeOllamaVisible: () =>
       ClaudeOllamaProvider.isExplicitlyConfigured() ||
       Boolean(
@@ -1426,7 +1422,6 @@ export function createApp(options: AppOptions): AppResult {
       getClientDefaults: () =>
         options.serverSettingsService?.getSetting("clientDefaults"),
       desktopRuntime: options.desktopRuntime,
-      reloadSafeCodexRuntimeAvailable: isCodexRuntimeHostAvailable(),
     }),
   );
 

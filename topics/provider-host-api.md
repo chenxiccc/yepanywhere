@@ -7,10 +7,10 @@
 Topic: provider-host-api
 
 Status: the private host and worker protocols are implemented on Linux under
-the non-watch development wrapper. Stable discovery, headless bootstrap,
-auxiliary session-turn access, and the Hono adapter described below are
-approved but not yet implemented. The Codex-native convergence is approved and
-its compatibility plan is settled; implementation remains pending.
+the non-watch development wrapper, and Codex now uses that shared host rather
+than a separate native host. Stable discovery, headless bootstrap, auxiliary
+session-turn access, and the Hono adapter described below are approved but not
+yet implemented.
 
 Related:
 [reload-safe provider runtimes](reload-safe-provider-runtimes.md),
@@ -217,12 +217,11 @@ server launches without a host, failed capability probes, or explicit
 provider-host disablement use ordinary in-Hono ownership; headless session
 control then reports unavailable.
 
-The current `codexReloadSafeSessions` setting defaults false and selects the
-separate Codex-native host only when enabled and eligible. The approved target
-removes that alternate backend. New clients hide the selector; new servers
-continue accepting, storing, and returning the field for old-client
-compatibility but ignore it for routing. Its capability ids remain reserved and
-their old meanings are not widened into this provider-neutral API.
+The `codexReloadSafeSessions` setting remains in the server schema and storage
+for old-client compatibility, but is ignored for routing. New clients hide the
+selector, and new servers do not advertise native-host availability. Its
+capability ids remain reserved and their old meanings are not widened into this
+provider-neutral API.
 
 ## Retirement compatibility
 
@@ -231,12 +230,11 @@ The latest two stable server releases are `v0.7.0` and `v0.6.2`; as of
 Both predate the unreleased 0.7.1 capability ids for the Codex-native runtime
 and setting.
 
-The implementation plan therefore preserves the settings field on server
-reads/writes, hides it in the new client, stops advertising optional native-host
-availability after removal, and allocates a new provider-host-control
-capability/protocol version. Older clients may continue to send the inert
-field; no unsupported route or field is introduced for them. The permanent
-capability ledger retains all assigned ids.
+The server preserves the settings field on reads and writes, the client hides
+it, and native-host availability is no longer advertised. Older clients may
+continue to send the inert field; no unsupported route or field is introduced
+for them. The provider-host-control capability uses a new id and protocol
+version, while the permanent capability ledger retains all prior assignments.
 
 ## Observable acceptance contract
 

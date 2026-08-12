@@ -224,7 +224,6 @@ class ProviderRuntimeWorker {
     configureProviderRuntime({
       codexCliPath: config.codexCliPath,
       getClaudeAdditionalModels: () => config.claudeAdditionalModels ?? [],
-      getCodexReloadSafeSessions: () => false,
       isClaudeOllamaVisible: () => true,
       getProviderRuntimeSnapshot: () => config,
     });

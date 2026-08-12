@@ -74,13 +74,6 @@ import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
 import { MockServerClaudeProvider } from "./sdk/mock.js";
 import {
-  closeCodexRuntimeHostRegistration,
-  hasReloadSafeCodexRuntime,
-  initializeCodexRuntimeHost,
-  listReloadSafeCodexRuntimes,
-  markCodexRuntimeServerReloading,
-} from "./sdk/providers/codex-runtime-host.js";
-import {
   closeProviderRuntimeHostRegistration,
   hasHostedProviderRuntime,
   initializeProviderRuntimeHost,
@@ -234,9 +227,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
           try {
             if (
               signal === "SIGHUP" &&
-              (hasHostedProviderRuntime(p.sessionId) ||
-                (p.provider === "codex" &&
-                  hasReloadSafeCodexRuntime(p.sessionId))) &&
+              hasHostedProviderRuntime(p.sessionId) &&
               p.queueDepth === 0 &&
               !p.hasVolatileDeferredMessages()
             ) {
@@ -290,7 +281,6 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
   }
 
-  closeCodexRuntimeHostRegistration();
   closeProviderRuntimeHostRegistration();
 
   if (disposeAppForShutdown) {
@@ -326,18 +316,6 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 if (process.platform !== "win32") {
   process.on("SIGHUP", () => {
-    const reloadableCodexSessionIds =
-      supervisorForShutdown
-        ?.getAllProcesses()
-        .filter(
-          (process) =>
-            process.provider === "codex" &&
-            hasReloadSafeCodexRuntime(process.sessionId) &&
-            process.queueDepth === 0 &&
-            !process.hasVolatileDeferredMessages(),
-        )
-        .map((process) => process.sessionId) ?? [];
-    markCodexRuntimeServerReloading(reloadableCodexSessionIds);
     void gracefulShutdown("SIGHUP");
   });
 }
@@ -713,10 +691,6 @@ async function startServer() {
   if (await registerDevWrapperBackend()) {
     console.log("[DevWrapper] Registered backend process");
   }
-  if (await initializeCodexRuntimeHost()) {
-    console.log("[CodexRuntimeHost] Registered this server generation");
-  }
-  markStartup("Codex runtime host registration checked");
   if (await initializeProviderRuntimeHost()) {
     console.log("[ProviderRuntimeHost] Registered this server generation");
   }
@@ -1020,41 +994,6 @@ async function startServer() {
   // Set service references for graceful shutdown
   supervisorForShutdown = supervisor;
   deviceBridgeForShutdown = deviceBridgeService ?? null;
-
-  const reloadSafeCodexRuntimes = await listReloadSafeCodexRuntimes().catch(
-    (error) => {
-      console.error(
-        "[CodexRuntimeHost] Failed to list retained runtimes:",
-        error,
-      );
-      return [];
-    },
-  );
-  for (const runtime of reloadSafeCodexRuntimes) {
-    if (!runtime.sessionId) continue;
-    try {
-      await supervisor.reactivateSession(
-        runtime.projectPath,
-        runtime.sessionId,
-        runtime.reattach.permissionMode,
-        {
-          providerName: "codex",
-          model: runtime.reattach.model,
-          serviceTier: runtime.reattach.serviceTier,
-          thinking: runtime.reattach.thinking,
-          effort: runtime.reattach.effort,
-          clientName: runtime.reattach.clientName,
-        },
-      );
-      console.log(`[CodexRuntimeHost] Reattached session ${runtime.sessionId}`);
-    } catch (error) {
-      console.error(
-        `[CodexRuntimeHost] Failed to reattach session ${runtime.sessionId}:`,
-        error,
-      );
-    }
-  }
-  markStartup("retained Codex runtimes reattached");
 
   const hostedProviderRuntimes = await listHostedProviderRuntimes().catch(
     (error) => {

@@ -16,8 +16,6 @@ import {
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   MAX_IDLE_REAP_HOURS,
   NEVER_IDLE_REAP_HOURS,
-  RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
-  RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   isValidClaudeAdditionalModelId,
   isValidClaudeAdditionalModelLabel,
@@ -833,40 +831,6 @@ function OllamaSettings() {
   );
 }
 
-function CodexReloadSafeRuntimeSettings({ available }: { available: boolean }) {
-  const { t } = useI18n();
-  const { settings, updateSetting } = useServerSettings();
-  const enabled = settings?.codexReloadSafeSessions ?? false;
-
-  return (
-    <SettingsItem
-      id="provider-codex-reload-safe-sessions"
-      as="label"
-      label={t("providersCodexReloadSafeTitle")}
-      description={t("providersCodexReloadSafeDescription")}
-      valueText={enabled ? t("commonOn") : t("commonOff")}
-      title={available ? undefined : t("providersCodexReloadSafeUnavailable")}
-      after={
-        available ? undefined : (
-          <p className="settings-hint">
-            {t("providersCodexReloadSafeUnavailable")}
-          </p>
-        )
-      }
-    >
-      <input
-        type="checkbox"
-        checked={enabled}
-        disabled={!available}
-        aria-label={t("providersCodexReloadSafeTitle")}
-        onChange={(event) =>
-          void updateSetting("codexReloadSafeSessions", event.target.checked)
-        }
-      />
-    </SettingsItem>
-  );
-}
-
 function ClaudeGatewaySettings({
   reloadProviders,
   supportsAutostart,
@@ -1345,14 +1309,6 @@ export function ProvidersSettings() {
     version,
     CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   );
-  const supportsCodexReloadSafeSettings = serverHasCapability(
-    version,
-    RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
-  );
-  const hasCodexReloadSafeRuntime = serverHasCapability(
-    version,
-    RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
-  );
   const supportsIdleReapHours = serverHasCapability(
     version,
     IDLE_REAP_HOURS_SETTING_CAPABILITY,
@@ -1569,11 +1525,6 @@ export function ProvidersSettings() {
                 </a>
               )}
             </SettingsItem>
-            {provider.id === "codex" && supportsCodexReloadSafeSettings && (
-              <CodexReloadSafeRuntimeSettings
-                available={hasCodexReloadSafeRuntime}
-              />
-            )}
             {provider.id === "claude" &&
               provider.supportsLaunchCompactPercentOverride && (
                 <ClaudeAutoCompactPercentOverrideControl

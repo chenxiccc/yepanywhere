@@ -192,8 +192,6 @@ async function initializeProductionProviders(): Promise<string[] | undefined> {
     readOptionalBooleanSetting(settings, "ollamaUseFullSystemPrompt") ?? false;
   const grokBuildUseXaiApiKey =
     readOptionalBooleanSetting(settings, "grokBuildUseXaiApiKey") ?? false;
-  const codexReloadSafeSessions =
-    readOptionalBooleanSetting(settings, "codexReloadSafeSessions") ?? false;
   const claudeAdditionalModels =
     settings.claudeAdditionalModels === undefined
       ? undefined
@@ -216,7 +214,6 @@ async function initializeProductionProviders(): Promise<string[] | undefined> {
   configureProviderRuntime({
     codexCliPath: config.codexCliPath,
     getClaudeAdditionalModels: () => claudeAdditionalModels,
-    getCodexReloadSafeSessions: () => codexReloadSafeSessions,
     isClaudeOllamaVisible: () =>
       ClaudeOllamaProvider.isExplicitlyConfigured() ||
       Boolean(ollamaSystemPrompt || ollamaUseFullSystemPrompt) ||

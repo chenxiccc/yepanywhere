@@ -14,7 +14,6 @@ import {
   HOST_IDENTITY_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
-  RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
@@ -79,16 +78,10 @@ describe("Version Routes", () => {
     );
   });
 
-  it("separates reload-safe Codex settings from host availability", () => {
+  it("retains the reload-safe Codex settings compatibility schema", () => {
     expect(getServerCapabilities()).toContain(
       RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
     );
-    expect(getServerCapabilities()).not.toContain(
-      RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
-    );
-    expect(
-      getServerCapabilities({ reloadSafeCodexRuntimeAvailable: true }),
-    ).toContain(RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY);
   });
 
   it("advertises the complete source browser and review contract", () => {

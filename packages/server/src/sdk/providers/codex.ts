@@ -6,9 +6,7 @@
  */
 
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { createConnection } from "node:net";
 import { homedir } from "node:os";
-import { dirname } from "node:path";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
   canonicalInvocationName,
@@ -21,7 +19,6 @@ import {
   type ProviderSubscriptionUsage,
   type SlashCommand,
 } from "@yep-anywhere/shared";
-import { WebSocket } from "ws";
 import {
   isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
@@ -97,17 +94,6 @@ import {
   isCodexChatGptAccount,
   parseCodexUsageView,
 } from "./codex-account-commands.js";
-import {
-  bindReloadSafeCodexRuntime,
-  claimReloadSafeCodexRuntime,
-  isCodexRuntimeHostAvailable,
-  launchReloadSafeCodexRuntime,
-  releaseReloadSafeCodexRuntime,
-  setReloadSafeCodexRuntimeViewerPresence,
-  shouldReleaseCodexRuntimeForReload,
-  terminateReloadSafeCodexRuntime,
-  type ReloadSafeCodexRuntimeInfo,
-} from "./codex-runtime-host.js";
 import {
   type AppServerModel,
   getFallbackCodexModelsForCliVersion,
@@ -654,19 +640,15 @@ type AppServerRequestHandler = (
 
 class CodexAppServerClient {
   private process: ChildProcess | null = null;
-  private websocket: WebSocket | null = null;
   private stdoutBuffer = "";
   private closePromise: Promise<void> | null = null;
 
   /** OS PID of the spawned app-server child process */
   get pid(): number | undefined {
-    return this.externalRuntime?.pid ?? this.process?.pid;
+    return this.process?.pid;
   }
 
   isAlive(): boolean {
-    if (this.externalRuntime) {
-      return isProcessTargetRunning(-this.externalRuntime.processGroupId);
-    }
     const child = this.process;
     if (!child?.pid) return false;
     const target = process.platform === "win32" ? child.pid : -child.pid;
@@ -694,7 +676,6 @@ class CodexAppServerClient {
       notification: JsonRpcNotification,
     ) => boolean,
     private readonly sessionSandbox?: SessionSandboxRuntime,
-    private externalRuntime?: ReloadSafeCodexRuntimeInfo,
   ) {}
 
   get isClosed(): boolean {
@@ -712,29 +693,9 @@ class CodexAppServerClient {
     };
   }
 
-  getRuntimeUnviewedSince(): Date | undefined {
-    return this.externalRuntime?.unviewedSince
-      ? new Date(this.externalRuntime.unviewedSince)
-      : undefined;
-  }
-
-  async setRuntimeViewerPresence(hasViewers: boolean): Promise<void> {
-    const runtime = this.externalRuntime;
-    if (!runtime?.lifecycleCapabilities?.viewerPresence) return;
-    this.externalRuntime = await setReloadSafeCodexRuntimeViewerPresence(
-      runtime.runtimeId,
-      hasViewers,
-    );
-  }
-
   async connect(): Promise<void> {
-    if (this.process || this.websocket) {
+    if (this.process) {
       throw new Error("Codex app-server already connected");
-    }
-
-    if (this.externalRuntime) {
-      await this.connectExternalWebSocket(this.externalRuntime.socketPath);
-      return;
     }
 
     const commandArgs = ["app-server", "--listen", "stdio://"];
@@ -805,52 +766,6 @@ class CodexAppServerClient {
       child.once("spawn", onSpawn);
       child.once("error", onError);
     });
-  }
-
-  private async connectExternalWebSocket(socketPath: string): Promise<void> {
-    const connectUnixSocket = ((_options: unknown, callback?: () => void) =>
-      createConnection(socketPath, callback)) as typeof createConnection;
-    const websocket = new WebSocket("ws://localhost/rpc", {
-      // Codex's Unix-socket listener deliberately rejects extension headers.
-      perMessageDeflate: false,
-      createConnection: connectUnixSocket,
-    });
-    this.websocket = websocket;
-    websocket.on("message", (data) => {
-      this.handleJsonRpcLine(data.toString());
-    });
-    websocket.on("error", (error) => {
-      this.handleProcessClose(error);
-    });
-    websocket.on("close", (code, reason) => {
-      this.handleProcessClose(
-        new Error(
-          `Codex app-server WebSocket closed (code=${code}, reason=${reason.toString() || "none"})`,
-        ),
-      );
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const onOpen = () => {
-        websocket.off("error", onError);
-        resolve();
-      };
-      const onError = (error: Error) => {
-        websocket.off("open", onOpen);
-        reject(error);
-      };
-      websocket.once("open", onOpen);
-      websocket.once("error", onError);
-    });
-  }
-
-  async bindRuntimeSession(sessionId: string): Promise<void> {
-    const runtime = this.externalRuntime;
-    if (!runtime || runtime.sessionId === sessionId) return;
-    this.externalRuntime = await bindReloadSafeCodexRuntime(
-      runtime.runtimeId,
-      sessionId,
-    );
   }
 
   private handleJsonRpcLine(line: string): void {
@@ -998,7 +913,7 @@ class CodexAppServerClient {
     if (this.closePromise) {
       return await this.closePromise;
     }
-    if (this.closed && !this.externalRuntime) return;
+    if (this.closed) return;
     this.closed = true;
 
     const closeError = new Error("Codex app-server client closed");
@@ -1010,39 +925,8 @@ class CodexAppServerClient {
 
     const child = this.process;
     this.process = null;
-    const websocket = this.websocket;
-    this.websocket = null;
-    const runtime = this.externalRuntime;
-    this.closePromise = runtime
-      ? this.closeExternalRuntime(websocket, runtime)
-      : terminateChildProcess(child);
+    this.closePromise = terminateChildProcess(child);
     await this.closePromise;
-  }
-
-  private async closeExternalRuntime(
-    websocket: WebSocket | null,
-    runtime: ReloadSafeCodexRuntimeInfo,
-  ): Promise<void> {
-    if (websocket && websocket.readyState !== WebSocket.CLOSED) {
-      const closed = new Promise<void>((resolve) => {
-        websocket.once("close", () => resolve());
-      });
-      websocket.close();
-      await Promise.race([
-        closed,
-        new Promise<void>((resolve) => setTimeout(resolve, 500)),
-      ]);
-      if ((websocket as WebSocket).readyState !== WebSocket.CLOSED) {
-        websocket.terminate();
-      }
-    }
-
-    if (shouldReleaseCodexRuntimeForReload(runtime.sessionId)) {
-      await releaseReloadSafeCodexRuntime(runtime.runtimeId);
-    } else {
-      await terminateReloadSafeCodexRuntime(runtime.runtimeId);
-    }
-    this.externalRuntime = undefined;
   }
 
   private handleProcessClose(error: Error): void {
@@ -1065,7 +949,6 @@ class CodexAppServerClient {
     });
     this.notifications.close(error);
     this.process = null;
-    this.websocket = null;
   }
 
   private sendRaw(payload: Record<string, unknown>): void {
@@ -1074,10 +957,6 @@ class CodexAppServerClient {
     }
 
     try {
-      if (this.websocket?.readyState === WebSocket.OPEN) {
-        this.websocket.send(JSON.stringify(payload));
-        return;
-      }
       if (!this.process?.stdin) return;
       this.process.stdin.write(`${JSON.stringify(payload)}\n`);
     } catch (error) {
@@ -1105,7 +984,6 @@ export class CodexProvider implements AgentProvider {
   readonly supportsNativeCompactThreshold = true;
 
   private readonly config: CodexProviderConfig;
-  private getReloadSafeSessions = () => false;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
 
   constructor(config: CodexProviderConfig = {}) {
@@ -1115,10 +993,6 @@ export class CodexProvider implements AgentProvider {
   setCodexPath(codexPath: string | undefined): void {
     this.config.codexPath = codexPath;
     this.modelCache = null;
-  }
-
-  setReloadSafeSessionsGetter(getter: () => boolean): void {
-    this.getReloadSafeSessions = getter;
   }
 
   /**
@@ -1594,7 +1468,6 @@ export class CodexProvider implements AgentProvider {
       abort: async () => {
         settleInitialActiveClient(null);
         if (
-          !shouldReleaseCodexRuntimeForReload(runtimeState.threadId) &&
           activeClient &&
           runtimeState.threadId &&
           runtimeState.activeTurnId
@@ -1622,11 +1495,6 @@ export class CodexProvider implements AgentProvider {
           lastRawProviderEventAt: null,
           lastRawProviderEventSource: null,
         },
-      getRuntimeUnviewedSince: () => activeClient?.getRuntimeUnviewedSince(),
-      setRuntimeViewerPresence: async (hasViewers) => {
-        const client = activeClient ?? (await initialActiveClient);
-        await client?.setRuntimeViewerPresence(hasViewers);
-      },
       get pid() {
         return activeClient?.pid;
       },
@@ -2092,44 +1960,6 @@ export class CodexProvider implements AgentProvider {
   /**
    * Main session loop using codex app-server.
    */
-  private async acquireReloadSafeRuntime(
-    command: string,
-    env: NodeJS.ProcessEnv,
-    options: StartSessionOptions,
-    cleanupPaths: string[],
-  ): Promise<ReloadSafeCodexRuntimeInfo | undefined> {
-    if (
-      !isCodexRuntimeHostAvailable() ||
-      options.executor ||
-      options.sessionSandbox
-    ) {
-      return undefined;
-    }
-
-    if (options.resumeSessionId) {
-      const claimed = await claimReloadSafeCodexRuntime(
-        options.resumeSessionId,
-      );
-      if (claimed) return claimed;
-    }
-    if (!this.getReloadSafeSessions()) return undefined;
-
-    return await launchReloadSafeCodexRuntime({
-      command,
-      projectPath: options.cwd,
-      env,
-      reattach: {
-        permissionMode: options.permissionMode,
-        model: options.model,
-        serviceTier: options.serviceTier,
-        thinking: options.thinking,
-        effort: options.effort,
-        clientName: options.clientName,
-      },
-      cleanupPaths,
-    });
-  }
-
   private async *runSession(
     options: StartSessionOptions,
     queue: MessageQueue,
@@ -2156,18 +1986,6 @@ export class CodexProvider implements AgentProvider {
         options.getSessionChildEnv?.(options.resumeSessionId),
       );
     }
-    let reloadSafeRuntime: ReloadSafeCodexRuntimeInfo | undefined;
-    try {
-      reloadSafeRuntime = await this.acquireReloadSafeRuntime(
-        codexCommand,
-        codexEnv,
-        options,
-        [dirname(agentctlSessionEnvBridge.bashEnvPath)],
-      );
-    } catch (error) {
-      agentctlSessionEnvBridge.cleanup();
-      throw error;
-    }
     const appServer = new CodexAppServerClient(
       codexCommand,
       options.cwd,
@@ -2175,7 +1993,6 @@ export class CodexProvider implements AgentProvider {
       (notification) =>
         this.shouldSuppressLiveDeltaNotification(notification, options),
       options.sessionSandbox,
-      reloadSafeRuntime,
     );
     setActiveClient(appServer);
 
@@ -2226,7 +2043,6 @@ export class CodexProvider implements AgentProvider {
         sessionId,
         policy,
         experimentalApiEnabled,
-        reloadSafeRuntime !== undefined,
       );
       const threadStartParams = this.createThreadStartParams(options, policy);
       const threadResult = await this.startOrResumeThread(
@@ -2238,7 +2054,6 @@ export class CodexProvider implements AgentProvider {
       options.onPermissionModeApplied?.(initialPermissionMode);
 
       sessionId = threadResult.thread.id;
-      await appServer.bindRuntimeSession(sessionId);
       agentctlSessionEnvBridge.publishSessionId(sessionId);
       runtimeState.threadId = sessionId;
       runtimeState.resolvedModel = threadResult.model;
@@ -2426,63 +2241,6 @@ export class CodexProvider implements AgentProvider {
         } as SDKMessage;
       };
 
-      const resumedActiveTurns =
-        reloadSafeRuntime && options.resumeSessionId
-          ? threadResult.thread.turns.filter(
-              (turn) => turn.status === "inProgress",
-            )
-          : [];
-      const resumedActiveTurn =
-        resumedActiveTurns[resumedActiveTurns.length - 1];
-      if (resumedActiveTurn) {
-        let restoredUnfinishedItemCount = 0;
-        let skippedDurableItemCount = 0;
-        let ignoredItemCount = 0;
-        for (const item of resumedActiveTurn.items) {
-          const normalized = this.normalizeThreadItem(item);
-          if (!normalized) {
-            ignoredItemCount += 1;
-            continue;
-          }
-          const isUnfinishedResultBackedItem =
-            this.isResultBackedThreadItem(normalized) &&
-            "status" in normalized &&
-            normalized.status === "in_progress";
-          if (!isUnfinishedResultBackedItem) {
-            skippedDurableItemCount += 1;
-            continue;
-          }
-
-          restoredUnfinishedItemCount += 1;
-          this.recordLiveResultBackedToolItem(
-            liveEventState,
-            resumedActiveTurn.id,
-            normalized.id,
-          );
-          for (const message of this.convertItemToSDKMessages(
-            normalized,
-            sessionId,
-            resumedActiveTurn.id,
-            "item/started",
-          )) {
-            yield message;
-          }
-        }
-        log.info(
-          {
-            sessionId,
-            turnId: resumedActiveTurn.id,
-            activeTurnCount: resumedActiveTurns.length,
-            snapshotItemCount: resumedActiveTurn.items.length,
-            restoredUnfinishedItemCount,
-            skippedDurableItemCount,
-            ignoredItemCount,
-          },
-          "Rejoined active Codex app-server turn",
-        );
-        yield* consumeTurn(this, resumedActiveTurn);
-      }
-
       const messageGen = queue[Symbol.asyncIterator]();
       const stopMessageWait = () => {
         void messageGen.return?.();
@@ -2611,10 +2369,7 @@ export class CodexProvider implements AgentProvider {
       try {
         await appServer.close();
       } finally {
-        const hostOwnsAgentctlBridge = Boolean(
-          reloadSafeRuntime && !reloadSafeRuntime.sessionId,
-        );
-        if (!hostOwnsAgentctlBridge) agentctlSessionEnvBridge.cleanup();
+        agentctlSessionEnvBridge.cleanup();
       }
     }
 

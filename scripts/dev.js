@@ -180,14 +180,6 @@ const env = {
 
 const reloadSafeRuntimeHostsEnabled =
   process.platform === "linux" && !backendWatch;
-const runtimeDir = reloadSafeRuntimeHostsEnabled
-  ? mkdtempSync(join(tmpdir(), "ya-codex-runtime-"))
-  : null;
-if (runtimeDir) chmodSync(runtimeDir, 0o700);
-const runtimeHostSocket = runtimeDir ? join(runtimeDir, "host.sock") : null;
-const runtimeHostToken = runtimeDir
-  ? randomBytes(32).toString("base64url")
-  : null;
 const providerRuntimeDir = reloadSafeRuntimeHostsEnabled
   ? mkdtempSync(join(tmpdir(), "ya-provider-runtime-"))
   : null;
@@ -200,11 +192,6 @@ const providerRuntimeHostToken = providerRuntimeDir
   : null;
 const wrapperToken = randomBytes(32).toString("base64url");
 
-if (runtimeDir && runtimeHostSocket && runtimeHostToken) {
-  env.YEP_CODEX_RUNTIME_DIR = runtimeDir;
-  env.YEP_CODEX_RUNTIME_SOCKET = runtimeHostSocket;
-  env.YEP_CODEX_RUNTIME_TOKEN = runtimeHostToken;
-}
 if (
   providerRuntimeDir &&
   providerRuntimeHostSocket &&
@@ -218,11 +205,9 @@ if (
 let wrapperState = "starting";
 let serverChild = null;
 let clientChild = null;
-let runtimeHostChild = null;
 let providerRuntimeHostChild = null;
 let wrapperControlServer = null;
 const wrapperControlSockets = new Set();
-const runtimeProcessGroups = new Map();
 const providerRuntimeProcessGroups = new Map();
 let serverGeneration = 0;
 let unexpectedRecoveryUsed = false;
@@ -406,70 +391,6 @@ function spawnManaged(command, childArgs, options) {
   });
 }
 
-async function startRuntimeHost() {
-  if (!reloadSafeRuntimeHostsEnabled) return;
-  const host = spawn(
-    process.execPath,
-    [join(__dirname, "codex-runtime-host.mjs")],
-    {
-      cwd: rootDir,
-      env,
-      detached: !isWindows,
-      stdio: ["ignore", "inherit", "inherit", "ipc"],
-    },
-  );
-  runtimeHostChild = host;
-
-  await new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (fn) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      host.off("message", onMessage);
-      host.off("error", onError);
-      host.off("exit", onExitBeforeReady);
-      fn();
-    };
-    const onMessage = (message) => {
-      if (message?.type === "ready") finish(resolve);
-    };
-    const onError = (error) => finish(() => reject(error));
-    const onExitBeforeReady = (code, signal) =>
-      finish(() =>
-        reject(
-          new Error(
-            `Codex runtime host exited before ready (code=${code}, signal=${signal})`,
-          ),
-        ),
-      );
-    const timeout = setTimeout(
-      () =>
-        finish(() => reject(new Error("Codex runtime host startup timed out"))),
-      5_000,
-    );
-    host.on("message", onMessage);
-    host.once("error", onError);
-    host.once("exit", onExitBeforeReady);
-  });
-
-  host.on("message", (message) => {
-    if (message?.type === "runtimeLaunched") {
-      runtimeProcessGroups.set(message.runtimeId, message.processGroupId);
-    } else if (message?.type === "runtimeExited") {
-      runtimeProcessGroups.delete(message.runtimeId);
-    }
-  });
-  host.on("exit", (code, signal) => {
-    if (runtimeHostChild === host) runtimeHostChild = null;
-    if (wrapperState === "shutting-down") return;
-    console.error(
-      `[CodexRuntimeHost] Exited unexpectedly (code=${code}, signal=${signal})`,
-    );
-    void shutdownWrapper("Codex runtime host exited unexpectedly", 1);
-  });
-}
-
 async function startProviderRuntimeHost() {
   if (!reloadSafeRuntimeHostsEnabled) return;
   const host = spawn(
@@ -544,37 +465,6 @@ async function startProviderRuntimeHost() {
     );
     void shutdownWrapper("Provider runtime host exited unexpectedly", 1);
   });
-}
-
-async function stopRuntimeHost() {
-  const host = runtimeHostChild;
-  if (host && host.exitCode === null && host.signalCode === null) {
-    try {
-      host.send({ type: "shutdown", reason: "dev wrapper shutdown" });
-    } catch {
-      // The fallback process-group sweep below remains authoritative.
-    }
-    if (!(await waitForChildExit(host, 5_000))) {
-      host.kill("SIGTERM");
-      if (!(await waitForChildExit(host, 1_500))) {
-        host.kill("SIGKILL");
-        if (!(await waitForChildExit(host, 1_000))) {
-          throw new Error("Codex runtime host survived SIGKILL");
-        }
-      }
-    }
-  }
-
-  const results = await Promise.allSettled(
-    [...runtimeProcessGroups.values()].map(reapRuntimeProcessGroup),
-  );
-  runtimeProcessGroups.clear();
-  const failures = results.filter((result) => result.status === "rejected");
-  if (failures.length > 0) {
-    throw new Error(
-      `Failed to reap ${failures.length} Codex runtime process group(s)`,
-    );
-  }
 }
 
 async function stopProviderRuntimeHost() {
@@ -801,19 +691,11 @@ async function shutdownWrapper(reason, exitCode = 0) {
     await stopManagedChild(serverChild, "backend", 7_000).catch((error) =>
       failures.push(error),
     );
-    await stopRuntimeHost().catch((error) => failures.push(error));
     await stopProviderRuntimeHost().catch((error) => failures.push(error));
     await stopManagedChild(clientChild, "Vite").catch((error) =>
       failures.push(error),
     );
 
-    if (runtimeDir && existsSync(runtimeDir)) {
-      try {
-        rmSync(runtimeDir, { recursive: true });
-      } catch (error) {
-        failures.push(error);
-      }
-    }
     if (providerRuntimeDir && existsSync(providerRuntimeDir)) {
       try {
         rmSync(providerRuntimeDir, { recursive: true });
@@ -924,7 +806,6 @@ function startClient() {
 }
 
 try {
-  await startRuntimeHost();
   await startProviderRuntimeHost();
   await startWrapperControlServer();
   startServer();

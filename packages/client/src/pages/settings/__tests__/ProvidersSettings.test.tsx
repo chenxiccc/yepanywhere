@@ -206,50 +206,7 @@ describe("ProvidersSettings additional models", () => {
     ).toEqual(["provider-codex", "provider-claude"]);
   });
 
-  it("hides reload-safe Codex settings from older servers", () => {
-    hookState.providers = [
-      {
-        name: "codex",
-        displayName: "Codex",
-        installed: false,
-        authenticated: true,
-        enabled: true,
-        models: [],
-      },
-    ];
-    versionState.capabilities = [];
-
-    render(<ProvidersSettings />);
-
-    expect(screen.queryByText("providersCodexReloadSafeTitle")).toBeNull();
-  });
-
-  it("disables reload-safe Codex settings without a usable host", () => {
-    hookState.providers = [
-      {
-        name: "codex",
-        displayName: "Codex",
-        installed: false,
-        authenticated: true,
-        enabled: true,
-        models: [],
-      },
-    ];
-    versionState.capabilities = [RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY];
-
-    render(<ProvidersSettings />);
-
-    expect(
-      screen.getByRole("checkbox", {
-        name: "providersCodexReloadSafeTitle",
-      }),
-    ).toHaveProperty("disabled", true);
-    expect(
-      screen.getByText("providersCodexReloadSafeUnavailable"),
-    ).toBeTruthy();
-  });
-
-  it("saves reload-safe Codex settings when the host is usable", async () => {
+  it("hides legacy reload-safe Codex settings when advertised", () => {
     hookState.providers = [
       {
         name: "codex",
@@ -266,18 +223,8 @@ describe("ProvidersSettings additional models", () => {
     ];
 
     render(<ProvidersSettings />);
-    fireEvent.click(
-      screen.getByRole("checkbox", {
-        name: "providersCodexReloadSafeTitle",
-      }),
-    );
 
-    await waitFor(() => {
-      expect(mockUpdateSetting).toHaveBeenCalledWith(
-        "codexReloadSafeSessions",
-        true,
-      );
-    });
+    expect(screen.queryByText("providersCodexReloadSafeTitle")).toBeNull();
   });
 
   it("hides the Claude auto-compaction setting from older servers", () => {

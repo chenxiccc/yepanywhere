@@ -6,12 +6,10 @@
 
 import type { ClaudeAdditionalModelSelection } from "@yep-anywhere/shared";
 import {
-  hasHostedProviderRuntime,
   isProviderRuntimeHostAvailable,
   retainProviderRuntimeProcessGroup,
   startHostedProviderSession,
 } from "./provider-runtime-host.js";
-import { hasReloadSafeCodexRuntime } from "./codex-runtime-host.js";
 // Types
 import type { AgentProvider, ProviderName } from "./types.js";
 export type {
@@ -103,8 +101,6 @@ export interface ProviderRuntimeConfig {
   getClaudeAdditionalModels?: () =>
     | readonly ClaudeAdditionalModelSelection[]
     | undefined;
-  /** Whether eligible new and resumed Codex processes use the lifecycle host. */
-  getCodexReloadSafeSessions?: () => boolean;
   /** Whether legacy ClaudeOllama has configured or persisted usage. */
   isClaudeOllamaVisible?: () => boolean;
   /** Cloneable process-scoped settings supplied to a provider worker. */
@@ -125,41 +121,14 @@ export interface ProviderRuntimeSnapshot {
 }
 
 let isClaudeOllamaVisible = () => false;
-let getCodexReloadSafeSessions = () => false;
 let getProviderRuntimeSnapshot = (): ProviderRuntimeSnapshot => ({});
 const hostedProviderProxies = new Map<ProviderName, AgentProvider>();
-
-export type CodexRuntimeBackend = "codex-native-host" | "shared-provider-host";
-
-/**
- * Keep an existing Codex session on its launch backend. For an unowned new or
- * resumed session, the provider setting selects the specialized Codex host.
- */
-export function selectCodexRuntimeBackend(options: {
-  resumeSessionId?: string;
-  hasCodexNativeRuntime: boolean;
-  hasSharedProviderRuntime: boolean;
-  codexNativeHostEnabled: boolean;
-}): CodexRuntimeBackend {
-  if (options.resumeSessionId) {
-    if (options.hasCodexNativeRuntime) return "codex-native-host";
-    if (options.hasSharedProviderRuntime) return "shared-provider-host";
-  }
-  return options.codexNativeHostEnabled
-    ? "codex-native-host"
-    : "shared-provider-host";
-}
 
 export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   claudeProvider.setAdditionalModelsGetter(
     config.getClaudeAdditionalModels ?? (() => []),
   );
   codexProvider.setCodexPath(config.codexCliPath);
-  codexProvider.setReloadSafeSessionsGetter(
-    config.getCodexReloadSafeSessions ?? (() => false),
-  );
-  getCodexReloadSafeSessions =
-    config.getCodexReloadSafeSessions ?? (() => false);
   codexOSSProvider.setCodexPath(config.codexCliPath);
   isClaudeOllamaVisible = config.isClaudeOllamaVisible ?? (() => false);
   getProviderRuntimeSnapshot =
@@ -195,29 +164,12 @@ function hostedProvider(rawProvider: AgentProvider): AgentProvider {
         };
       }
       if (property === "startSession") {
-        return (options: Parameters<AgentProvider["startSession"]>[0]) => {
-          if (target.name === "codex") {
-            const resumeSessionId = options.resumeSessionId;
-            const backend = selectCodexRuntimeBackend({
-              resumeSessionId,
-              hasCodexNativeRuntime: Boolean(
-                resumeSessionId && hasReloadSafeCodexRuntime(resumeSessionId),
-              ),
-              hasSharedProviderRuntime: Boolean(
-                resumeSessionId && hasHostedProviderRuntime(resumeSessionId),
-              ),
-              codexNativeHostEnabled: getCodexReloadSafeSessions(),
-            });
-            if (backend === "codex-native-host") {
-              return target.startSession(options);
-            }
-          }
-          return startHostedProviderSession(
+        return (options: Parameters<AgentProvider["startSession"]>[0]) =>
+          startHostedProviderSession(
             target.name,
             options,
             getProviderRuntimeSnapshot(),
           );
-        };
       }
       const value = Reflect.get(target, property, target) as unknown;
       return typeof value === "function" ? value.bind(target) : value;

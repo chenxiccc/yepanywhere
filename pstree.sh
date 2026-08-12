@@ -129,7 +129,6 @@ owner_for() {
   fi
 
   case "$line" in
-    *codex-runtime-host.mjs*) echo 'YA host: Codex' ;;
     *provider-runtime-host.mjs*) echo 'YA host: providers' ;;
     *summary-parser-worker-entry*) echo 'YA parser worker' ;;
     *vite/bin/vite.js*|*vite.js*) echo 'YA client: Vite' ;;
@@ -140,7 +139,7 @@ owner_for() {
     *opencode*) echo 'OpenCode harness' ;;
     *gemini*) echo 'Gemini harness' ;;
     *)
-      if [[ $inherited_owner == 'Codex harness' || $inherited_owner == 'YA host: Codex' ]]; then
+      if [[ $inherited_owner == 'Codex harness' ]]; then
         echo 'Codex harness'
       elif [[ $inherited_owner == *'harness' ]]; then
         echo "$inherited_owner"
