@@ -38,6 +38,7 @@ import {
   PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
+  PROVIDER_HOST_CONTROL_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
@@ -401,6 +402,8 @@ export interface VersionRouteOptions {
   getClientDefaults?: () => ClientDefaults | undefined;
   /** Whether this process is the server bundled with the desktop shell. */
   desktopRuntime?: boolean;
+  /** Whether this Hono generation is registered with a provider host. */
+  providerHostControlAvailable?: boolean;
   /** Resolved local sandbox preflight used while constructing capabilities. */
   sessionSandboxAvailability?: SessionSandboxAvailability;
   /** Test/service override for the cached host preflight. */
@@ -458,6 +461,9 @@ export function getServerCapabilities(options?: VersionRouteOptions): string[] {
   }
   if (options?.voiceInputEnabled !== false) {
     capabilities.push(VOICE_INPUT_CAPABILITY);
+  }
+  if (options?.providerHostControlAvailable) {
+    capabilities.push(PROVIDER_HOST_CONTROL_CAPABILITY);
   }
   const deviceBridgeState = options?.getDeviceBridgeState?.() ?? "unavailable";
   const enabled = options?.isDeviceBridgeEnabled?.() ?? false;

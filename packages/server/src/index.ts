@@ -77,6 +77,7 @@ import {
   closeProviderRuntimeHostRegistration,
   hasHostedProviderRuntime,
   initializeProviderRuntimeHost,
+  isProviderRuntimeHostAvailable,
   listHostedProviderRuntimes,
   retainProviderRuntimeProcessGroup,
 } from "./sdk/providers/provider-runtime-host.js";
@@ -1153,6 +1154,7 @@ async function startServer() {
         },
         isDeviceBridgeEnabled: () =>
           serverSettingsService.getSetting("deviceBridgeEnabled") ?? false,
+        providerHostControlAvailable: isProviderRuntimeHostAvailable(),
       });
       relayClientService.start({
         relayUrl: relayConfig.url,

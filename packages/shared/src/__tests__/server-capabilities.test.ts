@@ -5,6 +5,7 @@ import {
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  PROVIDER_HOST_CONTROL_CAPABILITY,
   PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   encodeCompactServerCapabilities,
@@ -67,6 +68,27 @@ describe("server capability advertisements", () => {
       true,
     );
     expect(serverHasCapability(source, DEVICE_BRIDGE_CAPABILITY)).toBe(false);
+  });
+
+  it("keeps provider-host control optional at its permanent id", () => {
+    const optionalCapabilityBits = encodeOptionalServerCapabilityBits([
+      PROVIDER_HOST_CONTROL_CAPABILITY,
+    ]);
+    expect(optionalCapabilityBits).toEqual([
+      [0, 2 ** CAPABILITY_ID_ALLOCATIONS.providerHostControl.id],
+    ]);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1", optionalCapabilityBits },
+        PROVIDER_HOST_CONTROL_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1", optionalCapabilityBits: [] },
+        PROVIDER_HOST_CONTROL_CAPABILITY,
+      ),
+    ).toBe(false);
   });
 
   it("keeps only not-yet-released names as compact extensions", () => {

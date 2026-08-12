@@ -14,6 +14,7 @@ import {
   HOST_IDENTITY_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  PROVIDER_HOST_CONTROL_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
@@ -133,5 +134,14 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(
       PROJECT_SESSION_DEFAULTS_CAPABILITY,
     );
+  });
+
+  it("advertises provider-host control only while registered", () => {
+    expect(getServerCapabilities()).not.toContain(
+      PROVIDER_HOST_CONTROL_CAPABILITY,
+    );
+    expect(
+      getServerCapabilities({ providerHostControlAvailable: true }),
+    ).toContain(PROVIDER_HOST_CONTROL_CAPABILITY);
   });
 });

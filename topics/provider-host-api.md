@@ -7,11 +7,11 @@
 Topic: provider-host-api
 
 Status: stable same-user discovery, foreground headless bootstrap,
-attach-or-start recovery, and bounded auxiliary session turns are implemented
-on Linux. The non-watch development wrapper attaches to a compatible incumbent
-host or starts one, and Codex uses the shared provider host rather than a
-separate native host. The authenticated Hono adapter described below remains
-in progress.
+attach-or-start recovery, bounded auxiliary session turns, and an authenticated
+Hono adapter are implemented on Linux. The non-watch development wrapper
+attaches to a compatible incumbent host or starts one, and Codex uses the
+shared provider host rather than a separate native host. Public feature copy
+remains gated on fresh-host end-to-end verification.
 
 Related:
 [reload-safe provider runtimes](reload-safe-provider-runtimes.md),
@@ -211,12 +211,30 @@ inference and YA processing dominate either local transport. Filesystem
 ownership, narrow capability scope, headless availability, and direct access to
 the runtime owner are the reasons to keep it.
 
-An authenticated Hono route adapts remote/relay clients to the same
-`sessionTurn` operation. It applies YA's ordinary admission, authorization,
-host/origin, request-shape, and transport bounds, then calls the host rather
-than reimplementing session control. The route is not required by the planned
-`~/agents` helper, which uses the local socket and may choose its own native
-provider-resume fallback.
+Authenticated Hono routes adapt remote and relayed clients to the same host:
+
+- `GET /api/provider-host/status`;
+- `GET /api/provider-host/runtimes`;
+- `POST /api/provider-host/session-turn`, returning newline-delimited records;
+- `GET /api/provider-host/session-turn/:submissionId`; and
+- `POST /api/provider-host/session-turn/:submissionId/interrupt`.
+
+The adapter applies YA's ordinary `/api/*` admission, authorization,
+host/origin, and custom-header checks. It limits a request to 1 MiB, turn text
+to 900 KiB, and the timeout to the host's one-second through two-hour range.
+It has no provider-launch authority: a remote caller can address only an
+incumbent worker. Provider-host failures before acceptance map to unavailable;
+an adapter failure after acceptance is reported as uncertain rather than
+inviting a second submission.
+
+The permanent `provider-host-control` server capability uses id 30 and is
+advertised only while the Hono generation is registered with the compatible
+host. Clients that do not see it hide the control surface and make none of
+these requests. This preserves the approved `v0.7.0` and `v0.6.2` fallback and
+does not widen either retained Codex-native capability id.
+
+The route is not required by the planned `~/agents` helper, which uses the
+local socket and may choose its own native provider-resume fallback.
 
 The provider host is never directly exposed on TCP. Worker endpoints stay
 private even to local helper clients.

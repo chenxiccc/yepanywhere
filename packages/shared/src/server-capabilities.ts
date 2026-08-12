@@ -57,6 +57,11 @@ export const OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS = {
     index: CAPABILITY_ID_ALLOCATIONS.sessionSandboxing.id,
     introducedIn: "0.7.1",
   },
+  providerHostControl: {
+    name: "provider-host-control",
+    index: CAPABILITY_ID_ALLOCATIONS.providerHostControl.id,
+    introducedIn: "0.7.1",
+  },
 } as const;
 
 export type OptionalServerCapabilityBitset = CapabilityBitset;
@@ -818,6 +823,55 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on provider-subscription-usage.",
     },
   },
+  providerHostControl: {
+    id: CAPABILITY_ID_ALLOCATIONS.providerHostControl.id,
+    name: "provider-host-control",
+    kind: "permanent",
+    area: "providers",
+    introducedIn: "0.7.1",
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.providerHostControl.index,
+    },
+    description:
+      "Server adapts authenticated remote session-turn requests to an incumbent same-user provider host without becoming a second provider owner.",
+    clientFallback:
+      "Hide provider-host control and make no status, inventory, turn, receipt, or interruption request.",
+    serverContract: {
+      routes: [
+        "GET /api/provider-host/status",
+        "GET /api/provider-host/runtimes",
+        "POST /api/provider-host/session-turn",
+        "GET /api/provider-host/session-turn/:submissionId",
+        "POST /api/provider-host/session-turn/:submissionId/interrupt",
+      ],
+      routeModules: ["packages/server/src/routes/provider-host.ts"],
+      requestFields: [
+        "providerHostTurn.submissionId",
+        "providerHostTurn.target",
+        "providerHostTurn.message",
+        "providerHostTurn.timeoutMs",
+      ],
+      responseFields: [
+        "providerHostStatus.available",
+        "providerHostInventory.runtimes",
+        "providerHostTurnStatus",
+      ],
+      events: [
+        "providerHostTurn.accepted",
+        "providerHostTurn.providerEvent",
+        "providerHostTurn.approvalRequired",
+        "providerHostTurn.terminal",
+        "providerHostTurn.error",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Host availability is launch- and platform-dependent, while hosted clients can outpace installed servers that lack the adapter routes.",
+    },
+  },
   reloadSafeCodexRuntimeSettings: {
     id: CAPABILITY_ID_ALLOCATIONS.reloadSafeCodexRuntimeSettings.id,
     name: "reload-safe-codex-runtime-settings",
@@ -1387,6 +1441,9 @@ export const CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY =
 
 export const PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY =
   SERVER_CAPABILITIES.providerSubscriptionUsage.name;
+
+export const PROVIDER_HOST_CONTROL_CAPABILITY =
+  SERVER_CAPABILITIES.providerHostControl.name;
 
 export const RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY =
   SERVER_CAPABILITIES.reloadSafeCodexRuntimeSettings.name;

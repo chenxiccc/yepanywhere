@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createConnection, type Socket } from "node:net";
 import type {
   PermissionMode,
@@ -79,6 +80,9 @@ export interface HostedProviderRuntimeInfo {
   hostProtocolVersion: number;
   runtimeId: string;
   sessionId?: string;
+  harness: string;
+  providerSessionId?: string;
+  yaSessionId?: string;
   providerName: ProviderName;
   projectPath: string;
   socketPath: string;
@@ -93,12 +97,41 @@ export interface HostedProviderRuntimeInfo {
   detachedAt?: string;
   reattach: HostedProviderReattachSpec;
   worker: WorkerMetadata;
+  acceptsSessionTurns: boolean;
 }
 
 interface RuntimeHostEnvironment {
   socketPath: string;
   token: string;
   generation: string;
+}
+
+export interface ProviderHostTurnTarget {
+  harness: string;
+  providerSessionId: string;
+  yaSessionId?: string;
+}
+
+export interface ProviderHostSessionTurnRequest {
+  submissionId: string;
+  target: ProviderHostTurnTarget;
+  message: Pick<UserMessage, "text" | "mode">;
+  timeoutMs?: number;
+}
+
+export interface ProviderHostSessionTurnRecord {
+  id?: string | number;
+  type:
+    | "accepted"
+    | "providerEvent"
+    | "approvalRequired"
+    | "terminal"
+    | "error";
+  submissionId?: string;
+  outcome?: string;
+  accepted?: boolean;
+  error?: string;
+  [key: string]: unknown;
 }
 
 let registrationSocket: Socket | null = null;
@@ -301,6 +334,83 @@ export async function listHostedProviderRuntimes(): Promise<
   const runtimes = await requestHost<HostedProviderRuntimeInfo[]>("list");
   for (const runtime of runtimes) rememberRuntime(runtime);
   return runtimes;
+}
+
+export function getProviderHostStatus(): Promise<Record<string, unknown>> {
+  return requestHost("status");
+}
+
+export function getProviderHostInventory(): Promise<
+  HostedProviderRuntimeInfo[]
+> {
+  return requestHost("inventory");
+}
+
+export function getProviderHostSessionTurnStatus(
+  submissionId: string,
+): Promise<Record<string, unknown> | null> {
+  return requestHost("sessionTurnStatus", { submissionId });
+}
+
+export function interruptProviderHostSessionTurn(
+  submissionId: string,
+): Promise<Record<string, unknown>> {
+  return requestHost("interruptSessionTurn", { submissionId });
+}
+
+export async function* streamProviderHostSessionTurn(
+  request: ProviderHostSessionTurnRequest,
+  signal?: AbortSignal,
+): AsyncGenerator<ProviderHostSessionTurnRecord> {
+  const environment = getEnvironment();
+  if (!environment || !registered) {
+    throw new Error("Provider runtime host is unavailable");
+  }
+  const requestId = randomUUID();
+  const socket = createConnection(environment.socketPath);
+  socket.setEncoding("utf8");
+  const abort = () => socket.destroy(new Error("Session-turn request aborted"));
+  signal?.addEventListener("abort", abort, { once: true });
+  let buffer = "";
+  let terminal = false;
+  try {
+    socket.write(
+      `${JSON.stringify({
+        id: requestId,
+        token: environment.token,
+        generation: environment.generation,
+        protocolVersion: HOST_PROTOCOL_VERSION,
+        op: "sessionTurn",
+        ...request,
+      })}\n`,
+    );
+    for await (const chunk of socket) {
+      buffer += String(chunk);
+      if (Buffer.byteLength(buffer) > 64 * 1024 * 1024) {
+        throw new Error("Provider host session-turn record is too large");
+      }
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const record = JSON.parse(line) as ProviderHostSessionTurnRecord;
+        if (record.id !== requestId) {
+          throw new Error("Provider host session-turn response id mismatch");
+        }
+        yield record;
+        if (record.type === "terminal" || record.type === "error") {
+          terminal = true;
+          return;
+        }
+      }
+    }
+    if (!terminal) {
+      throw new Error("Provider host closed before a terminal turn record");
+    }
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    socket.destroy();
+  }
 }
 
 export async function retainProviderRuntimeProcessGroup(

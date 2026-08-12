@@ -198,6 +198,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "git-file-diff-projections",
     introducedIn: "0.7.1",
   },
+  providerHostControl: {
+    id: 30,
+    direction: "server",
+    name: "provider-host-control",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

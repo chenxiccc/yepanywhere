@@ -147,6 +147,7 @@ import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { createSpeechRoutes } from "./routes/speech.js";
 import { createSecurityClientRoutes } from "./routes/security-clients.js";
 import { createVersionRoutes } from "./routes/version.js";
+import { createProviderHostRoutes } from "./routes/provider-host.js";
 import { createWorkstreamRoutes } from "./routes/workstreams.js";
 import { WS_INTERNAL_AUTHENTICATED } from "./middleware/internal-auth.js";
 import {
@@ -1422,6 +1423,7 @@ export function createApp(options: AppOptions): AppResult {
       getClientDefaults: () =>
         options.serverSettingsService?.getSetting("clientDefaults"),
       desktopRuntime: options.desktopRuntime,
+      providerHostControlAvailable: isProviderRuntimeHostAvailable(),
     }),
   );
 
@@ -1522,6 +1524,7 @@ export function createApp(options: AppOptions): AppResult {
   }
 
   // Mount API routes
+  app.route("/api/provider-host", createProviderHostRoutes());
   app.route(
     "/api/projects",
     createProjectsRoutes({
