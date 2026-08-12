@@ -24,15 +24,18 @@ Topic: selection-comment-ui
 Status: **Phase 1 shipped 2026-06-23; the two early contract gaps fixed
 2026-06-23; the dedicated assistant quote lane fixed 2026-06-25; initial
 Phase 2 scope widening shipped 2026-07-01; portaled modal/file scope shipped
-2026-07-27; pressed-pointer tooltip suppression landed 2026-08-10.**
+2026-07-27; pressed-pointer tooltip suppression landed 2026-08-10; stable
+selection actions and independent controls landed 2026-08-12.**
 Assistant text blocks can be quoted via selection typing, a floating selection
-`>` button, or per-paragraph `>` circles; the resulting `>` block is inserted
-into the composer and the selected source span is tinted until the quote is
-removed or sent. Thinking summaries, user turns, Ran/Bash command and output
-text, Grep preview/content text, recap rows, expanded Edit/Read file content,
-general file viewers, and session hovercard prompt/reply text now use the same
-selection pipeline. Right-mouse line-select and per-section quote lanes for
-non-assistant-prose surfaces remain design/follow-up work.
+`>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
+into the composer and the selected source span is tinted until that quote is
+removed or sent. A selected range can also expose independently configurable
+source-copy and semantic rich-copy actions. Thinking summaries, user turns,
+Ran/Bash command and output text, Grep preview/content text, recap rows,
+expanded Edit/Read file content, general file viewers, and session hovercard
+prompt/reply text now use the same selection pipeline. Right-mouse line-select
+and per-section quote lanes for non-assistant-prose surfaces remain
+design/follow-up work.
 
 ## Resolved gaps (Phase 1)
 
@@ -66,11 +69,15 @@ The early Phase 1 gaps were fixed 2026-06-23, verified in the running app.
   transparent green `background-color` rather than a saturated wash. It must
   stay visible but quiet in both dark and light themes, and it must not depend
   on undefined theme tokens such as `--bg-primary`.
-- **Selection `>` button follows drag end — fixed 2026-06-25.** Mouse/touch
-  selection completion repositions the floating `>` from the `pointerup`
-  endpoint. Downward drags place the button below the pointer so the button does
-  not cover the selected text; range geometry remains the fallback for keyboard
-  selection and scroll/resize.
+- **Selection action placement avoids the range — fixed 2026-08-12.** On
+  desktop, the complete enabled action cluster uses range geometry to choose
+  after, before, below, or above the selection according to available space;
+  the drag endpoint is the fallback when the browser supplies no usable range
+  rectangle. Touch uses 44 px tap targets. Transcript selections dock the
+  cluster in a dedicated row above the composer, shrinking the transcript
+  viewport instead of covering its text; portaled modal selections use the
+  collision-aware local placement because the session composer sits behind the
+  modal.
 - **Paragraph quote buttons tint the quoted paragraph — fixed 2026-06-25.**
   Paragraph and whole-block quote actions create text-node-backed highlight
   ranges and re-resolve them when a composer update replaces rendered markdown
@@ -90,23 +97,32 @@ The early Phase 1 gaps were fixed 2026-06-23, verified in the running app.
 - **Comment tint** — the subtle green paint on an anchored source span.
 - **Quote circle** — the circled `>` affordance that triggers quote-comment.
   Two placements: floating next to a live selection, and one per paragraph.
+- **Selection action cluster** — the non-obscuring row of enabled circles for a
+  live selection: green `>` quote, blue `MD` source copy, and purple `Aa` rich
+  copy.
 
 The vernacular here is GitHub's "quote reply" (`>` blockquotes), which is the
 mental model the feature was requested under.
 
 ## What the user sees (contract)
 
-Three entry points, one action.
+Three quote entry points, one quote action. The live-selection entry point can
+also expose two explicit copy projections.
 
 1. **Type over a selection.** With a non-collapsed selection inside agent
    output and focus *not* already in a text field, the first printable
    keystroke: appends the selection as a quote block to the composer, moves
    focus to the composer, and that same keystroke becomes the first character
    of the comment typed below the quote.
-2. **Quote circle near a selection.** A floating circled `>` appears next to a
-   live selection. This is the primary path on touch, where there is no "start
-   typing" trigger. Tapping it focuses the composer (raising the soft keyboard)
-   and runs the same quote-comment.
+2. **Action cluster near a selection.** Enabled circles appear beside a live
+   selection without covering it. The green `>` focuses the composer (raising
+   the soft keyboard on touch) and runs the same quote-comment. The optional
+   blue `MD` action copies the best aligned Markdown/source span, matching the
+   default `Ctrl/Cmd+C` projection. The optional purple `Aa` action copies
+   semantic HTML with a visible-text `text/plain` representation and strips YA
+   presentation styling. A control press preserves a snapshot of the selected
+   source snippets and DOM ranges, so the action remains valid when the native
+   highlight collapses during the press.
 3. **Per-paragraph quote circle.** Each agent paragraph/block carries a circled
    `>` at its end. Default visibility is hover-revealed on desktop, like the
    existing copy and render-toggle buttons in `text-block-actions`
@@ -118,6 +134,15 @@ Three entry points, one action.
    highlight text — or right-drag
    to select lines (see the line-select helper below) — to comment on a specific
    sub-range instead of the whole paragraph.
+
+The **Appearance** rows immediately after `> Reply Buttons` separately control
+selection quote, source-copy, and rich-copy. Each row shows the actual enabled
+circle in its final color and style next to its caption, description, and
+toggle. Selection quote remains on by default to preserve the established
+behavior; the two additional copy circles are default-off. Disabling selection
+quote also disables the type-over-selection trigger, but does not affect the
+paragraph reply-button mode. Hiding the blue source-copy circle never changes
+the default source-aware `Ctrl/Cmd+C` behavior.
 
 The quote block itself:
 
@@ -136,10 +161,9 @@ The quote block itself:
 - A registered selection may live in the transcript or in a portaled modal or
   session hovercard opened from that session. Reusable modals establish a
   quote-selection root, while their file/text renderers register the actual
-  source. The floating `>` renders inside the owning surface and sends the
-  quote to the session composer behind it; on touch it stays visibly pinned
-  inside that surface. Modal headers, buttons, labels, and other unregistered
-  chrome remain ineligible.
+  source. The floating actions render inside the owning surface and the `>`
+  sends the quote to the session composer behind it. Modal headers, buttons,
+  labels, and other unregistered chrome remain ineligible.
 - Hover tooltips never activate while any pointer button is held. In
   particular, dragging a native text selection across a glossary term keeps
   the glossary text selectable and cannot insert a passive tooltip into the
@@ -241,12 +265,6 @@ contracts remain open:
   selection path. It is not yet implemented. The gesture should feed the same
   quote-comment action as ordinary text selection, producing a range that maps
   back to source markdown rather than a DOM-only scrape.
-- **Selection-local `>` button.** Any completed selection in agent output should
-  surface a `>` quote-comment button positioned relative to the mouse/touch end
-  point at selection-drag end. It must not depend on selecting a large span or
-  landing near a particular paragraph action rail. The current floating button
-  exists, but this contract is broader: every valid selection should get a
-  visible nearby action.
 - **System output quote lane when Phase 2 widens scope.** The assistant
   paragraph lane now exists; when quote buttons are added to system output,
   thinking summaries, or tool sections, they should use the same reserved-lane

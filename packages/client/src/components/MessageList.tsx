@@ -1696,15 +1696,14 @@ export const MessageList = memo(function MessageList({
     alwaysShowQuoteCircles,
     paragraphQuoteCirclesEnabled,
     handleQuoteTextBlock,
-    mobileSelectionQuoteButton,
-    floatingSelectionQuoteButton,
+    mobileSelectionActions,
+    floatingSelectionActions,
   } = useMessageListSelectionQuote({
     containerRef,
     inert,
     onQuoteSelection,
     composerDraftSignal,
     quoteClearSignal,
-    followButtonVisible: !isScrolledToBottom,
     isInteractiveTarget: isInteractiveScrollTarget,
   });
   const latestVisibleTimestampMs = useMemo(
@@ -3128,7 +3127,7 @@ export const MessageList = memo(function MessageList({
       {followButtonTarget && followButton
         ? createPortal(followButton, followButtonTarget)
         : followButton}
-      {mobileSelectionQuoteButton}
+      {mobileSelectionActions}
       <div
         className={[
           "message-list",
@@ -3144,7 +3143,7 @@ export const MessageList = memo(function MessageList({
         onPointerOver={handleTranscriptPointerOver}
         onPointerLeave={handleTranscriptPointerLeave}
       >
-        {floatingSelectionQuoteButton}
+        {floatingSelectionActions}
         {progressiveRevealActive && (
           <div className="session-render-progress loading" role="status">
             <div>{t("sessionLoading")}</div>

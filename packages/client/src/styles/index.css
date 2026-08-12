@@ -3527,33 +3527,6 @@ a.linkified-url:hover {
   white-space: nowrap;
 }
 
-.selection-quote-button--mobile {
-  top: -52px;
-  right: 10px;
-  left: auto;
-  z-index: 5;
-  width: auto;
-  min-width: 44px;
-  height: 44px;
-  padding: 0 13px;
-  gap: 6px;
-  border-radius: 999px;
-  font-size: var(--font-size-sm);
-  touch-action: manipulation;
-  pointer-events: auto;
-}
-
-.selection-quote-button--mobile-with-follow {
-  top: -64px;
-}
-
-.selection-quote-button--mobile-modal {
-  top: auto;
-  right: 10px;
-  bottom: 10px;
-  z-index: 31;
-}
-
 /* Message input */
 .message-input {
   display: flex;

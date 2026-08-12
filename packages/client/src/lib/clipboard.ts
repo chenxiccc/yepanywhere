@@ -11,6 +11,26 @@ export async function writeClipboardText(text: string): Promise<boolean> {
   }
 }
 
+export async function writeClipboardRichText(
+  html: string,
+  text: string,
+): Promise<boolean> {
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    } catch {
+      return writeClipboardText(text);
+    }
+  }
+  return writeClipboardText(text);
+}
+
 /**
  * Copy text that is not available yet (it arrives from a server round-trip).
  * Passing the pending value as a Promise lets us invoke navigator.clipboard

@@ -28,7 +28,8 @@
 - client-session-lifecycle-store - Shared client lifecycle reducer/store for session activity indicators.
 - client-session-collection-store - Normalized client session facts and list projection consistency.
 - relative-filenames - Shortest-unambiguous file path display and link targets.
-- rich-text-rendering - Rendered file/message/diff previews and local-link handling.
+- rich-text-rendering - Rendered file/message/diff previews, source-aware copy,
+  semantic rich copy, and local-link handling.
 - media-rendering-and-routing - Relay-safe media discovery, compact turn
   galleries, and full-image viewer interaction.
 - security - YA trust-boundary contracts for local, authenticated, relay, and public surfaces.
@@ -57,7 +58,8 @@
 - session-list-display - Session list/sidebar badges, model glyph mapping, and the hover tooltip card.
 - session-list-hidden-duplicates - Conservative duplicate-title hiding for session lists, preserving fork/helper lineage and never letting YA helper sessions hide source/current sessions.
 - stream-durable-id-dedup - Stream-vs-durable message id alignment and the approx-dedup backstop (codex/opencode steer double-render).
-- selection-comment-ui - Quote selected assistant output into the composer with source-block tint reminders.
+- selection-comment-ui - Non-obscuring quote/source/rich selection actions,
+  quote-to-composer behavior, and source-block tint reminders.
 - fork-from-turn - Turn-notch fork actions and server-owned fork-after-summary jobs.
 - provider-fork-support - Whether Codex/Pi could implement the forkSession primitive, with per-provider enablement plans and gaps.
 - transcript-display-objects - Persisted viewer-only objects anchored in transcript order.

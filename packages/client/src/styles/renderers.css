@@ -686,27 +686,6 @@
   position: relative;
 }
 
-.selection-quote-button {
-  position: absolute;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--app-yep-green) 55%, #333);
-  background: color-mix(in srgb, var(--app-yep-green) 22%, var(--bg-secondary));
-  color: var(--text-primary);
-  box-shadow: var(--shadow-md);
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.selection-quote-button:hover {
-  background: color-mix(in srgb, var(--app-yep-green) 32%, var(--bg-secondary));
-}
-
 .text-block-copy.copied {
   color: #4a4;
   opacity: 1;

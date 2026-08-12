@@ -5,11 +5,11 @@
       "reason": "Device stream video vocabulary produced by EmulatorStream."
     },
     "packages/client/src/styles/index.css": {
-      "maxLines": 16190,
+      "maxLines": 16163,
       "reason": "Legacy application shell plus global tokens, themes, and base rules."
     },
     "packages/client/src/styles/renderers.css": {
-      "maxLines": 6136,
+      "maxLines": 6115,
       "reason": "Legacy generated-content and renderer class vocabulary."
     },
     "packages/client/src/styles/tool-rows.css": {
@@ -17,6 +17,6 @@
       "reason": "Shared tool-row state and generated renderer composition."
     }
   },
-  "updated": "2026-08-11",
+  "updated": "2026-08-12",
   "note": "Chapter 11 containment baseline for authored non-module CSS under packages/client/src. Limits may only ratchet downward. New client stylesheets must be CSS Modules unless a reviewed generated-content or truly global exception is added here with a reason."
 }

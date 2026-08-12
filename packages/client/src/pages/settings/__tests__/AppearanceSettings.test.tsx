@@ -178,4 +178,56 @@ describe("AppearanceSettings", () => {
       localStorage.getItem(UI_KEYS.widerConversationActivityPreviews),
     ).toBe("true");
   });
+
+  it("shows independent selection-action toggles with live specimens", () => {
+    renderAppearanceSettings();
+
+    const quoteToggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Quote selected text",
+    });
+    const sourceToggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Copy selected source",
+    });
+    const richToggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Copy selected rich text",
+    });
+    const quoteRow = quoteToggle.closest("[data-settings-item]");
+    const sourceRow = sourceToggle.closest("[data-settings-item]");
+    const richRow = richToggle.closest("[data-settings-item]");
+
+    expect(quoteToggle.checked).toBe(true);
+    expect(sourceToggle.checked).toBe(false);
+    expect(richToggle.checked).toBe(false);
+    expect(quoteRow?.previousElementSibling?.textContent).toContain(
+      "> Reply Buttons",
+    );
+    expect(sourceRow?.previousElementSibling).toBe(quoteRow);
+    expect(richRow?.previousElementSibling).toBe(sourceRow);
+    expect(
+      quoteRow?.querySelector('[data-selection-action-specimen="quote"]')
+        ?.textContent,
+    ).toBe(">");
+    expect(
+      sourceRow?.querySelector('[data-selection-action-specimen="source"]')
+        ?.textContent,
+    ).toBe("MD");
+    expect(
+      richRow?.querySelector('[data-selection-action-specimen="rich"]')
+        ?.textContent,
+    ).toBe("Aa");
+
+    fireEvent.click(quoteToggle);
+    fireEvent.click(sourceToggle);
+    fireEvent.click(richToggle);
+
+    expect(localStorage.getItem(UI_KEYS.selectionQuoteActionEnabled)).toBe(
+      "false",
+    );
+    expect(localStorage.getItem(UI_KEYS.selectionSourceCopyActionEnabled)).toBe(
+      "true",
+    );
+    expect(localStorage.getItem(UI_KEYS.selectionRichCopyActionEnabled)).toBe(
+      "true",
+    );
+  });
 });

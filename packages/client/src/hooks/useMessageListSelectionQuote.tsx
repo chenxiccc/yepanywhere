@@ -8,6 +8,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  SELECTION_ACTION_BUTTON_MOBILE_SIZE_PX,
+  SELECTION_ACTION_BUTTON_SIZE_PX,
+  SELECTION_ACTION_GAP_PX,
+  SelectionActionButton,
+  SelectionActionCluster,
+  type SelectionActionKind,
+} from "../components/ui/SelectionActionCluster";
+import {
   createCommentAnchor,
   type CommentAnchor,
   draftQuoteSignaturesContainAnchor,
@@ -18,32 +26,38 @@ import type {
   ComposerDraftChange,
   ComposerDraftSignal,
 } from "../lib/composerDraftSignal";
+import { writeClipboardRichText, writeClipboardText } from "../lib/clipboard";
 import {
   copyMarkdownSelectionToClipboard,
   extractMarkdownSnippetsFromSelection,
   getQuoteSelectionRoot,
   getQuoteSelectionRootForTarget,
+  type MarkdownSelectionSnippet,
 } from "../lib/markdownSelectionCopy";
+import { getSemanticHtmlClipboardPayload } from "../lib/semanticHtmlClipboard";
 import { useI18n } from "../i18n";
 import { useQuoteReplyButtonMode } from "./useQuoteReplyButtonMode";
+import { useSelectionActionPreferences } from "./useSelectionActionPreferences";
 
-const SELECTION_QUOTE_BUTTON_SIZE_PX = 30;
-const SELECTION_QUOTE_BUTTON_GAP_PX = 8;
 const TRANSCRIPT_SELECTION_ACTIVE_CLASS = "session-transcript-selection-active";
 
-type SelectionQuoteButtonState =
-  | {
-      placement: "floating";
-      top: number;
-      left: number;
-      anchors: readonly CommentAnchor[];
-      root: HTMLElement;
-    }
-  | {
-      placement: "mobile";
-      anchors: readonly CommentAnchor[];
-      root: HTMLElement;
-    };
+type FloatingActionPlacement = "above" | "after" | "before" | "below";
+
+interface SelectionActionSnapshot {
+  anchors: readonly CommentAnchor[];
+  snippets: readonly MarkdownSelectionSnippet[];
+  ranges: readonly Range[];
+  root: HTMLElement;
+}
+
+interface SelectionActionState {
+  top: number;
+  left: number;
+  side: FloatingActionPlacement;
+  docked: boolean;
+  mobile: boolean;
+  snapshot: SelectionActionSnapshot;
+}
 
 interface UseMessageListSelectionQuoteOptions {
   containerRef: RefObject<HTMLDivElement | null>;
@@ -51,7 +65,6 @@ interface UseMessageListSelectionQuoteOptions {
   onQuoteSelection?: (quotedText: string) => string | null;
   composerDraftSignal?: ComposerDraftSignal;
   quoteClearSignal: number;
-  followButtonVisible: boolean;
   isInteractiveTarget: (target: EventTarget | null) => boolean;
 }
 
@@ -59,12 +72,97 @@ interface MessageListSelectionQuoteState {
   alwaysShowQuoteCircles: boolean;
   paragraphQuoteCirclesEnabled: boolean;
   handleQuoteTextBlock: (anchor: CommentAnchor) => void;
-  mobileSelectionQuoteButton: ReactNode;
-  floatingSelectionQuoteButton: ReactNode;
+  mobileSelectionActions: ReactNode;
+  floatingSelectionActions: ReactNode;
 }
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function rangeSideIsClear(
+  snippet: MarkdownSelectionSnippet,
+  side: "after" | "before",
+  lineRect: Pick<DOMRect, "bottom" | "top">,
+): boolean {
+  const remainder = snippet.sourceElement.ownerDocument.createRange();
+  remainder.selectNodeContents(snippet.sourceElement);
+  if (side === "after") {
+    remainder.setStart(snippet.range.endContainer, snippet.range.endOffset);
+  } else {
+    remainder.setEnd(snippet.range.startContainer, snippet.range.startOffset);
+  }
+  if (!remainder.toString().trim()) {
+    return true;
+  }
+  if (typeof remainder.getClientRects !== "function") {
+    return true;
+  }
+  return !Array.from(remainder.getClientRects()).some(
+    (rect) =>
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > lineRect.top + 1 &&
+      rect.top < lineRect.bottom - 1,
+  );
+}
+
+function selectionSourceTextRects(
+  snippets: readonly MarkdownSelectionSnippet[],
+): DOMRect[] {
+  const sourceElements = new Set(
+    snippets.map((snippet) => snippet.sourceElement),
+  );
+  const rects: DOMRect[] = [];
+  for (const sourceElement of sourceElements) {
+    const contentRange = sourceElement.ownerDocument.createRange();
+    contentRange.selectNodeContents(sourceElement);
+    if (typeof contentRange.getClientRects !== "function") {
+      continue;
+    }
+    rects.push(
+      ...Array.from(contentRange.getClientRects()).filter(
+        (rect) => rect.width > 0 && rect.height > 0,
+      ),
+    );
+  }
+  return rects;
+}
+
+function selectionSourceBounds(
+  snippets: readonly MarkdownSelectionSnippet[],
+): Pick<DOMRect, "bottom" | "left" | "right" | "top"> | null {
+  const sourceElements = new Set(
+    snippets.map((snippet) => snippet.sourceElement),
+  );
+  let bounds: Pick<DOMRect, "bottom" | "left" | "right" | "top"> | null = null;
+  for (const sourceElement of sourceElements) {
+    const rect = sourceElement.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      continue;
+    }
+    bounds = bounds
+      ? {
+          top: Math.min(bounds.top, rect.top),
+          right: Math.max(bounds.right, rect.right),
+          bottom: Math.max(bounds.bottom, rect.bottom),
+          left: Math.min(bounds.left, rect.left),
+        }
+      : rect;
+  }
+  return bounds;
+}
+
+function rectanglesOverlap(
+  first: Pick<DOMRect, "bottom" | "left" | "right" | "top">,
+  second: Pick<DOMRect, "bottom" | "left" | "right" | "top">,
+): boolean {
+  return (
+    first.left < second.right &&
+    first.right > second.left &&
+    first.top < second.bottom &&
+    first.bottom > second.top
+  );
 }
 
 function shouldShieldTranscriptSelection(win: Window): boolean {
@@ -77,11 +175,12 @@ export function useMessageListSelectionQuote({
   onQuoteSelection,
   composerDraftSignal,
   quoteClearSignal,
-  followButtonVisible,
   isInteractiveTarget,
 }: UseMessageListSelectionQuoteOptions): MessageListSelectionQuoteState {
-  const selectionPointerStartRef = useRef<{ clientY: number } | null>(null);
-  const selectionQuotePointerAppliedRef = useRef(false);
+  const selectionPointerStartedRef = useRef(false);
+  const selectionActionPointerAppliedRef = useRef<SelectionActionKind | null>(
+    null,
+  );
   const quoteInsertionDraftRef = useRef<string | null>(null);
   const commentAnchorsRef = useRef<readonly CommentAnchor[]>([]);
   const draftSubscriptionRef = useRef<(() => void) | null>(null);
@@ -89,9 +188,14 @@ export function useMessageListSelectionQuote({
   const reconcileDraftChangeRef = useRef<(change: ComposerDraftChange) => void>(
     () => {},
   );
-  const [selectionQuoteButton, setSelectionQuoteButton] =
-    useState<SelectionQuoteButtonState | null>(null);
+  const [selectionActions, setSelectionActions] =
+    useState<SelectionActionState | null>(null);
   const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
+  const {
+    selectionQuoteActionEnabled,
+    selectionSourceCopyActionEnabled,
+    selectionRichCopyActionEnabled,
+  } = useSelectionActionPreferences();
   const alwaysShowQuoteCircles = quoteReplyButtonMode === "paragraph-always";
   const paragraphQuoteCirclesEnabled = quoteReplyButtonMode !== "block";
   const { t } = useI18n();
@@ -211,7 +315,7 @@ export function useMessageListSelectionQuote({
       quoteInsertionDraftRef.current = nextDraft;
       updateCommentAnchors([...commentAnchorsRef.current, ...anchors]);
       containerRef.current?.ownerDocument.getSelection()?.removeAllRanges();
-      setSelectionQuoteButton(null);
+      setSelectionActions(null);
       return true;
     },
     [containerRef, onQuoteSelection, updateCommentAnchors],
@@ -338,15 +442,21 @@ export function useMessageListSelectionQuote({
   }, [containerRef, inert]);
 
   useEffect(() => {
-    if (inert || !onQuoteSelection) {
-      setSelectionQuoteButton(null);
+    const quoteActionAvailable =
+      selectionQuoteActionEnabled && onQuoteSelection !== undefined;
+    const actionCount = [
+      quoteActionAvailable,
+      selectionSourceCopyActionEnabled,
+      selectionRichCopyActionEnabled,
+    ].filter(Boolean).length;
+    if (inert || actionCount === 0) {
+      setSelectionActions(null);
       return;
     }
 
-    const updateFloatingQuoteButton = (pointerEnd?: {
+    const updateSelectionActions = (pointerEnd?: {
       clientX: number;
       clientY: number;
-      placeBelow?: boolean;
     }) => {
       const root = containerRef.current;
       const selection = root?.ownerDocument.getSelection();
@@ -356,95 +466,196 @@ export function useMessageListSelectionQuote({
         selection.isCollapsed ||
         selection.rangeCount === 0
       ) {
-        setSelectionQuoteButton(null);
+        setSelectionActions(null);
         return;
       }
 
       const selectionRoot = getQuoteSelectionRoot(root, selection);
       if (!selectionRoot) {
-        setSelectionQuoteButton(null);
+        setSelectionActions(null);
         return;
       }
-      const anchors =
-        extractMarkdownSnippetsFromSelection(selectionRoot).map(
-          createCommentAnchor,
-        );
-      if (anchors.length === 0) {
-        setSelectionQuoteButton(null);
+      const snippets = extractMarkdownSnippetsFromSelection(selectionRoot);
+      if (snippets.length === 0) {
+        setSelectionActions(null);
         return;
       }
+      const snapshot: SelectionActionSnapshot = {
+        anchors: snippets.map(createCommentAnchor),
+        snippets,
+        ranges: snippets.map((snippet) => snippet.range.cloneRange()),
+        root: selectionRoot,
+      };
 
       const win = root.ownerDocument.defaultView ?? window;
-      if (shouldShieldTranscriptSelection(win)) {
-        setSelectionQuoteButton({
-          placement: "mobile",
-          anchors,
-          root: selectionRoot,
-        });
-        return;
-      }
+      const mobile = shouldShieldTranscriptSelection(win);
+      const buttonSize = mobile
+        ? SELECTION_ACTION_BUTTON_MOBILE_SIZE_PX
+        : SELECTION_ACTION_BUTTON_SIZE_PX;
 
       const range = selection.getRangeAt(selection.rangeCount - 1);
-      const rect =
-        pointerEnd || typeof range.getBoundingClientRect !== "function"
-          ? null
-          : range.getBoundingClientRect();
-      if (!pointerEnd && (!rect || (rect.width === 0 && rect.height === 0))) {
-        setSelectionQuoteButton(null);
+      const rangeRect =
+        typeof range.getBoundingClientRect === "function"
+          ? range.getBoundingClientRect()
+          : null;
+      const lineRects =
+        typeof range.getClientRects === "function"
+          ? Array.from(range.getClientRects()).filter(
+              (rect) => rect.width !== 0 || rect.height !== 0,
+            )
+          : [];
+      const hasRangeRect =
+        rangeRect && (rangeRect.width !== 0 || rangeRect.height !== 0);
+      if (!hasRangeRect && !pointerEnd) {
+        setSelectionActions(null);
         return;
       }
       const rootRect = selectionRoot.getBoundingClientRect();
-      const clientX = pointerEnd?.clientX ?? rect?.right ?? rootRect.left;
-      const clientY = pointerEnd?.clientY ?? rect?.top ?? rootRect.top;
-      const maxTop = Math.max(
-        0,
-        selectionRoot.clientHeight - SELECTION_QUOTE_BUTTON_SIZE_PX,
-      );
-      const maxLeft = Math.max(
-        0,
-        selectionRoot.clientWidth - SELECTION_QUOTE_BUTTON_SIZE_PX,
-      );
-      setSelectionQuoteButton({
-        placement: "floating",
-        anchors,
-        root: selectionRoot,
-        top: clampNumber(
-          pointerEnd?.placeBelow
-            ? clientY - rootRect.top + SELECTION_QUOTE_BUTTON_GAP_PX
-            : clientY -
-                rootRect.top -
-                SELECTION_QUOTE_BUTTON_SIZE_PX -
-                SELECTION_QUOTE_BUTTON_GAP_PX,
-          0,
-          maxTop,
-        ),
-        left: clampNumber(
-          clientX - rootRect.left + SELECTION_QUOTE_BUTTON_GAP_PX,
-          0,
-          maxLeft,
-        ),
+      const selectionRect = hasRangeRect
+        ? rangeRect
+        : {
+            top: pointerEnd?.clientY ?? rootRect.top,
+            right: pointerEnd?.clientX ?? rootRect.left,
+            bottom: pointerEnd?.clientY ?? rootRect.top,
+            left: pointerEnd?.clientX ?? rootRect.left,
+            width: 0,
+            height: 0,
+          };
+      const firstLineRect = lineRects[0] ?? selectionRect;
+      const lastLineRect = lineRects.at(-1) ?? selectionRect;
+      const clusterWidth =
+        actionCount * buttonSize + (actionCount - 1) * SELECTION_ACTION_GAP_PX;
+      const firstSnippet = snippets[0];
+      const lastSnippet = snippets.at(-1);
+      const afterIsClear = lastSnippet
+        ? rangeSideIsClear(lastSnippet, "after", lastLineRect)
+        : false;
+      const beforeIsClear = firstSnippet
+        ? rangeSideIsClear(firstSnippet, "before", firstLineRect)
+        : false;
+      const sourceBounds = selectionSourceBounds(snippets) ?? selectionRect;
+      const spaceAfter = rootRect.right - lastLineRect.right;
+      const spaceBefore = firstLineRect.left - rootRect.left;
+      const spaceBelow = rootRect.bottom - sourceBounds.bottom;
+      const spaceAbove = sourceBounds.top - rootRect.top;
+      const maxTop = Math.max(0, selectionRoot.clientHeight - buttonSize);
+      const maxLeft = Math.max(0, selectionRoot.clientWidth - clusterWidth);
+      const centeredLeft =
+        selectionRect.left -
+        rootRect.left +
+        (selectionRect.width - clusterWidth) / 2;
+      const candidates: Record<
+        FloatingActionPlacement,
+        { left: number; top: number }
+      > = {
+        after: {
+          top:
+            lastLineRect.top -
+            rootRect.top +
+            (lastLineRect.height - buttonSize) / 2,
+          left: lastLineRect.right - rootRect.left + SELECTION_ACTION_GAP_PX,
+        },
+        before: {
+          top:
+            firstLineRect.top -
+            rootRect.top +
+            (firstLineRect.height - buttonSize) / 2,
+          left:
+            firstLineRect.left -
+            rootRect.left -
+            clusterWidth -
+            SELECTION_ACTION_GAP_PX,
+        },
+        below: {
+          top: sourceBounds.bottom - rootRect.top + SELECTION_ACTION_GAP_PX,
+          left: centeredLeft,
+        },
+        above: {
+          top:
+            sourceBounds.top -
+            rootRect.top -
+            buttonSize -
+            SELECTION_ACTION_GAP_PX,
+          left: centeredLeft,
+        },
+      };
+      const sourceTextRects = selectionSourceTextRects(snippets);
+      const candidateIsClear = (side: FloatingActionPlacement) => {
+        if (side === "after" && !afterIsClear) return false;
+        if (side === "before" && !beforeIsClear) return false;
+        const candidate = candidates[side];
+        if (
+          candidate.left < 0 ||
+          candidate.top < 0 ||
+          candidate.left + clusterWidth > selectionRoot.clientWidth ||
+          candidate.top + buttonSize > selectionRoot.clientHeight
+        ) {
+          return false;
+        }
+        const viewportCandidate = {
+          top: rootRect.top + candidate.top,
+          right: rootRect.left + candidate.left + clusterWidth,
+          bottom: rootRect.top + candidate.top + buttonSize,
+          left: rootRect.left + candidate.left,
+        };
+        if (
+          viewportCandidate.left < 0 ||
+          viewportCandidate.top < 0 ||
+          viewportCandidate.right > win.innerWidth ||
+          viewportCandidate.bottom > win.innerHeight
+        ) {
+          return false;
+        }
+        return !sourceTextRects.some((rect) =>
+          rectanglesOverlap(viewportCandidate, rect),
+        );
+      };
+      const side =
+        (["after", "before", "below", "above"] as const).find(
+          candidateIsClear,
+        ) ??
+        (
+          [
+            ["after", spaceAfter - clusterWidth],
+            ["before", spaceBefore - clusterWidth],
+            ["below", spaceBelow - buttonSize],
+            ["above", spaceAbove - buttonSize],
+          ] as const
+        ).reduce((best, candidate) =>
+          candidate[1] > best[1] ? candidate : best,
+        )[0];
+      const position = candidates[side];
+      setSelectionActions({
+        side,
+        docked: mobile && selectionRoot === root,
+        mobile,
+        snapshot,
+        top: clampNumber(position.top, 0, maxTop),
+        left: clampNumber(position.left, 0, maxLeft),
       });
     };
     const handlePointerDown = (event: PointerEvent) => {
       const root = containerRef.current;
       if (!root || !getQuoteSelectionRootForTarget(root, event.target)) {
-        selectionPointerStartRef.current = null;
+        selectionPointerStartedRef.current = false;
         return;
       }
-      selectionPointerStartRef.current = { clientY: event.clientY };
+      selectionPointerStartedRef.current = true;
     };
     const handlePointerUp = (event: PointerEvent) => {
-      const start = selectionPointerStartRef.current;
-      selectionPointerStartRef.current = null;
+      const selectionPointerStarted = selectionPointerStartedRef.current;
+      selectionPointerStartedRef.current = false;
+      if (!selectionPointerStarted) {
+        return;
+      }
       window.setTimeout(() => {
-        updateFloatingQuoteButton({
+        updateSelectionActions({
           clientX: event.clientX,
           clientY: event.clientY,
-          placeBelow: start ? event.clientY > start.clientY : false,
         });
       }, 0);
     };
-    const updateFromSelectionRange = () => updateFloatingQuoteButton();
+    const updateFromSelectionRange = () => updateSelectionActions();
 
     document.addEventListener("selectionchange", updateFromSelectionRange);
     document.addEventListener("pointerdown", handlePointerDown, true);
@@ -458,10 +669,17 @@ export function useMessageListSelectionQuote({
       window.removeEventListener("resize", updateFromSelectionRange);
       window.removeEventListener("scroll", updateFromSelectionRange, true);
     };
-  }, [containerRef, inert, onQuoteSelection]);
+  }, [
+    containerRef,
+    inert,
+    onQuoteSelection,
+    selectionQuoteActionEnabled,
+    selectionRichCopyActionEnabled,
+    selectionSourceCopyActionEnabled,
+  ]);
 
   useEffect(() => {
-    if (inert || !onQuoteSelection) {
+    if (inert || !onQuoteSelection || !selectionQuoteActionEnabled) {
       return;
     }
     const handleSelectionTyping = (event: KeyboardEvent) => {
@@ -486,105 +704,136 @@ export function useMessageListSelectionQuote({
     window.addEventListener("keydown", handleSelectionTyping, true);
     return () =>
       window.removeEventListener("keydown", handleSelectionTyping, true);
-  }, [applyQuoteFromSelection, inert, isInteractiveTarget, onQuoteSelection]);
+  }, [
+    applyQuoteFromSelection,
+    inert,
+    isInteractiveTarget,
+    onQuoteSelection,
+    selectionQuoteActionEnabled,
+  ]);
 
-  const mobileSelectionQuoteButtonTarget =
-    selectionQuoteButton?.placement === "mobile" &&
-    selectionQuoteButton.root.isConnected &&
-    typeof document !== "undefined"
-      ? selectionQuoteButton.root === containerRef.current
-        ? document.querySelector<HTMLElement>(".session-input-inner")
-        : selectionQuoteButton.root
-      : null;
-  const selectionQuoteButtonIsInPortal =
-    selectionQuoteButton !== null &&
-    selectionQuoteButton.root !== containerRef.current;
-  const selectionQuoteButtonElement = selectionQuoteButton ? (
-    <button
-      type="button"
-      className={[
-        "selection-quote-button",
-        selectionQuoteButton.placement === "mobile"
-          ? "selection-quote-button--mobile"
-          : "",
-        selectionQuoteButton.placement === "mobile" && followButtonVisible
-          ? "selection-quote-button--mobile-with-follow"
-          : "",
-        selectionQuoteButton.placement === "mobile" &&
-        selectionQuoteButtonIsInPortal
-          ? "selection-quote-button--mobile-modal"
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      style={
-        selectionQuoteButton.placement === "floating"
-          ? {
-              top: `${selectionQuoteButton.top}px`,
-              left: `${selectionQuoteButton.left}px`,
-            }
-          : undefined
+  const activateSelectionAction = (
+    kind: SelectionActionKind,
+    snapshot: SelectionActionSnapshot,
+  ): boolean => {
+    if (kind === "quote") {
+      return applyQuoteAnchors(snapshot.anchors);
+    }
+    if (kind === "source") {
+      const markdown = snapshot.snippets
+        .map((snippet) => snippet.markdown)
+        .join("\n\n");
+      if (!markdown) {
+        return false;
       }
-      onPointerDown={(event) => {
-        if (selectionQuoteButton.placement === "mobile") {
-          selectionQuotePointerAppliedRef.current = false;
-          event.preventDefault();
-        }
-      }}
-      onPointerUp={(event) => {
-        if (selectionQuoteButton.placement === "mobile") {
-          event.preventDefault();
-          selectionQuotePointerAppliedRef.current = applyQuoteAnchors(
-            selectionQuoteButton.anchors,
-          );
-        }
-      }}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => {
-        if (
-          selectionQuoteButton.placement === "mobile" &&
-          selectionQuotePointerAppliedRef.current
-        ) {
-          selectionQuotePointerAppliedRef.current = false;
-          return;
-        }
-        applyQuoteAnchors(selectionQuoteButton.anchors);
-      }}
-      aria-label={t("sessionQuoteSelection")}
-      title={t("sessionQuoteSelection")}
+      void writeClipboardText(markdown);
+      return true;
+    }
+
+    const payload = getSemanticHtmlClipboardPayload(
+      snapshot.root,
+      snapshot.ranges,
+    );
+    if (!payload) {
+      return false;
+    }
+    void writeClipboardRichText(payload.html, payload.text);
+    return true;
+  };
+
+  const selectionActionsAreInPortal =
+    selectionActions !== null &&
+    selectionActions.snapshot.root !== containerRef.current;
+  const mobileSelectionActionsTarget =
+    selectionActions?.docked && typeof document !== "undefined"
+      ? document.querySelector<HTMLElement>(
+          "[data-selection-actions-mobile-slot]",
+        )
+      : null;
+  const selectionActionsAreDocked =
+    selectionActions?.docked === true && mobileSelectionActionsTarget !== null;
+  const enabledSelectionActions: Array<{
+    kind: SelectionActionKind;
+    label: string;
+  }> = [];
+  if (selectionQuoteActionEnabled && onQuoteSelection) {
+    enabledSelectionActions.push({
+      kind: "quote",
+      label: t("sessionQuoteSelection"),
+    });
+  }
+  if (selectionSourceCopyActionEnabled) {
+    enabledSelectionActions.push({
+      kind: "source",
+      label: t("sessionCopySelectionSource"),
+    });
+  }
+  if (selectionRichCopyActionEnabled) {
+    enabledSelectionActions.push({
+      kind: "rich",
+      label: t("sessionCopySelectionRich"),
+    });
+  }
+  const selectionActionCluster = selectionActions ? (
+    <SelectionActionCluster
+      docked={selectionActionsAreDocked}
+      mobile={selectionActions.mobile}
+      placement={selectionActions.side}
+      style={
+        selectionActionsAreDocked
+          ? undefined
+          : {
+              top: `${selectionActions.top}px`,
+              left: `${selectionActions.left}px`,
+            }
+      }
     >
-      <span aria-hidden="true">&gt;</span>
-      {selectionQuoteButton.placement === "mobile" && (
-        <span>{t("sessionQuoteSelectionShort")}</span>
-      )}
-    </button>
+      {enabledSelectionActions.map(({ kind, label }) => (
+        <SelectionActionButton
+          key={kind}
+          kind={kind}
+          label={label}
+          onPointerDown={() => {
+            selectionActionPointerAppliedRef.current = null;
+          }}
+          onPointerUp={(event) => {
+            if (selectionActions.mobile) {
+              event.preventDefault();
+              if (activateSelectionAction(kind, selectionActions.snapshot)) {
+                selectionActionPointerAppliedRef.current = kind;
+              }
+            }
+          }}
+          onClick={() => {
+            if (selectionActionPointerAppliedRef.current === kind) {
+              selectionActionPointerAppliedRef.current = null;
+              return;
+            }
+            activateSelectionAction(kind, selectionActions.snapshot);
+          }}
+        />
+      ))}
+    </SelectionActionCluster>
   ) : null;
 
-  const mobileSelectionQuoteButton =
-    selectionQuoteButton?.placement === "mobile" && selectionQuoteButtonElement
-      ? mobileSelectionQuoteButtonTarget
-        ? createPortal(
-            selectionQuoteButtonElement,
-            mobileSelectionQuoteButtonTarget,
-          )
-        : selectionQuoteButtonIsInPortal
-          ? null
-          : selectionQuoteButtonElement
+  const mobileSelectionActions =
+    selectionActionsAreDocked && selectionActionCluster
+      ? createPortal(selectionActionCluster, mobileSelectionActionsTarget)
       : null;
-  const floatingSelectionQuoteButton =
-    selectionQuoteButton?.placement === "floating"
-      ? selectionQuoteButtonIsInPortal
-        ? selectionQuoteButton.root.isConnected
-          ? createPortal(selectionQuoteButtonElement, selectionQuoteButton.root)
+  const floatingSelectionActions =
+    selectionActions && !selectionActionsAreDocked
+      ? selectionActionsAreInPortal
+        ? selectionActions.snapshot.root.isConnected
+          ? createPortal(selectionActionCluster, selectionActions.snapshot.root)
           : null
-        : selectionQuoteButtonElement
+        : selectionActionCluster
       : null;
 
   return {
     alwaysShowQuoteCircles,
     paragraphQuoteCirclesEnabled,
     handleQuoteTextBlock,
-    mobileSelectionQuoteButton,
-    floatingSelectionQuoteButton,
+    mobileSelectionActions,
+    floatingSelectionActions,
   };
 }

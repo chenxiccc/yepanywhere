@@ -77,6 +77,43 @@ function cloneWithTableContext(
   return contextualFragment;
 }
 
+export interface SemanticHtmlClipboardPayload {
+  html: string;
+  text: string;
+}
+
+export function getSemanticHtmlClipboardPayload(
+  root: HTMLElement,
+  ranges: readonly Range[],
+): SemanticHtmlClipboardPayload | null {
+  const htmlParts: string[] = [];
+  const textParts: string[] = [];
+
+  for (const range of ranges) {
+    if (!rangeIsWithin(root, range)) {
+      return null;
+    }
+
+    const fragment = cloneWithTableContext(range, root);
+    removePresentation(fragment);
+    const container = root.ownerDocument.createElement("div");
+    container.append(fragment);
+    if (container.innerHTML) {
+      htmlParts.push(container.innerHTML);
+      textParts.push(container.textContent ?? range.toString());
+    }
+  }
+
+  if (htmlParts.length === 0) {
+    return null;
+  }
+
+  return {
+    html: htmlParts.join("<br><br>"),
+    text: textParts.join("\n\n"),
+  };
+}
+
 export function copySemanticHtmlSelectionToClipboard(
   event: ClipboardEvent,
   root: HTMLElement,
@@ -90,31 +127,17 @@ export function copySemanticHtmlSelectionToClipboard(
     return false;
   }
 
-  const htmlParts: string[] = [];
-  const textParts: string[] = [];
-
+  const ranges: Range[] = [];
   for (let index = 0; index < selection.rangeCount; index += 1) {
-    const range = selection.getRangeAt(index);
-    if (!rangeIsWithin(root, range)) {
-      return false;
-    }
-
-    const fragment = cloneWithTableContext(range, root);
-    removePresentation(fragment);
-    const container = root.ownerDocument.createElement("div");
-    container.append(fragment);
-    if (container.innerHTML) {
-      htmlParts.push(container.innerHTML);
-      textParts.push(range.toString());
-    }
+    ranges.push(selection.getRangeAt(index));
   }
-
-  if (htmlParts.length === 0) {
+  const payload = getSemanticHtmlClipboardPayload(root, ranges);
+  if (!payload) {
     return false;
   }
 
-  event.clipboardData.setData("text/html", htmlParts.join("<br><br>"));
-  event.clipboardData.setData("text/plain", textParts.join("\n\n"));
+  event.clipboardData.setData("text/html", payload.html);
+  event.clipboardData.setData("text/plain", payload.text);
   event.preventDefault();
   return true;
 }

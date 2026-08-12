@@ -5212,6 +5212,7 @@ function SessionPageContent({
           <div
             className={`session-connection-bar session-connection-${sessionConnectionStatus}`}
           />
+          <div data-selection-actions-mobile-slot />
           <div className="session-input-inner">
             <BtwAsideStickyCards
               asides={composerStickyBtwAsides}

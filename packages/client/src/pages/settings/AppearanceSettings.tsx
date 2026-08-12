@@ -114,6 +114,7 @@ import {
 } from "./SettingsCategoryIcons";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { CommittedRangeNumberInput } from "../../components/ui/CommittedRangeNumberInput";
+import { SelectionActionButton } from "../../components/ui/SelectionActionCluster";
 import {
   DEFAULT_TOOLTIP_DELAY_MS,
   TOOLTIP_DELAY_MAX_MS,
@@ -122,6 +123,7 @@ import {
   useTooltipAppearance,
 } from "../../hooks/useTooltipAppearance";
 import { useWiderConversationActivityPreviews } from "../../hooks/useWiderConversationActivityPreviews";
+import { useSelectionActionPreferences } from "../../hooks/useSelectionActionPreferences";
 import { useGlossaryHints } from "../../hooks/useGlossaryHints";
 import { useVersion } from "../../hooks/useVersion";
 
@@ -275,6 +277,14 @@ export function AppearanceSettings() {
   } = useInlineMedia();
   const { quoteReplyButtonMode, setQuoteReplyButtonMode } =
     useQuoteReplyButtonMode();
+  const {
+    selectionQuoteActionEnabled,
+    setSelectionQuoteActionEnabled,
+    selectionSourceCopyActionEnabled,
+    setSelectionSourceCopyActionEnabled,
+    selectionRichCopyActionEnabled,
+    setSelectionRichCopyActionEnabled,
+  } = useSelectionActionPreferences();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
@@ -353,6 +363,15 @@ export function AppearanceSettings() {
     undoEntry(inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault),
     undoEntry(compactMultiImageGalleries, setCompactMultiImageGalleries),
     undoEntry(quoteReplyButtonMode, setQuoteReplyButtonMode),
+    undoEntry(selectionQuoteActionEnabled, setSelectionQuoteActionEnabled),
+    undoEntry(
+      selectionSourceCopyActionEnabled,
+      setSelectionSourceCopyActionEnabled,
+    ),
+    undoEntry(
+      selectionRichCopyActionEnabled,
+      setSelectionRichCopyActionEnabled,
+    ),
     undoEntry(funPhrasesEnabled, setFunPhrasesEnabled),
     undoEntry(floatingActionButtonEnabled, setFloatingActionButtonEnabled),
     undoEntry(sidebarDuplicateHidingEnabled, setSidebarDuplicateHidingEnabled),
@@ -1000,6 +1019,69 @@ export function AppearanceSettings() {
               );
             })}
           </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceSelectionQuoteActionTitle")}
+          description={t("appearanceSelectionQuoteActionDescription")}
+        >
+          <SelectionActionButton
+            kind="quote"
+            label={t("sessionQuoteSelection")}
+            specimen
+          />
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("appearanceSelectionQuoteActionTitle")}
+              checked={selectionQuoteActionEnabled}
+              onChange={(event) =>
+                setSelectionQuoteActionEnabled(event.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceSelectionSourceCopyActionTitle")}
+          description={t("appearanceSelectionSourceCopyActionDescription")}
+        >
+          <SelectionActionButton
+            kind="source"
+            label={t("sessionCopySelectionSource")}
+            specimen
+          />
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("appearanceSelectionSourceCopyActionTitle")}
+              checked={selectionSourceCopyActionEnabled}
+              onChange={(event) =>
+                setSelectionSourceCopyActionEnabled(event.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceSelectionRichCopyActionTitle")}
+          description={t("appearanceSelectionRichCopyActionDescription")}
+        >
+          <SelectionActionButton
+            kind="rich"
+            label={t("sessionCopySelectionRich")}
+            specimen
+          />
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("appearanceSelectionRichCopyActionTitle")}
+              checked={selectionRichCopyActionEnabled}
+              onChange={(event) =>
+                setSelectionRichCopyActionEnabled(event.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
         </SettingsItem>
         <SettingsItem
           label={t("appearanceFunPhrasesTitle")}

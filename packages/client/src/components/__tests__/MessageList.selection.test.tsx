@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
+import { UI_KEYS } from "../../lib/storageKeys";
 import {
   installMessageListTestEnvironment,
   SessionTranscriptHarness,
@@ -265,6 +266,44 @@ describe("MessageList selection and copy", () => {
     expect(onQuoteSelection).toHaveBeenCalledWith("> Recap selected text\nx");
   });
 
+  it("hides and disables selection quoting independently", async () => {
+    window.localStorage.setItem(UI_KEYS.selectionQuoteActionEnabled, "false");
+    window.localStorage.setItem(
+      UI_KEYS.selectionSourceCopyActionEnabled,
+      "true",
+    );
+    const onQuoteSelection = vi.fn(() => "> Selected text\nx");
+
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Selected text")]}
+        onQuoteSelection={onQuoteSelection}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Selected text");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.pointerDown(selectedElement, { clientX: 100, clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Copy selection as source Markdown",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Quote selection" }),
+    ).toBeNull();
+
+    fireEvent.keyDown(window, { key: "x" });
+    expect(onQuoteSelection).not.toHaveBeenCalled();
+  });
+
   it("keeps the selected-text quote button inside the transcript on desktop", async () => {
     mockPointerCoarse(false);
     const onQuoteSelection = vi.fn(() => "> Desktop selected text\n");
@@ -295,12 +334,87 @@ describe("MessageList selection and copy", () => {
     });
     expect(quoteButton.closest(".message-list")).toBeTruthy();
     expect(
-      quoteButton.classList.contains("selection-quote-button--mobile"),
-    ).toBe(false);
+      quoteButton.closest('[data-selection-action-cluster="true"]'),
+    ).toBeTruthy();
 
     fireEvent.click(quoteButton);
 
     expect(onQuoteSelection).toHaveBeenCalledWith("> Desktop selected text\n");
+  });
+
+  it("moves a three-action cluster before a selection near the right edge", async () => {
+    mockPointerCoarse(false);
+    window.localStorage.setItem(
+      UI_KEYS.selectionSourceCopyActionEnabled,
+      "true",
+    );
+    window.localStorage.setItem(UI_KEYS.selectionRichCopyActionEnabled, "true");
+
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Right edge selection")]}
+        onQuoteSelection={() => "> Right edge selection\n"}
+      />,
+    );
+
+    const messageList = document.querySelector<HTMLElement>(".message-list");
+    expect(messageList).toBeTruthy();
+    if (!messageList) throw new Error("Message list is missing");
+    Object.defineProperties(messageList, {
+      clientWidth: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    messageList.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        right: 600,
+        bottom: 400,
+        left: 0,
+        width: 600,
+        height: 400,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    const selectedElement = screen.getByText("Right edge selection");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    Object.defineProperty(range, "getBoundingClientRect", {
+      configurable: true,
+      value: () =>
+        ({
+          top: 100,
+          right: 590,
+          bottom: 120,
+          left: 500,
+          width: 90,
+          height: 20,
+          x: 500,
+          y: 100,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    const sourceButton = await screen.findByRole("button", {
+      name: "Copy selection as source Markdown",
+    });
+    const cluster = sourceButton.closest(
+      '[data-selection-action-cluster="true"]',
+    );
+    expect(cluster).toBeTruthy();
+    if (!cluster) throw new Error("Selection action cluster is missing");
+    expect(cluster.getAttribute("data-selection-action-placement")).toBe(
+      "before",
+    );
+    expect(cluster.querySelectorAll("button")).toHaveLength(3);
   });
 
   it("quotes registered text from a portaled modal into the active session", async () => {
@@ -370,12 +484,12 @@ describe("MessageList selection and copy", () => {
     expect(setData).toHaveBeenCalledWith("text/plain", "# Modal heading");
   });
 
-  it("moves the selected-text quote button to the composer edge on mobile", async () => {
+  it("docks the tappable quote action above the mobile composer", async () => {
     mockPointerCoarse(true);
     const onQuoteSelection = vi.fn(() => "> Mobile selected text\n");
-    const inputTarget = document.createElement("div");
-    inputTarget.className = "session-input-inner";
-    document.body.appendChild(inputTarget);
+    const actionSlot = document.createElement("div");
+    actionSlot.setAttribute("data-selection-actions-mobile-slot", "");
+    document.body.appendChild(actionSlot);
 
     render(
       <MessageList
@@ -395,22 +509,123 @@ describe("MessageList selection and copy", () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
 
-    act(() => {
-      document.dispatchEvent(new Event("selectionchange"));
-    });
+    fireEvent.pointerDown(selectedElement, { clientX: 100, clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
 
     const quoteButton = await screen.findByRole("button", {
       name: "Quote selection",
     });
-    expect(inputTarget.contains(quoteButton)).toBe(true);
+    expect(actionSlot.contains(quoteButton)).toBe(true);
     expect(
-      quoteButton.classList.contains("selection-quote-button--mobile"),
-    ).toBe(true);
-    expect(quoteButton.textContent).toContain("Quote");
+      quoteButton.closest('[data-selection-action-cluster="true"]'),
+    ).toBeTruthy();
 
     selection?.removeAllRanges();
     fireEvent.click(quoteButton);
 
     expect(onQuoteSelection).toHaveBeenCalledWith("> Mobile selected text\n");
+  });
+
+  it("copies stored source from the mobile selection action", async () => {
+    mockPointerCoarse(true);
+    window.localStorage.setItem(
+      UI_KEYS.selectionSourceCopyActionEnabled,
+      "true",
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const actionSlot = document.createElement("div");
+    actionSlot.setAttribute("data-selection-actions-mobile-slot", "");
+    document.body.appendChild(actionSlot);
+    render(
+      <MessageList
+        messages={[
+          assistantMessage("assistant-1", "1. Mobile selected source"),
+        ]}
+        markdownAugments={{
+          "assistant-1": {
+            html: "<ol><li>Mobile selected source</li></ol>",
+          },
+        }}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Mobile selected source");
+    const selectedText = selectedElement.firstChild;
+    expect(selectedText).toBeTruthy();
+    const range = document.createRange();
+    range.selectNodeContents(selectedText as Node);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.pointerDown(selectedElement, { clientX: 100, clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
+
+    const sourceButton = await screen.findByRole("button", {
+      name: "Copy selection as source Markdown",
+    });
+    expect(actionSlot.contains(sourceButton)).toBe(true);
+
+    selection?.removeAllRanges();
+    fireEvent.click(sourceButton);
+
+    expect(writeText).toHaveBeenCalledWith("1. Mobile selected source");
+  });
+
+  it("copies stored semantic HTML after the selection collapses", async () => {
+    mockPointerCoarse(false);
+    window.localStorage.setItem(UI_KEYS.selectionRichCopyActionEnabled, "true");
+    const clipboardItems: Array<Record<string, Blob>> = [];
+    class FakeClipboardItem {
+      constructor(data: Record<string, Blob>) {
+        clipboardItems.push(data);
+      }
+    }
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: FakeClipboardItem,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write },
+    });
+
+    render(
+      <MessageList
+        messages={[
+          assistantMessage("assistant-1", "The **rich selection** stays bold."),
+        ]}
+        markdownAugments={{
+          "assistant-1": {
+            html: "<p>The <strong>rich selection</strong> stays bold.</p>",
+          },
+        }}
+      />,
+    );
+
+    const selectedElement = screen.getByText("rich selection");
+    const range = document.createRange();
+    range.selectNode(selectedElement);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.pointerDown(selectedElement, { clientX: 100, clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
+
+    const richButton = await screen.findByRole("button", {
+      name: "Copy selection as rich text",
+    });
+    selection?.removeAllRanges();
+    fireEvent.click(richButton);
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(clipboardItems[0]?.["text/html"]?.type).toBe("text/html");
+    expect(clipboardItems[0]?.["text/plain"]?.type).toBe("text/plain");
   });
 });

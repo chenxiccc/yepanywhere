@@ -49,6 +49,8 @@ vi.mock("../../i18n", () => ({
         sessionSearchHelpClose: "Enter jump+close · Esc cancel · Aa case",
         sessionQuoteSelection: "Quote selection",
         sessionQuoteSelectionShort: "Quote",
+        sessionCopySelectionSource: "Copy selection as source Markdown",
+        sessionCopySelectionRich: "Copy selection as rich text",
         projectQueueAttachmentOnly: "Attachment-only message",
         projectQueueInlineStatusQueued: "Project Queue (#{position})",
         projectQueueInlineStatusDispatching:
@@ -119,6 +121,7 @@ vi.mock("../../i18n", () => ({
 }));
 
 const originalClipboard = navigator.clipboard;
+const originalClipboardItem = globalThis.ClipboardItem;
 const originalMatchMedia = window.matchMedia;
 
 export function userMessage(
@@ -304,6 +307,11 @@ export function installMessageListTestEnvironment() {
     document.querySelectorAll(".session-input-inner").forEach((node) => {
       node.remove();
     });
+    document
+      .querySelectorAll("[data-selection-actions-mobile-slot]")
+      .forEach((node) => {
+        node.remove();
+      });
     document.querySelectorAll("textarea").forEach((node) => {
       node.remove();
     });
@@ -311,6 +319,14 @@ export function installMessageListTestEnvironment() {
       configurable: true,
       value: originalClipboard,
     });
+    if (originalClipboardItem === undefined) {
+      Reflect.deleteProperty(globalThis, "ClipboardItem");
+    } else {
+      Object.defineProperty(globalThis, "ClipboardItem", {
+        configurable: true,
+        value: originalClipboardItem,
+      });
+    }
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: originalMatchMedia,
