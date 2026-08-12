@@ -53,6 +53,11 @@ Related:
 - The README stays concise and links to the public catalog/docs rather than
   maintaining another exhaustive inventory.
 
+Green uppercase eyebrow labels use the platform system sans at real 700 weight
+with one shared restrained-tracking rule. Individual pages may own their local
+spacing around the label but do not redefine its face, size, weight, tracking,
+case, or color. Mixed-case display headings remain in the site's Inter face.
+
 ## Registry contract
 
 The site has three editorial registries with distinct meanings:
