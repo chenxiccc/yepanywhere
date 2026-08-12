@@ -483,11 +483,12 @@ grid, so those rules need an explicit vector case rather than an implicit
 raster one.
 
 An SVG carries a suggested size only when its root element declares absolute
-`width` and `height`. A `viewBox` alone is an aspect ratio and nothing else —
-and `width="100%"` defers to the container exactly like declaring nothing.
-Both figure shapes are common: matplotlib's `savefig(...)` emits declared
-point sizes, while mermaid, D3, and hand-authored figures routinely ship
-viewBox-only.
+`width` and `height`. Its `viewBox` declares vector-coordinate bounds and the
+coordinate-to-viewport mapping; for CSS layout, a viewBox alone contributes an
+aspect ratio but no suggested outer size. Likewise, `width="100%"` defers to
+the container instead of declaring one. Both figure shapes are common:
+matplotlib's `savefig(...)` emits declared point sizes, while mermaid, D3, and
+hand-authored figures routinely ship viewBox-only.
 
 The contract:
 
@@ -502,6 +503,11 @@ The contract:
   (currently `min(100%, 640px)`) and let the ratio set the height. Sized
   vectors keep the ordinary shrink-to-fit frame so their declared size still
   decides.
+- **The file-authored mapping and bounds remain authoritative.** The browser
+  applies the SVG's `viewBox` and `preserveAspectRatio` inside the supplied or
+  declared viewport. The default viewer may fit that viewport into available
+  screen area, but does not crop, rewrite the viewBox, or recompute a tighter
+  content box; deliberate whitespace and annotations remain in-frame.
 - **Fit may enlarge a vector.** Filling the stage costs a vector nothing,
   whereas upscaling a raster shows interpolation rather than detail. The
   reported zoom percentage is relative to the declared size, or to the
