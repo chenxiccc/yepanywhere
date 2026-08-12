@@ -9,8 +9,16 @@ if (!script) {
 }
 
 const env = { ...process.env };
-delete env.npm_config_recursive;
-delete env.NPM_CONFIG_RECURSIVE;
+const pnpmOnlyConfigKeys = new Set([
+  "npm_config__jsr_registry",
+  "npm_config_npm_globalconfig",
+  "npm_config_recursive",
+  "npm_config_verify_deps_before_run",
+  "pnpm_config_verify_deps_before_run",
+]);
+for (const key of Object.keys(env)) {
+  if (pnpmOnlyConfigKeys.has(key.toLowerCase())) delete env[key];
+}
 
 const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
 const result = spawnSync(npmBin, ["run", script], {
