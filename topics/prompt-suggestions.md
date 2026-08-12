@@ -4,10 +4,12 @@
 > composer without becoming provider transcript turns unless the user accepts
 > one.
 
-This topic covers YA's next-turn suggestion surface. Today Claude provides the
-capability natively: the SDK query is started with `promptSuggestions: true`,
-provider `prompt_suggestion` messages are intercepted by the client, and the
-suggestion is rendered in the composer rather than the message list.
+This topic covers YA's next-turn suggestion surface. Claude exposes the
+capability natively through the SDK's `promptSuggestions` initialization
+option. YA leaves that provider-owned generator off unless a caller explicitly
+opts in through provider session options. If the provider emits a
+`prompt_suggestion`, the client intercepts it and renders the suggestion in the
+composer rather than the message list.
 
 ## Contracts
 
@@ -15,9 +17,10 @@ suggestion is rendered in the composer rather than the message list.
   the provider until the user explicitly accepts or edits it.
 - Native provider suggestions and YA-simulated suggestions share the same UI
   shape: a composer affordance the user can accept, edit, or dismiss.
-- Native provider suggestions may be the default for a provider, but the user
-  still needs an `Off` control in provider defaults, new-session choices, and
-  current-session controls because native suggestions consume provider work.
+- A `Native` surface choice means YA expects and renders provider suggestion
+  messages. It does not enable the provider's generator. Provider-owned
+  suggestion generation consumes provider work, so its separate session option
+  defaults off and requires explicit opt-in.
 - Native suggestions do not require a side model. Simulated suggestions for
   providers without native support must use
   [side-session-config.md](side-session-config.md) for opt-in defaults, side
@@ -52,33 +55,31 @@ without native support: both require a side query over bounded recent context,
 both need the same shared side session, and both must remain out of the parent
 transcript.
 
-Claude currently has native prompt suggestions but not SDK-native recaps in the
-same `--print --output-format stream-json` path. That means YA can enable
-Claude prompt suggestions by default without side-session configuration, while
-Claude recaps remain a simulated-helper feature until the SDK exposes native
-away summaries.
+Claude currently exposes native prompt suggestions but not SDK-native recaps in
+the same `--print --output-format stream-json` path. A caller can explicitly
+request Claude's suggestion generator through provider session options; Claude
+recaps remain a simulated-helper feature until the SDK exposes native away
+summaries.
 
-Default policy: prompt suggestions may default on only when the provider
-delivers them natively/smoothly as part of the ordinary session protocol.
-Emulated or YA-simulated suggestions default off unless the user explicitly
-enables that helper behavior.
+Default policy: provider-native, emulated, and YA-simulated suggestion
+generators all default off. Observation remains cheap: when `Native` is
+selected, YA may surface a suggestion the harness emits independently.
 
 Current implementation note: new-session launch, provider defaults, and handoff
-all expose the `Off` / `Native` choice as a standing all-provider preference.
-`Native` is passed to a new provider session only when that provider advertises
-native prompt suggestions; providers that would need YA-side emulation launch as
-`Off` even if the saved default says `Native`. Handoff carries the live process
-preference when known, so an explicitly disabled session stays disabled in the
-replacement session. The remaining gap is current-session mutation: there is not
-yet a live-session toggle that changes future suggestions without starting a new
-session.
+all expose the `Off` / `Native` observation choice as a standing all-provider
+preference. `Native` affects the live process's handling of provider messages
+but is not passed as `sessionOptions.promptSuggestions`. Handoff carries that
+live observation preference when known, so an explicitly disabled session
+stays disabled in the replacement session. The provider interface separately
+accepts session-option changes and reports whether they were applied, require a
+restart, are unsupported, are inactive, or remain unknown; there is not yet a
+user-facing control that requests provider suggestion generation.
 
 ## Simulated Suggestions Gap
 
 YA does not yet implement simulated prompt suggestions for providers without
-native support. For those providers, `Native` in session defaults is only a
-standing preference for providers that can honor it; launch-time resolution must
-fall back to `Off` rather than implying or running a hidden emulation path.
+native support. For those providers, `Native` in session defaults remains only
+an observation preference; it must not imply or run a hidden emulation path.
 
 Preferred future shape remains provider-native prediction if an API exposes it,
 ideally by asking the provider to continue from a start-user-turn boundary and

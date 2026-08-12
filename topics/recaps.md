@@ -165,14 +165,14 @@ The UI locations are:
   future away-return triggers without restarting the parent session and without
   rewriting prior recap messages.
 
-This mirrors native prompt suggestions. The current Claude path can explicitly
-enable native prompt suggestions
-(`sessionOptions.promptSuggestions: true`) and the client renders
-`prompt_suggestion` messages. If YA later simulates
-prompt suggestions for providers without native support, it should use
-the same side-session configuration as simulated recaps: both are
-non-steering side queries over recent context, and both need the same
-bounded lifecycle, session-level model choice, and restart behavior.
+This mirrors native prompt suggestions. `Native` is also an observation policy
+there; it does not set `sessionOptions.promptSuggestions`. A caller can
+separately opt into Claude's provider generator, and the client renders any
+resulting `prompt_suggestion` messages. If YA later simulates prompt suggestions
+for providers without native support, it should use the same side-session
+configuration as simulated recaps: both are non-steering side queries over
+recent context, and both need the same bounded lifecycle, session-level model
+choice, and restart behavior.
 
 Hot or cold YA restarts can already reduce normal-workflow reliability
 because providers do not all resume cleanly. Side-session features must

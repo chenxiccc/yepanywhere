@@ -3988,7 +3988,7 @@ describe("Supervisor", () => {
   });
 
   describe("prompt suggestion options", () => {
-    it("passes native prompt suggestions only for supporting providers", async () => {
+    it("keeps native selection as an observation mode", async () => {
       const startedOptions: Array<
         Parameters<AgentProvider["startSession"]>[0]
       > = [];
@@ -4071,11 +4071,11 @@ describe("Supervisor", () => {
         throw new Error("expected process");
       }
 
-      expect(
-        startedOptions.map(
-          (options) => options.sessionOptions?.promptSuggestions,
-        ),
-      ).toEqual([true, false, false]);
+      expect(startedOptions.map((options) => options.sessionOptions)).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
       expect(nativeProcess.promptSuggestionMode).toBe("native");
       expect(explicitOffProcess.promptSuggestionMode).toBe("off");
       expect(unsupportedProcess.promptSuggestionMode).toBe("off");

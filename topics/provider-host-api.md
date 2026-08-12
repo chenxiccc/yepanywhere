@@ -372,8 +372,18 @@ submissions stayed on the provider-host transport and completed, while the
 transitional helper correctly reported option enforcement as `unknown` rather
 than claiming an old host had applied it.
 
+A fresh isolated protocol-v3 wrapper then exercised real Codex and Claude
+sessions through `session-turn`. Both used the provider-host transport and
+completed. Codex reported all four generators inactive. Claude reported title,
+progress-summary, and prompt-suggestion controls applied and native recaps
+inactive. The Claude session was launched with the `Native` prompt-suggestion
+observation preference, but its transcript still began with YA's fixed title
+and contained no `prompt_suggestion`; this verifies that the observation choice
+does not opt into provider generation. Wrapper shutdown removed the isolated
+host artifacts and left no listening smoke server or provider process.
+
 This is end-to-end integration evidence for wrapper, host, worker queue,
 adapter, receipt, and cleanup behavior. Provider-specific real-runtime smokes
-remain release confidence for each upstream adapter; the same-worker queue and
-identity fencing are the non-forking mechanism rather than transcript
+remain release confidence for the other upstream adapters; the same-worker
+queue and identity fencing are the non-forking mechanism rather than transcript
 observation.
