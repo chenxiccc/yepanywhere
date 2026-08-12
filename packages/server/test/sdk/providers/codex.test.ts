@@ -969,6 +969,7 @@ describe("CodexProvider app-server lifecycle", () => {
       })();
 
       await waitForFakeCodexRequest(logPath, "turn/start");
+      await session.probeLiveness?.();
       expect(await session.interrupt?.()).toBe(true);
 
       const interruptRequests = readFakeCodexRequests(logPath).filter(
