@@ -123,11 +123,19 @@ Common side-query configuration lives in
 [side-session-config.md](side-session-config.md); next-turn prediction lives in
 [prompt-suggestions.md](prompt-suggestions.md).
 
-New sessions should not start with YA-simulated recaps enabled by
-default. A provider with native recap support may default to native recaps
-because YA does not need to spawn a side session, but the UI must still expose
-`Off`: native recaps are not free, and the user must be able to disable them
-for a new or existing session.
+New sessions should not start with YA-simulated recaps enabled by default.
+`Native` is an observation and rendering policy: YA expects and surfaces a
+provider `away_summary` row if one appears. It does not configure the provider
+to generate recap turns. Provider-owned recap generation is a separate
+provider-session option, defaults off at the provider boundary, and requires an
+explicit caller opt-in plus an adapter result showing whether the provider can
+apply it. No current YA provider adapter supports that opt-in.
+
+This separation matters even where a provider has native recap functionality.
+Surfacing an already-emitted provider row is cheap; asking the provider to run
+an unsolicited recap inference is not. `Off` suppresses YA recap behavior,
+while the provider-session default prevents YA from enabling the upstream
+generator implicitly.
 
 For simulated recaps, YA needs an explicit configuration surface rather
 than a hard-coded model choice. The side model is shared for the parent
@@ -145,9 +153,9 @@ the UI does not need to hard-code provider model names.
 The UI locations are:
 
 - New-session form: a `Recaps` control in the all-provider defaults above the
-  AI Provider boundary. It chooses `Off`, provider-native recaps when supported,
-  or simulated recaps through the shared helper side session or forked fallback
-  path.
+  AI Provider boundary. It chooses `Off`, observation of provider-native recap
+  rows when supported, or simulated recaps through the shared helper side
+  session or forked fallback path.
 - Settings -> Providers: the default recap mode for future sessions and the
   shared helper side model, including `Same as main session`. The helper model
   selector is labeled `Tailed Recap Model` and appears for both direct tailed
@@ -157,9 +165,10 @@ The UI locations are:
   future away-return triggers without restarting the parent session and without
   rewriting prior recap messages.
 
-This mirrors native prompt suggestions. The current Claude path already
-exposes native prompt suggestions (`promptSuggestions: true`) and the
-client renders `prompt_suggestion` messages. If YA later simulates
+This mirrors native prompt suggestions. The current Claude path can explicitly
+enable native prompt suggestions
+(`sessionOptions.promptSuggestions: true`) and the client renders
+`prompt_suggestion` messages. If YA later simulates
 prompt suggestions for providers without native support, it should use
 the same side-session configuration as simulated recaps: both are
 non-steering side queries over recent context, and both need the same

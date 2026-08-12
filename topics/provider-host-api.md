@@ -7,12 +7,13 @@
 Topic: provider-host-api
 
 Status: stable same-user discovery, foreground headless bootstrap,
-attach-or-start recovery, bounded auxiliary session turns, and an authenticated
-Hono adapter are implemented on Linux. The non-watch development wrapper
-attaches to a compatible incumbent host or starts one, and Codex uses the
-shared provider host rather than a separate native host. Public feature copy
-labels this source-checkout surface experimental and points back to this exact
-availability and fallback contract.
+attach-or-start recovery, bounded auxiliary session turns, explicit
+provider-session generation options, and an authenticated Hono adapter are
+implemented on Linux. The non-watch development wrapper attaches to a
+compatible incumbent host or starts one, and Codex uses the shared provider
+host rather than a separate native host. Public feature copy labels this
+source-checkout surface experimental and points back to this exact availability
+and fallback contract.
 
 Related:
 [reload-safe provider runtimes](reload-safe-provider-runtimes.md),
@@ -69,7 +70,7 @@ Hono receives the discovered endpoint and token through private environment
 state. A host started by the wrapper retains wrapper IPC as its terminal-owner
 channel; a separately started foreground host retains its terminal instead.
 
-Host protocol version 2 is newline-delimited JSON over the control socket.
+Host protocol version 3 is newline-delimited JSON over the control socket.
 Every request carries a request id, token, Hono generation, and protocol
 version. The implemented operations are:
 
@@ -127,21 +128,27 @@ host descriptor, negotiates a protocol version, then issues one streamed
   "id": "request-correlation-id",
   "submissionId": "client-generated-retry-id",
   "op": "sessionTurn",
-  "protocolVersion": 2,
+  "protocolVersion": 3,
   "token": "local-capability",
   "target": {
     "harness": "claude",
     "providerSessionId": "durable-provider-id",
     "yaSessionId": "optional-canonical-ya-id"
   },
-  "message": { "text": "one user turn" }
+  "message": { "text": "one user turn" },
+  "sessionOptions": {
+    "automaticTitle": false,
+    "automaticRecaps": false,
+    "agentProgressSummaries": false,
+    "promptSuggestions": false
+  }
 }
 ```
 
 The stream flushes records as they occur:
 
 ```json
-{"id":"...","type":"accepted","runtimeId":"...","submissionId":"..."}
+{"id":"...","type":"accepted","runtimeId":"...","submissionId":"...","sessionOptionsResult":{}}
 {"id":"...","type":"providerEvent","sequence":42,"message":{}}
 {"id":"...","type":"terminal","outcome":"completed","receipt":{}}
 ```
@@ -151,6 +158,9 @@ implemented meanings are:
 
 - `accepted` means the worker queue durably accepted the identified
   submission; a caller must not fall back to another transport afterward;
+- `sessionOptionsResult` reports each requested provider-owned generation
+  option as `applied`, `inactive`, `restart-required`, `unsupported`, or
+  `unknown`; an omitted request is normalized to all four options being off;
 - `providerEvent` is an ordered observation scoped to this turn, normally a
   normalized `SDKMessage`, with an optional provider-native record;
 - `terminal` distinguishes completed, provider-failed, interrupted,
@@ -160,8 +170,8 @@ implemented meanings are:
   requires receipt lookup rather than automatic duplicate submission.
 
 The caller-generated `submissionId` is the retry identity. Reusing it with the
-same target, message, and launch request replays the current host's retained
-records; reusing it with different content returns
+same target, message, session options, and launch request replays the current
+host's retained records; reusing it with different content returns
 `submission-id-conflict`. The host retains up to 1,000 submissions and receipt
 rows for 24 hours. After a host restart, use `sessionTurnStatus` to inspect the
 persisted receipt rather than resubmitting the id.
@@ -177,11 +187,24 @@ explicit cancellation operation.
 
 An auxiliary submission is accepted only while the incumbent worker is alive,
 idle, has an exactly observable queue-yield boundary, and has no pending
-approval. While it is active, Hono may remain the approval controller but
-cannot queue or steer another provider turn. Without an attached Hono
-controller, a new provider approval is reported, denied, and terminates the
-auxiliary result as `provider-approval-required`. The auxiliary stream observes
-provider events but never acknowledges Hono's replay buffer.
+approval. Before queue acceptance, the worker asks the adapter to apply or
+evaluate the requested session options. A failed option request rejects the
+turn before acceptance; an unavailable control returns an explicit bounded
+result rather than claiming enforcement. While the turn is active, Hono may
+remain the approval controller but cannot queue or steer another provider
+turn. Without an attached Hono controller, a new provider approval is
+reported, denied, and terminates the auxiliary result as
+`provider-approval-required`. The auxiliary stream observes provider events but
+never acknowledges Hono's replay buffer.
+
+Provider-owned generation is a provider/session boundary, separate from YA's
+rendering and helper policies. The four current controls are automatic session
+titles, provider-native recap turns, periodic subagent progress summaries, and
+predicted prompt suggestions. Every omitted value resolves to false. An
+adapter may expose `setSessionOptions` for an incumbent session, but it must
+report launch-only changes as `restart-required`, unavailable opt-ins as
+`unsupported`, intrinsically absent disabled features as `inactive`, and an
+unverified provider surface as `unknown`.
 
 Local `launchOrClaim` and the optional `sessionTurn.launch` object may resume a
 matching provider worker when no incumbent exists. The requested harness must
@@ -317,6 +340,9 @@ version, while the permanent capability ledger retains all prior assignments.
   performs bounded verified replacement.
 - A hosted Claude turn uses the incumbent worker and creates no second resume
   process. Codex uses the same shared-host path after native-host retirement.
+- Provider-owned title, recap, progress-summary, and prompt-suggestion
+  generation is disabled when the caller omits session options. Acceptance
+  reports enforcement per option instead of treating silence as success.
 - An accepted submission is never automatically retried through another
   transport after a control connection fails.
 - Hono reload preserves eligible active turns but does not claim that retained
@@ -328,15 +354,23 @@ version, while the permanent capability ledger retains all prior assignments.
 
 ## Verification evidence
 
-On 2026-08-12 an isolated non-watch wrapper started from the current source
-tree published a private protocol-v2 descriptor and registered its fresh Hono
-generation. A local socket submission launched the deterministic Claude-labeled
-worker, emitted accepted plus three ordered provider events, and completed with
-watermark 3. A second submission through the authenticated Hono adapter reached
-the same runtime id and completed with the same record sequence. The version
-route advertised `provider-host-control` during registration. Terminal wrapper
-shutdown closed the server, maintenance, and Vite ports; removed the descriptor,
-token, lock, and control socket; and left no smoke descendant.
+On 2026-08-12 an isolated non-watch wrapper started from the then-current
+protocol-v2 source tree and registered its fresh Hono generation. A local
+socket submission launched the deterministic Claude-labeled worker, emitted
+accepted plus three ordered provider events, and completed with watermark 3. A
+second submission through the authenticated Hono adapter reached the same
+runtime id and completed with the same record sequence. The version route
+advertised `provider-host-control` during registration. Terminal wrapper
+shutdown closed the server, maintenance, and Vite ports; removed the
+descriptor, token, lock, and control socket; and left no smoke descendant.
+
+The protocol-v3 provider-session-options change has deterministic host/worker
+coverage for default normalization, retry fingerprinting, adapter application
+before acceptance, and per-option results. The upgraded `session-turn` helper
+was also exercised twice against the live protocol-v2 YA/Codex incumbent: both
+submissions stayed on the provider-host transport and completed, while the
+transitional helper correctly reported option enforcement as `unknown` rather
+than claiming an old host had applied it.
 
 This is end-to-end integration evidence for wrapper, host, worker queue,
 adapter, receipt, and cleanup behavior. Provider-specific real-runtime smokes

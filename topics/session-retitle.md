@@ -13,6 +13,10 @@ Related topics: [recaps](recaps.md), [side-session-config](side-session-config.m
 
 ## Contract
 
+- Provider-native automatic title generation is disabled by default at session
+  launch. This is separate from YA's explicit retitle helper: an adapter may
+  use a fixed provider-visible title to suppress upstream generation while YA
+  continues to derive and display its own session title normally.
 - A session title must not change from generated text without an explicit user
   confirmation or the clearly requested one-shot generated-and-apply action.
 - The existing session-menu **Rename** entry remains manual rename. It does not
@@ -26,6 +30,10 @@ Related topics: [recaps](recaps.md), [side-session-config](side-session-config.m
   retitle has its own dedicated button instead (see One-Shot Apply).
 - Escape, an `X` button, or losing interest in the helper proposal must leave
   the current title unchanged.
+- Opting a provider into its own automatic title generation is an explicit
+  provider-session option. A live change must report whether it was applied,
+  needs a restart, is unsupported, or remains unknown; it must not silently
+  reuse YA's generated-retitle preference as authorization.
 
 ## Manual Rename Surface
 
