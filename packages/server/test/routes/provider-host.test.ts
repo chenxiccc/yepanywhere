@@ -9,7 +9,7 @@ function deps(
 ): ProviderHostRoutesDeps {
   return {
     available: () => true,
-    status: async () => ({ protocolVersion: 2, runtimeCount: 1 }),
+    status: async () => ({ protocolVersion: 3, runtimeCount: 1 }),
     inventory: async () => [
       {
         runtimeId: "runtime-1",
@@ -75,7 +75,7 @@ describe("provider host routes", () => {
 
     await expect(status.json()).resolves.toEqual({
       available: true,
-      protocolVersion: 2,
+      protocolVersion: 3,
       runtimeCount: 1,
     });
     await expect(inventory.json()).resolves.toEqual({
@@ -90,7 +90,15 @@ describe("provider host routes", () => {
   });
 
   it("streams accepted, provider, and terminal records", async () => {
-    const routes = createProviderHostRoutes(deps());
+    const requests: unknown[] = [];
+    const routes = createProviderHostRoutes(
+      deps({
+        streamTurn: async function* (request) {
+          requests.push(request);
+          yield { type: "terminal", outcome: "completed" };
+        },
+      }),
+    );
     const response = await routes.request("/session-turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -106,7 +114,46 @@ describe("provider host routes", () => {
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line).type),
-    ).toEqual(["accepted", "providerEvent", "terminal"]);
+    ).toEqual(["terminal"]);
+    expect(requests).toMatchObject([
+      {
+        sessionOptions: {
+          automaticTitle: false,
+          automaticRecaps: false,
+          agentProgressSummaries: false,
+          promptSuggestions: false,
+        },
+      },
+    ]);
+  });
+
+  it("rejects unknown or non-boolean provider session options", async () => {
+    const streamTurn = vi.fn();
+    const routes = createProviderHostRoutes(deps({ streamTurn }));
+    const unknown = await routes.request("/session-turn", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validTurn,
+        sessionOptions: { hiddenGeneration: false },
+      }),
+    });
+    const nonBoolean = await routes.request("/session-turn", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validTurn,
+        sessionOptions: { automaticTitle: "off" },
+      }),
+    });
+
+    expect(unknown.status).toBe(400);
+    await expect(unknown.json()).resolves.toMatchObject({
+      error: "Unknown provider session option hiddenGeneration",
+    });
+    expect(nonBoolean.status).toBe(400);
+    await expect(nonBoolean.json()).resolves.toMatchObject({
+      error: "Provider session option automaticTitle must be boolean",
+    });
+    expect(streamTurn).not.toHaveBeenCalled();
   });
 
   it("marks adapter failure after acceptance as uncertain", async () => {

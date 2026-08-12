@@ -140,6 +140,7 @@ import type {
   SummaryGenerationRequest,
   SummaryGenerationResult,
 } from "./types.js";
+import { inactiveProviderSessionOptionsResult } from "./types.js";
 import type { SessionSandboxRuntime } from "../../session-sandbox.js";
 
 const log = getLogger().child({ component: "codex-provider" });
@@ -1503,6 +1504,11 @@ export class CodexProvider implements AgentProvider {
       setEffort: async (effort) => {
         runtimeState.turnEffortOverride = effort ?? null;
       },
+      setSessionOptions: async (requested) =>
+        inactiveProviderSessionOptionsResult(
+          requested,
+          "Codex app-server exposes explicit thread names but no automatic title, recap, progress-summary, or prompt-suggestion generator",
+        ),
       supportedCommands: async () => {
         if (activeClient) {
           await this.refreshCodexSkills(

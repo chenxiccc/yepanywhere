@@ -17,7 +17,7 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-export const PROVIDER_HOST_PROTOCOL_VERSION = 2;
+export const PROVIDER_HOST_PROTOCOL_VERSION = 3;
 export const PROVIDER_HOST_DESCRIPTOR_VERSION = 1;
 
 const DEFAULT_STATUS_TIMEOUT_MS = 1_000;

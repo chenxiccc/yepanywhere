@@ -240,8 +240,12 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       const connection = await waitForAvailableHost(paths);
       expect(connection.descriptor).toMatchObject({
         descriptorVersion: 1,
-        hostProtocolVersion: 2,
-        features: ["runtime-control", "session-turn"],
+        hostProtocolVersion: 3,
+        features: [
+          "runtime-control",
+          "session-turn",
+          "provider-session-options",
+        ],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
         owner: {
@@ -351,6 +355,12 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
         harness: "claude",
         providerSessionId: "durable-provider-session",
         yaSessionId: "canonical-ya-session",
+        sessionOptionsResult: {
+          automaticTitle: { requested: false, status: "applied" },
+          automaticRecaps: { requested: false, status: "applied" },
+          agentProgressSummaries: { requested: false, status: "applied" },
+          promptSuggestions: { requested: false, status: "applied" },
+        },
       });
       expect(records.at(-1)).toMatchObject({
         outcome: "completed",
@@ -450,7 +460,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
 
     const records = await collectProviderHostStream(
       {
-        descriptor: { controlSocketPath, hostProtocolVersion: 2 },
+        descriptor: { controlSocketPath, hostProtocolVersion: 3 },
         token: "receipt-token",
       },
       {
@@ -501,7 +511,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
 
     const records = await collectProviderHostStream(
       {
-        descriptor: { controlSocketPath, hostProtocolVersion: 2 },
+        descriptor: { controlSocketPath, hostProtocolVersion: 3 },
         token: "terminal-receipt-token",
       },
       {
@@ -571,7 +581,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       createProviderHostToken(paths.tokenPath);
       writeProviderHostDescriptor(paths, {
         descriptorId: "stale-host",
-        hostProtocolVersion: 2,
+        hostProtocolVersion: 3,
         features: ["runtime-control"],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
@@ -652,7 +662,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       createProviderHostToken(paths.tokenPath);
       writeProviderHostDescriptor(paths, {
         descriptorId: "ambiguous-host",
-        hostProtocolVersion: 2,
+        hostProtocolVersion: 3,
         features: ["runtime-control"],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
@@ -692,7 +702,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 2,
+        protocolVersion: 3,
         op: "launch",
         generation: "one",
         providerName: "claude-gateway",
@@ -739,7 +749,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 2,
+        protocolVersion: 3,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -787,7 +797,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 2,
+        protocolVersion: 3,
         op: "launch",
         generation: "one",
         providerName: "pi",
@@ -817,7 +827,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     host.registeredServers.set("one", owner);
     const launchRequest = {
       token: "test-token",
-      protocolVersion: 2,
+      protocolVersion: 3,
       op: "launch",
       generation: "one",
       providerName: "claude",
@@ -859,7 +869,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const first = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 2,
+        protocolVersion: 3,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -883,7 +893,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const second = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 2,
+        protocolVersion: 3,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -930,7 +940,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     host.registeredServers.set("one", owner);
     const launchRequest = {
       token: "test-token",
-      protocolVersion: 2,
+      protocolVersion: 3,
       op: "launch",
       generation: "one",
       providerName: "claude",
@@ -977,7 +987,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     const launched = await host.handleRequest(
       {
         token: "test-token",
-        protocolVersion: 2,
+        protocolVersion: 3,
         op: "launch",
         generation: "one",
         providerName: "claude",
@@ -1016,7 +1026,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       await host.handleRequest(
         {
           token: "test-token",
-          protocolVersion: 2,
+          protocolVersion: 3,
           op: "retainProcessGroup",
           generation: "one",
           processGroupId: resource.pid,

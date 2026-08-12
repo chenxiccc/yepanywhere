@@ -59,7 +59,12 @@ import type {
   AuthStatus,
   StartSessionOptions,
 } from "./types.js";
+import {
+  resolveProviderSessionOptions,
+  unknownProviderSessionOptionsResult,
+} from "./types.js";
 const execAsync = promisify(exec);
+const PROVIDER_MANAGED_SESSION_TITLE = "Yep Anywhere Session";
 
 function execFileUtf8(
   file: string,
@@ -387,6 +392,9 @@ export class OpenCodeProvider implements AgentProvider {
    * immediately on the first init yield rather than racing a 5-second timeout.
    */
   async startSession(options: StartSessionOptions): Promise<AgentSession> {
+    const providerSessionOptions = resolveProviderSessionOptions(
+      options.sessionOptions,
+    );
     const log = getLogger();
     const opencodePath = await this.findOpenCodePath();
 
@@ -450,7 +458,11 @@ export class OpenCodeProvider implements AgentProvider {
             Accept: "application/json",
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ title: "Yep Anywhere Session" }),
+          body: JSON.stringify(
+            providerSessionOptions.automaticTitle
+              ? {}
+              : { title: PROVIDER_MANAGED_SESSION_TITLE },
+          ),
         });
 
         if (!sessionResponse.ok) {
@@ -510,6 +522,26 @@ export class OpenCodeProvider implements AgentProvider {
       isProcessAlive: () => isProcessStillAlive(serverProcess),
       probeLiveness: () => this.probeLiveness(runtime),
       getProviderActivity: () => this.getProviderActivity(runtime),
+      setSessionOptions: async (requested) => {
+        const result = unknownProviderSessionOptionsResult(
+          requested,
+          "No OpenCode control mechanism was located for this session option",
+        );
+        if (requested.automaticTitle !== undefined) {
+          result.automaticTitle = {
+            requested: requested.automaticTitle,
+            status:
+              requested.automaticTitle === providerSessionOptions.automaticTitle
+                ? "applied"
+                : "restart-required",
+            detail:
+              requested.automaticTitle === providerSessionOptions.automaticTitle
+                ? "The OpenCode session was created with this title policy"
+                : "OpenCode title generation is controlled at session creation",
+          };
+        }
+        return result;
+      },
       get pid() {
         return pidRef.value;
       },

@@ -1601,7 +1601,9 @@ export class Supervisor {
         ? (sessionId) =>
             this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
         : undefined,
-      promptSuggestions: promptSuggestionMode === "native",
+      sessionOptions: {
+        promptSuggestions: promptSuggestionMode === "native",
+      },
       sessionSandbox,
       onProviderRetentionChange: () =>
         this.handleProviderRetentionChanged(processHolder),
@@ -2214,7 +2216,9 @@ export class Supervisor {
         ? (sessionId) =>
             this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
         : undefined,
-      promptSuggestions: promptSuggestionMode === "native",
+      sessionOptions: {
+        promptSuggestions: promptSuggestionMode === "native",
+      },
       sessionSandbox,
       onProviderRetentionChange: () =>
         this.handleProviderRetentionChanged(processHolder),
@@ -2413,7 +2417,9 @@ export class Supervisor {
         ? (sessionId) =>
             this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
         : undefined,
-      promptSuggestions: promptSuggestionMode === "native",
+      sessionOptions: {
+        promptSuggestions: promptSuggestionMode === "native",
+      },
       sessionSandbox,
       sessionSandboxOptions,
       shouldEmitLiveDeltas: () =>
@@ -2623,7 +2629,9 @@ export class Supervisor {
         ? (sessionId) =>
             this.getSessionChildEnv?.(sessionId, modelSettings?.executor) ?? {}
         : undefined,
-      promptSuggestions: promptSuggestionMode === "native",
+      sessionOptions: {
+        promptSuggestions: promptSuggestionMode === "native",
+      },
       sessionSandbox,
       sessionSandboxOptions,
       shouldEmitLiveDeltas: () =>

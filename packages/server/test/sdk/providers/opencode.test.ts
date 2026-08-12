@@ -137,6 +137,13 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
       expect.arrayContaining(["serve"]),
       expect.any(Object),
     );
+    const createCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith("/session") && init?.method === "POST",
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
+      title: "Yep Anywhere Session",
+    });
 
     // The very first value from the iterator must be the init message
     const first = await session.iterator.next();
@@ -148,6 +155,36 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     });
 
     // Abort to clean up (kills the fake server process)
+    session.abort();
+  });
+
+  it("only permits OpenCode automatic titles by explicit opt-in", async () => {
+    fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: "ses_auto_title" }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      sessionOptions: { automaticTitle: true },
+    });
+
+    const createCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith("/session") && init?.method === "POST",
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({});
+    await expect(
+      session.setSessionOptions?.({ automaticTitle: false }),
+    ).resolves.toMatchObject({
+      automaticTitle: { requested: false, status: "restart-required" },
+    });
     session.abort();
   });
 

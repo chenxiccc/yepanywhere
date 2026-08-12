@@ -4072,7 +4072,9 @@ describe("Supervisor", () => {
       }
 
       expect(
-        startedOptions.map((options) => options.promptSuggestions),
+        startedOptions.map(
+          (options) => options.sessionOptions?.promptSuggestions,
+        ),
       ).toEqual([true, false, false]);
       expect(nativeProcess.promptSuggestionMode).toBe("native");
       expect(explicitOffProcess.promptSuggestionMode).toBe("off");

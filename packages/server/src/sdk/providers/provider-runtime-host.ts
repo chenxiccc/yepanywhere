@@ -17,13 +17,16 @@ import { getModuleEnv } from "../../yaModuleEnv.js";
 import type {
   AgentSession,
   ProviderName,
+  ProviderSessionOptions,
+  ProviderSessionOptionsUpdateResult,
   StartSessionOptions,
 } from "./types.js";
+import { resolveProviderSessionOptions } from "./types.js";
 import type { ProviderRuntimeSnapshot } from "./index.js";
 
 const HOST_REQUEST_TIMEOUT_MS = 15_000;
 const WORKER_RPC_TIMEOUT_MS = 30_000;
-const HOST_PROTOCOL_VERSION = 2;
+const HOST_PROTOCOL_VERSION = 3;
 const WORKER_PROTOCOL_VERSION = 1;
 // The host's default attach deadline is 30 seconds. Keep launch routing pinned
 // until that owner has either been reclaimed or reaped.
@@ -45,6 +48,7 @@ interface WorkerCapabilities {
   steer: boolean;
   setMaxThinkingTokens: boolean;
   setEffort: boolean;
+  setSessionOptions: boolean;
   interrupt: boolean;
   supportedModels: boolean;
   supportedCommands: boolean;
@@ -116,6 +120,8 @@ export interface ProviderHostSessionTurnRequest {
   submissionId: string;
   target: ProviderHostTurnTarget;
   message: Pick<UserMessage, "text" | "mode">;
+  /** Omission is normalized to every provider-owned generation option off. */
+  sessionOptions?: ProviderSessionOptions;
   timeoutMs?: number;
 }
 
@@ -382,6 +388,7 @@ export async function* streamProviderHostSessionTurn(
         protocolVersion: HOST_PROTOCOL_VERSION,
         op: "sessionTurn",
         ...request,
+        sessionOptions: resolveProviderSessionOptions(request.sessionOptions),
       })}\n`,
     );
     for await (const chunk of socket) {
@@ -1040,6 +1047,15 @@ class HostedAgentSession {
         : {}),
       ...(capabilities.setEffort
         ? { setEffort: (effort) => this.rpc("setEffort", [effort]) }
+        : {}),
+      ...(capabilities.setSessionOptions
+        ? {
+            setSessionOptions: (options) =>
+              this.rpc<ProviderSessionOptionsUpdateResult>(
+                "setSessionOptions",
+                [options],
+              ),
+          }
         : {}),
       ...(capabilities.interrupt
         ? { interrupt: () => this.rpc("interrupt") }

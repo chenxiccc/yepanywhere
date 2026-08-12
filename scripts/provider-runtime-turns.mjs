@@ -7,6 +7,28 @@ const MAX_SUBMISSION_RECORDS = 10_000;
 const MAX_SUBMISSION_BYTES = 64 * 1024 * 1024;
 const MAX_RETAINED_SUBMISSIONS = 1_000;
 const RECEIPT_TTL_MS = 24 * 60 * 60_000;
+const DEFAULT_PROVIDER_SESSION_OPTIONS = {
+  automaticTitle: false,
+  automaticRecaps: false,
+  agentProgressSummaries: false,
+  promptSuggestions: false,
+};
+
+export function normalizeProviderSessionOptions(value) {
+  if (value === undefined) return { ...DEFAULT_PROVIDER_SESSION_OPTIONS };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("sessionOptions must be an object");
+  }
+  for (const [key, option] of Object.entries(value)) {
+    if (!(key in DEFAULT_PROVIDER_SESSION_OPTIONS)) {
+      throw new Error(`Unknown provider session option ${key}`);
+    }
+    if (typeof option !== "boolean") {
+      throw new Error(`Provider session option ${key} must be boolean`);
+    }
+  }
+  return { ...DEFAULT_PROVIDER_SESSION_OPTIONS, ...value };
+}
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
@@ -35,6 +57,7 @@ function submissionFingerprint(request) {
         canonicalValue({
           target: request.target,
           message: request.message,
+          sessionOptions: request.sessionOptions,
           launch: request.launch,
         }),
       ),
@@ -174,6 +197,7 @@ export class ProviderRuntimeTurnLedger {
         type: "sessionTurn",
         submissionId,
         message: request.message,
+        sessionOptions: request.sessionOptions,
       });
     } catch (error) {
       this.failBeforeAcceptance(
@@ -212,6 +236,7 @@ export class ProviderRuntimeTurnLedger {
           providerSessionId: runtime.providerSessionId,
           yaSessionId: runtime.yaSessionId,
           acceptedAt: submission.acceptedAt,
+          sessionOptionsResult: message.sessionOptionsResult,
         });
         return true;
       case "sessionTurnStarted":

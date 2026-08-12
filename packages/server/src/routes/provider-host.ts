@@ -14,6 +14,11 @@ import {
   type ProviderHostSessionTurnRequest,
   streamProviderHostSessionTurn,
 } from "../sdk/providers/provider-runtime-host.js";
+import {
+  PROVIDER_SESSION_OPTION_KEYS,
+  resolveProviderSessionOptions,
+  type ProviderSessionOptions,
+} from "../sdk/providers/types.js";
 
 const MAX_SESSION_TURN_BODY_BYTES = 1024 * 1024;
 const MAX_SESSION_TURN_TEXT_BYTES = 900 * 1024;
@@ -88,6 +93,7 @@ async function readTurnRequest(
       ? target.providerSessionId.trim()
       : "";
   const text = typeof message?.text === "string" ? message.text : "";
+  const rawSessionOptions = body.sessionOptions;
   if (!submissionId || submissionId.length > 200) {
     throw new Error(
       "submissionId is required and must be at most 200 characters",
@@ -98,6 +104,27 @@ async function readTurnRequest(
   }
   if (!text.trim() || Buffer.byteLength(text) > MAX_SESSION_TURN_TEXT_BYTES) {
     throw new Error("message.text is required and must be at most 900 KiB");
+  }
+  if (
+    rawSessionOptions !== undefined &&
+    (!rawSessionOptions ||
+      typeof rawSessionOptions !== "object" ||
+      Array.isArray(rawSessionOptions))
+  ) {
+    throw new Error("sessionOptions must be an object");
+  }
+  const sessionOptions = (rawSessionOptions ?? {}) as Record<string, unknown>;
+  for (const [key, option] of Object.entries(sessionOptions)) {
+    if (
+      !PROVIDER_SESSION_OPTION_KEYS.includes(
+        key as (typeof PROVIDER_SESSION_OPTION_KEYS)[number],
+      )
+    ) {
+      throw new Error(`Unknown provider session option ${key}`);
+    }
+    if (typeof option !== "boolean") {
+      throw new Error(`Provider session option ${key} must be boolean`);
+    }
   }
   if ("launch" in body) {
     throw new Error("The HTTP adapter cannot launch provider runtimes");
@@ -131,6 +158,9 @@ async function readTurnRequest(
       text,
       ...(mode ? { mode: mode as PermissionMode } : {}),
     },
+    sessionOptions: resolveProviderSessionOptions(
+      sessionOptions as ProviderSessionOptions,
+    ),
     ...(Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
   };
 }

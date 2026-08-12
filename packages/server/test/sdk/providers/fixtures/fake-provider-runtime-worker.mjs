@@ -108,6 +108,16 @@ process.on("message", (message) => {
     process.send?.({
       type: "sessionTurnAccepted",
       submissionId: message.submissionId,
+      sessionOptionsResult: Object.fromEntries(
+        Object.entries(message.sessionOptions ?? {}).map(([key, requested]) => [
+          key,
+          {
+            requested,
+            status: "applied",
+            detail: "fake provider applied the requested option",
+          },
+        ]),
+      ),
     });
     process.send?.({
       type: "sessionTurnStarted",

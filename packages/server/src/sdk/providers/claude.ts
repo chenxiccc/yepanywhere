@@ -72,11 +72,17 @@ import type {
   AgentSession,
   AuthStatus,
   PromptCacheRefreshResult,
+  ProviderSessionOptions,
+  ProviderSessionOptionsUpdateResult,
   ProviderName,
   ProviderForkBoundary,
   StartSessionOptions,
   SummaryGenerationRequest,
   SummaryGenerationResult,
+} from "./types.js";
+import {
+  PROVIDER_SESSION_OPTION_KEYS,
+  resolveProviderSessionOptions,
 } from "./types.js";
 import type { SessionSandboxRuntime } from "../../session-sandbox.js";
 
@@ -97,6 +103,7 @@ const CLAUDE_LIVENESS_PROBE_SOURCE = "claude:control/mcp_status";
 const CLAUDE_PROMPT_CACHE_KEEPALIVE_TIMEOUT_MS = 60_000;
 const CLAUDE_PROMPT_CACHE_KEEPALIVE_MAX_BUDGET_USD = 0.02;
 const DEFAULT_CLAUDE_LOGIN_COMMAND = "claude auth login --claudeai";
+const PROVIDER_MANAGED_SESSION_TITLE = "Yep Anywhere Session";
 const CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
 const CLAUDE_EFFORT_LEVELS: EffortLevel[] = [
   "low",
@@ -107,6 +114,65 @@ const CLAUDE_EFFORT_LEVELS: EffortLevel[] = [
 ];
 const execFileAsync = promisify(execFile);
 const SESSION_ID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+export function getClaudeSessionLaunchOptions(
+  options?: ProviderSessionOptions,
+): {
+  resolved: Required<ProviderSessionOptions>;
+  sdk: {
+    title: string | undefined;
+    promptSuggestions: boolean;
+    agentProgressSummaries: boolean;
+  };
+} {
+  const resolved = resolveProviderSessionOptions(options);
+  if (resolved.automaticRecaps) {
+    throw new Error(
+      "Claude Agent SDK does not support provider-native automatic recaps",
+    );
+  }
+  return {
+    resolved,
+    sdk: {
+      title: resolved.automaticTitle
+        ? undefined
+        : PROVIDER_MANAGED_SESSION_TITLE,
+      promptSuggestions: resolved.promptSuggestions,
+      agentProgressSummaries: resolved.agentProgressSummaries,
+    },
+  };
+}
+
+export function evaluateClaudeSessionOptionsUpdate(
+  launched: Required<ProviderSessionOptions>,
+  requested: ProviderSessionOptions,
+): ProviderSessionOptionsUpdateResult {
+  const result: ProviderSessionOptionsUpdateResult = {};
+  for (const key of PROVIDER_SESSION_OPTION_KEYS) {
+    const value = requested[key];
+    if (value === undefined) continue;
+    if (key === "automaticRecaps") {
+      result[key] = {
+        requested: value,
+        status: value ? "unsupported" : "inactive",
+        detail: "Claude Agent SDK does not emit provider-native recap turns",
+      };
+      continue;
+    }
+    result[key] = {
+      requested: value,
+      status: value === launched[key] ? "applied" : "restart-required",
+      detail:
+        value === launched[key]
+          ? "The Claude session was launched with this option"
+          : "Claude exposes this option only during session initialization",
+    };
+  }
+  return result;
+}
+
+const DEFAULT_CLAUDE_PROVIDER_GENERATION_OPTIONS =
+  getClaudeSessionLaunchOptions().sdk;
 
 function waitForMessageYield(
   queue: MessageQueue,
@@ -1223,6 +1289,7 @@ export class ClaudeProvider implements AgentProvider {
       const sdkQuery = query({
         prompt: waitForever(),
         options: {
+          ...DEFAULT_CLAUDE_PROVIDER_GENERATION_OPTIONS,
           cwd: homedir(),
           abortController,
           permissionMode: "default",
@@ -1365,6 +1432,7 @@ export class ClaudeProvider implements AgentProvider {
       const sdkQuery = query({
         prompt: singlePrompt(),
         options: {
+          ...DEFAULT_CLAUDE_PROVIDER_GENERATION_OPTIONS,
           cwd: homedir(),
           abortController,
           permissionMode: "default",
@@ -1445,6 +1513,7 @@ export class ClaudeProvider implements AgentProvider {
       const sdkQuery = query({
         prompt: singlePrompt(),
         options: {
+          ...DEFAULT_CLAUDE_PROVIDER_GENERATION_OPTIONS,
           cwd: request.cwd,
           abortController,
           permissionMode: "default",
@@ -1596,6 +1665,7 @@ export class ClaudeProvider implements AgentProvider {
       const sdkQuery = query({
         prompt: singlePrompt(),
         options: {
+          ...DEFAULT_CLAUDE_PROVIDER_GENERATION_OPTIONS,
           cwd: options.cwd,
           resume: options.sessionId,
           abortController,
@@ -1689,6 +1759,9 @@ export class ClaudeProvider implements AgentProvider {
     const log = getLogger();
     const queue = new MessageQueue();
     const abortController = new AbortController();
+    const providerSessionOptions = getClaudeSessionLaunchOptions(
+      options.sessionOptions,
+    );
     const agentctlSessionEnvBridge = options.executor
       ? null
       : createAgentctlSessionEnvBridge(
@@ -1984,7 +2057,10 @@ export class ClaudeProvider implements AgentProvider {
           systemPrompt: this.getSystemPrompt(options.globalInstructions),
           settingSources: ["user", "project", "local"],
           includePartialMessages: true,
-          promptSuggestions: options.promptSuggestions === true,
+          title: providerSessionOptions.sdk.title,
+          promptSuggestions: providerSessionOptions.sdk.promptSuggestions,
+          agentProgressSummaries:
+            providerSessionOptions.sdk.agentProgressSummaries,
           // Model, thinking, and effort options
           model: normalizeClaudeLaunchModel(options.model),
           thinking: options.thinking,
@@ -2122,6 +2198,13 @@ export class ClaudeProvider implements AgentProvider {
         sdkQuery.setMaxThinkingTokens(tokens),
       setEffort: (effort?: EffortLevel) =>
         sdkQuery.applyFlagSettings({ effortLevel: effort ?? null }),
+      setSessionOptions: (requested) =>
+        Promise.resolve(
+          evaluateClaudeSessionOptionsUpdate(
+            providerSessionOptions.resolved,
+            requested,
+          ),
+        ),
       interrupt: async () => {
         await sdkQuery.interrupt();
         return true;

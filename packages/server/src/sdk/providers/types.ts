@@ -77,6 +77,104 @@ export interface AuthStatus {
 }
 
 /**
+ * Provider-owned generation that can happen outside the user's requested
+ * assistant response. Omitted options always resolve to false at the YA
+ * provider boundary.
+ */
+export interface ProviderSessionOptions {
+  /** Allow the provider to generate a title from session content. */
+  automaticTitle?: boolean;
+  /** Allow the provider to emit unsolicited away/progress recap turns. */
+  automaticRecaps?: boolean;
+  /** Allow periodic AI summaries of running subagents. */
+  agentProgressSummaries?: boolean;
+  /** Allow the provider to predict and emit a suggested next prompt. */
+  promptSuggestions?: boolean;
+}
+
+export const DEFAULT_PROVIDER_SESSION_OPTIONS: Readonly<
+  Required<ProviderSessionOptions>
+> = {
+  automaticTitle: false,
+  automaticRecaps: false,
+  agentProgressSummaries: false,
+  promptSuggestions: false,
+};
+
+export const PROVIDER_SESSION_OPTION_KEYS = [
+  "automaticTitle",
+  "automaticRecaps",
+  "agentProgressSummaries",
+  "promptSuggestions",
+] as const satisfies readonly (keyof ProviderSessionOptions)[];
+
+export type ProviderSessionOptionStatus =
+  | "applied"
+  | "inactive"
+  | "restart-required"
+  | "unsupported"
+  | "unknown";
+
+export interface ProviderSessionOptionUpdate {
+  requested: boolean;
+  status: ProviderSessionOptionStatus;
+  detail?: string;
+}
+
+export type ProviderSessionOptionsUpdateResult = Partial<
+  Record<keyof ProviderSessionOptions, ProviderSessionOptionUpdate>
+>;
+
+export function resolveProviderSessionOptions(
+  options?: ProviderSessionOptions,
+): Required<ProviderSessionOptions> {
+  return {
+    automaticTitle:
+      options?.automaticTitle ??
+      DEFAULT_PROVIDER_SESSION_OPTIONS.automaticTitle,
+    automaticRecaps:
+      options?.automaticRecaps ??
+      DEFAULT_PROVIDER_SESSION_OPTIONS.automaticRecaps,
+    agentProgressSummaries:
+      options?.agentProgressSummaries ??
+      DEFAULT_PROVIDER_SESSION_OPTIONS.agentProgressSummaries,
+    promptSuggestions:
+      options?.promptSuggestions ??
+      DEFAULT_PROVIDER_SESSION_OPTIONS.promptSuggestions,
+  };
+}
+
+export function unknownProviderSessionOptionsResult(
+  options: ProviderSessionOptions,
+  detail: string,
+): ProviderSessionOptionsUpdateResult {
+  const result: ProviderSessionOptionsUpdateResult = {};
+  for (const key of PROVIDER_SESSION_OPTION_KEYS) {
+    const requested = options[key];
+    if (requested === undefined) continue;
+    result[key] = { requested, status: "unknown", detail };
+  }
+  return result;
+}
+
+export function inactiveProviderSessionOptionsResult(
+  options: ProviderSessionOptions,
+  detail: string,
+): ProviderSessionOptionsUpdateResult {
+  const result: ProviderSessionOptionsUpdateResult = {};
+  for (const key of PROVIDER_SESSION_OPTION_KEYS) {
+    const requested = options[key];
+    if (requested === undefined) continue;
+    result[key] = {
+      requested,
+      status: requested ? "unsupported" : "inactive",
+      detail,
+    };
+  }
+  return result;
+}
+
+/**
  * Options for starting a new agent session.
  */
 export interface StartSessionOptions {
@@ -131,8 +229,8 @@ export interface StartSessionOptions {
   getSessionChildEnv?: (sessionId: string) => Record<string, string>;
   /** Global instructions to append to system prompt (from server settings) */
   globalInstructions?: string;
-  /** Native prompt-suggestion protocol opt-in for providers that support it. */
-  promptSuggestions?: boolean;
+  /** Explicit provider-owned generation controls; omission means all off. */
+  sessionOptions?: ProviderSessionOptions;
   /** Called after a provider applies this mode at a policy boundary. */
   onPermissionModeApplied?: (mode: PermissionMode) => void;
   /**
@@ -213,6 +311,13 @@ export interface AgentSession {
   setEffort?: (
     effort?: import("@yep-anywhere/shared").EffortLevel,
   ) => Promise<void>;
+  /**
+   * Request provider-owned generation changes for this live session. Results
+   * are explicit because some controls are launch-only or provider-unknown.
+   */
+  setSessionOptions?: (
+    options: ProviderSessionOptions,
+  ) => Promise<ProviderSessionOptionsUpdateResult>;
   /**
    * Interrupt the current turn gracefully without killing the process.
    * The query will stop processing the current turn and return control.

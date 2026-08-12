@@ -13,6 +13,10 @@ import type {
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
 import type { SessionSandboxRuntime } from "../session-sandbox.js";
+import type {
+  ProviderSessionOptions,
+  ProviderSessionOptionsUpdateResult,
+} from "./providers/types.js";
 
 export interface ContentBlock {
   type: "text" | "tool_use" | "tool_result" | "image" | "thinking";
@@ -216,8 +220,8 @@ export interface StartSessionOptions {
   getSessionChildEnv?: (sessionId: string) => Record<string, string>;
   /** Global instructions to append to system prompt (from server settings) */
   globalInstructions?: string;
-  /** Native prompt-suggestion protocol opt-in for providers that support it. */
-  promptSuggestions?: boolean;
+  /** Explicit provider-owned generation controls; omission means all off. */
+  sessionOptions?: ProviderSessionOptions;
   /** Called when provider-owned retention evidence changes. */
   onProviderRetentionChange?: () => void;
   /** Prepared YA host sandbox applied to every provider child for this session. */
@@ -260,6 +264,10 @@ export interface StartSessionResult {
   setEffort?: (
     effort?: import("@yep-anywhere/shared").EffortLevel,
   ) => Promise<void>;
+  /** Request provider-owned generation changes for this live session. */
+  setSessionOptions?: (
+    options: ProviderSessionOptions,
+  ) => Promise<ProviderSessionOptionsUpdateResult>;
   /**
    * Interrupt the current turn gracefully without killing the process.
    * Only supported by Claude SDK 0.2.7+.

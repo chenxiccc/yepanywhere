@@ -2,14 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ClaudeProvider,
   claudeProvider,
+  evaluateClaudeSessionOptionsUpdate,
   formatClaudeLoginCommand,
   getClaudeAutoCompactOverrideEnv,
+  getClaudeSessionLaunchOptions,
   mergeClaudeModels,
   normalizeClaudeLaunchModel,
   probeClaudeControlLiveness,
   resolveClaudeSdkNativeExecutable,
   withClaudeGoalAlias,
 } from "../../../src/sdk/providers/claude.js";
+import { resolveProviderSessionOptions } from "../../../src/sdk/providers/types.js";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
 describe("normalizeClaudeLaunchModel", () => {
@@ -72,6 +75,59 @@ describe("Claude auto-compaction launch environment", () => {
     expect(() => getClaudeAutoCompactOverrideEnv(percent)).toThrow(
       "integer from 1 to 100",
     );
+  });
+});
+
+describe("Claude provider-owned generation options", () => {
+  it("explicitly disables generated titles, recaps, progress, and suggestions by default", () => {
+    expect(getClaudeSessionLaunchOptions()).toEqual({
+      resolved: {
+        automaticTitle: false,
+        automaticRecaps: false,
+        agentProgressSummaries: false,
+        promptSuggestions: false,
+      },
+      sdk: {
+        title: "Yep Anywhere Session",
+        promptSuggestions: false,
+        agentProgressSummaries: false,
+      },
+    });
+  });
+
+  it("allows explicit launch-time opt-ins except unsupported native recaps", () => {
+    expect(
+      getClaudeSessionLaunchOptions({
+        automaticTitle: true,
+        agentProgressSummaries: true,
+        promptSuggestions: true,
+      }).sdk,
+    ).toEqual({
+      title: undefined,
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+    });
+    expect(() =>
+      getClaudeSessionLaunchOptions({ automaticRecaps: true }),
+    ).toThrow("does not support provider-native automatic recaps");
+  });
+
+  it("reports launch-only changes and intrinsically absent recaps", () => {
+    const launched = resolveProviderSessionOptions();
+    expect(
+      evaluateClaudeSessionOptionsUpdate(launched, {
+        automaticTitle: false,
+        automaticRecaps: false,
+        agentProgressSummaries: true,
+      }),
+    ).toMatchObject({
+      automaticTitle: { requested: false, status: "applied" },
+      automaticRecaps: { requested: false, status: "inactive" },
+      agentProgressSummaries: {
+        requested: true,
+        status: "restart-required",
+      },
+    });
   });
 });
 

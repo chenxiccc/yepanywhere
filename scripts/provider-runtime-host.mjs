@@ -22,7 +22,10 @@ import {
   writeProviderHostDescriptor,
   writeProviderHostReceipts,
 } from "./provider-runtime-discovery.mjs";
-import { ProviderRuntimeTurnLedger } from "./provider-runtime-turns.mjs";
+import {
+  ProviderRuntimeTurnLedger,
+  normalizeProviderSessionOptions,
+} from "./provider-runtime-turns.mjs";
 
 const HOST_PROTOCOL_VERSION = PROVIDER_HOST_PROTOCOL_VERSION;
 const WORKER_READY_TIMEOUT_MS = 30_000;
@@ -330,6 +333,9 @@ export class ProviderRuntimeHost {
         if (request.op === "sessionTurn") {
           try {
             this.validateRequest(request);
+            request.sessionOptions = normalizeProviderSessionOptions(
+              request.sessionOptions,
+            );
             void this.turnLedger.open(request, socket).catch((error) => {
               socket.end(
                 `${JSON.stringify({
@@ -398,7 +404,11 @@ export class ProviderRuntimeHost {
           runtimeCount: this.runtimes.size,
           retainedProcessGroupCount: this.retainedProcessGroups.size,
           shuttingDown: this.shuttingDown !== null,
-          features: ["runtime-control", "session-turn"],
+          features: [
+            "runtime-control",
+            "session-turn",
+            "provider-session-options",
+          ],
         };
       case "registerServer": {
         const generation = this.requireString(request.generation, "generation");
@@ -1347,7 +1357,11 @@ async function main() {
       writeProviderHostDescriptor(paths, {
         descriptorId,
         hostProtocolVersion: HOST_PROTOCOL_VERSION,
-        features: ["runtime-control", "session-turn"],
+        features: [
+          "runtime-control",
+          "session-turn",
+          "provider-session-options",
+        ],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
         owner,

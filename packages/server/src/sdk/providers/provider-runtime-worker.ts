@@ -25,7 +25,13 @@ import {
 import type {
   AgentSession,
   ProviderName,
+  ProviderSessionOptions,
   StartSessionOptions,
+} from "./types.js";
+import {
+  PROVIDER_SESSION_OPTION_KEYS,
+  resolveProviderSessionOptions,
+  unknownProviderSessionOptionsResult,
 } from "./types.js";
 
 const MAX_UNACKNOWLEDGED_EVENTS = 10_000;
@@ -214,6 +220,7 @@ class ProviderRuntimeWorker {
           steer: Boolean(session.steer),
           setMaxThinkingTokens: Boolean(session.setMaxThinkingTokens),
           setEffort: Boolean(session.setEffort),
+          setSessionOptions: Boolean(session.setSessionOptions),
           interrupt: Boolean(session.interrupt),
           supportedModels: Boolean(session.supportedModels),
           supportedCommands: Boolean(session.supportedCommands),
@@ -393,7 +400,7 @@ class ProviderRuntimeWorker {
   handleParentMessage(message: unknown): void {
     if (!message || typeof message !== "object" || !("type" in message)) return;
     if (message.type === "sessionTurn") {
-      this.acceptAuxiliarySubmission(message as Record<string, unknown>);
+      void this.acceptAuxiliarySubmission(message as Record<string, unknown>);
       return;
     }
     if (message.type === "interruptSessionTurn") {
@@ -403,7 +410,9 @@ class ProviderRuntimeWorker {
     }
   }
 
-  private acceptAuxiliarySubmission(message: Record<string, unknown>): void {
+  private async acceptAuxiliarySubmission(
+    message: Record<string, unknown>,
+  ): Promise<void> {
     const submissionId = String(message.submissionId ?? "");
     const userMessage = message.message as UserMessage | undefined;
     const reject = (outcome: string, error: string) =>
@@ -419,6 +428,33 @@ class ProviderRuntimeWorker {
     }
     if (!userMessage.text.trim()) {
       reject("rejected", "Session-turn text is empty");
+      return;
+    }
+    let requestedSessionOptions: Required<ProviderSessionOptions>;
+    try {
+      const rawSessionOptions = message.sessionOptions;
+      if (
+        rawSessionOptions !== undefined &&
+        (!rawSessionOptions || typeof rawSessionOptions !== "object")
+      ) {
+        throw new Error("sessionOptions must be an object");
+      }
+      const candidate = (rawSessionOptions ?? {}) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(candidate)) {
+        if (
+          !PROVIDER_SESSION_OPTION_KEYS.includes(
+            key as (typeof PROVIDER_SESSION_OPTION_KEYS)[number],
+          ) ||
+          typeof value !== "boolean"
+        ) {
+          throw new Error(`Invalid provider session option ${key}`);
+        }
+      }
+      requestedSessionOptions = resolveProviderSessionOptions(
+        candidate as ProviderSessionOptions,
+      );
+    } catch (error) {
+      reject("rejected", errorMessage(error));
       return;
     }
     if (!this.providerAlive || !this.session) {
@@ -449,18 +485,42 @@ class ProviderRuntimeWorker {
     }
     const messageUuid = randomUUID();
     const tempId = `provider-host:${submissionId}`;
-    this.auxiliarySubmission = {
+    const auxiliarySubmission: AuxiliarySubmission = {
       submissionId,
       messageUuid,
       tempId,
       started: false,
     };
+    this.auxiliarySubmission = auxiliarySubmission;
+    let sessionOptionsResult;
+    try {
+      sessionOptionsResult = this.session.setSessionOptions
+        ? await this.session.setSessionOptions(requestedSessionOptions)
+        : unknownProviderSessionOptionsResult(
+            requestedSessionOptions,
+            "This provider adapter has no session-option control implementation",
+          );
+    } catch (error) {
+      if (this.auxiliarySubmission === auxiliarySubmission) {
+        this.auxiliarySubmission = null;
+      }
+      reject(
+        "rejected",
+        `Provider session options failed: ${errorMessage(error)}`,
+      );
+      return;
+    }
+    if (this.auxiliarySubmission !== auxiliarySubmission) return;
     this.requireSession().queue.push({
       ...userMessage,
       uuid: messageUuid,
       tempId,
     });
-    this.sendParent({ type: "sessionTurnAccepted", submissionId });
+    this.sendParent({
+      type: "sessionTurnAccepted",
+      submissionId,
+      sessionOptionsResult,
+    });
   }
 
   private async interruptAuxiliarySubmission(
@@ -689,6 +749,13 @@ class ProviderRuntimeWorker {
             NonNullable<AgentSession["setEffort"]>
           >[0],
         );
+      case "setSessionOptions":
+        return session.setSessionOptions
+          ? await session.setSessionOptions(args[0] as ProviderSessionOptions)
+          : unknownProviderSessionOptionsResult(
+              args[0] as ProviderSessionOptions,
+              "This provider adapter has no session-option control implementation",
+            );
       case "interrupt":
         return await session.interrupt?.();
       case "supportedModels":
