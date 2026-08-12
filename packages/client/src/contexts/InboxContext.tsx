@@ -142,7 +142,13 @@ function getLocallyPatchableSessionUpdatedIds(
   const sessionIds = new Set<string>();
   for (const tier of ["needsAttention", "active", "recentActivity"] as const) {
     for (const item of inbox[tier]) {
-      sessionIds.add(item.sessionId);
+      // A content event cannot make an already-unread row more unread, so its
+      // content fields are safe to patch locally. A read row must revalidate:
+      // only the server can compare its new updatedAt with the durable
+      // last-seen marker and recompute inbox tier membership.
+      if (item.hasUnread) {
+        sessionIds.add(item.sessionId);
+      }
     }
   }
   return sessionIds;

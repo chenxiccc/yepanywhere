@@ -97,6 +97,11 @@ function InboxConsumer() {
       <span data-testid="recent">
         {recentActivity.map((item) => item.sessionTitle).join("|")}
       </span>
+      <span data-testid="recent-unread">
+        {recentActivity
+          .map((item) => (item.hasUnread ? "unread" : "read"))
+          .join("|")}
+      </span>
       <button
         type="button"
         data-testid="refresh"
@@ -357,7 +362,7 @@ describe("InboxProvider", () => {
     }
   });
 
-  it("patches known session-updated events without refetching the inbox", async () => {
+  it("patches already-unread session-updated events without refetching the inbox", async () => {
     vi.useFakeTimers();
     try {
       remoteState.connection = { connection: {} };
@@ -371,6 +376,7 @@ describe("InboxProvider", () => {
               sessionTitle: "Initial",
               updatedAt: "2026-06-28T00:00:00.000Z",
               pendingInputType: "user-question",
+              hasUnread: true,
             },
           ],
         }),
@@ -406,6 +412,76 @@ describe("InboxProvider", () => {
 
       expect(mockGetInbox).toHaveBeenCalledTimes(1);
       expect(view.getByTestId("needs").textContent).toBe("Patched title");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refetches known read sessions so activity can mark them unread", async () => {
+    vi.useFakeTimers();
+    try {
+      remoteState.connection = { connection: {} };
+      mockGetInbox
+        .mockResolvedValueOnce(
+          emptyInbox({
+            recentActivity: [
+              {
+                sessionId: "session-read",
+                projectId: "project-1",
+                projectName: "Project",
+                sessionTitle: "Read session",
+                updatedAt: "2026-06-28T00:00:00.000Z",
+                hasUnread: false,
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(
+          emptyInbox({
+            recentActivity: [
+              {
+                sessionId: "session-read",
+                projectId: "project-1",
+                projectName: "Project",
+                sessionTitle: "Updated session",
+                updatedAt: "2026-06-28T00:01:00.000Z",
+                hasUnread: true,
+              },
+            ],
+          }),
+        );
+
+      const view = render(
+        <InboxProvider>
+          <InboxConsumer />
+        </InboxProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockGetInbox).toHaveBeenCalledTimes(1);
+      expect(view.getByTestId("recent-unread").textContent).toBe("read");
+
+      await act(async () => {
+        activityBus.emit("session-updated", {
+          type: "session-updated",
+          sessionId: "session-read",
+          projectId: "project-1",
+          title: "Updated session",
+          updatedAt: "2026-06-28T00:01:00.000Z",
+          timestamp: "2026-06-28T00:01:00.000Z",
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockGetInbox).toHaveBeenCalledTimes(2);
+      expect(view.getByTestId("recent").textContent).toBe("Updated session");
+      expect(view.getByTestId("recent-unread").textContent).toBe("unread");
     } finally {
       vi.useRealTimers();
     }

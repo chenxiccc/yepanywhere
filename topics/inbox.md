@@ -124,6 +124,13 @@ last seen marker. It is not limited to "an idle assistant produced output and
 now needs a user response"; that narrower state belongs in `needsAttention`
 only when the provider exposes pending input.
 
+When a mounted client receives `session-updated` for a row it currently shows
+as read, the Inbox must re-evaluate the server-owned unread and tier state. New
+agent activity therefore becomes unread without a manual refresh even when the
+session was already present in an active or recent tier. An already-unread row
+may patch additive content fields locally because the event cannot make it
+more unread; `session-seen` remains the authority that clears that state.
+
 Known caveat: for Claude JSONL sessions, `session.updatedAt` currently comes
 from file mtime. YA's one-hour idle reap can abort the Claude SDK stream and
 cause a mtime-only transcript touch, which may flip a previously read session
