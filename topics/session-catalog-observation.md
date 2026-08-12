@@ -59,10 +59,14 @@ Native file watchers use the same gate. The listener binds before eligible
 watcher activation is queued, never-used families receive no directory
 existence check, and families with no file-watcher adapter receive no probe.
 The one registry staggers eligible watcher attachment after listener readiness
-and owns shutdown teardown. Each attached watcher takes its initial file/mtime
-baseline asynchronously; changes observed during that baseline win over the
-baseline snapshot, and a fallback rescan requested during the build runs once
-after publication.
+and owns shutdown teardown. Each attached watcher takes its initial
+file-mtime-and-size baseline asynchronously; changes observed during that
+baseline win over the baseline snapshot, and a fallback rescan requested
+during the build runs once after publication. Direct callbacks and rescans
+compare the same `(mtime, size)` fingerprint. A size change with a fixed
+`mtime` is a modify; only an identical pair is a duplicate. This is required
+on Windows, where an append-only writer may hold a handle open while the
+last-write timestamp stays unchanged.
 
 Fallback and periodic tree rescans use asynchronous directory reads and stat
 files in bounded batches. One rescan runs per watcher; overlapping requests
@@ -123,6 +127,12 @@ owns grouping, sharding, and persistence. Three rules keep families joinable:
   truncation, or replacement — a file's mtime and size, or the store's own
   updated timestamp. It is what a retained projection of that row stays valid
   for; a coarser value silently serves stale derived work.
+- **Recency may use a narrower provider/platform activity clock.** Plain Codex
+  rollouts on Windows use the later of file modification and change time,
+  because Windows can defer the last-write timestamp until Codex closes its
+  session-long append handle. Other platforms and immutable compressed Codex
+  rollouts keep modification time. This activity clock orders compact rows;
+  it does not replace `(mtime, size)` as exact content/source identity.
 - **Recent mode is a filter on rows, not a cache key.** It is applied before the
   adapter opens anything, so a store outside the window costs no read, and the
   same store scanned in complete mode yields a superset. A later complete pass

@@ -84,6 +84,11 @@ interface FileTreeScanMetrics {
   statFailures: number;
 }
 
+interface FileFingerprint {
+  mtimeMs: number;
+  size: number;
+}
+
 export type FileWatcherBaselineState =
   | "idle"
   | "scheduled"
@@ -111,7 +116,7 @@ export class FileWatcher {
   private rescanTimer: NodeJS.Timeout | null = null;
   private rescanInProgress = false;
   private periodicRescanTimer: NodeJS.Timeout | null = null;
-  private knownFileMtimes: Map<string, number> = new Map();
+  private knownFileFingerprints: Map<string, FileFingerprint> = new Map();
   private lastRescanMetrics: FileWatcherRescanMetrics | null = null;
   private rescanOverlapSkipsSinceLast = 0;
   private rescanOverlapSkipsTotal = 0;
@@ -213,7 +218,7 @@ export class FileWatcher {
       clearTimeout(this.periodicRescanTimer);
       this.periodicRescanTimer = null;
     }
-    this.knownFileMtimes.clear();
+    this.knownFileFingerprints.clear();
     this.initialBaselineTouchedPaths.clear();
     this.rescanRequestedDuringBaseline = false;
     this.rescanRequestedDuringRun = false;
@@ -280,7 +285,7 @@ export class FileWatcher {
       statFailures: 0,
       touchedPathsPreserved: 0,
     };
-    const baseline = new Map<string, number>();
+    const baseline = new Map<string, FileFingerprint>();
 
     try {
       const completed = await this.scanDirAsync(
@@ -299,11 +304,11 @@ export class FileWatcher {
           baseline.delete(filePath);
         }
       }
-      for (const [filePath, mtimeMs] of this.knownFileMtimes) {
-        baseline.set(filePath, mtimeMs);
+      for (const [filePath, fingerprint] of this.knownFileFingerprints) {
+        baseline.set(filePath, fingerprint);
       }
-      this.knownFileMtimes = baseline;
-      metrics.filesIndexed = this.knownFileMtimes.size;
+      this.knownFileFingerprints = baseline;
+      metrics.filesIndexed = this.knownFileFingerprints.size;
       metrics.durationMs = Date.now() - startedAt;
       this.initialBaselineMetrics = { ...metrics };
       this.initialBaselineState = "complete";
@@ -343,7 +348,7 @@ export class FileWatcher {
 
   private async scanDirAsync(
     root: string,
-    index: Map<string, number>,
+    index: Map<string, FileFingerprint>,
     metrics: FileTreeScanMetrics,
     lifecycleGeneration: number | null,
   ): Promise<boolean> {
@@ -387,7 +392,11 @@ export class FileWatcher {
         await Promise.all(
           batch.map(async (filePath) => {
             try {
-              index.set(filePath, (await fs.promises.stat(filePath)).mtimeMs);
+              const stats = await fs.promises.stat(filePath);
+              index.set(filePath, {
+                mtimeMs: stats.mtimeMs,
+                size: stats.size,
+              });
             } catch {
               metrics.statFailures += 1;
             }
@@ -453,13 +462,13 @@ export class FileWatcher {
   ): void {
     // Determine change type
     let changeType: FileChangeType;
-    let fingerprint: { mtimeMs: number; size: number } | undefined;
+    let fingerprint: FileFingerprint | undefined;
     const fileExists = fs.existsSync(fullPath);
 
     if (!fileExists) {
-      if (this.knownFileMtimes.has(fullPath)) {
+      if (this.knownFileFingerprints.has(fullPath)) {
         changeType = "delete";
-        this.knownFileMtimes.delete(fullPath);
+        this.knownFileFingerprints.delete(fullPath);
       } else if (duringInitialBaseline) {
         changeType = "delete";
       } else {
@@ -467,19 +476,20 @@ export class FileWatcher {
         return;
       }
     } else {
-      let mtimeMs = Date.now();
       try {
         const stats = fs.statSync(fullPath);
-        mtimeMs = stats.mtimeMs;
-        fingerprint = { mtimeMs, size: stats.size };
+        fingerprint = { mtimeMs: stats.mtimeMs, size: stats.size };
       } catch {
         // File disappeared between existsSync and statSync
         return;
       }
 
-      if (this.knownFileMtimes.has(fullPath)) {
-        const previousMtime = this.knownFileMtimes.get(fullPath);
-        if (previousMtime === mtimeMs) {
+      if (this.knownFileFingerprints.has(fullPath)) {
+        const previousFingerprint = this.knownFileFingerprints.get(fullPath);
+        if (
+          previousFingerprint &&
+          this.areFingerprintsEqual(previousFingerprint, fingerprint)
+        ) {
           // No meaningful change; skip duplicate callback.
           return;
         }
@@ -492,7 +502,7 @@ export class FileWatcher {
       } else {
         changeType = "create";
       }
-      this.knownFileMtimes.set(fullPath, mtimeMs);
+      this.knownFileFingerprints.set(fullPath, fingerprint);
     }
 
     this.emitFileChangeEvent(fullPath, changeType, undefined, fingerprint);
@@ -502,7 +512,7 @@ export class FileWatcher {
     fullPath: string,
     changeType: FileChangeType,
     metrics?: FileWatcherRescanMetrics,
-    fingerprint?: { mtimeMs: number; size: number },
+    fingerprint?: FileFingerprint,
   ): void {
     const relativePath = path.relative(this.watchDir, fullPath);
 
@@ -540,7 +550,7 @@ export class FileWatcher {
 
   /**
    * When fs.watch provides no filename (common on macOS under load),
-   * rescan the tree and synthesize events from mtime/delete deltas.
+   * rescan the tree and synthesize events from fingerprint/delete deltas.
    */
   private scheduleRescan(): void {
     if (this.rescanTimer) {
@@ -634,8 +644,8 @@ export class FileWatcher {
       getLogger().debug(
         `[FileWatcher] Running ${reason} rescan provider=${this.provider}`,
       );
-      const current = new Map<string, number>();
-      metrics.knownFilesBefore = this.knownFileMtimes.size;
+      const current = new Map<string, FileFingerprint>();
+      metrics.knownFilesBefore = this.knownFileFingerprints.size;
       completed = await this.scanDirAsync(
         this.watchDir,
         current,
@@ -655,34 +665,38 @@ export class FileWatcher {
           current.delete(filePath);
         }
       }
-      for (const [filePath, mtimeMs] of this.knownFileMtimes) {
+      for (const [filePath, fingerprint] of this.knownFileFingerprints) {
         if (this.wasTouchedDuringRescan(filePath)) {
-          current.set(filePath, mtimeMs);
+          current.set(filePath, fingerprint);
         }
       }
       metrics.currentFiles = current.size;
 
       // Create/modify events
-      for (const [fullPath, mtimeMs] of current.entries()) {
-        const prevMtime = this.knownFileMtimes.get(fullPath);
-        if (prevMtime === undefined || prevMtime !== mtimeMs) {
+      for (const [fullPath, fingerprint] of current.entries()) {
+        const previousFingerprint = this.knownFileFingerprints.get(fullPath);
+        if (
+          previousFingerprint === undefined ||
+          !this.areFingerprintsEqual(previousFingerprint, fingerprint)
+        ) {
           this.emitFileChangeEvent(
             fullPath,
-            prevMtime === undefined ? "create" : "modify",
+            previousFingerprint === undefined ? "create" : "modify",
             metrics,
+            fingerprint,
           );
         }
       }
 
       // Delete events
-      for (const fullPath of this.knownFileMtimes.keys()) {
+      for (const fullPath of this.knownFileFingerprints.keys()) {
         if (!current.has(fullPath)) {
           this.emitFileChangeEvent(fullPath, "delete", metrics);
         }
       }
 
-      this.knownFileMtimes = current;
-      metrics.knownFilesAfter = this.knownFileMtimes.size;
+      this.knownFileFingerprints = current;
+      metrics.knownFilesAfter = this.knownFileFingerprints.size;
     } finally {
       const runAgain = this.rescanRequestedDuringRun;
       this.rescanRequestedDuringRun = false;
@@ -719,6 +733,13 @@ export class FileWatcher {
     return false;
   }
 
+  private areFingerprintsEqual(
+    left: FileFingerprint,
+    right: FileFingerprint,
+  ): boolean {
+    return left.mtimeMs === right.mtimeMs && left.size === right.size;
+  }
+
   private createRescanMetrics(
     reason: FileWatcherRescanReason,
   ): FileWatcherRescanMetrics {
@@ -737,9 +758,9 @@ export class FileWatcher {
       filesScanned: 0,
       directoryReadErrors: 0,
       statFailures: 0,
-      knownFilesBefore: this.knownFileMtimes.size,
+      knownFilesBefore: this.knownFileFingerprints.size,
       currentFiles: 0,
-      knownFilesAfter: this.knownFileMtimes.size,
+      knownFilesAfter: this.knownFileFingerprints.size,
       createEvents: 0,
       modifyEvents: 0,
       deleteEvents: 0,

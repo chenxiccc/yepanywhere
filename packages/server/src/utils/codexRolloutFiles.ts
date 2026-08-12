@@ -52,6 +52,26 @@ export function codexRolloutRepresentation(
   return isCompressedCodexRolloutPath(filePath) ? "zstd" : "plain";
 }
 
+/**
+ * Windows can defer a file's last-write timestamp until every write handle is
+ * closed. Codex keeps plain rollout files open for the lifetime of a session,
+ * while Windows change time advances on each append. Keep mtime authoritative
+ * everywhere else, including immutable compressed rollouts.
+ */
+export function getCodexRolloutActivityTimeMs(
+  filePath: string,
+  stats: { mtimeMs: number | bigint; ctimeMs: number | bigint },
+  platform: NodeJS.Platform = process.platform,
+): number {
+  const mtimeMs = Number(stats.mtimeMs);
+  if (platform !== "win32" || isCompressedCodexRolloutPath(filePath)) {
+    return mtimeMs;
+  }
+
+  const ctimeMs = Number(stats.ctimeMs);
+  return Number.isFinite(ctimeMs) ? Math.max(mtimeMs, ctimeMs) : mtimeMs;
+}
+
 export function getCodexRolloutDiscoveryIdentity(
   sessionsDir: string,
   filePath: string,

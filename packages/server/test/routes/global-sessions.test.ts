@@ -79,6 +79,7 @@ describe("Global Sessions Routes", () => {
       permissionMode: string;
       modeVersion: number;
       isRetainingProviderWork?: () => boolean;
+      lastMessageTime?: Date;
     }
   >;
   let unreadMap: Map<string, boolean>;
@@ -1030,6 +1031,42 @@ describe("Global Sessions Routes", () => {
       const result = await makeRequest();
 
       expect(result.sessions[0].hasUnread).toBe(true);
+    });
+
+    it("uses owned-process activity for unread, recency, and sorting", async () => {
+      const project = createProject("proj1", "project", "/sessions/proj1");
+      const lastSeenAt = minutesAgo(20);
+      const processUpdatedAt = new Date(minutesAgo(2));
+      const activeSession = createSession("active", "proj1", hoursAgo(2), {
+        provider: "codex",
+      });
+      const otherSession = createSession("other", "proj1", minutesAgo(10));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [activeSession, otherSession]);
+      processMap.set("active", {
+        id: "proc-active",
+        getPendingInputRequest: () => null,
+        state: { type: "in-turn" },
+        permissionMode: "default",
+        modeVersion: 1,
+        lastMessageTime: processUpdatedAt,
+      });
+      vi.mocked(mockNotificationService.hasUnread).mockImplementation(
+        (_sessionId: string, updatedAt: string) => updatedAt > lastSeenAt,
+      );
+
+      const result = await makeRequest();
+
+      expect(mockNotificationService.hasUnread).toHaveBeenCalledWith(
+        "active",
+        processUpdatedAt.toISOString(),
+      );
+      expect(result.sessions[0]).toMatchObject({
+        id: "active",
+        updatedAt: processUpdatedAt.toISOString(),
+        hasUnread: true,
+      });
     });
 
     it("computes hasUnread from the pre-recap-overlay updatedAt", async () => {

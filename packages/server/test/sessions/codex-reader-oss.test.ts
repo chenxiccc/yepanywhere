@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +29,7 @@ const hasNativeZstd =
   typeof zstdCompressSync === "function" && isZstdJsonlSupported();
 const itIfNativeZstd = hasNativeZstd ? it : it.skip;
 const itIfNoNativeZstd = hasNativeZstd ? it.skip : it;
+const itIfWindows = process.platform === "win32" ? it : it.skip;
 
 function zstdCompressed(content: string): Buffer {
   if (!zstdCompressSync) {
@@ -180,6 +188,46 @@ describe("CodexSessionReader - OSS Support", () => {
       sourceBytes: expect.any(Number),
     });
   });
+
+  itIfWindows(
+    "advances list recency while a Windows rollout mtime stays fixed",
+    async () => {
+      const sessionId = "windows-open-rollout";
+      const filePath = join(testDir, `${sessionId}.jsonl`);
+      const fixedTime = new Date("2026-01-01T00:00:00.000Z");
+      await createSessionFile(sessionId, "openai", "gpt-5");
+      await utimes(filePath, fixedTime, fixedTime);
+
+      const before = await reader.getSessionListSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await appendFile(
+        filePath,
+        `${JSON.stringify({
+          type: "event_msg",
+          timestamp: new Date().toISOString(),
+          payload: { type: "agent_message", message: "More output" },
+        })}\n`,
+      );
+      await utimes(filePath, fixedTime, fixedTime);
+      const afterStats = await stat(filePath);
+
+      const after = await reader.getSessionListSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+
+      expect(afterStats.mtimeMs).toBe(fixedTime.getTime());
+      expect(Date.parse(after?.updatedAt ?? "")).toBe(
+        Math.trunc(afterStats.ctimeMs),
+      );
+      expect(Date.parse(after?.updatedAt ?? "")).toBeGreaterThan(
+        Date.parse(before?.updatedAt ?? ""),
+      );
+    },
+  );
 
   it("streams summary state without full entry retention", async () => {
     const sessionId = "summary-stream-session";

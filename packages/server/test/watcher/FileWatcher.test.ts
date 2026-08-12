@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,7 +18,7 @@ interface FileWatcherTestAccess {
   rescanAndEmit(reason: "fallback" | "periodic"): Promise<void>;
   scanDirAsync(
     root: string,
-    index: Map<string, number>,
+    index: Map<string, { mtimeMs: number; size: number }>,
     metrics: unknown,
     lifecycleGeneration: number | null,
   ): Promise<boolean>;
@@ -189,6 +196,92 @@ describe("FileWatcher", () => {
     }
   });
 
+  it("reports an append whose mtime remains unchanged", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    await mkdir(watchDir, { recursive: true });
+    const filePath = join(watchDir, "session.jsonl");
+    const fixedTime = new Date("2026-01-01T00:00:00.000Z");
+    await writeFile(filePath, "{}\n");
+    await utimes(filePath, fixedTime, fixedTime);
+
+    const events: FileChangeEvent[] = [];
+    const eventBus = new EventBus();
+    eventBus.subscribe((event) => {
+      if (event.type === "file-change") events.push(event);
+    });
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "codex",
+      eventBus,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+    const internals = watcher as unknown as FileWatcherTestAccess;
+
+    await forceRescan(watcher);
+    events.length = 0;
+    const before = await stat(filePath);
+    await appendFile(filePath, '{"appended":true}\n');
+    await utimes(filePath, fixedTime, fixedTime);
+
+    internals.emitEvent(filePath, "change");
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        path: filePath,
+        changeType: "modify",
+        mtimeMs: before.mtimeMs,
+        size: before.size + Buffer.byteLength('{"appended":true}\n'),
+      }),
+    ]);
+
+    internals.emitEvent(filePath, "change");
+    expect(events).toHaveLength(1);
+  });
+
+  it("finds a fixed-mtime append during a fallback rescan", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    await mkdir(watchDir, { recursive: true });
+    const filePath = join(watchDir, "session.jsonl");
+    const fixedTime = new Date("2026-01-01T00:00:00.000Z");
+    await writeFile(filePath, "{}\n");
+    await utimes(filePath, fixedTime, fixedTime);
+
+    const events: FileChangeEvent[] = [];
+    const eventBus = new EventBus();
+    eventBus.subscribe((event) => {
+      if (event.type === "file-change") events.push(event);
+    });
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "codex",
+      eventBus,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+
+    await forceRescan(watcher);
+    events.length = 0;
+    const before = await stat(filePath);
+    await appendFile(filePath, '{"appended":true}\n');
+    await utimes(filePath, fixedTime, fixedTime);
+
+    await forceRescan(watcher);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        path: filePath,
+        changeType: "modify",
+        mtimeMs: before.mtimeMs,
+        size: before.size + Buffer.byteLength('{"appended":true}\n'),
+      }),
+    ]);
+    expect(watcher.getLastRescanMetrics()).toMatchObject({
+      modifyEvents: 1,
+      emittedEvents: 1,
+    });
+  });
+
   it("records fallback rescan metrics and emitted change counts", async () => {
     const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
     tempDirs.push(watchDir);
@@ -352,7 +445,7 @@ describe("FileWatcher", () => {
       const scan = vi
         .spyOn(internals, "scanDirAsync")
         .mockImplementation(async (_root, index) => {
-          index.set(join(watchDir, "late.jsonl"), 1);
+          index.set(join(watchDir, "late.jsonl"), { mtimeMs: 1, size: 1 });
           await scanGate;
           return true;
         });

@@ -12,6 +12,7 @@ import {
 } from "../projects/paths.js";
 import type { SessionListSummary } from "../sessions/types.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { getCodexRolloutActivityTimeMs } from "../utils/codexRolloutFiles.js";
 import { readFirstLine } from "../utils/jsonl.js";
 import {
   BatchProcessor,
@@ -593,7 +594,9 @@ export class ExternalSessionTracker {
         title: null,
         fullTitle: null,
         createdAt: meta.timestamp,
-        updatedAt: stats.mtime.toISOString(),
+        updatedAt: new Date(
+          getCodexRolloutActivityTimeMs(filePath, stats),
+        ).toISOString(),
         messageCount: 0,
         ownership: { owner: "external" },
         provider: "codex",

@@ -41,6 +41,7 @@ import type {
 } from "../supervisor/types.js";
 import {
   codexRolloutRepresentation,
+  getCodexRolloutActivityTimeMs,
   isCodexRolloutFileName,
   preferPlainCodexRollouts,
 } from "../utils/codexRolloutFiles.js";
@@ -1665,6 +1666,7 @@ export class CodexSessionReader implements ISessionReader {
     return this.buildSessionSummaryFromState(
       sessionId,
       projectId,
+      filePath,
       stats,
       read.state,
     );
@@ -1920,6 +1922,7 @@ export class CodexSessionReader implements ISessionReader {
   private buildSessionSummaryFromState(
     sessionId: string,
     projectId: UrlProjectId,
+    filePath: string,
     stats: Awaited<ReturnType<typeof stat>>,
     state: CodexSummaryState,
   ): SessionSummary | null {
@@ -1957,7 +1960,9 @@ export class CodexSessionReader implements ISessionReader {
       title: title.title,
       fullTitle: title.fullTitle,
       createdAt: metaEntry.payload.timestamp,
-      updatedAt: stats.mtime.toISOString(),
+      updatedAt: new Date(
+        getCodexRolloutActivityTimeMs(filePath, stats),
+      ).toISOString(),
       messageCount,
       ownership: { owner: "none" },
       contextUsage,
@@ -2038,7 +2043,9 @@ export class CodexSessionReader implements ISessionReader {
       title,
       fullTitle,
       createdAt: metaEntry.payload.timestamp,
-      updatedAt: stats.mtime.toISOString(),
+      updatedAt: new Date(
+        getCodexRolloutActivityTimeMs(sessionFile.filePath, stats),
+      ).toISOString(),
       messageCount,
       ownership: { owner: "none" },
       contextUsage,

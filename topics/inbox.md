@@ -119,10 +119,27 @@ poll loop behind.
 ## Unread Meaning
 
 Unread state comes from `NotificationService.hasUnread(session.id,
-session.updatedAt)`. It means YA believes the session changed after the user's
-last seen marker. It is not limited to "an idle assistant produced output and
-now needs a user response"; that narrower state belongs in `needsAttention`
-only when the provider exposes pending input.
+effectiveProviderUpdatedAt)`. For an unowned session this is the provider list
+summary's transcript recency. For a YA-owned process it is the later of that
+summary and `Process.lastMessageTime`, because the live runtime can observe a
+provider message before every supported filesystem publishes its final write
+timestamp. The same effective recency is returned and used for sorting; recap
+overlays may still make a row newer for display but never participate in the
+provider-unread comparison.
+
+Unread means YA believes the session changed after the user's last seen
+marker. It is not limited to "an idle assistant produced output and now needs
+a user response"; that narrower state belongs in `needsAttention` only when
+the provider exposes pending input.
+
+On Windows, a plain Codex rollout's list-summary recency uses the later of file
+modification and change time. Codex retains its append handle for the session,
+and Windows may defer the last-write timestamp until that handle closes even
+though file size and change time advance. macOS/Linux and immutable compressed
+Codex rollouts retain modification-time recency. A metadata-only Windows change
+can therefore conservatively make an unowned Codex row unread; suppressing
+visible output for the lifetime of an active rollout is the more serious
+failure, and YA-owned sessions use the runtime clock as the stronger source.
 
 When a mounted client receives `session-updated` for a row it currently shows
 as read, the Inbox must re-evaluate the server-owned unread and tier state. New

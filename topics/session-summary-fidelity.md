@@ -40,6 +40,13 @@ the current model. Providers may obtain the projection from native metadata, a
 bounded transcript-head read, or a complete summary that is already known
 fresh.
 
+List `updatedAt` is provider activity recency, not necessarily a literal file
+modification timestamp. Plain Codex rollouts on Windows use the later of file
+modification and change time because the last-write timestamp may remain stale
+while Codex holds its append handle open. YA-owned collection rows may advance
+further to the live process's later message time. These recency overlays do not
+claim that message count, model, context usage, or tail text were re-observed.
+
 ## Reader and index contract
 
 A provider that implements a lightweight list-summary reader must bound its

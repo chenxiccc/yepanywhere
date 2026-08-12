@@ -9,6 +9,7 @@ import {
 } from "../indexes/SessionDiscoveryIndex.js";
 import {
   type CodexRolloutDiscoveryIdentity,
+  getCodexRolloutActivityTimeMs,
   getCodexRolloutDiscoveryIdentity,
 } from "../utils/codexRolloutFiles.js";
 import { isZstdJsonlSupported, readFirstLine } from "../utils/jsonl.js";
@@ -93,7 +94,8 @@ export async function readCodexRolloutMetadata(
   const metrics = options.metrics;
   if (metrics) metrics.statCalls += 1;
   const stats = await stat(options.filePath);
-  if (options.activeAfterMs && stats.mtimeMs < options.activeAfterMs) {
+  const activityTimeMs = getCodexRolloutActivityTimeMs(options.filePath, stats);
+  if (options.activeAfterMs && activityTimeMs < options.activeAfterMs) {
     if (metrics) metrics.activeWindowSkips += 1;
     return null;
   }
@@ -286,7 +288,7 @@ function toDiscoveredSession(
     cwd: metadata.cwd,
     filePath,
     timestamp: metadata.timestamp,
-    mtime: stats.mtimeMs,
+    mtime: getCodexRolloutActivityTimeMs(filePath, stats),
     size: stats.size,
     isSubagent: metadata.isSubagent,
   };

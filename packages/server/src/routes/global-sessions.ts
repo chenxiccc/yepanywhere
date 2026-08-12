@@ -23,6 +23,7 @@ import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import {
   applyRecapOverlayToSummary,
+  getEffectiveProviderUpdatedAt,
   hasUnreadProviderContent,
 } from "../sessions/recap-overlays.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
@@ -298,12 +299,17 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           isSessionAutoArchived(overlaidSession, statsAutoArchiveAfterMs);
         const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
         const executor = metadata?.executor;
+        const process = deps.supervisor?.getProcessForSession(session.id);
+        const effectiveProviderUpdatedAt = getEffectiveProviderUpdatedAt(
+          session.updatedAt,
+          process,
+        );
 
         const hasUnread =
           hasUnreadProviderContent(
             deps.notificationService,
             session.id,
-            session.updatedAt,
+            effectiveProviderUpdatedAt,
           ) ?? false;
 
         if (isArchived) {
@@ -542,12 +548,6 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           metadata?.initialPrompt ?? overlaidSession.fullTitle;
         const executor = metadata?.executor;
 
-        const hasUnread = hasUnreadProviderContent(
-          deps.notificationService,
-          session.id,
-          session.updatedAt,
-        );
-
         // Skip archived sessions unless explicitly requested
         if (isArchived && !includeArchived) continue;
 
@@ -556,6 +556,19 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
 
         // Compute status
         const process = deps.supervisor?.getProcessForSession(session.id);
+        const effectiveProviderUpdatedAt = getEffectiveProviderUpdatedAt(
+          session.updatedAt,
+          process,
+        );
+        const effectiveUpdatedAt = getEffectiveProviderUpdatedAt(
+          overlaidSession.updatedAt,
+          process,
+        );
+        const hasUnread = hasUnreadProviderContent(
+          deps.notificationService,
+          session.id,
+          effectiveProviderUpdatedAt,
+        );
         const isExternal =
           deps.externalTracker?.isExternal(session.id) ?? false;
 
@@ -623,7 +636,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           title: overlaidSession.title,
           fullTitle: overlaidSession.fullTitle,
           createdAt: overlaidSession.createdAt,
-          updatedAt: overlaidSession.updatedAt,
+          updatedAt: effectiveUpdatedAt,
           messageCount: overlaidSession.messageCount,
           provider: overlaidSession.provider,
           model: overlaidSession.model,

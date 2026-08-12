@@ -106,6 +106,7 @@ describe("Inbox Routes", () => {
       getPendingInputRequest: () => unknown;
       state: { type: string };
       isRetainingProviderWork?: () => boolean;
+      lastMessageTime?: Date;
     }
   >;
   let unreadMap: Map<string, boolean>;
@@ -233,6 +234,46 @@ describe("Inbox Routes", () => {
       expect(result.active).toHaveLength(1);
       expect(result.active[0].sessionId).toBe("sess1");
       expect(result.active[0].activity).toBe("in-turn");
+    });
+
+    it("uses later owned-process activity for active unread state", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      const summaryUpdatedAt = hoursAgo(2);
+      const lastSeenAt = hoursAgo(1);
+      const processUpdatedAt = new Date(minutesAgo(2));
+      const session = createSession("sess1", "proj1", summaryUpdatedAt, {
+        provider: "codex",
+      });
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      processMap.set("sess1", {
+        getPendingInputRequest: () => null,
+        state: { type: "in-turn" },
+        lastMessageTime: processUpdatedAt,
+      });
+      vi.mocked(mockNotificationService.hasUnread).mockImplementation(
+        (_sessionId: string, updatedAt: string) => updatedAt > lastSeenAt,
+      );
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+      });
+
+      expect(mockNotificationService.hasUnread).toHaveBeenCalledWith(
+        "sess1",
+        processUpdatedAt.toISOString(),
+      );
+      expect(result.active[0]).toMatchObject({
+        sessionId: "sess1",
+        updatedAt: processUpdatedAt.toISOString(),
+        activity: "in-turn",
+        hasUnread: true,
+      });
     });
 
     it("categorizes idle process retaining provider background work into active", async () => {

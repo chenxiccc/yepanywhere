@@ -226,3 +226,26 @@ export function hasUnreadProviderContent(
     ? notificationService.hasUnread(sessionId, preOverlayUpdatedAt)
     : undefined;
 }
+
+/**
+ * A live YA process sees provider messages before every platform necessarily
+ * publishes the rollout's final filesystem timestamp. Keep provider unread
+ * state on the later real activity clock without letting recap-only overlays
+ * participate in the comparison.
+ */
+export function getEffectiveProviderUpdatedAt(
+  summaryUpdatedAt: string,
+  process: { lastMessageTime?: Date } | undefined,
+): string {
+  const lastMessageTime = process?.lastMessageTime;
+  if (!(lastMessageTime instanceof Date)) return summaryUpdatedAt;
+
+  const processUpdatedAtMs = lastMessageTime.getTime();
+  if (!Number.isFinite(processUpdatedAtMs)) return summaryUpdatedAt;
+
+  const summaryUpdatedAtMs = Date.parse(summaryUpdatedAt);
+  return !Number.isFinite(summaryUpdatedAtMs) ||
+    processUpdatedAtMs > summaryUpdatedAtMs
+    ? lastMessageTime.toISOString()
+    : summaryUpdatedAt;
+}

@@ -28,6 +28,7 @@ import { SessionCollectionGeneration } from "../sessions/sessionCollectionGenera
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader, SessionListSummary } from "../sessions/types.js";
+import { getEffectiveProviderUpdatedAt } from "../sessions/recap-overlays.js";
 import type { ProjectQueueService } from "../services/ProjectQueueService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
@@ -215,6 +216,14 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
         let activity: AgentActivity | undefined;
 
         const process = deps.supervisor?.getProcessForSession(session.id);
+        const effectiveUpdatedAt = getEffectiveProviderUpdatedAt(
+          session.updatedAt,
+          process,
+        );
+        const effectiveSession =
+          effectiveUpdatedAt === session.updatedAt
+            ? session
+            : { ...session, updatedAt: effectiveUpdatedAt };
         if (process) {
           const pendingRequest = process.getPendingInputRequest();
           if (pendingRequest) {
@@ -235,11 +244,11 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
         }
 
         const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
+          ? deps.notificationService.hasUnread(session.id, effectiveUpdatedAt)
           : undefined;
 
         allSessions.push({
-          session,
+          session: effectiveSession,
           projectName: project.name,
           pendingInputType,
           activity,
