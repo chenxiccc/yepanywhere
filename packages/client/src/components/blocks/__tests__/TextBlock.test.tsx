@@ -431,13 +431,8 @@ describe("TextBlock", () => {
     fireEvent.contextMenu(preview);
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Open", "Download", "Copy›"]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
-    expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["‹Back", "Image", "Absolute file path"]);
+    ).toEqual(["Open", "Download", "Copy image", "Copy absolute file path"]);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
     expect(screen.getByRole("dialog").textContent).toContain("trajectory.png");
     expect(
@@ -496,11 +491,12 @@ describe("TextBlock", () => {
     fireEvent.contextMenu(
       screen.getByRole("link", { name: "research-practice.md" }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
 
-    expect(screen.queryByRole("menuitem", { name: "Viewer link" })).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: "Copy viewer link" }),
+    ).toBeNull();
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Absolute file path" }),
+      screen.getByRole("menuitem", { name: "Copy absolute file path" }),
     );
 
     await waitFor(() => {

@@ -1,6 +1,7 @@
 # Image Resource Actions
 
-Status: implemented and verified on 2026-08-09.
+Status: implemented and verified on 2026-08-09; copy layout revised on
+2026-08-13.
 
 Topic: media-rendering-and-routing
 Topic: session-media-handles
@@ -30,9 +31,8 @@ locations, or turn a raw media response into a stable viewer link.
   the shared full image viewer. Disclosure controls only expand or collapse an
   inline preview; copying pixels is an explicit action.
 - Right-clicking an image name, link, thumbnail, or expanded preview opens one
-  resource-action menu. **Open** and **Download** are direct actions when the
-  bytes are available. **Copy** contains **Image** plus only the path and
-  viewer-link coordinates the source actually owns.
+  resource-action menu. **Open**, **Download**, **Copy image**, and each
+  available path or viewer-link copy command are direct actions.
 - A local or project-backed image may expose project-relative, absolute, or
   otherwise unclassified file paths. An image embedded as JSONL data or served
   by an opaque session-media handle has no filesystem path merely because YA
@@ -49,9 +49,9 @@ locations, or turn a raw media response into a stable viewer link.
 
 ### 1 — generalize the resource action menu
 
-Keep the existing hover/tap submenu behavior while making the callback-driven
-menu usable by files and images. Add optional Download and Copy image actions,
-and retain exact path-coordinate and stable-viewer-link labels.
+Keep the Source/Preview hover/tap submenu behavior while making the
+callback-driven menu usable by files and images. Add direct Download, Copy
+image, path-coordinate, and stable-viewer-link actions with exact labels.
 
 ### 2 — share image byte operations
 
@@ -77,8 +77,8 @@ activity rows and compact source position for prose links.
 
 Test path-backed and pathless menus, pixel copy/download fetches, Markdown
 delegation from both links and hydrated image pixels, tool-media lazy loading,
-ordinary-click viewer behavior, desktop hover flyouts, touch panels, and
-public-share path redaction.
+ordinary-click viewer behavior, flat copy rows, touch panels, and public-share
+path redaction.
 
 ### 6 — preserve the future server boundary
 
@@ -115,6 +115,12 @@ availability.
 - Typecheck, lint, format check, CSS architecture checks, console-chatter
   ratchet, i18n advisory scan, and diff whitespace checks pass.
 - Fresh worktree dev-server captures at 1920×1080 and 375×812 verify aligned
-  Markdown/tool previews, desktop hover flyouts, the phone replacement panel,
+  Markdown/tool previews, direct copy actions, the phone replacement panel,
   stable in-project viewer links, full-view context actions, and menu-first
   Escape handling.
+
+## Interaction follow-up — 2026-08-13
+
+Image copy variants follow the shared flat-menu contract. **Copy image** and
+every available copy coordinate appear as direct root commands with copy glyphs
+and full labels; no generic Copy branch remains.

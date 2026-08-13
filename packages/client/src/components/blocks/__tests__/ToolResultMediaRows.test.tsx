@@ -191,16 +191,13 @@ describe("ToolResultMediaRows", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: "first.png" }));
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Open", "Download", "Copy›"]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
-    expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
-      "‹Back",
-      "Image",
-      "Project-relative path",
-      "Absolute file path",
-      "Viewer link",
+      "Open",
+      "Download",
+      "Copy image",
+      "Copy project-relative path",
+      "Copy absolute file path",
+      "Copy viewer link",
     ]);
   });
 

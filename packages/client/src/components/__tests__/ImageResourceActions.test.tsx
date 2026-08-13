@@ -122,11 +122,10 @@ describe("image resource actions", () => {
   it("omits path actions for pathless image data", () => {
     renderImage({ loadBlob: async () => new Blob(["png"]) });
     fireEvent.contextMenu(screen.getByRole("button", { name: "capture.png" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
 
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["‹Back", "Image"]);
+    ).toEqual(["Open", "Download", "Copy image"]);
   });
 
   it("offers both project-relative and absolute coordinates when known", () => {
@@ -135,16 +134,16 @@ describe("image resource actions", () => {
       loadBlob: async () => new Blob(["png"]),
     });
     fireEvent.contextMenu(screen.getByRole("button", { name: "capture.png" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
 
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
-      "‹Back",
-      "Image",
-      "Project-relative path",
-      "Absolute file path",
-      "Viewer link",
+      "Open",
+      "Download",
+      "Copy image",
+      "Copy project-relative path",
+      "Copy absolute file path",
+      "Copy viewer link",
     ]);
   });
 });

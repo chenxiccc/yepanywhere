@@ -129,21 +129,21 @@ vocabulary even though their authorization routes remain distinct:
   touch-selectable **Open > Source / Preview** panel. Other files keep a direct
   **Open** action. This is an initial-presentation choice, not a different file
   permission or serving route.
-- On a fine hover-capable pointer, hovering **Open** or **Copy** opens an
-  adjacent flyout and highlights the active branch, matching conventional
-  desktop context menus. Click still opens the same flyout. Coarse pointers
-  and narrow viewports use the compact replacement panel with an explicit
-  **Back** action, so hover is never the only route to a submenu.
+- On a fine hover-capable pointer, hovering **Open** opens an adjacent flyout
+  and highlights that branch. Click opens the same flyout. Coarse pointers and
+  narrow viewports use the compact replacement panel with an explicit **Back**
+  action, so hover is never the only route to the presentation choice.
 - HTML is source-first. Its explicit Preview is a client-owned `srcdoc`
   document under an empty iframe sandbox, no-referrer policy, and restrictive
   meta CSP. Markdown remains preview-first and may be opened as source. Both
   representations remain toggleable inside the project `FileViewer`; the
   local-file modal takes its initial representation from the context menu in
   this first convergence step.
-- **Copy** opens a second panel whose labels describe the coordinate or value:
-  **Project-relative path**, **Absolute file path**, **File path** when the
-  client cannot classify it more strongly, **Viewer link**, and **Contents**.
-  Only available, non-duplicate coordinates appear.
+- Copy actions are direct root-menu rows with a copy glyph and a full command
+  label: **Copy project-relative path**, **Copy absolute file path**, **Copy
+  file path** when the client cannot classify it more strongly, **Copy viewer
+  link**, and **Copy contents**. Only available, non-duplicate coordinates
+  appear; copying never requires entering a second panel.
 - **Viewer link** means a stable YA application viewer route. A raw
   `/api/local-file` or project raw-file response is never presented as a
   viewer link. Relay and direct clients therefore use the same meaning rather
@@ -171,10 +171,10 @@ every byte source is a file:
   `ViewImage` and image `Read` results, compact-gallery thumbnails, project
   viewer images, and the full image viewer opens the same resource menu.
 - **Open** is direct. **Download** appears when the client has a byte source.
-  **Copy** contains **Image** and only the semantic coordinates that exist:
-  **Project-relative path**, **Absolute file path**, **File path**, and a stable
-  **Viewer link**. An unavailable coordinate is omitted rather than disabled
-  or inferred.
+  **Copy image** and the available semantic-coordinate actions are direct
+  root-menu rows: **Copy project-relative path**, **Copy absolute file path**,
+  **Copy file path**, and **Copy viewer link**. An unavailable coordinate is
+  omitted rather than disabled or inferred.
 - Clipboard and download actions fetch through the active source transport.
   Copy image starts `ClipboardItem.write()` during the selecting gesture and
   supplies relay-delivered bytes as a pending PNG, so a slow relay round trip

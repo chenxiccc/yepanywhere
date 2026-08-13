@@ -503,7 +503,7 @@ describe("LocalMediaModal", () => {
     fireEvent.contextMenu(image);
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Open", "Download", "Copy›"]);
+    ).toEqual(["Open", "Download", "Copy image", "Copy absolute file path"]);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss image menu" }));
     Object.defineProperties(image, {
       naturalHeight: { configurable: true, value: 1080 },

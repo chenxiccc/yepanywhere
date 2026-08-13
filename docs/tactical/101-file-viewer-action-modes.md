@@ -1,6 +1,7 @@
 # File Viewer Action Modes
 
-Status: implemented and verified on 2026-08-09.
+Status: implemented and verified on 2026-08-09; copy layout revised on
+2026-08-13.
 
 Topic: media-rendering-and-routing
 Topic: active-content-security
@@ -29,15 +30,16 @@ ownership discovery, a new viewer route, or an executable-content service.
 - A file with both meaningful source and static preview presentations exposes
   **Open > Source / Preview** in the file context menu. A file with only one
   useful presentation keeps a direct **Open** action.
-- **Copy** is one top-level branch. Its second panel names the value precisely:
-  **Project-relative path**, **Absolute file path**, **File path** when the
-  stronger classification is unavailable, **Viewer link**, and **Contents**.
+- Copy variants are direct top-level commands with a copy glyph and precise
+  labels: **Copy project-relative path**, **Copy absolute file path**, **Copy
+  file path** when the stronger classification is unavailable, **Copy viewer
+  link**, and **Copy contents**.
 - A **Viewer link** is a stable YA application route. A raw API URL is not
   relabeled or copied as a viewer link.
-- The second panel is selected rather than hover-only, so the same interaction
-  works on touch. On a fine hover-capable pointer it also opens as an adjacent
-  flyout when the branch is hovered. Compact/touch presentation includes an
-  explicit **Back** action.
+- The Source/Preview panel is selected rather than hover-only, so the same
+  interaction works on touch. On a fine hover-capable pointer it also opens as
+  an adjacent flyout when **Open** is hovered. Compact/touch presentation
+  includes an explicit **Back** action for that presentation panel.
 - Ordinary Markdown behavior remains preview-first. Ordinary HTML behavior is
   source-first. An explicit HTML preview stays scriptless and opaque-origin;
   selecting Preview never navigates to the raw file response.
@@ -48,9 +50,10 @@ ownership discovery, a new viewer route, or an executable-content service.
 
 ### 1 — group file actions by intent
 
-Replace the flat shared context menu with Open and Copy branches. Keep New
-session at the top level, preserve dismissal and viewport clamping, and use
-the shared menu at project-file, rendered-resource, and open-viewer call sites.
+Group presentation choices behind **Open** while keeping each copy variant as
+a direct command. Keep New session at the top level, preserve dismissal and
+viewport clamping, and use the shared menu at project-file, rendered-resource,
+and open-viewer call sites.
 
 ### 2 — carry the requested file presentation
 
@@ -91,10 +94,11 @@ applications.
 - Preview iframes have an empty sandbox, a restrictive client-owned CSP, and a
   no-referrer policy.
 - Copy labels distinguish path coordinates from stable viewer links, and raw
-  local API URLs are absent from the Copy panel.
-- Desktop and phone-width captures show usable first- and second-level menus.
-- Desktop branch hover opens the corresponding adjacent flyout without a
-  click; click/tap remains a complete path through the same actions.
+  local API URLs are absent from the menu.
+- Desktop and phone-width captures show usable flat copy rows and the
+  Source/Preview panel.
+- Desktop **Open** hover opens the adjacent flyout without a click; click/tap
+  remains a complete path through the same presentation actions.
 - Focused tests, lint, formatting, typecheck, and CSS checks pass. Advisory
   i18n and console scans add no findings beyond their checked-in baselines.
 - The relevant browser interaction passes without a stale-runtime banner or
@@ -111,8 +115,8 @@ applications.
 - `pnpm css:touched` found no bounded extraction in the touched legacy owners:
   their styling is scattered across 28–66 coupled or generated-vocabulary
   edges. All new styling is in component-owned CSS modules.
-- Fresh-server captures at 1920×1080 and 375×812 verify the root, Open, and
-  Copy panels. Fresh live interaction also verifies source-first HTML and the
+- Fresh-server captures at 1920×1080 and 375×812 verify the root and Open
+  panels. Fresh live interaction also verifies source-first HTML and the
   responsive preview. The final iframe has an empty `sandbox`, a client-owned
   CSP, `referrerPolicy="no-referrer"`, and no tooltip overlay; the browser
   console is clean.
@@ -134,3 +138,11 @@ A fresh browser pass against the real shared component verified both Open and
 Copy hover flyouts with the root menu still visible. At 375×812, pointer
 movement alone kept one root menu open and a deliberate tap replaced it with
 the Open panel and Back action. The browser console remained clean.
+
+## Interaction follow-up — 2026-08-13
+
+Copy choices no longer form a branch. Every available variant is a direct root
+menu command with a copy glyph and a full **Copy …** label. **Open** retains its
+Source/Preview panel because those entries select one presentation mode rather
+than performing independent copy operations. Touch and narrow layouts use the
+same flat copy commands and retain **Back** only inside the Open panel.

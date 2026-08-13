@@ -64,12 +64,19 @@ describe("FilePathContextMenu", () => {
     expect(overlay().parentElement).toBe(document.body);
   });
 
-  it("groups open and copy actions in touch-selectable panels", () => {
+  it("keeps copy actions flat while open uses a touch-selectable panel", () => {
     renderMenu();
 
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Open›", "New session", "Copy›"]);
+    ).toEqual([
+      "Open›",
+      "New session",
+      "Copy project-relative path",
+      "Copy absolute file path",
+      "Copy viewer link",
+      "Copy contents",
+    ]);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
     expect(
@@ -77,15 +84,15 @@ describe("FilePathContextMenu", () => {
     ).toEqual(["‹Back", "Source", "Preview"]);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
-      "‹Back",
-      "Project-relative path",
-      "Absolute file path",
-      "Viewer link",
-      "Contents",
+      "Open›",
+      "New session",
+      "Copy project-relative path",
+      "Copy absolute file path",
+      "Copy viewer link",
+      "Copy contents",
     ]);
   });
 
@@ -109,16 +116,12 @@ describe("FilePathContextMenu", () => {
 
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Open", "Download", "Copy›"]);
+    ).toEqual(["Open", "Download", "Copy image"]);
     expect(
       screen.getByRole("button", { name: "Dismiss image actions" }),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
-    expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["‹Back", "Image"]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Image" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy image" }));
     expect(onCopyImage).toHaveBeenCalledTimes(1);
   });
 
@@ -143,29 +146,12 @@ describe("FilePathContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
 
     fireEvent.mouseEnter(
-      within(rootMenu).getByRole("menuitem", { name: "Copy" }),
+      within(rootMenu).getByRole("menuitem", {
+        name: "Copy project-relative path",
+      }),
     );
     expect(screen.queryByRole("menu", { name: "Open" })).toBeNull();
-    expect(
-      within(screen.getByRole("menu", { name: "Copy" }))
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent),
-    ).toEqual([
-      "Project-relative path",
-      "Absolute file path",
-      "Viewer link",
-      "Contents",
-    ]);
-
-    fireEvent.mouseEnter(
-      within(rootMenu).getByRole("menuitem", { name: "New session" }),
-    );
-    expect(screen.queryByRole("menu", { name: "Copy" })).toBeNull();
-
-    fireEvent.click(within(rootMenu).getByRole("menuitem", { name: "Copy" }));
-    expect(
-      document.body.contains(screen.getByRole("menu", { name: "Copy" })),
-    ).toBe(true);
+    expect(document.body.contains(rootMenu)).toBe(true);
   });
 
   it("omits the conditional items when their actions are unavailable", () => {
@@ -194,11 +180,9 @@ describe("FilePathContextMenu", () => {
       onStartNewSession: undefined,
     });
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
-
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["‹Back", "File path"]);
+    ).toEqual(["Open›", "Copy file path"]);
   });
 
   it("runs the selected action and then closes", () => {
@@ -209,9 +193,8 @@ describe("FilePathContextMenu", () => {
       onCopyProjectRelativePath: () => sequence.push("copyPath"),
     });
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Project-relative path" }),
+      screen.getByRole("menuitem", { name: "Copy project-relative path" }),
     );
 
     expect(sequence).toEqual(["copyPath", "close"]);
@@ -235,7 +218,7 @@ describe("FilePathContextMenu", () => {
 
     const menu = screen.getByRole("menu");
     expect(menu.style.left).toBe(`${window.innerWidth - 230}px`);
-    expect(menu.style.top).toBe(`${window.innerHeight - 180}px`);
+    expect(menu.style.top).toBe(`${window.innerHeight - 289}px`);
   });
 
   it("keeps the inline position off the viewport edges", () => {

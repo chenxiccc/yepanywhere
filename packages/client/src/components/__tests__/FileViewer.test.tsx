@@ -736,15 +736,15 @@ describe("FileViewer", () => {
       screen.getByRole("img", { name: "result.png" }).getAttribute("src"),
     ).toBe("blob:file-viewer-image");
     fireEvent.contextMenu(screen.getByRole("img", { name: "result.png" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
-      "‹Back",
-      "Image",
-      "Project-relative path",
-      "Absolute file path",
-      "Viewer link",
+      "Open",
+      "Download",
+      "Copy image",
+      "Copy project-relative path",
+      "Copy absolute file path",
+      "Copy viewer link",
     ]);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss image menu" }));
 

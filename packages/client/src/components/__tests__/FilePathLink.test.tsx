@@ -104,8 +104,7 @@ describe("FilePathLink", () => {
     fireEvent.contextMenu(
       screen.getByRole("link", { name: /guide\.md\s*:12/ }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Viewer link" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy viewer link" }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(
@@ -605,8 +604,7 @@ describe("FilePathLink", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("link", { name: "guide.md" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Contents" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy contents" }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("# Guide\n");
