@@ -59,6 +59,7 @@ function submissionFingerprint(request) {
           message: request.message,
           sessionOptions: request.sessionOptions,
           launch: request.launch,
+          resumeRecentRuntime: request.resumeRecentRuntime,
         }),
       ),
     )

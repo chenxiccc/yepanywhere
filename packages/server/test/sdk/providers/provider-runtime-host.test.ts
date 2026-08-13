@@ -504,6 +504,18 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
         outcome: "submission-id-conflict",
         accepted: false,
       });
+      const recoveryPreferenceConflict = await collectProviderHostStream(
+        connection,
+        {
+          ...request,
+          resumeRecentRuntime: true,
+        },
+      );
+      expect(recoveryPreferenceConflict.at(-1)).toMatchObject({
+        type: "error",
+        outcome: "submission-id-conflict",
+        accepted: false,
+      });
       const ownershipMismatch = await collectProviderHostStream(connection, {
         ...request,
         submissionId: "headless-turn-owner-mismatch",
