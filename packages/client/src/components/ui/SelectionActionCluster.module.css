@@ -34,6 +34,25 @@
   outline-offset: 1px;
 }
 
+.text {
+  --selection-action-border: color-mix(
+    in srgb,
+    var(--text-secondary, #8b949e) 68%,
+    var(--border-color, #333)
+  );
+  --selection-action-background: color-mix(
+    in srgb,
+    var(--text-secondary, #8b949e) 20%,
+    var(--bg-secondary, #252525)
+  );
+  --selection-action-background-hover: color-mix(
+    in srgb,
+    var(--text-secondary, #8b949e) 32%,
+    var(--bg-secondary, #252525)
+  );
+  font-size: 15px;
+}
+
 .quote {
   --selection-action-border: color-mix(
     in srgb,
@@ -69,6 +88,7 @@
     #268bd2 38%,
     var(--bg-secondary, #252525)
   );
+  font-size: 8px;
 }
 
 .rich {
@@ -89,6 +109,26 @@
   );
 }
 
+.newSession {
+  --selection-action-border: color-mix(
+    in srgb,
+    var(--app-yep-green, #059669) 70%,
+    var(--border-color, #333)
+  );
+  --selection-action-background: color-mix(
+    in srgb,
+    var(--app-yep-green, #059669) 28%,
+    var(--bg-secondary, #252525)
+  );
+  --selection-action-background-hover: color-mix(
+    in srgb,
+    var(--app-yep-green, #059669) 42%,
+    var(--bg-secondary, #252525)
+  );
+  font-size: 20px;
+  font-weight: 600;
+}
+
 .specimen {
   flex: 0 0 auto;
   pointer-events: none;
@@ -106,5 +146,5 @@
 .docked {
   position: relative;
   width: max-content;
-  margin: 0 10px 14px auto;
+  margin: 0 10px 34px auto;
 }

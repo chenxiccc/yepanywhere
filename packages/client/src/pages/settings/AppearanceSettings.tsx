@@ -280,10 +280,14 @@ export function AppearanceSettings() {
   const {
     selectionQuoteActionEnabled,
     setSelectionQuoteActionEnabled,
+    selectionTextCopyActionEnabled,
+    setSelectionTextCopyActionEnabled,
     selectionSourceCopyActionEnabled,
     setSelectionSourceCopyActionEnabled,
     selectionRichCopyActionEnabled,
     setSelectionRichCopyActionEnabled,
+    selectionNewSessionActionEnabled,
+    setSelectionNewSessionActionEnabled,
   } = useSelectionActionPreferences();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
@@ -365,12 +369,20 @@ export function AppearanceSettings() {
     undoEntry(quoteReplyButtonMode, setQuoteReplyButtonMode),
     undoEntry(selectionQuoteActionEnabled, setSelectionQuoteActionEnabled),
     undoEntry(
+      selectionTextCopyActionEnabled,
+      setSelectionTextCopyActionEnabled,
+    ),
+    undoEntry(
       selectionSourceCopyActionEnabled,
       setSelectionSourceCopyActionEnabled,
     ),
     undoEntry(
       selectionRichCopyActionEnabled,
       setSelectionRichCopyActionEnabled,
+    ),
+    undoEntry(
+      selectionNewSessionActionEnabled,
+      setSelectionNewSessionActionEnabled,
     ),
     undoEntry(funPhrasesEnabled, setFunPhrasesEnabled),
     undoEntry(floatingActionButtonEnabled, setFloatingActionButtonEnabled),
@@ -1042,6 +1054,29 @@ export function AppearanceSettings() {
           </label>
         </SettingsItem>
         <SettingsItem
+          label={t("appearanceSelectionTextCopyActionTitle" as never)}
+          description={t(
+            "appearanceSelectionTextCopyActionDescription" as never,
+          )}
+        >
+          <SelectionActionButton
+            kind="text"
+            label={t("sessionCopySelectionText" as never)}
+            specimen
+          />
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("appearanceSelectionTextCopyActionTitle" as never)}
+              checked={selectionTextCopyActionEnabled}
+              onChange={(event) =>
+                setSelectionTextCopyActionEnabled(event.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
           label={t("appearanceSelectionSourceCopyActionTitle")}
           description={t("appearanceSelectionSourceCopyActionDescription")}
         >
@@ -1078,6 +1113,31 @@ export function AppearanceSettings() {
               checked={selectionRichCopyActionEnabled}
               onChange={(event) =>
                 setSelectionRichCopyActionEnabled(event.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceSelectionNewSessionActionTitle" as never)}
+          description={t(
+            "appearanceSelectionNewSessionActionDescription" as never,
+          )}
+        >
+          <SelectionActionButton
+            kind="newSession"
+            label={t("sessionNewSessionFromSelection" as never)}
+            specimen
+          />
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t(
+                "appearanceSelectionNewSessionActionTitle" as never,
+              )}
+              checked={selectionNewSessionActionEnabled}
+              onChange={(event) =>
+                setSelectionNewSessionActionEnabled(event.target.checked)
               }
             />
             <span className="toggle-slider" />

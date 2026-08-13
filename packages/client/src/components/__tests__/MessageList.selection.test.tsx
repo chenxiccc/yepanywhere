@@ -72,6 +72,103 @@ describe("MessageList selection and copy", () => {
     expect(setData).toHaveBeenCalledWith("text/plain", "1. Second item");
   });
 
+  it("offers text, source, quote, and new-session actions for a selection", () => {
+    const onStartNewSessionFromSelection = vi.fn();
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Selected text")]}
+        onQuoteSelection={() => "> Selected text\n"}
+        onStartNewSessionFromSelection={onStartNewSessionFromSelection}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Selected text");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.contextMenu(selectedElement, { clientX: 0, clientY: 0 });
+
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Copy text", "Copy source", "Quote reply", "New session"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "New session" }));
+    expect(onStartNewSessionFromSelection).toHaveBeenCalledWith(
+      "> Selected text",
+    );
+  });
+
+  it("distinguishes visible text from the registered source in the menu", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "1. Selected source")]}
+        markdownAugments={{
+          "assistant-1": {
+            html: "<ol><li>Selected source</li></ol>",
+          },
+        }}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Selected source");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    const selection = window.getSelection();
+    const selectAgain = () => {
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
+    selectAgain();
+    fireEvent.contextMenu(selectedElement, { clientX: 0, clientY: 0 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy text" }));
+    expect(writeText).toHaveBeenLastCalledWith("Selected source");
+
+    selectAgain();
+    fireEvent.contextMenu(selectedElement, { clientX: 0, clientY: 0 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy source" }));
+    expect(writeText).toHaveBeenLastCalledWith("1. Selected source");
+  });
+
+  it("offers the configurable new-session bubble action", async () => {
+    window.localStorage.setItem(
+      UI_KEYS.selectionNewSessionActionEnabled,
+      "true",
+    );
+    const onStartNewSessionFromSelection = vi.fn();
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Selected handoff")]}
+        onStartNewSessionFromSelection={onStartNewSessionFromSelection}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Selected handoff");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.pointerDown(selectedElement, { clientX: 100, clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
+
+    const newSessionButton = await screen.findByRole("button", {
+      name: "New session",
+    });
+    fireEvent.click(newSessionButton);
+
+    expect(onStartNewSessionFromSelection).toHaveBeenCalledWith(
+      "> Selected handoff",
+    );
+  });
+
   it("preserves old rendered assistant DOM when later messages append", () => {
     const first = assistantMessage(
       "assistant-1",
@@ -293,12 +390,10 @@ describe("MessageList selection and copy", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: "Copy selection as source Markdown",
+        name: "Copy source",
       }),
     ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Quote selection" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quote reply" })).toBeNull();
 
     fireEvent.keyDown(window, { key: "x" });
     expect(onQuoteSelection).not.toHaveBeenCalled();
@@ -330,7 +425,7 @@ describe("MessageList selection and copy", () => {
     fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
 
     const quoteButton = await screen.findByRole("button", {
-      name: "Quote selection",
+      name: "Quote reply",
     });
     expect(quoteButton.closest(".message-list")).toBeTruthy();
     expect(
@@ -404,7 +499,7 @@ describe("MessageList selection and copy", () => {
     });
 
     const sourceButton = await screen.findByRole("button", {
-      name: "Copy selection as source Markdown",
+      name: "Copy source",
     });
     const cluster = sourceButton.closest(
       '[data-selection-action-cluster="true"]',
@@ -420,12 +515,14 @@ describe("MessageList selection and copy", () => {
   it("quotes registered text from a portaled modal into the active session", async () => {
     mockPointerCoarse(false);
     const onQuoteSelection = vi.fn(() => "> Modal selected text\n");
+    const onStartNewSessionFromSelection = vi.fn();
 
     render(
       <>
         <MessageList
           messages={[assistantMessage("assistant-1", "Transcript text")]}
           onQuoteSelection={onQuoteSelection}
+          onStartNewSessionFromSelection={onStartNewSessionFromSelection}
         />
         <QuoteableModal />
       </>,
@@ -442,11 +539,21 @@ describe("MessageList selection and copy", () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
 
+    fireEvent.contextMenu(selectedElement, { clientX: 0, clientY: 0 });
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Copy text", "Copy source", "Quote reply", "New session"]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss selected text actions" }),
+    );
+
+    selection?.removeAllRanges();
+    selection?.addRange(range);
     fireEvent.pointerDown(selectedElement, { clientY: 120 });
     fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
 
     const quoteButton = await screen.findByRole("button", {
-      name: "Quote selection",
+      name: "Quote reply",
     });
     expect(quoteButton.closest(".modal")).toBeTruthy();
     expect(quoteButton.closest(".message-list")).toBeNull();
@@ -513,7 +620,7 @@ describe("MessageList selection and copy", () => {
     fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
 
     const quoteButton = await screen.findByRole("button", {
-      name: "Quote selection",
+      name: "Quote reply",
     });
     expect(actionSlot.contains(quoteButton)).toBe(true);
     expect(
@@ -566,7 +673,7 @@ describe("MessageList selection and copy", () => {
     fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
 
     const sourceButton = await screen.findByRole("button", {
-      name: "Copy selection as source Markdown",
+      name: "Copy source",
     });
     expect(actionSlot.contains(sourceButton)).toBe(true);
 

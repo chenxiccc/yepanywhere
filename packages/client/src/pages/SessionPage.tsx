@@ -38,6 +38,7 @@ import { BtwAsidePane } from "../components/BtwAsidePane";
 import { BtwAsideStickyCards } from "../components/BtwAsideStickyCards";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
 import { ExternalSessionWarning } from "../components/ExternalSessionWarning";
+import { useStartNewSessionWithPrefillAction } from "../components/FileResourceActions";
 import { HostIdentityMarker } from "../components/HostIdentityMarker";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
@@ -389,6 +390,7 @@ function SessionPageContent({
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const basePath = useRemoteBasePath();
+  const startNewSessionWithPrefill = useStartNewSessionWithPrefillAction();
   const { project } = useProject(projectId);
   const { projects } = useProjects();
   const activeProjectSessionIds = useActiveProjectSessionIds(projectId);
@@ -682,6 +684,15 @@ function SessionPageContent({
   // Effective provider/model for immediate display before session data loads
   const effectiveProvider = session?.provider ?? initialProvider;
   const effectiveModel = session?.model ?? initialModel;
+  const startNewSessionFromSelection = useCallback(
+    (prefill: string) => {
+      startNewSessionWithPrefill(projectId, prefill, {
+        provider: effectiveProvider,
+        model: effectiveModel,
+      });
+    },
+    [effectiveModel, effectiveProvider, projectId, startNewSessionWithPrefill],
+  );
   const codexPermissionModeChangePending =
     effectiveProvider === "codex" &&
     status.owner === "self" &&
@@ -5113,6 +5124,7 @@ function SessionPageContent({
                   onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
                   onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
                   onQuoteSelection={insertQuotedSelection}
+                  onStartNewSessionFromSelection={startNewSessionFromSelection}
                   composerDraftSignal={composerDraftSignal}
                   composerEditAvailabilityStore={composerEditAvailabilityStore}
                   quoteClearSignal={quoteClearSignal}

@@ -595,6 +595,8 @@ interface Props {
   onTransferBtwAsideTurn?: (text: string) => void;
   /** Append quoted assistant output to the composer. */
   onQuoteSelection?: (quotedText: string) => string | null;
+  /** Open a same-project new-session composer seeded from selected output. */
+  onStartNewSessionFromSelection?: (prefill: string) => void;
   /** Stable draft-change stream for quote tint reconciliation. */
   composerDraftSignal?: ComposerDraftSignal;
   /** Leaf-subscribed availability for moving queued text into the composer. */
@@ -977,6 +979,7 @@ export const MessageList = memo(function MessageList({
   onToggleBtwAsideExpanded,
   onTransferBtwAsideTurn,
   onQuoteSelection,
+  onStartNewSessionFromSelection,
   composerDraftSignal,
   composerEditAvailabilityStore,
   quoteClearSignal = 0,
@@ -1698,10 +1701,12 @@ export const MessageList = memo(function MessageList({
     handleQuoteTextBlock,
     mobileSelectionActions,
     floatingSelectionActions,
+    selectionContextMenu,
   } = useMessageListSelectionQuote({
     containerRef,
     inert,
     onQuoteSelection,
+    onStartNewSessionFromSelection,
     composerDraftSignal,
     quoteClearSignal,
     isInteractiveTarget: isInteractiveScrollTarget,
@@ -3128,6 +3133,7 @@ export const MessageList = memo(function MessageList({
         ? createPortal(followButton, followButtonTarget)
         : followButton}
       {mobileSelectionActions}
+      {selectionContextMenu}
       <div
         className={[
           "message-list",

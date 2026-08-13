@@ -1,3 +1,7 @@
+.body {
+  position: relative;
+}
+
 .htmlPreviewFrame {
   display: block;
   width: 100%;

@@ -41,16 +41,28 @@ export interface ResourceContextMenuProps {
   onStartNewSession?: () => void;
 }
 
-export function useStartNewSessionFromFileAction() {
+export interface NewSessionPrefillOptions {
+  provider?: string;
+  model?: string;
+}
+
+export function useStartNewSessionWithPrefillAction() {
   const basePath = useRemoteBasePath();
   const clientSummarySourceKey = useClientSummarySourceKey();
 
   return useCallback(
-    (projectId: string, filePath: string) => {
-      const trimmed = filePath.trim();
+    (
+      projectId: string,
+      prefill: string,
+      options: NewSessionPrefillOptions = {},
+    ) => {
+      const trimmed = prefill.trim();
       if (!projectId || !trimmed) return;
       setNewSessionPrefill(clientSummarySourceKey, trimmed);
-      const url = `${basePath}/new-session?projectId=${encodeURIComponent(projectId)}`;
+      const params = new URLSearchParams({ projectId });
+      if (options.provider) params.set("provider", options.provider);
+      if (options.model) params.set("model", options.model);
+      const url = `${basePath}/new-session?${params.toString()}`;
       window.history.pushState(window.history.state, "", url);
       const navigationEvent =
         typeof PopStateEvent === "function"
@@ -59,6 +71,16 @@ export function useStartNewSessionFromFileAction() {
       window.dispatchEvent(navigationEvent);
     },
     [basePath, clientSummarySourceKey],
+  );
+}
+
+export function useStartNewSessionFromFileAction() {
+  const startNewSession = useStartNewSessionWithPrefillAction();
+  return useCallback(
+    (projectId: string, filePath: string) => {
+      startNewSession(projectId, filePath);
+    },
+    [startNewSession],
   );
 }
 

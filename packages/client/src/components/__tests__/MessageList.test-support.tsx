@@ -47,10 +47,16 @@ vi.mock("../../i18n", () => ({
         sessionSearchHelpNavigate:
           "{shortcutKeys} prev · ↑↓ matches · click jumps",
         sessionSearchHelpClose: "Enter jump+close · Esc cancel · Aa case",
-        sessionQuoteSelection: "Quote selection",
+        sessionQuoteSelection: "Quote reply",
         sessionQuoteSelectionShort: "Quote",
-        sessionCopySelectionSource: "Copy selection as source Markdown",
+        sessionCopySelectionText: "Copy text",
+        sessionCopySelectionSource: "Copy source",
         sessionCopySelectionRich: "Copy selection as rich text",
+        sessionNewSessionFromSelection: "New session",
+        sessionSelectionActionMenu: "Selected text actions",
+        sessionDismissSelectionActions: "Dismiss selected text actions",
+        sourceActionMenu: "Source actions",
+        sourceDismissActions: "Dismiss source actions",
         projectQueueAttachmentOnly: "Attachment-only message",
         projectQueueInlineStatusQueued: "Project Queue (#{position})",
         projectQueueInlineStatusDispatching:

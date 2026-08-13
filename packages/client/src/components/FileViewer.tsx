@@ -18,6 +18,7 @@ import { api } from "../api/client";
 import { usePublicShareContext } from "../contexts/PublicShareContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useFileVersionControl } from "../hooks/useFileVersionControl";
+import { useSelectionActions } from "../hooks/useMessageListSelectionQuote";
 import { useRegisterQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
@@ -56,6 +57,7 @@ import {
   type FileViewPresentation,
   supportsSourceAndPreview,
   useStartNewSessionFromFile,
+  useStartNewSessionWithPrefillAction,
 } from "./FileResourceActions";
 import { useImageResourceActions } from "./ImageResourceActions";
 import viewerStyles from "./FileViewer.module.css";
@@ -402,11 +404,51 @@ export const FileViewer = memo(function FileViewer({
   );
   const sourceStyle = getSourceViewStyle(sourceDensity);
   const projectPath = useMemo(() => getProjectPath(projectId), [projectId]);
+  const projectRelativeCopyPath = useMemo(() => {
+    if (!isAbsoluteLikePath(filePath)) {
+      return normalizePathSeparators(filePath).replace(/^\.\/+/, "");
+    }
+    return getProjectRelativePath(filePath, projectPath);
+  }, [filePath, projectPath]);
+  const quoteableSourceContext = useMemo(
+    () =>
+      projectRelativeCopyPath
+        ? {
+            projectId,
+            filePath: projectRelativeCopyPath,
+            contentStartLine: fileData ? getContentStartLine(fileData) : 1,
+          }
+        : undefined,
+    [fileData, projectId, projectRelativeCopyPath],
+  );
   const fileViewerBodyRef = useRef<HTMLDivElement>(null);
   useRegisterQuoteableTextSource(
     fileViewerBodyRef,
     diffActive ? undefined : fileData?.content,
+    quoteableSourceContext,
   );
+  const startNewSessionWithPrefill = useStartNewSessionWithPrefillAction();
+  const startNewSessionFromSelection = useCallback(
+    (prefill: string) => {
+      startNewSessionWithPrefill(projectId, prefill);
+    },
+    [projectId, startNewSessionWithPrefill],
+  );
+  const {
+    floatingSelectionActions: standaloneSelectionActions,
+    selectionContextMenu: standaloneSelectionContextMenu,
+  } = useSelectionActions({
+    containerRef: fileViewerBodyRef,
+    inert: !standalone,
+    onStartNewSessionFromSelection:
+      publicShareContext === null ? startNewSessionFromSelection : undefined,
+    quoteClearSignal: 0,
+    isInteractiveTarget: (target) =>
+      target instanceof Element &&
+      target.closest(
+        "button, input, textarea, select, a[href], [contenteditable='true']",
+      ) !== null,
+  });
   const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const {
     modal: localMediaModal,
@@ -633,12 +675,6 @@ export const FileViewer = memo(function FileViewer({
     () => makeDisplayPath(filePath, projectPath),
     [filePath, projectPath],
   );
-  const projectRelativeCopyPath = useMemo(() => {
-    if (!isAbsoluteLikePath(filePath)) {
-      return normalizePathSeparators(filePath).replace(/^\.\/+/, "");
-    }
-    return getProjectRelativePath(filePath, projectPath);
-  }, [filePath, projectPath]);
   const absoluteCopyPath = useMemo(() => {
     return getAbsoluteFilePath(filePath, projectPath);
   }, [filePath, projectPath]);
@@ -1209,7 +1245,12 @@ export const FileViewer = memo(function FileViewer({
       )}
       {localResourceContextMenu}
       {loadedIsImage ? imageActions.contextMenuElement : null}
-      <div className="file-viewer-body" ref={fileViewerBodyRef}>
+      {standaloneSelectionContextMenu}
+      <div
+        className={`file-viewer-body ${viewerStyles.body}`}
+        ref={fileViewerBodyRef}
+      >
+        {standaloneSelectionActions}
         {renderContent()}
       </div>
       {localMediaModal ? (

@@ -8,6 +8,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  type SourceContextMenuAction,
+  useSourceContextMenu,
+} from "../components/SourceContextMenu";
+import {
   SELECTION_ACTION_BUTTON_MOBILE_SIZE_PX,
   SELECTION_ACTION_BUTTON_SIZE_PX,
   SELECTION_ACTION_GAP_PX,
@@ -63,6 +67,7 @@ interface UseMessageListSelectionQuoteOptions {
   containerRef: RefObject<HTMLDivElement | null>;
   inert: boolean;
   onQuoteSelection?: (quotedText: string) => string | null;
+  onStartNewSessionFromSelection?: (prefill: string) => void;
   composerDraftSignal?: ComposerDraftSignal;
   quoteClearSignal: number;
   isInteractiveTarget: (target: EventTarget | null) => boolean;
@@ -74,6 +79,79 @@ interface MessageListSelectionQuoteState {
   handleQuoteTextBlock: (anchor: CommentAnchor) => void;
   mobileSelectionActions: ReactNode;
   floatingSelectionActions: ReactNode;
+  selectionContextMenu: ReactNode;
+}
+
+function selectionText(snapshot: SelectionActionSnapshot): string {
+  return snapshot.snippets
+    .map((snippet, index) => {
+      const range = snapshot.ranges[index];
+      if (!range) return snippet.selectedText;
+      return (
+        getSemanticHtmlClipboardPayload(snapshot.root, [range])?.text ??
+        snippet.selectedText
+      );
+    })
+    .join("\n\n");
+}
+
+function selectionSource(snapshot: SelectionActionSnapshot): string {
+  return snapshot.snippets.map((snippet) => snippet.markdown).join("\n\n");
+}
+
+function selectionQuote(snapshot: SelectionActionSnapshot): string {
+  return snapshot.anchors.map((anchor) => anchor.quotedText).join("\n\n");
+}
+
+function selectionLocationLabel(
+  snapshot: SelectionActionSnapshot,
+): string | null {
+  const locations = snapshot.snippets.map((snippet) => snippet.sourceLocation);
+  if (locations.some((location) => location === undefined)) {
+    return null;
+  }
+  const first = locations[0];
+  if (
+    !first ||
+    locations.some(
+      (location) =>
+        location?.projectId !== first.projectId ||
+        location.filePath !== first.filePath,
+    )
+  ) {
+    return null;
+  }
+  const lineStart = Math.min(
+    ...locations.map((location) => location?.lineStart ?? first.lineStart),
+  );
+  const lineEnd = Math.max(
+    ...locations.map((location) => location?.lineEnd ?? first.lineEnd),
+  );
+  return `${first.filePath}:${lineStart}${lineEnd > lineStart ? `-${lineEnd}` : ""}`;
+}
+
+function newSessionSelectionPrefill(snapshot: SelectionActionSnapshot): string {
+  const quote = selectionQuote(snapshot);
+  const location = selectionLocationLabel(snapshot);
+  return location ? `${location}\n\n${quote}` : quote;
+}
+
+function pointIntersectsSelection(
+  snapshot: SelectionActionSnapshot,
+  x: number,
+  y: number,
+): boolean {
+  if (x === 0 && y === 0) return true;
+  return snapshot.ranges.some((range) => {
+    if (typeof range.getClientRects !== "function") return true;
+    return Array.from(range.getClientRects()).some(
+      (rect) =>
+        x >= rect.left - 1 &&
+        x <= rect.right + 1 &&
+        y >= rect.top - 1 &&
+        y <= rect.bottom + 1,
+    );
+  });
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -169,10 +247,11 @@ function shouldShieldTranscriptSelection(win: Window): boolean {
   return win.matchMedia?.("(pointer: coarse)").matches === true;
 }
 
-export function useMessageListSelectionQuote({
+export function useSelectionActions({
   containerRef,
   inert,
   onQuoteSelection,
+  onStartNewSessionFromSelection,
   composerDraftSignal,
   quoteClearSignal,
   isInteractiveTarget,
@@ -193,12 +272,19 @@ export function useMessageListSelectionQuote({
   const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
   const {
     selectionQuoteActionEnabled,
+    selectionTextCopyActionEnabled,
     selectionSourceCopyActionEnabled,
     selectionRichCopyActionEnabled,
+    selectionNewSessionActionEnabled,
   } = useSelectionActionPreferences();
   const alwaysShowQuoteCircles = quoteReplyButtonMode === "paragraph-always";
   const paragraphQuoteCirclesEnabled = quoteReplyButtonMode !== "block";
   const { t } = useI18n();
+  const { menu: selectionContextMenu, openAt: openSelectionContextMenuAt } =
+    useSourceContextMenu(t, {
+      dismiss: t("sessionDismissSelectionActions" as never),
+      menu: t("sessionSelectionActionMenu" as never),
+    });
 
   const applyCommentHighlight = useCallback(
     (anchors: readonly CommentAnchor[]) => {
@@ -347,6 +433,33 @@ export function useMessageListSelectionQuote({
     [applyQuoteAnchors],
   );
 
+  const captureSelectionActionSnapshot = useCallback(() => {
+    const root = containerRef.current;
+    const selection = root?.ownerDocument.getSelection();
+    if (
+      !root ||
+      !selection ||
+      selection.isCollapsed ||
+      selection.rangeCount === 0
+    ) {
+      return null;
+    }
+    const selectionRoot = getQuoteSelectionRoot(root, selection);
+    if (!selectionRoot) {
+      return null;
+    }
+    const snippets = extractMarkdownSnippetsFromSelection(selectionRoot);
+    if (snippets.length === 0) {
+      return null;
+    }
+    return {
+      anchors: snippets.map(createCommentAnchor),
+      snippets,
+      ranges: snippets.map((snippet) => snippet.range.cloneRange()),
+      root: selectionRoot,
+    } satisfies SelectionActionSnapshot;
+  }, [containerRef]);
+
   useEffect(() => {
     if (quoteClearSignal > 0) {
       updateCommentAnchors([]);
@@ -445,9 +558,12 @@ export function useMessageListSelectionQuote({
     const quoteActionAvailable =
       selectionQuoteActionEnabled && onQuoteSelection !== undefined;
     const actionCount = [
-      quoteActionAvailable,
+      selectionTextCopyActionEnabled,
       selectionSourceCopyActionEnabled,
       selectionRichCopyActionEnabled,
+      quoteActionAvailable,
+      selectionNewSessionActionEnabled &&
+        onStartNewSessionFromSelection !== undefined,
     ].filter(Boolean).length;
     if (inert || actionCount === 0) {
       setSelectionActions(null);
@@ -460,32 +576,13 @@ export function useMessageListSelectionQuote({
     }) => {
       const root = containerRef.current;
       const selection = root?.ownerDocument.getSelection();
-      if (
-        !root ||
-        !selection ||
-        selection.isCollapsed ||
-        selection.rangeCount === 0
-      ) {
+      const snapshot = captureSelectionActionSnapshot();
+      if (!root || !selection || !snapshot) {
         setSelectionActions(null);
         return;
       }
-
-      const selectionRoot = getQuoteSelectionRoot(root, selection);
-      if (!selectionRoot) {
-        setSelectionActions(null);
-        return;
-      }
-      const snippets = extractMarkdownSnippetsFromSelection(selectionRoot);
-      if (snippets.length === 0) {
-        setSelectionActions(null);
-        return;
-      }
-      const snapshot: SelectionActionSnapshot = {
-        anchors: snippets.map(createCommentAnchor),
-        snippets,
-        ranges: snippets.map((snippet) => snippet.range.cloneRange()),
-        root: selectionRoot,
-      };
+      const { snippets } = snapshot;
+      const selectionRoot = snapshot.root;
 
       const win = root.ownerDocument.defaultView ?? window;
       const mobile = shouldShieldTranscriptSelection(win);
@@ -670,12 +767,16 @@ export function useMessageListSelectionQuote({
       window.removeEventListener("scroll", updateFromSelectionRange, true);
     };
   }, [
+    captureSelectionActionSnapshot,
     containerRef,
     inert,
     onQuoteSelection,
+    onStartNewSessionFromSelection,
+    selectionNewSessionActionEnabled,
     selectionQuoteActionEnabled,
     selectionRichCopyActionEnabled,
     selectionSourceCopyActionEnabled,
+    selectionTextCopyActionEnabled,
   ]);
 
   useEffect(() => {
@@ -712,34 +813,121 @@ export function useMessageListSelectionQuote({
     selectionQuoteActionEnabled,
   ]);
 
-  const activateSelectionAction = (
-    kind: SelectionActionKind,
-    snapshot: SelectionActionSnapshot,
-  ): boolean => {
-    if (kind === "quote") {
-      return applyQuoteAnchors(snapshot.anchors);
-    }
-    if (kind === "source") {
-      const markdown = snapshot.snippets
-        .map((snippet) => snippet.markdown)
-        .join("\n\n");
-      if (!markdown) {
+  const activateSelectionAction = useCallback(
+    (kind: SelectionActionKind, snapshot: SelectionActionSnapshot): boolean => {
+      if (kind === "text") {
+        const text = selectionText(snapshot);
+        if (!text) return false;
+        void writeClipboardText(text);
+        return true;
+      }
+      if (kind === "quote") {
+        return applyQuoteAnchors(snapshot.anchors);
+      }
+      if (kind === "source") {
+        const source = selectionSource(snapshot);
+        if (!source) {
+          return false;
+        }
+        void writeClipboardText(source);
+        return true;
+      }
+      if (kind === "newSession") {
+        if (!onStartNewSessionFromSelection) return false;
+        onStartNewSessionFromSelection(newSessionSelectionPrefill(snapshot));
+        return true;
+      }
+
+      const payload = getSemanticHtmlClipboardPayload(
+        snapshot.root,
+        snapshot.ranges,
+      );
+      if (!payload) {
         return false;
       }
-      void writeClipboardText(markdown);
+      void writeClipboardRichText(payload.html, payload.text);
       return true;
-    }
+    },
+    [applyQuoteAnchors, onStartNewSessionFromSelection],
+  );
 
-    const payload = getSemanticHtmlClipboardPayload(
-      snapshot.root,
-      snapshot.ranges,
-    );
-    if (!payload) {
-      return false;
-    }
-    void writeClipboardRichText(payload.html, payload.text);
-    return true;
-  };
+  const selectionContextMenuActions = useCallback(
+    (snapshot: SelectionActionSnapshot): SourceContextMenuAction[] => {
+      const actions: SourceContextMenuAction[] = [
+        {
+          label: t("sessionCopySelectionText" as never),
+          onSelect: () => {
+            activateSelectionAction("text", snapshot);
+          },
+        },
+        {
+          label: t("sessionCopySelectionSource" as never),
+          onSelect: () => {
+            activateSelectionAction("source", snapshot);
+          },
+        },
+      ];
+      if (onQuoteSelection) {
+        actions.push({
+          label: t("sessionQuoteSelection" as never),
+          onSelect: () => {
+            activateSelectionAction("quote", snapshot);
+          },
+        });
+      }
+      if (onStartNewSessionFromSelection) {
+        actions.push({
+          label: t("sessionNewSessionFromSelection" as never),
+          onSelect: () => {
+            activateSelectionAction("newSession", snapshot);
+          },
+        });
+      }
+      return actions;
+    },
+    [
+      activateSelectionAction,
+      onQuoteSelection,
+      onStartNewSessionFromSelection,
+      t,
+    ],
+  );
+
+  useEffect(() => {
+    if (inert) return;
+    const root = containerRef.current;
+    const doc = root?.ownerDocument;
+    if (!root || !doc) return;
+
+    const handleContextMenu = (event: MouseEvent) => {
+      if (event.defaultPrevented || isInteractiveTarget(event.target)) return;
+      const snapshot = captureSelectionActionSnapshot();
+      if (
+        !snapshot ||
+        !pointIntersectsSelection(snapshot, event.clientX, event.clientY)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      openSelectionContextMenuAt(
+        event.clientX,
+        event.clientY,
+        doc.activeElement instanceof HTMLElement ? doc.activeElement : null,
+        selectionContextMenuActions(snapshot),
+      );
+    };
+
+    doc.addEventListener("contextmenu", handleContextMenu);
+    return () => doc.removeEventListener("contextmenu", handleContextMenu);
+  }, [
+    captureSelectionActionSnapshot,
+    containerRef,
+    inert,
+    isInteractiveTarget,
+    openSelectionContextMenuAt,
+    selectionContextMenuActions,
+  ]);
 
   const selectionActionsAreInPortal =
     selectionActions !== null &&
@@ -756,10 +944,10 @@ export function useMessageListSelectionQuote({
     kind: SelectionActionKind;
     label: string;
   }> = [];
-  if (selectionQuoteActionEnabled && onQuoteSelection) {
+  if (selectionTextCopyActionEnabled) {
     enabledSelectionActions.push({
-      kind: "quote",
-      label: t("sessionQuoteSelection"),
+      kind: "text",
+      label: t("sessionCopySelectionText" as never),
     });
   }
   if (selectionSourceCopyActionEnabled) {
@@ -772,6 +960,18 @@ export function useMessageListSelectionQuote({
     enabledSelectionActions.push({
       kind: "rich",
       label: t("sessionCopySelectionRich"),
+    });
+  }
+  if (selectionQuoteActionEnabled && onQuoteSelection) {
+    enabledSelectionActions.push({
+      kind: "quote",
+      label: t("sessionQuoteSelection"),
+    });
+  }
+  if (selectionNewSessionActionEnabled && onStartNewSessionFromSelection) {
+    enabledSelectionActions.push({
+      kind: "newSession",
+      label: t("sessionNewSessionFromSelection" as never),
     });
   }
   const selectionActionCluster = selectionActions ? (
@@ -835,5 +1035,9 @@ export function useMessageListSelectionQuote({
     handleQuoteTextBlock,
     mobileSelectionActions,
     floatingSelectionActions,
+    selectionContextMenu,
   };
 }
+
+/** Compatibility name for the transcript owner that established this hook. */
+export const useMessageListSelectionQuote = useSelectionActions;

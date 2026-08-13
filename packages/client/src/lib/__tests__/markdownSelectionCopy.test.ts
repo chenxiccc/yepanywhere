@@ -81,6 +81,19 @@ describe("getMarkdownForVisibleSelection", () => {
       }),
     ).toBe("**bold**");
   });
+
+  it("recovers original math delimiters from a rendered expression", () => {
+    expect(
+      getMarkdownForVisibleSelection("Value $x^2$.", "x^2", {
+        preferRenderedSource: true,
+      }),
+    ).toBe("$x^2$");
+    expect(
+      getMarkdownForVisibleSelection("Display \\[x^2\\].", "x^2", {
+        preferRenderedSource: true,
+      }),
+    ).toBe("\\[x^2\\]");
+  });
 });
 
 describe("extractMarkdownSnippetsFromSelection", () => {
@@ -185,6 +198,78 @@ describe("extractMarkdownSnippetsFromSelection", () => {
         sourceElement: source,
       },
     ]);
+
+    selection?.removeAllRanges();
+    unregister();
+    root.remove();
+  });
+
+  it("attaches file lines only for an unambiguous source span", () => {
+    const root = document.createElement("div");
+    const source = document.createElement("div");
+    source.textContent = "selected line";
+    root.append(source);
+    document.body.append(root);
+    const unregister = registerMarkdownCopySource(
+      source,
+      "before\nselected line\nafter",
+      {
+        projectId: "project-1",
+        filePath: "src/example.ts",
+        contentStartLine: 40,
+      },
+    );
+    const range = document.createRange();
+    range.selectNodeContents(source);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(
+      extractMarkdownSnippetsFromSelection(root)[0]?.sourceLocation,
+    ).toEqual({
+      projectId: "project-1",
+      filePath: "src/example.ts",
+      lineStart: 41,
+      lineEnd: 41,
+    });
+
+    unregister();
+    const unregisterAmbiguous = registerMarkdownCopySource(
+      source,
+      "selected line\nselected line",
+      {
+        projectId: "project-1",
+        filePath: "src/example.ts",
+      },
+    );
+    expect(
+      extractMarkdownSnippetsFromSelection(root)[0]?.sourceLocation,
+    ).toBeUndefined();
+
+    selection?.removeAllRanges();
+    unregisterAmbiguous();
+    root.remove();
+  });
+
+  it("maps a rendered KaTeX selection back to its original source", () => {
+    const root = document.createElement("div");
+    const source = document.createElement("div");
+    source.innerHTML = `<span class="katex"><span class="katex-mathml"><math><semantics><annotation encoding="application/x-tex">x^2</annotation></semantics></math></span><span class="katex-html"><span>rendered x²</span></span></span>`;
+    root.append(source);
+    document.body.append(root);
+    const unregister = registerMarkdownCopySource(source, "Value $x^2$.");
+    const visibleMath = source.querySelector(".katex-html span")?.firstChild;
+    expect(visibleMath).toBeTruthy();
+    const range = document.createRange();
+    range.selectNodeContents(visibleMath as Node);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(extractMarkdownSnippetsFromSelection(root)[0]?.markdown).toBe(
+      "$x^2$",
+    );
 
     selection?.removeAllRanges();
     unregister();

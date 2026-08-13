@@ -25,12 +25,14 @@ Status: **Phase 1 shipped 2026-06-23; the two early contract gaps fixed
 2026-06-23; the dedicated assistant quote lane fixed 2026-06-25; initial
 Phase 2 scope widening shipped 2026-07-01; portaled modal/file scope shipped
 2026-07-27; pressed-pointer tooltip suppression landed 2026-08-10; stable
-selection actions and independent controls landed 2026-08-12.**
+selection actions and independent controls landed 2026-08-12; selected-text
+context actions and source-cited new-session transfer landed 2026-08-13.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
-removed or sent. A selected range can also expose independently configurable
-source-copy and semantic rich-copy actions. Thinking summaries, user turns,
+removed or sent. A selected range also exposes a full copy/quote/new-session
+context menu and independently configurable compact actions. Thinking
+summaries, user turns,
 Ran/Bash command and output text, Grep preview/content text, recap rows,
 expanded Edit/Read file content, general file viewers, and session hovercard
 prompt/reply text now use the same selection pipeline. Right-mouse line-select
@@ -98,16 +100,17 @@ The early Phase 1 gaps were fixed 2026-06-23, verified in the running app.
 - **Quote circle** — the circled `>` affordance that triggers quote-comment.
   Two placements: floating next to a live selection, and one per paragraph.
 - **Selection action cluster** — the non-obscuring row of enabled circles for a
-  live selection: green `>` quote, blue `MD` source copy, and purple `Aa` rich
-  copy.
+  live selection: neutral copy icon for visible text, blue `</>` source copy,
+  purple `Aa` rich copy, green `>` quote reply, and green `+` new session.
 
 The vernacular here is GitHub's "quote reply" (`>` blockquotes), which is the
 mental model the feature was requested under.
 
 ## What the user sees (contract)
 
-Three quote entry points, one quote action. The live-selection entry point can
-also expose two explicit copy projections.
+Three quote entry points, one quote action. A live selection also owns one
+shared action snapshot consumed by its compact action cluster and full context
+menu.
 
 1. **Type over a selection.** With a non-collapsed selection inside agent
    output and focus *not* already in a text field, the first printable
@@ -116,14 +119,20 @@ also expose two explicit copy projections.
    of the comment typed below the quote.
 2. **Action cluster near a selection.** Enabled circles appear beside a live
    selection without covering it. The green `>` focuses the composer (raising
-   the soft keyboard on touch) and runs the same quote-comment. The optional
-   blue `MD` action copies the best aligned Markdown/source span, matching the
-   default `Ctrl/Cmd+C` projection. The optional purple `Aa` action copies
-   semantic HTML with a visible-text `text/plain` representation and strips YA
-   presentation styling. A control press preserves a snapshot of the selected
-   source snippets and DOM ranges, so the action remains valid when the native
-   highlight collapses during the press.
-3. **Per-paragraph quote circle.** Each agent paragraph/block carries a circled
+   the soft keyboard on touch) and runs the same quote-comment. Optional
+   copy, `</>`, `Aa`, and `+` actions copy visible text, copy source, copy
+   semantic rich text, or open a same-project new-session composer. A control
+   press preserves a snapshot of the selected source snippets and DOM ranges,
+   so the action remains valid when the native highlight collapses during the
+   press.
+3. **Context menu over selected text.** Right-clicking inside a non-empty,
+   registered selection opens direct **Copy text**, **Copy source**, **Quote
+   reply**, and **New session** rows, omitting actions whose destination is not
+   available. This full menu does not depend on which compact bubble actions
+   are enabled. A right-click outside the selected range retains its ordinary
+   browser or component-owned behavior; project-path menus remain authoritative
+   over their links.
+4. **Per-paragraph quote circle.** Each agent paragraph/block carries a circled
    `>` at its end. Default visibility is hover-revealed on desktop, like the
    existing copy and render-toggle buttons in `text-block-actions`
    (`components/blocks/TextBlock.tsx`). An **Appearance** option — "always show
@@ -136,13 +145,29 @@ also expose two explicit copy projections.
    sub-range instead of the whole paragraph.
 
 The **Appearance** rows immediately after `> Reply Buttons` separately control
-selection quote, source-copy, and rich-copy. Each row shows the actual enabled
-circle in its final color and style next to its caption, description, and
-toggle. Selection quote remains on by default to preserve the established
-behavior; the two additional copy circles are default-off. Disabling selection
-quote also disables the type-over-selection trigger, but does not affect the
-paragraph reply-button mode. Hiding the blue source-copy circle never changes
-the default source-aware `Ctrl/Cmd+C` behavior.
+selection quote, visible-text copy, source copy, rich copy, and new session.
+Each row shows the actual enabled circle in its final color and style next to
+its caption, description, and toggle. Selection quote remains on by default to
+preserve the established behavior; the four additional circles are
+default-off. Disabling selection quote also disables the type-over-selection
+trigger, but does not affect the paragraph reply-button mode. Hiding the source
+copy circle never changes the default source-aware `Ctrl/Cmd+C` behavior or the
+complete context menu.
+
+**Source means pre-render input, not Markdown specifically.** A registered
+renderer supplies the authored representation it transformed. For prose this
+is usually Markdown; for rendered math it includes the original delimiters and
+TeX expression; for fixed-font and tool content it may be plain source text.
+When YA cannot align a transformed sub-range confidently, copy/quote falls back
+to selected visible text and never invents source syntax.
+
+**New-session transfer.** Transcript selections prefill the same-project
+composer with the selected text as a `>` blockquote. A file-viewer selection
+prepends `project/relative/path:line` or `:start-end` when every selected source
+span maps unambiguously to one file. Repeated or structurally transformed text
+without a reliable source offset still transfers the quote but omits the line
+citation. A session-owned modal also keeps **Quote reply**; a standalone file
+viewer has copy and new-session actions but no current-session quote target.
 
 The quote block itself:
 

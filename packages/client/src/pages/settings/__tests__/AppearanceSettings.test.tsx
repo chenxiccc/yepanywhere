@@ -185,48 +185,78 @@ describe("AppearanceSettings", () => {
     const quoteToggle = screen.getByRole<HTMLInputElement>("checkbox", {
       name: "Quote selected text",
     });
+    const textToggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Copy selected text button",
+    });
     const sourceToggle = screen.getByRole<HTMLInputElement>("checkbox", {
       name: "Copy selected source",
     });
     const richToggle = screen.getByRole<HTMLInputElement>("checkbox", {
       name: "Copy selected rich text",
     });
+    const newSessionToggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "New session from selection button",
+    });
     const quoteRow = quoteToggle.closest("[data-settings-item]");
+    const textRow = textToggle.closest("[data-settings-item]");
     const sourceRow = sourceToggle.closest("[data-settings-item]");
     const richRow = richToggle.closest("[data-settings-item]");
+    const newSessionRow = newSessionToggle.closest("[data-settings-item]");
 
     expect(quoteToggle.checked).toBe(true);
+    expect(textToggle.checked).toBe(false);
     expect(sourceToggle.checked).toBe(false);
     expect(richToggle.checked).toBe(false);
+    expect(newSessionToggle.checked).toBe(false);
     expect(quoteRow?.previousElementSibling?.textContent).toContain(
       "> Reply Buttons",
     );
-    expect(sourceRow?.previousElementSibling).toBe(quoteRow);
+    expect(textRow?.previousElementSibling).toBe(quoteRow);
+    expect(sourceRow?.previousElementSibling).toBe(textRow);
     expect(richRow?.previousElementSibling).toBe(sourceRow);
+    expect(newSessionRow?.previousElementSibling).toBe(richRow);
     expect(
       quoteRow?.querySelector('[data-selection-action-specimen="quote"]')
         ?.textContent,
     ).toBe(">");
     expect(
+      textRow
+        ?.querySelector('[data-selection-action-specimen="text"]')
+        ?.querySelector("svg"),
+    ).toBeTruthy();
+    expect(
       sourceRow?.querySelector('[data-selection-action-specimen="source"]')
         ?.textContent,
-    ).toBe("MD");
+    ).toBe("</>");
     expect(
       richRow?.querySelector('[data-selection-action-specimen="rich"]')
         ?.textContent,
     ).toBe("Aa");
+    expect(
+      newSessionRow?.querySelector(
+        '[data-selection-action-specimen="newSession"]',
+      )?.textContent,
+    ).toBe("+");
 
     fireEvent.click(quoteToggle);
+    fireEvent.click(textToggle);
     fireEvent.click(sourceToggle);
     fireEvent.click(richToggle);
+    fireEvent.click(newSessionToggle);
 
     expect(localStorage.getItem(UI_KEYS.selectionQuoteActionEnabled)).toBe(
       "false",
+    );
+    expect(localStorage.getItem(UI_KEYS.selectionTextCopyActionEnabled)).toBe(
+      "true",
     );
     expect(localStorage.getItem(UI_KEYS.selectionSourceCopyActionEnabled)).toBe(
       "true",
     );
     expect(localStorage.getItem(UI_KEYS.selectionRichCopyActionEnabled)).toBe(
+      "true",
+    );
+    expect(localStorage.getItem(UI_KEYS.selectionNewSessionActionEnabled)).toBe(
       "true",
     );
   });

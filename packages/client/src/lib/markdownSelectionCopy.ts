@@ -37,6 +37,7 @@ interface NormalizedTextMap {
 
 interface RangeTextWithinElement {
   selectedText: string;
+  sourceSelectedText: string;
   textBefore: string;
   preferExactSource: boolean;
   range: Range;
@@ -47,9 +48,32 @@ export interface MarkdownSelectionSnippet {
   selectedText: string;
   sourceElement: HTMLElement;
   range: Range;
+  sourceLocation?: SelectionSourceLocation;
 }
 
-const markdownCopySources = new WeakMap<HTMLElement, string>();
+export interface SelectionSourceLocation {
+  projectId: string;
+  filePath: string;
+  lineStart: number;
+  lineEnd: number;
+}
+
+export interface MarkdownCopySourceContext {
+  projectId: string;
+  filePath: string;
+  /** One-indexed line represented by source offset zero. */
+  contentStartLine?: number;
+}
+
+interface RegisteredMarkdownCopySource {
+  source: string;
+  context?: MarkdownCopySourceContext;
+}
+
+const markdownCopySources = new WeakMap<
+  HTMLElement,
+  RegisteredMarkdownCopySource
+>();
 
 function closestQuoteSelectionRoot(node: Node | null): HTMLElement | null {
   const element =
@@ -104,9 +128,10 @@ export function getQuoteSelectionRootForTarget(
 export function registerMarkdownCopySource(
   element: HTMLElement,
   source: string,
+  context?: MarkdownCopySourceContext,
 ): () => void {
   element.setAttribute(MARKDOWN_COPY_SOURCE_ATTR, "true");
-  markdownCopySources.set(element, source);
+  markdownCopySources.set(element, { source, context });
 
   return () => {
     markdownCopySources.delete(element);
@@ -160,10 +185,11 @@ export function extractMarkdownSnippetsFromSelection(
         continue;
       }
 
-      const source = markdownCopySources.get(element);
-      if (!source) {
+      const registeredSource = markdownCopySources.get(element);
+      if (!registeredSource) {
         continue;
       }
+      const { source } = registeredSource;
 
       const rangeText = getRangeTextWithinElement(range, element);
       if (!rangeText?.selectedText.trim()) {
@@ -171,9 +197,11 @@ export function extractMarkdownSnippetsFromSelection(
       }
 
       const markdown =
-        getMarkdownForVisibleSelection(source, rangeText.selectedText, {
+        getMarkdownForVisibleSelection(source, rangeText.sourceSelectedText, {
           textBefore: rangeText.textBefore,
           preferExactSource: rangeText.preferExactSource,
+          preferRenderedSource:
+            rangeText.sourceSelectedText !== rangeText.selectedText,
         }) ?? rangeText.selectedText;
       const normalized = trimBoundaryNewlines(markdown);
       if (normalized.trim()) {
@@ -182,6 +210,11 @@ export function extractMarkdownSnippetsFromSelection(
           selectedText: rangeText.selectedText,
           sourceElement: element,
           range: rangeText.range,
+          sourceLocation: getSelectionSourceLocation(
+            source,
+            normalized,
+            registeredSource.context,
+          ),
         });
       }
     }
@@ -193,7 +226,8 @@ export function extractMarkdownSnippetsFromSelection(
 export function getMarkdownSnippetForElement(
   element: HTMLElement,
 ): MarkdownSelectionSnippet | null {
-  const source = markdownCopySources.get(element);
+  const registeredSource = markdownCopySources.get(element);
+  const source = registeredSource?.source;
   if (!source?.trim()) {
     return null;
   }
@@ -203,6 +237,11 @@ export function getMarkdownSnippetForElement(
     selectedText: element.innerText || element.textContent || source,
     sourceElement: element,
     range,
+    sourceLocation: getSelectionSourceLocation(
+      source,
+      trimBoundaryNewlines(source),
+      registeredSource?.context,
+    ),
   };
 }
 
@@ -216,7 +255,8 @@ export function getMarkdownSnippetForSubElement(
   sourceElement: HTMLElement,
   blockElement: HTMLElement,
 ): MarkdownSelectionSnippet | null {
-  const source = markdownCopySources.get(sourceElement);
+  const registeredSource = markdownCopySources.get(sourceElement);
+  const source = registeredSource?.source;
   if (!source?.trim()) {
     return null;
   }
@@ -244,7 +284,50 @@ export function getMarkdownSnippetForSubElement(
     selectedText,
     sourceElement,
     range,
+    sourceLocation: getSelectionSourceLocation(
+      source,
+      normalized,
+      registeredSource?.context,
+    ),
   };
+}
+
+function getSelectionSourceLocation(
+  source: string,
+  selectedSource: string,
+  context: MarkdownCopySourceContext | undefined,
+): SelectionSourceLocation | undefined {
+  if (!context || !selectedSource) {
+    return undefined;
+  }
+  const sourceStart = source.indexOf(selectedSource);
+  if (
+    sourceStart < 0 ||
+    source.indexOf(selectedSource, sourceStart + selectedSource.length) >= 0
+  ) {
+    return undefined;
+  }
+  const sourceEnd = sourceStart + selectedSource.length;
+  const contentStartLine = context.contentStartLine ?? 1;
+  const lineStart =
+    contentStartLine + countNewlines(source.slice(0, sourceStart));
+  const lineEnd =
+    contentStartLine +
+    countNewlines(source.slice(0, Math.max(sourceStart, sourceEnd - 1)));
+  return {
+    projectId: context.projectId,
+    filePath: context.filePath,
+    lineStart,
+    lineEnd,
+  };
+}
+
+function countNewlines(value: string): number {
+  let count = 0;
+  for (const character of value) {
+    if (character === "\n") count += 1;
+  }
+  return count;
 }
 
 function createTextContentRange(element: HTMLElement): Range {
@@ -281,6 +364,7 @@ export function getMarkdownForVisibleSelection(
   options: {
     textBefore?: string;
     preferExactSource?: boolean;
+    preferRenderedSource?: boolean;
   } = {},
 ): string | null {
   const normalizedSource = normalizeLineEndings(source);
@@ -299,6 +383,15 @@ export function getMarkdownForVisibleSelection(
   );
   if (quartoIncludeSelection) {
     return quartoIncludeSelection;
+  }
+  if (options.preferRenderedSource) {
+    const mathSelection = findDelimitedMathSourceSelection(
+      normalizedSource,
+      normalizedSelection,
+    );
+    if (mathSelection) {
+      return mathSelection;
+    }
   }
   if (
     exactSelection !== null &&
@@ -442,6 +535,30 @@ function findQuartoIncludeSourceSelection(
   return null;
 }
 
+function findDelimitedMathSourceSelection(
+  source: string,
+  renderedSource: string,
+): string | null {
+  const expression = trimBoundaryNewlines(renderedSource).trim();
+  if (!expression) return null;
+  const candidates = [
+    `$$${expression}$$`,
+    `$${expression}$`,
+    `\\(${expression}\\)`,
+    `\\[${expression}\\]`,
+  ];
+  let match: string | null = null;
+  for (const candidate of candidates) {
+    const first = source.indexOf(candidate);
+    if (first < 0) continue;
+    if (source.indexOf(candidate, first + candidate.length) >= 0 || match) {
+      return null;
+    }
+    match = candidate;
+  }
+  return match;
+}
+
 function normalizeLineEndings(value: string): string {
   return value.replace(/\r\n?/g, "\n");
 }
@@ -493,12 +610,48 @@ function getRangeTextWithinElement(
 
   return {
     selectedText: clippedRange.toString(),
+    sourceSelectedText:
+      getRenderedSourceSelectionText(clippedRange) ?? clippedRange.toString(),
     textBefore: beforeRange.toString(),
     preferExactSource: sourceModeElements.some((sourceElement) =>
       rangeIntersectsNode(clippedRange, sourceElement),
     ),
     range: clippedRange,
   };
+}
+
+function getRenderedSourceSelectionText(range: Range): string | null {
+  const startMath = closestKatexElement(range.startContainer);
+  const endMath = closestKatexElement(range.endContainer);
+  if (startMath && startMath === endMath) {
+    return getKatexSource(startMath);
+  }
+  const doc = range.startContainer.ownerDocument ?? document;
+  const wrapper = doc.createElement("div");
+  wrapper.append(range.cloneContents());
+  const mathElements = Array.from(
+    wrapper.querySelectorAll<HTMLElement>(".katex"),
+  );
+  if (mathElements.length === 0) return null;
+  for (const math of mathElements) {
+    const source = getKatexSource(math);
+    if (source === null) return null;
+    math.replaceWith(math.ownerDocument.createTextNode(source));
+  }
+  return wrapper.textContent;
+}
+
+function closestKatexElement(node: Node): HTMLElement | null {
+  const element =
+    node instanceof HTMLElement ? node : (node.parentElement ?? null);
+  return element?.closest<HTMLElement>(".katex") ?? null;
+}
+
+function getKatexSource(element: HTMLElement): string | null {
+  const annotation = element.querySelector(
+    'annotation[encoding="application/x-tex"]',
+  );
+  return annotation?.textContent ?? null;
 }
 
 function splitSourceLines(source: string): SourceLine[] {

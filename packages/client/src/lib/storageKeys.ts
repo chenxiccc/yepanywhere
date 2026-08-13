@@ -76,10 +76,14 @@ export const UI_KEYS = {
   sessionGeneratedTitleLength: "yep-anywhere-session-generated-title-length",
   quoteReplyButtonMode: "yep-anywhere-quote-reply-button-mode",
   selectionQuoteActionEnabled: "yep-anywhere-selection-quote-action-enabled",
+  selectionTextCopyActionEnabled:
+    "yep-anywhere-selection-text-copy-action-enabled",
   selectionSourceCopyActionEnabled:
     "yep-anywhere-selection-source-copy-action-enabled",
   selectionRichCopyActionEnabled:
     "yep-anywhere-selection-rich-copy-action-enabled",
+  selectionNewSessionActionEnabled:
+    "yep-anywhere-selection-new-session-action-enabled",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
   settingsSearchMatchValues: "yep-anywhere-settings-search-match-values",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",

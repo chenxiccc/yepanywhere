@@ -10,7 +10,12 @@ export const SELECTION_ACTION_BUTTON_SIZE_PX = 30;
 export const SELECTION_ACTION_BUTTON_MOBILE_SIZE_PX = 44;
 export const SELECTION_ACTION_GAP_PX = 6;
 
-export type SelectionActionKind = "quote" | "source" | "rich";
+export type SelectionActionKind =
+  | "text"
+  | "source"
+  | "rich"
+  | "quote"
+  | "newSession";
 
 interface SelectionActionButtonProps {
   kind: SelectionActionKind;
@@ -21,15 +26,38 @@ interface SelectionActionButtonProps {
   specimen?: boolean;
 }
 
-const GLYPHS: Record<SelectionActionKind, string> = {
+function CopyTextGlyph() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="9" height="9" rx="1.5" />
+      <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+    </svg>
+  );
+}
+
+const GLYPHS: Record<SelectionActionKind, ReactNode> = {
+  text: <CopyTextGlyph />,
   quote: ">",
-  source: "MD",
+  source: "</>",
   rich: "Aa",
+  newSession: "+",
 };
 const KIND_STYLES: Record<SelectionActionKind, string> = {
+  text: styles.text!,
   quote: styles.quote!,
   source: styles.source!,
   rich: styles.rich!,
+  newSession: styles.newSession!,
 };
 
 export function SelectionActionButton({

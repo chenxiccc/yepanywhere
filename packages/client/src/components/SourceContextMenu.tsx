@@ -31,6 +31,11 @@ export interface SourceContextMenuAction {
   separatorBefore?: boolean;
 }
 
+export interface SourceContextMenuLabels {
+  dismiss: string;
+  menu: string;
+}
+
 interface OpenSourceContextMenu {
   actions: SourceContextMenuAction[];
   x: number;
@@ -80,11 +85,12 @@ export interface SourceContextMenuController {
 }
 
 /**
- * One gesture and keyboard contract for Source Control action menus. Callers
- * supply only the actions appropriate to a revision, file, or diff line.
+ * One gesture and keyboard contract for compact action menus. Source Control
+ * established this facility; other callers supply their own actions and labels.
  */
 export function useSourceContextMenu(
   t: TranslationFn,
+  labels?: SourceContextMenuLabels,
 ): SourceContextMenuController {
   const [open, setOpen] = useState<OpenSourceContextMenu | null>(null);
   const longPressRef = useRef<{
@@ -296,7 +302,9 @@ export function useSourceContextMenu(
   }, [endLongPress, finishPointerSequence]);
 
   return {
-    menu: open ? <SourceContextMenu {...open} onClose={close} t={t} /> : null,
+    menu: open ? (
+      <SourceContextMenu {...open} labels={labels} onClose={close} t={t} />
+    ) : null,
     targetProps,
     openAt,
     openFromButton,
@@ -336,9 +344,11 @@ function SourceContextMenu({
   returnFocus,
   onClose,
   t,
+  labels,
 }: OpenSourceContextMenu & {
   onClose: () => void;
   t: TranslationFn;
+  labels?: SourceContextMenuLabels;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -407,7 +417,7 @@ function SourceContextMenu({
       <button
         type="button"
         className={styles.overlay}
-        aria-label={t("sourceDismissActions")}
+        aria-label={labels?.dismiss ?? t("sourceDismissActions")}
         onClick={() => {
           onClose();
           returnFocus?.focus();
@@ -422,7 +432,7 @@ function SourceContextMenu({
         ref={menuRef}
         className={styles.menu}
         role="menu"
-        aria-label={t("sourceActionMenu")}
+        aria-label={labels?.menu ?? t("sourceActionMenu")}
         style={{
           left: Math.max(8, Math.min(x, window.innerWidth - 232)),
           top: Math.max(8, Math.min(y, window.innerHeight - estimatedHeight)),

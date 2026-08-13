@@ -151,16 +151,19 @@ file links should therefore inherit the same source/preview controls,
 large-file windowing, hline span markers, scrollbars, copy affordance, media
 hydration, and public-share capability scoping.
 
-Ordinary copy from a rendered Markdown file preview uses the registered source
-mapping and writes the best aligned Markdown span to `text/plain`. It must not
-be preempted by the preview's rich-text serializer: source-preserving
-`Ctrl/Cmd+C` is the default document-copy contract. The independently enabled
-blue `MD` selection action invokes the same best-effort source projection. The
-purple `Aa` companion serializes the stored selection ranges as semantic HTML
-plus visible plain text for users who want the rendered projection. If the
-browser cannot write multiple clipboard representations, the rich action falls
-back to its visible plain-text representation. These buttons are default-off;
-their visibility never changes the keyboard-copy contract.
+Ordinary copy from a rendered document uses the registered pre-render source
+mapping and writes the best aligned authored span to `text/plain`. For a
+Markdown preview that is Markdown; for a rendered math selection it includes
+the original TeX expression and delimiters when they can be recovered
+unambiguously. It must not be preempted by the preview's rich-text serializer:
+source-preserving `Ctrl/Cmd+C` is the default document-copy contract. The
+independently enabled blue `</>` selection action invokes the same best-effort
+source projection. The purple `Aa` companion serializes the stored selection
+ranges as semantic HTML plus visible plain text for users who want the rendered
+projection. If the browser cannot write multiple clipboard representations,
+the rich action falls back to its visible plain-text representation. These
+buttons are default-off; their visibility never changes the keyboard-copy
+contract.
 
 Semantic rich-text copy from Σ-rendered fixed-font/diff views must not carry
 YA's display presentation into the destination. Its handler serializes the

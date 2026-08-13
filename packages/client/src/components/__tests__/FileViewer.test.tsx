@@ -275,6 +275,60 @@ describe("FileViewer", () => {
     expect(window.location.search).toBe("?projectId=project-id");
   });
 
+  it("prefills a new session from a selected standalone file line", async () => {
+    const projectRoot = "/work/project";
+    const projectId = toUrlProjectId(projectRoot);
+    const filePath = `${projectRoot}/src/App.ts`;
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: filePath,
+        size: 30,
+        mimeType: "text/typescript",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "first line\nselected line\nthird line",
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+    };
+
+    render(
+      <I18nProvider>
+        <FileViewer
+          projectId={projectId}
+          filePath={filePath}
+          source={source}
+          standalone
+        />
+      </I18nProvider>,
+    );
+
+    const selectedLine = await screen.findByText("selected line");
+    const range = document.createRange();
+    range.selectNodeContents(selectedLine);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.contextMenu(screen.getByText("src/App.ts"));
+    expect(screen.getByRole("menuitem", { name: "New session" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Copy text" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss file menu" }));
+
+    fireEvent.contextMenu(selectedLine, { clientX: 0, clientY: 0 });
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Copy text", "Copy source", "New session"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "New session" }));
+
+    expect(getNewSessionPrefill(LOCAL_CLIENT_SUMMARY_SOURCE_KEY)).toBe(
+      "src/App.ts:2\n\n> selected line",
+    );
+    expect(window.location.pathname).toBe("/new-session");
+    expect(window.location.search).toBe(`?projectId=${projectId}`);
+  });
+
   it("marks and scrolls a line range 10% below the viewer top", async () => {
     let scrollTop = 0;
     Object.defineProperty(HTMLElement.prototype, "clientHeight", {
