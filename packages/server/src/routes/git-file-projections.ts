@@ -104,6 +104,7 @@ export function createGitFileProjectionRoutes(
 
       return c.json(
         await renderFileProjection(
+          c.req.param("projectId"),
           projectPath,
           baseSha,
           file,
@@ -198,6 +199,7 @@ async function listUntrackedFiles(cwd: string): Promise<string[]> {
 }
 
 async function renderFileProjection(
+  projectId: string,
   cwd: string,
   baseSha: string,
   file: GitFileChange,
@@ -235,6 +237,7 @@ async function renderFileProjection(
     path: file.path,
     oldContent,
     newContent,
+    markdownProject: { id: projectId, path: cwd },
     fullContext,
   });
   if (!result.previewSkipped) {

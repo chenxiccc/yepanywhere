@@ -243,6 +243,10 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
         path,
         oldContent,
         newContent,
+        markdownProject: {
+          id: c.req.param("projectId"),
+          path: projectPath,
+        },
         fullContext,
         ignoreWhitespace,
       });

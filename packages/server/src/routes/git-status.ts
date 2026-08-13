@@ -633,6 +633,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         path,
         oldContent,
         newContent,
+        markdownProject: { id: projectId, path: project.path },
         fullContext,
         ignoreWhitespace,
       });

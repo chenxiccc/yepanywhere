@@ -360,6 +360,92 @@ export default async function globalSetup() {
     `[E2E] Created clean Source Control fixture at ${sourceControlProjectPath}`,
   );
 
+  // A separate dirty Quarto project exercises the rendered-document path
+  // without changing the clean-landing fixture above.
+  const sourceControlQmdProjectPath = join(
+    E2E_TEMP_DIR,
+    "source-control-qmd-project",
+  );
+  mkdirSync(join(sourceControlQmdProjectPath, "sections"), { recursive: true });
+  writeFileSync(
+    join(sourceControlQmdProjectPath, "sections", "_introduction.qmd"),
+    "Included introduction.\n",
+  );
+  writeFileSync(
+    join(sourceControlQmdProjectPath, "report.qmd"),
+    [
+      "---",
+      "title: Initial report",
+      "---",
+      "",
+      "# Initial Quarto report",
+      "",
+      "{{< include sections/_introduction.qmd >}}",
+      "",
+    ].join("\n"),
+  );
+  execFileSync("git", ["init", "--initial-branch=main"], {
+    cwd: sourceControlQmdProjectPath,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["add", "report.qmd", "sections/_introduction.qmd"], {
+    cwd: sourceControlQmdProjectPath,
+    stdio: "ignore",
+  });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=YA E2E",
+      "-c",
+      "user.email=ya-e2e@example.invalid",
+      "commit",
+      "-m",
+      "Seed Quarto source control fixture",
+    ],
+    {
+      cwd: sourceControlQmdProjectPath,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: "2026-01-04T00:00:00Z",
+        GIT_COMMITTER_DATE: "2026-01-04T00:00:00Z",
+      },
+      stdio: "ignore",
+    },
+  );
+  writeFileSync(
+    join(sourceControlQmdProjectPath, "report.qmd"),
+    [
+      "---",
+      "title: Updated report",
+      "---",
+      "",
+      "# Updated Quarto report",
+      "",
+      "{{< include sections/_introduction.qmd >}}",
+      "",
+    ].join("\n"),
+  );
+  const sourceControlQmdSessionDir = join(
+    E2E_CLAUDE_SESSIONS_DIR,
+    hostname(),
+    sourceControlQmdProjectPath.replace(/[/\\:]/g, "-"),
+  );
+  mkdirSync(sourceControlQmdSessionDir, { recursive: true });
+  writeFileSync(
+    join(sourceControlQmdSessionDir, "source-control-qmd-001.jsonl"),
+    JSON.stringify({
+      type: "user",
+      cwd: sourceControlQmdProjectPath,
+      message: { role: "user", content: "Inspect the Quarto report" },
+      timestamp: "2026-01-04T00:00:01.000Z",
+      uuid: "source-control-qmd-user-1",
+    }),
+  );
+  console.log(
+    `[E2E] Created Quarto Source Control fixture at ${sourceControlQmdProjectPath}`,
+  );
+
   const absoluteViewerSessionFile = join(
     mockSessionDir,
     "file-viewer-absolute-001.jsonl",

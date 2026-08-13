@@ -123,6 +123,10 @@ export function createGitProjectionRoutes(deps: GitProjectionDeps): Hono {
         path: body.path,
         oldContent,
         newContent,
+        markdownProject: {
+          id: c.req.param("projectId"),
+          path: projectPath,
+        },
         fullContext: body.fullContext,
         ignoreWhitespace: body.ignoreWhitespace,
       });

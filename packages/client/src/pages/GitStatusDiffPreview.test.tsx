@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import type { GitDiffResult, GitFileChange } from "@yep-anywhere/shared";
+import {
+  type GitDiffResult,
+  type GitFileChange,
+  MARKDOWN_LIKE_FILE_EXTENSIONS,
+} from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -170,6 +174,36 @@ describe("GitDiffBody", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
   });
+
+  it.each([...MARKDOWN_LIKE_FILE_EXTENSIONS])(
+    "offers Markdown preview for .%s Source Control diffs",
+    async (extension) => {
+      getGitDiff.mockResolvedValue({
+        ...result("source"),
+        markdownHtml: "<p>rendered document</p>",
+      });
+      listReviewComments.mockResolvedValue({
+        comments: [],
+        batches: [],
+        pendingCount: 0,
+      });
+
+      render(
+        <MemoryRouter>
+          <GitDiffBody
+            file={{ ...FILE, path: `notes/live.${extension}` }}
+            fileKey={`notes/live.${extension}`}
+            projectId="p1"
+            t={t}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole("button", { name: "gitStatusPreview" }),
+      ).toBeTruthy();
+    },
+  );
 
   it("keeps file identity readable beside compact glyph controls", async () => {
     getGitDiff.mockResolvedValue(result("compact"));

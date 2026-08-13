@@ -1,5 +1,9 @@
-import { dirname, extname } from "node:path";
-import type { GitDiffResult } from "@yep-anywhere/shared";
+import { dirname, isAbsolute, resolve } from "node:path";
+import {
+  type GitDiffResult,
+  isMarkdownLikeFile,
+  isQuartoMarkdownFile,
+} from "@yep-anywhere/shared";
 import {
   computeEditDiffHtml,
   computeEditPatch,
@@ -19,6 +23,10 @@ export interface BuildGitDiffResultInput {
   path: string;
   oldContent: string;
   newContent: string;
+  markdownProject?: {
+    id: string;
+    path: string;
+  };
   fullContext?: boolean;
   ignoreWhitespace?: boolean;
 }
@@ -68,17 +76,25 @@ export async function buildGitDiffResult(
     structuredPatch: hunks,
   };
 
-  const ext = extname(input.path).toLowerCase();
   if (
-    (ext === ".md" || ext === ".markdown" || ext === ".qmd") &&
+    isMarkdownLikeFile(input.path) &&
     input.newContent &&
     // Unlike the diff, a markdown preview renders the whole file.
     input.newContent.length <= GIT_DIFF_PREVIEW_MAX_DIFF_CHARS
   ) {
     try {
+      const project = input.markdownProject;
+      const localFileBasePath = project
+        ? resolve(project.path, dirname(input.path))
+        : isAbsolute(input.path)
+          ? dirname(input.path)
+          : undefined;
       result.markdownHtml = await renderMarkdownToHtml(input.newContent, {
-        localFileBasePath: dirname(input.path),
-        quartoMarkdown: ext === ".qmd",
+        localFileBasePath,
+        quartoMarkdown: isQuartoMarkdownFile(input.path),
+        projectFileLinks: project
+          ? { projectId: project.id, projectPath: project.path }
+          : undefined,
       });
     } catch {
       // Markdown preview is optional; the source diff remains usable.

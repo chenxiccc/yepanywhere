@@ -24,6 +24,7 @@ import { Modal } from "../components/ui/Modal";
 import { useDiffViewMode } from "../hooks/useDiffViewMode";
 import { isEditableKeyboardTarget } from "../hooks/useSourceKeyboard";
 import { type DiffViewMode, resolveDiffViewMode } from "../lib/diffSideBySide";
+import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { DiffCommentController } from "./DiffCommentLayer";
 import { SideBySideDiff } from "./SideBySideDiff";
 import { UnifiedDiff } from "./UnifiedDiff";
@@ -729,7 +730,7 @@ function GitDiffContent({
     );
   }, [viewMode, setViewMode]);
 
-  const isMarkdown = /\.(md|markdown)$/i.test(file.path);
+  const isMarkdown = isMarkdownLikeFile(file.path);
   const markdownHtml =
     fullContextResult?.markdownHtml || diffResult.markdownHtml;
   const hasMarkdownPreview = isMarkdown && !!markdownHtml;

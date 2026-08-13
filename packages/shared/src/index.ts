@@ -180,6 +180,12 @@ export {
   transformFilePathsToHtml,
 } from "./filePathDetection.js";
 
+export {
+  isMarkdownLikeFile,
+  isQuartoMarkdownFile,
+  MARKDOWN_LIKE_FILE_EXTENSIONS,
+} from "./markdown-files.js";
+
 export type {
   LocalResourceAttributes,
   LocalResourceKind,
