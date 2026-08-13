@@ -956,7 +956,7 @@ describe("UserTurnNavigator", () => {
     expect(topValues).toEqual([...topValues].sort((a, b) => a - b));
   });
 
-  it("clicks search previews through to a separate rendered target row", async () => {
+  it("routes search preview clicks through the search navigation owner", async () => {
     let scrollTop = 0;
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");
@@ -1057,7 +1057,7 @@ describe("UserTurnNavigator", () => {
       "explored-row:grep-1",
       "explored-row",
     );
-    expect(scrollTo).toHaveBeenCalledWith({ top: 308, behavior: "auto" });
+    expect(scrollTo).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(searchInput);
     searchInput.remove();
   });

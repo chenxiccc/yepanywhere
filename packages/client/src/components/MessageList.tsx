@@ -2344,6 +2344,29 @@ export const MessageList = memo(function MessageList({
     [showNavMotionCue],
   );
 
+  const beginTurnNavigation = useCallback(() => {
+    shouldAutoScrollRef.current = false;
+    setIsScrolledToBottom(false);
+    reportFollowingBottom(false);
+    updateScrollPositionTimestamp({ atBottom: false });
+  }, [reportFollowingBottom, updateScrollPositionTimestamp]);
+
+  const jumpToSearchTarget = useCallback(
+    (targetId: string) => {
+      beginTurnNavigation();
+      scrollToRenderId(targetId, "auto", "center", true);
+    },
+    [beginTurnNavigation, scrollToRenderId],
+  );
+
+  const handleSearchMatchSelect = useCallback(
+    (id: string, targetId: string) => {
+      selectSearchMatch(id, targetId);
+      jumpToSearchTarget(targetId);
+    },
+    [jumpToSearchTarget, selectSearchMatch],
+  );
+
   const scrollToCurrent = useCallback(() => {
     setNewOutputBelowVisible(false);
     forceScrollToCurrent(FOLLOW_CATCH_UP_DELAYS_MS, {
@@ -2449,9 +2472,7 @@ export const MessageList = memo(function MessageList({
         stopSearchArrowRepeat();
         closeSearch(false);
         if (selectedId) {
-          requestAnimationFrame(() =>
-            scrollToRenderId(selectedId, "auto", "center", true),
-          );
+          requestAnimationFrame(() => jumpToSearchTarget(selectedId));
         }
       }
     };
@@ -2472,11 +2493,11 @@ export const MessageList = memo(function MessageList({
     closeSearch,
     getSelectedSearchTargetId,
     handleSearchArrowKey,
+    jumpToSearchTarget,
     moveSearchSelection,
     navigateToAdjacentHiddenUserTurn,
     openSearch,
     scrollToCurrent,
-    scrollToRenderId,
     searchActive,
     searchScope,
     stopSearchArrowRepeat,
@@ -3112,13 +3133,8 @@ export const MessageList = memo(function MessageList({
         getAnchors={getNavigatorAnchors}
         messageListRef={containerRef}
         motionCue={navMotionCue}
-        onNavigateStart={() => {
-          shouldAutoScrollRef.current = false;
-          setIsScrolledToBottom(false);
-          reportFollowingBottom(false);
-          updateScrollPositionTimestamp({ atBottom: false });
-        }}
-        onSearchMatchSelect={selectSearchMatch}
+        onNavigateStart={beginTurnNavigation}
+        onSearchMatchSelect={handleSearchMatchSelect}
         onTrimAnchor={onTrimBeforeUserMessage}
         onForkBeforeAnchor={onForkBeforeUserMessage}
         onForkAfterAnchor={onForkAfterUserMessage}

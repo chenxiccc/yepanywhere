@@ -200,7 +200,7 @@ describe("MessageList reverse search", () => {
     ).toBeTruthy();
   });
 
-  it("closes reverse search when focus moves back to the composer", async () => {
+  it("keeps reverse search active when focus moves outside its panel", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
       value: vi.fn(),
@@ -224,6 +224,11 @@ describe("MessageList reverse search", () => {
 
     fireEvent.blur(input, { relatedTarget: composer });
 
+    expect(
+      screen.getByRole("textbox", { name: "Reverse search user turns" }),
+    ).toBe(input);
+
+    fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => {
       expect(
         screen.queryByRole("textbox", { name: "Reverse search user turns" }),
@@ -271,7 +276,7 @@ describe("MessageList reverse search", () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
-  it("keeps a clicked all-turn preview as the exit position", async () => {
+  it("centers a clicked all-turn preview without a blur-time re-jump", async () => {
     const composerTarget = document.createElement("div");
     composerTarget.className = "session-input-inner";
     document.body.append(composerTarget);
@@ -306,26 +311,31 @@ describe("MessageList reverse search", () => {
     fireEvent.click(preview);
 
     await waitFor(() => {
-      expect(scrollTo).toHaveBeenCalledWith({ top: 408, behavior: "auto" });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 332, behavior: "auto" });
     });
     expect(
       screen.getByRole("textbox", { name: "Reverse search all turns" }),
     ).toBe(input);
+    const scrollCallCount = scrollTo.mock.calls.length;
+    const transcriptControl = document.createElement("button");
+    document.body.append(transcriptControl);
 
-    fireEvent.blur(input, { relatedTarget: null });
+    fireEvent.blur(input, { relatedTarget: transcriptControl });
 
+    expect(
+      screen.getByRole("textbox", { name: "Reverse search all turns" }),
+    ).toBe(input);
+    expect(scrollTo).toHaveBeenCalledTimes(scrollCallCount);
+
+    fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => {
       expect(
         screen.queryByRole("textbox", { name: "Reverse search all turns" }),
       ).toBeNull();
     });
-    await waitFor(() => {
-      expect(scrollTo).toHaveBeenLastCalledWith({
-        top: 332,
-        behavior: "auto",
-      });
-    });
+    expect(scrollTo).toHaveBeenCalledTimes(scrollCallCount);
     expect(screen.getByText("unmatched setup request")).toBeTruthy();
+    transcriptControl.remove();
   });
 
   it("repeats all-turn search arrow movement at a fast cadence", async () => {

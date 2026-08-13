@@ -1015,8 +1015,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   );
   const handleAnchorClick = useCallback(
     (id: string, targetId = id) => {
-      if (searchState) {
-        onSearchMatchSelect?.(id, targetId);
+      if (searchState && onSearchMatchSelect) {
+        onSearchMatchSelect(id, targetId);
+        return;
       }
       handleJump(id, targetId);
     },

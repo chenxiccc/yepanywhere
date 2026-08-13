@@ -74,45 +74,6 @@ interface UseMessageListIsearchResult {
   stopSearchArrowRepeat: () => void;
 }
 
-function findRenderRow(
-  messageList: HTMLDivElement | null,
-  id: string,
-): HTMLElement | null {
-  if (!messageList) return null;
-  for (const row of messageList.querySelectorAll<HTMLElement>(
-    "[data-render-id]",
-  )) {
-    if (row.dataset.renderId === id) {
-      return row;
-    }
-  }
-  return null;
-}
-
-function scrollSearchTargetIntoView(
-  containerRef: RefObject<HTMLDivElement | null>,
-  targetId: string,
-) {
-  const messageList = containerRef.current;
-  const scrollContainer = messageList?.parentElement;
-  const row = findRenderRow(messageList, targetId);
-  if (!scrollContainer || !row) {
-    return;
-  }
-
-  const scrollRect = scrollContainer.getBoundingClientRect();
-  const rowRect = row.getBoundingClientRect();
-  const offset = Math.max(
-    0,
-    (scrollContainer.clientHeight - rowRect.height) / 2,
-  );
-  const nextTop = Math.max(
-    0,
-    scrollContainer.scrollTop + rowRect.top - scrollRect.top - offset,
-  );
-  scrollContainer.scrollTo({ top: nextTop, behavior: "auto" });
-}
-
 export function useMessageListIsearch({
   containerRef,
   displayRenderItems,
@@ -417,14 +378,6 @@ export function useMessageListIsearch({
           originalScrollTop: null,
         };
       });
-
-      if (committedTargetId) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            scrollSearchTargetIntoView(containerRef, committedTargetId);
-          });
-        });
-      }
     },
     [containerRef],
   );
@@ -538,15 +491,7 @@ export function useMessageListIsearch({
       ? document.querySelector<HTMLElement>(".session-input-inner")
       : null;
   const searchPanel = userTurnSearch.active ? (
-    <div
-      className={styles.panel}
-      role="search"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          closeSearch(false);
-        }
-      }}
-    >
+    <div className={styles.panel} role="search">
       <div className={styles.main}>
         <span className={styles.label}>{searchPanelProjection.scopeLabel}</span>
         <input
