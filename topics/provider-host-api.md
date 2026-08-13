@@ -7,7 +7,8 @@
 Topic: provider-host-api
 
 Status: stable same-user discovery, foreground headless bootstrap,
-attach-or-start recovery, bounded auxiliary session turns, explicit
+attach-or-start recovery, bounded auxiliary session turns, detached
+submission observation, recent orderly-restart recovery, explicit
 provider-session generation options, and an authenticated Hono adapter are
 implemented on Linux. The non-watch development wrapper attaches to a
 compatible incumbent host or starts one, and Codex uses the shared provider
@@ -77,7 +78,8 @@ version. The implemented operations are:
 - `status` and `registerServer`;
 - `launch`, `launchOrClaim`, `bind`, `list`/`inventory`, `claim`, and
   `confirmAttach`;
-- streamed `sessionTurn`, `sessionTurnStatus`, and `interruptSessionTurn`;
+- streamed `sessionTurn` and `awaitSessionTurn`, plus `sessionTurnStatus` and
+  `interruptSessionTurn`;
 - `setViewerPresence`, `release`, and `terminate`; and
 - `retainProcessGroup` for host-owned auxiliary provider resources.
 
@@ -148,9 +150,9 @@ host descriptor, negotiates a protocol version, then issues one streamed
 The stream flushes records as they occur:
 
 ```json
-{"id":"...","type":"accepted","runtimeId":"...","submissionId":"...","sessionOptionsResult":{}}
-{"id":"...","type":"providerEvent","sequence":42,"message":{}}
-{"id":"...","type":"terminal","outcome":"completed","receipt":{}}
+{"id":"...","type":"accepted","runtimeId":"...","submissionId":"...","cursor":1,"sessionOptionsResult":{}}
+{"id":"...","type":"providerEvent","sequence":42,"message":{},"cursor":2}
+{"id":"...","type":"terminal","outcome":"completed","receipt":{},"cursor":3}
 ```
 
 Additive fields remain backward-compatible within the negotiated version. The
@@ -165,16 +167,32 @@ implemented meanings are:
   normalized `SDKMessage`, with an optional provider-native record;
 - `terminal` distinguishes completed, provider-failed, interrupted,
   uncertain-after-acceptance, and host-recovery outcomes and includes the best
-  provider-transcript watermark/receipt available; and
+  provider-transcript watermark/receipt available;
+- `cursor` is the count of retained records through that record, not a
+  provider event sequence number; and
 - a disconnect before `accepted` is safe to retry, while a disconnect after it
   requires receipt lookup rather than automatic duplicate submission.
+
+One `sessionTurn` submission represents exactly one logical provider turn. It
+may carry many provider events, tool cycles, status records, or compaction
+boundaries, but it has one terminal record. Records after terminal are a
+protocol defect or belong to another independently submitted turn.
 
 The caller-generated `submissionId` is the retry identity. Reusing it with the
 same target, message, session options, and launch request replays the current
 host's retained records; reusing it with different content returns
-`submission-id-conflict`. The host retains up to 1,000 submissions and receipt
-rows for 24 hours. After a host restart, use `sessionTurnStatus` to inspect the
-persisted receipt rather than resubmitting the id.
+`submission-id-conflict`. `awaitSessionTurn` observes only that submission and
+takes an optional non-negative `afterCursor`, with omission meaning record
+zero. A live in-memory submission replays records after that cursor and follows
+new records through terminal. If only the durable terminal receipt remains,
+the operation returns one `receipt-only` terminal record with a null cursor;
+discarded provider events cannot be reconstructed. An unknown submission or a
+cursor beyond the retained record count fails explicitly. Observer disconnect
+does not cancel the accepted turn.
+
+The host retains up to 1,000 submissions and receipt rows for 24 hours.
+`sessionTurnStatus` remains the point-in-time receipt query; it is not a stream
+or terminal wait.
 
 Acceptance has a 15-second deadline. The default whole-turn deadline is 30
 minutes and callers may request between one second and two hours. Provider
@@ -212,6 +230,24 @@ match the provider adapter, and worker startup must report the exact requested
 durable provider id. The HTTP adapter deliberately has no launch authority. An
 auxiliary-launched worker returns to a 30-second idle teardown deadline after
 its turn; an uncertain accepted result reaps that worker immediately.
+
+An orderly provider-host shutdown also snapshots the exact cloneable launch
+recipe for each live, identified, claimable runtime before teardown and
+publishes that set only after all owned worker/provider process groups have
+stopped successfully. The mode-0600 record is bounded to 1 MiB and 1,000
+candidates inside the mode-0700 runtime directory. A replacement host starting
+within five minutes unlinks and validates the record before serving work, then
+may lazily use one exact match when a local `sessionTurn` request opts into
+`resumeRecentRuntime`. A supplied YA id remains an ownership cross-check. The
+candidate is forgotten after a successful relaunch or when a live/new runtime
+supersedes it. A stale, future, malformed, ambiguous, wrong-owner,
+crash-surviving, or failed-cleanup record cannot launch a worker.
+
+Recent-runtime recovery resumes the durable provider session for a later new
+turn; it does not continue or resubmit a turn interrupted by host shutdown.
+It is a negotiated private-socket feature. The Hono HTTP adapter reconstructs
+its restricted request and still has neither launch nor recent-runtime
+recovery authority.
 
 The structured control outcomes include `unavailable`, `incompatible`,
 `ownership-unknown`, `busy`, `timed-out-before-acceptance`,
@@ -274,10 +310,13 @@ It publishes one atomic descriptor in a stable same-user runtime directory:
 - owner PID and process-start identity; and
 - source/build identity needed to decide whether provider code is current.
 
-The directory is mode 0700 and descriptor, token, and socket are no broader
-than mode 0600. The launcher remains the terminal owner: SIGINT/SIGTERM and
-owner loss shut down and verify every worker/provider descendant. A headless
-host with no workers has no per-session timers or polling loops.
+The directory is mode 0700 and descriptor, token, socket, durable receipt
+store, and recent-runtime recovery record are no broader than mode 0600. The
+launcher remains the terminal owner: SIGINT/SIGTERM and owner loss shut down
+and verify every worker/provider descendant. Only verified orderly shutdown
+may publish recent launch recipes; nonresponsive-host recovery removes any
+such marker. A headless host with no workers has no per-session timers or
+polling loops.
 
 The Hono launcher uses attach-or-start:
 
@@ -345,6 +384,12 @@ version, while the permanent capability ledger retains all prior assignments.
   reports enforcement per option instead of treating silence as success.
 - An accepted submission is never automatically retried through another
   transport after a control connection fails.
+- A caller may detach after `accepted`, then replay/follow that exact
+  submission from a returned cursor through its single terminal record;
+  observer disconnect or deadline expiry does not cancel the provider turn.
+- A replacement host started within five minutes of verified orderly shutdown
+  can lazily relaunch an opted-in exact target from the predecessor's private
+  recipe. Crash recovery, ownership disagreement, and stale state fail closed.
 - Hono reload preserves eligible active turns but does not claim that retained
   workers loaded changed provider code.
 - Full wrapper shutdown and nonresponsive-host replacement leave no host,

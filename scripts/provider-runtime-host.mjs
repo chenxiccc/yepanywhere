@@ -10,6 +10,7 @@ import {
   PROVIDER_HOST_PROTOCOL_VERSION,
   acquireProviderHostLock,
   captureProcessIdentity,
+  consumeProviderHostRecentRuntimes,
   createProviderHostSourceIdentity,
   createProviderHostToken,
   discoverProviderHost,
@@ -20,6 +21,7 @@ import {
   removeProviderHostArtifacts,
   resolveProviderHostPaths,
   writeProviderHostDescriptor,
+  writeProviderHostRecentRuntimes,
   writeProviderHostReceipts,
 } from "./provider-runtime-discovery.mjs";
 import {
@@ -212,6 +214,8 @@ export class ProviderRuntimeHost {
     publishDescriptor = () => {},
     initialTurnReceipts = [],
     publishTurnReceipts = () => {},
+    initialRecentRuntimes = [],
+    publishRecentRuntimes = () => {},
   }) {
     this.runtimeDir = runtimeDir;
     this.controlSocketPath = controlSocketPath;
@@ -226,6 +230,8 @@ export class ProviderRuntimeHost {
     this.retainedProcessGroups = new Map();
     this.registeredServers = new Map();
     this.connections = new Set();
+    this.recentRuntimeCandidates = initialRecentRuntimes;
+    this.publishRecentRuntimes = publishRecentRuntimes;
     this.server = null;
     this.shuttingDown = null;
     this.turnLedger = new ProviderRuntimeTurnLedger({
@@ -360,6 +366,23 @@ export class ProviderRuntimeHost {
           }
           continue;
         }
+        if (request.op === "awaitSessionTurn") {
+          try {
+            this.validateRequest(request);
+            this.turnLedger.observe(request, socket);
+          } catch (error) {
+            socket.end(
+              `${JSON.stringify({
+                id: request.id,
+                type: "error",
+                outcome: errorOutcome(error),
+                accepted: false,
+                error: errorMessage(error),
+              })}\n`,
+            );
+          }
+          continue;
+        }
         void this.handleRequest(request, socket)
           .then((result) => {
             if (request.op === "registerServer" && result?.generation) {
@@ -407,6 +430,8 @@ export class ProviderRuntimeHost {
           features: [
             "runtime-control",
             "session-turn",
+            "session-turn-await",
+            "recent-runtime-recovery",
             "provider-session-options",
           ],
         };
@@ -534,6 +559,50 @@ export class ProviderRuntimeHost {
     return providerMatches;
   }
 
+  matchingRecentRuntimes(target) {
+    if (!target || typeof target !== "object") {
+      throw new Error("Missing session-turn target");
+    }
+    const harness = this.requireString(target.harness, "target.harness");
+    const providerSessionId = this.requireString(
+      target.providerSessionId,
+      "target.providerSessionId",
+    );
+    const yaSessionId =
+      typeof target.yaSessionId === "string" && target.yaSessionId
+        ? target.yaSessionId
+        : undefined;
+    const now = Date.now();
+    this.recentRuntimeCandidates = this.recentRuntimeCandidates.filter(
+      (candidate) => Date.parse(candidate.expiresAt) >= now,
+    );
+    const providerMatches = this.recentRuntimeCandidates.filter(
+      (candidate) =>
+        candidate.target.harness === harness &&
+        candidate.target.providerSessionId === providerSessionId,
+    );
+    if (
+      yaSessionId &&
+      providerMatches.some(
+        (candidate) => candidate.target.yaSessionId !== yaSessionId,
+      )
+    ) {
+      throw controlError(
+        "ownership-unknown",
+        "target.yaSessionId does not own the recent provider runtime",
+      );
+    }
+    return providerMatches;
+  }
+
+  forgetRecentRuntime(target) {
+    this.recentRuntimeCandidates = this.recentRuntimeCandidates.filter(
+      (candidate) =>
+        candidate.target.harness !== target.harness ||
+        candidate.target.providerSessionId !== target.providerSessionId,
+    );
+  }
+
   async resolveTurnRuntime(request) {
     const matches = this.matchingTurnRuntimes(request.target);
     if (matches.length > 1) {
@@ -542,7 +611,30 @@ export class ProviderRuntimeHost {
         "Session-turn target matches multiple provider runtimes",
       );
     }
-    if (matches.length === 1) return matches[0];
+    if (matches.length === 1) {
+      this.forgetRecentRuntime(request.target);
+      return matches[0];
+    }
+    if (request.resumeRecentRuntime === true) {
+      const recentMatches = this.matchingRecentRuntimes(request.target);
+      if (recentMatches.length > 1) {
+        throw controlError(
+          "ownership-unknown",
+          "Session-turn target matches multiple recent provider runtimes",
+        );
+      }
+      if (recentMatches.length === 1) {
+        const runtime = await this.launchOrClaim(
+          {
+            target: recentMatches[0].target,
+            launch: recentMatches[0].launch,
+          },
+          true,
+        );
+        this.forgetRecentRuntime(request.target);
+        return runtime;
+      }
+    }
     if (!request.launch) return null;
     return await this.launchOrClaim(
       {
@@ -562,6 +654,7 @@ export class ProviderRuntimeHost {
       );
     }
     if (matches.length === 1) {
+      this.forgetRecentRuntime(request.target);
       return returnEntry ? matches[0] : publicRuntimeEntry(matches[0]);
     }
     const launch = request.launch;
@@ -716,6 +809,13 @@ export class ProviderRuntimeHost {
       attachTimer: null,
       terminationPromise: null,
       activeSubmissionId: undefined,
+      launchRecipe: {
+        providerName,
+        projectPath,
+        options: structuredClone(options),
+        runtimeConfig: structuredClone(request.runtimeConfig ?? {}),
+        reattach: structuredClone(request.reattach ?? {}),
+      },
     };
     this.runtimes.set(runtimeId, entry);
     if (sessionId) this.runtimeIdsBySessionId.set(sessionId, runtimeId);
@@ -835,6 +935,12 @@ export class ProviderRuntimeHost {
             ? "provider runtime controller did not attach"
             : "provider runtime identity was not bound",
         );
+      }
+      if (entry.providerSessionId) {
+        this.forgetRecentRuntime({
+          harness: entry.harness,
+          providerSessionId: entry.providerSessionId,
+        });
       }
       return returnEntry ? entry : publicRuntimeEntry(entry);
     } catch (error) {
@@ -1218,6 +1324,18 @@ export class ProviderRuntimeHost {
   async shutdown(reason = "wrapper shutdown") {
     if (this.shuttingDown) return await this.shuttingDown;
     this.shuttingDown = (async () => {
+      const recentRuntimeCandidates = [...this.runtimes.values()]
+        .filter(
+          (entry) => entry.providerSessionId && this.isRuntimeClaimable(entry),
+        )
+        .map((entry) => ({
+          target: {
+            harness: entry.harness,
+            providerSessionId: entry.providerSessionId,
+            ...(entry.yaSessionId ? { yaSessionId: entry.yaSessionId } : {}),
+          },
+          launch: entry.launchRecipe,
+        }));
       this.turnLedger.shutdown("interrupted");
       for (const socket of this.registeredServers.values()) socket.destroy();
       this.registeredServers.clear();
@@ -1242,6 +1360,15 @@ export class ProviderRuntimeHost {
         this.server = null;
       }
       removePathIfPresent(this.controlSocketPath);
+      if (failures.length === 0) {
+        try {
+          this.publishRecentRuntimes(recentRuntimeCandidates);
+        } catch (error) {
+          process.stderr.write(
+            `[ProviderRuntimeHost] Could not preserve recent runtime recipes: ${errorMessage(error)}\n`,
+          );
+        }
+      }
       this.notifyWrapper({
         type: "shutdownComplete",
         ok: failures.length === 0,
@@ -1302,6 +1429,9 @@ async function main() {
     receiptPath:
       process.env.YEP_PROVIDER_RUNTIME_RECEIPTS ??
       join(runtimeDir, basename(stablePaths.receiptPath)),
+    recentRuntimePath:
+      process.env.YEP_PROVIDER_RUNTIME_RECENT_RUNTIMES ??
+      join(runtimeDir, basename(stablePaths.recentRuntimePath)),
   };
   ensurePrivateProviderHostDirectory(paths.runtimeDir);
   let discovery = await discoverProviderHost(paths);
@@ -1332,6 +1462,7 @@ async function main() {
   let token;
   let identities;
   let initialTurnReceipts;
+  let initialRecentRuntimes = [];
   try {
     token = createProviderHostToken(paths.tokenPath);
     identities = createProviderHostSourceIdentity({
@@ -1340,6 +1471,13 @@ async function main() {
       workerPath,
     });
     initialTurnReceipts = readProviderHostReceipts(paths);
+    try {
+      initialRecentRuntimes = consumeProviderHostRecentRuntimes(paths);
+    } catch (error) {
+      process.stderr.write(
+        `[ProviderRuntimeHost] Discarded recent runtime recovery state: ${errorMessage(error)}\n`,
+      );
+    }
   } catch (error) {
     cleanupStableState();
     throw error;
@@ -1350,8 +1488,12 @@ async function main() {
     token,
     workerPath,
     initialTurnReceipts,
+    initialRecentRuntimes,
     publishTurnReceipts(receipts) {
       writeProviderHostReceipts(paths, receipts);
+    },
+    publishRecentRuntimes(candidates) {
+      writeProviderHostRecentRuntimes(paths, candidates);
     },
     publishDescriptor({ processGroups }) {
       writeProviderHostDescriptor(paths, {
@@ -1360,6 +1502,8 @@ async function main() {
         features: [
           "runtime-control",
           "session-turn",
+          "session-turn-await",
+          "recent-runtime-recovery",
           "provider-session-options",
         ],
         controlSocketPath: paths.controlSocketPath,

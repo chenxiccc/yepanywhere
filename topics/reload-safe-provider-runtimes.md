@@ -4,7 +4,8 @@
 > replacement of YA's Hono server by placing each live provider protocol owner
 > under a durable host outside Hono; shutdown of that host's wrapper or
 > foreground terminal still reaps every hosted provider process within a
-> bounded deadline.
+> bounded deadline, though a promptly started replacement may lazily resume a
+> later new turn from the predecessor's exact private launch recipe.
 
 Topic: reload-safe-provider-runtimes
 
@@ -15,9 +16,10 @@ Codex OSS all use the shared provider host. The former
 but is inert and hidden from the current client.
 
 Stable same-user discovery, headless startup, verified attach-or-start
-recovery, bounded auxiliary session turns, and the authenticated Hono adapter
-are implemented. The exact control and fallback contract is in
-[provider host API](provider-host-api.md).
+recovery, bounded auxiliary session turns, detached turn observation, recent
+orderly-restart relaunch, and the authenticated Hono adapter are implemented.
+The exact control and fallback contract is in [provider host
+API](provider-host-api.md).
 
 The retired Codex-native contract was proved with real active-turn reloads
 through both the API and wrapper `SIGHUP`, a second turn after reattach,
@@ -77,7 +79,9 @@ The shared backend places one provider worker around one `AgentSession`:
    YA session id and resumes from the worker's sequenced event buffer.
 5. On terminal shutdown or loss of the host's wrapper/terminal owner, the host
    closes every worker and the worker closes its provider session; bounded
-   TERM/KILL cleanup remains authoritative if cooperative shutdown fails.
+   TERM/KILL cleanup remains authoritative if cooperative shutdown fails. A
+   verified orderly shutdown may privately preserve exact launch recipes for
+   five minutes so a replacement host can lazily resume a later new turn.
 
 This is not provider-native process adoption. A Claude CLI PID still cannot be
 adopted by a new SDK `Query`; the point is that the original `Query` survives
@@ -94,7 +98,9 @@ current code, a targeted worker relaunch updates one session, and a
 provider-host reboot guarantees that every hosted provider worker adopted a
 provider-layer change. A full wrapper reboot provides that guarantee when the
 wrapper owns the host, but not when it merely attached to a separately owned
-foreground host.
+foreground host. Orderly-restart recovery launches a new worker using current
+code and the predecessor's exact provider/project/options recipe; it does not
+preserve the old worker process.
 
 ## Baseline Ownership And Failure Path
 
@@ -693,6 +699,16 @@ it does not call `process.exit` immediately after sending signals. A failed
 verification is logged as a shutdown failure with the surviving PID/process
 group, never reported as clean success.
 
+Before teardown, the provider host captures exact launch recipes only for live,
+identified, claimable runtimes. It publishes the bounded private recovery
+record only after every owned worker, provider process group, and retained
+provider resource has stopped successfully. The next host unlinks the record
+before accepting work and accepts it only if that host started within five
+minutes of the recorded stop. Crash recovery removes any marker instead of
+rolling it forward. A local opted-in turn may then relaunch one exact target;
+this is ordinary provider-native resume for a new turn, not continuity of an
+interrupted turn.
+
 The host watches an inherited wrapper-liveness channel. EOF enters the same
 bounded terminal path. The wrapper watches host exit and can reap reported
 runtime process groups if the host fails. A stronger systemd/cgroup or Linux
@@ -1012,9 +1028,12 @@ proxy and sequenced replay/request protocol, two-phase claim/attach across Hono
 generations, worker-owned provider sandboxing, terminal resource reaping, and
 provider-neutral routing including Codex.
 
-**Still not implied:** survival after the provider host's terminal owner ends,
-a machine-persistent daemon, enabling the mechanism outside Linux, sharing one
+**Still not implied:** survival of a provider process or in-flight turn after
+the provider host's terminal owner ends, crash recovery of a launch recipe, a
+machine-persistent daemon, enabling the mechanism outside Linux, sharing one
 provider process across sandbox boundaries, or replacing the existing safe-
-restart flow. A separately owned foreground host may outlive a Hono wrapper;
-that does not make it reboot-persistent. The retained Codex setting never
-attempts to adopt or reroute a live process.
+restart flow. A replacement started within five minutes of an orderly stop may
+resume a later new turn from an exact private recipe. A separately owned
+foreground host may outlive a Hono wrapper; neither behavior makes YA
+reboot-persistent. The retained Codex setting never attempts to adopt or
+reroute a live process.

@@ -109,7 +109,7 @@ export class ProviderRuntimeTurnLedger {
         );
         return;
       }
-      this.attach(existing, socket, request.id);
+      this.attach(existing, socket, request.id, 0, true);
       return;
     }
     if (this.receipts.has(submissionId)) {
@@ -152,7 +152,7 @@ export class ProviderRuntimeTurnLedger {
     };
     submission.timeout.unref?.();
     this.submissions.set(submissionId, submission);
-    this.attach(submission, socket, request.id);
+    this.attach(submission, socket, request.id, 0, true);
 
     try {
       const runtime = await this.resolveRuntime(request);
@@ -289,6 +289,67 @@ export class ProviderRuntimeTurnLedger {
     return this.receipts.get(submissionId) ?? null;
   }
 
+  observe(request, socket) {
+    const submissionId = this.requireSubmissionId(request);
+    const afterCursor = request.afterCursor ?? 0;
+    if (!Number.isInteger(afterCursor) || afterCursor < 0) {
+      this.writeDirectError(
+        socket,
+        request.id,
+        "invalid-cursor",
+        "afterCursor must be a non-negative integer",
+      );
+      return;
+    }
+    const submission = this.submissions.get(submissionId);
+    if (submission) {
+      if (afterCursor > submission.records.length) {
+        this.writeDirectError(
+          socket,
+          request.id,
+          "invalid-cursor",
+          `afterCursor exceeds the retained record count ${submission.records.length}`,
+        );
+        return;
+      }
+      const terminal = submission.records.findLast(isTerminalRecord);
+      if (terminal && afterCursor === submission.records.length) {
+        socket.end(
+          `${JSON.stringify({
+            id: request.id,
+            cursor: afterCursor,
+            ...terminal,
+            replay: "terminal-status",
+          })}\n`,
+        );
+        return;
+      }
+      this.attach(submission, socket, request.id, afterCursor, true);
+      return;
+    }
+    const receipt = this.receipts.get(submissionId);
+    if (!receipt) {
+      this.writeDirectError(
+        socket,
+        request.id,
+        "not-found",
+        "Session-turn submission was not found",
+      );
+      return;
+    }
+    socket.end(
+      `${JSON.stringify({
+        id: request.id,
+        type: "terminal",
+        submissionId,
+        outcome: receipt.outcome,
+        receipt: receipt.receipt,
+        cursor: null,
+        replay: "receipt-only",
+      })}\n`,
+    );
+  }
+
   interrupt(submissionId) {
     const submission = this.submissions.get(submissionId);
     if (!submission || isTerminalRecord(submission.records.at(-1) ?? {})) {
@@ -339,8 +400,14 @@ export class ProviderRuntimeTurnLedger {
     }
   }
 
-  attach(submission, socket, requestId) {
-    const listener = { socket, requestId, cursor: 0, blocked: false };
+  attach(submission, socket, requestId, cursor = 0, includeCursor = false) {
+    const listener = {
+      socket,
+      requestId,
+      cursor,
+      includeCursor,
+      blocked: false,
+    };
     submission.listeners.add(listener);
     const remove = () => submission.listeners.delete(listener);
     socket.once("close", remove);
@@ -357,7 +424,11 @@ export class ProviderRuntimeTurnLedger {
     while (listener.cursor < submission.records.length) {
       const record = submission.records[listener.cursor++];
       const writable = listener.socket.write(
-        `${JSON.stringify({ id: listener.requestId, ...record })}\n`,
+        `${JSON.stringify({
+          id: listener.requestId,
+          ...(listener.includeCursor ? { cursor: listener.cursor } : {}),
+          ...record,
+        })}\n`,
       );
       if (!writable) {
         listener.blocked = true;

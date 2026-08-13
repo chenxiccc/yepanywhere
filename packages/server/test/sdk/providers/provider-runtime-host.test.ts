@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -15,6 +15,7 @@ import {
 // @ts-expect-error Stable discovery intentionally runs as plain Node ESM.
 import {
   captureProcessIdentity,
+  consumeProviderHostRecentRuntimes,
   createProviderHostToken,
   discoverProviderHost,
   readLinuxProcessStartTime,
@@ -23,6 +24,7 @@ import {
   requestProviderHost,
   resolveProviderHostPaths,
   writeProviderHostDescriptor,
+  writeProviderHostRecentRuntimes,
   writeProviderHostReceipts,
 } from "../../../../../scripts/provider-runtime-discovery.mjs";
 import {
@@ -195,6 +197,58 @@ async function collectProviderHostStream(
   });
 }
 
+async function collectProviderHostUntilAccepted(
+  connection: {
+    descriptor: { controlSocketPath: string; hostProtocolVersion: number };
+    token: string;
+  },
+  request: Record<string, unknown>,
+): Promise<Array<Record<string, unknown>>> {
+  const socket = createConnection(connection.descriptor.controlSocketPath);
+  socket.setEncoding("utf8");
+  let buffer = "";
+  const records: Array<Record<string, unknown>> = [];
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("provider host acceptance timed out"));
+    }, 5_000);
+    socket.on("connect", () => {
+      socket.write(
+        `${JSON.stringify({
+          id: "test-request",
+          token: connection.token,
+          protocolVersion: connection.descriptor.hostProtocolVersion,
+          ...request,
+        })}\n`,
+      );
+    });
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const record = JSON.parse(line) as Record<string, unknown>;
+        records.push(record);
+        if (record.type === "accepted") {
+          clearTimeout(timeout);
+          socket.destroy();
+          resolve(records);
+        } else if (record.type === "error") {
+          clearTimeout(timeout);
+          socket.destroy();
+          reject(new Error(String(record.error)));
+        }
+      }
+    });
+    socket.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+}
+
 function processGroupAlive(processGroupId: number): boolean {
   try {
     process.kill(-processGroupId, 0);
@@ -244,6 +298,8 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
         features: [
           "runtime-control",
           "session-turn",
+          "session-turn-await",
+          "recent-runtime-recovery",
           "provider-session-options",
         ],
         controlSocketPath: paths.controlSocketPath,
@@ -301,6 +357,63 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     expect(existsSync(paths.controlSocketPath)).toBe(false);
     expect(existsSync(paths.tokenPath)).toBe(false);
     expect(existsSync(paths.lockPath)).toBe(false);
+  });
+
+  it("consumes only fresh private recent-runtime recovery state", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-recent-"));
+    temporaryPaths.push(runtimeRoot);
+    const paths = resolveProviderHostPaths({
+      YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+    });
+    if (!paths) throw new Error("expected Linux provider host paths");
+    const candidate = {
+      target: {
+        harness: "claude",
+        providerSessionId: "recent-provider-session",
+        yaSessionId: "recent-ya-session",
+      },
+      launch: {
+        providerName: "claude",
+        projectPath: runtimeRoot,
+        options: { model: "recent-model", effort: "high" },
+        runtimeConfig: {},
+        reattach: { model: "recent-model", effort: "high" },
+      },
+    };
+
+    writeProviderHostRecentRuntimes(paths, [candidate]);
+    expect((await stat(paths.recentRuntimePath)).mode & 0o077).toBe(0);
+    expect(consumeProviderHostRecentRuntimes(paths)).toEqual([
+      { ...candidate, expiresAt: expect.any(String) },
+    ]);
+    expect(existsSync(paths.recentRuntimePath)).toBe(false);
+
+    const writeRaw = async (stoppedAt: string) => {
+      await writeFile(
+        paths.recentRuntimePath,
+        `${JSON.stringify({ version: 1, stoppedAt, candidates: [candidate] })}\n`,
+        { mode: 0o600 },
+      );
+      await chmod(paths.recentRuntimePath, 0o600);
+    };
+    await writeRaw(new Date(Date.now() - 5 * 60_000 - 1).toISOString());
+    expect(consumeProviderHostRecentRuntimes(paths)).toEqual([]);
+    await writeRaw(new Date(Date.now() + 1_000).toISOString());
+    expect(consumeProviderHostRecentRuntimes(paths)).toEqual([]);
+
+    await writeFile(paths.recentRuntimePath, "{}\n", { mode: 0o600 });
+    await chmod(paths.recentRuntimePath, 0o600);
+    expect(() => consumeProviderHostRecentRuntimes(paths)).toThrow(
+      "recent runtime store version",
+    );
+    expect(existsSync(paths.recentRuntimePath)).toBe(false);
+
+    writeProviderHostRecentRuntimes(paths, [candidate]);
+    await chmod(paths.recentRuntimePath, 0o644);
+    expect(() => consumeProviderHostRecentRuntimes(paths)).toThrow(
+      "is not private",
+    );
+    expect(existsSync(paths.recentRuntimePath)).toBe(false);
   });
 
   it("launches and exchanges a bounded turn without Hono", async () => {
@@ -435,6 +548,246 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
         outcome: "completed",
         receipt: { providerSessionId: "durable-codex-session" },
       });
+    } finally {
+      if (host.exitCode === null && host.signalCode === null) {
+        host.kill("SIGTERM");
+      }
+      await waitForChildExit(host).catch(() => host.kill("SIGKILL"));
+    }
+  });
+
+  it("detaches after acceptance and resumes one turn from a record cursor", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-await-"));
+    temporaryPaths.push(runtimeRoot);
+    const paths = resolveProviderHostPaths({
+      YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+    });
+    if (!paths) throw new Error("expected Linux provider host paths");
+    const host = spawn(
+      process.execPath,
+      [providerHostEntrypoint, "--headless"],
+      {
+        cwd: dirname(providerHostEntrypoint),
+        env: {
+          ...process.env,
+          YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+          YEP_PROVIDER_RUNTIME_WORKER_PATH: fixtureWorker,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    try {
+      const connection = await waitForAvailableHost(paths);
+      const submissionId = "detached-turn-1";
+      const accepted = await collectProviderHostUntilAccepted(connection, {
+        op: "sessionTurn",
+        submissionId,
+        target: {
+          harness: "claude",
+          providerSessionId: "detached-provider-session",
+        },
+        message: { text: "finish after the first observer detaches" },
+        launch: {
+          providerName: "claude",
+          projectPath: runtimeRoot,
+          options: {},
+          runtimeConfig: {},
+        },
+      });
+      expect(accepted).toEqual([
+        expect.objectContaining({
+          type: "accepted",
+          submissionId,
+          cursor: 1,
+        }),
+      ]);
+
+      const resumed = await collectProviderHostStream(connection, {
+        op: "awaitSessionTurn",
+        submissionId,
+        afterCursor: 1,
+      });
+      expect(resumed.map((record) => record.type)).toEqual([
+        "providerEvent",
+        "providerEvent",
+        "providerEvent",
+        "terminal",
+      ]);
+      expect(resumed.map((record) => record.cursor)).toEqual([2, 3, 4, 5]);
+
+      const alreadyTerminal = await collectProviderHostStream(connection, {
+        op: "awaitSessionTurn",
+        submissionId,
+        afterCursor: 5,
+      });
+      expect(alreadyTerminal).toEqual([
+        expect.objectContaining({
+          type: "terminal",
+          submissionId,
+          cursor: 5,
+          replay: "terminal-status",
+        }),
+      ]);
+      const beyondRetainedRecords = await collectProviderHostStream(
+        connection,
+        {
+          op: "awaitSessionTurn",
+          submissionId,
+          afterCursor: 6,
+        },
+      );
+      expect(beyondRetainedRecords).toEqual([
+        expect.objectContaining({
+          type: "error",
+          outcome: "invalid-cursor",
+          accepted: false,
+        }),
+      ]);
+    } finally {
+      if (host.exitCode === null && host.signalCode === null) {
+        host.kill("SIGTERM");
+      }
+      await waitForChildExit(host).catch(() => host.kill("SIGKILL"));
+    }
+  });
+
+  it("lazily resumes a cleanly stopped runtime for a later turn", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-restart-"));
+    temporaryPaths.push(runtimeRoot);
+    const paths = resolveProviderHostPaths({
+      YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+    });
+    if (!paths) throw new Error("expected Linux provider host paths");
+    const startHost = () =>
+      spawn(process.execPath, [providerHostEntrypoint, "--headless"], {
+        cwd: dirname(providerHostEntrypoint),
+        env: {
+          ...process.env,
+          YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
+          YEP_PROVIDER_RUNTIME_WORKER_PATH: fixtureWorker,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    let host = startHost();
+    const target = {
+      harness: "claude",
+      providerSessionId: "restart-provider-session",
+      yaSessionId: "restart-ya-session",
+    };
+
+    try {
+      const firstConnection = await waitForAvailableHost(paths);
+      const first = await collectProviderHostStream(firstConnection, {
+        op: "sessionTurn",
+        submissionId: "before-clean-restart",
+        target,
+        message: { text: "establish the hosted runtime" },
+        launch: {
+          providerName: "claude",
+          projectPath: runtimeRoot,
+          options: { model: "restart-model", effort: "high" },
+          runtimeConfig: {},
+        },
+      });
+      expect(first.at(-1)).toMatchObject({
+        type: "terminal",
+        outcome: "completed",
+      });
+
+      host.kill("SIGTERM");
+      expect((await waitForChildExit(host)).code).toBe(0);
+      expect(existsSync(paths.recentRuntimePath)).toBe(true);
+      expect((await stat(paths.recentRuntimePath)).mode & 0o077).toBe(0);
+
+      host = startHost();
+      const replacementConnection = await waitForAvailableHost(paths);
+      expect(existsSync(paths.recentRuntimePath)).toBe(false);
+      const receiptOnlyReplay = await collectProviderHostStream(
+        replacementConnection,
+        {
+          op: "awaitSessionTurn",
+          submissionId: "before-clean-restart",
+        },
+      );
+      expect(receiptOnlyReplay).toEqual([
+        expect.objectContaining({
+          type: "terminal",
+          submissionId: "before-clean-restart",
+          cursor: null,
+          replay: "receipt-only",
+          outcome: "completed",
+        }),
+      ]);
+      const ownershipMismatch = await collectProviderHostStream(
+        replacementConnection,
+        {
+          op: "sessionTurn",
+          submissionId: "after-clean-restart-owner-mismatch",
+          target: { ...target, yaSessionId: "not-the-owning-session" },
+          message: { text: "do not use a mismatched recovery recipe" },
+          resumeRecentRuntime: true,
+        },
+      );
+      expect(ownershipMismatch).toEqual([
+        expect.objectContaining({
+          type: "error",
+          outcome: "ownership-unknown",
+          accepted: false,
+        }),
+      ]);
+      const resumed = await collectProviderHostStream(replacementConnection, {
+        op: "sessionTurn",
+        submissionId: "after-clean-restart",
+        target: {
+          harness: target.harness,
+          providerSessionId: target.providerSessionId,
+        },
+        message: { text: "resume through the replacement host" },
+        resumeRecentRuntime: true,
+      });
+
+      expect(resumed.map((record) => record.type)).toEqual([
+        "accepted",
+        "providerEvent",
+        "providerEvent",
+        "providerEvent",
+        "terminal",
+      ]);
+      expect(resumed[0]).toMatchObject({
+        providerSessionId: target.providerSessionId,
+        yaSessionId: target.yaSessionId,
+      });
+      expect(resumed.at(-1)).toMatchObject({
+        outcome: "completed",
+        receipt: { providerSessionId: target.providerSessionId },
+      });
+      const inventory = (await requestProviderHost(
+        {
+          controlSocketPath: replacementConnection.descriptor.controlSocketPath,
+          token: replacementConnection.token,
+          protocolVersion: replacementConnection.descriptor.hostProtocolVersion,
+        },
+        { op: "inventory" },
+      )) as Array<{
+        providerSessionId: string;
+        yaSessionId: string;
+        worker: {
+          agentLaunchEnvironment: { model: string; effort: string };
+        };
+      }>;
+      expect(inventory).toEqual([
+        expect.objectContaining({
+          providerSessionId: target.providerSessionId,
+          yaSessionId: target.yaSessionId,
+          worker: expect.objectContaining({
+            agentLaunchEnvironment: expect.objectContaining({
+              model: "restart-model",
+              effort: "high",
+            }),
+          }),
+        }),
+      ]);
     } finally {
       if (host.exitCode === null && host.signalCode === null) {
         host.kill("SIGTERM");
@@ -607,6 +960,21 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
           acceptedAt: "2026-08-12T00:00:00.000Z",
         },
       ]);
+      writeProviderHostRecentRuntimes(paths, [
+        {
+          target: {
+            harness: "claude",
+            providerSessionId: "must-not-recover-after-crash",
+          },
+          launch: {
+            providerName: "claude",
+            projectPath: runtimeRoot,
+            options: {},
+            runtimeConfig: {},
+            reattach: {},
+          },
+        },
+      ]);
       const discovery = await discoverProviderHost(paths, { timeoutMs: 50 });
       expect(discovery.state).toBe("unresponsive");
       if (discovery.state !== "unresponsive") return;
@@ -625,6 +993,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       expect(existsSync(paths.descriptorPath)).toBe(false);
       expect(existsSync(paths.tokenPath)).toBe(false);
       expect(existsSync(paths.lockPath)).toBe(false);
+      expect(existsSync(paths.recentRuntimePath)).toBe(false);
       expect(readProviderHostReceipts(paths)).toEqual([
         expect.objectContaining({
           submissionId: "accepted-before-recovery",

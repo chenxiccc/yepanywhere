@@ -24,6 +24,10 @@ const DEFAULT_STATUS_TIMEOUT_MS = 1_000;
 const MAX_STATUS_RESPONSE_BYTES = 64 * 1024;
 const TERM_GRACE_MS = 1_500;
 const KILL_VERIFY_MS = 1_000;
+const RECENT_RUNTIME_SCHEMA_VERSION = 1;
+const RECENT_RUNTIME_MAX_AGE_MS = 5 * 60_000;
+const MAX_RECENT_RUNTIME_BYTES = 1024 * 1024;
+const MAX_RECENT_RUNTIMES = 1_000;
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
@@ -68,6 +72,7 @@ export function resolveProviderHostPaths(
     lockPath: join(runtimeDir, "host.lock"),
     recoveryLockPath: join(runtimeDir, "recovery.lock"),
     receiptPath: join(runtimeDir, "turn-receipts.json"),
+    recentRuntimePath: join(runtimeDir, "recent-runtimes.json"),
   };
 }
 
@@ -216,6 +221,128 @@ export function readProviderHostReceipts(paths) {
 
 export function writeProviderHostReceipts(paths, receipts) {
   writePrivateFileAtomic(paths.receiptPath, `${JSON.stringify(receipts)}\n`);
+}
+
+function requireRecord(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid provider host ${label}`);
+  }
+  return value;
+}
+
+function requireNonemptyString(value, label) {
+  if (typeof value !== "string" || !value) {
+    throw new Error(`Invalid provider host ${label}`);
+  }
+  return value;
+}
+
+function parseRecentRuntimeCandidate(value) {
+  const candidate = requireRecord(value, "recent runtime candidate");
+  const target = requireRecord(candidate.target, "recent runtime target");
+  const launch = requireRecord(candidate.launch, "recent runtime launch");
+  const harness = requireNonemptyString(
+    target.harness,
+    "recent runtime harness",
+  );
+  const providerSessionId = requireNonemptyString(
+    target.providerSessionId,
+    "recent runtime provider session id",
+  );
+  const yaSessionId =
+    target.yaSessionId === undefined
+      ? undefined
+      : requireNonemptyString(
+          target.yaSessionId,
+          "recent runtime YA session id",
+        );
+  const providerName = requireNonemptyString(
+    launch.providerName,
+    "recent runtime provider name",
+  );
+  const projectPath = requireNonemptyString(
+    launch.projectPath,
+    "recent runtime project path",
+  );
+  const options = requireRecord(
+    launch.options ?? {},
+    "recent runtime launch options",
+  );
+  const runtimeConfig = requireRecord(
+    launch.runtimeConfig ?? {},
+    "recent runtime configuration",
+  );
+  const reattach = requireRecord(
+    launch.reattach ?? {},
+    "recent runtime reattach settings",
+  );
+  return {
+    target: {
+      harness,
+      providerSessionId,
+      ...(yaSessionId ? { yaSessionId } : {}),
+    },
+    launch: { providerName, projectPath, options, runtimeConfig, reattach },
+  };
+}
+
+export function consumeProviderHostRecentRuntimes(paths, now = Date.now()) {
+  if (!existsSync(paths.recentRuntimePath)) return [];
+  const consumedPath = `${paths.recentRuntimePath}.${process.pid}.${randomUUID()}.consumed`;
+  renameSync(paths.recentRuntimePath, consumedPath);
+  try {
+    const fileStat = assertPrivateOwnedPath(consumedPath, "file");
+    if (fileStat.size > MAX_RECENT_RUNTIME_BYTES) {
+      throw new Error("Provider host recent runtime store is too large");
+    }
+    const raw = readFileSync(consumedPath, "utf8");
+    const value = requireRecord(JSON.parse(raw), "recent runtime store");
+    if (value.version !== RECENT_RUNTIME_SCHEMA_VERSION) {
+      throw new Error("Invalid provider host recent runtime store version");
+    }
+    const stoppedAt = Date.parse(value.stoppedAt);
+    if (!Number.isFinite(stoppedAt)) {
+      throw new Error("Invalid provider host recent runtime stop time");
+    }
+    const age = now - stoppedAt;
+    if (age < 0 || age > RECENT_RUNTIME_MAX_AGE_MS) return [];
+    if (
+      !Array.isArray(value.candidates) ||
+      value.candidates.length > MAX_RECENT_RUNTIMES
+    ) {
+      throw new Error("Invalid provider host recent runtime candidates");
+    }
+    const expiresAt = new Date(
+      stoppedAt + RECENT_RUNTIME_MAX_AGE_MS,
+    ).toISOString();
+    return value.candidates.map((candidate) => ({
+      ...parseRecentRuntimeCandidate(candidate),
+      expiresAt,
+    }));
+  } finally {
+    removePathIfPresent(consumedPath);
+  }
+}
+
+export function writeProviderHostRecentRuntimes(paths, candidates) {
+  if (candidates.length === 0) {
+    removePathIfPresent(paths.recentRuntimePath);
+    return;
+  }
+  if (candidates.length > MAX_RECENT_RUNTIMES) {
+    throw new Error("Provider host recent runtime store exceeds its bound");
+  }
+  const value = `${JSON.stringify({
+    version: RECENT_RUNTIME_SCHEMA_VERSION,
+    stoppedAt: new Date().toISOString(),
+    candidates: candidates.map(parseRecentRuntimeCandidate),
+  })}\n`;
+  if (Buffer.byteLength(value) > MAX_RECENT_RUNTIME_BYTES) {
+    throw new Error(
+      "Provider host recent runtime store exceeds its byte bound",
+    );
+  }
+  writePrivateFileAtomic(paths.recentRuntimePath, value);
 }
 
 export function readLinuxProcessStartTime(pid) {
@@ -599,6 +726,7 @@ export async function recoverProviderHost(paths, expectedDescriptor) {
       paths.tokenPath,
       paths.descriptorPath,
       paths.lockPath,
+      paths.recentRuntimePath,
     ]) {
       removePathIfPresent(path);
     }
