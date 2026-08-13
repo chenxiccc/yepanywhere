@@ -33,6 +33,26 @@ describe("assistant markdown augments", () => {
     });
   });
 
+  it("keeps Quarto-aware renders separate in the Markdown cache", async () => {
+    const markdown = "{{< include sections/_methods.qmd >}}";
+    const ordinary = await renderMarkdownToHtml(markdown, {
+      localFileBasePath: "/workspace/project",
+    });
+    const quarto = await renderMarkdownToHtml(markdown, {
+      localFileBasePath: "/workspace/project",
+      quartoMarkdown: true,
+    });
+
+    expect(ordinary).not.toContain("data-ya-resource");
+    expect(quarto).toContain(
+      'href="/api/local-file?path=%2Fworkspace%2Fproject%2Fsections%2F_methods.qmd&amp;render=1"',
+    );
+    expect(markdownAugmentCacheDiagnostics()).toMatchObject({
+      retainedEntries: 2,
+      workStarts: 2,
+    });
+  });
+
   it("joins but does not retain unversioned filesystem answers", async () => {
     const index: ProjectPathIndex = {
       findExisting: async (paths) => new Set(paths),

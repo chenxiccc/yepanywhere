@@ -135,6 +135,7 @@ const EXTENSION_TO_LANG: Record<string, BundledLanguage> = {
   less: "less",
   md: "markdown",
   markdown: "markdown",
+  qmd: "markdown",
   diff: "diff",
   patch: "diff",
 };

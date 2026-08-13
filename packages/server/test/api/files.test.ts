@@ -165,6 +165,44 @@ describe("Files API", () => {
       );
     });
 
+    it("renders Quarto includes as contained project FileViewer links", async () => {
+      await mkdir(join(projectPath, "shared"), { recursive: true });
+      await writeFile(join(projectPath, "docs", "_introduction.qmd"), "Intro");
+      await writeFile(join(projectPath, "shared", "_methods.md"), "Methods");
+      await writeFile(
+        join(projectPath, "docs", "report.qmd"),
+        [
+          "# Report",
+          "",
+          "{{< include _introduction.qmd >}}",
+          "",
+          "{{< include /shared/_methods.md >}}",
+        ].join("\n"),
+      );
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=docs/report.qmd&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.metadata.mimeType).toBe("text/markdown");
+      expect(json.highlightedLanguage).toBe("markdown");
+      expect(json.renderedMarkdownHtml).toContain(
+        `href="/projects/${projectId}/file?path=docs%2F_introduction.qmd"`,
+      );
+      expect(json.renderedMarkdownHtml).toContain(
+        `href="/projects/${projectId}/file?path=shared%2F_methods.md"`,
+      );
+      expect(json.renderedMarkdownHtml).not.toContain(
+        "data-ya-private-project-file-link",
+      );
+    });
+
     it("embeds the resolved SVG for an extensionless document image", async () => {
       const svg = '<svg width="320" height="180"></svg>';
       await writeFile(

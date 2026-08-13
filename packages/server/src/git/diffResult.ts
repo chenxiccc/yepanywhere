@@ -1,4 +1,4 @@
-import { extname } from "node:path";
+import { dirname, extname } from "node:path";
 import type { GitDiffResult } from "@yep-anywhere/shared";
 import {
   computeEditDiffHtml,
@@ -70,13 +70,16 @@ export async function buildGitDiffResult(
 
   const ext = extname(input.path).toLowerCase();
   if (
-    (ext === ".md" || ext === ".markdown") &&
+    (ext === ".md" || ext === ".markdown" || ext === ".qmd") &&
     input.newContent &&
     // Unlike the diff, a markdown preview renders the whole file.
     input.newContent.length <= GIT_DIFF_PREVIEW_MAX_DIFF_CHARS
   ) {
     try {
-      result.markdownHtml = await renderMarkdownToHtml(input.newContent);
+      result.markdownHtml = await renderMarkdownToHtml(input.newContent, {
+        localFileBasePath: dirname(input.path),
+        quartoMarkdown: ext === ".qmd",
+      });
     } catch {
       // Markdown preview is optional; the source diff remains usable.
     }

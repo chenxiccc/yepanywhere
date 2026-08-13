@@ -300,7 +300,7 @@ function renderInlineFormatting(text: string): string {
         return renderLocalMediaLink(href, label, ext);
       }
       return renderLocalFileLink(href, label, {
-        renderMarkdown: ext === "md" || ext === "markdown",
+        renderMarkdown: ext === "md" || ext === "markdown" || ext === "qmd",
       });
     }
     const safeHref = sanitizeUrl(href);

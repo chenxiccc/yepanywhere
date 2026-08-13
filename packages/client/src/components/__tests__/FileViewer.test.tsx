@@ -551,6 +551,63 @@ describe("FileViewer", () => {
     ]);
   });
 
+  it("opens Quarto files rendered and maps include selections to source", async () => {
+    const sourceMarkdown = "{{< include _introduction.qmd >}}";
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: "report.qmd",
+        size: sourceMarkdown.length,
+        mimeType: "text/markdown",
+        isText: true,
+      },
+      rawUrl: "",
+      content: sourceMarkdown,
+      highlightedHtml:
+        '<pre class="shiki"><code><span class="line">{{&lt; include _introduction.qmd &gt;}}</span></code></pre>',
+      renderedMarkdownHtml:
+        '<p>Include: <a href="/projects/project-id/file?path=_introduction.qmd" data-ya-resource="project-file" data-ya-project-id="project-id" data-ya-path="_introduction.qmd"><code>_introduction.qmd</code></a></p>',
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="report.qmd"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    const includePath = await screen.findByText("_introduction.qmd");
+    const range = document.createRange();
+    range.selectNodeContents(includePath);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const viewerBody =
+      container.querySelector<HTMLElement>(".file-viewer-body");
+    expect(extractMarkdownSnippetsFromSelection(viewerBody!)).toMatchObject([
+      {
+        markdown: "_introduction.qmd",
+        selectedText: "_introduction.qmd",
+      },
+    ]);
+
+    range.selectNodeContents(includePath.closest("p")!);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    expect(extractMarkdownSnippetsFromSelection(viewerBody!)).toMatchObject([
+      {
+        markdown: sourceMarkdown,
+        selectedText: "Include: _introduction.qmd",
+      },
+    ]);
+  });
+
   it("keeps HTML source-first and confines an explicit static preview", async () => {
     const fileResponse: FileContentResponse = {
       metadata: {

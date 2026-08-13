@@ -6,6 +6,7 @@ import MarkdownIt, {
   type Env,
   type Renderer,
   type RendererRule,
+  type StateBlock,
   type StateCore,
   type Token,
 } from "markdown-it";
@@ -39,7 +40,7 @@ const EXTENSIONLESS_IMAGE_CANDIDATES = [
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "avi", "mkv", "ogv"]);
 
 const MEDIA_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS]);
-const MARKDOWN_EXTENSIONS = new Set(["md", "markdown"]);
+const MARKDOWN_EXTENSIONS = new Set(["md", "markdown", "qmd"]);
 
 export interface SafeMarkdownRenderOptions {
   /**
@@ -56,6 +57,8 @@ export interface SafeMarkdownRenderOptions {
    * not run the React inline-preview hydrator.
    */
   inlineLocalImages?: boolean;
+  /** Interpret supported Quarto Markdown syntax without executing Quarto. */
+  quartoMarkdown?: boolean;
   /**
    * Project context for turning assistant inline-code filename references into
    * authenticated project-file viewer links. Omit for public shares.
@@ -1075,6 +1078,98 @@ function renderImage(
   return `<img src="${escapeHtml(safeSrc)}"${altAttr}${titleAttr}>`;
 }
 
+function parseQuartoIncludeTarget(line: string): string | null {
+  const match =
+    /^\{\{<\s*include\s+(?:"([^"]+)"|'([^']+)'|([^\s"'<>]+))\s*>\}\}$/.exec(
+      line.trim(),
+    );
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
+}
+
+function tokenizeQuartoInclude(
+  state: StateBlock,
+  startLine: number,
+  endLine: number,
+  silent: boolean,
+): boolean {
+  if (
+    !activeRenderOptions.quartoMarkdown ||
+    state.parentType !== "root" ||
+    (startLine > 0 && !state.isEmpty(startLine - 1)) ||
+    (startLine + 1 < endLine && !state.isEmpty(startLine + 1))
+  ) {
+    return false;
+  }
+
+  const start = state.bMarks[startLine] ?? 0;
+  const end = state.eMarks[startLine] ?? start;
+  const source = state.src.slice(start, end);
+  const target = parseQuartoIncludeTarget(source);
+  if (!target) return false;
+  if (silent) return true;
+
+  const token = state.push("quarto_include", "", 0);
+  token.block = true;
+  token.content = target;
+  token.info = source.trim();
+  token.map = [startLine, startLine + 1];
+  state.line = startLine + 1;
+  return true;
+}
+
+function resolveQuartoIncludeTarget(target: string): LocalPathReference | null {
+  const projectOptions = activeRenderOptions.projectFileLinks;
+  if (
+    projectOptions &&
+    /^[\\/]/.test(target) &&
+    !isWindowsDriveAbsolutePath(target)
+  ) {
+    const relativePath = target.replace(/^[\\/]+/, "");
+    if (!relativePath) return null;
+    const flavor = getProjectPathFlavor(projectOptions.projectPath);
+    return {
+      filePath: resolveProjectPath(
+        projectOptions.projectPath,
+        relativePath,
+        flavor,
+      ),
+    };
+  }
+  return resolveLocalMarkdownHref(target);
+}
+
+function renderQuartoInclude(tokens: Token[], index: number): string {
+  const token = tokens[index];
+  if (!token) return "";
+  const target = token.content;
+  const localPath = resolveQuartoIncludeTarget(target);
+  if (!localPath) {
+    return `<p><code>${escapeHtml(token.info)}</code></p>\n`;
+  }
+
+  const projectOptions = activeRenderOptions.projectFileLinks;
+  const projectTarget = projectOptions
+    ? resolveProjectFileCodeReference(
+        formatLocalPathReference(localPath),
+        projectOptions,
+      )
+    : null;
+  const title = formatLocalPathReference(localPath);
+  let open: string;
+  if (projectOptions) {
+    if (!projectTarget) {
+      return `<p><code>${escapeHtml(token.info)}</code></p>\n`;
+    }
+    open = renderProjectFileLinkOpen(projectOptions, projectTarget, { title });
+  } else {
+    open = renderLocalFileLinkOpen(localPath, {
+      renderMarkdown: isMarkdownExtension(getExtension(localPath.filePath)),
+      title,
+    });
+  }
+  return `<p>Include: ${open}<code>${escapeHtml(target)}</code></a></p>\n`;
+}
+
 function renderTableCellOpen(
   tokens: Token[],
   index: number,
@@ -1187,6 +1282,11 @@ markdownRenderer.renderer.rules.math_block = preserveEmptyMath(
 // Parse every link, including unsafe schemes, so the renderer can keep its
 // readable label while dropping the unsafe destination.
 markdownRenderer.validateLink = () => true;
+markdownRenderer.block.ruler.before(
+  "paragraph",
+  "ya_quarto_include",
+  tokenizeQuartoInclude,
+);
 markdownRenderer.core.ruler.after(
   "block",
   "ya_windows_drive_paths",
@@ -1206,6 +1306,7 @@ markdownRenderer.renderer.rules.link_open = renderLinkOpen;
 markdownRenderer.renderer.rules.link_close = renderLinkClose;
 markdownRenderer.renderer.rules.code_inline = renderCodeInline;
 markdownRenderer.renderer.rules.image = renderImage;
+markdownRenderer.renderer.rules.quarto_include = renderQuartoInclude;
 markdownRenderer.renderer.rules.th_open = renderTableCellOpen;
 markdownRenderer.renderer.rules.td_open = renderTableCellOpen;
 

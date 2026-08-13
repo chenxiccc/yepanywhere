@@ -827,7 +827,7 @@ export interface FileContentResponse {
   highlightedLanguage?: string;
   /** Whether the file was truncated for highlighting */
   highlightedTruncated?: boolean;
-  /** Rendered markdown HTML (for .md files when highlight=true) */
+  /** Rendered Markdown HTML (for supported Markdown files when highlight=true) */
   renderedMarkdownHtml?: string;
 }
 

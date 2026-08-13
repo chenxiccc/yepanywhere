@@ -94,6 +94,7 @@ function markdownCacheKey(
     markdown,
     options?.localFileBasePath ?? null,
     options?.inlineLocalImages ?? false,
+    options?.quartoMarkdown ?? false,
     projectLinks?.projectId ?? null,
     projectLinks?.projectPath ?? null,
     fileExistsIdentity(projectLinks?.fileExists),

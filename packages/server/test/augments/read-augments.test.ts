@@ -23,4 +23,17 @@ describe("computeReadAugment", () => {
     expect(rendered).not.toContain("javascript:");
     expect(rendered).not.toContain('href="javascript:alert(1)"');
   });
+
+  it("renders Quarto include directives as local file links", async () => {
+    const result = await computeReadAugment({
+      file_path: "/workspace/project/report.qmd",
+      content:
+        "   1\t# Report\n   2\t\n   3\t{{< include sections/_methods.qmd >}}",
+    });
+
+    expect(result?.language).toBe("markdown");
+    expect(result?.renderedMarkdownHtml).toContain(
+      'href="/api/local-file?path=%2Fworkspace%2Fproject%2Fsections%2F_methods.qmd&amp;render=1"',
+    );
+  });
 });

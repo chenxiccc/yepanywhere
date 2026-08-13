@@ -5,7 +5,7 @@
  * matching the FileViewer's highlighting behavior.
  */
 
-import { extname } from "node:path";
+import { dirname, extname } from "node:path";
 import { highlightFile } from "../highlighting/index.js";
 import { renderMarkdownToHtml } from "./markdown-augments.js";
 
@@ -27,7 +27,7 @@ export interface WriteAugmentResult {
   language: string;
   /** Whether content was truncated for highlighting */
   truncated: boolean;
-  /** Rendered markdown HTML (for .md files) */
+  /** Rendered Markdown HTML */
   renderedMarkdownHtml?: string;
 }
 
@@ -36,7 +36,7 @@ export interface WriteAugmentResult {
  */
 function isMarkdownFile(filePath: string): boolean {
   const ext = extname(filePath).toLowerCase();
-  return ext === ".md" || ext === ".markdown";
+  return ext === ".md" || ext === ".markdown" || ext === ".qmd";
 }
 
 /**
@@ -62,10 +62,13 @@ export async function computeWriteAugment(
     truncated: result.truncated,
   };
 
-  // Render markdown preview for .md files
+  // Render Markdown preview for supported document files.
   if (isMarkdownFile(file_path)) {
     try {
-      augmentResult.renderedMarkdownHtml = await renderMarkdownToHtml(content);
+      augmentResult.renderedMarkdownHtml = await renderMarkdownToHtml(content, {
+        localFileBasePath: dirname(file_path),
+        quartoMarkdown: extname(file_path).toLowerCase() === ".qmd",
+      });
     } catch {
       // Ignore markdown rendering errors
     }

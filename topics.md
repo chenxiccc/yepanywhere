@@ -309,3 +309,5 @@
   source-comment, and gap annotations for a future review-sweep workflow.
 - user-authorization-attestation - Sketch of opt-in signed user turns or a
   Linux-bounded capability inbox for only predeclared authorization gates.
+- quarto-markdown - Safe `.qmd` viewing and inert, source-preserving file links
+  for Quarto include directives.

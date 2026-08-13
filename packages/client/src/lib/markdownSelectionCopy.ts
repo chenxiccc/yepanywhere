@@ -293,7 +293,23 @@ export function getMarkdownForVisibleSelection(
     normalizedSource,
     normalizedSelection,
   );
-  if (options.preferExactSource && exactSelection !== null) {
+  const quartoIncludeSelection = findQuartoIncludeSourceSelection(
+    normalizedSource,
+    normalizedSelection,
+  );
+  if (quartoIncludeSelection) {
+    return quartoIncludeSelection;
+  }
+  if (
+    exactSelection !== null &&
+    (options.preferExactSource ||
+      normalizedSource
+        .split("\n")
+        .some(
+          (line) =>
+            parseQuartoIncludeLine(line)?.target === normalizedSelection,
+        ))
+  ) {
     return exactSelection;
   }
 
@@ -409,6 +425,20 @@ function findExactSourceSelection(
     return trimmed;
   }
 
+  return null;
+}
+
+function findQuartoIncludeSourceSelection(
+  source: string,
+  selectedText: string,
+): string | null {
+  const trimmedSelection = trimBoundaryNewlines(selectedText).trim();
+  for (const line of source.split("\n")) {
+    const include = parseQuartoIncludeLine(line);
+    if (include && trimmedSelection === `Include: ${include.target}`) {
+      return line.trim();
+    }
+  }
   return null;
 }
 
@@ -530,6 +560,11 @@ function buildVisibleLineMap(
   charSources: number[];
   forceWholeLine: boolean;
 } {
+  const quartoInclude = buildQuartoIncludeLineMap(line, sourceLineStart);
+  if (quartoInclude) {
+    return quartoInclude;
+  }
+
   const blockPrefix = getMarkdownBlockPrefix(line);
   const visibleParts: string[] = [];
   const charSources: number[] = [];
@@ -572,6 +607,55 @@ function buildVisibleLineMap(
     charSources,
     forceWholeLine: blockPrefix.forceWholeLine,
   };
+}
+
+function buildQuartoIncludeLineMap(
+  line: string,
+  sourceLineStart: number,
+): {
+  visible: string;
+  charSources: number[];
+  forceWholeLine: boolean;
+} | null {
+  const include = parseQuartoIncludeLine(line);
+  if (!include) return null;
+  const { target, targetStart } = include;
+
+  const label = "Include: ";
+  const prefixLength = Math.max(1, targetStart);
+  const charSources = Array.from(
+    { length: label.length },
+    (_, index) =>
+      sourceLineStart +
+      Math.min(
+        prefixLength - 1,
+        Math.floor((index * prefixLength) / label.length),
+      ),
+  );
+  for (let index = 0; index < target.length; index += 1) {
+    charSources.push(sourceLineStart + targetStart + index);
+  }
+
+  return {
+    visible: `${label}${target}`,
+    charSources,
+    forceWholeLine: true,
+  };
+}
+
+function parseQuartoIncludeLine(
+  line: string,
+): { target: string; targetStart: number } | null {
+  const match =
+    /^\s*\{\{<\s*include\s+(?:"([^"]+)"|'([^']+)'|([^\s"'<>]+))\s*>\}\}\s*$/.exec(
+      line,
+    );
+  const target = match?.[1] ?? match?.[2] ?? match?.[3];
+  if (!match || !target) return null;
+
+  const targetStart = match[0].lastIndexOf(target);
+  if (targetStart < 0) return null;
+  return { target, targetStart };
 }
 
 function getMarkdownBlockPrefix(line: string): {

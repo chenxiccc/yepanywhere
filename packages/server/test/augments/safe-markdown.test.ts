@@ -318,6 +318,15 @@ describe("parseMarkdownSourceSpans", () => {
 });
 
 describe("renderSafeMarkdown — local file links", () => {
+  it("routes local Quarto Markdown links through rendered file viewing", () => {
+    const html = renderSafeMarkdown("[report](/tmp/report.qmd)");
+
+    expect(html).toContain(
+      'href="/api/local-file?path=%2Ftmp%2Freport.qmd&amp;render=1"',
+    );
+    expect(html).toContain('data-ya-render-markdown="true"');
+  });
+
   it("routes local markdown links through the rendered text file endpoint", () => {
     const html = renderSafeMarkdown("[notes](/tmp/session-notes.md)");
 
@@ -608,5 +617,89 @@ describe("renderSafeMarkdown — local file links", () => {
 
     expect(html).not.toContain("/api/local-image");
     expect(html).not.toContain("data-ya-resource");
+  });
+});
+
+describe("renderSafeMarkdown — Quarto includes", () => {
+  const projectOptions = {
+    localFileBasePath: "/workspace/project/chapters",
+    projectFileLinks: {
+      projectId: "project-1",
+      projectPath: "/workspace/project",
+      fileExists: (_absolutePath: string, relativePath: string) =>
+        relativePath === "chapters/_introduction.qmd" ||
+        relativePath === "shared/_methods.md",
+    },
+    quartoMarkdown: true,
+  };
+
+  it("renders a document-relative include as a project FileViewer link", () => {
+    const html = renderSafeMarkdown(
+      "{{< include _introduction.qmd >}}",
+      projectOptions,
+    );
+
+    expect(html).toContain("<p>Include: ");
+    expect(html).toContain(
+      'href="/projects/project-1/file?path=chapters%2F_introduction.qmd"',
+    );
+    expect(html).toContain('data-ya-resource="project-file"');
+    expect(html).toContain("<code>_introduction.qmd</code>");
+  });
+
+  it("resolves a leading slash from the Quarto project root", () => {
+    const html = renderSafeMarkdown(
+      "{{< include /shared/_methods.md >}}",
+      projectOptions,
+    );
+
+    expect(html).toContain(
+      'href="/projects/project-1/file?path=shared%2F_methods.md"',
+    );
+    expect(html).toContain("<code>/shared/_methods.md</code>");
+  });
+
+  it("leaves the include syntax inert outside Quarto documents", () => {
+    const html = renderSafeMarkdown("{{< include _introduction.qmd >}}", {
+      ...projectOptions,
+      quartoMarkdown: false,
+    });
+
+    expect(html).toContain("{{&lt; include _introduction.qmd &gt;}}");
+    expect(html).not.toContain("data-ya-resource");
+  });
+
+  it("does not recognize includes inside fenced code or prose", () => {
+    const fenced = renderSafeMarkdown(
+      "```markdown\n{{< include _introduction.qmd >}}\n```",
+      projectOptions,
+    );
+    const prose = renderSafeMarkdown(
+      "Before\n{{< include _introduction.qmd >}}\nAfter",
+      projectOptions,
+    );
+
+    expect(fenced).toContain("{{&lt; include _introduction.qmd &gt;}}");
+    expect(fenced).not.toContain("data-ya-resource");
+    expect(prose).toContain("{{&lt; include _introduction.qmd &gt;}}");
+    expect(prose).not.toContain("data-ya-resource");
+  });
+
+  it("keeps unauthorized and non-file targets literal", () => {
+    for (const target of [
+      "missing.qmd",
+      "../private.qmd",
+      "/../private.qmd",
+      "https://x.test/a.qmd",
+    ]) {
+      const html = renderSafeMarkdown(
+        `{{< include ${target} >}}`,
+        projectOptions,
+      );
+
+      expect(html).toContain(`<code>{{&lt; include ${target} &gt;}}</code>`);
+      expect(html).not.toContain("data-ya-resource");
+      expect(html).not.toContain("/api/local-file");
+    }
   });
 });

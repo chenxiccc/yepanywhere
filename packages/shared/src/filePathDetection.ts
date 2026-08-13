@@ -66,6 +66,7 @@ const FILE_EXTENSIONS = new Set([
   // Documentation
   "md",
   "mdx",
+  "qmd",
   "txt",
   "rst",
   // Python

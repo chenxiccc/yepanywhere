@@ -11,6 +11,7 @@
  * starts mid-context (e.g., inside a multi-line comment or string).
  */
 
+import { dirname } from "node:path";
 import { highlightFile } from "../highlighting/index.js";
 import { renderSafeMarkdown } from "./safe-markdown.js";
 
@@ -32,12 +33,12 @@ export interface ReadAugmentResult {
   language: string;
   /** Whether content was truncated for highlighting */
   truncated: boolean;
-  /** Rendered markdown HTML (only for .md files) */
+  /** Rendered Markdown HTML */
   renderedMarkdownHtml?: string;
 }
 
 /** File extensions that should get rendered markdown preview */
-const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown", ".mdx"]);
+const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown", ".mdx", ".qmd"]);
 
 /**
  * Check if a file path is a markdown file.
@@ -50,7 +51,10 @@ function isMarkdownFile(filePath: string): boolean {
 /**
  * Render markdown content to safe HTML.
  */
-async function renderMarkdown(content: string): Promise<string> {
+async function renderMarkdown(
+  content: string,
+  filePath: string,
+): Promise<string> {
   // Strip line numbers from content (format: "   123\t" prefix)
   const contentWithoutLineNumbers = content
     .split("\n")
@@ -61,7 +65,10 @@ async function renderMarkdown(content: string): Promise<string> {
     })
     .join("\n");
 
-  return renderSafeMarkdown(contentWithoutLineNumbers);
+  return renderSafeMarkdown(contentWithoutLineNumbers, {
+    localFileBasePath: dirname(filePath),
+    quartoMarkdown: filePath.toLowerCase().endsWith(".qmd"),
+  });
 }
 
 /**
@@ -84,7 +91,7 @@ export async function computeReadAugment(
   // For markdown files, also render the content to HTML
   let renderedMarkdownHtml: string | undefined;
   if (isMarkdownFile(file_path)) {
-    renderedMarkdownHtml = await renderMarkdown(content);
+    renderedMarkdownHtml = await renderMarkdown(content, file_path);
   }
 
   return {

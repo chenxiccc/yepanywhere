@@ -5,6 +5,7 @@ const MARKDOWN_EXTENSIONS = new Set([
   "mdx",
   "mkd",
   "mkdn",
+  "qmd",
 ]);
 
 export function isMarkdownLikeFile(filePath: string | undefined): boolean {

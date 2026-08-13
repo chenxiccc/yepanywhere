@@ -68,6 +68,7 @@ const MIME_TYPES: Record<string, string> = {
   ".txt": "text/plain",
   ".md": "text/markdown",
   ".markdown": "text/markdown",
+  ".qmd": "text/markdown",
   ".ts": "text/typescript",
   ".tsx": "text/typescript",
   ".js": "text/javascript",
@@ -190,6 +191,7 @@ const TEXT_EXTENSIONS = new Set([
   ".txt",
   ".md",
   ".markdown",
+  ".qmd",
   ".ts",
   ".tsx",
   ".js",
@@ -1008,9 +1010,9 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
               response.highlightedTruncated = result.truncated;
             }
 
-            // Render markdown preview for .md files
+            // Render Markdown preview for supported document files.
             const ext = extname(relativePath).toLowerCase();
-            if (ext === ".md" || ext === ".markdown") {
+            if (ext === ".md" || ext === ".markdown" || ext === ".qmd") {
               try {
                 const largeRangePreviewSlice =
                   fullInlineContent === undefined &&
@@ -1033,6 +1035,7 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
                     previewContent,
                     {
                       localFileBasePath: dirname(filePath),
+                      quartoMarkdown: ext === ".qmd",
                       projectFileLinks: {
                         projectId,
                         projectPath: projectRoot,

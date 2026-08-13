@@ -7,6 +7,17 @@ import {
 } from "../markdownSelectionCopy";
 
 describe("getMarkdownForVisibleSelection", () => {
+  it("maps Quarto include labels and paths back to their source", () => {
+    const source = "{{< include _introduction.qmd >}}";
+
+    expect(getMarkdownForVisibleSelection(source, "_introduction.qmd")).toBe(
+      "_introduction.qmd",
+    );
+    expect(
+      getMarkdownForVisibleSelection(source, "Include: _introduction.qmd"),
+    ).toBe(source);
+  });
+
   it("preserves original ordered-list markers for rendered selections", () => {
     expect(
       getMarkdownForVisibleSelection(

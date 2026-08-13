@@ -155,6 +155,32 @@ describe("Local file routes", () => {
     expect(html).not.toContain("Print");
   });
 
+  it("renders Quarto includes as local file-viewer links", async () => {
+    const allowedDir = path.join(tempDir, "allowed");
+    const docsDir = path.join(allowedDir, "docs");
+    await mkdir(docsDir, { recursive: true });
+
+    const includePath = path.join(docsDir, "_introduction.qmd");
+    const filePath = path.join(docsDir, "report.qmd");
+    await writeFile(includePath, "Introduction");
+    await writeFile(filePath, "# Report\n\n{{< include _introduction.qmd >}}");
+
+    const routes = createLocalFileRoutes({
+      allowedPaths: [allowedDir],
+    });
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}&render=1`,
+    );
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("<h1>Report</h1>");
+    expect(html).toContain(
+      `href="/api/local-file?path=${encodeURIComponent(includePath)}&amp;render=1"`,
+    );
+    expect(html).toContain('data-ya-render-markdown="true"');
+  });
+
   it("marks and navigates to requested Markdown source lines", async () => {
     const allowedDir = path.join(tempDir, "allowed");
     await mkdir(allowedDir, { recursive: true });

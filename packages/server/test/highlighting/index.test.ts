@@ -165,6 +165,10 @@ describe("getLanguageForPath", () => {
     it("maps .markdown to markdown", () => {
       expect(getLanguageForPath("/path/to/doc.markdown")).toBe("markdown");
     });
+
+    it("maps .qmd to markdown", () => {
+      expect(getLanguageForPath("/path/to/doc.qmd")).toBe("markdown");
+    });
   });
 
   describe("edge cases", () => {

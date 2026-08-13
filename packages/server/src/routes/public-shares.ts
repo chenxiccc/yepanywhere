@@ -109,6 +109,7 @@ const PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS = new Set([
   ".markdown",
   ".md",
   ".mdx",
+  ".qmd",
 ]);
 const PUBLIC_SHARE_RENDER_ASSET_EXTENSIONS = new Set([
   ".apng",

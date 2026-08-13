@@ -1,8 +1,9 @@
 # Quarto-aware Markdown documents lose publication semantics in the file viewer
 
-YA's rendered-document path currently recognizes `.md`/`.markdown` (with
-slightly different extension sets at different callers), but not `.qmd`.
-`safe-markdown.ts` renders a deliberately small Markdown-It vocabulary, so a
+YA's rendered-document path recognizes `.qmd` and renders standalone Quarto
+include directives as inert file-viewer links under the contract in
+[`topics/quarto-markdown.md`](../topics/quarto-markdown.md). `safe-markdown.ts`
+still renders a deliberately small Markdown-It vocabulary, so a
 Quarto/Pandoc manuscript shown in `FileViewer` loses or exposes as source such
 high-value document semantics as YAML front matter, figure identifiers and
 captions, subfigures/layout divs, cross-references, `fig-alt`, and footnotes.
@@ -25,8 +26,11 @@ high-utility document meaning. This path improves the immediate preview and the
 fallback on servers without Quarto; it is not a reason to approximate every
 Quarto feature inside Markdown-It:
 
-- recognize `.qmd` consistently across read/write augments, local-file routes,
-  diffs, file actions, and the shared client extension test;
+- [x] recognize `.qmd` consistently across read/write augments, local-file
+  routes, diffs, file actions, syntax highlighting, and the shared client
+  extension test;
+- [x] render a valid standalone `{{< include path >}}` directive as an inert
+  contained file-viewer link without reading or expanding the target;
 - treat front matter as document metadata rather than body punctuation;
 - preserve separate title, visible caption/subcaption, image alt description,
   identifier, and cross-reference roles;

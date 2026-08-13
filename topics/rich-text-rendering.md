@@ -247,9 +247,9 @@ exclusive until a compositing path is built.
 
 Filename-affiliated plain-text files retain only the math portion of the
 `FixedFontMathToggle` pipeline unless their extension is Markdown-like (`.md`,
-`.markdown`, `.mdx`, `.mdown`, `.mkd`, `.mkdn`). This avoids structural Markdown
-false positives from source files without Shiki highlighting, especially TSX
-template literals and backtick-heavy code.
+`.markdown`, `.mdx`, `.mdown`, `.mkd`, `.mkdn`, `.qmd`). This avoids structural
+Markdown false positives from source files without Shiki highlighting,
+especially TSX template literals and backtick-heavy code.
 
 For markdown files, `FileModalContent` uses its own outer Σ button (not
 `FixedFontMathToggle`) to toggle between the server-rendered HTML preview and
@@ -358,6 +358,9 @@ formulas as literal text, matching the experience in their editor.
   markers against that rendered output. The broader `.qmd`, caption,
   cross-reference, figure-layout, and optional delayed-render work is tracked in
   [`gaps/quarto-aware-document-view.md`](../gaps/quarto-aware-document-view.md).
+  The currently supported `.qmd` recognition and inert include-link behavior
+  are specified in
+  [`topics/quarto-markdown.md`](../topics/quarto-markdown.md).
 - Edit diff rich render does not yet inline-expand image links. This would help
   Markdown edits that add or update `![image](...)`, but it should share the
   local-media hydration path rather than adding a second image loader.

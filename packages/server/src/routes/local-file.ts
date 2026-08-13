@@ -28,7 +28,7 @@ interface LocalFileReference {
 
 function isMarkdownPath(filePath: string): boolean {
   const ext = extname(filePath).toLowerCase();
-  return ext === ".md" || ext === ".markdown";
+  return ext === ".md" || ext === ".markdown" || ext === ".qmd";
 }
 
 function isHtmlPath(filePath: string): boolean {
@@ -551,6 +551,7 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
           {
             localFileBasePath: dirname(resolvedPath),
             inlineLocalImages: true,
+            quartoMarkdown: extname(resolvedPath).toLowerCase() === ".qmd",
           },
           1,
           requestedRange,

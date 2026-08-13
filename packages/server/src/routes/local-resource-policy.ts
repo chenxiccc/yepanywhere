@@ -36,6 +36,7 @@ export const LOCAL_FILE_CONTENT_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
   ".md": "text/plain; charset=utf-8",
   ".markdown": "text/plain; charset=utf-8",
+  ".qmd": "text/plain; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".jsonl": "application/x-ndjson; charset=utf-8",
   ".yaml": "text/yaml; charset=utf-8",
