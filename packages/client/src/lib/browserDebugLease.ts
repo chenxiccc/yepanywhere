@@ -1,4 +1,5 @@
 import { asClientSummarySourceKey } from "./clientSummaryStore";
+import { executeBrowserDebugCode } from "./browserDebugEval";
 import { getSourceRuntimeRegistry } from "./sourceRuntime";
 import { generateUUID } from "./uuid";
 
@@ -272,11 +273,11 @@ This grant works only from a YA-launched agent process with the current browser-
 
 If that preflight fails, do not inspect other processes or files to recover credentials. Report that this provider process lacks the current browser-debug handshake. A full YA wrapper/provider-host restart and a newly launched or resumed eligible session may be required; the user must then activate the tab again and paste its new grant.
 
-Use a CLI from the same YA generation as the server. First try:
+Use a CLI from the same YA generation as the server. A compatible help response contains the literal usage line \`yepanywhere browser-debug info <grant-url>\`. First try:
 
   yepanywhere browser-debug --help
 
-If that reports an unknown browser-debug command and the current working tree is the YA source checkout, use this source-checkout CLI instead:
+Do not accept a zero exit status or generic yepanywhere help as proof of compatibility. If the required usage line is absent and the current working tree is the YA source checkout, try this source-checkout CLI and require the same usage line:
 
   pnpm --filter server exec tsx src/cli.ts browser-debug --help
 
@@ -629,8 +630,7 @@ export class BrowserDebugLeaseController {
   ): Promise<void> {
     let result: { ok: boolean; value?: unknown; error?: string };
     try {
-      // biome-ignore lint/security/noGlobalEval: The visibly consented v1 contract is full in-tab JavaScript evaluation.
-      const value = await globalThis.eval(command.code);
+      const value = await executeBrowserDebugCode(command.code);
       result = { ok: true, value: serializeForDiagnostics(value) };
     } catch (error) {
       const serializedError = serializeForDiagnostics(error);
@@ -736,8 +736,8 @@ export class BrowserDebugLeaseController {
         return;
       const receivedAt = performance.now();
       const dispatchDelay = Math.max(0, receivedAt - event.timeStamp);
-      requestAnimationFrame((frameAt) => {
-        const nextFrameDelay = frameAt - receivedAt;
+      requestAnimationFrame(() => {
+        const nextFrameDelay = Math.max(0, performance.now() - receivedAt);
         if (dispatchDelay >= 25 || nextFrameDelay >= 50) {
           this.enqueue("composer.keystroke-latency", {
             key: event.key.length === 1 ? "printable" : event.key,
@@ -751,15 +751,27 @@ export class BrowserDebugLeaseController {
     window.addEventListener("unhandledrejection", onUnhandledRejection);
     window.addEventListener("keydown", onKeyDown, true);
 
-    let previousFrame = performance.now();
+    let previousFrame: number | null =
+      document.visibilityState === "visible" ? performance.now() : null;
     let frameRequest = 0;
-    const measureFrame = (timestamp: number) => {
-      const gap = timestamp - previousFrame;
-      previousFrame = timestamp;
-      if (gap >= 100)
-        this.enqueue("performance.frame-gap", { durationMs: gap });
+    const resetFrameBaseline = () => {
+      previousFrame = null;
+    };
+    const measureFrame = () => {
+      if (document.visibilityState !== "visible") {
+        previousFrame = null;
+      } else {
+        const measuredAt = performance.now();
+        if (previousFrame !== null) {
+          const gap = measuredAt - previousFrame;
+          if (gap >= 100)
+            this.enqueue("performance.frame-gap", { durationMs: gap });
+        }
+        previousFrame = measuredAt;
+      }
       if (!this.stopped) frameRequest = requestAnimationFrame(measureFrame);
     };
+    document.addEventListener("visibilitychange", resetFrameBaseline);
     frameRequest = requestAnimationFrame(measureFrame);
 
     let observer: PerformanceObserver | null = null;
@@ -813,6 +825,7 @@ export class BrowserDebugLeaseController {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       window.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("visibilitychange", resetFrameBaseline);
       cancelAnimationFrame(frameRequest);
       observer?.disconnect();
       clearInterval(metricsInterval);

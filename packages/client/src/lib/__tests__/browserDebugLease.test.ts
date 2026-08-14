@@ -90,6 +90,13 @@ vi.mock("../sourceRuntime", () => ({
   }),
 }));
 
+vi.mock("../browserDebugEval", () => ({
+  executeBrowserDebugCode: (code: string) => {
+    if (code === "({ answer: 6 * 7 })") return { answer: 42 };
+    throw new Error(`Unexpected test evaluation: ${code}`);
+  },
+}));
+
 import {
   BROWSER_DEBUG_PROMPT_LEAD,
   BrowserDebugLeaseController,
@@ -98,6 +105,22 @@ import {
 
 describe("browserDebugLeaseController", () => {
   const extraControllers: BrowserDebugLeaseController[] = [];
+
+  async function uploadedEvents(
+    controller: BrowserDebugLeaseController,
+  ): Promise<Array<{ kind: string; data?: Record<string, unknown> }>> {
+    await (
+      controller as unknown as { flushEvents: () => Promise<void> }
+    ).flushEvents();
+    return mocks.calls
+      .filter((call) => call.path.endsWith("/events"))
+      .flatMap((call) => {
+        const payload = JSON.parse(String(call.options?.body)) as {
+          events: Array<{ kind: string; data?: Record<string, unknown> }>;
+        };
+        return payload.events;
+      });
+  }
 
   beforeEach(() => {
     mocks.reset();
@@ -128,6 +151,12 @@ describe("browserDebugLeaseController", () => {
     expect(prompt).toContain("do not inspect other processes or files");
     expect(prompt).toContain(
       "pnpm --filter server exec tsx src/cli.ts browser-debug --help",
+    );
+    expect(prompt).toContain(
+      "literal usage line `yepanywhere browser-debug info <grant-url>`",
+    );
+    expect(prompt).toContain(
+      "Do not accept a zero exit status or generic yepanywhere help",
     );
     expect(prompt).toContain("do not treat it as rejection of the grant");
     expect(
@@ -168,6 +197,85 @@ describe("browserDebugLeaseController", () => {
       commandId: "command-1",
       result: { ok: true, value: { answer: 42 } },
     });
+  });
+
+  it("measures key-to-frame delay when the callback actually runs", async () => {
+    const frameCallbacks: FrameRequestCallback[] = [];
+    let now = 100;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        frameCallbacks.push(callback);
+        return frameCallbacks.length;
+      }),
+    );
+    const controller = new BrowserDebugLeaseController();
+    extraControllers.push(controller);
+    await controller.enable("session-1");
+    const input = document.createElement("textarea");
+    document.body.append(input);
+    const keydown = new KeyboardEvent("keydown", {
+      bubbles: true,
+      key: "a",
+    });
+    Object.defineProperty(keydown, "timeStamp", { value: 60 });
+
+    input.dispatchEvent(keydown);
+    now = 175;
+    frameCallbacks.at(-1)?.(-200);
+
+    const events = await uploadedEvents(controller);
+    expect(
+      events.find((event) => event.kind === "composer.keystroke-latency"),
+    ).toMatchObject({
+      data: {
+        key: "printable",
+        dispatchDelayMs: 40,
+        nextFrameDelayMs: 75,
+      },
+    });
+    input.remove();
+  });
+
+  it("does not report background time as a foreground frame gap", async () => {
+    const frameCallbacks: FrameRequestCallback[] = [];
+    let visibility: DocumentVisibilityState = "visible";
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => visibility,
+    );
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        frameCallbacks.push(callback);
+        return frameCallbacks.length;
+      }),
+    );
+    const controller = new BrowserDebugLeaseController();
+    extraControllers.push(controller);
+    await controller.enable("session-1");
+
+    now = 50;
+    frameCallbacks.shift()?.(50);
+    visibility = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    now = 120_000;
+    frameCallbacks.shift()?.(120_000);
+    visibility = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    now = 120_016;
+    frameCallbacks.shift()?.(120_016);
+    now = 120_150;
+    frameCallbacks.shift()?.(120_150);
+
+    const events = await uploadedEvents(controller);
+    expect(
+      events
+        .filter((event) => event.kind === "performance.frame-gap")
+        .map((event) => event.data?.durationMs),
+    ).toEqual([134]);
   });
 
   it("revokes a lease that arrives after enable is cancelled", async () => {

@@ -45,13 +45,16 @@ from another process or file and explains that an older retained provider may
 need a full wrapper/provider-host restart, a newly launched or resumed eligible
 session, and a newly activated tab grant.
 
-The instruction probes the installed CLI before treating it as usable. An
-unknown `browser-debug` command is a CLI/server generation mismatch rather than
-a rejected grant; a session working in the YA source checkout gets the current
-`pnpm --filter server exec tsx src/cli.ts` fallback. The bearer URL appears once
-and the example operations use a placeholder. If clipboard writing fails, the
-lease remains visibly active and the banner tells the user to disable and
-retry.
+The instruction probes the installed CLI before treating it as usable. A
+compatible response must contain the browser-debug-specific
+`yepanywhere browser-debug info <grant-url>` usage line; a zero exit status or
+generic top-level help is insufficient. A failed positive check is a CLI/server
+generation mismatch rather than a rejected grant, and a session working in the
+YA source checkout gets the current
+`pnpm --filter server exec tsx src/cli.ts` fallback with the same positive
+check. The bearer URL appears once and the example operations use a
+placeholder. If clipboard writing fails, the lease remains visibly active and
+the banner tells the user to disable and retry.
 
 The active control's tooltip names the expiry time. Clicking it revokes the
 lease. The control remains visible while active even if its stored toolbar
@@ -177,7 +180,13 @@ yepanywhere browser-debug eval <grant-url> <javascript>
 `info` establishes which canonical YA session and per-tab identity the grant
 represents. `events --follow` tails the in-memory event sequence. `eval` admits
 only one pending evaluation per lease and waits for the browser's poll loop to
-execute it.
+execute it. The browser executes the explicitly granted source through a
+short-lived inline script bridge, which works under YA's served-page policy
+without granting the page general `unsafe-eval`/`Function` compilation. It
+first preserves expression completion values (including promises), then
+accepts statement bodies with `undefined` completion; mutations and thrown
+errors cross the same result bridge. The injected script element and its
+temporary global result slot are removed after each command.
 
 The server is a memory-only rendezvous. Restarting Hono invalidates every lease.
 An ordinary Hono-owned restart also changes the caller factor; a reload-safe
@@ -201,6 +210,12 @@ disable. Version 1 records:
 - explicit app annotations sent through `window.__YA_BROWSER_DEBUG_EMIT__`.
 
 This is not historical console access. It sees only events after enable.
+Key receipt and animation-frame delivery use `performance.now()` at both ends,
+so their elapsed value is non-negative and does not mix the animation
+callback's frame timestamp with callback receipt time. Frame-gap collection
+clears its baseline whenever document visibility changes and suppresses the
+first new foreground frame, so hidden time is not reported as main-thread
+starvation.
 Values are cycle-safe, depth- and collection-bounded, and long strings are
 truncated. The browser batches at most 100 events per request and retains at
 most 500 unsent events. The server admits at most 32 active leases, retains at
@@ -260,7 +275,11 @@ weaken or ambiguously redefine the deliberately full-access v1 contract.
 - A grant without the current YA caller token is denied.
 - A caller token without the per-tab grant is denied and cannot enumerate tabs.
 - Correct factors can read post-enable events and complete one JavaScript
-  evaluation through the enabled tab.
+  evaluation through the enabled tab under YA's served-page CSP, without
+  adding `unsafe-eval`.
+- The copied instruction rejects generic top-level help as a compatible CLI.
+- Key-to-frame delays are non-negative, and background time is absent from
+  foreground frame-gap events.
 - Local self-signed HTTPS supplies its public certificate through the agent URL
   fragment and the CLI verifies the broker with that certificate.
 - A compatible local hosted session retained across Hono replacement publishes
