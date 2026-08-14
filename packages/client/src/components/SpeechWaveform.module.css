@@ -1,4 +1,8 @@
 .waveform {
+  --speech-waveform-center-color: rgb(251, 146, 60);
+  --speech-waveform-shoulder-color: rgb(248, 113, 113);
+  --speech-waveform-peak-color: rgb(244, 63, 94);
+
   box-sizing: border-box;
   height: var(--composer-primary-control-size);
   min-width: 0;
@@ -7,8 +11,8 @@
   padding-left: var(--composer-control-gap);
   margin-left: calc(-1 * var(--composer-control-gap));
   overflow: hidden;
-  color: rgb(239, 68, 68);
-  opacity: 0.82;
+  color: var(--speech-waveform-shoulder-color);
+  opacity: 0.78;
   pointer-events: none;
 }
 

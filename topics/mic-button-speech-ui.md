@@ -586,7 +586,12 @@ effect derived from the waveform element's measured pixel width; capture and
 transport remain layout-independent. It renders one sample vertex per measured
 CSS pixel in a continuous mirrored envelope, so there are no visual gaps and
 saturation intentionally becomes a visibly clipped band. The envelope is
-painted directly to a canvas, not rebuilt through React or SVG state. Audio
+painted directly to a canvas with a smooth, symmetric vertical gradient: the
+center stays warm orange, then transitions through coral to rose at the outer
+peaks without discrete meter bands. The Toolbar settings specimen uses this
+same renderer with a deterministic speech-like envelope whose height is mostly
+below 60%; live capture continues to use only real microphone samples. Neither
+path uses a cached bitmap or a separately styled waveform. Audio
 callbacks only overwrite the latest pending sample buffer; at most one
 `requestAnimationFrame` is queued, accepted draws are capped at 60 fps, and
 intermediate samples are coalesced when the browser is busy. Hidden documents

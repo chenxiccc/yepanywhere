@@ -35,10 +35,14 @@ describe("speech waveform", () => {
     vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
     vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame);
 
+    const gradient = {
+      addColorStop: vi.fn(),
+    } as unknown as CanvasGradient;
     const context = {
       beginPath: vi.fn(),
       clearRect: vi.fn(),
       closePath: vi.fn(),
+      createLinearGradient: vi.fn(() => gradient),
       fill: vi.fn(),
       fillStyle: "",
       lineTo: vi.fn(),
@@ -92,6 +96,8 @@ describe("speech waveform", () => {
 
     renderNextFrame(0);
     expect(context.fill).toHaveBeenCalledTimes(1);
+    expect(context.createLinearGradient).toHaveBeenCalledWith(0, 0, 0, 36);
+    expect(gradient.addColorStop).toHaveBeenCalledTimes(5);
     // 120 CSS-pixel columns form 120 shared-edge trapezoids.
     expect(context.lineTo).toHaveBeenCalledTimes(241);
     expect(context.moveTo).toHaveBeenCalledWith(0, 0);
@@ -146,13 +152,18 @@ describe("speech waveform", () => {
     const requestAnimationFrame = vi.fn(() => 1);
     vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const gradient = {
+      addColorStop: vi.fn(),
+    } as unknown as CanvasGradient;
+    const lineTo = vi.fn();
     const context = {
       beginPath: vi.fn(),
       clearRect: vi.fn(),
       closePath: vi.fn(),
+      createLinearGradient: vi.fn(() => gradient),
       fill: vi.fn(),
       fillStyle: "",
-      lineTo: vi.fn(),
+      lineTo,
       moveTo: vi.fn(),
       setTransform: vi.fn(),
     } as unknown as CanvasRenderingContext2D;
@@ -176,6 +187,15 @@ describe("speech waveform", () => {
 
     render(<SpeechWaveform preview />);
     expect(context.fill).toHaveBeenCalledOnce();
+    expect(context.createLinearGradient).toHaveBeenCalledWith(0, 0, 0, 36);
+
+    const topEdgeHeights = lineTo.mock.calls
+      .slice(0, 120)
+      .map(([, y]) => (18 - Number(y)) / 18);
+    expect(Math.max(...topEdgeHeights)).toBeLessThan(0.7);
+    expect(
+      topEdgeHeights.filter((height) => height >= 0.6).length,
+    ).toBeLessThan(topEdgeHeights.length * 0.1);
 
     act(() => {
       publishSpeechWaveformSamples(Float32Array.from([0.8, -0.8]));

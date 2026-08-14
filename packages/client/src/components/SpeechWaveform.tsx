@@ -5,12 +5,44 @@ import styles from "./SpeechWaveform.module.css";
 const SILENCE_DB = -80;
 const CLIP_PEAK = 0.8;
 const CLIP_DB = 20 * Math.log10(CLIP_PEAK);
-const PREVIEW_SAMPLES = Float32Array.from({ length: 96 }, (_, index) => {
-  const envelope = 0.2 + 0.8 * Math.sin((Math.PI * index) / 95) ** 2;
-  return (
-    envelope * (0.42 * Math.sin(index * 0.43) + 0.21 * Math.sin(index * 1.17))
-  );
-});
+const PREVIEW_ENVELOPE = [
+  0.07, 0.09, 0.12, 0.18, 0.27, 0.39, 0.47, 0.4, 0.32, 0.23, 0.16, 0.11, 0.08,
+  0.07, 0.09, 0.13, 0.21, 0.34, 0.5, 0.63, 0.54, 0.43, 0.51, 0.37, 0.25, 0.16,
+  0.11, 0.08, 0.07, 0.09, 0.14, 0.22, 0.33, 0.45, 0.56, 0.49, 0.38, 0.29, 0.2,
+  0.14, 0.1, 0.08, 0.07, 0.09, 0.13, 0.2, 0.31, 0.45, 0.58, 0.68, 0.55, 0.44,
+  0.35, 0.27, 0.2, 0.14, 0.1, 0.08,
+] as const;
+
+function peakForHeightRatio(heightRatio: number): number {
+  const decibels = SILENCE_DB + heightRatio * (CLIP_DB - SILENCE_DB);
+  return 10 ** (decibels / 20);
+}
+
+const PREVIEW_SAMPLES = Float32Array.from(
+  PREVIEW_ENVELOPE,
+  (heightRatio, index) =>
+    peakForHeightRatio(heightRatio) * (index % 2 === 0 ? 1 : -1),
+);
+
+interface WaveformColors {
+  center: string;
+  shoulder: string;
+  peak: string;
+}
+
+function createWaveformGradient(
+  context: CanvasRenderingContext2D,
+  height: number,
+  colors: WaveformColors,
+): CanvasGradient {
+  const gradient = context.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, colors.peak);
+  gradient.addColorStop(0.32, colors.shoulder);
+  gradient.addColorStop(0.5, colors.center);
+  gradient.addColorStop(0.68, colors.shoulder);
+  gradient.addColorStop(1, colors.peak);
+  return gradient;
+}
 
 function normalizedAmplitude(peak: number): number {
   if (peak <= 0) return 0;
@@ -48,19 +80,23 @@ function drawWaveform(
   halfHeights: Float32Array,
   width: number,
   height: number,
-  color: string,
+  colors: WaveformColors,
 ): void {
   if (width === 0 || height === 0) return;
 
   const deviceScale = Math.max(1, window.devicePixelRatio || 1);
   const backingWidth = Math.max(1, Math.round(width * deviceScale));
   const backingHeight = Math.max(1, Math.round(height * deviceScale));
-  if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+  const resized =
+    canvas.width !== backingWidth || canvas.height !== backingHeight;
+  if (resized) {
     canvas.width = backingWidth;
     canvas.height = backingHeight;
-    context.fillStyle = color;
   }
   context.setTransform(deviceScale, 0, 0, deviceScale, 0, 0);
+  if (resized || typeof context.fillStyle === "string") {
+    context.fillStyle = createWaveformGradient(context, height, colors);
+  }
   context.clearRect(0, 0, width, height);
   if (sampleCount === 0) return;
 
@@ -97,8 +133,21 @@ export function SpeechWaveform({ preview = false }: { preview?: boolean }) {
     if (!canvas || !context) return;
 
     let halfHeights = new Float32Array(0);
-    const color = getComputedStyle(canvas).color;
-    context.fillStyle = color;
+    const computedStyle = getComputedStyle(canvas);
+    const fallbackColor = computedStyle.color;
+    const colors = {
+      center:
+        computedStyle
+          .getPropertyValue("--speech-waveform-center-color")
+          .trim() || fallbackColor,
+      shoulder:
+        computedStyle
+          .getPropertyValue("--speech-waveform-shoulder-color")
+          .trim() || fallbackColor,
+      peak:
+        computedStyle.getPropertyValue("--speech-waveform-peak-color").trim() ||
+        fallbackColor,
+    };
     const render = (samples: Float32Array, sampleCount: number) => {
       const bounds = canvas.getBoundingClientRect();
       const width = Math.max(0, bounds.width);
@@ -115,7 +164,7 @@ export function SpeechWaveform({ preview = false }: { preview?: boolean }) {
         halfHeights,
         width,
         height,
-        color,
+        colors,
       );
     };
     if (preview) {
