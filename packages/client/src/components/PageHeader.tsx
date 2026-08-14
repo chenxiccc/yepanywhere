@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useI18n } from "../i18n";
 import { truncateText } from "../lib/text";
 import { HostIdentityMarker } from "./HostIdentityMarker";
+import { SidebarLauncher } from "./SidebarLauncher";
 
 interface PageHeaderProps {
   title: string;
@@ -24,23 +25,6 @@ interface PageHeaderProps {
   /** Right-aligned header actions (same row as the title) */
   actions?: ReactNode;
 }
-
-const SidebarToggleIcon = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <line x1="9" y1="3" x2="9" y2="21" />
-  </svg>
-);
 
 const BackIcon = () => (
   <svg
@@ -98,15 +82,11 @@ export function PageHeader({
             </button>
           ) : (
             handleToggle && (
-              <button
-                type="button"
-                className="sidebar-toggle"
-                onClick={handleToggle}
-                title={toggleTitle}
-                aria-label={toggleTitle}
-              >
-                <SidebarToggleIcon />
-              </button>
+              <SidebarLauncher
+                label={toggleTitle}
+                newSessionLabel={t("sidebarNewSession")}
+                onActivate={handleToggle}
+              />
             )
           )}
           <HostIdentityMarker />

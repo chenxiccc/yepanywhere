@@ -27,7 +27,6 @@ const {
   mockStarredLoadMore,
   mockToggleExpanded,
   mockShowToast,
-  mockWindowOpen,
   newSessionDraftState,
   projectQueueSidebarCountState,
   projectQueuesState,
@@ -56,7 +55,6 @@ const {
   mockStarredLoadMore: vi.fn(),
   mockToggleExpanded: vi.fn(),
   mockShowToast: vi.fn(),
-  mockWindowOpen: vi.fn(),
   newSessionDraftState: {
     hasDraft: false,
   },
@@ -368,7 +366,6 @@ describe("Sidebar collapsed toggle", () => {
       },
     });
     mockToggleExpanded.mockReset();
-    mockWindowOpen.mockReset();
     mockMoveItemToTop.mockReset();
     mockMoveItemToTop.mockResolvedValue(undefined);
     mockPromoteNow.mockReset();
@@ -390,7 +387,6 @@ describe("Sidebar collapsed toggle", () => {
     projectQueueSidebarCountState.count = 0;
     projectsState.projects = [];
     versionState.capabilities = [];
-    vi.stubGlobal("open", mockWindowOpen);
   });
 
   afterEach(() => {
@@ -419,28 +415,29 @@ describe("Sidebar collapsed toggle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
 
     expect(mockToggleExpanded).toHaveBeenCalledTimes(1);
-    expect(mockWindowOpen).not.toHaveBeenCalled();
   });
 
-  it("opens a new-session window on middle click", () => {
+  it("exposes the expanded new-session target to native middle click", () => {
     renderSidebar();
 
     const toggle = screen.getByRole("button", { name: "Expand sidebar" });
-    fireEvent.mouseDown(toggle, { button: 1 });
-    toggle.dispatchEvent(
-      new MouseEvent("auxclick", {
-        bubbles: true,
-        cancelable: true,
-        button: 1,
-      }),
+    expect(toggle.getAttribute("href")).toBe(
+      "/remote/test/new-session?sidebar=expanded",
+    );
+    expect(toggle.getAttribute("target")).toBe("_blank");
+    expect(toggle.getAttribute("rel")).toBe("noopener");
+    expect(toggle.getAttribute("title")).toBe(
+      "Expand sidebar / [Shift] New Session",
     );
 
+    const auxClick = new MouseEvent("auxclick", {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+    });
+    expect(toggle.dispatchEvent(auxClick)).toBe(true);
+    expect(auxClick.defaultPrevented).toBe(false);
     expect(mockToggleExpanded).not.toHaveBeenCalled();
-    expect(mockWindowOpen).toHaveBeenCalledWith(
-      "/remote/test/new-session?sidebar=expanded",
-      "_blank",
-      "noopener",
-    );
   });
 
   it("renders the relay Switch Host with the standard nav-item representation", () => {

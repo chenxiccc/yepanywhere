@@ -110,7 +110,11 @@ test("keeps sidebar density spatial and the create action recognizable", async (
   await capture(page, "sidebar-density-desktop-1920x1080.png");
 
   await page.setViewportSize({ width: 375, height: 812 });
-  await densityRow.scrollIntoViewIfNeeded();
+  await expect(async () => {
+    await page
+      .locator('[data-settings-item="sidebar-density"]')
+      .scrollIntoViewIfNeeded();
+  }).toPass();
   await capture(page, "sidebar-density-mobile-375x812.png");
 
   await page.goto(`${baseURL}/inbox`);
@@ -124,4 +128,34 @@ test("keeps sidebar density spatial and the create action recognizable", async (
   const mobileMetrics = await readNavigationMetrics(page);
   expect(mobileMetrics.paddingInlineStart).toBeCloseTo(mobileMetrics.gap, 4);
   await capture(page, "sidebar-open-mobile-375x812.png");
+});
+
+test("opens New Session from the header sidebar launcher middle click", async ({
+  page,
+  baseURL,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${baseURL}/inbox`);
+  await dismissOnboardingIfVisible(page);
+
+  const opener = page.getByRole("button", { name: "Open sidebar" });
+  await expect(opener).toHaveAttribute(
+    "data-tooltip",
+    "Open sidebar / [Shift] New Session",
+  );
+  await opener.hover();
+  await expect(page.getByRole("tooltip")).toHaveText(
+    "Open sidebar / [Shift] New Session",
+  );
+  await capture(page, "sidebar-launcher-tooltip-mobile-375x812.png");
+
+  const popupPromise = page.context().waitForEvent("page");
+  await opener.click({ button: "middle" });
+  const popup = await popupPromise;
+  await popup.waitForURL((url) => url.pathname === "/new-session");
+
+  const popupUrl = new URL(popup.url());
+  expect(popupUrl.pathname).toBe("/new-session");
+  expect(popupUrl.searchParams.get("sidebar")).toBe("expanded");
+  expect(new URL(page.url()).pathname).toBe("/inbox");
 });

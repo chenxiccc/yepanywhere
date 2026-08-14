@@ -53,6 +53,7 @@ import { AgentsNavItem } from "./AgentsNavItem";
 import { CompactResumeButton } from "./CompactResumeButton";
 import { SessionListItem } from "./SessionListItem";
 import sidebarStyles from "./Sidebar.module.css";
+import { SidebarLauncher } from "./SidebarLauncher";
 import {
   SidebarIcons,
   SidebarNavButton,
@@ -61,27 +62,10 @@ import {
 } from "./SidebarNavItem";
 import { YepAnywhereLogo } from "./YepAnywhereLogo";
 
+export { SidebarToggleIcon } from "./SidebarLauncher";
+
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger close
 const SWIPE_ENGAGE_THRESHOLD = 15; // Minimum horizontal distance before swipe engages
-
-export function SidebarToggleIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="9" y1="3" x2="9" y2="21" />
-    </svg>
-  );
-}
 
 const DEFAULT_SECTION_EXPANSION = {
   projectQueue: true,
@@ -449,9 +433,6 @@ export function Sidebar({
   );
   const newSessionPath = "/new-session";
   const newSessionHref = `${basePath}${newSessionPath}`;
-  const expandedSidebarNewSessionHref = toBrowserAppHref(
-    `${newSessionHref}${newSessionHref.includes("?") ? "&" : "?"}sidebar=expanded`,
-  );
 
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarSessionsRef = useRef<HTMLDivElement | null>(null);
@@ -632,39 +613,6 @@ export function Sidebar({
       buildFrontendReloadUrl(loginUrl, String(Date.now())),
     );
   };
-
-  const handleCollapsedToggleClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (e.button === 1 || e.metaKey || e.ctrlKey || e.shiftKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        window.open(expandedSidebarNewSessionHref, "_blank", "noopener");
-        return;
-      }
-
-      onToggleExpanded?.();
-    },
-    [expandedSidebarNewSessionHref, onToggleExpanded],
-  );
-
-  const handleCollapsedToggleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (e.button === 1) {
-        e.preventDefault();
-      }
-    },
-    [],
-  );
-
-  const handleCollapsedToggleAuxClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (e.button !== 1) return;
-      e.preventDefault();
-      e.stopPropagation();
-      window.open(expandedSidebarNewSessionHref, "_blank", "noopener");
-    },
-    [expandedSidebarNewSessionHref],
-  );
 
   const filteredStarredSessions = useMemo(
     () => sessionCollectionRecordsToSidebarSessionItems(starredSessionRecords),
@@ -989,17 +937,13 @@ export function Sidebar({
           {isDesktop && isCollapsed ? (
             /* Desktop collapsed mode: expand from the main icon or minimize the rail. */
             <>
-              <button
-                type="button"
-                className="sidebar-toggle"
-                onClick={handleCollapsedToggleClick}
-                onMouseDown={handleCollapsedToggleMouseDown}
-                onAuxClick={handleCollapsedToggleAuxClick}
-                title={t("actionExpandSidebar")}
-                aria-label={t("actionExpandSidebar")}
-              >
-                <SidebarToggleIcon />
-              </button>
+              {onToggleExpanded && (
+                <SidebarLauncher
+                  label={t("actionExpandSidebar")}
+                  newSessionLabel={t("sidebarNewSession")}
+                  onActivate={onToggleExpanded}
+                />
+              )}
               {onMinimize && (
                 <button
                   type="button"

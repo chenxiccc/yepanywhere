@@ -19,6 +19,10 @@ vi.mock("../../hooks/useServerSettings", () => ({
   useServerSettings: () => ({ settings: settingsState }),
 }));
 
+vi.mock("../../hooks/useRemoteBasePath", () => ({
+  useRemoteBasePath: () => "/remote/test",
+}));
+
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({ version: versionState }),
 }));
@@ -63,5 +67,23 @@ describe("PageHeader host identity", () => {
     );
 
     expect(view.container.querySelector(".host-identity-marker")).toBeNull();
+  });
+
+  it("exposes the expanded new-session target on the sidebar opener", () => {
+    const openSidebar = vi.fn();
+    const view = render(
+      <HostIdentityProvider>
+        <PageHeader title="Sessions" onOpenSidebar={openSidebar} />
+      </HostIdentityProvider>,
+    );
+
+    const opener = view.getByRole("button", { name: "actionOpenSidebar" });
+    expect(opener.getAttribute("href")).toBe(
+      "/remote/test/new-session?sidebar=expanded",
+    );
+    expect(opener.getAttribute("target")).toBe("_blank");
+    expect(opener.getAttribute("title")).toBe(
+      "actionOpenSidebar / [Shift] sidebarNewSession",
+    );
   });
 });

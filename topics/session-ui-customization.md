@@ -140,6 +140,16 @@ Relative to the landed surface:
 - Controls disabled by upstream preference should be candidates for
   configurable default-off restoration before the implementation is removed.
 
+### Sidebar launcher gestures
+
+The page-header Open/Toggle sidebar control and the collapsed-rail Expand
+sidebar control share one launcher contract. A normal click opens or toggles
+the sidebar in the current tab. Middle-click and browser-modified clicks open
+New Session in a separate browsing context, preserve the direct or relay base
+path, and add `sidebar=expanded` without changing the source tab. Their
+tooltips expose the discoverable Shift-click form as
+`<ordinary action> / [Shift] New Session`.
+
 ### Sidebar spacing
 
 Sidebar spacing is a portable browser preference with two modes. Comfortable
