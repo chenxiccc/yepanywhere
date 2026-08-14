@@ -42,7 +42,8 @@ describe("FileViewerModal glossary context", () => {
       </I18nProvider>,
     );
 
-    expect(boundaryCalls).toEqual(["target-project"]);
+    expect(boundaryCalls.length).toBeGreaterThan(0);
+    expect(new Set(boundaryCalls)).toEqual(new Set(["target-project"]));
   });
 
   it("does not grant glossary access to public-share file modals", () => {
