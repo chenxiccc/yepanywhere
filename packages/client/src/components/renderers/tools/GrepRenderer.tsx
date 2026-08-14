@@ -12,9 +12,9 @@ import { useOutputToolPreviewLineCount } from "../../../hooks/useOutputAppearanc
 import { useQuoteableTextSource } from "../../../hooks/useQuoteableTextSource";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
+import { ActivityDetailModal } from "../../ActivityDetailModal";
 import { SchemaWarning } from "../../SchemaWarning";
 import { SessionFilePathLink } from "../../SessionFilePathLink";
-import { Modal } from "../../ui/Modal";
 import styles from "./GrepRenderer.module.css";
 import type { GrepInput, GrepMatch, GrepResult, ToolRenderer } from "./types";
 
@@ -155,7 +155,11 @@ function GrepMatchDrilldown({
         {label}
       </button>
       {showModal && (
-        <Modal title={label} onClose={() => setShowModal(false)}>
+        <ActivityDetailModal
+          title={label}
+          label={label}
+          onClose={() => setShowModal(false)}
+        >
           <div className={styles.matchModal}>
             <table className={styles.matchTable}>
               <thead>
@@ -188,7 +192,7 @@ function GrepMatchDrilldown({
               </tbody>
             </table>
           </div>
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );

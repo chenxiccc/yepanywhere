@@ -676,6 +676,10 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     fileViewerMinimizeNamed: `Minimize file viewer: ${params?.name ?? ""}`,
     fileViewerRestore: `Restore file viewer: ${params?.name ?? ""}`,
     fileViewerClose: `Close file viewer: ${params?.name ?? ""}`,
+    activityViewerController: `Activity view: ${params?.name ?? ""}`,
+    activityViewerMinimizeNamed: `Minimize activity view: ${params?.name ?? ""}`,
+    activityViewerRestore: `Restore activity view: ${params?.name ?? ""}`,
+    activityViewerClose: `Close activity view: ${params?.name ?? ""}`,
   };
   return translations[key] ?? key;
 }) as MessageInputToolbarViewProps["t"];
@@ -5080,9 +5084,13 @@ describe("MessageInput", () => {
           close,
           filePath: "/workspace/docs/guide.md",
           id: "viewer-1",
+          kind: "file",
+          sessionId: "session-1",
+          label: "/workspace/docs/guide.md:12",
           lineSuffix: ":12",
           minimize,
           minimized: true,
+          onClose: close,
           restore,
         }}
         speechWaveformActive
@@ -5189,9 +5197,13 @@ describe("MessageInput", () => {
           close: vi.fn(),
           filePath: "/workspace/docs/guide.md",
           id: "viewer-1",
+          kind: "file",
+          sessionId: "session-1",
+          label: "/workspace/docs/guide.md:12",
           lineSuffix: ":12",
           minimize,
           minimized: false,
+          onClose: vi.fn(),
           restore: vi.fn(),
         }}
         speechControl={{
@@ -5232,6 +5244,59 @@ describe("MessageInput", () => {
     expect(minimize.mock.invocationCallOrder[0]).toBeLessThan(
       mockVoiceToggle.mock.invocationCallOrder[0] ?? 0,
     );
+  });
+
+  it("renders activity viewer minimize and close controls in the same dock", () => {
+    const close = vi.fn();
+    const minimize = vi.fn();
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={toolbarVisibility}
+        fileViewerController={{
+          close,
+          content: "output",
+          id: "activity-1",
+          kind: "activity",
+          sessionId: "session-1",
+          label: "Bash Command",
+          briefLabel: "Bash",
+          minimize,
+          minimized: false,
+          onClose: close,
+          restore: vi.fn(),
+          title: "Bash Command",
+        }}
+        attachmentControl={{ attachmentCount: 0 }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Minimize activity view: Bash Command",
+      }),
+    );
+    expect(minimize).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Close activity view: Bash Command",
+      }),
+    );
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("uses only the custom tooltip on the primary send action", () => {

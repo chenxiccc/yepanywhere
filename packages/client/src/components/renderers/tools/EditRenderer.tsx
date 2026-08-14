@@ -20,6 +20,7 @@ import {
 import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
+import { ActivityDetailModal } from "../../ActivityDetailModal";
 import { FilePathLink, FileVersionControlLinks } from "../../FilePathLink";
 import { SchemaWarning } from "../../SchemaWarning";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
@@ -28,7 +29,6 @@ import {
   type FixedFontRenderMode,
 } from "../../ui/FixedFontMathToggle";
 import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
-import { Modal } from "../../ui/Modal";
 import {
   captureDiffSelection,
   type DiffSelectionSnapshot,
@@ -1121,7 +1121,7 @@ function EditCollapsedPreview({
           )}
         </div>
         {isModalOpen && hasProposedDiff && (
-          <Modal
+          <ActivityDetailModal
             title={
               <EditModalTitle
                 filePath={filePath}
@@ -1129,6 +1129,7 @@ function EditCollapsedPreview({
                 lineRange={fileLineRange}
               />
             }
+            label={fileName}
             onClose={handleClose}
           >
             <DiffModalContent
@@ -1139,7 +1140,7 @@ function EditCollapsedPreview({
               newString={newString}
               selection={modalSelection}
             />
-          </Modal>
+          </ActivityDetailModal>
         )}
       </>
     );
@@ -1171,10 +1172,11 @@ function EditCollapsedPreview({
             </DiffTapTarget>
           </div>
           {isModalOpen && (
-            <Modal
+            <ActivityDetailModal
               title={
                 <EditModalTitle filePath={filePath} displayText={fileName} />
               }
+              label={fileName}
               onClose={handleClose}
             >
               <RawPatchModalContent
@@ -1182,7 +1184,7 @@ function EditCollapsedPreview({
                 baseFilePath={filePath}
                 selection={modalSelection}
               />
-            </Modal>
+            </ActivityDetailModal>
           )}
         </>
       );
@@ -1228,7 +1230,7 @@ function EditCollapsedPreview({
         </DiffTapTarget>
       </div>
       {isModalOpen && (
-        <Modal
+        <ActivityDetailModal
           title={
             <EditModalTitle
               filePath={filePath}
@@ -1236,6 +1238,7 @@ function EditCollapsedPreview({
               lineRange={fileLineRange}
             />
           }
+          label={fileName}
           onClose={handleClose}
         >
           <DiffModalContent
@@ -1247,7 +1250,7 @@ function EditCollapsedPreview({
             originalFile={originalFile}
             selection={modalSelection}
           />
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );
@@ -1337,10 +1340,11 @@ function EditInteractiveSummary({
           <SourceControlEditLink filePath={filePath} />
         </span>
         {showModal && (
-          <Modal
+          <ActivityDetailModal
             title={
               <EditModalTitle filePath={filePath} displayText={fileName} />
             }
+            label={fileName}
             onClose={() => setShowModal(false)}
           >
             <div className="diff-modal-content">
@@ -1363,7 +1367,7 @@ function EditInteractiveSummary({
                 )}
               </div>
             </div>
-          </Modal>
+          </ActivityDetailModal>
         )}
       </>
     );
@@ -1392,7 +1396,7 @@ function EditInteractiveSummary({
         <SourceControlEditLink filePath={filePath} />
       </span>
       {showModal && (
-        <Modal
+        <ActivityDetailModal
           title={
             <EditModalTitle
               filePath={filePath}
@@ -1400,6 +1404,7 @@ function EditInteractiveSummary({
               lineRange={fileLineRange}
             />
           }
+          label={fileName}
           onClose={() => setShowModal(false)}
         >
           <DiffModalContent
@@ -1410,7 +1415,7 @@ function EditInteractiveSummary({
             newString={newString}
             originalFile={originalFile}
           />
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );
@@ -1584,7 +1589,7 @@ function EditToolResult({
           )}
         </div>
         {showModal && hasProposedDiff && inputWithAugment && (
-          <Modal
+          <ActivityDetailModal
             title={
               <EditModalTitle
                 filePath={filePath}
@@ -1592,6 +1597,7 @@ function EditToolResult({
                 lineRange={fileLineRange}
               />
             }
+            label={fileName}
             onClose={handleClose}
           >
             <DiffModalContent
@@ -1602,7 +1608,7 @@ function EditToolResult({
               newString={inputWithAugment.new_string}
               selection={modalSelection}
             />
-          </Modal>
+          </ActivityDetailModal>
         )}
       </>
     );
@@ -1676,7 +1682,7 @@ function EditToolResult({
         </DiffTapTarget>
       </div>
       {showModal && (
-        <Modal
+        <ActivityDetailModal
           title={
             <EditModalTitle
               filePath={result.filePath}
@@ -1684,6 +1690,7 @@ function EditToolResult({
               lineRange={getPatchFileLineRange(result.structuredPatch)}
             />
           }
+          label={getFileName(result.filePath)}
           onClose={handleClose}
         >
           <DiffModalContent
@@ -1694,7 +1701,7 @@ function EditToolResult({
             originalFile={result.originalFile}
             selection={modalSelection}
           />
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );

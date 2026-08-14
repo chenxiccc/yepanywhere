@@ -28,6 +28,8 @@ interface ModalProps {
   title: ReactNode;
   children: ReactNode;
   onClose: () => void;
+  onMinimize?: () => void;
+  minimized?: boolean;
   anchorRect?: ModalAnchorRect | null;
   anchorAtAnyWidth?: boolean;
   variant?: "image-viewer";
@@ -122,6 +124,8 @@ export function Modal({
   title,
   children,
   onClose,
+  onMinimize,
+  minimized = false,
   anchorRect,
   anchorAtAnyWidth = false,
   closeOnBackGesture,
@@ -132,7 +136,7 @@ export function Modal({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const overlayPointerStartedOnOverlayRef = useRef(false);
-  useModalBackGesture(onClose, closeOnBackGesture);
+  useModalBackGesture(onClose, Boolean(closeOnBackGesture && !minimized));
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&
@@ -143,7 +147,7 @@ export function Modal({
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !minimized) {
         e.preventDefault();
         e.stopPropagation();
         onClose();
@@ -151,20 +155,22 @@ export function Modal({
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  }, [minimized, onClose]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
+    if (minimized) return;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "";
     };
-  }, []);
+  }, [minimized]);
 
   // Focus the close button on mount for accessibility
   useEffect(() => {
+    if (minimized) return;
     closeButtonRef.current?.focus();
-  }, []);
+  }, [minimized]);
 
   useLayoutEffect(() => {
     if (!isAnchored || !anchorRect) {
@@ -237,12 +243,12 @@ export function Modal({
   };
 
   const modalContent = (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click dismisses the modal; Escape is handled globally
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally, click is for overlay dismiss
     <div
       className={`modal-overlay${isAnchored ? " modal-overlay--anchored" : ""}${
         variant ? ` modal-overlay--${variant}` : ""
       }`}
+      aria-hidden={minimized || undefined}
+      style={minimized ? { display: "none" } : undefined}
       onClick={handleOverlayClick}
       onMouseDown={(e) => {
         overlayPointerStartedOnOverlayRef.current =
@@ -266,19 +272,35 @@ export function Modal({
       >
         <div className="modal-header">
           <span className="modal-title">{title}</span>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className="modal-close"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onClose();
-            }}
-            aria-label={t("modalClose")}
-          >
-            ×
-          </button>
+          <span style={{ display: "flex" }}>
+            {onMinimize && (
+              <button
+                type="button"
+                className="modal-close"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onMinimize();
+                }}
+                aria-label={t("modalMinimize")}
+              >
+                −
+              </button>
+            )}
+            <button
+              ref={closeButtonRef}
+              type="button"
+              className="modal-close"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
+              aria-label={t("modalClose")}
+            >
+              ×
+            </button>
+          </span>
         </div>
         <div className="modal-content" ref={contentRef}>
           {children}

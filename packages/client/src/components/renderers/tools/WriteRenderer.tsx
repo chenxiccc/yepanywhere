@@ -7,6 +7,7 @@ import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../../../lib/shikiHtml";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
+import { ActivityDetailModal } from "../../ActivityDetailModal";
 import {
   FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
   MarkdownPreview,
@@ -14,7 +15,6 @@ import {
 import { SchemaWarning } from "../../SchemaWarning";
 import { SessionFilePathLink } from "../../SessionFilePathLink";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
-import { Modal } from "../../ui/Modal";
 import { getOutputTailTooltip } from "./outputPreview";
 import type { ToolRenderer, WriteInput, WriteResult } from "./types";
 
@@ -433,7 +433,7 @@ function WriteCollapsedPreview({
         </div>
       </button>
       {isModalOpen && (
-        <Modal
+        <ActivityDetailModal
           title={
             <span className="file-path">
               <SessionFilePathLink
@@ -442,6 +442,8 @@ function WriteCollapsedPreview({
               />
             </span>
           }
+          label={displayPath}
+          briefLabel={getPathBasename(filePath)}
           onClose={handleClose}
         >
           <WriteModalContent
@@ -456,7 +458,7 @@ function WriteCollapsedPreview({
             }
             input={input}
           />
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );

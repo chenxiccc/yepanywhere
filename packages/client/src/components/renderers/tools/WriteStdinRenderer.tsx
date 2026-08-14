@@ -6,9 +6,9 @@ import {
   parseShellToolOutput,
 } from "../../../lib/shellToolOutput";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
+import { ActivityDetailModal } from "../../ActivityDetailModal";
 import { AnsiText } from "../../ui/AnsiText";
 import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
-import { Modal } from "../../ui/Modal";
 import type {
   ToolRenderer,
   ToolSummaryContext,
@@ -280,8 +280,9 @@ function ReadViaPtyFile({
         </button>
       </div>
       {showModal && (
-        <Modal
+        <ActivityDetailModal
           title={<span className="file-path">{fileName}</span>}
+          label={fileName}
           onClose={() => setShowModal(false)}
         >
           <div className="file-content-modal">
@@ -296,7 +297,7 @@ function ReadViaPtyFile({
               </pre>
             </div>
           </div>
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );

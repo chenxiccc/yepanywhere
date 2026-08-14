@@ -5,8 +5,8 @@ import {
   useTextTooltipAttributes,
   useVisibilityAwareTextTooltip,
 } from "../../../hooks/useTooltipAppearance";
+import { ActivityDetailModal } from "../../ActivityDetailModal";
 import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
-import { Modal } from "../../ui/Modal";
 import {
   getHiddenOutputLineCount,
   getOutputTailTooltip,
@@ -380,12 +380,13 @@ function WebCollapsedPreview({
         )}
       </div>
       {isModalOpen && (
-        <Modal
+        <ActivityDetailModal
           title={describeOps(input) || "Web"}
+          label={describeOps(input) || "Web"}
           onClose={() => setIsModalOpen(false)}
         >
           <WebModalContent result={result} />
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );

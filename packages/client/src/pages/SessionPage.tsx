@@ -32,6 +32,7 @@ import {
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { BangCommandHandlers } from "../components/BangCommandDisplayObject";
+import { ActivityViewerProvider } from "../components/ActivityDetailModal";
 import { buildBangEchoText, collectBangHistory } from "../lib/bangCommands";
 import { serverSupportsBangCommands } from "../lib/bangCommandAvailability";
 import { BtwAsidePane } from "../components/BtwAsidePane";
@@ -5100,97 +5101,110 @@ function SessionPageContent({
                 projectId={projectId}
                 sessionId={sessionId}
               >
-                <MessageList
-                  messages={messages}
-                  transcriptDisplayObjects={session?.transcriptDisplayObjects}
-                  provider={effectiveProvider}
-                  isProcessing={sessionActivityUi.showProcessingIndicator}
-                  isCompacting={isCompacting}
-                  scrollTrigger={scrollTrigger}
-                  scrollToTurnRequest={scrollToTurnRequest}
-                  pendingMessages={pendingMessages}
-                  deferredMessages={deferredMessages}
-                  projectQueueMessages={inlineProjectQueueMessages}
-                  projectQueueDispatchPaused={
-                    projectQueues.dispatchState.status === "paused"
-                  }
-                  projectQueueDispatchMutating={
-                    projectQueues.mutatingDispatchState
-                  }
-                  btwAsides={historyBtwAsides}
-                  onFocusBtwAside={setFocusedBtwAsideId}
-                  onDoneBtwAside={handleDoneBtwAside}
-                  onStopBtwAside={handleStopBtwAsideFromTranscript}
-                  onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
-                  onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
-                  onQuoteSelection={insertQuotedSelection}
-                  onStartNewSessionFromSelection={startNewSessionFromSelection}
-                  composerDraftSignal={composerDraftSignal}
-                  composerEditAvailabilityStore={composerEditAvailabilityStore}
-                  quoteClearSignal={quoteClearSignal}
-                  onCancelDeferred={handleCancelDeferred}
-                  onEditDeferred={handleEditDeferred}
-                  onCancelUnconfirmedUserMessage={
-                    handleCancelUnconfirmedUserMessage
-                  }
-                  onSteerDeferred={handleSteerDeferred}
-                  onResumeRecoveredDeferred={handleResumeRecoveredDeferred}
-                  onSteerRecoveredDeferred={handleSteerRecoveredDeferred}
-                  onDeleteRecoveredDeferred={handleDeleteRecoveredDeferred}
-                  onCancelProjectQueueMessage={handleCancelProjectQueueItem}
-                  onEditProjectQueueMessage={handleEditProjectQueueItem}
-                  onSteerProjectQueueMessage={handleSteerProjectQueueItem}
-                  onResumeProjectQueueDispatch={
-                    handleResumeProjectQueueDispatch
-                  }
-                  onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
-                  onTrimBeforeUserMessage={trimClientFromUserMessage}
-                  onForkBeforeUserMessage={
-                    supportsForkFromTurn ? forkBeforeUserMessage : undefined
-                  }
-                  onForkAfterUserMessage={
-                    supportsForkFromTurn ? forkAfterUserMessage : undefined
-                  }
-                  onForkAfterSummaryUserMessage={
-                    supportsForkFromTurn ? beginForkAfterSummary : undefined
-                  }
-                  forkAfterUserMessageDisabled={forkAfterDisabled}
-                  onCopyUserMessage={copyUserMessage}
-                  markdownAugments={markdownAugments}
-                  activeToolApproval={activeToolApproval}
-                  hasOlderMessages={pagination?.hasOlderMessages}
-                  olderMessagesCursor={
-                    pagination?.truncatedBeforeMessageId ?? null
-                  }
-                  activeWindowTrimRevision={activeWindowTrimRevision}
-                  loadingOlder={loadingOlder}
-                  olderLoadContinuationRequired={olderLoadContinuationRequired}
-                  onLoadOlderMessages={loadOlderMessages}
-                  clientTailActive={clientTailActive}
-                  progressiveRenderEnabled={sessionLoadingProgressEnabled}
-                  progressiveRenderStatusVisible={
-                    sessionLoadingProgressDetailsVisible
-                  }
-                  progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
-                  conversationViewStateKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
-                  initialScrollSnapshot={initialScrollSnapshot}
-                  onScrollSnapshotChange={updateRouteScrollSnapshot}
-                  onFollowingBottomChange={updateActiveWindowFollowingBottom}
-                  onFollowCurrent={handleFollowCurrent}
-                  scrollBehaviorMode={sessionScrollBehaviorMode}
-                  offscreenTranscriptRenderingEnabled={
-                    sessionOffscreenTranscriptRenderingEnabled
-                  }
-                  getForkSummaryTargetHref={getForkSummaryTargetHref}
-                  onCancelForkSummary={handleCancelForkSummary}
-                  onToggleForkSummaryAutoOpen={handleToggleForkSummaryAutoOpen}
-                  onFollowForkSummary={followForkSummary}
-                  bangCommandHandlers={bangCommandHandlers}
-                  onTranscriptPositionTimestampChange={
-                    setTranscriptPositionTimestampMs
-                  }
-                  inert={isDomLingerParked}
-                />
+                <ActivityViewerProvider
+                  sessionId={sessionId}
+                  inactive={isDomLingerParked}
+                >
+                  <MessageList
+                    messages={messages}
+                    transcriptDisplayObjects={session?.transcriptDisplayObjects}
+                    provider={effectiveProvider}
+                    isProcessing={sessionActivityUi.showProcessingIndicator}
+                    isCompacting={isCompacting}
+                    scrollTrigger={scrollTrigger}
+                    scrollToTurnRequest={scrollToTurnRequest}
+                    pendingMessages={pendingMessages}
+                    deferredMessages={deferredMessages}
+                    projectQueueMessages={inlineProjectQueueMessages}
+                    projectQueueDispatchPaused={
+                      projectQueues.dispatchState.status === "paused"
+                    }
+                    projectQueueDispatchMutating={
+                      projectQueues.mutatingDispatchState
+                    }
+                    btwAsides={historyBtwAsides}
+                    onFocusBtwAside={setFocusedBtwAsideId}
+                    onDoneBtwAside={handleDoneBtwAside}
+                    onStopBtwAside={handleStopBtwAsideFromTranscript}
+                    onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
+                    onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
+                    onQuoteSelection={insertQuotedSelection}
+                    onStartNewSessionFromSelection={
+                      startNewSessionFromSelection
+                    }
+                    composerDraftSignal={composerDraftSignal}
+                    composerEditAvailabilityStore={
+                      composerEditAvailabilityStore
+                    }
+                    quoteClearSignal={quoteClearSignal}
+                    onCancelDeferred={handleCancelDeferred}
+                    onEditDeferred={handleEditDeferred}
+                    onCancelUnconfirmedUserMessage={
+                      handleCancelUnconfirmedUserMessage
+                    }
+                    onSteerDeferred={handleSteerDeferred}
+                    onResumeRecoveredDeferred={handleResumeRecoveredDeferred}
+                    onSteerRecoveredDeferred={handleSteerRecoveredDeferred}
+                    onDeleteRecoveredDeferred={handleDeleteRecoveredDeferred}
+                    onCancelProjectQueueMessage={handleCancelProjectQueueItem}
+                    onEditProjectQueueMessage={handleEditProjectQueueItem}
+                    onSteerProjectQueueMessage={handleSteerProjectQueueItem}
+                    onResumeProjectQueueDispatch={
+                      handleResumeProjectQueueDispatch
+                    }
+                    onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
+                    onTrimBeforeUserMessage={trimClientFromUserMessage}
+                    onForkBeforeUserMessage={
+                      supportsForkFromTurn ? forkBeforeUserMessage : undefined
+                    }
+                    onForkAfterUserMessage={
+                      supportsForkFromTurn ? forkAfterUserMessage : undefined
+                    }
+                    onForkAfterSummaryUserMessage={
+                      supportsForkFromTurn ? beginForkAfterSummary : undefined
+                    }
+                    forkAfterUserMessageDisabled={forkAfterDisabled}
+                    onCopyUserMessage={copyUserMessage}
+                    markdownAugments={markdownAugments}
+                    activeToolApproval={activeToolApproval}
+                    hasOlderMessages={pagination?.hasOlderMessages}
+                    olderMessagesCursor={
+                      pagination?.truncatedBeforeMessageId ?? null
+                    }
+                    activeWindowTrimRevision={activeWindowTrimRevision}
+                    loadingOlder={loadingOlder}
+                    olderLoadContinuationRequired={
+                      olderLoadContinuationRequired
+                    }
+                    onLoadOlderMessages={loadOlderMessages}
+                    clientTailActive={clientTailActive}
+                    progressiveRenderEnabled={sessionLoadingProgressEnabled}
+                    progressiveRenderStatusVisible={
+                      sessionLoadingProgressDetailsVisible
+                    }
+                    progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
+                    conversationViewStateKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
+                    initialScrollSnapshot={initialScrollSnapshot}
+                    onScrollSnapshotChange={updateRouteScrollSnapshot}
+                    onFollowingBottomChange={updateActiveWindowFollowingBottom}
+                    onFollowCurrent={handleFollowCurrent}
+                    scrollBehaviorMode={sessionScrollBehaviorMode}
+                    offscreenTranscriptRenderingEnabled={
+                      sessionOffscreenTranscriptRenderingEnabled
+                    }
+                    getForkSummaryTargetHref={getForkSummaryTargetHref}
+                    onCancelForkSummary={handleCancelForkSummary}
+                    onToggleForkSummaryAutoOpen={
+                      handleToggleForkSummaryAutoOpen
+                    }
+                    onFollowForkSummary={followForkSummary}
+                    bangCommandHandlers={bangCommandHandlers}
+                    onTranscriptPositionTimestampChange={
+                      setTranscriptPositionTimestampMs
+                    }
+                    inert={isDomLingerParked}
+                  />
+                </ActivityViewerProvider>
               </AgentContentProvider>
             </SessionMetadataProvider>
           )}

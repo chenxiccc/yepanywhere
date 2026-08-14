@@ -1,5 +1,13 @@
 import { fromUrlProjectId, isUrlProjectId } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import {
@@ -12,10 +20,13 @@ import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../lib/markdownSelectionCopy";
+import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
+import { useFileViewerController } from "../lib/fileViewerController";
 import {
-  clearFileViewerController,
-  setFileViewerController,
-} from "../lib/fileViewerController";
+  clearSessionViewer,
+  minimizeSessionViewer,
+  presentSessionViewer,
+} from "../lib/sessionViewerController";
 import {
   getAbsoluteFilePath,
   getPathBasename,
@@ -355,38 +366,47 @@ export function FileViewerModal({
   onClose: () => void;
 }) {
   const publicShareContext = usePublicShareContext();
+  const sessionMetadata = useOptionalSessionMetadata();
   const minimizedViewerId = useId();
-  const [minimized, setMinimized] = useState(false);
-  const minimize = useCallback(() => setMinimized(true), []);
-  const restore = useCallback(() => setMinimized(false), []);
+  const publishedViewer = useFileViewerController();
+  const minimized =
+    publishedViewer?.id === minimizedViewerId && publishedViewer.minimized;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const close = useCallback(() => {
-    clearFileViewerController(minimizedViewerId);
-    setMinimized(false);
-    onClose();
-  }, [minimizedViewerId, onClose]);
+    clearSessionViewer(minimizedViewerId);
+    onCloseRef.current();
+  }, [minimizedViewerId]);
+  const minimize = useCallback(
+    () => minimizeSessionViewer(minimizedViewerId),
+    [minimizedViewerId],
+  );
   useEffect(() => {
     if (publicShareContext !== null) return;
-    setFileViewerController({
-      close,
-      filePath,
+    const lineSuffix = formatLineSuffix(lineNumber, lineEnd);
+    presentSessionViewer({
       id: minimizedViewerId,
-      lineSuffix: formatLineSuffix(lineNumber, lineEnd),
-      minimize,
-      minimized,
-      restore,
+      kind: "file",
+      sessionId: sessionMetadata?.sessionId ?? "",
+      label: `${filePath}${lineSuffix}`,
+      briefLabel: getPathBasename(filePath),
+      onClose: close,
+      filePath,
+      lineSuffix,
     });
-    return () => clearFileViewerController(minimizedViewerId);
   }, [
     close,
     filePath,
     lineEnd,
     lineNumber,
-    minimize,
-    minimized,
     minimizedViewerId,
     publicShareContext,
-    restore,
+    sessionMetadata?.sessionId,
   ]);
+  useEffect(
+    () => () => clearSessionViewer(minimizedViewerId),
+    [minimizedViewerId],
+  );
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       close();

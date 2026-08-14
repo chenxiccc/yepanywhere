@@ -66,10 +66,9 @@ import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { BROWSER_DEBUG_LEASE_TTL_MS } from "../lib/browserDebugLease";
 import {
-  type FileViewerControllerState,
-  useFileViewerController,
-} from "../lib/fileViewerController";
-import { getPathBasename } from "../lib/text";
+  type SessionViewerControllerState,
+  useSessionViewerController,
+} from "../lib/sessionViewerController";
 import {
   type EffortLevelOption,
   getEffortLevelLabel,
@@ -707,7 +706,7 @@ export interface MessageInputToolbarViewProps {
   speechWaveformActive?: boolean;
   speechWaveformPreview?: boolean;
   waveformButtonBackgroundOpacityPercent?: number;
-  fileViewerController?: FileViewerControllerState | null;
+  fileViewerController?: SessionViewerControllerState | null;
   statusControl?: ToolbarStatusControl | null;
   pendingApproval?: MessageInputToolbarProps["pendingApproval"];
   shortcutsControl: ToolbarShortcutsControl;
@@ -834,18 +833,24 @@ function FileViewerCloseIcon() {
   );
 }
 
-function FileViewerToolbarController({
+function SessionViewerToolbarController({
   controller,
   t,
   waveformButtonBackgroundOpacityPercent,
 }: {
-  controller: FileViewerControllerState;
+  controller: SessionViewerControllerState;
   t: ToolbarTranslate;
   waveformButtonBackgroundOpacityPercent?: number;
 }) {
   const slotRef = useRef<HTMLSpanElement | null>(null);
   const floatingRef = useRef<HTMLDivElement | null>(null);
-  const location = `${controller.filePath}${controller.lineSuffix}`;
+  const location = controller.label;
+  const fullLocation =
+    controller.kind === "file" ? controller.filePath : location;
+  const briefLocation =
+    controller.kind === "file"
+      ? `…/${controller.briefLabel ?? controller.filePath}`
+      : (controller.briefLabel ?? location);
 
   useLayoutEffect(() => {
     const slot = slotRef.current;
@@ -892,8 +897,18 @@ function FileViewerToolbarController({
   }, [controller.minimized]);
 
   const toggleLabel = controller.minimized
-    ? t("fileViewerRestore", { name: location })
-    : t("fileViewerMinimizeNamed", { name: location });
+    ? t(
+        controller.kind === "file"
+          ? "fileViewerRestore"
+          : "activityViewerRestore",
+        { name: location },
+      )
+    : t(
+        controller.kind === "file"
+          ? "fileViewerMinimizeNamed"
+          : "activityViewerMinimizeNamed",
+        { name: location },
+      );
   const control = (
     <div
       ref={floatingRef}
@@ -912,7 +927,12 @@ function FileViewerToolbarController({
             } as CSSProperties)
       }
       role="group"
-      aria-label={t("fileViewerController", { name: location })}
+      aria-label={t(
+        controller.kind === "file"
+          ? "fileViewerController"
+          : "activityViewerController",
+        { name: location },
+      )}
     >
       <button
         type="button"
@@ -920,10 +940,14 @@ function FileViewerToolbarController({
         onClick={
           controller.minimized ? controller.restore : controller.minimize
         }
-        onContextMenu={(event) => {
-          event.preventDefault();
-          void writeClipboardText(controller.filePath);
-        }}
+        onContextMenu={
+          controller.kind === "file"
+            ? (event) => {
+                event.preventDefault();
+                void writeClipboardText(controller.filePath);
+              }
+            : undefined
+        }
         title={toggleLabel}
         aria-label={toggleLabel}
       >
@@ -937,12 +961,12 @@ function FileViewerToolbarController({
           aria-hidden="true"
         >
           <span className={toolbarModuleStyles.fileViewerPath}>
-            <bdi>{controller.filePath}</bdi>
+            <bdi>{fullLocation}</bdi>
           </span>
           <span className={toolbarModuleStyles.fileViewerBriefPath}>
-            …/<bdi>{getPathBasename(controller.filePath)}</bdi>
+            <bdi>{briefLocation}</bdi>
           </span>
-          {controller.lineSuffix && (
+          {controller.kind === "file" && controller.lineSuffix && (
             <span className={toolbarModuleStyles.fileViewerLine}>
               {controller.lineSuffix}
             </span>
@@ -953,8 +977,18 @@ function FileViewerToolbarController({
         type="button"
         className={toolbarModuleStyles.fileViewerClose}
         onClick={controller.close}
-        title={t("fileViewerClose", { name: location })}
-        aria-label={t("fileViewerClose", { name: location })}
+        title={t(
+          controller.kind === "file"
+            ? "fileViewerClose"
+            : "activityViewerClose",
+          { name: location },
+        )}
+        aria-label={t(
+          controller.kind === "file"
+            ? "fileViewerClose"
+            : "activityViewerClose",
+          { name: location },
+        )}
       >
         <FileViewerCloseIcon />
       </button>
@@ -2013,7 +2047,7 @@ export function MessageInputToolbarView({
             )}
         </div>
         {fileViewerController && (
-          <FileViewerToolbarController
+          <SessionViewerToolbarController
             controller={fileViewerController}
             t={t}
             waveformButtonBackgroundOpacityPercent={
@@ -2847,7 +2881,11 @@ export function MessageInputToolbar({
 }: MessageInputToolbarProps) {
   const { t } = useI18n();
   const showToast = useOptionalToastContext()?.showToast;
-  const fileViewerController = useFileViewerController();
+  const sessionViewerController = useSessionViewerController();
+  const fileViewerController =
+    sessionViewerController?.sessionId === (sessionId ?? "")
+      ? sessionViewerController
+      : null;
   const {
     thinkingMode,
     thinkingLevel,

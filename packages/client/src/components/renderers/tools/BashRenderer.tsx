@@ -20,6 +20,7 @@ import {
   parseShellToolOutput,
 } from "../../../lib/shellToolOutput";
 import { validateToolResult } from "../../../lib/validateToolResult";
+import { ActivityDetailModal } from "../../ActivityDetailModal";
 import { SchemaWarning } from "../../SchemaWarning";
 import { AnsiText } from "../../ui/AnsiText";
 import {
@@ -28,7 +29,6 @@ import {
   renderFixedFontRichContent,
 } from "../../ui/FixedFontMathToggle";
 import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
-import { Modal } from "../../ui/Modal";
 import {
   getHiddenOutputLineCount,
   getOutputTailTooltip,
@@ -646,12 +646,13 @@ function BashCollapsedPreview({
         )}
       </div>
       {isModalOpen && (
-        <Modal
+        <ActivityDetailModal
           title={input.description || "Bash Command"}
+          label={input.description || "Bash Command"}
           onClose={handleClose}
         >
           <BashModalContent input={input} result={result} isError={isError} />
-        </Modal>
+        </ActivityDetailModal>
       )}
     </>
   );

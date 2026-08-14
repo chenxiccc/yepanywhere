@@ -40,9 +40,10 @@ message or tool row that opened it.
 
 Open ↔ parked transitions must reuse the same mounted viewer instance. They
 must not refetch or reconstruct the document merely to change presentation.
-Close may discard it. At most one session file viewer is controlled at a time;
-opening another one retires or restores the previous controller
-deterministically.
+Close may discard it. At most one managed viewer is controlled in a session at
+a time. This includes file viewers and the activity detail viewers described
+below. Opening another managed viewer closes the previous viewer and dismisses
+its still-mounted source deterministically.
 
 The capability is authenticated-session UI. Live and frozen public shares do
 not expose parking controls, consistent with their lack of an authenticated
@@ -143,6 +144,32 @@ It may replace the composer controller if that trial packs poorly, or the two
 may coexist as redundant access points over one viewer state: drawer for
 document presence and the composer controller for fast toggle/close. Supporting
 both must not duplicate document state or let the two controls disagree.
+
+## Activity detail viewers
+
+Expanded Bash/Ran, Edit, Write, Grep, Web, and WriteStdin details participate
+in the same `open`, `parked`, and `closed` state model and use the same composer
+controller. Their controller label describes the activity rather than a file;
+the file-only right-click copy-path action is not present.
+
+The session owns one activity-view host beside the message list, inside the
+same session metadata and agent-content providers as the transcript. A tool row
+publishes its title and content to that host instead of owning the rendered
+modal subtree. Consequently:
+
+- parking only hides the host presentation; it does not unmount the detail or
+  reset its scroll, selection, render mode, or other local state;
+- transcript virtualization or replacement may remove the publishing row
+  without removing the currently viewed detail;
+- opening another managed viewer dismisses the earlier row's local open state
+  when that row is still mounted; and
+- leaving the session destroys its host and controller, while the short
+  session-DOM linger may keep the detail mounted but hidden for the same
+  session.
+
+Tool renderers used outside this explicit session-viewer provider retain the
+ordinary close-only modal. Session metadata by itself does not opt a surface
+into a host that may not exist.
 
 ## Open ownership defect: rich-text replacement
 
