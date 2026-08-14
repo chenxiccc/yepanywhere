@@ -392,6 +392,11 @@ version, while the permanent capability ledger retains all prior assignments.
   recipe. Crash recovery, ownership disagreement, and stale state fail closed.
 - Hono reload preserves eligible active turns but does not claim that retained
   workers loaded changed provider code.
+- A compatible retained local worker refreshes the replacement Hono
+  generation's two allowlisted browser-debugging values for later Bash tool
+  shells. The caller factor is domain-separated from the provider-host boot
+  token and therefore remains valid across Hono replacement; the initial
+  worker-code deployment still requires a wrapper restart.
 - Full wrapper shutdown and nonresponsive-host replacement leave no host,
   worker, provider process group, socket, descriptor, or token artifact behind.
 - Host absence degrades to ordinary in-Hono sessions; it never weakens network

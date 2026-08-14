@@ -22,6 +22,8 @@ export interface VersionInfo {
   capabilityEncoding?: number;
   /** Explicit capability IDs not implied by `current`. */
   capabilityBits?: CapabilityBitset;
+  /** Version-implied capability IDs explicitly denied by this server. */
+  deniedCapabilityBits?: CapabilityBitset;
   /** Compact sparse words for optional capabilities. Undefined on older servers. */
   optionalCapabilityBits?: OptionalServerCapabilityBitset;
   /** Capability names not implied by the reported release. */

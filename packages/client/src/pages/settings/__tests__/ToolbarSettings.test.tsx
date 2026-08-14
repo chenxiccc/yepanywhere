@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY } from "@yep-anywhere/shared";
 import {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
@@ -31,6 +32,7 @@ const state = vi.hoisted(() => {
     thinkingToggle: "mid",
     renderMode: "hidden",
     conversationView: "last",
+    browserDebug: "hidden",
     microphone: "pin",
     waveform: "pin",
     shortcutsHelp: "last",
@@ -133,6 +135,9 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarConversationViewTitle: "Conversation View",
           appearanceToolbarConversationViewDescription:
             "Show condensed conversation",
+          appearanceToolbarBrowserDebugTitle: "Remote Browser Debugging",
+          appearanceToolbarBrowserDebugDescription:
+            "Grant full JavaScript access to this tab",
           appearanceToolbarConversationViewTurnLimitTitle:
             "Conversation View history",
           appearanceToolbarConversationViewTurnLimitDescription:
@@ -222,6 +227,36 @@ describe("ToolbarSettings", () => {
 
     expect(screen.queryByText("Project Queue")).toBe(null);
     expect(screen.queryByText("Queue as New Session Shortcut")).toBe(null);
+  });
+
+  it("hides browser debugging unless the server contract is present", () => {
+    render(<ToolbarSettings />);
+
+    expect(screen.queryByText("Remote Browser Debugging")).toBe(null);
+  });
+
+  it("offers browser debugging hidden with normal toolbar priorities", () => {
+    state.version = {
+      capabilities: [REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY],
+    };
+
+    render(<ToolbarSettings />);
+
+    const row = screen
+      .getByText("Remote Browser Debugging")
+      .closest(".session-toolbar-control-row");
+    expect(row).toBeTruthy();
+    const slider = within(row as HTMLElement).getByRole<HTMLInputElement>(
+      "slider",
+      { name: "Remote Browser Debugging visibility" },
+    );
+    expect(slider.value).toBe("0");
+    expect(slider.getAttribute("max")).toBe("4");
+
+    fireEvent.change(slider, { target: { value: "2" } });
+    fireEvent.pointerUp(slider);
+
+    expect(state.presence.browserDebug).toBe("mid");
   });
 
   it("shows only the current-session control without shortcut capability", () => {

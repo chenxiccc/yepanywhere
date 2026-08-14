@@ -14,6 +14,7 @@ import type {
   UserMessage,
 } from "../types.js";
 import { getModuleEnv } from "../../yaModuleEnv.js";
+import { pickBrowserDebugAgentEnvironment } from "./agentctl-session-env.js";
 import { ClaudeGatewayProvider } from "./claude-gateway.js";
 import { ClaudeOllamaProvider } from "./claude-ollama.js";
 import { grokACPProvider } from "./grok-acp.js";
@@ -41,7 +42,9 @@ const WORKER_PROTOCOL_VERSION = 1;
 
 interface WorkerLaunchRequest {
   providerName: ProviderName;
-  options: StartSessionOptions;
+  options: StartSessionOptions & {
+    browserDebugEnvironment?: Record<string, string>;
+  };
   runtimeConfig: ProviderRuntimeSnapshot;
 }
 
@@ -122,6 +125,7 @@ class ProviderRuntimeWorker {
   private observesQueueYield = false;
   private activeProviderTurn = false;
   private auxiliarySubmission: AuxiliarySubmission | null = null;
+  private browserDebugEnvironment: Record<string, string> = {};
 
   constructor(
     private readonly socketPath: string,
@@ -171,8 +175,16 @@ class ProviderRuntimeWorker {
         options.signal,
       );
 
+    const {
+      browserDebugEnvironment: initialBrowserDebugEnvironment,
+      ...providerOptions
+    } = request.options;
+    this.browserDebugEnvironment = pickBrowserDebugAgentEnvironment(
+      initialBrowserDebugEnvironment,
+    );
     const session = await provider.startSession({
-      ...request.options,
+      ...providerOptions,
+      getSessionChildEnv: () => ({ ...this.browserDebugEnvironment }),
       sessionSandbox,
       sessionSandboxOptions: undefined,
       onToolApproval,
@@ -733,7 +745,20 @@ class ProviderRuntimeWorker {
         );
       case "publishAgentctlSessionId": {
         const sessionId = String(args[0]);
-        await session.publishAgentctlSessionId?.(sessionId);
+        const requestedEnvironment = args[1];
+        if (
+          requestedEnvironment &&
+          typeof requestedEnvironment === "object" &&
+          !Array.isArray(requestedEnvironment)
+        ) {
+          this.browserDebugEnvironment = pickBrowserDebugAgentEnvironment(
+            requestedEnvironment as Record<string, string>,
+          );
+        }
+        await session.publishAgentctlSessionId?.(
+          sessionId,
+          this.browserDebugEnvironment,
+        );
         this.sendParent({ type: "bound", sessionId });
         return undefined;
       }

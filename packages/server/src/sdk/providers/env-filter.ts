@@ -75,6 +75,10 @@ const ALWAYS_KEEP = new Set([
   "SSH_AGENT_PID",
   // API keys Claude might need
   "ANTHROPIC_API_KEY",
+  // Short-lived browser diagnostic broker credentials. These are generated
+  // per YA server boot and are useful only with a separately pasted tab grant.
+  "YEP_BROWSER_DEBUG_AGENT_URL",
+  "YEP_BROWSER_DEBUG_CALLER_TOKEN",
   // XDG directories
   "XDG_CONFIG_HOME",
   "XDG_DATA_HOME",

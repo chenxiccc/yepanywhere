@@ -54,6 +54,32 @@ describe("server capability advertisements", () => {
     ).toBe(false);
   });
 
+  it("lets a negative bit override an otherwise implied capability", () => {
+    const deniedCapabilityBits = [
+      [0, 2 ** CAPABILITY_ID_ALLOCATIONS.projectSessionDefaults.id],
+    ] as const;
+
+    expect(
+      serverHasCapability(
+        {
+          current: "0.7.1",
+          capabilities: [PROJECT_SESSION_DEFAULTS_CAPABILITY],
+          deniedCapabilityBits,
+        },
+        PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(
+      serverHasCapability(
+        {
+          current: "0.7.1",
+          deniedCapabilityBits: [[31, 2 ** 7]],
+        },
+        PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      ),
+    ).toBe(true);
+  });
+
   it("encodes optional capability presence in sparse 32-bit words", () => {
     const optionalCapabilityBits = encodeOptionalServerCapabilityBits([
       VOICE_INPUT_CAPABILITY,
@@ -135,6 +161,28 @@ describe("server capability advertisements", () => {
         PROJECT_SESSION_DEFAULTS_CAPABILITY,
       ),
     ).toBe(true);
+  });
+
+  it("encodes withdrawals only when the release would imply support", () => {
+    expect(
+      encodeVersionedServerCapabilities([], "0.7.1", [
+        PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      ]),
+    ).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [],
+      deniedCapabilityBits: [
+        [0, 2 ** CAPABILITY_ID_ALLOCATIONS.projectSessionDefaults.id],
+      ],
+    });
+    expect(
+      encodeCompactServerCapabilities([], "0.7.0-741-gabcdef", [
+        PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      ]),
+    ).toEqual({ optionalCapabilityBits: [] });
+    expect(() =>
+      encodeVersionedServerCapabilities([], "0.7.1", [VOICE_INPUT_CAPABILITY]),
+    ).toThrow("Only version-implied server capabilities can be denied");
   });
 
   it("chooses the newest mutually supported capability encoding", () => {

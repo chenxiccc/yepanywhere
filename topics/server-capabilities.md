@@ -2,8 +2,9 @@
 
 > Capabilities gate optional behavior across independently updated clients and
 > servers. From 0.7.1 onward, official capabilities have permanent numeric IDs:
-> release semver implies monotonic support, while sparse bits report optional
-> or source-ahead support. Names remain registry metadata and legacy wire data.
+> release semver implies support, while sparse positive and negative bits report
+> optional, source-ahead, or exceptionally withdrawn support. Names remain
+> registry metadata and legacy wire data.
 
 Topic: server-capabilities
 
@@ -43,7 +44,9 @@ returns:
 - `capabilityEncoding: 1`;
 - `capabilityBits`, sparse `[wordIndex, bits]` pairs. Empty 32-bit words are
   omitted. Bits explicitly report optional capabilities and monotonic
-  capabilities present in a source build ahead of its release semver.
+  capabilities present in a source build ahead of its release semver; and
+- optional `deniedCapabilityBits` in the same sparse form, naming known
+  version-implied contracts that this server generation deliberately refuses.
 
 The same rule applies in the other direction: a server infers permanent client
 capabilities from the client's version and reads bits for optional or
@@ -66,6 +69,29 @@ version-implied from `0.7.1`.
 `serverHasCapability` accepts release implication, encoding-1 IDs, and both
 legacy representations. This union keeps old installed servers usable without
 making a new capability depend on its textual name.
+
+### Exceptional negative overrides
+
+`deniedCapabilityBits` is the standard negative override for a contract the
+reported release would otherwise imply. A known denied ID wins over release
+implication, a legacy name, and a positive source-ahead bit. Unknown denied IDs
+are ignored: they describe registry entries this client does not know and must
+not turn `/api/version` into an error. IDs belonging to `optional-bit` or
+`scoped` capabilities are likewise irrelevant to this set; optional support is
+already expressed by presence or absence of its positive bit.
+
+Omission means no version-implied contracts are withdrawn. A legacy name-list
+response instead omits the denied capability name because those clients do not
+infer support from the server version. The server encoder accepts negative
+overrides only for registered `version-implied` capabilities and emits an ID
+only when `current` would otherwise imply that contract.
+
+This is an exceptional compatibility escape hatch, not another availability
+class. YA has no current plan to introduce a version-implied capability it
+expects may be withdrawn; anticipated experimental, removable, host-dependent,
+or configuration-dependent support uses `optional-bit`. A possible later
+reduction in routine negative-bit traffic is kept in
+[Server Capability Sketches](server-capabilities.sketches.md).
 
 Every capability string advertised from `/api/version` should have a registry
 entry, including permanent static features and dynamic environment/state
@@ -134,9 +160,10 @@ Advertisement is independent from lifecycle:
 
 - `version-implied` is for a contract that is monotonic on the official release
   line. Once a stable release reaches its `introducedIn` version, later official
-  releases must keep that contract. A future client therefore needs only the
-  server version and its own registry; capabilities introduced after that
-  client's build are unknown and irrelevant to it.
+  releases are expected to keep that contract. A future client therefore
+  normally needs only the server version and its own registry; an exceptional
+  explicit negative override can deny the implication. Capabilities introduced
+  after that client's build are unknown and irrelevant to it.
 - `optional-bit` is for support that may be disabled, removed, host-dependent,
   or installation-dependent. Its allocated ID is sent whenever support is
   present; the ID remains reserved after retirement.
@@ -184,9 +211,11 @@ the same ledger:
 | 27 | server | 0.7.1 | `sidebar-session-resume` |
 | 28 | server | 0.7.1 | `session-fork-turn-intents` |
 | 29 | server | 0.7.1 | `git-file-diff-projections` |
+| 30 | server | 0.7.1 | `provider-host-control` |
+| 31 | server | 0.7.1 | `remote-browser-diagnostics-v1` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 30; retired rows stay in the ledger as reserved IDs.
+ID 32; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

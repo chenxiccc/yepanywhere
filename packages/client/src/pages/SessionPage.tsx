@@ -5266,6 +5266,7 @@ function SessionPageContent({
                     projectPath={project?.path ?? null}
                   />
                   <MessageInputToolbar
+                    sessionId={actualSessionId}
                     mode={permissionMode}
                     onModeChange={setPermissionMode}
                     modeChangesApplyNextTurn={

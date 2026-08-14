@@ -204,6 +204,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "provider-host-control",
     introducedIn: "0.7.1",
   },
+  remoteBrowserDiagnostics: {
+    id: 31,
+    direction: "server",
+    name: "remote-browser-diagnostics-v1",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

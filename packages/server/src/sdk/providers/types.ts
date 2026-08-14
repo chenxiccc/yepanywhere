@@ -225,8 +225,11 @@ export interface StartSessionOptions {
   executor?: string;
   /** Environment variables to set on remote (for testing: CLAUDE_SESSIONS_DIR) */
   remoteEnv?: Record<string, string>;
-  /** Session-scoped environment published after the canonical id is known. */
-  getSessionChildEnv?: (sessionId: string) => Record<string, string>;
+  /** Session-scoped environment resolved for the canonical id and executor. */
+  getSessionChildEnv?: (
+    sessionId: string,
+    executor?: string,
+  ) => Record<string, string>;
   /** Global instructions to append to system prompt (from server settings) */
   globalInstructions?: string;
   /** Explicit provider-owned generation controls; omission means all off. */
@@ -292,7 +295,10 @@ export interface AgentSession {
    * Publish the provider's canonical session id into any child-process
    * environment bridge the provider installed before startup.
    */
-  publishAgentctlSessionId?: (sessionId: string) => void | Promise<void>;
+  publishAgentctlSessionId?: (
+    sessionId: string,
+    browserDebugEnvironment?: Record<string, string>,
+  ) => void | Promise<void>;
   /**
    * Steer an active turn with additional user input.
    * Returns true when steered immediately, false when caller should enqueue instead.

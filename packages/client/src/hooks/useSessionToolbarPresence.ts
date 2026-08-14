@@ -3,6 +3,10 @@ import type {
   ToolbarControlPresence,
   ToolbarNarrowingPriority,
 } from "@yep-anywhere/shared";
+import {
+  REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { api } from "../api/client";
 import {
@@ -35,6 +39,7 @@ export interface SessionToolbarPresence {
   thinkingToggle: ToolbarControlPresence;
   renderMode: ToolbarControlPresence;
   conversationView: ToolbarControlPresence;
+  browserDebug: ToolbarControlPresence;
   microphone: ToolbarControlPresence;
   waveform: ToolbarControlPresence;
   shortcutsHelp: ToolbarControlPresence;
@@ -72,6 +77,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRESENCE: SessionToolbarPresence = {
   thinkingToggle: "mid",
   renderMode: "hidden",
   conversationView: "last",
+  browserDebug: "hidden",
   microphone: "pin",
   waveform: "pin",
   shortcutsHelp: "last",
@@ -98,6 +104,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRIORITY: SessionToolbarPriority = {
   thinkingToggle: "mid",
   renderMode: "last",
   conversationView: "last",
+  browserDebug: "pin",
   microphone: "pin",
   waveform: "pin",
   shortcutsHelp: "last",
@@ -159,7 +166,7 @@ function normalizeClientDefaultPresence(
   const normalized: SessionToolbarPresenceDefaults = {};
   const presenceRecord = value as Record<string, unknown>;
   for (const key of SESSION_TOOLBAR_CONTROL_KEYS) {
-    if (key === "conversationView") continue;
+    if (key === "conversationView" || key === "browserDebug") continue;
     const candidate = presenceRecord[key];
     if (isToolbarControlPresence(candidate)) {
       normalized[key] = candidate;
@@ -322,9 +329,9 @@ function saveClientDefaultPresence(
   key: SessionToolbarVisibilityKey,
   presence: ToolbarControlPresence,
 ): void {
-  // Conversation view is a client-only preference so stable servers never
-  // need to recognize its new toolbar key.
-  if (key === "conversationView") {
+  // These controls are client-only preferences so stable servers never need
+  // to recognize their new toolbar keys.
+  if (key === "conversationView" || key === "browserDebug") {
     return;
   }
   void api
@@ -354,6 +361,12 @@ export function useSessionToolbarPresence() {
         serverSupportsProjectQueueNewSessionShortcutSetting(version)
           ? presence.projectQueueNewSessionShortcut
           : "hidden",
+      browserDebug: serverHasCapability(
+        version,
+        REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+      )
+        ? presence.browserDebug
+        : "hidden",
     }),
     [presence, version],
   );

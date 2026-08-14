@@ -6,6 +6,7 @@ import {
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+  PROJECT_SESSION_DEFAULTS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
@@ -325,6 +326,41 @@ describe("GET /version", () => {
     expect(serverHasCapability(version, PROJECT_QUEUE_CAPABILITY)).toBe(true);
     expect(serverHasCapability(version, VOICE_INPUT_CAPABILITY)).toBe(true);
     expect(serverHasCapability(version, DEVICE_BRIDGE_CAPABILITY)).toBe(false);
+  });
+
+  it("sends negative IDs for withdrawn version-implied contracts", async () => {
+    mockFetch(() => new Response(null, { status: 204 }));
+
+    const { createVersionRoutes } = await importVersion();
+    const routes = createVersionRoutes({
+      deniedCapabilities: [PROJECT_SESSION_DEFAULTS_CAPABILITY],
+      getCurrentVersionInfo: async () => ({
+        version: "0.7.1",
+        installSource: "source",
+      }),
+      getSessionSandboxAvailability: async () => ({
+        state: "unsupported-platform",
+        platform: "darwin",
+      }),
+    });
+    const encodedResponse = await routes.request("/", {
+      headers: { "X-Yep-Client-Version": "0.7.1" },
+    });
+    const encodedVersion = await encodedResponse.json();
+
+    expect(encodedVersion.deniedCapabilityBits).toBeDefined();
+    expect(
+      serverHasCapability(encodedVersion, PROJECT_SESSION_DEFAULTS_CAPABILITY),
+    ).toBe(false);
+
+    const legacyResponse = await routes.request("/", {
+      headers: { "X-Yep-Client-Version": "0.7.0" },
+    });
+    const legacyVersion = await legacyResponse.json();
+    expect(legacyVersion.deniedCapabilityBits).toBeUndefined();
+    expect(legacyVersion.capabilities).not.toContain(
+      PROJECT_SESSION_DEFAULTS_CAPABILITY,
+    );
   });
 
   it("keeps legacy names for a pre-ID client version", async () => {

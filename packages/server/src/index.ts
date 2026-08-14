@@ -955,6 +955,18 @@ async function startServer() {
       (executor || tlsOptions
         ? undefined
         : `http://127.0.0.1:${networkBindingService.getLocalhostPort()}/`),
+    getBrowserDebugConnection: (executor) => {
+      if (config.sessionWakeBaseUrl) {
+        return { baseUrl: config.sessionWakeBaseUrl };
+      }
+      if (executor) return undefined;
+      return {
+        baseUrl: `${serverProtocol}://127.0.0.1:${networkBindingService.getLocalhostPort()}/`,
+        ...(tlsOptions
+          ? { caCertificate: tlsOptions.cert.toString("utf8") }
+          : {}),
+      };
+    },
     projectStoragePolicy,
     hostAwakeService,
     workstreamService,

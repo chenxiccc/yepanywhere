@@ -8,6 +8,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
+  REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   hasServerCapabilityAdvertisement,
   serverHasCapability,
@@ -25,6 +26,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
+import { useOptionalToastContext } from "../contexts/ToastContext";
 import { ConversationViewIcon } from "./ConversationViewIcon";
 import {
   type EffortLevel,
@@ -32,6 +34,7 @@ import {
   useModelSettings,
 } from "../hooks/useModelSettings";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
+import { useBrowserDebugLease } from "../hooks/useBrowserDebugLease";
 import { useConversationView } from "../hooks/useConversationView";
 import { useSpeechSourceRuntime } from "../hooks/useSpeechSourceRuntime";
 import {
@@ -60,7 +63,8 @@ import {
 } from "../hooks/useWaveformButtonBackgroundOpacity";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
-import { writeClipboardText } from "../lib/clipboard";
+import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
+import { BROWSER_DEBUG_LEASE_TTL_MS } from "../lib/browserDebugLease";
 import {
   type FileViewerControllerState,
   useFileViewerController,
@@ -196,6 +200,8 @@ function getIsearchAlternateRows(
 }
 
 export interface MessageInputToolbarProps {
+  /** Canonical YA session id represented by this composer. */
+  sessionId?: string;
   // Mode selector
   mode?: PermissionMode;
   onModeChange?: (mode: PermissionMode) => void;
@@ -595,6 +601,14 @@ interface ToolbarStatusControl {
   hasLastActivityAge: boolean;
 }
 
+interface ToolbarBrowserDebugControl {
+  active: boolean;
+  enabling?: boolean;
+  remainingFraction: number;
+  title: string;
+  onToggle: () => void;
+}
+
 interface ToolbarShortcutsControl {
   open: boolean;
   isearchScope: SessionIsearchScope | null;
@@ -687,6 +701,7 @@ export interface MessageInputToolbarViewProps {
   thinkingControl?: ToolbarThinkingControl | null;
   renderModeControl?: ToolbarRenderModeControl | null;
   conversationViewControl?: ToolbarConversationViewControl | null;
+  browserDebugControl?: ToolbarBrowserDebugControl | null;
   nudgeControl?: ToolbarNudgeControl | null;
   speechControl?: ToolbarSpeechControl | null;
   speechWaveformActive?: boolean;
@@ -718,6 +733,51 @@ function ToolbarMicrophoneIcon() {
       <line x1="12" y1="19" x2="12" y2="23" />
       <line x1="8" y1="23" x2="16" y2="23" />
     </svg>
+  );
+}
+
+function BrowserDebugBugIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m8 2 1.9 1.9" />
+      <path d="M14.1 3.9 16 2" />
+      <path d="M9 7.1V6a3 3 0 0 1 6 0v1.1" />
+      <rect width="12" height="13" x="6" y="7" rx="5" />
+      <path d="M3 13h3M18 13h3M4 7.5l2.4 1.2M17.6 8.7 20 7.5M4 18.5l2.4-1.2M17.6 17.3l2.4 1.2M12 12v8" />
+    </svg>
+  );
+}
+
+function BrowserDebugLeaseIcon({
+  active,
+  remainingFraction,
+}: {
+  active: boolean;
+  remainingFraction: number;
+}) {
+  if (!active) return <BrowserDebugBugIcon />;
+  return (
+    <span
+      className={toolbarModuleStyles.browserDebugCountdown}
+      style={
+        {
+          "--browser-debug-remaining": remainingFraction,
+        } as CSSProperties
+      }
+      aria-hidden="true"
+    >
+      <span className={toolbarModuleStyles.browserDebugWarning}>!</span>
+    </span>
   );
 }
 
@@ -1167,6 +1227,7 @@ export function MessageInputToolbarView({
   thinkingControl,
   renderModeControl,
   conversationViewControl,
+  browserDebugControl,
   nudgeControl,
   speechControl,
   speechWaveformActive = false,
@@ -1547,6 +1608,9 @@ export function MessageInputToolbarView({
     (visibility.conversationView &&
       conversationViewControl &&
       isPriorityCollapsible("conversationView")) ||
+    (visibility.browserDebug &&
+      browserDebugControl &&
+      isPriorityCollapsible("browserDebug")) ||
     (visibility.nudge && nudgeControl && isPriorityCollapsible("nudge")) ||
     (visibility.sessionStatus &&
       showToolbarStatus &&
@@ -1588,6 +1652,10 @@ export function MessageInputToolbarView({
     conversationView:
       visibility.conversationView && conversationViewControl
         ? effectivePriority("conversationView")
+        : "off",
+    browserDebug:
+      visibility.browserDebug && browserDebugControl
+        ? effectivePriority("browserDebug")
         : "off",
     nudge:
       visibility.nudge && nudgeControl ? effectivePriority("nudge") : "off",
@@ -1796,6 +1864,30 @@ export function MessageInputToolbarView({
               aria-pressed={conversationViewControl.enabled}
             >
               <ConversationViewIcon />
+            </button>
+          )}
+          {visibility.browserDebug && browserDebugControl && (
+            <button
+              type="button"
+              className={[
+                inlineTierClass("browserDebug"),
+                toolbarModuleStyles.browserDebugButton,
+                browserDebugControl.active
+                  ? toolbarModuleStyles.browserDebugButtonActive
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={browserDebugControl.onToggle}
+              title={browserDebugControl.title}
+              aria-label={browserDebugControl.title}
+              aria-pressed={browserDebugControl.active}
+              disabled={browserDebugControl.enabling}
+            >
+              <BrowserDebugLeaseIcon
+                active={browserDebugControl.active}
+                remainingFraction={browserDebugControl.remainingFraction}
+              />
             </button>
           )}
           {visibility.nudge && nudgeControl && (
@@ -2077,6 +2169,35 @@ export function MessageInputToolbarView({
                       aria-checked={conversationViewControl.enabled}
                     >
                       <ConversationViewIcon />
+                    </button>
+                  )}
+                {visibility.browserDebug &&
+                  browserDebugControl &&
+                  isPriorityCollapsible("browserDebug") && (
+                    <button
+                      type="button"
+                      className={[
+                        menuTierClass("browserDebug"),
+                        toolbarModuleStyles.browserDebugButton,
+                        browserDebugControl.active
+                          ? toolbarModuleStyles.browserDebugButtonActive
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={browserDebugControl.onToggle}
+                      title={browserDebugControl.title}
+                      aria-label={browserDebugControl.title}
+                      role="menuitemcheckbox"
+                      aria-checked={browserDebugControl.active}
+                      disabled={browserDebugControl.enabling}
+                    >
+                      <BrowserDebugLeaseIcon
+                        active={browserDebugControl.active}
+                        remainingFraction={
+                          browserDebugControl.remainingFraction
+                        }
+                      />
                     </button>
                   )}
                 {visibility.nudge &&
@@ -2661,6 +2782,7 @@ export function MessageInputToolbarView({
 }
 
 export function MessageInputToolbar({
+  sessionId,
   mode = "default",
   onModeChange,
   modeChangesApplyNextTurn,
@@ -2724,6 +2846,7 @@ export function MessageInputToolbar({
   pendingApproval,
 }: MessageInputToolbarProps) {
   const { t } = useI18n();
+  const showToast = useOptionalToastContext()?.showToast;
   const fileViewerController = useFileViewerController();
   const {
     thinkingMode,
@@ -2740,9 +2863,14 @@ export function MessageInputToolbar({
     setSpeechSmartTurnSettings,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
+  const browserDebugLease = useBrowserDebugLease();
   const { relayTransport, relayedServerSpeechAvailable } =
     useSpeechSourceRuntime();
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
+  const supportsBrowserDebug = serverHasCapability(
+    versionInfo,
+    REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+  );
   const { providers } = useProviders();
   const { visibility: toolbarVisibility, priority: toolbarPriority } =
     useSessionToolbarPresence();
@@ -2920,6 +3048,70 @@ export function MessageInputToolbar({
   const conversationViewTitle = conversationViewEnabled
     ? t("toolbarConversationViewDisable")
     : t("toolbarConversationViewEnable");
+  const browserDebugActive = browserDebugLease.phase === "active";
+  useEffect(() => {
+    if (
+      browserDebugLease.phase === "active" &&
+      browserDebugLease.sessionId !== sessionId
+    ) {
+      void browserDebugLease.disable();
+    }
+  }, [
+    browserDebugLease.disable,
+    browserDebugLease.phase,
+    browserDebugLease.sessionId,
+    sessionId,
+  ]);
+  const effectiveToolbarVisibility = useMemo(
+    () =>
+      browserDebugActive && !toolbarVisibility.browserDebug
+        ? { ...toolbarVisibility, browserDebug: true }
+        : toolbarVisibility,
+    [browserDebugActive, toolbarVisibility],
+  );
+  const browserDebugRemainingFraction = browserDebugLease.expiresAtMs
+    ? Math.max(
+        0,
+        Math.min(
+          1,
+          (browserDebugLease.expiresAtMs - Date.now()) /
+            BROWSER_DEBUG_LEASE_TTL_MS,
+        ),
+      )
+    : 0;
+  const browserDebugTitle = browserDebugActive
+    ? t("toolbarBrowserDebugDisable", {
+        expiry: new Date(
+          browserDebugLease.expiresAtMs ?? Date.now(),
+        ).toLocaleTimeString(),
+      })
+    : t("toolbarBrowserDebugEnable");
+  const toggleBrowserDebug = useCallback(() => {
+    if (browserDebugActive) {
+      void browserDebugLease.disable();
+      return;
+    }
+    if (!sessionId) return;
+    const prompt = browserDebugLease.enable(sessionId);
+    const copy = writeClipboardTextLater(prompt);
+    void Promise.all([prompt, copy])
+      .then(([, copied]) => {
+        showToast?.(
+          copied
+            ? t("browserDebugCopiedBanner")
+            : t("browserDebugClipboardFailed"),
+          "error",
+        );
+      })
+      .catch((error) => {
+        showToast?.(
+          t("browserDebugEnableFailed", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+          "error",
+        );
+      });
+  }, [browserDebugActive, browserDebugLease, sessionId, showToast, t]);
   const hasPotentialDualActions = !!(onSend && onQueue && onSteer);
   const effectivePrimaryActionKind =
     primaryActionKind ?? (hasPotentialDualActions ? "steer" : "send");
@@ -3286,7 +3478,7 @@ export function MessageInputToolbar({
         status: toolbarStatusRef,
         actions: toolbarActionsRef,
       }}
-      visibility={toolbarVisibility}
+      visibility={effectiveToolbarVisibility}
       priority={toolbarPriority}
       isCompactStatusMode={isCompactStatusMode}
       fileViewerController={fileViewerController}
@@ -3346,6 +3538,17 @@ export function MessageInputToolbar({
         title: conversationViewTitle,
         onToggle: () => setConversationViewEnabled(!conversationViewEnabled),
       }}
+      browserDebugControl={
+        supportsBrowserDebug && sessionId
+          ? {
+              active: browserDebugActive,
+              enabling: browserDebugLease.phase === "enabling",
+              remainingFraction: browserDebugRemainingFraction,
+              title: browserDebugTitle,
+              onToggle: toggleBrowserDebug,
+            }
+          : null
+      }
       nudgeControl={
         onToggleHeartbeat
           ? {

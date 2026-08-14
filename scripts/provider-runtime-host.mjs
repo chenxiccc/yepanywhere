@@ -743,18 +743,26 @@ export class ProviderRuntimeHost {
     removePathIfPresent(socketPath);
 
     const options = request.options ?? {};
+    const staticAgentEnvironment =
+      options.staticAgentEnvironment &&
+      typeof options.staticAgentEnvironment === "object" &&
+      !Array.isArray(options.staticAgentEnvironment)
+        ? options.staticAgentEnvironment
+        : {};
     const agentLaunchEnvironment = withAgentLaunchEnvironment(
       providerName,
       options,
-      process.env,
+      { ...process.env, ...staticAgentEnvironment },
     );
+    const { staticAgentEnvironment: _staticAgentEnvironment, ...workerBase } =
+      options;
     const workerOptions = {
-      ...options,
-      remoteEnv: withAgentLaunchEnvironment(
-        providerName,
-        options,
-        options.remoteEnv,
-      ),
+      ...workerBase,
+      browserDebugEnvironment: staticAgentEnvironment,
+      remoteEnv: withAgentLaunchEnvironment(providerName, options, {
+        ...options.remoteEnv,
+        ...staticAgentEnvironment,
+      }),
     };
 
     const child = spawn(

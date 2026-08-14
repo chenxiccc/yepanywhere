@@ -621,6 +621,7 @@ const toolbarVisibility: MessageInputToolbarViewProps["visibility"] = {
   thinkingToggle: true,
   renderMode: false,
   conversationView: false,
+  browserDebug: false,
   microphone: false,
   waveform: false,
   shortcutsHelp: false,
@@ -5313,6 +5314,7 @@ describe("MessageInput", () => {
 
   it("opens a bottom-row overflow strip for lower-priority controls", () => {
     const onRenderToggle = vi.fn();
+    const onBrowserDebugToggle = vi.fn();
     const onNudgeClick = vi.fn();
     const setShortcutsOpen = vi.fn();
     const onBtwClick = vi.fn();
@@ -5326,6 +5328,7 @@ describe("MessageInput", () => {
           ...toolbarVisibility,
           thinkingToggle: false,
           renderMode: true,
+          browserDebug: true,
           shortcutsHelp: true,
           contextUsage: true,
           btw: true,
@@ -5335,6 +5338,7 @@ describe("MessageInput", () => {
         priority={{
           ...DEFAULT_SESSION_TOOLBAR_PRIORITY,
           contextUsage: "first",
+          browserDebug: "first",
           btw: "first",
           steerNow: "first",
           projectQueue: "first",
@@ -5344,6 +5348,12 @@ describe("MessageInput", () => {
           state: "mixed",
           title: "Toggle rendered output",
           onToggle: onRenderToggle,
+        }}
+        browserDebugControl={{
+          active: false,
+          remainingFraction: 0,
+          title: "Enable browser debugging",
+          onToggle: onBrowserDebugToggle,
         }}
         nudgeControl={{
           enabled: true,
@@ -5410,6 +5420,9 @@ describe("MessageInput", () => {
     expect(overflow.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("menu")).toBeTruthy();
     fireEvent.click(screen.getAllByLabelText("Toggle rendered output").at(-1)!);
+    fireEvent.click(
+      screen.getAllByLabelText("Enable browser debugging").at(-1)!,
+    );
     fireEvent.click(screen.getAllByLabelText("Pulse after quiet").at(-1)!);
     fireEvent.click(
       screen.getAllByLabelText("Session keyboard shortcuts").at(-1)!,
@@ -5421,6 +5434,7 @@ describe("MessageInput", () => {
     );
 
     expect(onRenderToggle).toHaveBeenCalledTimes(1);
+    expect(onBrowserDebugToggle).toHaveBeenCalledTimes(1);
     expect(onNudgeClick).toHaveBeenCalledTimes(1);
     expect(setShortcutsOpen).toHaveBeenCalledTimes(1);
     expect(onBtwClick).toHaveBeenCalledTimes(1);
@@ -5441,6 +5455,7 @@ describe("MessageInput", () => {
       thinkingToggle: "mid",
       renderMode: "last",
       conversationView: "last",
+      browserDebug: "last",
       nudge: "last",
       sessionStatus: "pin",
       shortcutsHelp: "last",

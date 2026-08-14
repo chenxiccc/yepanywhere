@@ -299,10 +299,16 @@ an unsandboxed provider.
 
 Provider process-scoped configuration is snapshotted at launch. Settings
 changes affect later workers but do not mutate a surviving runtime under a new
-Hono generation. For Claude Gateway, the worker may launch the configured
-gateway and then transfers its process group to the shared host because later
-workers may share that endpoint. Hono must not tear it down during reload.
-Terminal wrapper/host shutdown still reaps it.
+Hono generation. The two allowlisted browser-debugging variables are a narrow
+child-shell exception: a compatible replacement Hono generation atomically
+re-publishes them for future local Bash tool shells without mutating the
+provider process environment or accepting arbitrary environment names. Their
+caller factor is domain-separated from the provider-host boot token, so the
+launch-time value also remains valid across Hono replacement when a provider
+sandbox omits the shell bridge. For Claude Gateway, the worker may launch the
+configured gateway and then transfers its process group to the shared host
+because later workers may share that endpoint. Hono must not tear it down
+during reload. Terminal wrapper/host shutdown still reaps it.
 
 The live worker snapshot and the server-owned per-session launch-settings
 record cover different lifetimes. Hono reattach adopts the surviving worker's

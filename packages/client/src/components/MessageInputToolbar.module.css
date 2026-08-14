@@ -68,6 +68,74 @@
   font-size: var(--font-size-xs);
 }
 
+.browserDebugButton {
+  position: relative;
+  display: inline-flex;
+  box-sizing: border-box;
+  width: var(--composer-control-size);
+  min-width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  flex: 0 0 var(--composer-control-size);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+
+.browserDebugButton:hover:not(:disabled) {
+  border-color: var(--border-input);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.browserDebugButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.browserDebugButtonActive {
+  color: var(--error-color);
+  background: color-mix(in srgb, var(--error-color) 14%, transparent);
+}
+
+.browserDebugButtonActive:hover:not(:disabled) {
+  color: var(--error-color);
+  background: color-mix(in srgb, var(--error-color) 22%, transparent);
+}
+
+.browserDebugCountdown {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(
+    currentcolor calc(var(--browser-debug-remaining) * 1turn),
+    color-mix(in srgb, currentcolor 18%, transparent) 0
+  );
+}
+
+.browserDebugWarning {
+  display: grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .waveformBackdropActive .waveformRegion {
   isolation: isolate;
 }

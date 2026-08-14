@@ -2,6 +2,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+  REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CLIENT_STORAGE_DEFAULT } from "../../lib/defaultedStorage";
@@ -66,6 +67,26 @@ describe("useSessionToolbarPresence", () => {
     expect(result.current.presence.conversationView).toBe("last");
     expect(result.current.visibility.conversationView).toBe(true);
     expect(conversation.result.current.conversationViewEnabled).toBe(true);
+    expect(DEFAULT_SESSION_TOOLBAR_PRESENCE.browserDebug).toBe("hidden");
+    expect(result.current.visibility.browserDebug).toBe(false);
+  });
+
+  it("reveals browser debugging only with capability and local opt-in", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      capabilities: [REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY],
+    };
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    for (const priority of ["first", "mid", "last", "pin"] as const) {
+      act(() => result.current.setControlPresence("browserDebug", priority));
+      expect(result.current.presence.browserDebug).toBe(priority);
+      expect(result.current.visibility.browserDebug).toBe(true);
+    }
+    expect(mocks.updateServerSettings).not.toHaveBeenCalled();
   });
 
   it("activates Conversation view when its client-only control is enabled", async () => {

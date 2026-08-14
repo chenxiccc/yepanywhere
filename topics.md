@@ -311,3 +311,6 @@
   Linux-bounded capability inbox for only predeclared authorization gates.
 - quarto-markdown - Safe `.qmd` viewing and inert, source-preserving file links
   for Quarto include directives.
+- remote-browser-diagnostics - Explicit per-tab full-JavaScript debugging
+  leases for YA-launched agents, with visible consent, bounded evidence, and
+  server-mediated two-factor authority.

@@ -75,3 +75,7 @@ export function useToastContext() {
   }
   return context;
 }
+
+export function useOptionalToastContext() {
+  return useContext(ToastContext);
+}

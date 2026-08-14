@@ -10,7 +10,7 @@ function runBash(env: NodeJS.ProcessEnv): string {
     "bash",
     [
       "-c",
-      `printf "original=%s agentctl=%s wake_url=%s wake_token=%s" "\${YA_ORIGINAL_BASH_ENV_MARKER-}" "\${AGENTCTL_SESSION_ID-}" "\${YEP_SESSION_WAKE_URL-}" "\${YEP_SESSION_WAKE_TOKEN-}"`,
+      `printf "original=%s agentctl=%s wake_url=%s wake_token=%s debug_url=%s debug_token=%s" "\${YA_ORIGINAL_BASH_ENV_MARKER-}" "\${AGENTCTL_SESSION_ID-}" "\${YEP_SESSION_WAKE_URL-}" "\${YEP_SESSION_WAKE_TOKEN-}" "\${YEP_BROWSER_DEBUG_AGENT_URL-}" "\${YEP_BROWSER_DEBUG_CALLER_TOKEN-}"`,
     ],
     {
       encoding: "utf-8",
@@ -64,19 +64,23 @@ describe("agentctl session env bridge", () => {
       const sourceEnv = bridgeTestEnv();
       sourceEnv.YEP_SESSION_WAKE_URL = "http://stale.invalid/";
       sourceEnv.YEP_SESSION_WAKE_TOKEN = "stale-token";
+      sourceEnv.YEP_BROWSER_DEBUG_AGENT_URL = "http://stale.invalid/debug";
+      sourceEnv.YEP_BROWSER_DEBUG_CALLER_TOKEN = "stale-debug-token";
       const env = bridge.extendEnv({
         ...sourceEnv,
         BASH_ENV: originalBashEnvPath,
       });
 
       expect(runBash(env)).toBe(
-        "original=kept agentctl= wake_url= wake_token=",
+        "original=kept agentctl= wake_url= wake_token= debug_url= debug_token=",
       );
+      expect(env.YEP_BROWSER_DEBUG_AGENT_URL).toBeUndefined();
+      expect(env.YEP_BROWSER_DEBUG_CALLER_TOKEN).toBeUndefined();
 
       bridge.publishSessionId("sess-'quoted");
 
       expect(runBash(env)).toBe(
-        "original=kept agentctl=sess-'quoted wake_url= wake_token=",
+        "original=kept agentctl=sess-'quoted wake_url= wake_token= debug_url= debug_token=",
       );
     } finally {
       bridge.cleanup();
@@ -95,7 +99,31 @@ describe("agentctl session env bridge", () => {
 
     try {
       expect(runBash(bridge.extendEnv(bridgeTestEnv()))).toBe(
-        "original= agentctl=sess-resume wake_url=http://127.0.0.1/session-wake/sess-resume wake_token=wake-'token",
+        "original= agentctl=sess-resume wake_url=http://127.0.0.1/session-wake/sess-resume wake_token=wake-'token debug_url= debug_token=",
+      );
+    } finally {
+      bridge.cleanup();
+    }
+  });
+
+  bashIt("refreshes browser debugging credentials for later shells", () => {
+    const bridge = createAgentctlSessionEnvBridge("sess-retained", () => ({
+      YEP_SESSION_WAKE_URL: "http://127.0.0.1/session-wake/sess-retained",
+      YEP_SESSION_WAKE_TOKEN: "wake-token",
+      YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/old",
+      YEP_BROWSER_DEBUG_CALLER_TOKEN: "old-token",
+    }));
+
+    try {
+      const env = bridge.extendEnv(bridgeTestEnv());
+      bridge.publishSessionId("sess-retained", {
+        YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/new",
+        YEP_BROWSER_DEBUG_CALLER_TOKEN: "new-token",
+        UNRELATED_SECRET: "must-not-pass",
+      });
+
+      expect(runBash(env)).toBe(
+        "original= agentctl=sess-retained wake_url=http://127.0.0.1/session-wake/sess-retained wake_token=wake-token debug_url=http://127.0.0.1/new debug_token=new-token",
       );
     } finally {
       bridge.cleanup();

@@ -2191,8 +2191,14 @@ export class ClaudeProvider implements AgentProvider {
           env: claudeEnv,
           sessionSandbox: options.sessionSandbox,
         }),
-      publishAgentctlSessionId: (sessionId: string) => {
-        agentctlSessionEnvBridge?.publishSessionId(sessionId);
+      publishAgentctlSessionId: (
+        sessionId: string,
+        browserDebugEnvironment?: Record<string, string>,
+      ) => {
+        agentctlSessionEnvBridge?.publishSessionId(
+          sessionId,
+          browserDebugEnvironment,
+        );
       },
       setMaxThinkingTokens: (tokens: number | null) =>
         sdkQuery.setMaxThinkingTokens(tokens),

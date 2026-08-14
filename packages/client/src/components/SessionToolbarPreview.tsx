@@ -71,6 +71,7 @@ function usePreviewToolbarControls(previewNowMs: number) {
       | "thinkingControl"
       | "renderModeControl"
       | "conversationViewControl"
+      | "browserDebugControl"
       | "nudgeControl"
       | "speechControl"
       | "statusControl"
@@ -113,6 +114,12 @@ function usePreviewToolbarControls(previewNowMs: number) {
       conversationViewControl: {
         enabled: true,
         title: t("toolbarConversationViewDisable"),
+        onToggle: noop,
+      },
+      browserDebugControl: {
+        active: false,
+        remainingFraction: 0,
+        title: t("toolbarBrowserDebugEnable"),
         onToggle: noop,
       },
       nudgeControl: {
@@ -234,6 +241,7 @@ export function SessionToolbarPreview() {
           thinkingControl={controls.thinkingControl}
           renderModeControl={controls.renderModeControl}
           conversationViewControl={controls.conversationViewControl}
+          browserDebugControl={controls.browserDebugControl}
           nudgeControl={controls.nudgeControl}
           speechControl={controls.speechControl}
           speechWaveformActive={visibility.waveform}
@@ -327,6 +335,7 @@ export function ToolbarControlPreview({
         thinkingControl={controls.thinkingControl}
         renderModeControl={controls.renderModeControl}
         conversationViewControl={controls.conversationViewControl}
+        browserDebugControl={controls.browserDebugControl}
         nudgeControl={controls.nudgeControl}
         speechControl={controls.speechControl}
         speechWaveformActive={controlKey === "waveform"}

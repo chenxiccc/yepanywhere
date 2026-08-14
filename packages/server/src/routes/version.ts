@@ -39,6 +39,7 @@ import {
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
   PROVIDER_HOST_CONTROL_CAPABILITY,
+  REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
@@ -289,6 +290,8 @@ export interface VersionInfo {
   capabilityEncoding?: number;
   /** Explicit capability IDs not implied by `current`. */
   capabilityBits?: CapabilityBitset;
+  /** Version-implied capability IDs this server generation explicitly denies. */
+  deniedCapabilityBits?: CapabilityBitset;
   /** Sparse 32-bit words for optional capabilities in compact-v1 responses. */
   optionalCapabilityBits?: OptionalServerCapabilityBitset;
   /** Names not yet implied by the reported release, chiefly source builds. */
@@ -351,6 +354,7 @@ const BASE_CAPABILITIES: string[] = [
   PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
+  REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   SESSION_FORK_TURN_INTENTS_CAPABILITY,
@@ -404,6 +408,8 @@ export interface VersionRouteOptions {
   desktopRuntime?: boolean;
   /** Whether this Hono generation is registered with a provider host. */
   providerHostControlAvailable?: boolean;
+  /** Version-implied contracts deliberately unavailable in this generation. */
+  deniedCapabilities?: readonly string[];
   /** Resolved local sandbox preflight used while constructing capabilities. */
   sessionSandboxAvailability?: SessionSandboxAvailability;
   /** Test/service override for the cached host preflight. */
@@ -470,7 +476,8 @@ export function getServerCapabilities(options?: VersionRouteOptions): string[] {
   capabilities.push(
     ...getCapabilitiesForDeviceBridgeState(deviceBridgeState, enabled),
   );
-  return capabilities;
+  const denied = new Set(options?.deniedCapabilities ?? []);
+  return capabilities.filter((capability) => !denied.has(capability));
 }
 
 export function getEnabledVoiceBackends(
@@ -544,6 +551,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       getDeviceBridgeState: () => deviceBridgeStatus.state,
       sessionSandboxAvailability,
     });
+    const deniedCapabilities = options?.deniedCapabilities ?? [];
     const voiceBackends = getEnabledVoiceBackends(options);
     const voiceBackendStatuses = options?.getVoiceBackendStatuses?.() ?? [];
     const voiceBackendCapabilities = getVoiceBackendCapabilities(options);
@@ -565,9 +573,17 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
       remoteCompatibilityLevel: REMOTE_COMPATIBILITY_LEVEL,
       ...(capabilityEncoding
-        ? encodeVersionedServerCapabilities(capabilities, current)
+        ? encodeVersionedServerCapabilities(
+            capabilities,
+            current,
+            deniedCapabilities,
+          )
         : compactCapabilities
-          ? encodeCompactServerCapabilities(capabilities, current)
+          ? encodeCompactServerCapabilities(
+              capabilities,
+              current,
+              deniedCapabilities,
+            )
           : { capabilities }),
       sessionSandboxing: sessionSandboxAvailability,
       voiceBackends,

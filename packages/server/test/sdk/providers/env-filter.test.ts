@@ -83,4 +83,18 @@ describe("filterEnvForChildProcess", () => {
     expect(env.YEP_DATA_DIR).toBeUndefined();
     expect(env.npm_execpath).toBeUndefined();
   });
+
+  it("keeps the two-factor browser diagnostic broker environment", () => {
+    const env = filterEnvForChildProcess({
+      YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/browser-debug/v1",
+      YEP_BROWSER_DEBUG_CALLER_TOKEN: "boot-token",
+      YEP_DATA_DIR: "/private/data",
+    });
+
+    expect(env.YEP_BROWSER_DEBUG_AGENT_URL).toBe(
+      "http://127.0.0.1/browser-debug/v1",
+    );
+    expect(env.YEP_BROWSER_DEBUG_CALLER_TOKEN).toBe("boot-token");
+    expect(env.YEP_DATA_DIR).toBeUndefined();
+  });
 });

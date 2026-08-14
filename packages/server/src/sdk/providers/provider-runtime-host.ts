@@ -14,6 +14,7 @@ import type {
   UserMessage,
 } from "../types.js";
 import { getModuleEnv } from "../../yaModuleEnv.js";
+import { pickBrowserDebugAgentEnvironment } from "./agentctl-session-env.js";
 import type {
   AgentSession,
   ProviderName,
@@ -435,9 +436,17 @@ function cloneableOptions(
     shouldEmitLiveDeltas: _shouldEmitLiveDeltas,
     onProviderRetentionChange: _onProviderRetentionChange,
     sessionSandbox: _sessionSandbox,
+    getSessionChildEnv,
     ...cloneable
   } = options;
-  return cloneable;
+  const sessionChildEnv = getSessionChildEnv?.(
+    options.resumeSessionId ?? "",
+    options.executor,
+  );
+  return {
+    ...cloneable,
+    staticAgentEnvironment: pickBrowserDebugAgentEnvironment(sessionChildEnv),
+  };
 }
 
 function reattachSpec(
@@ -603,6 +612,17 @@ class HostedAgentSession {
     const proxy = new HostedAgentSession(runtime, options, socket);
     try {
       await proxy.attach(environment);
+      if (options.resumeSessionId && options.getSessionChildEnv) {
+        await proxy.rpc("publishAgentctlSessionId", [
+          options.resumeSessionId,
+          pickBrowserDebugAgentEnvironment(
+            options.getSessionChildEnv(
+              options.resumeSessionId,
+              options.executor,
+            ),
+          ),
+        ]);
+      }
       await requestHost("confirmAttach", { runtimeId: runtime.runtimeId });
       return proxy.toAgentSession();
     } catch (error) {
@@ -1025,11 +1045,19 @@ class HostedAgentSession {
       ...(capabilities.refreshPromptCache
         ? { refreshPromptCache: (arg) => this.rpc("refreshPromptCache", [arg]) }
         : {}),
-      publishAgentctlSessionId: async (sessionId) => {
+      publishAgentctlSessionId: async (sessionId, browserDebugEnvironment) => {
         // Make the routing decision synchronous with Process learning the YA
         // session id. A SIGHUP can arrive while the two remote binds await.
         hostedSessionIds.set(this.runtime.runtimeId, sessionId);
-        await this.rpc("publishAgentctlSessionId", [sessionId]);
+        await this.rpc(
+          "publishAgentctlSessionId",
+          browserDebugEnvironment === undefined
+            ? [sessionId]
+            : [
+                sessionId,
+                pickBrowserDebugAgentEnvironment(browserDebugEnvironment),
+              ],
+        );
         const bound = await requestHost<HostedProviderRuntimeInfo>("bind", {
           runtimeId: this.runtime.runtimeId,
           sessionId,

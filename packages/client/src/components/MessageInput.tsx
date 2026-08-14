@@ -2958,6 +2958,7 @@ export function MessageInput({
   );
 
   const toolbarProps: MessageInputToolbarProps = {
+    sessionId,
     mode,
     onModeChange,
     modeChangesApplyNextTurn,

@@ -1093,6 +1093,10 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
           model: "gpt-5.6-sol",
           effort: "high",
           remoteEnv: { REMOTE_KEEP_ME: "yes" },
+          staticAgentEnvironment: {
+            YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/browser-debug/v1",
+            YEP_BROWSER_DEBUG_CALLER_TOKEN: "boot-token",
+          },
         },
       },
       owner,
@@ -1102,12 +1106,16 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       harness: "claude",
       model: "gpt-5.6-sol",
       effort: "high",
+      browserDebugUrl: "http://127.0.0.1/browser-debug/v1",
+      browserDebugCallerToken: "boot-token",
     });
     expect(launched.worker.remoteAgentLaunchEnvironment).toEqual({
       REMOTE_KEEP_ME: "yes",
       YEP_AGENT_HARNESS: "claude",
       YEP_AGENT_INITIAL_MODEL: "gpt-5.6-sol",
       YEP_AGENT_INITIAL_EFFORT: "high",
+      YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/browser-debug/v1",
+      YEP_BROWSER_DEBUG_CALLER_TOKEN: "boot-token",
     });
 
     await host.shutdown("launch environment test complete");
@@ -1494,6 +1502,38 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     await host.shutdown("callback test complete");
   });
 
+  it("resolves hosted child environment for the selected executor", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
+    temporaryPaths.push(runtimeRoot);
+    const controlSocketPath = join(runtimeRoot, "host.sock");
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath,
+      token: "executor-environment-token",
+      workerPath: fixtureWorker,
+    });
+    await host.start();
+    process.env.YEP_PROVIDER_RUNTIME_SOCKET = controlSocketPath;
+    process.env.YEP_PROVIDER_RUNTIME_TOKEN = "executor-environment-token";
+    process.env.YEP_SERVER_GENERATION = "executor-environment";
+    expect(await initializeProviderRuntimeHost()).toBe(true);
+    const getSessionChildEnv = vi.fn(() => ({}));
+
+    const session = await startHostedProviderSession(
+      "claude",
+      {
+        cwd: runtimeRoot,
+        executor: "remote-shell",
+        getSessionChildEnv,
+      },
+      {},
+    );
+
+    expect(getSessionChildEnv).toHaveBeenCalledWith("", "remote-shell");
+    await session.abort();
+    await host.shutdown("executor environment test complete");
+  });
+
   it("propagates provider approval cancellation to the active callback", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
     temporaryPaths.push(runtimeRoot);
@@ -1581,11 +1621,30 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     expect(await initializeProviderRuntimeHost()).toBe(true);
     const second = await startHostedProviderSession(
       "claude",
-      { cwd: runtimeRoot, resumeSessionId: "canonical-session" },
+      {
+        cwd: runtimeRoot,
+        resumeSessionId: "canonical-session",
+        getSessionChildEnv: () => ({
+          YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/browser-debug/v1",
+          YEP_BROWSER_DEBUG_CALLER_TOKEN: "second-boot-token",
+          UNRELATED_SECRET: "must-not-pass",
+        }),
+      },
       {},
     );
     const secondEvent = await second.iterator.next();
     expect(secondEvent.value?.session_id).toBe("fake-session-2");
+    const environmentEvent = await second.iterator.next();
+    expect(environmentEvent.value).toMatchObject({
+      status: "browser-debug-environment-published",
+      browserDebugEnvironment: {
+        YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/browser-debug/v1",
+        YEP_BROWSER_DEBUG_CALLER_TOKEN: "second-boot-token",
+      },
+    });
+    expect(environmentEvent.value).not.toHaveProperty(
+      "browserDebugEnvironment.UNRELATED_SECRET",
+    );
     expect(second.getRuntimeUnviewedSince?.()?.toISOString()).toBe(
       unviewedSince,
     );

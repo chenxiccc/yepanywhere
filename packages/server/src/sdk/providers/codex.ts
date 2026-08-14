@@ -87,7 +87,10 @@ import type {
   UserInput,
 } from "./codex-protocol/index.js";
 import type { SandboxPolicy as CodexSandboxPolicy } from "./codex-protocol/generated/v2/SandboxPolicy.js";
-import { createAgentctlSessionEnvBridge } from "./agentctl-session-env.js";
+import {
+  createAgentctlSessionEnvBridge,
+  type AgentctlSessionEnvBridge,
+} from "./agentctl-session-env.js";
 import {
   formatCodexStatusCommand,
   formatCodexUsageCommand,
@@ -1440,6 +1443,7 @@ export class CodexProvider implements AgentProvider {
       resolveInitialActiveClient?.(client);
       resolveInitialActiveClient = null;
     };
+    let agentctlSessionEnvBridge: AgentctlSessionEnvBridge | null = null;
     const skillInventory: CodexSessionSkillInventory = {
       skills: [],
       stale: true,
@@ -1452,6 +1456,9 @@ export class CodexProvider implements AgentProvider {
       (client) => {
         activeClient = client;
         settleInitialActiveClient(client);
+      },
+      (bridge) => {
+        agentctlSessionEnvBridge = bridge;
       },
       skillInventory,
     );
@@ -1501,6 +1508,12 @@ export class CodexProvider implements AgentProvider {
       },
       probeLiveness: async () =>
         this.probeCodexLiveness(activeClient, runtimeState),
+      publishAgentctlSessionId: (sessionId, browserDebugEnvironment) => {
+        agentctlSessionEnvBridge?.publishSessionId(
+          sessionId,
+          browserDebugEnvironment,
+        );
+      },
       setEffort: async (effort) => {
         runtimeState.turnEffortOverride = effort ?? null;
       },
@@ -1972,6 +1985,9 @@ export class CodexProvider implements AgentProvider {
     signal: AbortSignal,
     runtimeState: CodexTurnRuntimeState,
     setActiveClient: (client: CodexAppServerClient) => void,
+    setAgentctlSessionEnvBridge: (
+      bridge: AgentctlSessionEnvBridge | null,
+    ) => void,
     skillInventory: CodexSessionSkillInventory,
   ): AsyncIterableIterator<SDKMessage> {
     const codexCommand = await this.resolveCodexCommand();
@@ -1979,6 +1995,7 @@ export class CodexProvider implements AgentProvider {
       options.resumeSessionId,
       options.getSessionChildEnv,
     );
+    setAgentctlSessionEnvBridge(agentctlSessionEnvBridge);
     const codexEnv = agentctlSessionEnvBridge.extendEnv(this.getCodexEnv());
     if (options.resumeSessionId) {
       // The bridge only reaches bash tool shells that source BASH_ENV, which
@@ -2376,6 +2393,7 @@ export class CodexProvider implements AgentProvider {
         await appServer.close();
       } finally {
         agentctlSessionEnvBridge.cleanup();
+        setAgentctlSessionEnvBridge(null);
       }
     }
 

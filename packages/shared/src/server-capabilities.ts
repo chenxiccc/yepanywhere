@@ -69,11 +69,13 @@ export type OptionalServerCapabilityBitset = CapabilityBitset;
 export interface VersionedServerCapabilityAdvertisement {
   capabilityEncoding: typeof CAPABILITY_ID_ENCODING_VERSION;
   capabilityBits: CapabilityBitset;
+  deniedCapabilityBits?: CapabilityBitset;
 }
 
 export interface CompactServerCapabilityAdvertisement {
   optionalCapabilityBits: OptionalServerCapabilityBitset;
   capabilityExtensions?: readonly string[];
+  deniedCapabilityBits?: CapabilityBitset;
 }
 
 export type ServerCapabilityAdvertisement =
@@ -86,6 +88,7 @@ export interface ServerCapabilitySource {
   capabilities?: readonly string[];
   capabilityEncoding?: number;
   capabilityBits?: CapabilityBitset;
+  deniedCapabilityBits?: CapabilityBitset;
   optionalCapabilityBits?: OptionalServerCapabilityBitset;
   capabilityExtensions?: readonly string[];
 }
@@ -872,6 +875,49 @@ export const SERVER_CAPABILITIES = {
         "Host availability is launch- and platform-dependent, while hosted clients can outpace installed servers that lack the adapter routes.",
     },
   },
+  remoteBrowserDiagnostics: {
+    id: CAPABILITY_ID_ALLOCATIONS.remoteBrowserDiagnostics.id,
+    name: "remote-browser-diagnostics-v1",
+    kind: "permanent",
+    area: "security",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server brokers one short-lived, per-tab full-JavaScript diagnostic lease between an explicitly enabled browser tab and a YA-launched agent shell.",
+    clientFallback:
+      "Hide the toolbar setting and control, create no lease, and make no browser-diagnostics request.",
+    serverContract: {
+      routes: [
+        "POST /api/browser-debug/leases",
+        "POST /api/browser-debug/leases/:leaseId/poll",
+        "POST /api/browser-debug/leases/:leaseId/results",
+        "POST /api/browser-debug/leases/:leaseId/events",
+        "DELETE /api/browser-debug/leases/:leaseId",
+        "GET /browser-debug/v1/leases/:leaseId",
+        "GET /browser-debug/v1/leases/:leaseId/events",
+        "POST /browser-debug/v1/leases/:leaseId/eval",
+      ],
+      routeModules: ["packages/server/src/routes/browser-debug.ts"],
+      requestFields: [
+        "browserDebugLease.sessionId",
+        "browserDebugLease.tabId",
+        "browserDebugEval.code",
+      ],
+      responseFields: [
+        "browserDebugLease.leaseId",
+        "browserDebugLease.controllerToken",
+        "browserDebugLease.grantUrl",
+        "browserDebugLease.expiresAt",
+        "browserDebugEvents.events",
+        "browserDebugEval.result",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, and the privileged broker routes must never be probed without an explicit compatibility contract.",
+    },
+  },
   reloadSafeCodexRuntimeSettings: {
     id: CAPABILITY_ID_ALLOCATIONS.reloadSafeCodexRuntimeSettings.id,
     name: "reload-safe-codex-runtime-settings",
@@ -1445,6 +1491,9 @@ export const PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY =
 export const PROVIDER_HOST_CONTROL_CAPABILITY =
   SERVER_CAPABILITIES.providerHostControl.name;
 
+export const REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY =
+  SERVER_CAPABILITIES.remoteBrowserDiagnostics.name;
+
 export const RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY =
   SERVER_CAPABILITIES.reloadSafeCodexRuntimeSettings.name;
 
@@ -1506,6 +1555,7 @@ export function encodeOptionalServerCapabilityBits(
 export function encodeCompactServerCapabilities(
   capabilities: readonly string[],
   currentVersion: string,
+  deniedCapabilities: readonly string[] = [],
 ): CompactServerCapabilityAdvertisement {
   const capabilityExtensions = capabilities.filter((name) => {
     const definition = SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name);
@@ -1519,7 +1569,32 @@ export function encodeCompactServerCapabilities(
   return {
     optionalCapabilityBits: encodeOptionalServerCapabilityBits(capabilities),
     ...(capabilityExtensions.length > 0 ? { capabilityExtensions } : {}),
+    ...encodeDeniedServerCapabilities(deniedCapabilities, currentVersion),
   };
+}
+
+function encodeDeniedServerCapabilities(
+  deniedCapabilities: readonly string[],
+  currentVersion: string,
+): { deniedCapabilityBits?: CapabilityBitset } {
+  const ids: number[] = [];
+  for (const name of deniedCapabilities) {
+    const definition = SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name);
+    if (definition?.advertisement.kind !== "version-implied") {
+      throw new Error(
+        `Only version-implied server capabilities can be denied: ${name}`,
+      );
+    }
+    if (
+      definition.id !== undefined &&
+      isVersionAtLeast(currentVersion, definition.introducedIn)
+    ) {
+      ids.push(definition.id);
+    }
+  }
+  return ids.length > 0
+    ? { deniedCapabilityBits: encodeCapabilityIds(ids) }
+    : {};
 }
 
 /**
@@ -1555,6 +1630,7 @@ export function negotiateServerCapabilityEncoding(
 export function encodeVersionedServerCapabilities(
   capabilities: readonly string[],
   currentVersion: string,
+  deniedCapabilities: readonly string[] = [],
 ): VersionedServerCapabilityAdvertisement {
   const explicitIds: number[] = [];
   for (const name of capabilities) {
@@ -1578,6 +1654,7 @@ export function encodeVersionedServerCapabilities(
   return {
     capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
     capabilityBits: encodeCapabilityIds(explicitIds),
+    ...encodeDeniedServerCapabilities(deniedCapabilities, currentVersion),
   };
 }
 
@@ -1586,6 +1663,17 @@ export function serverHasCapability(
   capability: ServerCapabilityDefinition | ServerCapabilityName | string,
 ): boolean {
   const name = typeof capability === "string" ? capability : capability.name;
+  const definition =
+    typeof capability === "string"
+      ? SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name)
+      : capability;
+  if (
+    definition?.advertisement.kind === "version-implied" &&
+    definition.id !== undefined &&
+    capabilityBitIsSet(source?.deniedCapabilityBits, definition.id)
+  ) {
+    return false;
+  }
   if (
     source?.capabilities?.includes(name) ||
     source?.capabilityExtensions?.includes(name)
@@ -1593,10 +1681,6 @@ export function serverHasCapability(
     return true;
   }
 
-  const definition =
-    typeof capability === "string"
-      ? SERVER_CAPABILITY_DEFINITIONS_BY_NAME.get(name)
-      : capability;
   if (!definition) return false;
 
   if (definition.advertisement.kind === "version-implied") {
@@ -1628,6 +1712,7 @@ export function hasServerCapabilityAdvertisement(
     source?.capabilities !== undefined ||
     source?.capabilityEncoding !== undefined ||
     source?.capabilityBits !== undefined ||
+    source?.deniedCapabilityBits !== undefined ||
     source?.optionalCapabilityBits !== undefined ||
     source?.capabilityExtensions !== undefined
   );

@@ -72,6 +72,23 @@ const server = createServer((socket) => {
       } else if (request.type === "ack") {
         acknowledgedSequence = Math.max(acknowledgedSequence, request.sequence);
       } else if (request.type === "rpc") {
+        if (
+          request.method === "publishAgentctlSessionId" &&
+          request.args?.[1]?.YEP_BROWSER_DEBUG_CALLER_TOKEN
+        ) {
+          socket.write(
+            `${JSON.stringify({
+              type: "event",
+              sequence: attachedCount + 1,
+              message: {
+                type: "system",
+                subtype: "status",
+                status: "browser-debug-environment-published",
+                browserDebugEnvironment: request.args[1],
+              },
+            })}\n`,
+          );
+        }
         socket.write(
           `${JSON.stringify({
             type: "rpcResult",
@@ -179,6 +196,8 @@ server.listen(socketPath, () => {
         harness: process.env.YEP_AGENT_HARNESS,
         model: process.env.YEP_AGENT_INITIAL_MODEL,
         effort: process.env.YEP_AGENT_INITIAL_EFFORT,
+        browserDebugUrl: process.env.YEP_BROWSER_DEBUG_AGENT_URL,
+        browserDebugCallerToken: process.env.YEP_BROWSER_DEBUG_CALLER_TOKEN,
       },
       remoteAgentLaunchEnvironment: launchRequest.options.remoteEnv,
     },

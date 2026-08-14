@@ -265,6 +265,15 @@ known present. Passing a support horizon permits human review only; it never
 automatically removes a fallback or raises a compatibility floor. Security
 exceptions follow `topics/hard-development-rules.md`.
 
+Default a new global capability to `version-implied` when every official build
+from its introducing release onward provides the contract. Use an explicit
+sparse capability bit only when support is clearly experimental or
+withdrawable, or can vary by build, host, or configuration. A version-implied
+capability still receives a permanent ID for registry identity and source-ahead
+advertisement, but released peers normally infer it from the version and do not
+send a positive ID. An exceptional withdrawal uses the standard negative
+capability set; do not classify anticipated variability as version-implied.
+
 Suggested approval prompt:
 
 > Compatibility review for `<feature>`: releases `<corpus>` lack

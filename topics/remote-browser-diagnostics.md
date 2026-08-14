@@ -1,259 +1,275 @@
 # Remote browser diagnostics
 
-> Remote browser diagnostics is a proposed, explicitly consented channel through
-> which an authorized operator can inspect bounded, redacted state from one
-> active Yep Anywhere browser tab without granting ambient browser control.
+> Remote browser diagnostics is an explicit 30-minute, per-tab lease that lets
+> a YA-launched agent holding the pasted grant perform full JavaScript debugging
+> against that connected tab through the YA server.
 
 Topic: remote-browser-diagnostics
 
-Status: Proposal only. No browser-diagnostics protocol or remote-control
-endpoint is implemented.
+Status: implemented in the current source tree.
 
-## Motivation
+## Product contract
 
-A local reproduction does not show the state of the user's actual browser:
-its service-worker generation, source binding, reconnect history, DOM,
-viewport, retained client state, or the exact ordering the user saw. The
-missing queued `publish` incident demonstrated the gap. YA durably received the
-submission, but the browser briefly hid its recovered queue chip after a live
-snapshot replaced the initial REST result. Server logs established receipt;
-only observation of the user's tab could have established the visible sequence
-directly.
+Remote browser diagnostics exists for failures that cannot be reconstructed
+from server logs or a separate test browser. The target is one real tab with
+its current DOM, client state, source binding, browser storage, console output,
+and performance conditions.
 
-The desired capability is narrower than general remote browser automation. An
-authorized agent should be able to ask one user-approved YA tab for diagnostic
-facts, receive a bounded snapshot, and correlate it with server events. It
-should not gain an always-on JavaScript console, input control, browser-profile
-access, or other tabs.
+The feature is deliberately absent by default. A capable client exposes
+**Remote Browser Debugging** under the session-toolbar appearance settings. Its
+setting uses the toolbar's normal **Hidden** and narrowing-priority values,
+defaults to **Hidden**, and is stored in that browser rather than sent to the
+server. Any non-hidden priority displays the inactive control and governs when
+it moves into the toolbar overflow strip; changing priority never activates a
+lease. A client connected to a server without
+`remote-browser-diagnostics-v1` shows neither the setting nor the toolbar
+control and makes no diagnostics request.
 
-## Existing foundations
+When shown, an inactive session bottom bar displays a bug glyph. Clicking it:
 
-YA already has useful pieces, but none is the proposed inspection channel:
+1. creates a lease for the canonical YA session id and a browser-session tab
+   id;
+2. starts tab-local console and performance collection;
+3. copies an agent instruction containing the independent grant URL; and
+4. replaces the bug with a red warning glyph and a circular countdown ring.
 
-- `ClientLogCollector` captures console output, uncaught errors, promise
-  rejections, and lightweight memory/DOM counters when **Browser Diagnostics**
-  is enabled. It buffers up to 2,000 entries in IndexedDB and uploads batches to
-  `POST /api/client-logs`; the server persists them under
-  `{dataDir}/logs/client-logs/`.
-- `logSessionUiTrace`, render profiling, session-detail shadow diagnostics, and
-  reload probes provide focused app-level evidence.
-- Direct and relay source transports already authenticate the client/server
-  relationship. Relay traffic is end-to-end encrypted, and negotiated binary
-  format `0x05` provides ordered chunks of at most 256 KiB for a bounded logical
-  message.
+The confirmation banner begins exactly:
 
-The current log collector is asynchronous evidence, not a lease or live query
-API. Its presence must not be interpreted as consent to expose DOM, screenshots,
-storage, network bodies, or a command channel.
+> Paste into a YA session to give full JS debugging access to this tab for 30m.
 
-## Staged design
+The copied instruction states the purpose, granted power, expiry, risk, and
+commands. It can be pasted into any YA session launched by that server boot,
+but conditions use by the present process on a non-printing preflight for both
+injected browser-debugging variables. It forbids recovering missing credentials
+from another process or file and explains that an older retained provider may
+need a full wrapper/provider-host restart, a newly launched or resumed eligible
+session, and a newly activated tab grant.
 
-### Milestone 0 — durable submission receipts
+The instruction probes the installed CLI before treating it as usable. An
+unknown `browser-debug` command is a CLI/server generation mismatch rather than
+a rejected grant; a session working in the YA source checkout gets the current
+`pnpm --filter server exec tsx src/cli.ts` fallback. The bearer URL appears once
+and the example operations use a placeholder. If clipboard writing fails, the
+lease remains visibly active and the banner tells the user to disable and
+retry.
 
-First make user actions traceable without any browser inspection:
+The active control's tooltip names the expiry time. Clicking it revokes the
+lease. The control remains visible while active even if its stored toolbar
+preference changes. Its timer turns it off at expiry. Navigation to a different
+YA session turns it off after revocation is confirmed. A page hide makes a
+keepalive revocation request. A new enable action creates new secrets; one
+tab's grant never identifies or authorizes another tab.
 
-1. The browser assigns an immutable submission id before sending a composer or
-   queue action and reuses it for a transport retry of that same submission.
-2. The server returns and durably records the same id with `serverReceivedAt`,
-   accepted routing intent, durable queue id when applicable, and the last
-   completed delivery boundary.
-3. The UI exposes a compact lifecycle: sending, server accepted, queued or
-   provider-delivered, paused after restart, rejected, or deleted.
-4. Browser, server, and provider traces use that identity rather than message
-   text or timestamps.
+The tab keeps a versioned session-storage revocation marker containing the
+controller factor, source identity, session identity, and expiry, but not the
+agent's grant secret. Enabling fails closed when that marker cannot be stored.
+After a browser reload, the client immediately restores the red active warning
+from the marker and attempts revocation against the originating source. It
+clears the warning only after the server confirms revocation or reports that
+the lease is already absent or expired. A transport failure leaves the warning
+active so clicking it can retry; the warning clears locally at the server-side
+expiry. Thus a reload cannot silently present an inactive control while an old
+grant may remain reachable. A closed tab has no surviving marker owner, so its
+page-hide revocation is best-effort and the server-side expiry remains the hard
+backstop.
 
-[`gaps/unconfirmed-send-loss-across-reload.md`](../gaps/unconfirmed-send-loss-across-reload.md)
-tracks the current failure: browser-local and process-local optimistic echoes
-can disappear without proving whether the server accepted the submission. The
-receipt remains until a durable provider transcript row confirms delivery or a
-terminal rejection/deletion is recorded. Reload and restart reconstruct the
-same state from server evidence; they must not silently convert an unconfirmed
-submission into either delivered or absent.
+## Granted access
 
-Recovery must be explicit and idempotent. A safe resend reuses or supersedes
-the original submission identity under a server-owned rule so a late provider
-confirmation cannot create a duplicate. Existing provider-specific echo
-reconciliation remains useful evidence but does not replace this shared
-client/server boundary; see
-[`stream-durable-id-dedup.md`](stream-durable-id-dedup.md).
+Version 1 intentionally grants full JavaScript evaluation in the connected
+page. An authorized agent can inspect or mutate the DOM and application state,
+read or change browser storage available to page JavaScript, issue same-origin
+requests with the page's authority, and observe new console and performance
+events. Evaluation can therefore change or break the tab and can disclose
+sensitive content already available to that tab. The visible red control is a
+warning, not merely a recording indicator.
 
-This milestone changes a core delivery contract. Before the client depends on
-new receipt fields or routes, inspect the core stable-release horizon and
-approve a new exact capability or protocol gate. Without that gate, a new
-client must retain current behavior and make no unsupported receipt request.
+The grant is not browser automation outside the page. It does not attach a
+browser debugger, reach other tabs or origins, read browser-profile data that
+page JavaScript cannot reach, dispatch privileged browser input, or execute an
+operating-system shell in the tab.
 
-This would have answered whether the missing `publish` command reached YA even
-if live tab inspection was unavailable. It is independently useful and should
-not wait for the later diagnostics channel.
+Agents should explain evaluated code that may alter user-visible state. The
+protocol does not mechanically enforce read-only evaluation in version 1.
 
-### Milestone 1 — portable app-level snapshots
+## Two-factor authority
 
-Add a read-only diagnostics responder to the YA web app. It should work in any
-supported browser without an extension and expose only typed, allowlisted
-commands:
+Possession of the pasted grant alone is insufficient. Agent-facing requests
+need both:
 
-- tab identity, build/service-worker generation, route, viewport, visibility,
-  source key, transport status, and reconnect counters;
-- selected YA store snapshots and generation/ownership metadata;
-- a redacted semantic DOM or accessibility-oriented snapshot for a requested
-  subtree, including roles, names, stable selectors, bounds, visibility, and
-  limited computed layout facts;
-- a bounded page from an in-memory diagnostic log ring;
-- an optional screenshot requested as a separate, visibly disclosed scope;
-- focused probes already owned by the app, such as session UI trace and render
-  counters.
+- the per-tab grant secret copied in a
+  `yep-browser-debug://<lease>?grant=<secret>` URL; and
+- the current YA caller token injected only into provider processes launched
+  by that YA server.
 
-Prefer a purpose-built semantic tree over raw `outerHTML`. It is smaller,
-stable enough for an agent to query, and gives masking rules one serialization
-owner. When full DOM mutation history is needed, an explicitly enabled rrweb
-capture can be a separate scope rather than the default representation.
+The agent CLI reads `YEP_BROWSER_DEBUG_AGENT_URL` and
+`YEP_BROWSER_DEBUG_CALLER_TOKEN`; it refuses to run without them. The caller
+factor is random for an ordinary Hono-owned server. Under reload-safe provider
+hosting it is domain-separated from the random provider-host boot token, so
+replacement Hono generations attached to that same host reproduce the factor.
+Provider sessions receive only the derived factor; a caller-factor leak cannot
+recover the provider-host token or gain provider-control authority. Local
+directly launched provider sessions and newly launched hosted provider workers
+receive the two exact browser-debugging variables through the existing
+restricted agent-environment path. A remote executor gets them only when YA
+already has an explicit child-reachable server base URL. The provider host
+receives values as launch material, not a reusable general environment
+pass-through.
 
-### Milestone 2 — optional Chromium extension
+For YA's local self-signed HTTPS mode, the agent URL carries the public
+certificate as a URL-fragment trust anchor. The CLI removes the fragment before
+the request and uses the certificate for ordinary TLS verification; it does not
+disable verification or add a process-wide certificate exception. The
+certificate is public material and neither authorization factor.
 
-A separately installed extension may attach to one approved Chromium tab with
-`chrome.debugger` and issue allowlisted Chrome DevTools Protocol (CDP) commands.
-This adds browser-owned facts unavailable to page JavaScript: accessibility and
-DOM snapshots, selected network timing metadata, performance traces, and a
-native screenshot.
+When a compatible local hosted provider worker survives Hono replacement, the
+new generation re-publishes only these two allowlisted values through the
+worker's atomic child-shell environment bridge. The factor remains valid
+because its authority lifetime is the provider-host boot, not one replaceable
+Hono generation. The present session therefore keeps access without restarting
+the provider or interrupting its turn, including when a Codex sandbox omits the
+shell bridge. The first deployment of this worker behavior still requires a
+full wrapper restart; a source reload cannot teach an already running older
+worker the new handshake. A full wrapper/provider-host restart changes the
+factor and requires the provider session to be launched under the new host.
 
-The extension is optional and desktop-Chromium-only. Its manifest permission is
-broad, and the API exposes domains including `Runtime`, `Debugger`, `Network`,
-`Storage`, `Input`, and `DOM`. The YA adapter must therefore expose a narrow
-operation vocabulary rather than forwarding arbitrary CDP method names. The
-first version excludes JavaScript evaluation, input dispatch, cookies,
-credential/storage reads, network bodies, and debugger mutation.
+This proves possession, not an unforgeable process identity. A session that
+leaks its current caller token weakens the YA-launch restriction for that
+server boot; a pasted prompt or grant can also leak its tab authority. Short
+expiry, independent factors, explicit revoke, loopback/host checking, and boot
+rotation bound that risk. Neither factor should be printed in ordinary logs or
+persisted as browser-diagnostics history.
 
-## Consent and security contract
+The browser uses a separate controller token for polling, event upload,
+evaluation results, and revoke. The copied instruction does not contain that
+token. The server stores hashes of controller and grant secrets, returns 404
+for a missing or mismatched lease factor, and offers no tab or lease enumeration
+route.
 
-Browser diagnostics crosses a trust boundary even when the agent and server
-are authorized: the browser may hold credentials and page content that are not
-present in the repository or server logs.
+## Broker and command interface
 
-- **Per-tab lease.** The user grants a short-lived lease for one visible tab.
-  It is not an account-wide or browser-wide setting. Navigation, tab close,
-  source change, server generation change, expiry, or explicit revoke ends it.
-- **Visible state.** The tab shows a persistent diagnostic indicator naming the
-  active scopes and remaining lease time. Screenshot capture gets an additional
-  immediate indication.
-- **Scope allowlist.** Each lease names operations such as `app-state`, `logs`,
-  `semantic-dom`, `accessibility`, or `screenshot`. Granting one never implies
-  another.
-- **Read-only first.** No arbitrary JavaScript, CDP passthrough, keyboard/mouse
-  injection, navigation, file access, clipboard access, or storage mutation.
-- **Mask before transport.** Passwords are always removed. Input, textarea,
-  contenteditable, transcript, tool-result, authorization, cookie, and token
-  values are masked by default. A user may opt into a narrower sensitive scope
-  for one capture after previewing what category it exposes.
-- **No ambient discovery.** An unleased tab may advertise only the minimum
-  presence needed for the user to select it. Agents cannot enumerate DOM or
-  page titles before consent.
-- **Audit events.** Lease creation, scope changes, every capture, denial,
-  expiry, and revoke produce a durable metadata event with requester, tab,
-  scope, byte count, and result. Audit records contain no raw DOM, logs, or
-  screenshot bytes.
-- **Ephemeral payloads.** New high-sensitivity snapshots are not written to disk
-  by default. The server brokers a response to the authorized requester and
-  drops it on delivery or lease expiry. Explicit export is a separate user
-  action with a named destination and retention policy.
-- **Relay parity.** The public relay sees only the existing encrypted envelope.
-  It must not terminate consent, inspect payloads, or become a diagnostics data
-  store.
-
-## Protocol and bounds
-
-Use a request/response protocol with immutable ids, not an open command shell:
+The ordinarily authenticated client routes are:
 
 ```text
-requestId + leaseId + tabId + typed operation + scope + byte budget
-response: requestId + content type + complete/truncated metadata + chunks
+POST   /api/browser-debug/leases
+POST   /api/browser-debug/leases/:leaseId/poll
+POST   /api/browser-debug/leases/:leaseId/results
+POST   /api/browser-debug/leases/:leaseId/events
+DELETE /api/browser-debug/leases/:leaseId
 ```
 
-Recommended initial server-owned budgets are 1 MiB for app state or log pages
-and 8 MiB for a semantic snapshot or screenshot, with existing 256 KiB
-transport chunks. Larger pages are queried by subtree, cursor, time window, or
-viewport region. A truncated response reports exactly which collection or byte
-budget was exhausted and how to continue; no silent prefix is presented as a
-complete snapshot. Compression may reduce transport cost but does not increase
-the logical uncompressed limit.
-
-Only one capture per tab should run initially. Newer requests may cancel older
-ones, but cancellation must settle both browser and requester state. Continuous
-recording, if later added, needs separate byte/time quotas and backpressure; it
-must not reuse one-shot snapshot semantics.
-
-## Compatibility gate
-
-Implementation requires a new exact `/api/version` capability, provisionally
-`remote-browser-diagnostics-v1`. Without it, a client renders no diagnostics
-consent surface and sends no diagnostics registration or request message. An
-older server therefore receives no unknown route or WebSocket message.
-
-An extension-backed responder needs a separate dynamic capability,
-provisionally `remote-browser-diagnostics-cdp-v1`, because installation and
-browser support vary by host. Neither capability may broaden an existing
-advertised meaning. Before implementation, inspect the required stable-release
-corpus and obtain the compatibility approval required by
-[Server Capabilities](server-capabilities.md). This optional feature does not by
-itself justify a `remoteCompatibilityLevel` bump.
-
-## Agent-facing interface
-
-Expose the same typed operations through a local CLI and an MCP adapter. The
-server remains the authority; neither adapter connects directly to the public
-relay or browser extension.
+The host-checked agent routes require the current YA caller bearer token and
+`X-YA-Browser-Debug-Grant`:
 
 ```text
-ya browser-diagnostics tabs
-ya browser-diagnostics request <tab> --scopes app-state,logs --ttl 10m
-ya browser-diagnostics snapshot <lease> --kind semantic-dom --selector ...
-ya browser-diagnostics logs <lease> --since ... --limit ...
-ya browser-diagnostics screenshot <lease> --viewport
-ya browser-diagnostics revoke <lease>
+GET  /browser-debug/v1/leases/:leaseId
+GET  /browser-debug/v1/leases/:leaseId/events?after=<sequence>
+POST /browser-debug/v1/leases/:leaseId/eval
 ```
 
-Machine-readable results include request, lease, tab, server generation,
-browser build, capture time, completeness, redaction summary, and payload
-handle. Human output should state when consent is pending or a scope was not
-granted rather than suggesting a workaround.
+The local CLI supplies both factors automatically:
 
-## Prior art and adoption boundary
+```text
+yepanywhere browser-debug info <grant-url>
+yepanywhere browser-debug events <grant-url> [--after <sequence>] [--follow]
+yepanywhere browser-debug eval <grant-url> <javascript>
+```
 
-- [rrweb](https://github.com/rrweb-io/rrweb) records an initial page snapshot
-  plus DOM mutations and interactions. Its record options support input and
-  text masking, with password inputs masked by default. It is a candidate for
-  explicitly enabled replay capture, not the consent, transport, or
-  authorization layer.
-- [Chii](https://github.com/liriliri/chii) connects an instrumented page to a
-  remote Chrome DevTools frontend. It demonstrates useful in-page remote
-  inspection, but injecting a general DevTools target and frontend exposes a
-  much broader surface than YA's typed read-only contract.
-- [Chobitsu](https://github.com/liriliri/chobitsu) provides a JavaScript,
-  CDP-shaped message/domain interface used by Chii. Its raw method bridge is
-  useful implementation prior art but must not become YA's public protocol.
-- [`chrome.debugger`](https://developer.chrome.com/docs/extensions/reference/api/debugger)
-  can attach an extension to tabs and send supported CDP commands. It is the
-  appropriate optional deep-inspection boundary, provided YA filters it through
-  explicit operations.
-- [Playwright `connectOverCDP`](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp)
-  can adapt a Chromium CDP endpoint to familiar automation tooling, but
-  Playwright documents lower fidelity than its native protocol. It belongs on
-  the agent side after consent and allowlisting, not as an exposed browser
-  endpoint.
-- [axe-core](https://github.com/dequelabs/axe-core) can add focused
-  accessibility-rule findings. It complements, but does not replace, a semantic
-  or accessibility-tree snapshot.
+`info` establishes which canonical YA session and per-tab identity the grant
+represents. `events --follow` tails the in-memory event sequence. `eval` admits
+only one pending evaluation per lease and waits for the browser's poll loop to
+execute it.
 
-Adopt libraries only for their bounded specialty. YA still owns identity,
-consent, redaction, capability negotiation, transport, quotas, audit, and
-lifetime.
+The server is a memory-only rendezvous. Restarting Hono invalidates every lease.
+An ordinary Hono-owned restart also changes the caller factor; a reload-safe
+replacement retains the provider-host-derived factor, but has no retained tab
+grant to use. The server never sends an unsolicited command to a browser and
+runs no lease heartbeat or cleanup loop; browser polls are bounded long polls,
+and expired entries are removed on use or before admitting another lease.
+Successful client revocation returns a JSON confirmation so every source
+transport can distinguish confirmed deletion from a response-decoding failure.
 
-## Explicit non-goals for the first implementation
+## Collected evidence and bounds
 
-- general-purpose remote DevTools;
-- arbitrary JavaScript or shell execution;
-- unattended or durable browser-control grants;
-- cross-origin/profile inspection;
-- input automation or UI mutation;
-- cookie, token, local-storage, IndexedDB, or network-body extraction;
-- default persistence of raw DOM, logs, screenshots, or replay recordings;
-- using diagnostics as a fallback that hides missing application invariants.
+Collection begins only after enable and restores every wrapped browser API on
+disable. Version 1 records:
+
+- `console.debug`, `error`, `info`, `log`, and `warn` calls made while active;
+- uncaught window errors and unhandled promise rejections;
+- delayed editable-control key dispatch and next-animation-frame latency;
+- animation-frame gaps of at least 100 ms and supported browser long tasks;
+- five-second visibility, DOM-element-count, and JavaScript-heap samples; and
+- explicit app annotations sent through `window.__YA_BROWSER_DEBUG_EMIT__`.
+
+This is not historical console access. It sees only events after enable.
+Values are cycle-safe, depth- and collection-bounded, and long strings are
+truncated. The browser batches at most 100 events per request and retains at
+most 500 unsent events. The server admits at most 32 active leases, retains at
+most 1,000 events and 2 MiB per lease, limits event/result request bodies to
+256 KiB, limits evaluated source to 128 KiB, and expires evaluations after 60
+seconds. These are abuse and memory bounds, not promises to preserve every
+diagnostic event under overload.
+
+## The composer-delay hypothesis
+
+The motivating observation is second-plus interruption of typing when the
+conversation view processes session activity. That observation is accepted;
+the proposed cause remains unproven. Frame starvation, long tasks, excessive
+inbound updates, repeated transcript work, DOM growth, and unrelated host or
+transport stalls can look similar.
+
+The first diagnostic pass should tail events, reproduce ordinary typing, and
+correlate `composer.keystroke-latency`, frame gaps, long tasks, DOM/heap samples,
+and server-side session traffic. Remote diagnostics provides visibility; it
+does not itself throttle conversation rendering or establish a performance
+fix. Render/backpressure decisions remain governed by
+[`conversation-view.md`](conversation-view.md) and the existing client
+performance task.
+
+## Compatibility
+
+`remote-browser-diagnostics-v1` is global capability ID 31, introduced in
+0.7.1, permanent, and version-implied. Source builds whose displayed version
+does not yet imply 0.7.1 send the allocated positive ID. Stable servers 0.7.0
+and 0.6.2 have none of the routes above; the absent-capability behavior is to
+hide both surfaces and make zero requests. Existing capability meanings and
+older capable behavior are unchanged.
+
+An exceptional server denial in `deniedCapabilityBits` overrides version
+implication. This feature is not intended to vary by host or configuration;
+such a future replacement would need an `optional-bit` capability rather than
+silently changing this one.
+
+## Possible narrower successors
+
+A later interface may add typed, read-only snapshots for app state, semantic
+DOM, accessibility, logs, or screenshots. Masking and per-operation scopes
+would make that suitable for grants that should not permit mutation. A
+separately installed Chromium extension could expose browser-owned performance,
+accessibility, or network facts through an allowlist rather than raw Chrome
+DevTools Protocol passthrough.
+
+Those designs would use new capabilities and explicit scopes. They do not
+weaken or ambiguously redefine the deliberately full-access v1 contract.
+
+## Observable checks
+
+- A default browser profile shows no remote-debug toolbar control.
+- Choosing **Show** makes the bug control appear only against a capable server.
+- Enabling copies the documented instruction and shows a red countdown for no
+  more than 30 minutes.
+- A grant without the current YA caller token is denied.
+- A caller token without the per-tab grant is denied and cannot enumerate tabs.
+- Correct factors can read post-enable events and complete one JavaScript
+  evaluation through the enabled tab.
+- Local self-signed HTTPS supplies its public certificate through the agent URL
+  fragment and the CLI verifies the broker with that certificate.
+- A compatible local hosted session retained across Hono replacement publishes
+  the provider-host boot's two allowlisted debugging values to later Bash tool
+  shells, while its launch-time factor remains valid through the replacement.
+- Explicitly confirmed revoke, expiry, session navigation with confirmed
+  revoke, or server restart prevents further grant use.
+- Reload shows the active red warning before attempting to revoke the retained
+  lease marker; failed revocation leaves that warning active until retry or
+  expiry.
+- Connecting the same client to 0.7.0 or 0.6.2 exposes no control and sends no
+  browser-debug request.

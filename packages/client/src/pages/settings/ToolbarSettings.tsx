@@ -4,6 +4,10 @@ import type {
   ToolbarControlPresence,
   ToolbarNarrowingPriority,
 } from "@yep-anywhere/shared";
+import {
+  REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useMemo, useState } from "react";
 import {
   SessionToolbarPreview,
@@ -80,6 +84,7 @@ const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
   "thinkingToggle",
   "renderMode",
   "conversationView",
+  "browserDebug",
   "nudge",
   "sessionStatus",
   "shortcutsHelp",
@@ -210,6 +215,10 @@ export function ToolbarSettings() {
     setWaveformButtonBackgroundOpacityPercent,
   } = useWaveformButtonBackgroundOpacity();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const supportsBrowserDebug = serverHasCapability(
+    version,
+    REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+  );
   const supportsProjectQueueNewSessionShortcutSetting =
     serverSupportsProjectQueueNewSessionShortcutSetting(version);
 
@@ -317,6 +326,16 @@ export function ToolbarSettings() {
       t("appearanceToolbarConversationViewDescription"),
       "left",
     ),
+    ...(supportsBrowserDebug
+      ? [
+          controlMeta(
+            "browserDebug",
+            t("appearanceToolbarBrowserDebugTitle"),
+            t("appearanceToolbarBrowserDebugDescription"),
+            "left",
+          ),
+        ]
+      : []),
     controlMeta(
       "nudge",
       t("appearanceToolbarNudgeTitle"),

@@ -81,6 +81,10 @@ import { createRemoteAccessRoutes } from "./remote-access/index.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createBrowserProfilesRoutes } from "./routes/browser-profiles.js";
 import { createBrowserSettingsBackupRoutes } from "./routes/browser-settings-backup.js";
+import {
+  createBrowserDebugAgentRoutes,
+  createBrowserDebugClientRoutes,
+} from "./routes/browser-debug.js";
 import { createClientLogsRoutes } from "./routes/client-logs.js";
 import { createConnectionsRoutes } from "./routes/connections.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
@@ -168,6 +172,10 @@ import {
 import { AttachmentStagingService } from "./uploads/AttachmentStagingService.js";
 import type { BrowserProfileService } from "./services/BrowserProfileService.js";
 import type { BrowserSettingsBackupService } from "./services/BrowserSettingsBackupService.js";
+import {
+  BrowserDebugService,
+  createBrowserDebugCallerToken,
+} from "./services/BrowserDebugService.js";
 import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
 import type { DirtyFileEditorService } from "./services/DirtyFileEditorService.js";
@@ -348,6 +356,13 @@ export interface AppOptions {
   sessionWakeSecret?: Uint8Array;
   /** Reachable server base URL injected into local provider child shells. */
   getSessionWakeBaseUrl?: (executor?: string) => string | undefined;
+  /** Agent-reachable diagnostics broker and optional private trust anchor. */
+  getBrowserDebugConnection?: (executor?: string) =>
+    | {
+        baseUrl: string;
+        caCertificate?: string;
+      }
+    | undefined;
   /** Shared location resolver and transition owner for project-scoped state. */
   projectStoragePolicy?: ProjectStoragePolicy;
   /** Process-global operating-system sleep assertion policy. */
@@ -991,6 +1006,11 @@ export function createApp(options: AppOptions): AppResult {
     return resolved?.summary ?? null;
   };
   let supervisor: Supervisor;
+  const browserDebugService = new BrowserDebugService(
+    Date.now,
+    undefined,
+    createBrowserDebugCallerToken(process.env.YEP_PROVIDER_RUNTIME_TOKEN),
+  );
   const sessionWakeService = options.sessionWakeSecret
     ? new SessionWakeService({
         secret: options.sessionWakeSecret,
@@ -1149,12 +1169,25 @@ export function createApp(options: AppOptions): AppResult {
       : undefined,
     onSuccessfulProviderSession: options.onSuccessfulProviderSession,
     getSessionChildEnv:
-      sessionWakeService && options.getSessionWakeBaseUrl
+      options.getSessionWakeBaseUrl || options.getBrowserDebugConnection
         ? (sessionId, executor) => {
-            const baseUrl = options.getSessionWakeBaseUrl?.(executor);
-            return baseUrl
-              ? sessionWakeService.environmentForSession(sessionId, baseUrl)
-              : {};
+            const wakeBaseUrl = options.getSessionWakeBaseUrl?.(executor);
+            const browserDebugConnection =
+              options.getBrowserDebugConnection?.(executor);
+            return {
+              ...(browserDebugConnection
+                ? browserDebugService.getAgentEnvironment(
+                    browserDebugConnection.baseUrl,
+                    browserDebugConnection.caCertificate,
+                  )
+                : {}),
+              ...(wakeBaseUrl
+                ? sessionWakeService?.environmentForSession(
+                    sessionId,
+                    wakeBaseUrl,
+                  )
+                : {}),
+            };
           }
         : undefined,
     // Durably record a model's real context window the moment a process
@@ -1243,6 +1276,11 @@ export function createApp(options: AppOptions): AppResult {
     app.use("/session-wake/*", hostCheckMiddleware);
     app.route("/session-wake", createSessionWakeRoutes(sessionWakeService));
   }
+  app.use("/browser-debug/*", hostCheckMiddleware);
+  app.route(
+    "/browser-debug/v1",
+    createBrowserDebugAgentRoutes(browserDebugService),
+  );
 
   // Create external session tracker if eventBus is available
   const externalTracker = options.eventBus
@@ -1524,6 +1562,10 @@ export function createApp(options: AppOptions): AppResult {
   }
 
   // Mount API routes
+  app.route(
+    "/api/browser-debug",
+    createBrowserDebugClientRoutes(browserDebugService),
+  );
   app.route("/api/provider-host", createProviderHostRoutes());
   app.route(
     "/api/projects",

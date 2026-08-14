@@ -21,6 +21,7 @@ import "./startupEnv.js";
 
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
+import { request as requestHttps } from "node:https";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +79,10 @@ yepanywhere - A mobile-first supervisor for Claude Code agents
 
 USAGE:
   yepanywhere [OPTIONS]
+  yepanywhere browser-debug <info|events|eval> ...
+
+AGENT COMMANDS:
+  browser-debug         Inspect one explicitly enabled tab from a YA-launched agent shell; run yepanywhere browser-debug --help
 
 OPTIONS:
   --help, -h            Show this help message
@@ -203,6 +208,11 @@ function showVersion(): void {
 
 // Parse command line arguments
 const args = process.argv.slice(2);
+
+if (args[0] === "browser-debug") {
+  await runBrowserDebugCommand(args.slice(1));
+  process.exit(0);
+}
 
 if (args.includes("--help") || args.includes("-h")) {
   showHelp();
@@ -409,4 +419,226 @@ function runServer(): void {
     console.error("Failed to start server:", error);
     process.exit(1);
   });
+}
+
+interface BrowserDebugGrant {
+  leaseId: string;
+  grantSecret: string;
+}
+
+const MAX_BROWSER_DEBUG_RESPONSE_BYTES = 4 * 1024 * 1024;
+
+interface BrowserDebugEndpoint {
+  url: URL;
+  caCertificate?: Buffer;
+}
+
+function browserDebugEndpoint(
+  baseUrl: string,
+  grant: BrowserDebugGrant,
+  suffix: string,
+): BrowserDebugEndpoint {
+  const url = new URL(baseUrl);
+  const encodedCa = new URLSearchParams(url.hash.slice(1)).get("ya-ca");
+  url.hash = "";
+  const [suffixPath, suffixQuery] = suffix.split("?", 2);
+  url.pathname = `${url.pathname.replace(/\/$/u, "")}/leases/${encodeURIComponent(grant.leaseId)}${suffixPath ?? ""}`;
+  url.search = suffixQuery === undefined ? "" : `?${suffixQuery}`;
+  return {
+    url,
+    ...(encodedCa
+      ? { caCertificate: Buffer.from(encodedCa, "base64url") }
+      : {}),
+  };
+}
+
+async function requestJsonWithPrivateCa(
+  endpoint: BrowserDebugEndpoint,
+  init: RequestInit,
+): Promise<{ ok: boolean; status: number; payload: unknown }> {
+  if (endpoint.url.protocol !== "https:" || !endpoint.caCertificate) {
+    throw new Error("Invalid private browser diagnostic trust anchor");
+  }
+  if (init.body !== undefined && typeof init.body !== "string") {
+    throw new Error("Browser diagnostic request body must be text");
+  }
+  const headers = new Headers(init.headers);
+  if (init.body !== undefined) {
+    headers.set("Content-Length", String(Buffer.byteLength(init.body, "utf8")));
+  }
+  return await new Promise((resolve, reject) => {
+    const request = requestHttps(
+      endpoint.url,
+      {
+        method: init.method ?? "GET",
+        headers: Object.fromEntries(headers.entries()),
+        ca: endpoint.caCertificate,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        let bytes = 0;
+        response.on("data", (chunk: Buffer) => {
+          bytes += chunk.length;
+          if (bytes > MAX_BROWSER_DEBUG_RESPONSE_BYTES) {
+            response.destroy(
+              new Error("Browser diagnostic response exceeded the size limit"),
+            );
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("error", reject);
+        response.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          let payload: unknown = null;
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            payload = null;
+          }
+          const status = response.statusCode ?? 0;
+          resolve({ ok: status >= 200 && status < 300, status, payload });
+        });
+      },
+    );
+    request.on("error", reject);
+    if (init.body !== undefined) request.write(init.body);
+    request.end();
+  });
+}
+
+function parseBrowserDebugGrant(value: string | undefined): BrowserDebugGrant {
+  if (!value) {
+    throw new Error("A yep-browser-debug grant URL is required");
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Invalid browser diagnostic grant URL");
+  }
+  const leaseId = url.hostname;
+  const grantSecret = url.searchParams.get("grant") ?? "";
+  if (url.protocol !== "yep-browser-debug:" || !leaseId || !grantSecret) {
+    throw new Error("Invalid browser diagnostic grant URL");
+  }
+  return { leaseId, grantSecret };
+}
+
+async function requestBrowserDebug(
+  grant: BrowserDebugGrant,
+  suffix: string,
+  init?: RequestInit,
+): Promise<unknown> {
+  const baseUrl = process.env.YEP_BROWSER_DEBUG_AGENT_URL?.trim();
+  const callerToken = process.env.YEP_BROWSER_DEBUG_CALLER_TOKEN?.trim();
+  if (!baseUrl || !callerToken) {
+    throw new Error(
+      "Browser diagnostics require a YA-launched agent process with the current browser-debug environment; this process does not have it",
+    );
+  }
+  const endpoint = browserDebugEndpoint(baseUrl, grant, suffix);
+  const requestInit: RequestInit = {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${callerToken}`,
+      "X-YA-Browser-Debug-Grant": grant.grantSecret,
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+  };
+  const response = endpoint.caCertificate
+    ? await requestJsonWithPrivateCa(endpoint, requestInit)
+    : await fetch(endpoint.url, requestInit).then(async (result) => ({
+        ok: result.ok,
+        status: result.status,
+        payload: await result.json().catch(() => null),
+      }));
+  const payload = response.payload as Record<string, unknown> | null;
+  if (!response.ok) {
+    throw new Error(
+      typeof payload?.error === "string"
+        ? payload.error
+        : `Browser diagnostic request failed (${response.status})`,
+    );
+  }
+  return response.payload;
+}
+
+function printBrowserDebugHelp(): void {
+  console.log(`
+USAGE:
+  yepanywhere browser-debug info <grant-url>
+  yepanywhere browser-debug events <grant-url> [--after <sequence>] [--follow]
+  yepanywhere browser-debug eval <grant-url> <javascript>
+
+The command requires a YA-launched agent process with the current browser-debug
+environment. On first deployment, restart the provider host before launching
+or resuming that process. The separately pasted grant URL selects one explicitly
+enabled browser tab for the remainder of its 30-minute lease.
+`);
+}
+
+async function runBrowserDebugCommand(commandArgs: string[]): Promise<void> {
+  try {
+    const [command, grantUrl, ...rest] = commandArgs;
+    if (!command || command === "help" || command === "--help") {
+      printBrowserDebugHelp();
+      return;
+    }
+    const grant = parseBrowserDebugGrant(grantUrl);
+    if (command === "info") {
+      console.log(
+        JSON.stringify(await requestBrowserDebug(grant, ""), null, 2),
+      );
+      return;
+    }
+    if (command === "eval") {
+      const code = rest.join(" ");
+      if (!code) throw new Error("eval requires JavaScript source");
+      console.log(
+        JSON.stringify(
+          await requestBrowserDebug(grant, "/eval", {
+            method: "POST",
+            body: JSON.stringify({ code }),
+          }),
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    if (command === "events") {
+      const followIndex = rest.indexOf("--follow");
+      const afterIndex = rest.indexOf("--after");
+      let after =
+        afterIndex >= 0 ? Number.parseInt(rest[afterIndex + 1] ?? "0", 10) : 0;
+      if (!Number.isSafeInteger(after) || after < 0) {
+        throw new Error("--after requires a non-negative sequence number");
+      }
+      const follow = followIndex >= 0;
+      do {
+        const payload = (await requestBrowserDebug(
+          grant,
+          `/events?after=${after}`,
+        )) as { events?: Array<{ sequence?: number }> };
+        for (const event of payload.events ?? []) {
+          console.log(JSON.stringify(event));
+          if (Number.isSafeInteger(event.sequence)) {
+            after = Math.max(after, event.sequence ?? after);
+          }
+        }
+        if (follow) {
+          await new Promise((resolve) => setTimeout(resolve, 1_000));
+        }
+      } while (follow);
+      return;
+    }
+    throw new Error(`Unknown browser-debug command: ${command}`);
+  } catch (error) {
+    console.error(
+      `Browser diagnostics failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
 }
