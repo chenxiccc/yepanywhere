@@ -1,5 +1,9 @@
 import { getModelContextWindow } from "@yep-anywhere/shared";
 import { useCallback, useRef } from "react";
+import {
+  isBrowserDebugPerformanceRecording,
+  recordBrowserDebugPerformanceMetric,
+} from "../lib/browserDebugPerformance";
 import type { ContentBlock, Message } from "../types";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 
@@ -183,7 +187,17 @@ export function useStreamingContent(
     for (const id of pendingIds) {
       updateStreamingMessage(id);
     }
-    tuneStreamingInterval(nowMs() - startMs, eventCount);
+    const durationMs = nowMs() - startMs;
+    tuneStreamingInterval(durationMs, eventCount);
+    if (isBrowserDebugPerformanceRecording()) {
+      recordBrowserDebugPerformanceMetric("streaming-content.flush", {
+        durationMs,
+      });
+      recordBrowserDebugPerformanceMetric("streaming-content.flushed-event", {
+        count: eventCount,
+        category: pendingIds.length === 1 ? "one-message" : "multi-message",
+      });
+    }
   }, [tuneStreamingInterval, updateStreamingMessage]);
 
   // Throttled version of updateStreamingMessage for delta events
@@ -236,6 +250,26 @@ export function useStreamingContent(
       if (!event) return true; // Handled but no event data
 
       const eventType = event.type as string | undefined;
+      if (isBrowserDebugPerformanceRecording()) {
+        const delta = event.delta as Record<string, unknown> | undefined;
+        const contentBlock = event.content_block as
+          | Record<string, unknown>
+          | undefined;
+        const text =
+          typeof delta?.text === "string"
+            ? delta.text
+            : typeof delta?.thinking === "string"
+              ? delta.thinking
+              : typeof contentBlock?.text === "string"
+                ? contentBlock.text
+                : typeof contentBlock?.thinking === "string"
+                  ? contentBlock.thinking
+                  : "";
+        recordBrowserDebugPerformanceMetric("streaming-content.event", {
+          category: eventType ?? "unknown",
+          chars: text.length,
+        });
+      }
 
       // Check if this is a subagent stream (marked by server via markSubagent)
       // Legacy SDK: uses parentToolUseId as routing key

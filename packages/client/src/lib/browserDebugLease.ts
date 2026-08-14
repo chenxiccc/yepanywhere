@@ -1,5 +1,10 @@
 import { asClientSummarySourceKey } from "./clientSummaryStore";
 import { executeBrowserDebugCode } from "./browserDebugEval";
+import {
+  getBrowserDebugPerformanceSummary,
+  installBrowserDebugPerformanceInstrumentation,
+  type BrowserDebugPerformanceSummary,
+} from "./browserDebugPerformance";
 import { getSourceRuntimeRegistry } from "./sourceRuntime";
 import { generateUUID } from "./uuid";
 
@@ -42,7 +47,6 @@ type ConsoleMethod = "debug" | "error" | "info" | "log" | "warn";
 const TAB_ID_STORAGE_KEY = "ya:browser-debug-tab-id";
 const LEASE_STORAGE_KEY = "ya:browser-debug-active-lease-v1";
 const FLUSH_INTERVAL_MS = 1_000;
-const METRICS_INTERVAL_MS = 5_000;
 const EVENT_QUEUE_LIMIT = 500;
 const SERIALIZE_DEPTH = 4;
 const SERIALIZED_STRING_BUDGET = 50_000;
@@ -273,11 +277,11 @@ This grant works only from a YA-launched agent process with the current browser-
 
 If that preflight fails, do not inspect other processes or files to recover credentials. Report that this provider process lacks the current browser-debug handshake. A full YA wrapper/provider-host restart and a newly launched or resumed eligible session may be required; the user must then activate the tab again and paste its new grant.
 
-Use a CLI from the same YA generation as the server. A compatible help response contains the literal usage line \`yepanywhere browser-debug info <grant-url>\`. First try:
+Use a CLI from the same YA generation as the server. A compatible help response contains the literal usage lines \`yepanywhere browser-debug info <grant-url>\` and \`yepanywhere browser-debug snapshot <grant-url>\`. First try:
 
   yepanywhere browser-debug --help
 
-Do not accept a zero exit status or generic yepanywhere help as proof of compatibility. If the required usage line is absent and the current working tree is the YA source checkout, try this source-checkout CLI and require the same usage line:
+Do not accept a zero exit status or generic yepanywhere help as proof of compatibility. If either required usage line is absent and the current working tree is the YA source checkout, try this source-checkout CLI and require both usage lines:
 
   pnpm --filter server exec tsx src/cli.ts browser-debug --help
 
@@ -287,10 +291,14 @@ Grant URL (bearer secret; use it as <grant-url> below and do not print it separa
 
   ${lease.grantUrl}
 
-With the working CLI path substituted for <ya-cli>, run:
+With the working CLI path substituted for <ya-cli>, start with YA's built-in bounded performance snapshot and event stream:
 
   <ya-cli> browser-debug info '<grant-url>'
+  <ya-cli> browser-debug snapshot '<grant-url>'
   <ya-cli> browser-debug events '<grant-url>' --follow
+
+The snapshot aggregates recent and lease-total main-thread delays, page size, stream cadence, and render/update phases without changing this tab. Use custom evaluation only to investigate a specific signal, for example:
+
   <ya-cli> browser-debug eval '<grant-url>' 'document.title'
 
 Diagnose this particular tab and explain any code you evaluate when it could alter user-visible state.`;
@@ -335,6 +343,9 @@ export class BrowserDebugLeaseController {
   };
 
   getSnapshot = (): BrowserDebugLeaseSnapshot => this.snapshot;
+
+  getPerformanceSummary = (): BrowserDebugPerformanceSummary | null =>
+    getBrowserDebugPerformanceSummary();
 
   async reconcilePersistedLease(): Promise<void> {
     if (this.lease || !this.persistedLease) return;
@@ -729,92 +740,17 @@ export class BrowserDebugLeaseController {
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       this.enqueue("unhandledrejection", event.reason);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      if (!(target.matches("textarea, input") || target.isContentEditable))
-        return;
-      const receivedAt = performance.now();
-      const dispatchDelay = Math.max(0, receivedAt - event.timeStamp);
-      requestAnimationFrame(() => {
-        const nextFrameDelay = Math.max(0, performance.now() - receivedAt);
-        if (dispatchDelay >= 25 || nextFrameDelay >= 50) {
-          this.enqueue("composer.keystroke-latency", {
-            key: event.key.length === 1 ? "printable" : event.key,
-            dispatchDelayMs: Math.round(dispatchDelay * 10) / 10,
-            nextFrameDelayMs: Math.round(nextFrameDelay * 10) / 10,
-          });
-        }
-      });
-    };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
-    window.addEventListener("keydown", onKeyDown, true);
-
-    let previousFrame: number | null =
-      document.visibilityState === "visible" ? performance.now() : null;
-    let frameRequest = 0;
-    const resetFrameBaseline = () => {
-      previousFrame = null;
-    };
-    const measureFrame = () => {
-      if (document.visibilityState !== "visible") {
-        previousFrame = null;
-      } else {
-        const measuredAt = performance.now();
-        if (previousFrame !== null) {
-          const gap = measuredAt - previousFrame;
-          if (gap >= 100)
-            this.enqueue("performance.frame-gap", { durationMs: gap });
-        }
-        previousFrame = measuredAt;
-      }
-      if (!this.stopped) frameRequest = requestAnimationFrame(measureFrame);
-    };
-    document.addEventListener("visibilitychange", resetFrameBaseline);
-    frameRequest = requestAnimationFrame(measureFrame);
-
-    let observer: PerformanceObserver | null = null;
-    if (typeof PerformanceObserver !== "undefined") {
-      try {
-        observer = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
-            this.enqueue("performance.long-task", {
-              startTime: entry.startTime,
-              durationMs: entry.duration,
-              name: entry.name,
-            });
-          }
-        });
-        observer.observe({ type: "longtask" });
-      } catch {
-        observer = null;
-      }
-    }
-
-    const metricsInterval = setInterval(() => {
-      const memory = (
-        performance as Performance & {
-          memory?: { usedJSHeapSize?: number; totalJSHeapSize?: number };
-        }
-      ).memory;
-      this.enqueue("metrics.sample", {
-        visibilityState: document.visibilityState,
-        elementCount: document.getElementsByTagName("*").length,
-        usedJSHeapSize: memory?.usedJSHeapSize,
-        totalJSHeapSize: memory?.totalJSHeapSize,
-      });
-    }, METRICS_INTERVAL_MS);
+    const cleanupPerformanceInstrumentation =
+      installBrowserDebugPerformanceInstrumentation(
+        this.lease?.sessionId ?? "unknown",
+        (kind, data) => this.enqueue(kind, data),
+      );
     const flushInterval = setInterval(
       () => void this.flushEvents(),
       FLUSH_INTERVAL_MS,
     );
-
-    const debugGlobal = window as unknown as Record<string, unknown>;
-    const priorEmit = debugGlobal.__YA_BROWSER_DEBUG_EMIT__;
-    debugGlobal.__YA_BROWSER_DEBUG_EMIT__ = (kind: string, data?: unknown) => {
-      this.enqueue(`annotation.${kind}`, data);
-    };
     this.enqueue("lease.enabled", {
       url: location.href,
       userAgent: navigator.userAgent,
@@ -824,14 +760,8 @@ export class BrowserDebugLeaseController {
       for (const [method, original] of originals) console[method] = original;
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
-      window.removeEventListener("keydown", onKeyDown, true);
-      document.removeEventListener("visibilitychange", resetFrameBaseline);
-      cancelAnimationFrame(frameRequest);
-      observer?.disconnect();
-      clearInterval(metricsInterval);
+      cleanupPerformanceInstrumentation();
       clearInterval(flushInterval);
-      if (priorEmit === undefined) delete debugGlobal.__YA_BROWSER_DEBUG_EMIT__;
-      else debugGlobal.__YA_BROWSER_DEBUG_EMIT__ = priorEmit;
     };
   }
 }

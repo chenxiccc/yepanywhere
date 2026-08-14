@@ -5415,9 +5415,10 @@ describe("MessageInput", () => {
           onToggle: onRenderToggle,
         }}
         browserDebugControl={{
-          active: false,
-          remainingFraction: 0,
-          title: "Enable browser debugging",
+          active: true,
+          remainingFraction: 0.5,
+          performanceLabel: "max 84ms · long 2",
+          title: "Disable browser debugging",
           onToggle: onBrowserDebugToggle,
         }}
         nudgeControl={{
@@ -5477,6 +5478,7 @@ describe("MessageInput", () => {
     const overflow = screen.getByRole("button", {
       name: "More toolbar controls",
     });
+    expect(screen.getByText("max 84ms · long 2")).toBeTruthy();
     expect(overflow.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("menu")).toBeNull();
 
@@ -5486,7 +5488,7 @@ describe("MessageInput", () => {
     expect(screen.getByRole("menu")).toBeTruthy();
     fireEvent.click(screen.getAllByLabelText("Toggle rendered output").at(-1)!);
     fireEvent.click(
-      screen.getAllByLabelText("Enable browser debugging").at(-1)!,
+      screen.getAllByLabelText("Disable browser debugging").at(-1)!,
     );
     fireEvent.click(screen.getAllByLabelText("Pulse after quiet").at(-1)!);
     fireEvent.click(

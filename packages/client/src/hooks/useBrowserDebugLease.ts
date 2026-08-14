@@ -35,8 +35,14 @@ export function useBrowserDebugLease() {
     [],
   );
 
+  const performanceSummary =
+    snapshot.phase === "active"
+      ? browserDebugLeaseController.getPerformanceSummary()
+      : null;
+
   return {
     ...snapshot,
+    performanceSummary,
     enable,
     disable,
   };

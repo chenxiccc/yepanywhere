@@ -565,10 +565,30 @@ async function requestBrowserDebug(
   return response.payload;
 }
 
+function browserDebugEvaluationValue(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Browser diagnostic evaluation returned an invalid result");
+  }
+  const result = (payload as Record<string, unknown>).result;
+  if (!result || typeof result !== "object") {
+    throw new Error("Browser diagnostic evaluation returned an invalid result");
+  }
+  const evaluation = result as Record<string, unknown>;
+  if (evaluation.ok !== true) {
+    throw new Error(
+      typeof evaluation.error === "string"
+        ? evaluation.error
+        : "Browser diagnostic evaluation failed",
+    );
+  }
+  return evaluation.value;
+}
+
 function printBrowserDebugHelp(): void {
   console.log(`
 USAGE:
   yepanywhere browser-debug info <grant-url>
+  yepanywhere browser-debug snapshot <grant-url>
   yepanywhere browser-debug events <grant-url> [--after <sequence>] [--follow]
   yepanywhere browser-debug eval <grant-url> <javascript>
 
@@ -590,6 +610,18 @@ async function runBrowserDebugCommand(commandArgs: string[]): Promise<void> {
     if (command === "info") {
       console.log(
         JSON.stringify(await requestBrowserDebug(grant, ""), null, 2),
+      );
+      return;
+    }
+    if (command === "snapshot") {
+      const payload = await requestBrowserDebug(grant, "/eval", {
+        method: "POST",
+        body: JSON.stringify({
+          code: "window.__YA_BROWSER_DEBUG__.performance.snapshot()",
+        }),
+      });
+      console.log(
+        JSON.stringify(browserDebugEvaluationValue(payload), null, 2),
       );
       return;
     }

@@ -604,6 +604,7 @@ interface ToolbarBrowserDebugControl {
   active: boolean;
   enabling?: boolean;
   remainingFraction: number;
+  performanceLabel?: string | null;
   title: string;
   onToggle: () => void;
 }
@@ -760,23 +761,35 @@ function BrowserDebugBugIcon() {
 function BrowserDebugLeaseIcon({
   active,
   remainingFraction,
+  performanceLabel,
 }: {
   active: boolean;
   remainingFraction: number;
+  performanceLabel?: string | null;
 }) {
   if (!active) return <BrowserDebugBugIcon />;
   return (
-    <span
-      className={toolbarModuleStyles.browserDebugCountdown}
-      style={
-        {
-          "--browser-debug-remaining": remainingFraction,
-        } as CSSProperties
-      }
-      aria-hidden="true"
-    >
-      <span className={toolbarModuleStyles.browserDebugWarning}>!</span>
-    </span>
+    <>
+      <span
+        className={toolbarModuleStyles.browserDebugCountdown}
+        style={
+          {
+            "--browser-debug-remaining": remainingFraction,
+          } as CSSProperties
+        }
+        aria-hidden="true"
+      >
+        <span className={toolbarModuleStyles.browserDebugWarning}>!</span>
+      </span>
+      {performanceLabel ? (
+        <span
+          className={toolbarModuleStyles.browserDebugPerformance}
+          aria-hidden="true"
+        >
+          {performanceLabel}
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -1921,6 +1934,7 @@ export function MessageInputToolbarView({
               <BrowserDebugLeaseIcon
                 active={browserDebugControl.active}
                 remainingFraction={browserDebugControl.remainingFraction}
+                performanceLabel={browserDebugControl.performanceLabel}
               />
             </button>
           )}
@@ -2231,6 +2245,7 @@ export function MessageInputToolbarView({
                         remainingFraction={
                           browserDebugControl.remainingFraction
                         }
+                        performanceLabel={browserDebugControl.performanceLabel}
                       />
                     </button>
                   )}
@@ -3117,12 +3132,44 @@ export function MessageInputToolbar({
         ),
       )
     : 0;
+  const browserDebugPerformanceLabel =
+    browserDebugActive && browserDebugLease.performanceSummary
+      ? t("toolbarBrowserDebugPerformanceCompact", {
+          delay: Math.round(
+            browserDebugLease.performanceSummary.recentMaxDelayMs,
+          ),
+          tasks: browserDebugLease.performanceSummary.recentLongTaskCount,
+        })
+      : null;
   const browserDebugTitle = browserDebugActive
-    ? t("toolbarBrowserDebugDisable", {
-        expiry: new Date(
-          browserDebugLease.expiresAtMs ?? Date.now(),
-        ).toLocaleTimeString(),
-      })
+    ? [
+        t("toolbarBrowserDebugDisable", {
+          expiry: new Date(
+            browserDebugLease.expiresAtMs ?? Date.now(),
+          ).toLocaleTimeString(),
+        }),
+        browserDebugLease.performanceSummary
+          ? t("toolbarBrowserDebugPerformanceTitle", {
+              seconds: Math.max(
+                1,
+                Math.round(
+                  browserDebugLease.performanceSummary.recentWindowMs / 1_000,
+                ),
+              ),
+              delay: Math.round(
+                browserDebugLease.performanceSummary.recentMaxDelayMs,
+              ),
+              tasks: browserDebugLease.performanceSummary.recentLongTaskCount,
+              frameGaps:
+                browserDebugLease.performanceSummary.recentFrameGapCount,
+              keystrokes:
+                browserDebugLease.performanceSummary
+                  .recentDelayedKeystrokeCount,
+            })
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
     : t("toolbarBrowserDebugEnable");
   const toggleBrowserDebug = useCallback(() => {
     if (browserDebugActive) {
@@ -3582,6 +3629,7 @@ export function MessageInputToolbar({
               active: browserDebugActive,
               enabling: browserDebugLease.phase === "enabling",
               remainingFraction: browserDebugRemainingFraction,
+              performanceLabel: browserDebugPerformanceLabel,
               title: browserDebugTitle,
               onToggle: toggleBrowserDebug,
             }

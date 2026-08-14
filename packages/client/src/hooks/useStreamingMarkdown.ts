@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  isBrowserDebugPerformanceRecording,
+  recordBrowserDebugPerformanceMetric,
+} from "../lib/browserDebugPerformance";
 
 const STREAMING_MARKDOWN_BASE_UPDATE_MS = 100;
 const STREAMING_MARKDOWN_MAX_UPDATE_MS = 750;
@@ -284,6 +288,20 @@ export function useStreamingMarkdown(
     }
 
     const durationMs = nowMs() - startMs;
+    if (isBrowserDebugPerformanceRecording()) {
+      recordBrowserDebugPerformanceMetric("streaming-markdown.flush", {
+        durationMs,
+      });
+      recordBrowserDebugPerformanceMetric("streaming-markdown.flushed-event", {
+        count: eventCount,
+        category:
+          augments.length > 0 && bufferedPendingHtml !== null
+            ? "augment-and-pending"
+            : augments.length > 0
+              ? "augment"
+              : "pending",
+      });
+    }
     if (
       durationMs > STREAMING_MARKDOWN_FLUSH_BUDGET_MS ||
       eventCount > STREAMING_MARKDOWN_BURST_EVENT_THRESHOLD
@@ -328,6 +346,12 @@ export function useStreamingMarkdown(
    */
   const onAugment = useCallback(
     (augment: AugmentEvent) => {
+      if (isBrowserDebugPerformanceRecording()) {
+        recordBrowserDebugPerformanceMetric("streaming-markdown.event", {
+          category: "augment",
+          chars: augment.html.length,
+        });
+      }
       bufferedAugmentsRef.current.set(augment.blockIndex, augment);
       pendingEventCountRef.current += 1;
       scheduleBufferedFlush();
@@ -341,6 +365,12 @@ export function useStreamingMarkdown(
    */
   const onPending = useCallback(
     (pending: PendingEvent) => {
+      if (isBrowserDebugPerformanceRecording()) {
+        recordBrowserDebugPerformanceMetric("streaming-markdown.event", {
+          category: "pending",
+          chars: pending.html.length,
+        });
+      }
       bufferedPendingHtmlRef.current = pending.html;
       pendingEventCountRef.current += 1;
       scheduleBufferedFlush();

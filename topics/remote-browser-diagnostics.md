@@ -46,22 +46,26 @@ need a full wrapper/provider-host restart, a newly launched or resumed eligible
 session, and a newly activated tab grant.
 
 The instruction probes the installed CLI before treating it as usable. A
-compatible response must contain the browser-debug-specific
-`yepanywhere browser-debug info <grant-url>` usage line; a zero exit status or
-generic top-level help is insufficient. A failed positive check is a CLI/server
-generation mismatch rather than a rejected grant, and a session working in the
-YA source checkout gets the current
+compatible response must contain the browser-debug-specific `info` and
+`snapshot` usage lines; a zero exit status or generic top-level help is
+insufficient. A failed positive check is a CLI/server generation mismatch
+rather than a rejected grant, and a session working in the YA source checkout
+gets the current
 `pnpm --filter server exec tsx src/cli.ts` fallback with the same positive
 check. The bearer URL appears once and the example operations use a
 placeholder. If clipboard writing fails, the lease remains visibly active and
 the banner tells the user to disable and retry.
 
-The active control's tooltip names the expiry time. Clicking it revokes the
-lease. The control remains visible while active even if its stored toolbar
-preference changes. Its timer turns it off at expiry. Navigation to a different
-YA session turns it off after revocation is confirmed. A page hide makes a
-keepalive revocation request. A new enable action creates new secrets; one
-tab's grant never identifies or authorizes another tab.
+The active control's tooltip names the expiry time and recent performance
+counts. It expands beside the countdown ring to show the largest recent
+main-thread delay and long-task count. This display reads four aggregate
+counters during the countdown's existing one-second render; it adds no timer,
+observer, DOM scan, or animation. Clicking the control revokes the lease. The
+control remains visible while active even if its stored toolbar preference
+changes. Its timer turns it off at expiry. Navigation to a different YA session
+turns it off after revocation is confirmed. A page hide makes a keepalive
+revocation request. A new enable action creates new secrets; one tab's grant
+never identifies or authorizes another tab.
 
 The tab keeps a versioned session-storage revocation marker containing the
 controller factor, source identity, session identity, and expiry, but not the
@@ -173,13 +177,16 @@ The local CLI supplies both factors automatically:
 
 ```text
 yepanywhere browser-debug info <grant-url>
+yepanywhere browser-debug snapshot <grant-url>
 yepanywhere browser-debug events <grant-url> [--after <sequence>] [--follow]
 yepanywhere browser-debug eval <grant-url> <javascript>
 ```
 
 `info` establishes which canonical YA session and per-tab identity the grant
-represents. `events --follow` tails the in-memory event sequence. `eval` admits
-only one pending evaluation per lease and waits for the browser's poll loop to
+represents. `snapshot` evaluates the lease-owned, versioned performance API and
+prints its value directly; an absent API or failed page evaluation exits as an
+error. `events --follow` tails the in-memory event sequence. `eval` admits only
+one pending evaluation per lease and waits for the browser's poll loop to
 execute it. The browser executes the explicitly granted source through a
 short-lived inline script bridge, which works under YA's served-page policy
 without granting the page general `unsafe-eval`/`Function` compilation. It
@@ -207,7 +214,23 @@ disable. Version 1 records:
 - delayed editable-control key dispatch and next-animation-frame latency;
 - animation-frame gaps of at least 100 ms and supported browser long tasks;
 - five-second visibility, DOM-element-count, and JavaScript-heap samples; and
-- explicit app annotations sent through `window.__YA_BROWSER_DEBUG_EMIT__`.
+- bounded counts, input sizes, categories, and durations for the central
+  session-stream, streaming-content, streaming-markdown, and transcript
+  projection/group/commit phases; and
+- explicit app annotations sent through `window.__YA_BROWSER_DEBUG_EMIT__` or
+  the versioned performance API's `mark` operation.
+
+The current snapshot is available as
+`window.__YA_BROWSER_DEBUG__.performance.snapshot()` and through the CLI
+`snapshot` command. It separates lease totals from the previous complete
+five-second collection window plus the current partial one, and reports the
+actual recent-window duration. `reset()` starts new local totals and `mark()`
+adds a bounded named annotation. These operations exist only while the lease is
+active and the previous values of both diagnostic globals are restored on
+disable. App metric names and category maps are capped; metric recording is a
+pair of in-memory map updates behind an inactive-lease guard. Message-list
+phase counts describe render/projection invocations, while `message-list.commit`
+describes committed effects.
 
 This is not historical console access. It sees only events after enable.
 Key receipt and animation-frame delivery use `performance.now()` at both ends,
@@ -278,6 +301,10 @@ weaken or ambiguously redefine the deliberately full-access v1 contract.
   evaluation through the enabled tab under YA's served-page CSP, without
   adding `unsafe-eval`.
 - The copied instruction rejects generic top-level help as a compatible CLI.
+- `browser-debug snapshot` prints the active tab's performance value directly,
+  including recent and lease-total main-thread and app-phase aggregates.
+- The active warning control shows its cheap recent summary without starting a
+  second timer or observer.
 - Key-to-frame delays are non-negative, and background time is absent from
   foreground frame-gap events.
 - Local self-signed HTTPS supplies its public certificate through the agent URL

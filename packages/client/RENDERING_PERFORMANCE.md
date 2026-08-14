@@ -106,6 +106,33 @@ documented design tradeoff and browser verification.
 
 ## Profiling
 
+For a user-enabled real tab, Remote Browser Debugging owns a bounded recorder
+for the 30-minute lease. Start with the built-in command from the copied grant
+instruction:
+
+```text
+yepanywhere browser-debug snapshot <grant-url>
+```
+
+The result separates the previous complete five-second collection window plus
+the current partial one from lease totals. It correlates main-thread frame gaps,
+long tasks, and editable-control key latency with these named application
+phases:
+
+- `session-stream.event`
+- `streaming-content.event`, `streaming-content.flush`, and
+  `streaming-content.flushed-event`
+- `streaming-markdown.event`, `streaming-markdown.flush`, and
+  `streaming-markdown.flushed-event`
+- `message-list.preprocess`, `message-list.conversation-projection`,
+  `message-list.group`, and `message-list.commit`
+
+The recorder and `window.__YA_BROWSER_DEBUG__.performance` API exist only while
+the visible red lease control is active. Application callsites perform only a
+cheap inactive-recorder check otherwise. The expanded control's performance
+text reads the recorder during the already-required countdown refresh and does
+not start another sampler.
+
 Enable Developer Mode remote log collection, or set this in DevTools:
 
 ```js

@@ -153,8 +153,12 @@ describe("browserDebugLeaseController", () => {
       "pnpm --filter server exec tsx src/cli.ts browser-debug --help",
     );
     expect(prompt).toContain(
-      "literal usage line `yepanywhere browser-debug info <grant-url>`",
+      "literal usage lines `yepanywhere browser-debug info <grant-url>`",
     );
+    expect(prompt).toContain(
+      "`yepanywhere browser-debug snapshot <grant-url>`",
+    );
+    expect(prompt).toContain("<ya-cli> browser-debug snapshot '<grant-url>'");
     expect(prompt).toContain(
       "Do not accept a zero exit status or generic yepanywhere help",
     );

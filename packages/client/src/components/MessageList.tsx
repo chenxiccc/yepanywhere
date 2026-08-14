@@ -37,6 +37,10 @@ import type {
   ComposerDraftSignal,
   ComposerEditAvailabilityStore,
 } from "../lib/composerDraftSignal";
+import {
+  isBrowserDebugPerformanceRecording,
+  recordBrowserDebugPerformanceMetric,
+} from "../lib/browserDebugPerformance";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   formatCompactRelativeAge,
@@ -1363,11 +1367,18 @@ export const MessageList = memo(function MessageList({
       transcriptDisplayObjects,
       previousRenderItems: previousRenderItemsRef.current,
     });
+    const durationMs = highResolutionNowMs() - startedAt;
     markReloadPerfPhase("message_list_preprocess_end", {
       messages: messages.length,
       renderItems: nextRenderItems.length,
-      durationMs: highResolutionNowMs() - startedAt,
+      durationMs,
     });
+    if (isBrowserDebugPerformanceRecording()) {
+      recordBrowserDebugPerformanceMetric("message-list.preprocess", {
+        durationMs,
+        count: 1,
+      });
+    }
     return nextRenderItems;
   }, [
     messages,
@@ -1463,28 +1474,35 @@ export const MessageList = memo(function MessageList({
       fullDisplayRenderItems,
     ],
   );
-  const displayRenderItems = useMemo(
-    () =>
-      effectiveConversationViewEnabled
-        ? projectConversationView(conversationWindow.items, {
-            active: isProcessing || isStreaming,
-            dismissedThinkingPreviewSlots:
-              dismissedConversationThinkingPreviewSlots,
-            expandedActivityIds: expandedConversationActivityIds,
-            nowMs,
-          })
-        : fullDisplayRenderItems,
-    [
-      conversationWindow.items,
-      dismissedConversationThinkingPreviewSlots,
-      effectiveConversationViewEnabled,
-      expandedConversationActivityIds,
-      fullDisplayRenderItems,
-      isProcessing,
-      isStreaming,
+  const displayRenderItems = useMemo(() => {
+    if (!effectiveConversationViewEnabled) return fullDisplayRenderItems;
+    const startedAt = highResolutionNowMs();
+    const projected = projectConversationView(conversationWindow.items, {
+      active: isProcessing || isStreaming,
+      dismissedThinkingPreviewSlots: dismissedConversationThinkingPreviewSlots,
+      expandedActivityIds: expandedConversationActivityIds,
       nowMs,
-    ],
-  );
+    });
+    if (isBrowserDebugPerformanceRecording()) {
+      recordBrowserDebugPerformanceMetric(
+        "message-list.conversation-projection",
+        {
+          durationMs: highResolutionNowMs() - startedAt,
+          category: isProcessing || isStreaming ? "active" : "idle",
+        },
+      );
+    }
+    return projected;
+  }, [
+    conversationWindow.items,
+    dismissedConversationThinkingPreviewSlots,
+    effectiveConversationViewEnabled,
+    expandedConversationActivityIds,
+    fullDisplayRenderItems,
+    isProcessing,
+    isStreaming,
+    nowMs,
+  ]);
   const visibleConversationThinkingPreviewSlots = useMemo(() => {
     const slots = new Set<ConversationThinkingPreviewSlot>();
     for (const item of displayRenderItems) {
@@ -1540,11 +1558,17 @@ export const MessageList = memo(function MessageList({
   const turnGroups = useMemo(() => {
     const startedAt = highResolutionNowMs();
     const grouped = groupRenderItemsIntoTurns(displayRenderItems);
+    const durationMs = highResolutionNowMs() - startedAt;
     markReloadPerfPhase("message_list_group_end", {
       renderItems: displayRenderItems.length,
       turnGroups: grouped.length,
-      durationMs: highResolutionNowMs() - startedAt,
+      durationMs,
     });
+    if (isBrowserDebugPerformanceRecording()) {
+      recordBrowserDebugPerformanceMetric("message-list.group", {
+        durationMs,
+      });
+    }
     return grouped;
   }, [displayRenderItems]);
   useEffect(() => {
@@ -1553,7 +1577,19 @@ export const MessageList = memo(function MessageList({
       renderItems: displayRenderItems.length,
       turnGroups: turnGroups.length,
     });
-  }, [messages.length, displayRenderItems.length, turnGroups.length]);
+    if (isBrowserDebugPerformanceRecording()) {
+      recordBrowserDebugPerformanceMetric("message-list.commit", {
+        category: effectiveConversationViewEnabled
+          ? "conversation-view"
+          : "full-transcript",
+      });
+    }
+  }, [
+    messages.length,
+    displayRenderItems.length,
+    turnGroups.length,
+    effectiveConversationViewEnabled,
+  ]);
   const {
     active: searchActive,
     scope: searchScope,

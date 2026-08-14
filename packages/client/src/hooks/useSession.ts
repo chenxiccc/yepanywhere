@@ -16,6 +16,10 @@ import { api } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
+import {
+  isBrowserDebugPerformanceRecording,
+  recordBrowserDebugPerformanceMetric,
+} from "../lib/browserDebugPerformance";
 import { hasUnconfirmedSelfSends } from "../lib/deliveryState";
 import { getMessageId } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
@@ -211,6 +215,21 @@ function hasUserVisibleStreamProgress(
   }
 
   return false;
+}
+
+function getKnownStreamPayloadChars(data: Record<string, unknown>): number {
+  if (typeof data.html === "string") return data.html.length;
+  if (typeof data.suggestion === "string") return data.suggestion.length;
+  const event = data.event;
+  if (!event || typeof event !== "object") return 0;
+  const delta = (event as Record<string, unknown>).delta;
+  if (!delta || typeof delta !== "object") return 0;
+  const deltaRecord = delta as Record<string, unknown>;
+  if (typeof deltaRecord.text === "string") return deltaRecord.text.length;
+  if (typeof deltaRecord.thinking === "string") {
+    return deltaRecord.thinking.length;
+  }
+  return 0;
 }
 
 function getContextUsageFromTokenUsageMessage(
@@ -1659,6 +1678,12 @@ export function useSession(
   // Subscribe to live updates
   const handleStreamMessage = useCallback(
     (data: { eventType: string; [key: string]: unknown }) => {
+      if (isBrowserDebugPerformanceRecording()) {
+        recordBrowserDebugPerformanceMetric("session-stream.event", {
+          category: data.eventType,
+          chars: getKnownStreamPayloadChars(data),
+        });
+      }
       logSessionUiTrace("session-stream-dispatch", {
         sessionId,
         eventType: data.eventType,
