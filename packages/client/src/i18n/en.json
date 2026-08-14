@@ -1028,7 +1028,7 @@
   "toolbarBrowserDebugEnable": "Enable full JavaScript debugging for this tab for 30 minutes",
   "toolbarBrowserDebugDisable": "Disable full JavaScript debugging for this tab (expires at {expiry})",
   "toolbarBrowserDebugPerformanceCompact": "max {delay}ms · long {tasks}",
-  "toolbarBrowserDebugPerformanceTitle": "Recent {seconds}s: maximum main-thread delay {delay} ms; {tasks} long tasks; {frameGaps} frame gaps; {keystrokes} delayed keystrokes.",
+  "toolbarBrowserDebugPerformanceTitle": "Recent {seconds}s: maximum main-thread delay {delay} ms; {tasks} long tasks (>50 ms); {frameGaps} frame gaps; {keystrokes} delayed keystrokes.",
   "browserDebugCopiedBanner": "Paste into a YA session to give full JS debugging access to this tab for 30m.",
   "browserDebugClipboardFailed": "Full JavaScript debugging is active, but the agent instruction could not be copied. Disable the red warning control and try again.",
   "browserDebugEnableFailed": "Could not enable browser debugging: {error}",

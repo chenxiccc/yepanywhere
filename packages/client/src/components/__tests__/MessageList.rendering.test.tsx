@@ -2,6 +2,8 @@
 
 import { Profiler } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { SourceRuntimeProvider } from "../../contexts/SourceRuntimeContext";
@@ -472,6 +474,51 @@ describe("MessageList rendering", () => {
     });
 
     expect(onRender).toHaveBeenCalledTimes(initialCommitCount);
+  });
+
+  it("defers tail updates but commits prefix changes synchronously", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const current = userMessage("user-current", "Current request");
+
+    act(() => {
+      root.render(<MessageList messages={[current]} />);
+    });
+
+    act(() => {
+      flushSync(() => {
+        root.render(
+          <MessageList
+            messages={[
+              current,
+              assistantMessage("assistant-live", "Live tail update"),
+            ]}
+          />,
+        );
+      });
+      expect(screen.queryByText("Live tail update")).toBeNull();
+    });
+    expect(screen.getByText("Live tail update")).toBeTruthy();
+
+    act(() => {
+      flushSync(() => {
+        root.render(
+          <MessageList
+            messages={[
+              userMessage("user-older", "Older request"),
+              current,
+              assistantMessage("assistant-live", "Live tail update"),
+            ]}
+            olderMessagesCursor="user-older"
+          />,
+        );
+      });
+      expect(screen.getByText("Older request")).toBeTruthy();
+    });
+
+    act(() => root.unmount());
+    host.remove();
   });
 
   it("condenses and restores routine activity in Conversation view", () => {

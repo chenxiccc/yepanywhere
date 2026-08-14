@@ -34,9 +34,14 @@ stable component identity, and lower update cadence.
 4. `useSessionMessages` merges live stream messages and persisted JSONL
    messages. Hot streaming-placeholder updates check the tail first before
    scanning the loaded transcript.
-5. `MessageList` preprocesses loaded messages into `RenderItem[]`, groups
-   adjacent assistant items into turns, and stabilizes unchanged render item
-   object identity so memoized row components can skip unchanged history.
+5. `MessageList` consumes a deferred snapshot of loaded messages, preprocesses
+   them into `RenderItem[]`, groups adjacent assistant items into turns, and
+   stabilizes unchanged render item object identity so memoized row components
+   can skip unchanged history. React may coalesce obsolete transcript snapshots
+   while urgent composer updates proceed; the session-detail store still
+   retains every received message and the latest snapshot always renders.
+   Older-page insertion and active-window prefix trimming bypass deferral so
+   their scroll-anchor bookkeeping commits with the structural change.
 6. `RenderItemComponent` routes exactly one render item to one block/tool
    renderer: text, thinking, tool call, user prompt, session setup, or system.
 7. Rich renderers operate on block/tool-sized input:
@@ -55,6 +60,13 @@ stable component identity, and lower update cadence.
   are user-visible acknowledgements or controls that need sub-second latency.
 - Light-load queue/ack/status UI should remain immediate. Backpressure belongs
   on token/render/freshness paths, not on user message acceptance.
+- Transcript projection and DOM commits are non-urgent work. They consume a
+  deferred message snapshot so React can prioritize composer input and coalesce
+  obsolete intermediate snapshots during bursts. Queue acknowledgements,
+  status, approvals, and other session controls remain outside that scheduling
+  boundary and must not wait for the transcript. Prefix-changing pagination and
+  trimming remain immediate because their scroll corrections are coupled to the
+  new transcript structure.
 - Conditional UI controls must not run an expensive render only to decide
   whether the control exists. Prefer transforms that return structured metadata
   such as `{ html, changed }`, and pass that first completed scan into the
@@ -82,6 +94,15 @@ stable component identity, and lower update cadence.
   cross-tab `storage` events reconcile the cached value.
 - Composer text is user data. Streaming/render work must not steal focus,
   defeat normal browser key buffering, or delay page-lifecycle draft flushes.
+
+## Design decisions
+
+- **Defer the transcript message snapshot** (vs. adding another wall-clock
+  throttle): full messages, tool activity, and streaming placeholders all
+  converge on `MessageList`, so React's deferred-value boundary covers every
+  message-driven transcript path and lets urgent input preempt it. A cadence
+  controller would duplicate the existing token/markdown throttles while still
+  needing a separate path for full activity messages.
 
 ## Transcript Layout Stability
 
@@ -125,7 +146,9 @@ phases:
 - `streaming-markdown.event`, `streaming-markdown.flush`, and
   `streaming-markdown.flushed-event`
 - `message-list.preprocess`, `message-list.conversation-projection`,
-  `message-list.group`, and `message-list.commit`
+  `message-list.group`, and `message-list.commit`; the commit duration spans
+  from entry into the `MessageList` render through its layout effect after the
+  DOM commit
 
 The recorder and `window.__YA_BROWSER_DEBUG__.performance` API exist only while
 the visible red lease control is active. Application callsites perform only a
@@ -151,6 +174,25 @@ Each entry includes duration plus coarse input size (`chars`, `lines`) where
 available. Use these timings with stream-event counts and React update cadence:
 a slow formatter matters most when it is reached by a high-rate path or when it
 runs over a long block more than once.
+
+## Live diagnostic evidence
+
+A consented real-work tab on 2026-08-14 established the scheduling boundary.
+Conversation View projection itself peaked below 4 ms, while complete
+`MessageList` work and browser event handlers repeatedly occupied 200–600 ms
+frames during active output; the largest observed key-dispatch delay was
+582.5 ms. Turning Conversation View off enlarged the DOM and worsened the
+symptom, but did not make projection the owner.
+
+After deferring the message snapshot, a ten-second active sample contained
+three long animation frames at 67, 76, and 96 ms instead of repeated
+200–600 ms frames. A later lease snapshot measured transcript preprocessing at
+19.5 ms maximum and render-through-DOM-commit at 76.6 ms maximum. A controlled
+Follow jump reached the live tail synchronously, returned its next animation
+frame in 12.3 ms, and had one 76.7 ms long animation frame in the following
+five seconds. These were contended diagnostic samples rather than calibrated
+ratchet measurements; they support the scheduling decision and do not define a
+portable latency ceiling.
 
 ## Review Checklist
 

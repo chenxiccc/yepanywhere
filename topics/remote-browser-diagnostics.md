@@ -57,15 +57,16 @@ placeholder. If clipboard writing fails, the lease remains visibly active and
 the banner tells the user to disable and retry.
 
 The active control's tooltip names the expiry time and recent performance
-counts. It expands beside the countdown ring to show the largest recent
-main-thread delay and long-task count. This display reads four aggregate
-counters during the countdown's existing one-second render; it adds no timer,
-observer, DOM scan, or animation. Clicking the control revokes the lease. The
-control remains visible while active even if its stored toolbar preference
-changes. Its timer turns it off at expiry. Navigation to a different YA session
-turns it off after revocation is confirmed. A page hide makes a keepalive
-revocation request. A new enable action creates new secrets; one tab's grant
-never identifies or authorizes another tab.
+counts, including that long tasks exceed 50 ms. It expands beside the countdown
+ring to show the largest recent main-thread delay and long-task count. This
+display reads four aggregate counters during the countdown's existing
+one-second render; it adds no timer, observer, DOM scan, or animation. Clicking
+the control revokes the lease. The control remains visible while active even if
+its stored toolbar preference changes. Its timer turns it off at expiry.
+Navigation to a different YA session turns it off after revocation is
+confirmed. A page hide makes a keepalive revocation request. A new enable
+action creates new secrets; one tab's grant never identifies or authorizes
+another tab.
 
 The tab keeps a versioned session-storage revocation marker containing the
 controller factor, source identity, session identity, and expiry, but not the
@@ -230,7 +231,7 @@ active and the previous values of both diagnostic globals are restored on
 disable. App metric names and category maps are capped; metric recording is a
 pair of in-memory map updates behind an inactive-lease guard. Message-list
 phase counts describe render/projection invocations, while `message-list.commit`
-describes committed effects.
+measures entry into the component render through the post-DOM layout effect.
 
 This is not historical console access. It sees only events after enable.
 Key receipt and animation-frame delivery use `performance.now()` at both ends,
@@ -255,13 +256,14 @@ the proposed cause remains unproven. Frame starvation, long tasks, excessive
 inbound updates, repeated transcript work, DOM growth, and unrelated host or
 transport stalls can look similar.
 
-The first diagnostic pass should tail events, reproduce ordinary typing, and
-correlate `composer.keystroke-latency`, frame gaps, long tasks, DOM/heap samples,
-and server-side session traffic. Remote diagnostics provides visibility; it
-does not itself throttle conversation rendering or establish a performance
-fix. Render/backpressure decisions remain governed by
-[`conversation-view.md`](conversation-view.md) and the existing client
-performance task.
+The first diagnostic pass correlated key latency, frame gaps, long tasks,
+DOM/heap samples, stream traffic, and transcript phases. It found Conversation
+View projection cheap relative to complete transcript render/commit work and
+led to the deferred transcript scheduling boundary documented in
+[`packages/client/RENDERING_PERFORMANCE.md`](../packages/client/RENDERING_PERFORMANCE.md).
+Remote diagnostics remains visibility rather than a throttle; future
+render/backpressure decisions stay governed by that rendering contract and
+[`conversation-view.md`](conversation-view.md).
 
 ## Compatibility
 

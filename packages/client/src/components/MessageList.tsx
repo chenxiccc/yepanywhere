@@ -9,6 +9,7 @@ import {
   createElement,
   memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -42,6 +43,7 @@ import {
   recordBrowserDebugPerformanceMetric,
 } from "../lib/browserDebugPerformance";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
+import { getMessageId } from "../lib/mergeMessages";
 import {
   formatCompactRelativeAge,
   getEarliestMessageTimestampMs,
@@ -1035,6 +1037,27 @@ export const MessageList = memo(function MessageList({
   onFollowForkSummary,
   bangCommandHandlers,
 }: Props) {
+  const transcriptRenderStartedAtMs = isBrowserDebugPerformanceRecording()
+    ? highResolutionNowMs()
+    : null;
+  const firstMessageId = messages[0] ? getMessageId(messages[0]) : null;
+  const transcriptSnapshot = useMemo(
+    () => ({
+      activeWindowTrimRevision,
+      firstMessageId,
+      messages,
+      olderMessagesCursor,
+    }),
+    [activeWindowTrimRevision, firstMessageId, messages, olderMessagesCursor],
+  );
+  const deferredTranscriptSnapshot = useDeferredValue(transcriptSnapshot);
+  const renderedTranscriptMessages =
+    deferredTranscriptSnapshot.activeWindowTrimRevision ===
+      activeWindowTrimRevision &&
+    deferredTranscriptSnapshot.firstMessageId === firstMessageId &&
+    deferredTranscriptSnapshot.olderMessagesCursor === olderMessagesCursor
+      ? deferredTranscriptSnapshot.messages
+      : messages;
   const containerRef = useRef<HTMLDivElement>(null);
   const loadOlderBoundaryRef = useRef<HTMLDivElement>(null);
   const automaticOlderLoadAttemptRef = useRef<string | null>(null);
@@ -1355,12 +1378,12 @@ export const MessageList = memo(function MessageList({
   const renderItems = useMemo(() => {
     const startedAt = highResolutionNowMs();
     markReloadPerfPhase("message_list_preprocess_start", {
-      messages: messages.length,
+      messages: renderedTranscriptMessages.length,
       markdownAugments: Object.keys(markdownAugments ?? {}).length,
       hasActiveToolApproval: !!activeToolApproval,
     });
     const nextRenderItems = buildSessionDetailRenderItems({
-      messages,
+      messages: renderedTranscriptMessages,
       provider,
       markdownAugments,
       activeToolApproval,
@@ -1369,7 +1392,7 @@ export const MessageList = memo(function MessageList({
     });
     const durationMs = highResolutionNowMs() - startedAt;
     markReloadPerfPhase("message_list_preprocess_end", {
-      messages: messages.length,
+      messages: renderedTranscriptMessages.length,
       renderItems: nextRenderItems.length,
       durationMs,
     });
@@ -1381,7 +1404,7 @@ export const MessageList = memo(function MessageList({
     }
     return nextRenderItems;
   }, [
-    messages,
+    renderedTranscriptMessages,
     provider,
     markdownAugments,
     activeToolApproval,
@@ -1571,25 +1594,24 @@ export const MessageList = memo(function MessageList({
     }
     return grouped;
   }, [displayRenderItems]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     markReloadPerfPhase("message_list_commit_effect", {
-      messages: messages.length,
+      messages: renderedTranscriptMessages.length,
       renderItems: displayRenderItems.length,
       turnGroups: turnGroups.length,
     });
     if (isBrowserDebugPerformanceRecording()) {
       recordBrowserDebugPerformanceMetric("message-list.commit", {
+        durationMs:
+          transcriptRenderStartedAtMs === null
+            ? 0
+            : highResolutionNowMs() - transcriptRenderStartedAtMs,
         category: effectiveConversationViewEnabled
           ? "conversation-view"
           : "full-transcript",
       });
     }
-  }, [
-    messages.length,
-    displayRenderItems.length,
-    turnGroups.length,
-    effectiveConversationViewEnabled,
-  ]);
+  });
   const {
     active: searchActive,
     scope: searchScope,
