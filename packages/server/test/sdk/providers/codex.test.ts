@@ -920,6 +920,7 @@ describe("CodexProvider app-server lifecycle", () => {
       })();
 
       await waitForFakeCodexRequest(logPath, "turn/start");
+      await session.probeLiveness?.();
       expect(await session.steer?.({ text: "deliver this steer" })).toBe(true);
       await session.interrupt?.();
 
