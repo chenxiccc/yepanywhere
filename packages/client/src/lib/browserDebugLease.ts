@@ -475,6 +475,17 @@ export class BrowserDebugLeaseController {
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
     this.events = [];
+    const liveLocalClose =
+      lease !== null &&
+      !options.keepalive &&
+      options.unconfirmedError === undefined;
+    if (liveLocalClose) {
+      this.finishPersistedLease(persistedLease);
+      if (options.notifyServer !== false && persistedLease && sourceFetch) {
+        void this.revokePersistedLease(persistedLease, sourceFetch);
+      }
+      return;
+    }
     if (
       options.notifyServer === false &&
       persistedLease &&
@@ -623,6 +634,7 @@ export class BrowserDebugLeaseController {
           method: "POST",
           headers: this.headers(lease),
         });
+        if (this.stopped || this.lease?.leaseId !== lease.leaseId) return;
         if (response.command)
           await this.execute(response.command, lease, sourceFetch);
       } catch (error) {

@@ -61,12 +61,15 @@ counts, including that long tasks exceed 50 ms. It expands beside the countdown
 ring to show the largest recent main-thread delay and long-task count. This
 display reads four aggregate counters during the countdown's existing
 one-second render; it adds no timer, observer, DOM scan, or animation. Clicking
-the control revokes the lease. The control remains visible while active even if
-its stored toolbar preference changes. Its timer turns it off at expiry.
-Navigation to a different YA session turns it off after revocation is
-confirmed. A page hide makes a keepalive revocation request. A new enable
-action creates new secrets; one tab's grant never identifies or authorizes
-another tab.
+the control immediately closes the tab-local lease, clears its live warning,
+and sends a best-effort server revocation; server confirmation is not a
+prerequisite for the client to stop polling or accepting commands. The control
+remains visible while active even if its stored toolbar preference changes.
+Its timer performs the same local close at expiry, and navigation to a
+different YA session closes it immediately as well. A response from a poll
+that was already in flight at local close is ignored. A page hide makes a
+keepalive revocation request. A new enable action creates new secrets; one
+tab's grant never identifies or authorizes another tab.
 
 The tab keeps a versioned session-storage revocation marker containing the
 controller factor, source identity, session identity, and expiry, but not the
@@ -314,8 +317,11 @@ weaken or ambiguously redefine the deliberately full-access v1 contract.
 - A compatible local hosted session retained across Hono replacement publishes
   the provider-host boot's two allowlisted debugging values to later Bash tool
   shells, while its launch-time factor remains valid through the replacement.
-- Explicitly confirmed revoke, expiry, session navigation with confirmed
-  revoke, or server restart prevents further grant use.
+- Manual close, expiry, or session navigation immediately removes the live
+  warning and prevents the tab from executing another command, even while
+  best-effort server revocation is unresolved or an earlier poll returns late.
+- Explicitly confirmed revoke, local close, expiry, or server restart prevents
+  further grant use.
 - Reload shows the active red warning before attempting to revoke the retained
   lease marker; failed revocation leaves that warning active until retry or
   expiry.

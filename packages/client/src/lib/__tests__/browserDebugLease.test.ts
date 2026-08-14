@@ -3,12 +3,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  let releasePoll: ((value: { command: null }) => void) | null = null;
+  type EvalCommand = { commandId: string; kind: "eval"; code: string };
+  let releasePoll: ((command: EvalCommand | null) => void) | null = null;
   let releaseLease: (() => void) | null = null;
+  let releaseDelete: (() => void) | null = null;
   let deferLease = false;
+  let deferDelete = false;
   let deleteError: Error | null = null;
-  let nextCommand: { commandId: string; kind: "eval"; code: string } | null =
-    null;
+  let nextCommand: EvalCommand | null = null;
+  const evaluatedCode: string[] = [];
   const calls: Array<{
     path: string;
     receiver: unknown;
@@ -45,10 +48,17 @@ const mocks = vi.hoisted(() => {
           return { command } as T;
         }
         return await new Promise<T>((resolve) => {
-          releasePoll = () => resolve({ command: null } as T);
+          releasePoll = (command) => resolve({ command } as T);
         });
       }
-      if (options?.method === "DELETE" && deleteError) throw deleteError;
+      if (options?.method === "DELETE") {
+        if (deferDelete) {
+          await new Promise<void>((resolve) => {
+            releaseDelete = resolve;
+          });
+        }
+        if (deleteError) throw deleteError;
+      }
       return {} as T;
     },
   };
@@ -61,18 +71,27 @@ const mocks = vi.hoisted(() => {
     deferLease: () => {
       deferLease = true;
     },
+    deferDelete: () => {
+      deferDelete = true;
+    },
     releaseLease: () => releaseLease?.(),
-    releasePoll: () => releasePoll?.({ command: null }),
+    releaseDelete: () => releaseDelete?.(),
+    releasePoll: (command: EvalCommand | null = null) => releasePoll?.(command),
+    evaluatedCode,
+    recordEvaluation: (code: string) => evaluatedCode.push(code),
     failDelete: (error: Error | null) => {
       deleteError = error;
     },
     reset: () => {
       calls.length = 0;
       deferLease = false;
+      deferDelete = false;
       releaseLease = null;
+      releaseDelete = null;
       releasePoll = null;
       nextCommand = null;
       deleteError = null;
+      evaluatedCode.length = 0;
     },
   };
 });
@@ -92,12 +111,14 @@ vi.mock("../sourceRuntime", () => ({
 
 vi.mock("../browserDebugEval", () => ({
   executeBrowserDebugCode: (code: string) => {
+    mocks.recordEvaluation(code);
     if (code === "({ answer: 6 * 7 })") return { answer: 42 };
     throw new Error(`Unexpected test evaluation: ${code}`);
   },
 }));
 
 import {
+  BROWSER_DEBUG_LEASE_TTL_MS,
   BROWSER_DEBUG_PROMPT_LEAD,
   BrowserDebugLeaseController,
   browserDebugLeaseController,
@@ -138,6 +159,7 @@ describe("browserDebugLeaseController", () => {
       await controller.disable({ notifyServer: false });
     }
     mocks.releaseLease();
+    mocks.releaseDelete();
     mocks.releasePoll();
     vi.unstubAllGlobals();
   });
@@ -301,6 +323,46 @@ describe("browserDebugLeaseController", () => {
       },
     });
     expect(browserDebugLeaseController.getSnapshot().phase).toBe("inactive");
+  });
+
+  it("closes an expired live lease locally before server revocation", async () => {
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    await browserDebugLeaseController.enable("session-1");
+    const expiryCallback = timeoutSpy.mock.calls.find(
+      ([, delay]) =>
+        typeof delay === "number" && delay > BROWSER_DEBUG_LEASE_TTL_MS - 100,
+    )?.[0];
+    expect(expiryCallback).toBeTypeOf("function");
+
+    mocks.deferDelete();
+    (expiryCallback as () => void)();
+
+    expect(browserDebugLeaseController.getSnapshot().phase).toBe("inactive");
+    expect(
+      window.sessionStorage.getItem("ya:browser-debug-active-lease-v1"),
+    ).toBeNull();
+    expect(mocks.calls.at(-1)).toMatchObject({
+      path: "/browser-debug/leases/lease-1",
+      options: { method: "DELETE" },
+    });
+    mocks.releaseDelete();
+  });
+
+  it("does not execute a command returned after local disable", async () => {
+    await browserDebugLeaseController.enable("session-1");
+
+    await browserDebugLeaseController.disable({ notifyServer: false });
+    mocks.releasePoll({
+      commandId: "command-after-disable",
+      kind: "eval",
+      code: "({ answer: 6 * 7 })",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.evaluatedCode).toEqual([]);
+    expect(mocks.calls.some((call) => call.path.endsWith("/results"))).toBe(
+      false,
+    );
   });
 
   it("shows a reloaded lease as active until revocation is confirmed", async () => {
