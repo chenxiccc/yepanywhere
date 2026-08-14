@@ -282,7 +282,14 @@ export default async function globalSetup() {
   );
   writeFileSync(
     join(fileBrowserProjectPath, "src", "index.ts"),
-    'export const hello = "world";\nconsole.log(hello);',
+    [
+      'export const alpha = "first highlighted line";',
+      'export const beta = "second highlighted line";',
+      `export const wrapped = "wrapped-selection-start ${"0123456789 ".repeat(24)}wrapped-selection-end";`,
+      'export const repeated = "same marker";',
+      'export const repeatedAgain = "same marker";',
+      "console.log(alpha, beta, wrapped, repeated, repeatedAgain);",
+    ].join("\n"),
   );
   writeFileSync(join(fileBrowserProjectPath, "data.json"), '{"key": "value"}');
   const fileBrowserSessionDir = join(
@@ -477,6 +484,105 @@ export default async function globalSetup() {
   );
   console.log(
     `[E2E] Created absolute-path viewer session at ${absoluteViewerSessionFile}`,
+  );
+
+  const sourceSelectionSessionFile = join(
+    mockSessionDir,
+    "source-selection-001.jsonl",
+  );
+  const externalSourcePath = join(fileBrowserProjectPath, "src", "index.ts");
+  writeFileSync(
+    sourceSelectionSessionFile,
+    [
+      {
+        type: "user",
+        cwd: mockProjectPath,
+        message: { role: "user", content: "Review the formatted source" },
+        timestamp: "2026-01-02T00:01:00.000Z",
+        uuid: "source-selection-user-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: `Review ${externalSourcePath} and quote the exact source range.`,
+        },
+        timestamp: "2026-01-02T00:01:01.000Z",
+        uuid: "source-selection-assistant-1",
+        parentUuid: "source-selection-user-1",
+      },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
+  );
+
+  const activitySelectionSessionFile = join(
+    mockSessionDir,
+    "activity-selection-001.jsonl",
+  );
+  const activityOutput = [
+    `selection anchor near top ${"wide-output ".repeat(20)}`,
+    ...Array.from(
+      { length: 70 },
+      (_, index) => `activity output line ${index + 2}`,
+    ),
+  ].join("\n");
+  writeFileSync(
+    activitySelectionSessionFile,
+    [
+      {
+        type: "user",
+        cwd: mockProjectPath,
+        message: { role: "user", content: "Inspect the long activity output" },
+        timestamp: "2026-01-02T00:02:00.000Z",
+        uuid: "activity-selection-user-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "activity-selection-bash-1",
+              name: "Bash",
+              input: {
+                command: "generate-selection-output",
+                description: "Selection placement specimen",
+              },
+            },
+          ],
+        },
+        timestamp: "2026-01-02T00:02:01.000Z",
+        uuid: "activity-selection-assistant-1",
+        parentUuid: "activity-selection-user-1",
+      },
+      {
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "activity-selection-bash-1",
+              content: activityOutput,
+            },
+          ],
+        },
+        toolUseResult: {
+          stdout: activityOutput,
+          stderr: "",
+          interrupted: false,
+          isImage: false,
+          exitCode: 0,
+        },
+        timestamp: "2026-01-02T00:02:02.000Z",
+        uuid: "activity-selection-result-1",
+        parentUuid: "activity-selection-assistant-1",
+      },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
   );
 
   const repoRoot = join(__dirname, "..", "..", "..");

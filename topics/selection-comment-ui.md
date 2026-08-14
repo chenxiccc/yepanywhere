@@ -26,7 +26,9 @@ Status: **Phase 1 shipped 2026-06-23; the two early contract gaps fixed
 Phase 2 scope widening shipped 2026-07-01; portaled modal/file scope shipped
 2026-07-27; pressed-pointer tooltip suppression landed 2026-08-10; stable
 selection actions and independent controls landed 2026-08-12; selected-text
-context actions and source-cited new-session transfer landed 2026-08-13.**
+context actions and source-cited new-session transfer landed 2026-08-13;
+exact formatted-source selection and activity-overlay placement landed
+2026-08-14.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -80,6 +82,19 @@ The early Phase 1 gaps were fixed 2026-06-23, verified in the running app.
   viewport instead of covering its text; portaled modal selections use the
   collision-aware local placement because the session composer sits behind the
   modal.
+- **Activity-detail placement uses the selected range — fixed 2026-08-14.**
+  For a selection inside a tall expanded Bash/Edit/Read-style detail surface,
+  the below/above candidates and fallback-space ranking are anchored to the
+  selected range. The full registered source bounds remain the collision
+  inventory, never a surrogate selection anchor.
+- **Formatted source carries exact selection offsets — fixed 2026-08-14.**
+  Syntax-highlighted file viewers annotate every aligned Shiki line and token
+  with absolute source offsets. Forward, reverse, cross-token, cross-line, and
+  soft-wrapped selections therefore recover the exact authored span in reading
+  order for visible-text copy, source copy, quote reply, source-line citation,
+  and comment tint. While a quote anchor is live, a scoped mutation observer
+  re-resolves its CSS highlight if React replaces the highlighted descendants;
+  no observer runs without live anchors.
 - **Paragraph quote buttons tint the quoted paragraph — fixed 2026-06-25.**
   Paragraph and whole-block quote actions create text-node-backed highlight
   ranges and re-resolve them when a composer update replaces rendered markdown
@@ -308,7 +323,9 @@ streaming-markdown container swaps inside `TextBlock`.
 
 Robustness is **best-effort by design**: the tint is a reminder of what you
 quoted, not load-bearing. If a re-render or virtualization drops a range it
-re-resolves on the next render from the anchor descriptor. The source-mode
+re-resolves after the registered source DOM mutates from the anchor descriptor.
+Exact source-offset anchors resolve the original occurrence even when the same
+text appears elsewhere. The source-mode
 `<pre className="text-block-source">` case is trivial — wrap the offset range
 directly.
 
@@ -392,6 +409,12 @@ already covers whole-paragraph quoting on those platforms.
   their source with the same extractor. Reusable modal roots let the active
   session's copy, selection-typing, and floating-`>` controller follow that
   registered text across the portal without creating a second quote path.
+
+  Exact syntax-highlighted source alignment shipped 2026-08-14. The file
+  viewer carries source offsets through Shiki's block-per-line DOM and uses one
+  mapping for extraction, citation, and persistent tint recovery. This is the
+  source-code path; it does not claim alignment for structurally rendered
+  Markdown.
 
   **Exact rendered-Markdown alignment remains follow-up work.** File viewers
   and expanded Read/Edit Markdown currently register the original source, so

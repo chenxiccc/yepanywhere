@@ -1,3 +1,8 @@
+import {
+  getRangeSourceOffsets,
+  type SourceOffsetRange,
+} from "./sourceOffsetDom";
+
 const MARKDOWN_COPY_SOURCE_ATTR = "data-markdown-copy-source";
 const QUOTE_SELECTION_ROOT_ATTR = "data-quote-selection-root";
 
@@ -41,6 +46,7 @@ interface RangeTextWithinElement {
   textBefore: string;
   preferExactSource: boolean;
   range: Range;
+  sourceRange: SourceOffsetRange | null;
 }
 
 export interface MarkdownSelectionSnippet {
@@ -48,6 +54,8 @@ export interface MarkdownSelectionSnippet {
   selectedText: string;
   sourceElement: HTMLElement;
   range: Range;
+  sourceStart?: number;
+  sourceEnd?: number;
   sourceLocation?: SelectionSourceLocation;
 }
 
@@ -196,25 +204,41 @@ export function extractMarkdownSnippetsFromSelection(
         continue;
       }
 
+      const sourceRange = rangeText.sourceRange
+        ? trimSourceRangeBoundaryNewlines(source, rangeText.sourceRange)
+        : null;
+      const exactSourceSelection = sourceRange
+        ? source.slice(sourceRange.start, sourceRange.end)
+        : null;
       const markdown =
+        exactSourceSelection ??
         getMarkdownForVisibleSelection(source, rangeText.sourceSelectedText, {
           textBefore: rangeText.textBefore,
           preferExactSource: rangeText.preferExactSource,
           preferRenderedSource:
             rangeText.sourceSelectedText !== rangeText.selectedText,
-        }) ?? rangeText.selectedText;
+        }) ??
+        rangeText.selectedText;
       const normalized = trimBoundaryNewlines(markdown);
       if (normalized.trim()) {
         snippets.push({
           markdown: normalized,
-          selectedText: rangeText.selectedText,
+          selectedText: exactSourceSelection ?? rangeText.selectedText,
           sourceElement: element,
           range: rangeText.range,
-          sourceLocation: getSelectionSourceLocation(
-            source,
-            normalized,
-            registeredSource.context,
-          ),
+          sourceStart: sourceRange?.start,
+          sourceEnd: sourceRange?.end,
+          sourceLocation: sourceRange
+            ? getSelectionSourceLocationForRange(
+                source,
+                sourceRange,
+                registeredSource.context,
+              )
+            : getSelectionSourceLocation(
+                source,
+                normalized,
+                registeredSource.context,
+              ),
         });
       }
     }
@@ -308,18 +332,50 @@ function getSelectionSourceLocation(
     return undefined;
   }
   const sourceEnd = sourceStart + selectedSource.length;
+  return getSelectionSourceLocationForRange(
+    source,
+    { start: sourceStart, end: sourceEnd },
+    context,
+  );
+}
+
+function getSelectionSourceLocationForRange(
+  source: string,
+  sourceRange: SourceOffsetRange,
+  context: MarkdownCopySourceContext | undefined,
+): SelectionSourceLocation | undefined {
+  if (!context || sourceRange.end <= sourceRange.start) return undefined;
   const contentStartLine = context.contentStartLine ?? 1;
   const lineStart =
-    contentStartLine + countNewlines(source.slice(0, sourceStart));
+    contentStartLine + countNewlines(source.slice(0, sourceRange.start));
   const lineEnd =
     contentStartLine +
-    countNewlines(source.slice(0, Math.max(sourceStart, sourceEnd - 1)));
+    countNewlines(
+      source.slice(0, Math.max(sourceRange.start, sourceRange.end - 1)),
+    );
   return {
     projectId: context.projectId,
     filePath: context.filePath,
     lineStart,
     lineEnd,
   };
+}
+
+function trimSourceRangeBoundaryNewlines(
+  source: string,
+  sourceRange: SourceOffsetRange,
+): SourceOffsetRange {
+  let { start, end } = sourceRange;
+  while (start < end && (source[start] === "\n" || source[start] === "\r")) {
+    start += 1;
+  }
+  while (
+    end > start &&
+    (source[end - 1] === "\n" || source[end - 1] === "\r")
+  ) {
+    end -= 1;
+  }
+  return { start, end };
 }
 
 function countNewlines(value: string): number {
@@ -617,6 +673,7 @@ function getRangeTextWithinElement(
       rangeIntersectsNode(clippedRange, sourceElement),
     ),
     range: clippedRange,
+    sourceRange: getRangeSourceOffsets(element, clippedRange),
   };
 }
 

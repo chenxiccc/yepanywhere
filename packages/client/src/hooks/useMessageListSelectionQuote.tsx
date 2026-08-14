@@ -85,6 +85,7 @@ interface MessageListSelectionQuoteState {
 function selectionText(snapshot: SelectionActionSnapshot): string {
   return snapshot.snippets
     .map((snippet, index) => {
+      if (snippet.sourceStart !== undefined) return snippet.selectedText;
       const range = snapshot.ranges[index];
       if (!range) return snippet.selectedText;
       return (
@@ -207,30 +208,6 @@ function selectionSourceTextRects(
   return rects;
 }
 
-function selectionSourceBounds(
-  snippets: readonly MarkdownSelectionSnippet[],
-): Pick<DOMRect, "bottom" | "left" | "right" | "top"> | null {
-  const sourceElements = new Set(
-    snippets.map((snippet) => snippet.sourceElement),
-  );
-  let bounds: Pick<DOMRect, "bottom" | "left" | "right" | "top"> | null = null;
-  for (const sourceElement of sourceElements) {
-    const rect = sourceElement.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) {
-      continue;
-    }
-    bounds = bounds
-      ? {
-          top: Math.min(bounds.top, rect.top),
-          right: Math.max(bounds.right, rect.right),
-          bottom: Math.max(bounds.bottom, rect.bottom),
-          left: Math.min(bounds.left, rect.left),
-        }
-      : rect;
-  }
-  return bounds;
-}
-
 function rectanglesOverlap(
   first: Pick<DOMRect, "bottom" | "left" | "right" | "top">,
   second: Pick<DOMRect, "bottom" | "left" | "right" | "top">,
@@ -262,6 +239,7 @@ export function useSelectionActions({
   );
   const quoteInsertionDraftRef = useRef<string | null>(null);
   const commentAnchorsRef = useRef<readonly CommentAnchor[]>([]);
+  const commentHighlightObserverRef = useRef<MutationObserver | null>(null);
   const draftSubscriptionRef = useRef<(() => void) | null>(null);
   const composerDraftSignalRef = useRef(composerDraftSignal);
   const reconcileDraftChangeRef = useRef<(change: ComposerDraftChange) => void>(
@@ -318,6 +296,42 @@ export function useSelectionActions({
     draftSubscriptionRef.current = null;
   }, []);
 
+  const releaseCommentHighlightObserver = useCallback(() => {
+    commentHighlightObserverRef.current?.disconnect();
+    commentHighlightObserverRef.current = null;
+  }, []);
+
+  const refreshCommentHighlightObserver = useCallback(
+    (anchors: readonly CommentAnchor[]) => {
+      releaseCommentHighlightObserver();
+      const sourceElements = Array.from(
+        new Set(
+          anchors
+            .map((anchor) => anchor.sourceElement)
+            .filter((element) => element.isConnected),
+        ),
+      );
+      const sourceElement = sourceElements[0];
+      const MutationObserverConstructor =
+        sourceElement?.ownerDocument.defaultView?.MutationObserver;
+      if (!sourceElement || !MutationObserverConstructor) {
+        return;
+      }
+      const observer = new MutationObserverConstructor(() => {
+        applyCommentHighlight(commentAnchorsRef.current);
+      });
+      for (const element of sourceElements) {
+        observer.observe(element, {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+      }
+      commentHighlightObserverRef.current = observer;
+    },
+    [applyCommentHighlight, releaseCommentHighlightObserver],
+  );
+
   const refreshDraftSubscription = useCallback(() => {
     releaseDraftSubscription();
     const signal = composerDraftSignalRef.current;
@@ -337,13 +351,19 @@ export function useSelectionActions({
       }
       commentAnchorsRef.current = next;
       applyCommentHighlight(next);
+      refreshCommentHighlightObserver(next);
       if (previous.length === 0 && next.length > 0) {
         refreshDraftSubscription();
       } else if (previous.length > 0 && next.length === 0) {
         releaseDraftSubscription();
       }
     },
-    [applyCommentHighlight, refreshDraftSubscription, releaseDraftSubscription],
+    [
+      applyCommentHighlight,
+      refreshCommentHighlightObserver,
+      refreshDraftSubscription,
+      releaseDraftSubscription,
+    ],
   );
 
   reconcileDraftChangeRef.current = (change) => {
@@ -379,9 +399,14 @@ export function useSelectionActions({
   useEffect(
     () => () => {
       releaseDraftSubscription();
+      releaseCommentHighlightObserver();
       applyCommentHighlight([]);
     },
-    [applyCommentHighlight, releaseDraftSubscription],
+    [
+      applyCommentHighlight,
+      releaseCommentHighlightObserver,
+      releaseDraftSubscription,
+    ],
   );
 
   const applyQuoteAnchors = useCallback(
@@ -630,11 +655,10 @@ export function useSelectionActions({
       const beforeIsClear = firstSnippet
         ? rangeSideIsClear(firstSnippet, "before", firstLineRect)
         : false;
-      const sourceBounds = selectionSourceBounds(snippets) ?? selectionRect;
       const spaceAfter = rootRect.right - lastLineRect.right;
       const spaceBefore = firstLineRect.left - rootRect.left;
-      const spaceBelow = rootRect.bottom - sourceBounds.bottom;
-      const spaceAbove = sourceBounds.top - rootRect.top;
+      const spaceBelow = rootRect.bottom - selectionRect.bottom;
+      const spaceAbove = selectionRect.top - rootRect.top;
       const maxTop = Math.max(0, selectionRoot.clientHeight - buttonSize);
       const maxLeft = Math.max(0, selectionRoot.clientWidth - clusterWidth);
       const centeredLeft =
@@ -664,12 +688,12 @@ export function useSelectionActions({
             SELECTION_ACTION_GAP_PX,
         },
         below: {
-          top: sourceBounds.bottom - rootRect.top + SELECTION_ACTION_GAP_PX,
+          top: selectionRect.bottom - rootRect.top + SELECTION_ACTION_GAP_PX,
           left: centeredLeft,
         },
         above: {
           top:
-            sourceBounds.top -
+            selectionRect.top -
             rootRect.top -
             buttonSize -
             SELECTION_ACTION_GAP_PX,

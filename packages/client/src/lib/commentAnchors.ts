@@ -1,4 +1,5 @@
 import type { MarkdownSelectionSnippet } from "./markdownSelectionCopy";
+import { createRangeFromSourceOffsets } from "./sourceOffsetDom";
 import { generateUUID } from "./uuid";
 
 export interface CommentAnchor {
@@ -8,6 +9,8 @@ export interface CommentAnchor {
   selectedText: string;
   quotedText: string;
   lineSignatures: string[];
+  sourceStart?: number;
+  sourceEnd?: number;
 }
 
 export interface DraftTextChangeMetadata {
@@ -38,10 +41,19 @@ export function createCommentAnchor(
     selectedText: snippet.selectedText,
     quotedText: quoteMarkdown(snippet.markdown),
     lineSignatures: getQuoteLineSignatures(snippet.markdown),
+    sourceStart: snippet.sourceStart,
+    sourceEnd: snippet.sourceEnd,
   };
 }
 
 export function getCommentAnchorRange(anchor: CommentAnchor): Range | null {
+  if (anchor.sourceStart !== undefined && anchor.sourceEnd !== undefined) {
+    const offsetRange = createRangeFromSourceOffsets(anchor.sourceElement, {
+      start: anchor.sourceStart,
+      end: anchor.sourceEnd,
+    });
+    if (offsetRange) return offsetRange;
+  }
   if (isPaintableRange(anchor.range)) {
     return anchor.range;
   }

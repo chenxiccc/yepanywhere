@@ -5,6 +5,7 @@ import {
   getMarkdownSnippetForSubElement,
   registerMarkdownCopySource,
 } from "../markdownSelectionCopy";
+import { annotateShikiSourceOffsets } from "../shikiHtml";
 
 describe("getMarkdownForVisibleSelection", () => {
   it("maps Quarto include labels and paths back to their source", () => {
@@ -97,6 +98,53 @@ describe("getMarkdownForVisibleSelection", () => {
 });
 
 describe("extractMarkdownSnippetsFromSelection", () => {
+  it("restores reading-order newlines from tokenized Shiki selections", () => {
+    const registeredSource = "alpha beta gamma\ndelta epsilon";
+    const root = document.createElement("div");
+    const source = document.createElement("div");
+    source.innerHTML =
+      annotateShikiSourceOffsets(
+        '<pre class="shiki"><code><span class="line"><span>alpha </span><span>beta gamma</span></span><span class="line"><span>delta</span><span> epsilon</span></span></code></pre>',
+        registeredSource,
+      ) ?? "";
+    root.append(source);
+    document.body.append(root);
+    const unregister = registerMarkdownCopySource(source, registeredSource, {
+      projectId: "project-1",
+      filePath: "src/example.ts",
+      contentStartLine: 10,
+    });
+    const beta = source.querySelectorAll(".line > span")[1]?.firstChild;
+    const delta = source.querySelectorAll(".line > span")[2]?.firstChild;
+    expect(beta).toBeTruthy();
+    expect(delta).toBeTruthy();
+    const range = document.createRange();
+    range.setStart(beta as Node, 0);
+    range.setEnd(delta as Node, "delta".length);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(extractMarkdownSnippetsFromSelection(root)).toMatchObject([
+      {
+        markdown: "beta gamma\ndelta",
+        selectedText: "beta gamma\ndelta",
+        sourceStart: 6,
+        sourceEnd: 22,
+        sourceLocation: {
+          projectId: "project-1",
+          filePath: "src/example.ts",
+          lineStart: 10,
+          lineEnd: 11,
+        },
+      },
+    ]);
+
+    selection?.removeAllRanges();
+    unregister();
+    root.remove();
+  });
+
   it("returns per-source markdown snippets for a covered selection", () => {
     const root = document.createElement("div");
     const source = document.createElement("div");

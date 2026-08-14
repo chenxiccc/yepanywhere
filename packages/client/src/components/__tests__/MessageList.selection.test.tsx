@@ -563,6 +563,129 @@ describe("MessageList selection and copy", () => {
     expect(onQuoteSelection).toHaveBeenCalledWith("> Modal selected text\n");
   });
 
+  it("keeps a modal selection fallback beside the range, not the tall source", async () => {
+    mockPointerCoarse(false);
+    const originalGetClientRects = Object.getOwnPropertyDescriptor(
+      Range.prototype,
+      "getClientRects",
+    );
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      configurable: true,
+      value: () => [
+        {
+          top: 100,
+          right: 760,
+          bottom: 120,
+          left: 20,
+          width: 740,
+          height: 20,
+        },
+      ],
+    });
+
+    try {
+      render(
+        <>
+          <MessageList
+            messages={[assistantMessage("assistant-1", "Transcript text")]}
+            onQuoteSelection={() => "> Modal selected text\n"}
+          />
+          <QuoteableModal />
+        </>,
+      );
+
+      const modal = document.querySelector<HTMLElement>(".modal");
+      const selectedElement = screen.getByText("Modal selected text");
+      const selectedText = selectedElement.firstChild;
+      expect(modal).toBeTruthy();
+      expect(selectedText).toBeTruthy();
+      if (!modal || !selectedText)
+        throw new Error("Modal selection is missing");
+      Object.defineProperties(modal, {
+        clientWidth: { configurable: true, value: 800 },
+        clientHeight: { configurable: true, value: 800 },
+      });
+      modal.getBoundingClientRect = () =>
+        ({
+          top: 0,
+          right: 800,
+          bottom: 800,
+          left: 0,
+          width: 800,
+          height: 800,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      selectedElement.getBoundingClientRect = () =>
+        ({
+          top: 20,
+          right: 780,
+          bottom: 700,
+          left: 20,
+          width: 760,
+          height: 680,
+          x: 20,
+          y: 20,
+          toJSON: () => ({}),
+        }) as DOMRect;
+
+      const range = document.createRange();
+      range.setStart(selectedText, "Modal ".length);
+      range.setEnd(selectedText, "Modal selected".length);
+      Object.defineProperties(range, {
+        getBoundingClientRect: {
+          configurable: true,
+          value: () => ({
+            top: 100,
+            right: 760,
+            bottom: 120,
+            left: 20,
+            width: 740,
+            height: 20,
+          }),
+        },
+        getClientRects: {
+          configurable: true,
+          value: () => [
+            {
+              top: 100,
+              right: 760,
+              bottom: 120,
+              left: 20,
+              width: 740,
+              height: 20,
+            },
+          ],
+        },
+      });
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+
+      act(() => document.dispatchEvent(new Event("selectionchange")));
+
+      const quoteButton = await screen.findByRole("button", {
+        name: "Quote reply",
+      });
+      const cluster = quoteButton.closest<HTMLElement>(
+        '[data-selection-action-cluster="true"]',
+      );
+      expect(cluster?.dataset.selectionActionPlacement).toBe("below");
+      expect(cluster?.style.top).toBe("126px");
+    } finally {
+      if (originalGetClientRects) {
+        Object.defineProperty(
+          Range.prototype,
+          "getClientRects",
+          originalGetClientRects,
+        );
+      } else {
+        Reflect.deleteProperty(Range.prototype, "getClientRects");
+      }
+    }
+  });
+
   it("copies rendered document selections as source markdown", () => {
     render(
       <>

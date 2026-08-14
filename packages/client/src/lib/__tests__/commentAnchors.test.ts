@@ -7,8 +7,48 @@ import {
   getDraftQuoteLineSignatures,
   getDraftTextChangeMetadata,
 } from "../commentAnchors";
+import { annotateShikiSourceOffsets } from "../shikiHtml";
 
 describe("comment anchors", () => {
+  it("re-resolves repeated highlighted text from exact source offsets", () => {
+    const sourceText = "repeat first\nrepeat second";
+    const sourceElement = document.createElement("div");
+    const renderSource = () => {
+      sourceElement.innerHTML =
+        annotateShikiSourceOffsets(
+          '<pre><code><span class="line"><span>repeat</span> first</span><span class="line"><span>repeat</span> second</span></code></pre>',
+          sourceText,
+        ) ?? "";
+    };
+    renderSource();
+    document.body.append(sourceElement);
+    const secondRepeat =
+      sourceElement.querySelectorAll(".line > span")[1]?.firstChild;
+    expect(secondRepeat).toBeTruthy();
+    const staleRange = document.createRange();
+    staleRange.setStart(secondRepeat as Node, 0);
+    staleRange.setEnd(secondRepeat as Node, "repeat".length);
+    const anchor = createCommentAnchor({
+      markdown: "repeat",
+      selectedText: "repeat",
+      sourceElement,
+      range: staleRange,
+      sourceStart: 13,
+      sourceEnd: 19,
+    });
+
+    renderSource();
+    const resolved = getCommentAnchorRange(anchor);
+    expect(resolved?.toString()).toBe("repeat");
+    expect(
+      resolved?.startContainer.parentElement
+        ?.closest(".line")
+        ?.getAttribute("data-ya-source-start"),
+    ).toBe("13");
+
+    sourceElement.remove();
+  });
+
   it("resolves a fresh source range after rendered paragraph text is replaced", () => {
     const sourceElement = document.createElement("div");
     const replacementParagraph = document.createElement("p");

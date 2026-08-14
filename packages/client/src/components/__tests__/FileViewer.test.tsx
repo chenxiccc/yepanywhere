@@ -421,6 +421,28 @@ describe("FileViewer", () => {
       ),
     ).toBe(false);
     expect(container.querySelector(".highlighted-line")).toBeNull();
+    const sourceLines = container.querySelectorAll<HTMLElement>(
+      ".shiki-container .line",
+    );
+    expect(sourceLines[1]?.dataset.yaSourceStart).toBe("4");
+    expect(sourceLines[1]?.dataset.yaSourceEnd).toBe("7");
+    const selectedRange = document.createRange();
+    selectedRange.setStart(sourceLines[1]?.firstChild as Node, 0);
+    selectedRange.setEnd(sourceLines[2]?.firstChild as Node, "three".length);
+    const sourceSelection = document.getSelection();
+    sourceSelection?.removeAllRanges();
+    sourceSelection?.addRange(selectedRange);
+    const viewerBody =
+      container.querySelector<HTMLElement>(".file-viewer-body");
+    expect(extractMarkdownSnippetsFromSelection(viewerBody!)).toMatchObject([
+      {
+        markdown: "two\nthree",
+        selectedText: "two\nthree",
+        sourceStart: 4,
+        sourceEnd: 13,
+      },
+    ]);
+    sourceSelection?.removeAllRanges();
     expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(

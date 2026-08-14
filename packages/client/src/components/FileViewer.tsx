@@ -28,7 +28,10 @@ import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { downloadBlob } from "../lib/imageActions";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
-import { compactShikiLineBreaks } from "../lib/shikiHtml";
+import {
+  annotateShikiSourceOffsets,
+  compactShikiLineBreaks,
+} from "../lib/shikiHtml";
 import {
   getAbsoluteFilePath,
   getProjectRelativePath,
@@ -498,7 +501,10 @@ export const FileViewer = memo(function FileViewer({
       effectiveLineNumber,
       effectiveLineEnd,
     );
-    return compactShikiLineBreaks(annotated);
+    return annotateShikiSourceOffsets(
+      compactShikiLineBreaks(annotated),
+      fileData?.content,
+    );
   }, [effectiveLineEnd, effectiveLineNumber, fileData]);
   useLocalMediaInlinePreviews(
     markdownPreviewRef,
