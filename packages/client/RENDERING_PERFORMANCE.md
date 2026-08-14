@@ -81,6 +81,10 @@ stable component identity, and lower update cadence.
   queued-message UI, or composer-adjacent state are also covered.
 - Long transcript work must preserve row identity for unchanged history and
   should avoid front-to-back scans on hot current-message updates.
+- Native transcript scroll handlers perform only constant-time follow/intent
+  bookkeeping and schedule one trailing position read. Transcript-position
+  context is measured after 200 ms of scroll rest, indexes rendered rows once,
+  and must not publish intermediate positions through session-page React state.
 - Ordinary session-composer edits are local to the composer. They must not
   render `MessageList`, `RenderItemComponent`, `MessageAge`, or historical
   transcript rows, regardless of transcript size or whether the edit crosses
@@ -146,9 +150,10 @@ phases:
 - `streaming-markdown.event`, `streaming-markdown.flush`, and
   `streaming-markdown.flushed-event`
 - `message-list.preprocess`, `message-list.conversation-projection`,
-  `message-list.group`, and `message-list.commit`; the commit duration spans
-  from entry into the `MessageList` render through its layout effect after the
-  DOM commit
+  `message-list.group`, `message-list.commit`, and
+  `message-list.scroll-position`; the commit duration spans from entry into the
+  `MessageList` render through its layout effect after the DOM commit, while
+  scroll-position measures the one trailing transcript-position read
 
 The recorder and `window.__YA_BROWSER_DEBUG__.performance` API exist only while
 the visible red lease control is active. Application callsites perform only a
@@ -193,6 +198,15 @@ frame in 12.3 ms, and had one 76.7 ms long animation frame in the following
 five seconds. These were contended diagnostic samples rather than calibrated
 ratchet measurements; they support the scheduling decision and do not define a
 portable latency ceiling.
+
+The same consented tab later isolated scrolled-back position tracking as a
+separate scroll-rate owner. With roughly 980 rendered rows, one scroll event
+performed 165 full render-row queries while the bottom-follow path performed
+none. An 8,000-pixel out-and-back probe took about 5.3 seconds normally; a
+causal control that bypassed only those repeated row queries took 0.70 seconds,
+with steady steps at 21–29 ms after two transition frames. This established the
+scroll-rest measurement and one-index-per-measurement invariant above; it is
+diagnostic evidence, not a portable timing ceiling.
 
 ## Review Checklist
 

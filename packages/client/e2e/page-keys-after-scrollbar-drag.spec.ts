@@ -6,6 +6,7 @@ import { e2ePaths, expect, test } from "./fixtures.js";
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
 const sessionId = "transcript-specimen-001";
+const paginationSessionId = "page-key-pagination-001";
 
 test.use({ serviceWorkers: "block" });
 
@@ -123,3 +124,36 @@ test("PageUp and PageDown keep scrolling after a native scrollbar drag", async (
   await page.setViewportSize({ width: 375, height: 812 });
   await capture(page, "page-keys-scrollbar-focus-mobile-375x812.png");
 });
+
+for (const key of ["PageUp", "Home"] as const) {
+  test(`${key} loads older history at the loaded boundary`, async ({
+    page,
+    baseURL,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("yep-anywhere-conversation-view-enabled", "true");
+      localStorage.setItem("yep-anywhere-conversation-view-turn-limit", "10");
+      Object.defineProperty(window, "IntersectionObserver", {
+        configurable: true,
+        value: undefined,
+      });
+    });
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(
+      `${baseURL}/projects/${projectId}/sessions/${paginationSessionId}`,
+    );
+    await dismissOnboardingIfVisible(page);
+    const transcript = await waitForTranscript(page);
+    await expect(page.locator(".load-older-button")).toBeAttached();
+    const oldestRequest = transcript.getByText("Oldest keyboard request");
+    await expect(oldestRequest).toHaveCount(0);
+
+    await transcript.focus();
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await page.keyboard.press(key);
+
+    await expect(oldestRequest).toBeAttached();
+  });
+}

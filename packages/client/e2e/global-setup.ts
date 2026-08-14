@@ -252,6 +252,38 @@ export default async function globalSetup() {
   );
   console.log(`[E2E] Created transcript specimen at ${transcriptSpecimenFile}`);
 
+  const pageKeyPaginationFile = join(
+    mockSessionDir,
+    "page-key-pagination-001.jsonl",
+  );
+  const pageKeyPaginationMessages = Array.from({ length: 30 }, (_, index) => ({
+    type: "user",
+    ...(index === 0 ? { cwd: mockProjectPath } : {}),
+    message: {
+      role: "user",
+      content:
+        index === 0
+          ? "Oldest keyboard request"
+          : index === 10
+            ? "Intermediate keyboard request"
+            : index === 29
+              ? "Current keyboard request"
+              : `Keyboard request ${index + 1}`,
+    },
+    timestamp: `2026-01-02T00:00:${String(index).padStart(2, "0")}.000Z`,
+    uuid: `page-key-user-${index + 1}`,
+    ...(index > 0 ? { parentUuid: `page-key-user-${index}` } : {}),
+  }));
+  writeFileSync(
+    pageKeyPaginationFile,
+    pageKeyPaginationMessages
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
+  );
+  console.log(
+    `[E2E] Created page-key pagination fixture at ${pageKeyPaginationFile}`,
+  );
+
   // Create the file-browser fixture before the server starts so its initial
   // project snapshot sees it even when no installed provider activates a
   // filesystem watcher (as on a clean CI runner).

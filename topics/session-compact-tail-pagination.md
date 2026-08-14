@@ -122,3 +122,10 @@ position remains stable. After that demand settles, a continuously visible
 boundary does not start another demand: it must leave and re-enter the
 scrollport, preventing automatic history drainage beyond the user-turn or
 safety boundary.
+
+Keyboard navigation at the loaded boundary is explicit demand, independent of
+that passive visibility latch. A non-repeated `PageUp` that settles at the top
+starts one older-history demand. Previous-turn `Home` starts one demand when no
+earlier loaded user turn exists. Key repeat does not start additional demands;
+after a batch settles, another distinct key press may request the next bounded
+batch. The same prepend anchoring and per-demand user-turn/safety limits apply.

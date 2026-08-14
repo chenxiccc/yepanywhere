@@ -675,6 +675,121 @@ describe("MessageList scroll and follow", () => {
     });
   });
 
+  it("indexes transcript rows once after scrolling settles", () => {
+    const onTranscriptPositionTimestampChange = vi.fn();
+    const assistantEnd = "2026-04-26T12:04:00.000Z";
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request", "2026-04-26T12:00:00.000Z"),
+          assistantMessage("assistant-1", "earlier response", assistantEnd),
+          userMessage("user-2", "current request", "2026-04-26T12:05:00.000Z"),
+          assistantMessage(
+            "assistant-2",
+            "current response",
+            "2026-04-26T12:06:00.000Z",
+          ),
+        ]}
+        onTranscriptPositionTimestampChange={
+          onTranscriptPositionTimestampChange
+        }
+      />,
+    );
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 240,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    container.getBoundingClientRect = () => rectFor(0, 300);
+    const userRow = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const assistantRow = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    const currentUserRow = container.querySelector<HTMLElement>(
+      '[data-render-id="user-2"]',
+    );
+    const currentAssistantRow = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-2"]',
+    );
+    const assistantTurns =
+      container.querySelectorAll<HTMLElement>(".assistant-turn");
+    const messageList =
+      container.querySelector<HTMLDivElement>(".message-list");
+    expect(userRow).toBeTruthy();
+    expect(assistantRow).toBeTruthy();
+    expect(currentUserRow).toBeTruthy();
+    expect(currentAssistantRow).toBeTruthy();
+    expect(assistantTurns).toHaveLength(2);
+    expect(messageList).toBeTruthy();
+    (userRow as HTMLElement).getBoundingClientRect = () => rectFor(-220, 40);
+    (assistantRow as HTMLElement).getBoundingClientRect = () => rectFor(80, 70);
+    (currentUserRow as HTMLElement).getBoundingClientRect = () =>
+      rectFor(220, 40);
+    (currentAssistantRow as HTMLElement).getBoundingClientRect = () =>
+      rectFor(380, 80);
+    assistantTurns.item(0).getBoundingClientRect = () => rectFor(80, 70);
+    assistantTurns.item(1).getBoundingClientRect = () => rectFor(380, 80);
+    const rowQuerySpy = vi.spyOn(
+      messageList as HTMLDivElement,
+      "querySelectorAll",
+    );
+    fireEvent.wheel(container, { deltaY: -120 });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.scroll(container);
+      fireEvent.scroll(container);
+      fireEvent.scroll(container);
+      expect(
+        rowQuerySpy.mock.calls.filter(
+          ([selector]) => selector === "[data-render-id]",
+        ),
+      ).toHaveLength(0);
+
+      act(() => vi.advanceTimersByTime(199));
+      expect(
+        rowQuerySpy.mock.calls.filter(
+          ([selector]) => selector === "[data-render-id]",
+        ),
+      ).toHaveLength(0);
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(
+        rowQuerySpy.mock.calls.filter(
+          ([selector]) => selector === "[data-render-id]",
+        ),
+      ).toHaveLength(1);
+      expect(onTranscriptPositionTimestampChange).toHaveBeenLastCalledWith(
+        new Date(assistantEnd).getTime(),
+      );
+    } finally {
+      vi.useRealTimers();
+      rowQuerySpy.mockRestore();
+    }
+  });
+
   it("uses the middle visible row when no turn end is visible", async () => {
     const onTranscriptPositionTimestampChange = vi.fn();
     const assistantMiddle = "2026-04-26T12:05:00.000Z";

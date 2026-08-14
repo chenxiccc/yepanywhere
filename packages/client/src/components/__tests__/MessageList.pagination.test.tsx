@@ -135,6 +135,55 @@ describe("MessageList older-page pagination", () => {
     expect(onLoadOlderMessages).toHaveBeenCalledTimes(2);
   });
 
+  it("treats PageUp and previous-turn Home as explicit older demand", () => {
+    const observed = installIntersectionObserverMock();
+    const onLoadOlderMessages = vi.fn();
+    const { container } = render(
+      <MessageList
+        messages={[userMessage("user-1", "Current request")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="user-1"
+        onLoadOlderMessages={onLoadOlderMessages}
+      />,
+    );
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+
+    act(() => reportIntersection(observed, true));
+    expect(onLoadOlderMessages).toHaveBeenCalledTimes(1);
+
+    const frameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+    try {
+      fireEvent.keyDown(container, { key: "PageUp", code: "PageUp" });
+      expect(onLoadOlderMessages).toHaveBeenCalledTimes(2);
+      fireEvent.keyDown(container, {
+        key: "PageUp",
+        code: "PageUp",
+        repeat: true,
+      });
+      expect(onLoadOlderMessages).toHaveBeenCalledTimes(2);
+
+      fireEvent.keyDown(window, { key: "Home", code: "Home" });
+      expect(onLoadOlderMessages).toHaveBeenCalledTimes(3);
+      fireEvent.keyDown(window, {
+        key: "Home",
+        code: "Home",
+        repeat: true,
+      });
+      expect(onLoadOlderMessages).toHaveBeenCalledTimes(3);
+    } finally {
+      frameSpy.mockRestore();
+    }
+  });
+
   it("waits for the current page to settle before loading a new cursor", async () => {
     const observed = installIntersectionObserverMock();
     let resolveFirstLoad: (() => void) | undefined;

@@ -158,9 +158,9 @@ function getSessionIsearchShortcutScope(
 }
 
 function getVisibleTurnEndTimestampMs(
-  messageList: HTMLDivElement,
   scrollContainer: HTMLElement,
   groups: readonly RenderTurnGroup[],
+  rowsById: ReadonlyMap<string, HTMLElement>,
 ): number | null {
   const containerRect = scrollContainer.getBoundingClientRect();
   let timestampMs: number | null = null;
@@ -174,7 +174,7 @@ function getVisibleTurnEndTimestampMs(
     if (!item) {
       continue;
     }
-    const row = findRenderRow(messageList, item.id);
+    const row = rowsById.get(item.id);
     if (!row) {
       continue;
     }
@@ -191,9 +191,9 @@ function getVisibleTurnEndTimestampMs(
 }
 
 function getMiddleVisibleTimestampMs(
-  messageList: HTMLDivElement,
   scrollContainer: HTMLElement,
   items: readonly RenderItem[],
+  rows: readonly HTMLElement[],
 ): number | null {
   const containerRect = scrollContainer.getBoundingClientRect();
   const middleY = containerRect.top + containerRect.height / 2;
@@ -207,9 +207,7 @@ function getMiddleVisibleTimestampMs(
   }
 
   let best: { distance: number; timestampMs: number } | null = null;
-  for (const row of messageList.querySelectorAll<HTMLElement>(
-    "[data-render-id]",
-  )) {
+  for (const row of rows) {
     const id = row.dataset.renderId;
     if (!id) {
       continue;
@@ -246,9 +244,19 @@ function getTranscriptPositionTimestampMs(
   groups: readonly RenderTurnGroup[],
   items: readonly RenderItem[],
 ): number | null {
+  const rows = Array.from(
+    messageList.querySelectorAll<HTMLElement>("[data-render-id]"),
+  );
+  const rowsById = new Map<string, HTMLElement>();
+  for (const row of rows) {
+    const id = row.dataset.renderId;
+    if (id && !rowsById.has(id)) {
+      rowsById.set(id, row);
+    }
+  }
   return (
-    getVisibleTurnEndTimestampMs(messageList, scrollContainer, groups) ??
-    getMiddleVisibleTimestampMs(messageList, scrollContainer, items)
+    getVisibleTurnEndTimestampMs(scrollContainer, groups, rowsById) ??
+    getMiddleVisibleTimestampMs(scrollContainer, items, rows)
   );
 }
 
@@ -1062,6 +1070,8 @@ export const MessageList = memo(function MessageList({
   const loadOlderBoundaryRef = useRef<HTMLDivElement>(null);
   const automaticOlderLoadAttemptRef = useRef<string | null>(null);
   const automaticOlderLoadRequiresExitRef = useRef(false);
+  const loadOlderOnDemandRef = useRef<() => void>(() => {});
+  const keyboardOlderLoadFrameRef = useRef<number | null>(null);
   const pendingOlderPageScrollRef = useRef<{
     wasAtBottom: boolean;
     scrollTop: number;
@@ -1632,35 +1642,37 @@ export const MessageList = memo(function MessageList({
     inert,
     turnGroups,
   });
-  const updateScrollPositionTimestamp = useCallback(
-    (options: { atBottom?: boolean } = {}) => {
-      const content = containerRef.current;
-      const container = content?.parentElement;
-      if (!content || !container || options.atBottom) {
-        setScrollPositionTimestampMs(null);
-        return;
-      }
-      setScrollPositionTimestampMs(
-        getTranscriptPositionTimestampMs(
-          content,
-          container,
-          turnGroups,
-          displayRenderItems,
-        ),
-      );
-    },
-    [displayRenderItems, turnGroups],
-  );
-
-  // Latest render data for scroll-time reads: the capture callback stays
-  // identity-stable so the scroll listener does not re-attach on every
-  // transcript change.
+  // Latest render data for settled scroll reads. Scrolling only schedules one
+  // trailing measurement; it never scans the transcript DOM on the hot path.
   const displayRenderItemsRef = useRef(displayRenderItems);
   displayRenderItemsRef.current = displayRenderItems;
-  const updateScrollPositionTimestampRef = useRef(
-    updateScrollPositionTimestamp,
-  );
-  updateScrollPositionTimestampRef.current = updateScrollPositionTimestamp;
+  const turnGroupsRef = useRef(turnGroups);
+  turnGroupsRef.current = turnGroups;
+  const updateScrollPositionTimestamp = useCallback(() => {
+    const content = containerRef.current;
+    const container = content?.parentElement;
+    if (!content || !container) return;
+    if (isAtScrollBottom(container, content)) {
+      setScrollPositionTimestampMs(null);
+      return;
+    }
+    const startedAtMs = isBrowserDebugPerformanceRecording()
+      ? highResolutionNowMs()
+      : null;
+    const timestampMs = getTranscriptPositionTimestampMs(
+      content,
+      container,
+      turnGroupsRef.current,
+      displayRenderItemsRef.current,
+    );
+    if (startedAtMs !== null) {
+      recordBrowserDebugPerformanceMetric("message-list.scroll-position", {
+        durationMs: highResolutionNowMs() - startedAtMs,
+        category: "settled",
+      });
+    }
+    setScrollPositionTimestampMs(timestampMs);
+  }, []);
 
   const captureScrollSnapshot = useCallback(
     (container: HTMLElement, content: HTMLDivElement) => {
@@ -1684,8 +1696,10 @@ export const MessageList = memo(function MessageList({
   );
 
   useEffect(() => {
-    updateScrollPositionTimestamp({ atBottom: isScrolledToBottom });
-  }, [isScrolledToBottom, updateScrollPositionTimestamp]);
+    if (isScrolledToBottom) {
+      setScrollPositionTimestampMs(null);
+    }
+  }, [isScrolledToBottom]);
 
   // Row-start times for the transcript hover override: hovering a row (or a
   // turn-rail marker, which wins) retargets the composer "at N ago" from the
@@ -2032,13 +2046,17 @@ export const MessageList = memo(function MessageList({
       scrollSnapshotPublishTimerRef.current = null;
     }
   }, []);
-  const schedulePublishScrollSnapshot = useCallback(() => {
+  const publishSettledScrollState = useCallback(() => {
+    updateScrollPositionTimestamp();
+    publishScrollSnapshot();
+  }, [publishScrollSnapshot, updateScrollPositionTimestamp]);
+  const scheduleSettledScrollState = useCallback(() => {
     clearScrollSnapshotPublishTimer();
     scrollSnapshotPublishTimerRef.current = setTimeout(() => {
       scrollSnapshotPublishTimerRef.current = null;
-      publishScrollSnapshot();
+      publishSettledScrollState();
     }, SCROLL_SNAPSHOT_PUBLISH_DEBOUNCE_MS);
-  }, [clearScrollSnapshotPublishTimer, publishScrollSnapshot]);
+  }, [clearScrollSnapshotPublishTimer, publishSettledScrollState]);
 
   // Leave-time capture: flush the pending trailing capture and publish once
   // on unmount or on becoming inert — not on listener re-attachment.
@@ -2406,8 +2424,8 @@ export const MessageList = memo(function MessageList({
     shouldAutoScrollRef.current = false;
     setIsScrolledToBottom(false);
     reportFollowingBottom(false);
-    updateScrollPositionTimestamp({ atBottom: false });
-  }, [reportFollowingBottom, updateScrollPositionTimestamp]);
+    scheduleSettledScrollState();
+  }, [reportFollowingBottom, scheduleSettledScrollState]);
 
   const jumpToSearchTarget = useCallback(
     (targetId: string) => {
@@ -2433,7 +2451,7 @@ export const MessageList = memo(function MessageList({
   }, [forceScrollToCurrent]);
 
   const navigateToAdjacentHiddenUserTurn = useCallback(
-    (direction: "previous" | "next") => {
+    (direction: "previous" | "next", requestOlderWhenMissing = true) => {
       const messageList = containerRef.current;
       const scrollContainer = messageList?.parentElement;
       if (!messageList || !scrollContainer) return;
@@ -2443,16 +2461,21 @@ export const MessageList = memo(function MessageList({
         scrollContainer,
         direction,
       );
-      if (!targetId) return;
+      if (!targetId) {
+        if (direction === "previous" && requestOlderWhenMissing) {
+          loadOlderOnDemandRef.current();
+        }
+        return;
+      }
       reportFollowingBottom(false);
-      updateScrollPositionTimestamp({ atBottom: false });
       scrollToRenderId(targetId, "auto", "start", true);
+      scheduleSettledScrollState();
     },
     [
       getNavigatorAnchors,
       reportFollowingBottom,
+      scheduleSettledScrollState,
       scrollToRenderId,
-      updateScrollPositionTimestamp,
     ],
   );
 
@@ -2486,7 +2509,10 @@ export const MessageList = memo(function MessageList({
       if (turnNavigationDirection) {
         event.preventDefault();
         event.stopPropagation();
-        navigateToAdjacentHiddenUserTurn(turnNavigationDirection);
+        navigateToAdjacentHiddenUserTurn(
+          turnNavigationDirection,
+          !event.repeat,
+        );
         return;
       }
       if (isCtrlKeyShortcut(event, "o", "KeyO")) {
@@ -2630,6 +2656,11 @@ export const MessageList = memo(function MessageList({
     onLoadOlderMessages,
     preserveScrollAfterTranscriptHeightChange,
   ]);
+  loadOlderOnDemandRef.current = () => {
+    if (!pendingOlderPageScrollRef.current) {
+      handleLoadOlder();
+    }
+  };
 
   useLayoutEffect(() => {
     if (olderPageLoadCompletionRevision === 0) return;
@@ -2746,12 +2777,11 @@ export const MessageList = memo(function MessageList({
     }
     setIsScrolledToBottom(atBottom);
     reportFollowingBottom(atBottom);
-    updateScrollPositionTimestampRef.current({ atBottom });
-    schedulePublishScrollSnapshot();
+    scheduleSettledScrollState();
   }, [
     clearForcedCurrentScrollTimers,
     reportFollowingBottom,
-    schedulePublishScrollSnapshot,
+    scheduleSettledScrollState,
   ]);
 
   // Attach scroll listener to parent container
@@ -2850,6 +2880,18 @@ export const MessageList = memo(function MessageList({
       ) {
         stopFollowingForUserScroll(container);
       }
+      if (
+        !event.repeat &&
+        (event.key === "PageUp" || event.code === "PageUp") &&
+        keyboardOlderLoadFrameRef.current === null
+      ) {
+        keyboardOlderLoadFrameRef.current = requestAnimationFrame(() => {
+          keyboardOlderLoadFrameRef.current = null;
+          if (container.scrollTop <= 1) {
+            loadOlderOnDemandRef.current();
+          }
+        });
+      }
     };
 
     container.addEventListener("wheel", handleWheel, { passive: true });
@@ -2874,6 +2916,10 @@ export const MessageList = memo(function MessageList({
       container.removeEventListener("touchcancel", handleTouchEnd);
       container.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown, true);
+      if (keyboardOlderLoadFrameRef.current !== null) {
+        cancelAnimationFrame(keyboardOlderLoadFrameRef.current);
+        keyboardOlderLoadFrameRef.current = null;
+      }
     };
   }, [inert, stopFollowingForUserScroll]);
 
@@ -3094,7 +3140,6 @@ export const MessageList = memo(function MessageList({
       shouldAutoScrollRef.current = false;
       setIsScrolledToBottom(false);
       reportFollowingBottom(false);
-      updateScrollPositionTimestamp({ atBottom: false });
       setNewOutputBelowVisible(
         initialScrollSnapshot.atBottom &&
           container.scrollHeight >
@@ -3106,6 +3151,7 @@ export const MessageList = memo(function MessageList({
     isInitialLoadRef.current = false;
     requestAnimationFrame(() => {
       isProgrammaticScrollRef.current = false;
+      updateScrollPositionTimestamp();
       publishScrollSnapshot();
     });
   }, [
