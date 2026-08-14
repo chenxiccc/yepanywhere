@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../clientSummaryStore";
 import {
   clearRouteRetentionForSource,
@@ -6,6 +6,7 @@ import {
   readRouteRetention,
   readRouteRetentionResult,
   resetRouteRetentionForTests,
+  subscribeRouteRetention,
   writeRouteRetention,
 } from "../routeRetention";
 
@@ -73,6 +74,28 @@ describe("routeRetention", () => {
       value: null,
       missReason: "expired",
     });
+  });
+
+  it("does not publish while a quiet external-store read observes expiry", () => {
+    const key = {
+      sourceKey: SOURCE_A,
+      routeId: "git-status:file-projections",
+      projectId: "project-a",
+    };
+    writeRouteRetention(key, { statusKey: "old" }, { ttlMs: 10, nowMs: 0 });
+    const listener = vi.fn();
+    const unsubscribe = subscribeRouteRetention(listener);
+
+    expect(
+      readRouteRetention(key, {
+        nowMs: 11,
+        touch: false,
+        recordDiagnostics: false,
+      }),
+    ).toBeNull();
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
   });
 
   it("evicts least-recently-used entries when over the entry cap", () => {

@@ -1,9 +1,17 @@
-import { act, cleanup, renderHook } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 import type {
   GitFileProjectionManifest,
   GitStatusInfo,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FileVersionControlLinks } from "../../components/FileDiffViewLinks";
+import { I18nProvider } from "../../i18n";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
@@ -76,6 +84,21 @@ const MANIFEST: GitFileProjectionManifest = {
 function useSubject(path: string) {
   useVersion();
   return useFileVersionControl("project-a", path);
+}
+
+function VersionLinksFixture({ count }: { count: number }) {
+  useVersion();
+  return (
+    <I18nProvider>
+      {Array.from({ length: count }, (_, index) => (
+        <FileVersionControlLinks
+          key={index}
+          filePath="src/worktree.ts"
+          projectId="project-a"
+        />
+      ))}
+    </I18nProvider>
+  );
 }
 
 async function settle() {
@@ -152,5 +175,23 @@ describe("useFileVersionControl", () => {
       worktreeFile: null,
       cumulativeFile: null,
     });
+  });
+
+  it("mounts shared version links without publishing expired snapshots during render", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const rendered = render(<VersionLinksFixture count={3} />);
+    await settle();
+    expect(screen.getAllByText("vs HEAD")).toHaveLength(3);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_001);
+    });
+    rendered.rerender(<VersionLinksFixture count={6} />);
+    await settle();
+
+    expect(screen.getAllByText("vs HEAD")).toHaveLength(6);
+    expect(consoleError).not.toHaveBeenCalled();
   });
 });

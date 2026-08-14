@@ -131,6 +131,10 @@ Required behavior:
   parameter changes
 - keep approximate memory accounting for large entries
 - publish developer diagnostics for retained entries, evictions, and misses
+- keep React external-store snapshot reads quiet: observing an expired entry
+  returns a miss without mutating the registry or notifying mounted
+  subscribers during render. Ordinary reads and the next registry write own
+  expiry diagnostics and reclamation.
 
 This registry should not own long transcript arrays by default. It should own
 small view-state records and delegate bulky data to the class-specific owner.

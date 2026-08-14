@@ -331,6 +331,13 @@ export function readRouteRetentionResult<T>(
   }
 
   if (entry.expiresAt <= at) {
+    if (options.touch === false && !recordDiagnostics) {
+      // `useSyncExternalStore` snapshot readers use this quiet form. React may
+      // call them during render, so observing expiry must not mutate the store
+      // or synchronously notify another mounted subscriber. Ordinary reads and
+      // the next write still reclaim the expired entry.
+      return { value: null, missReason: "expired" };
+    }
     deleteEntry(entry.key, "expired", at);
     if (recordDiagnostics) {
       recordEvent({
