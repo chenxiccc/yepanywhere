@@ -47,6 +47,10 @@ function getRemoteClientPort(): number {
   return getPort("remote-port", "Remote client");
 }
 
+function getRemotePreviewPort(): number {
+  return getPort("remote-preview-port", "Remote preview");
+}
+
 function getRelayPort(): number {
   if (
     ["0", "false", "no"].includes(
@@ -237,6 +241,7 @@ interface TestFixtures {
   maintenanceURL: string;
   wsURL: string;
   remoteClientURL: string;
+  remotePreviewURL: string;
   relayPort: number;
   relayWsURL: string;
 }
@@ -261,6 +266,11 @@ export const test = base.extend<TestFixtures>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture pattern requires empty destructure
   remoteClientURL: async ({}, use) => {
     const port = getRemoteClientPort();
+    await use(`http://localhost:${port}`);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture pattern requires empty destructure
+  remotePreviewURL: async ({}, use) => {
+    const port = getRemotePreviewPort();
     await use(`http://localhost:${port}`);
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture pattern requires empty destructure

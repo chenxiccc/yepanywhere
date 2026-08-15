@@ -159,7 +159,9 @@ reload so caching cannot conceal a structural regression.
   disabled and every JavaScript response delayed by 180 ms. The remote app,
   relay gate, session page, transcript, and composer requests began within one
   delay window; neither the session frame nor its header and composer regressed
-  after appearing. The same structural assertions passed on a warm reload.
+  after appearing. The same structural assertions passed on a warm reload. A
+  dedicated production preview owns this generated-chunk contract; the shared
+  remote E2E server remains source-enabled for browser fixture provisioning.
 - A hosted-generation dry run recorded 217 current runtime assets, excluded
   source maps, published the explicit current-generation manifest, and handled
   the expected missing-manifest state for the first deployment.

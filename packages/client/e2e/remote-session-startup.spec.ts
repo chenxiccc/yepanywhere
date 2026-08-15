@@ -30,10 +30,10 @@ interface StartupProbe {
 
 async function loginViaRelay(
   page: Page,
-  remoteClientURL: string,
+  remotePreviewURL: string,
   relayWsURL: string,
 ) {
-  await page.goto(remoteClientURL);
+  await page.goto(remotePreviewURL);
   await page.click('[data-testid="relay-mode-button"]');
   await page.fill('[data-testid="relay-username-input"]', RELAY_USERNAME);
   await page.fill('[data-testid="srp-password-input"]', SRP_PASSWORD);
@@ -191,17 +191,17 @@ test.describe("remote selected-session startup", () => {
 
   test("keeps cold and warm reloads monotonic", async ({
     page,
-    remoteClientURL,
+    remotePreviewURL,
     relayWsURL,
   }) => {
     test.setTimeout(60_000);
     await page.emulateMedia({ colorScheme: "dark" });
     await page.setViewportSize({ width: 375, height: 812 });
-    await loginViaRelay(page, remoteClientURL, relayWsURL);
+    await loginViaRelay(page, remotePreviewURL, relayWsURL);
 
     const projectPath = join(e2ePaths.tempDir, "mockproject");
     const projectId = Buffer.from(projectPath).toString("base64url");
-    const sessionUrl = `${remoteClientURL}/-/relay/${RELAY_USERNAME}/projects/${projectId}/sessions/mock-session-001`;
+    const sessionUrl = `${remotePreviewURL}/-/relay/${RELAY_USERNAME}/projects/${projectId}/sessions/mock-session-001`;
     await page.goto(sessionUrl);
     await expectSessionReady(page);
 
@@ -210,7 +210,7 @@ test.describe("remote selected-session startup", () => {
     page.on("request", (request) => {
       const url = new URL(request.url());
       if (
-        url.origin === new URL(remoteClientURL).origin &&
+        url.origin === new URL(remotePreviewURL).origin &&
         url.pathname.startsWith("/assets/") &&
         url.pathname.endsWith(".js")
       ) {

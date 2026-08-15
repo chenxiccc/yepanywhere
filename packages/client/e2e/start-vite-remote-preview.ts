@@ -1,5 +1,5 @@
 /**
- * Wrapper script to start the remote-client Vite development server.
+ * Wrapper script to serve the built remote client with Vite preview.
  * Writes the resolved port to a file for the test harness to read.
  * This is more reliable than parsing stdout.
  *
@@ -9,7 +9,7 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
+import { preview } from "vite";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,16 +23,14 @@ if (!PORT_FILE) {
 async function main() {
   const clientRoot = join(__dirname, "..");
 
-  const server = await createServer({
+  const server = await preview({
     configFile: join(clientRoot, "vite.config.remote.ts"),
-    server: {
-      port: 0, // Let Vite pick an available port
+    preview: {
+      port: 0,
       strictPort: false,
       host: true,
     },
   });
-
-  await server.listen();
 
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") {
@@ -42,9 +40,8 @@ async function main() {
 
   const port = address.port;
   writeFileSync(PORT_FILE, String(port));
-  console.log(`[Vite Remote] Development server listening on port ${port}`);
+  console.log(`[Vite Remote Preview] Server listening on port ${port}`);
 
-  // Keep the process alive
   process.on("SIGTERM", async () => {
     await server.close();
     process.exit(0);
@@ -57,6 +54,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Failed to start Vite server:", err);
+  console.error("Failed to start Vite preview:", err);
   process.exit(1);
 });

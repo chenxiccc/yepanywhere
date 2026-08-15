@@ -31,6 +31,7 @@ export default async function globalTeardown() {
   let paths: {
     pidFile?: string;
     remoteClientPidFile?: string;
+    remotePreviewPidFile?: string;
     relayPidFile?: string;
   } = {};
 
@@ -48,6 +49,10 @@ export default async function globalTeardown() {
     {
       file: paths.remoteClientPidFile ?? join(tempDir, "remote-pid"),
       name: "remote client",
+    },
+    {
+      file: paths.remotePreviewPidFile ?? join(tempDir, "remote-preview-pid"),
+      name: "remote preview",
     },
     {
       file: paths.relayPidFile ?? join(tempDir, "relay-pid"),

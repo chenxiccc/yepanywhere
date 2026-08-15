@@ -25,6 +25,8 @@ let MAINTENANCE_PORT_FILE: string;
 let PID_FILE: string;
 let REMOTE_CLIENT_PORT_FILE: string;
 let REMOTE_CLIENT_PID_FILE: string;
+let REMOTE_PREVIEW_PORT_FILE: string;
+let REMOTE_PREVIEW_PID_FILE: string;
 let RELAY_PORT_FILE: string;
 let RELAY_PID_FILE: string;
 
@@ -81,6 +83,8 @@ export default async function globalSetup() {
   PID_FILE = join(E2E_TEMP_DIR, "pid");
   REMOTE_CLIENT_PORT_FILE = join(E2E_TEMP_DIR, "remote-port");
   REMOTE_CLIENT_PID_FILE = join(E2E_TEMP_DIR, "remote-pid");
+  REMOTE_PREVIEW_PORT_FILE = join(E2E_TEMP_DIR, "remote-preview-port");
+  REMOTE_PREVIEW_PID_FILE = join(E2E_TEMP_DIR, "remote-preview-pid");
   RELAY_PORT_FILE = join(E2E_TEMP_DIR, "relay-port");
   RELAY_PID_FILE = join(E2E_TEMP_DIR, "relay-pid");
 
@@ -127,6 +131,8 @@ export default async function globalSetup() {
       pidFile: PID_FILE,
       remoteClientPortFile: REMOTE_CLIENT_PORT_FILE,
       remoteClientPidFile: REMOTE_CLIENT_PID_FILE,
+      remotePreviewPortFile: REMOTE_PREVIEW_PORT_FILE,
+      remotePreviewPidFile: REMOTE_PREVIEW_PID_FILE,
       relayPortFile: RELAY_PORT_FILE,
       relayPidFile: RELAY_PID_FILE,
     }),
@@ -804,8 +810,9 @@ export default async function globalSetup() {
 
   serverProcess.unref();
 
-  // Start a fresh production-build preview for remote client tests.
-  console.log("[E2E] Starting remote client production preview...");
+  // Keep the source-enabled development server for tests that install browser
+  // fixtures by importing modules directly from /src.
+  console.log("[E2E] Starting remote client development server...");
   const remoteClientProcess = spawn(
     "pnpm",
     ["exec", "tsx", "--conditions", "source", "e2e/start-vite-remote.ts"],
@@ -842,8 +849,56 @@ export default async function globalSetup() {
     "remote client",
     30000,
   );
-  console.log(`[E2E] Remote client production preview on port ${remotePort}`);
+  console.log(`[E2E] Remote client development server on port ${remotePort}`);
   remoteClientProcess.unref();
+
+  // Startup behavior depends on generated chunks, so expose the separately
+  // built remote client through a production preview for that contract alone.
+  console.log("[E2E] Starting remote client production preview...");
+  const remotePreviewProcess = spawn(
+    "pnpm",
+    [
+      "exec",
+      "tsx",
+      "--conditions",
+      "source",
+      "e2e/start-vite-remote-preview.ts",
+    ],
+    {
+      cwd: join(repoRoot, "packages", "client"),
+      env: {
+        ...process.env,
+        VITE_PORT_FILE: REMOTE_PREVIEW_PORT_FILE,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    },
+  );
+
+  if (remotePreviewProcess.pid) {
+    writeFileSync(REMOTE_PREVIEW_PID_FILE, String(remotePreviewProcess.pid));
+  }
+
+  remotePreviewProcess.stderr?.on("data", (data: Buffer) => {
+    const msg = data.toString();
+    if (!msg.includes("ExperimentalWarning")) {
+      console.error("[E2E Remote Preview]", msg);
+    }
+  });
+
+  remotePreviewProcess.on("error", (err) => {
+    console.error("[E2E Remote Preview] Process error:", err);
+  });
+
+  const remotePreviewPort = await waitForPortFile(
+    REMOTE_PREVIEW_PORT_FILE,
+    "remote preview",
+    30000,
+  );
+  console.log(
+    `[E2E] Remote client production preview on port ${remotePreviewPort}`,
+  );
+  remotePreviewProcess.unref();
 }
 
 // Export session file path for teardown
