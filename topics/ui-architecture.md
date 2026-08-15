@@ -163,6 +163,13 @@ It never flashes an unauthenticated surface, loses the URL, or substitutes a
 temporary 404. A module generation has one shared acquisition promise, and a
 failure becomes an actionable route error rather than an indefinite spinner.
 
+A selected session starts its remote app, connection gate, navigation layout,
+page, transcript, and composer acquisitions together from the initial URL. Its
+module and connection boundaries render the same full-viewport session shell;
+status changes stay in the transcript slot while header and composer geometry
+remain reserved. Once the real session header or composer is visible, a lazy
+descendant must not hide it or return the route to a generic page fallback.
+
 Session DOM linger belongs outside the module-acquisition boundary. Making
 `SessionPage` lazy must not create a second module instance, tear down a view
 that `NavigationLayout` is deliberately retaining, or convert an already-warm
@@ -183,11 +190,12 @@ handoff is
 
 Implementation status: both browser entries apply this boundary to their page,
 navigation-layout, service-worker, and elective floating-action modules. The
-remote entry also defers its connection gates and redirects. The loading
-boundary keeps module promises stable at module scope, preserves the session
-DOM-linger owner outside `SessionPage`, and routes load failures through the
-existing fatal error boundary. The per-Settings-pane split remains open in
-tactical 096.
+remote entry also defers its connection gates and redirects, preloads only the
+current initial route, and shares cached loader promises with `React.lazy`.
+Session transcript/composer suspension is caught inside their owned slots. The
+boundary preserves the session DOM-linger owner outside `SessionPage` and
+routes load failures through the existing fatal error boundary. The
+per-Settings-pane split remains open in tactical 096.
 
 ## Settings Pane Conventions
 

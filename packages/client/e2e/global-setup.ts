@@ -1,5 +1,6 @@
 import { execFileSync, execSync, spawn } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -620,6 +621,7 @@ export default async function globalSetup() {
   const repoRoot = join(__dirname, "..", "..", "..");
   const serverRoot = join(repoRoot, "packages", "server");
   const clientDist = join(repoRoot, "packages", "client", "dist");
+  const remoteClientDist = join(repoRoot, "packages", "client", "dist-remote");
 
   // Build shared first (client depends on it), then client
   console.log("[E2E] Building shared package...");
@@ -641,6 +643,24 @@ export default async function globalSetup() {
     },
     stdio: "inherit",
   });
+
+  console.log("[E2E] Building remote client production preview...");
+  execSync(
+    "pnpm --filter @yep-anywhere/client exec vite build --config vite.config.remote.ts --base /",
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS: "true",
+        VITE_DISABLE_ONBOARDING: "true",
+      },
+      stdio: "inherit",
+    },
+  );
+  copyFileSync(
+    join(remoteClientDist, "remote.html"),
+    join(remoteClientDist, "index.html"),
+  );
 
   if (shouldStartRelay()) {
     // Start relay server for relay integration tests
@@ -784,8 +804,8 @@ export default async function globalSetup() {
 
   serverProcess.unref();
 
-  // Start remote client Vite dev server
-  console.log("[E2E] Starting remote client dev server...");
+  // Start a fresh production-build preview for remote client tests.
+  console.log("[E2E] Starting remote client production preview...");
   const remoteClientProcess = spawn(
     "pnpm",
     ["exec", "tsx", "--conditions", "source", "e2e/start-vite-remote.ts"],
@@ -822,7 +842,7 @@ export default async function globalSetup() {
     "remote client",
     30000,
   );
-  console.log(`[E2E] Remote client dev server on port ${remotePort}`);
+  console.log(`[E2E] Remote client production preview on port ${remotePort}`);
   remoteClientProcess.unref();
 }
 
