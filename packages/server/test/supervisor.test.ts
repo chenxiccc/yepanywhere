@@ -6,6 +6,7 @@ import type {
   EffectiveSessionLaunchSettingsValue,
   SessionMetadataService,
 } from "../src/metadata/index.js";
+import { getLogger } from "../src/logging/logger.js";
 import { MockClaudeSDK, createMockScenario } from "../src/sdk/mock.js";
 import type { AgentProvider } from "../src/sdk/providers/types.js";
 import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
@@ -192,6 +193,9 @@ describe("Supervisor", () => {
     });
 
     it("rejects retryably when required provider startup fails before init", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
       const abort = vi.fn();
       const consumedMessages: unknown[] = [];
       const provider = testProvider(async () => {
@@ -230,6 +234,14 @@ describe("Supervisor", () => {
       expect(consumedMessages).toHaveLength(1);
       expect(abort).toHaveBeenCalledOnce();
       expect(providerSupervisor.getAllProcesses()).toEqual([]);
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_error",
+          errorMessage: "Codex app-server socket timed out",
+        }),
+        expect.stringContaining("Codex app-server socket timed out"),
+      );
+      errorLog.mockRestore();
     });
 
     it("settles a required launch on provider identity after queuing input", async () => {
@@ -2883,23 +2895,16 @@ describe("Supervisor", () => {
           requestedModel: "haiku",
         }),
       ).rejects.toThrow("metadata unavailable");
-      const configurationState = serialized as unknown as {
-        pendingProcessLaunchSettings: Map<string, unknown>;
-      };
-      expect(
-        configurationState.pendingProcessLaunchSettings.has(process.sessionId),
-      ).toBe(true);
+      const callsAfterFailedSave =
+        recordEffectiveLaunchSettings.mock.calls.length;
 
       await serialized.abortProcess(process.id);
-      expect(
-        configurationState.pendingProcessLaunchSettings.has(process.sessionId),
-      ).toBe(false);
 
       process.setPermissionMode("plan");
       await Promise.resolve();
-      expect(
-        configurationState.pendingProcessLaunchSettings.has(process.sessionId),
-      ).toBe(false);
+      expect(recordEffectiveLaunchSettings).toHaveBeenCalledTimes(
+        callsAfterFailedSave,
+      );
     });
 
     it("refuses to preempt a live worker when preempt:false", async () => {

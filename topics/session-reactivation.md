@@ -69,6 +69,13 @@ resume:
   worker at capacity, else throws, then calls
   `createProviderSession`/`createRealSession` with the `resumeSessionId` and no
   message.
+- **Activation/configuration ownership:** `SessionActivationCoordinator` owns
+  each session's activation promise, ordered configuration tail, pending durable
+  launch snapshot, cold-setting recovery, and live-versus-restart decision.
+  `Supervisor` supplies capacity and provider launch/restart operations and
+  receives the single settled `Process` result; launch, queue, recap, heartbeat,
+  and provider-event concerns no longer mutate the coordinator's transition
+  state directly.
 - **Message-less lifecycle:** both create-only factories construct the process
   as idle before the provider emits anything. Passive provider initialization
   does not wake it; the first accepted user/provider-work message transitions
@@ -175,6 +182,15 @@ billed provider call, the button must surface it per the economics rule.
   take effect on the *next* natural turn without reactivating at all —
   reactivation is for users who want the process live *now*. Keep both; they
   serve different intents.
+
+## Design decisions
+
+- **One per-session coordinator state** (vs. independent activation,
+  configuration, and persistence maps on `Supervisor`): activation,
+  configuration ordering, and snapshot retry are transitions of the same
+  session owner. Keeping them together makes cleanup conditional on the whole
+  state and leaves `Supervisor` with one settled `Process` result rather than
+  partially applied configuration facts.
 
 ## Coordination (resolved)
 
