@@ -248,7 +248,9 @@ truncated. The browser batches at most 100 events per request and retains at
 most 500 unsent events. The server admits at most 32 active leases, retains at
 most 1,000 events and 2 MiB per lease, limits event/result request bodies to
 256 KiB, limits evaluated source to 128 KiB, and expires evaluations after 60
-seconds. Request-body limits are enforced while streaming actual bytes, with a
+seconds. The tab applies a 50-second local evaluation deadline, removes the
+temporary script bridge on expiry, reports the failure, and resumes polling.
+Request-body limits are enforced while streaming actual bytes, with a
 declared length used only for early rejection. These are abuse and memory
 bounds, not promises to preserve every diagnostic event under overload.
 

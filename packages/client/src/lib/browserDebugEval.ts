@@ -5,6 +5,7 @@ interface BrowserDebugScriptBridge {
 }
 
 const BRIDGE_PREFIX = "__YA_BROWSER_DEBUG_EVAL__";
+export const BROWSER_DEBUG_EVAL_LOCAL_TIMEOUT_MS = 50_000;
 let bridgeSequence = 0;
 
 function scriptSource(
@@ -34,14 +35,21 @@ void (async () => {
  * denying runtime compilation, so a short-lived script element is the narrow
  * execution boundary that preserves that policy.
  */
-export function executeBrowserDebugCode(code: string): Promise<unknown> {
+export function executeBrowserDebugCode(
+  code: string,
+  timeoutMs = BROWSER_DEBUG_EVAL_LOCAL_TIMEOUT_MS,
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const bridgeKey = `${BRIDGE_PREFIX}${Date.now()}_${bridgeSequence++}`;
     const debugGlobal = globalThis as unknown as Record<string, unknown>;
     let scriptError: unknown = null;
     let policyViolation = false;
+    let settled = false;
+    let deadline: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
+      if (deadline) clearTimeout(deadline);
+      deadline = null;
       window.removeEventListener("error", onScriptError);
       document.removeEventListener(
         "securitypolicyviolation",
@@ -50,6 +58,8 @@ export function executeBrowserDebugCode(code: string): Promise<unknown> {
       delete debugGlobal[bridgeKey];
     };
     const settle = (outcome: "resolve" | "reject", value: unknown) => {
+      if (settled) return;
+      settled = true;
       cleanup();
       if (outcome === "resolve") resolve(value);
       else reject(value);
@@ -80,6 +90,16 @@ export function executeBrowserDebugCode(code: string): Promise<unknown> {
     debugGlobal[bridgeKey] = bridge;
     window.addEventListener("error", onScriptError);
     document.addEventListener("securitypolicyviolation", onPolicyViolation);
+    deadline = setTimeout(
+      () =>
+        settle(
+          "reject",
+          new Error(
+            `Browser diagnostic evaluation exceeded its ${timeoutMs} ms local deadline`,
+          ),
+        ),
+      timeoutMs,
+    );
 
     run("expression");
     if (bridge.started) return;

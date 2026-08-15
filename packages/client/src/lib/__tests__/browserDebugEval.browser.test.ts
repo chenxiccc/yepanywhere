@@ -58,17 +58,23 @@ describe("browser debug evaluation under the served-page CSP", () => {
     });
   });
 
-  async function evaluate(code: string): Promise<unknown> {
-    return page.evaluate(async (source) => {
-      const exported = (
-        window as unknown as {
-          exports: {
-            executeBrowserDebugCode: (value: string) => Promise<unknown>;
-          };
-        }
-      ).exports;
-      return exported.executeBrowserDebugCode(source);
-    }, code);
+  async function evaluate(code: string, timeoutMs?: number): Promise<unknown> {
+    return page.evaluate(
+      async ({ source, timeout }) => {
+        const exported = (
+          window as unknown as {
+            exports: {
+              executeBrowserDebugCode: (
+                value: string,
+                deadline?: number,
+              ) => Promise<unknown>;
+            };
+          }
+        ).exports;
+        return exported.executeBrowserDebugCode(source, timeout);
+      },
+      { source: code, timeout: timeoutMs },
+    );
   }
 
   it("executes expressions and promises while runtime compilation is denied", async () => {
@@ -93,5 +99,20 @@ describe("browser debug evaluation under the served-page CSP", () => {
     await expect(
       evaluate('throw new Error("diagnostic failure")'),
     ).rejects.toThrow("diagnostic failure");
+  });
+
+  it("deadlines a never-settling promise and removes its bridge", async () => {
+    await expect(evaluate("new Promise(() => {})", 25)).rejects.toThrow(
+      "exceeded its 25 ms local deadline",
+    );
+    await expect(evaluate("6 * 7", 100)).resolves.toBe(42);
+
+    const retainedBridges = await page.evaluate(
+      () =>
+        Object.keys(globalThis).filter((key) =>
+          key.startsWith("__YA_BROWSER_DEBUG_EVAL__"),
+        ).length,
+    );
+    expect(retainedBridges).toBe(0);
   });
 });

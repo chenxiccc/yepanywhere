@@ -113,6 +113,11 @@ vi.mock("../browserDebugEval", () => ({
   executeBrowserDebugCode: (code: string) => {
     mocks.recordEvaluation(code);
     if (code === "({ answer: 6 * 7 })") return { answer: 42 };
+    if (code === "new Promise(() => {})") {
+      throw new Error(
+        "Browser diagnostic evaluation exceeded its local deadline",
+      );
+    }
     throw new Error(`Unexpected test evaluation: ${code}`);
   },
 }));
@@ -222,6 +227,52 @@ describe("browserDebugLeaseController", () => {
     expect(JSON.parse(String(resultCall?.options?.body))).toEqual({
       commandId: "command-1",
       result: { ok: true, value: { answer: 42 } },
+    });
+  });
+
+  it("uploads a deadline failure and resumes polling", async () => {
+    mocks.queueCommand({
+      commandId: "command-timeout",
+      kind: "eval",
+      code: "new Promise(() => {})",
+    });
+
+    await browserDebugLeaseController.enable("session-1");
+    await vi.waitFor(() => {
+      expect(
+        mocks.calls.filter((call) => call.path.endsWith("/results")),
+      ).toHaveLength(1);
+    });
+    const timeoutResult = mocks.calls.find((call) =>
+      call.path.endsWith("/results"),
+    );
+    const timeoutPayload = JSON.parse(String(timeoutResult?.options?.body)) as {
+      commandId: string;
+      result: { ok: boolean; error: string };
+    };
+    expect(timeoutPayload).toMatchObject({
+      commandId: "command-timeout",
+      result: { ok: false },
+    });
+    expect(JSON.parse(timeoutPayload.result.error)).toMatchObject({
+      name: "Error",
+      message: "Browser diagnostic evaluation exceeded its local deadline",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        mocks.calls.filter((call) => call.path.endsWith("/poll")),
+      ).toHaveLength(2);
+    });
+    mocks.releasePoll({
+      commandId: "command-after-timeout",
+      kind: "eval",
+      code: "({ answer: 6 * 7 })",
+    });
+    await vi.waitFor(() => {
+      expect(
+        mocks.calls.filter((call) => call.path.endsWith("/results")),
+      ).toHaveLength(2);
     });
   });
 
