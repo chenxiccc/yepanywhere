@@ -1690,6 +1690,7 @@
   "modelSettingsForkSummaryAutoOpenDescription": "When a fork-after-summary finishes, the forked session can open automatically in a new tab. When off, a link appears instead. (In a session, right-click the turn dashes beside the right scrollbar to fork before or after a turn.)",
   "modelSettingsForkSummaryAutoOpenLabel": "Open forked session in a new tab when ready",
   "reconnecting": "Reconnecting...",
+  "remoteConnectingToHost": "Connecting to {host}...",
   "reloadBannerCodeChanged": "{target} code changed - reload to see changes",
   "reloadBannerCodeChangedCompact": "{target} changed",
   "reloadBannerTargetServer": "Server",

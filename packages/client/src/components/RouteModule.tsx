@@ -1,6 +1,7 @@
 import { type ReactNode, Suspense } from "react";
 import { useI18n } from "../i18n";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { StartupShell } from "./StartupShell";
 
 export function RouteModule({ children }: { children: ReactNode }) {
   const { t } = useI18n();
@@ -8,11 +9,7 @@ export function RouteModule({ children }: { children: ReactNode }) {
   return (
     <ErrorBoundary>
       <Suspense
-        fallback={
-          <div className="loading" role="status">
-            {t("loading")}
-          </div>
-        }
+        fallback={<StartupShell phase="module">{t("loading")}</StartupShell>}
       >
         {children}
       </Suspense>

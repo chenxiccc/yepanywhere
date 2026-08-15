@@ -12,17 +12,22 @@
     <style>
       /* Critical CSS to prevent flash of white background - only html, body/root handled by main CSS */
       html { background-color: #181818; }
+      html[data-theme="verydark"] { background-color: #181818; }
       html[data-theme="light"] { background-color: #faf9f5; }
       html[data-theme="dark"] { background-color: #2f2f2f; }
+      html[data-theme="auto"] { background-color: #2f2f2f; }
+      html, body, #root { min-height: 100%; min-height: 100dvh; }
+      body { margin: 0; background-color: inherit; }
       @media (prefers-color-scheme: light) {
         html:not([data-theme]) { background-color: #faf9f5; }
+        html[data-theme="auto"] { background-color: #faf9f5; }
       }
     </style>
     <script>
       // Apply theme before page renders to prevent flash
       (() => {
         var stored = localStorage.getItem('yep-anywhere-theme');
-        var theme = stored || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'verydark');
+        var theme = stored || 'auto';
         document.documentElement.setAttribute('data-theme', theme);
       })();
     </script>

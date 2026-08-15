@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
 import { HostOfflineModal } from "../components/HostOfflineModal";
+import { StartupShell } from "../components/StartupShell";
 import {
   type AutoResumeError,
   useRemoteConnection,
@@ -23,6 +24,7 @@ import {
   getHostByRelayUsername,
 } from "../lib/hostStorage";
 import { ConnectedAppContent } from "../RemoteApp";
+import { useI18n } from "../i18n";
 
 type ConnectionState =
   | "checking"
@@ -83,6 +85,7 @@ function createAutoResumeError(
  * Layout route that manages relay connection and renders child routes when connected.
  */
 export function RelayConnectionGate() {
+  const { t } = useI18n();
   const { relayUsername } = useParams<{ relayUsername: string }>();
   const location = useLocation();
   const {
@@ -359,10 +362,11 @@ export function RelayConnectionGate() {
     case "checking":
     case "connecting":
       return (
-        <div className="auto-resume-loading">
-          <div className="loading-spinner" />
-          <p>Connecting to {relayUsername}...</p>
-        </div>
+        <StartupShell phase="connection">
+          {t("remoteConnectingToHost", {
+            host: relayUsername ?? "",
+          })}
+        </StartupShell>
       );
 
     case "error": {

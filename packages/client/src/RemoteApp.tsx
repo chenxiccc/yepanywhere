@@ -31,6 +31,7 @@ import { ConnectionBar } from "./components/ConnectionBar";
 import { HostOfflineModal } from "./components/HostOfflineModal";
 import { ReloadBanner, ReloadBannerStack } from "./components/ReloadBanner";
 import { RemoteCompatibilityNotices } from "./components/RemoteCompatibilityNotices";
+import { StartupShell } from "./components/StartupShell";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
 import {
   HostIdentityProvider,
@@ -44,6 +45,7 @@ import {
 import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
 import { ToastProvider } from "./contexts/ToastContext";
+import { useI18n } from "./i18n";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { primeProviderCache } from "./hooks/useProviders";
@@ -201,6 +203,7 @@ export function UnauthenticatedGate() {
  * - Connected: render ConnectedAppContent + child routes
  */
 export function ConnectionGate() {
+  const { t } = useI18n();
   const {
     connection,
     currentRelayUsername,
@@ -277,12 +280,7 @@ export function ConnectionGate() {
   // During auto-resume, don't redirect - show loading state
   // This preserves the current URL so we stay on the same page after successful resume
   if (isAutoResuming) {
-    return (
-      <div className="auto-resume-loading">
-        <div className="loading-spinner" />
-        <p>Reconnecting...</p>
-      </div>
-    );
+    return <StartupShell phase="connection">{t("reconnecting")}</StartupShell>;
   }
 
   // Not connected (and not auto-resuming)

@@ -12989,32 +12989,6 @@ a.linkified-url:hover {
   }
 }
 
-/* Auto-resume loading state */
-.auto-resume-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: var(--space-4);
-}
-
-.auto-resume-loading .loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--border-muted);
-  border-top-color: var(--app-yep-green);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.auto-resume-loading p {
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-}
-
 /* Login mode selection (relay vs direct) */
 .login-mode-options {
   display: flex;
