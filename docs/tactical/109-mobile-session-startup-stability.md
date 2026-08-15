@@ -4,7 +4,7 @@
 > reload move through one stable shell, acquire its critical modules in
 > parallel, and reuse immutable prior-generation assets.
 
-Status: implementation in progress (2026-08-15).
+Status: complete (2026-08-15).
 
 Topic: mobile-session-startup-stability
 
@@ -149,3 +149,25 @@ reload so caching cannot conceal a structural regression.
   immediately preceding generation manifest.
 - Focused tests, typechecking, lint, formatting, CSS checks, console scan, and
   final desktop/phone captures complete without warnings.
+
+## Completion evidence
+
+- The production remote entry is 488.78 KiB and remains below the existing
+  500 KiB build-warning threshold. Login and public-share routes retain their
+  smaller graphs.
+- The phone-width production-build reload contract passed with browser caching
+  disabled and every JavaScript response delayed by 180 ms. The remote app,
+  relay gate, session page, transcript, and composer requests began within one
+  delay window; neither the session frame nor its header and composer regressed
+  after appearing. The same structural assertions passed on a warm reload.
+- A hosted-generation dry run recorded 217 current runtime assets, excluded
+  source maps, published the explicit current-generation manifest, and handled
+  the expected missing-manifest state for the first deployment.
+- The final 375x812 and 1920x1080 production-build captures were inspected with
+  no stale-runtime banner, viewport gap, broad loading replacement, or layout
+  overflow.
+- Focused client and server tests, the production reload test, typechecking,
+  lint, formatting, CSS checks, and the console budget scan passed. The full
+  workspace run passed 3,542 of 3,543 client tests; its unrelated
+  `SessionShareModal` revocation timing assertion passed all 30 tests when the
+  file was rerun in isolation.
