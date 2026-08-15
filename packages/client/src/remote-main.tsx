@@ -35,148 +35,257 @@ import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { initializeTooltipAppearance } from "./hooks/useTooltipAppearance";
 import { I18nProvider } from "./i18n";
+import {
+  getInitialRemoteRouteModuleKeys,
+  type RemoteRouteModuleKey,
+} from "./lib/remoteRoutePreload";
+import { loadSessionCoreModules } from "./lib/sessionRouteModules";
 import "./styles/index.css";
 
+function cachedModule<T>(load: () => Promise<T>): () => Promise<T> {
+  let promise: Promise<T> | undefined;
+  return () => {
+    promise ??= load();
+    return promise;
+  };
+}
+
+const loadRemoteAppModule = cachedModule(() => import("./RemoteApp"));
+const loadLayoutsModule = cachedModule(() => import("./layouts"));
+const loadActivityPageModule = cachedModule(
+  () => import("./pages/ActivityPage"),
+);
+const loadAgentsPageModule = cachedModule(() => import("./pages/AgentsPage"));
+const loadBangCommandsPageModule = cachedModule(
+  () => import("./pages/BangCommandsPage"),
+);
+const loadDirectLoginPageModule = cachedModule(
+  () => import("./pages/DirectLoginPage"),
+);
+const loadEmulatorPageModule = cachedModule(
+  () => import("./pages/EmulatorPage"),
+);
+const loadFilePageModule = cachedModule(() => import("./pages/FilePage"));
+const loadGitStatusPageModule = cachedModule(
+  () => import("./pages/GitStatusPage"),
+);
+const loadGlobalSessionsPageModule = cachedModule(
+  () => import("./pages/GlobalSessionsPage"),
+);
+const loadHostPickerPageModule = cachedModule(
+  () => import("./pages/HostPickerPage"),
+);
+const loadHostsPageModule = cachedModule(() => import("./pages/HostsPage"));
+const loadInboxPageModule = cachedModule(() => import("./pages/InboxPage"));
+const loadLegacyRelayRouteRedirectModule = cachedModule(
+  () => import("./pages/LegacyRelayRouteRedirect"),
+);
+const loadMultiHostMonitorPageModule = cachedModule(
+  () => import("./pages/MultiHostMonitorPage"),
+);
+const loadProjectSessionsRedirectModule = cachedModule(
+  () => import("./pages/ProjectSessionsRedirect"),
+);
+const loadNewSessionPageModule = cachedModule(
+  () => import("./pages/NewSessionPage"),
+);
+const loadProjectsPageModule = cachedModule(
+  () => import("./pages/ProjectsPage"),
+);
+const loadPublicShareFilePageModule = cachedModule(
+  () => import("./pages/PublicShareFilePage"),
+);
+const loadPublicSharePageModule = cachedModule(
+  () => import("./pages/PublicSharePage"),
+);
+const loadRelayConnectionGateModule = cachedModule(
+  () => import("./pages/RelayConnectionGate"),
+);
+const loadRelayLoginPageModule = cachedModule(
+  () => import("./pages/RelayLoginPage"),
+);
+const loadSessionPageModule = cachedModule(() => import("./pages/SessionPage"));
+const loadSettingsModule = cachedModule(() => import("./pages/settings"));
+const loadWorkstreamsPageModule = cachedModule(
+  () => import("./pages/WorkstreamsPage"),
+);
+
 const ConnectionGate = lazy(() =>
-  import("./RemoteApp").then(({ ConnectionGate }) => ({
+  loadRemoteAppModule().then(({ ConnectionGate }) => ({
     default: ConnectionGate,
   })),
 );
 const RemoteApp = lazy(() =>
-  import("./RemoteApp").then(({ RemoteApp }) => ({ default: RemoteApp })),
+  loadRemoteAppModule().then(({ RemoteApp }) => ({ default: RemoteApp })),
 );
 const UnauthenticatedGate = lazy(() =>
-  import("./RemoteApp").then(({ UnauthenticatedGate }) => ({
+  loadRemoteAppModule().then(({ UnauthenticatedGate }) => ({
     default: UnauthenticatedGate,
   })),
 );
 const NavigationLayout = lazy(() =>
-  import("./layouts").then(({ NavigationLayout }) => ({
+  loadLayoutsModule().then(({ NavigationLayout }) => ({
     default: NavigationLayout,
   })),
 );
 const SessionDomLingerRouteMarker = lazy(() =>
-  import("./layouts").then(({ SessionDomLingerRouteMarker }) => ({
+  loadLayoutsModule().then(({ SessionDomLingerRouteMarker }) => ({
     default: SessionDomLingerRouteMarker,
   })),
 );
 
 const ActivityPage = lazy(() =>
-  import("./pages/ActivityPage").then(({ ActivityPage }) => ({
+  loadActivityPageModule().then(({ ActivityPage }) => ({
     default: ActivityPage,
   })),
 );
 const AgentsPage = lazy(() =>
-  import("./pages/AgentsPage").then(({ AgentsPage }) => ({
+  loadAgentsPageModule().then(({ AgentsPage }) => ({
     default: AgentsPage,
   })),
 );
 const BangCommandsPage = lazy(() =>
-  import("./pages/BangCommandsPage").then(({ BangCommandsPage }) => ({
+  loadBangCommandsPageModule().then(({ BangCommandsPage }) => ({
     default: BangCommandsPage,
   })),
 );
 const DirectLoginPage = lazy(() =>
-  import("./pages/DirectLoginPage").then(({ DirectLoginPage }) => ({
+  loadDirectLoginPageModule().then(({ DirectLoginPage }) => ({
     default: DirectLoginPage,
   })),
 );
 const EmulatorPage = lazy(() =>
-  import("./pages/EmulatorPage").then(({ EmulatorPage }) => ({
+  loadEmulatorPageModule().then(({ EmulatorPage }) => ({
     default: EmulatorPage,
   })),
 );
 const FilePage = lazy(() =>
-  import("./pages/FilePage").then(({ FilePage }) => ({ default: FilePage })),
+  loadFilePageModule().then(({ FilePage }) => ({ default: FilePage })),
 );
 const GitStatusPage = lazy(() =>
-  import("./pages/GitStatusPage").then(({ GitStatusPage }) => ({
+  loadGitStatusPageModule().then(({ GitStatusPage }) => ({
     default: GitStatusPage,
   })),
 );
 const GlobalSessionsPage = lazy(() =>
-  import("./pages/GlobalSessionsPage").then(({ GlobalSessionsPage }) => ({
+  loadGlobalSessionsPageModule().then(({ GlobalSessionsPage }) => ({
     default: GlobalSessionsPage,
   })),
 );
 const HostPickerPage = lazy(() =>
-  import("./pages/HostPickerPage").then(({ HostPickerPage }) => ({
+  loadHostPickerPageModule().then(({ HostPickerPage }) => ({
     default: HostPickerPage,
   })),
 );
 const HostsRoute = lazy(() =>
-  import("./pages/HostsPage").then(({ HostsRoute }) => ({
+  loadHostsPageModule().then(({ HostsRoute }) => ({
     default: HostsRoute,
   })),
 );
 const InboxPage = lazy(() =>
-  import("./pages/InboxPage").then(({ InboxPage }) => ({
+  loadInboxPageModule().then(({ InboxPage }) => ({
     default: InboxPage,
   })),
 );
 const LegacyRelayRouteRedirect = lazy(() =>
-  import("./pages/LegacyRelayRouteRedirect").then(
-    ({ LegacyRelayRouteRedirect }) => ({
-      default: LegacyRelayRouteRedirect,
-    }),
-  ),
+  loadLegacyRelayRouteRedirectModule().then(({ LegacyRelayRouteRedirect }) => ({
+    default: LegacyRelayRouteRedirect,
+  })),
 );
 const MultiHostMonitorPage = lazy(() =>
-  import("./pages/MultiHostMonitorPage").then(({ MultiHostMonitorPage }) => ({
+  loadMultiHostMonitorPageModule().then(({ MultiHostMonitorPage }) => ({
     default: MultiHostMonitorPage,
   })),
 );
 const ProjectSessionsRedirect = lazy(() =>
-  import("./pages/ProjectSessionsRedirect").then(
-    ({ ProjectSessionsRedirect }) => ({
-      default: ProjectSessionsRedirect,
-    }),
-  ),
+  loadProjectSessionsRedirectModule().then(({ ProjectSessionsRedirect }) => ({
+    default: ProjectSessionsRedirect,
+  })),
 );
 const NewSessionPage = lazy(() =>
-  import("./pages/NewSessionPage").then(({ NewSessionPage }) => ({
+  loadNewSessionPageModule().then(({ NewSessionPage }) => ({
     default: NewSessionPage,
   })),
 );
 const ProjectsPage = lazy(() =>
-  import("./pages/ProjectsPage").then(({ ProjectsPage }) => ({
+  loadProjectsPageModule().then(({ ProjectsPage }) => ({
     default: ProjectsPage,
   })),
 );
 const PublicShareFilePage = lazy(() =>
-  import("./pages/PublicShareFilePage").then(({ PublicShareFilePage }) => ({
+  loadPublicShareFilePageModule().then(({ PublicShareFilePage }) => ({
     default: PublicShareFilePage,
   })),
 );
 const PublicSharePage = lazy(() =>
-  import("./pages/PublicSharePage").then(({ PublicSharePage }) => ({
+  loadPublicSharePageModule().then(({ PublicSharePage }) => ({
     default: PublicSharePage,
   })),
 );
 const RelayConnectionGate = lazy(() =>
-  import("./pages/RelayConnectionGate").then(({ RelayConnectionGate }) => ({
+  loadRelayConnectionGateModule().then(({ RelayConnectionGate }) => ({
     default: RelayConnectionGate,
   })),
 );
 const RelayLoginPage = lazy(() =>
-  import("./pages/RelayLoginPage").then(({ RelayLoginPage }) => ({
+  loadRelayLoginPageModule().then(({ RelayLoginPage }) => ({
     default: RelayLoginPage,
   })),
 );
 const SessionPage = lazy(() =>
-  import("./pages/SessionPage").then(({ SessionPage }) => ({
+  loadSessionPageModule().then(({ SessionPage }) => ({
     default: SessionPage,
   })),
 );
 const SettingsLayout = lazy(() =>
-  import("./pages/settings").then(({ SettingsLayout }) => ({
+  loadSettingsModule().then(({ SettingsLayout }) => ({
     default: SettingsLayout,
   })),
 );
 const WorkstreamsPage = lazy(() =>
-  import("./pages/WorkstreamsPage").then(({ WorkstreamsPage }) => ({
+  loadWorkstreamsPageModule().then(({ WorkstreamsPage }) => ({
     default: WorkstreamsPage,
   })),
+);
+
+const initialRemoteModuleLoaders: Record<
+  RemoteRouteModuleKey,
+  () => Promise<unknown>
+> = {
+  activityPage: loadActivityPageModule,
+  agentsPage: loadAgentsPageModule,
+  bangCommandsPage: loadBangCommandsPageModule,
+  directLoginPage: loadDirectLoginPageModule,
+  emulatorPage: loadEmulatorPageModule,
+  filePage: loadFilePageModule,
+  gitStatusPage: loadGitStatusPageModule,
+  globalSessionsPage: loadGlobalSessionsPageModule,
+  hostPickerPage: loadHostPickerPageModule,
+  hostsPage: loadHostsPageModule,
+  inboxPage: loadInboxPageModule,
+  layouts: loadLayoutsModule,
+  legacyRelayRouteRedirect: loadLegacyRelayRouteRedirectModule,
+  multiHostMonitorPage: loadMultiHostMonitorPageModule,
+  newSessionPage: loadNewSessionPageModule,
+  projectSessionsRedirect: loadProjectSessionsRedirectModule,
+  projectsPage: loadProjectsPageModule,
+  publicShareFilePage: loadPublicShareFilePageModule,
+  publicSharePage: loadPublicSharePageModule,
+  relayConnectionGate: loadRelayConnectionGateModule,
+  relayLoginPage: loadRelayLoginPageModule,
+  remoteApp: loadRemoteAppModule,
+  sessionCore: loadSessionCoreModules,
+  sessionPage: loadSessionPageModule,
+  settings: loadSettingsModule,
+  workstreamsPage: loadWorkstreamsPageModule,
+};
+
+const initialRouteModuleKeys = getInitialRemoteRouteModuleKeys(
+  window.location.pathname,
+  import.meta.env.BASE_URL,
+);
+void Promise.allSettled(
+  initialRouteModuleKeys.map((key) => initialRemoteModuleLoaders[key]()),
 );
 
 // Apply saved preferences before React renders to avoid flash

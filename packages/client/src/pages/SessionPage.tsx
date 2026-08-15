@@ -21,8 +21,10 @@ import {
   thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
 import {
+  type ComponentProps,
   lazy,
   type MouseEvent as ReactMouseEvent,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -204,21 +206,51 @@ import {
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
+import {
+  loadMessageInputModule,
+  loadMessageListModule,
+} from "../lib/sessionRouteModules";
 import type { Message, Project } from "../types";
 
-const messageListModule = import("../components/MessageList");
-const messageInputModule = import("../components/MessageInput");
-
-const MessageList = lazy(() =>
-  messageListModule.then(({ MessageList }) => ({
+const LazyMessageList = lazy(() =>
+  loadMessageListModule().then(({ MessageList }) => ({
     default: MessageList,
   })),
 );
-const MessageInput = lazy(() =>
-  messageInputModule.then(({ MessageInput }) => ({
+const LazyMessageInput = lazy(() =>
+  loadMessageInputModule().then(({ MessageInput }) => ({
     default: MessageInput,
   })),
 );
+
+function SessionRouteModuleFallback({
+  label,
+}: {
+  label: "loading" | "sessionLoading";
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="loading" role="status">
+      {t(label)}
+    </div>
+  );
+}
+
+function MessageList(props: ComponentProps<typeof LazyMessageList>) {
+  return (
+    <Suspense fallback={<SessionRouteModuleFallback label="sessionLoading" />}>
+      <LazyMessageList {...props} />
+    </Suspense>
+  );
+}
+
+function MessageInput(props: ComponentProps<typeof LazyMessageInput>) {
+  return (
+    <Suspense fallback={<SessionRouteModuleFallback label="loading" />}>
+      <LazyMessageInput {...props} />
+    </Suspense>
+  );
+}
 
 const CLAUDE_HANDOFF_REQUIRED_MESSAGE =
   "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
