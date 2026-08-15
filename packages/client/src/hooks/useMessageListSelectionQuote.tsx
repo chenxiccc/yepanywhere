@@ -224,6 +224,16 @@ function shouldShieldTranscriptSelection(win: Window): boolean {
   return win.matchMedia?.("(pointer: coarse)").matches === true;
 }
 
+function shouldYieldSelectionContextMenuToBrowser(
+  event: MouseEvent,
+  win: Window,
+): boolean {
+  if (shouldShieldTranscriptSelection(win)) return true;
+  const pointerType = (event as MouseEvent & { pointerType?: string })
+    .pointerType;
+  return pointerType === "touch" || pointerType === "pen";
+}
+
 export function useSelectionActions({
   containerRef,
   inert,
@@ -922,9 +932,16 @@ export function useSelectionActions({
     const root = containerRef.current;
     const doc = root?.ownerDocument;
     if (!root || !doc) return;
+    const win = doc.defaultView ?? window;
 
     const handleContextMenu = (event: MouseEvent) => {
-      if (event.defaultPrevented || isInteractiveTarget(event.target)) return;
+      if (
+        event.defaultPrevented ||
+        isInteractiveTarget(event.target) ||
+        shouldYieldSelectionContextMenuToBrowser(event, win)
+      ) {
+        return;
+      }
       const snapshot = captureSelectionActionSnapshot();
       if (
         !snapshot ||

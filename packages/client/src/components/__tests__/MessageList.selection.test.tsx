@@ -100,6 +100,71 @@ describe("MessageList selection and copy", () => {
     );
   });
 
+  it("leaves touch selection context menus browser-owned", () => {
+    mockPointerCoarse(false);
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Touch selected text")]}
+        onQuoteSelection={() => "> Touch selected text\n"}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Touch selected text");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+      clientY: 10,
+    });
+    Object.defineProperty(contextMenuEvent, "pointerType", {
+      value: "touch",
+    });
+
+    expect(fireEvent(selectedElement, contextMenuEvent)).toBe(true);
+    expect(
+      screen.queryByRole("menu", { name: "Selected text actions" }),
+    ).toBeNull();
+  });
+
+  it("keeps legacy coarse-pointer selection menus browser-owned", () => {
+    mockPointerCoarse(true);
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Mobile selected text")]}
+        onQuoteSelection={() => "> Mobile selected text\n"}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Mobile selected text");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(
+      fireEvent.contextMenu(selectedElement, { clientX: 10, clientY: 10 }),
+    ).toBe(true);
+    const mouseCompatibleEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+      clientY: 10,
+    });
+    Object.defineProperty(mouseCompatibleEvent, "pointerType", {
+      value: "mouse",
+    });
+    expect(fireEvent(selectedElement, mouseCompatibleEvent)).toBe(true);
+    expect(
+      screen.queryByRole("menu", { name: "Selected text actions" }),
+    ).toBeNull();
+  });
+
   it("distinguishes visible text from the registered source in the menu", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

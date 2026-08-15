@@ -28,7 +28,7 @@ Phase 2 scope widening shipped 2026-07-01; portaled modal/file scope shipped
 selection actions and independent controls landed 2026-08-12; selected-text
 context actions and source-cited new-session transfer landed 2026-08-13;
 exact formatted-source selection and activity-overlay placement landed
-2026-08-14.**
+2026-08-14; mobile long-press selection ownership restored 2026-08-15.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -146,7 +146,13 @@ menu.
    available. This full menu does not depend on which compact bubble actions
    are enabled. A right-click outside the selected range retains its ordinary
    browser or component-owned behavior; project-path menus remain authoritative
-   over their links.
+   over their links. Touch and pen long-press remain browser-owned so native
+   text selection and its adjustment handles keep working. Purpose-specific
+   interactive targets such as project-file links may retain their own
+   documented long-press or context menu; the selected-text menu does not claim
+   those events. A device reporting a coarse primary pointer keeps every
+   selected-text context-menu event browser-owned, including legacy or
+   compatibility events with a missing or mouse-like pointer type.
 4. **Per-paragraph quote circle.** Each agent paragraph/block carries a circled
    `>` at its end. Default visibility is hover-revealed on desktop, like the
    existing copy and render-toggle buttons in `text-block-actions`
