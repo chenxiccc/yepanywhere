@@ -3904,6 +3904,7 @@ describe("Supervisor", () => {
           effort: null,
         }),
         getRecapMessages: () => [...persistedRecaps],
+        remapSessionId: async () => {},
         updateMetadata: async () => {},
         setProvider: async () => {},
         setExecutor: async () => {},
@@ -3912,10 +3913,14 @@ describe("Supervisor", () => {
       } as unknown as ConstructorParameters<
         typeof Supervisor
       >[0]["sessionMetadataService"];
+      const eventBus = new EventBus();
+      const events: BusEvent[] = [];
+      eventBus.subscribe((event) => events.push(event));
       const supervisorWithMetadata = new Supervisor({
         provider,
         idleTimeoutMs: 100,
         sessionMetadataService: metadataStub,
+        eventBus,
       });
 
       const process = await supervisorWithMetadata.startSession(
@@ -3982,6 +3987,15 @@ describe("Supervisor", () => {
         text: "forked summary",
       });
       expect(forkSession).toHaveBeenCalled();
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "session-metadata-changed",
+          sessionId: "since-last-recap-fork",
+          title: "Recap generator",
+          archived: true,
+          forkedFromSessionId: "since-last-recap",
+        }),
+      );
 
       await process.abort();
     });

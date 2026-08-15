@@ -536,6 +536,88 @@ describe("clientSummaryState", () => {
     expect(item?.projectName).toBe("Readable Project");
   });
 
+  it("keeps archived helpers out across either live-event ordering", () => {
+    const query = { scope: "global-sessions" as const, limit: 50 };
+    const helperCreated = createdEvent("recap-helper", {
+      ownership: { owner: "none" },
+      activity: undefined,
+    });
+    const helperRow = globalSession("recap-helper", {
+      isArchived: undefined,
+    });
+    const helperArchived = {
+      type: "session-metadata-changed" as const,
+      sessionId: "recap-helper",
+      title: "Recap generator",
+      archived: true,
+      forkedFromSessionId: "source-session",
+      timestamp: RECENT,
+    };
+    const emptySnapshot = () =>
+      applyGlobalSessionsCollectionSnapshot(
+        createEmptyClientSummaryState(),
+        { query, sessions: [], hasMore: false },
+        100,
+      );
+    const prependHelper = (
+      state: ReturnType<typeof createEmptyClientSummaryState>,
+      observedAt: number,
+    ) =>
+      applyGlobalSessionsCollectionSnapshot(
+        state,
+        {
+          query,
+          sessions: [helperRow],
+          hasMore: false,
+          mode: "prepend",
+        },
+        observedAt,
+      );
+    const visibleIds = (
+      state: ReturnType<typeof createEmptyClientSummaryState>,
+    ) =>
+      selectRecentSessionRecordsFromRecords(
+        selectSessionCollectionQueryRecords(state, query),
+        NOW,
+      ).map((session) => session.id);
+
+    let metadataFirst = applySessionCollectionMetadataChanged(
+      emptySnapshot(),
+      helperArchived,
+      200,
+    );
+    metadataFirst = applySessionCollectionCreated(
+      metadataFirst,
+      helperCreated,
+      300,
+    );
+    metadataFirst = prependHelper(metadataFirst, 300);
+
+    expect(visibleIds(metadataFirst)).toEqual([]);
+    expect(
+      selectSessionCollectionRecord(metadataFirst, "recap-helper"),
+    ).toMatchObject({
+      customTitle: "Recap generator",
+      isArchived: true,
+      forkedFromSessionId: "source-session",
+    });
+
+    let creationFirst = applySessionCollectionCreated(
+      emptySnapshot(),
+      helperCreated,
+      200,
+    );
+    creationFirst = prependHelper(creationFirst, 200);
+    expect(visibleIds(creationFirst)).toEqual(["recap-helper"]);
+
+    creationFirst = applySessionCollectionMetadataChanged(
+      creationFirst,
+      helperArchived,
+      300,
+    );
+    expect(visibleIds(creationFirst)).toEqual([]);
+  });
+
   it("backfills missing fields from older full snapshots after partial live updates", () => {
     let state = applySessionCollectionProcessStateChanged(
       createEmptyClientSummaryState(),

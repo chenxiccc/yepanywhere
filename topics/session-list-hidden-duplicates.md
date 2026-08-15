@@ -143,6 +143,14 @@ same-title parent/fork pair visible until YA has explicit helper-purpose
 metadata; a visible extra row is preferable to hiding the source/current
 session behind a duplicate affordance.
 
+Automatic forked-recap helpers publish their archived title and lineage on the
+existing `session-metadata-changed` channel as soon as that metadata is
+durable. The event may race transcript discovery in either direction: an early
+metadata patch survives the later partial `session-created` observation, while
+a later patch removes an already discovered helper from ordinary list
+projections. Neither ordering may leave a copied source-title row visible until
+reload.
+
 ### Active/pinned rows stay visible
 
 The sidebar's active/queued "pinned" set (rows where `activity` is

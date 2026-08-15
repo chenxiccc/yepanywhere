@@ -3186,6 +3186,15 @@ export class Supervisor {
       archived: true,
       forkedFromSessionId: sourceSessionId,
     });
+    this.eventBus?.emit({
+      type: "session-metadata-changed",
+      sessionId: childSessionId,
+      title,
+      archived: true,
+      forkedFromSessionId: sourceSessionId,
+      projectId: process.projectId,
+      timestamp: new Date().toISOString(),
+    });
     await this.sessionMetadataService.setProvider(childSessionId, providerName);
     await this.sessionMetadataService.setExecutor(
       childSessionId,
