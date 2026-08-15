@@ -174,9 +174,10 @@ describe("Local file routes", () => {
 
     expect(response.status).toBe(200);
     const html = await response.text();
+    const resolvedIncludePath = await realpath(includePath);
     expect(html).toContain("<h1>Report</h1>");
     expect(html).toContain(
-      `href="/api/local-file?path=${encodeURIComponent(includePath)}&amp;render=1"`,
+      `href="/api/local-file?path=${encodeURIComponent(resolvedIncludePath)}&amp;render=1"`,
     );
     expect(html).toContain('data-ya-render-markdown="true"');
   });
