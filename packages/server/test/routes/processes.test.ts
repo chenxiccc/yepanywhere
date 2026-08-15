@@ -1,5 +1,5 @@
 import type { UrlProjectId } from "@yep-anywhere/shared";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionIndexService } from "../../src/indexes/index.js";
 import type { SessionMetadataService } from "../../src/metadata/SessionMetadataService.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
@@ -16,6 +16,10 @@ import type {
   SessionSummary,
 } from "../../src/supervisor/types.js";
 import { createApp } from "../setup/create-app.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function createProject(): Project {
   return {
@@ -91,6 +95,9 @@ describe("Processes Routes", () => {
   );
 
   it("does not acknowledge configuration whose persistence fails", async () => {
+    const errorLog = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     const routes = createProcessesRoutes({
       supervisor: {
         getProcess: vi.fn(() => ({})),
@@ -109,6 +116,9 @@ describe("Processes Routes", () => {
     });
 
     expect(response.status).toBe(500);
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "metadata unavailable" }),
+    );
   });
 
   it("returns PID shutdown verification for an aborted process", async () => {

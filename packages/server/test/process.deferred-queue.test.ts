@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../src/logging/logger.js";
 import {
   CONCAT_SEPARATOR,
   MessageQueue,
@@ -11,8 +12,18 @@ import {
 import type { ProcessEvent, UrlProjectId } from "./process.test-support.js";
 
 describe("Process", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("effort boundary", () => {
     it("retains a failed effort selection and blocks deferred delivery", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
+      const warnLog = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const controller = createControllableIterator();
       const providerQueue = new MessageQueue();
       const push = vi.spyOn(providerQueue, "push");
@@ -63,6 +74,13 @@ describe("Process", () => {
           requestedValue: "high",
         }),
       ]);
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "effort_change_boundary_failed",
+          requestedEffort: "high",
+        }),
+        "Failed to apply effort before queued work",
+      );
 
       await process.setEffort("max");
       expect(process.effort).toBe("max");
@@ -74,6 +92,13 @@ describe("Process", () => {
       await waitFor(() => expect(process.state.type).toBe("idle"));
       unsubscribe();
       process.terminate("test complete");
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_terminated",
+          reason: "test complete",
+        }),
+        expect.any(String),
+      );
       controller.finish();
     });
   });

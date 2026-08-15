@@ -17,7 +17,6 @@ import type {
 } from "../metadata/index.js";
 import { getSessionSandboxSettingsError } from "../session-sandbox.js";
 import type { RecoveredSessionLaunchSettings } from "../sessions/types.js";
-import type { AgentProvider } from "../sdk/providers/types.js";
 import type { PermissionMode } from "../sdk/types.js";
 import type { Process } from "./Process.js";
 

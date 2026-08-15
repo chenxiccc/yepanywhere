@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../src/logging/logger.js";
 import { Process, createMockIterator } from "./process.test-support.js";
 import type {
   ProcessEvent,
@@ -7,6 +8,10 @@ import type {
 } from "./process.test-support.js";
 
 describe("Process", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("process termination", () => {
     it("isTerminated returns false for new process", async () => {
       const iterator = createMockIterator([
@@ -26,6 +31,12 @@ describe("Process", () => {
     });
 
     it("queueMessage returns error when process is terminated", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
+      const warnLog = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       // Create an iterator that throws a process termination error
       const error = new Error("ProcessTransport is not ready for writing");
       async function* failingIterator(): AsyncIterator<SDKMessage> {
@@ -51,6 +62,20 @@ describe("Process", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("terminated");
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_error",
+          errorMessage: error.message,
+        }),
+        expect.stringContaining(error.message),
+      );
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_terminated",
+          errorMessage: error.message,
+        }),
+        expect.stringContaining("underlying process terminated"),
+      );
     });
 
     it("rejects new input once reload-safe detach begins", async () => {
@@ -87,6 +112,9 @@ describe("Process", () => {
     it("does not let viewer telemetry failure block reload-safe detach", async () => {
       vi.useFakeTimers();
       try {
+        const warnLog = vi
+          .spyOn(getLogger(), "warn")
+          .mockImplementation(() => undefined);
         const detachForServerReloadFn = vi.fn(async () => {});
         const setRuntimeViewerPresenceFn = vi.fn(async () => {
           throw new Error("host viewer update unavailable");
@@ -114,12 +142,31 @@ describe("Process", () => {
 
         expect(setRuntimeViewerPresenceFn).toHaveBeenCalled();
         expect(detachForServerReloadFn).toHaveBeenCalledOnce();
+        expect(warnLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: "runtime_viewer_presence_update_failed",
+            error: "host viewer update unavailable",
+          }),
+          "Failed to update reload-safe runtime viewer presence",
+        );
+        expect(warnLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: "runtime_viewer_presence_detach_unconfirmed",
+          }),
+          "Proceeding with provider detach without confirmed viewer state",
+        );
       } finally {
         vi.useRealTimers();
       }
     });
 
     it("emits terminated event when process dies", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
+      const warnLog = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const error = new Error("ProcessTransport is not ready for writing");
       async function* failingIterator(): AsyncIterator<SDKMessage> {
         yield { type: "system", subtype: "init", session_id: "sess-1" };
@@ -155,9 +202,23 @@ describe("Process", () => {
       } | null;
       expect(captured?.reason).toContain("terminated");
       expect(captured?.error).toBe(error);
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({ event: "process_error" }),
+        expect.any(String),
+      );
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.objectContaining({ event: "process_terminated" }),
+        expect.any(String),
+      );
     });
 
     it("getInfo returns terminated state", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
+      const warnLog = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const error = new Error("process exited");
       async function* failingIterator(): AsyncIterator<SDKMessage> {
         yield { type: "system", subtype: "init", session_id: "sess-1" };
@@ -179,9 +240,20 @@ describe("Process", () => {
 
       const info = process.getInfo();
       expect(info.state).toBe("terminated");
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({ event: "process_error" }),
+        expect.any(String),
+      );
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.objectContaining({ event: "process_terminated" }),
+        expect.any(String),
+      );
     });
 
     it("terminates after emitting a Claude SDK API error message", async () => {
+      const warnLog = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const apiError: SDKMessage = {
         type: "assistant",
         uuid: "25f342b9-efa8-416c-9e9b-e617f61af756",
@@ -240,6 +312,13 @@ describe("Process", () => {
       );
       expect(abortFn).toHaveBeenCalledOnce();
       expect(process.queueMessage({ text: "should fail" }).success).toBe(false);
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_terminated",
+          reason: "Claude SDK API error; restart required",
+        }),
+        expect.any(String),
+      );
     });
 
     it("does not terminate non-Claude processes on Claude-shaped API errors", async () => {

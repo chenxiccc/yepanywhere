@@ -566,14 +566,20 @@ transition. Thus any visit or open session tab refreshes the dead-man switch
 for all sessions.
 
 Both reload-safe hosts retain the global first/last-viewer transition with
-their runtime entries. Each `Process` owns one latest-desired-state publisher:
-a provider callback completes only after its host accepts that exact state,
+their runtime entries. Each process's `ProcessViewerLifecycle` owns one
+latest-desired-state publisher alongside its viewer lease and idle deadline. A
+provider callback completes only after its host accepts that exact state,
 failed writes retry with bounded exponential backoff, and a newer transition
 supersedes any queued retry without waiting for it. A stale completion can
 acknowledge only the value it actually wrote; the reconciler immediately
 publishes a newer desired value. Terminal teardown cancels timers and fences
 late completions. Reload detach gives the final no-viewer write a short bounded
 courtesy window, but viewer telemetry cannot block lifecycle teardown.
+
+The lifecycle owner reports idle expiry through one `onIdleReap` boundary.
+`Process` retains provider iteration, abort, and positive teardown
+verification; the lifecycle owner keeps the ownership fence raised until that
+verification succeeds.
 
 Reattach returns the existing no-viewer anchor to the replacement `Process`;
 claiming a runtime or losing its controller preserves the viewer-absence

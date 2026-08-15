@@ -179,6 +179,21 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
 - Initial-prompt recovery metadata is a copy/retry affordance. It must not
   replace transcript messages or be treated as provider progress evidence.
 
+## Lifecycle Ownership
+
+`ProcessViewerLifecycle` is the single owner of viewer leases, the no-viewer
+anchor, the absolute idle deadline, reload-safe viewer publication, and the
+pending-teardown ownership fence for one `Process`. `Process` reports state and
+retention transitions into that owner and receives one result:
+`onIdleReap`. Provider iteration, abort, and positive teardown verification
+remain in `Process`, so the lifecycle owner cannot release session ownership
+on its own.
+
+This boundary keeps every deadline-affecting transition in one state machine.
+A viewer transition, process-state transition, retention change, live timeout
+change, reload detach, and verified teardown all enter through explicit
+methods; no caller directly arms or clears the timer.
+
 ## Representative Change Types
 
 - Adding a provider-specific status probe or raw event cadence source.

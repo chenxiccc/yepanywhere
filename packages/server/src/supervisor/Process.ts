@@ -45,7 +45,11 @@ import {
   type DeferredDeliverySettings,
   resolveDeferredDeliverySettings,
 } from "./deferredDeliverySettings.js";
-import { SessionViewerPresence } from "./SessionViewerPresence.js";
+import {
+  ProcessViewerLifecycle,
+  type ProcessViewerLifecycleOptions,
+} from "./ProcessViewerLifecycle.js";
+import type { SessionViewerPresence } from "./SessionViewerPresence.js";
 import type {
   AgentProvider,
   PromptCacheRefreshResult,
@@ -114,11 +118,6 @@ type PendingRecapRequest = {
 type PromptCacheKeepaliveLease = {
   getInactivityMs: () => number | null;
 };
-type RuntimeViewerPresenceWaiter = {
-  hasViewers: boolean;
-  resolve: () => void;
-};
-
 export const NATIVE_RECAP_FALLBACK_GRACE_MS = 2_000;
 
 export interface RecapRequestResult {
@@ -132,7 +131,6 @@ export interface RecapRequestResult {
 }
 
 const CLAUDE_UNBOUNDED_MAX_RETRIES = 2_147_483_647;
-const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
 const PROCESS_ABORT_TIMEOUT_MS = 5_000;
 const PID_EXIT_POLL_INTERVAL_MS = 25;
 const MODEL_SWITCH_RETRY_INTERRUPT_PREAMBLE =
@@ -239,10 +237,6 @@ const READ_ONLY_TOOLS = new Set([
 ]);
 const PROMPT_CACHE_KEEPALIVE_RECHECK_MS = 30_000;
 const PROMPT_CACHE_KEEPALIVE_MIN_DELAY_MS = 1_000;
-const IDLE_REAP_ELIGIBILITY_RECHECK_MS = 60_000;
-const RUNTIME_VIEWER_PRESENCE_RETRY_INITIAL_MS = 100;
-const RUNTIME_VIEWER_PRESENCE_RETRY_MAX_MS = 5_000;
-const RUNTIME_VIEWER_PRESENCE_DETACH_GRACE_MS = 500;
 
 function isAskUserQuestionTool(toolName: string): boolean {
   return toolName === ASK_USER_QUESTION_TOOL_NAME;
@@ -842,31 +836,11 @@ export class Process {
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
   private liveDeltaSubscriberCount = 0;
-  private readonly viewerPresence: SessionViewerPresence;
-  private releaseViewerPresenceSubscription: (() => void) | null = null;
-  private idleTimer: NodeJS.Timeout | null = null;
-  private idleDeadlineMs: number | null = null;
-  private idleTimeoutMs: number;
-  private unviewedSince: Date | null;
-  private getRuntimeUnviewedSinceFn: (() => Date | undefined) | null;
-  private setRuntimeViewerPresenceFn:
-    | ((hasViewers: boolean) => void | Promise<void>)
-    | null;
-  private desiredRuntimeViewerPresence: boolean | null = null;
-  private acknowledgedRuntimeViewerPresence: boolean | null = null;
-  private runtimeViewerPresenceInFlight: Promise<void> | null = null;
-  private runtimeViewerPresenceRetryTimer: ReturnType<
-    typeof setTimeout
-  > | null = null;
-  private runtimeViewerPresenceRetryAttempt = 0;
-  private runtimeViewerPresenceStopped = false;
-  private runtimeViewerPresenceWaiters = new Set<RuntimeViewerPresenceWaiter>();
+  private readonly viewerLifecycle: ProcessViewerLifecycle;
   private iteratorDone = false;
 
   /** Set synchronously when transport/spawn fails to prevent race with queueMessage */
   private transportFailed = false;
-  /** Freeze new input after a reload-safe detach decision becomes final. */
-  private detachingForServerReload = false;
 
   /**
    * Two-bucket message buffer for SSE replay to late-joining clients.
@@ -989,7 +963,6 @@ export class Process {
 
   /** Check if underlying CLI process is still alive (undefined = not available). */
   private _isProcessAlive: (() => boolean) | null;
-  private shouldRetainIdleProcess: ((sessionId: string) => boolean) | null;
   /** Provider-specific active liveness probe, when available. */
   private probeLivenessFn: (() => Promise<ProviderLivenessProbeResult>) | null;
   private getProviderActivityFn: (() => ProviderActivitySnapshot) | null;
@@ -1041,8 +1014,6 @@ export class Process {
   /** Promise that resolves when the process fully terminates (CLI exits) */
   private _exitPromise: Promise<void>;
   private _exitResolve: (() => void) | null = null;
-  /** True once idle reaping starts, until verified provider teardown releases ownership. */
-  private lifecycleReapInProgress = false;
   private abortInFlight: Promise<ProcessAbortResult> | null = null;
   /** Registry release is one event, regardless of which terminal path finishes. */
   private completionEmitted = false;
@@ -1060,11 +1031,6 @@ export class Process {
       options.initialState === "idle"
         ? { type: "idle", since: this.startedAt }
         : { type: "in-turn" };
-    this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
-    this.viewerPresence = options.viewerPresence ?? new SessionViewerPresence();
-    this.unviewedSince = this.viewerPresence.hasViewers()
-      ? null
-      : this.startedAt;
 
     // Real SDK provides these, mock SDK doesn't
     this.messageQueue = options.queue ?? null;
@@ -1113,13 +1079,9 @@ export class Process {
     this.publishAgentctlSessionIdFn =
       options.publishAgentctlSessionIdFn ?? null;
     this._isProcessAlive = options.isProcessAlive ?? null;
-    this.shouldRetainIdleProcess = options.shouldRetainIdleProcess ?? null;
     this.probeLivenessFn = options.probeLivenessFn ?? null;
     this.getProviderActivityFn = options.getProviderActivityFn ?? null;
     this.getProviderRetentionFn = options.getProviderRetentionFn ?? null;
-    this.getRuntimeUnviewedSinceFn = options.getRuntimeUnviewedSinceFn ?? null;
-    this.setRuntimeViewerPresenceFn =
-      options.setRuntimeViewerPresenceFn ?? null;
     this.refreshPromptCacheFn = options.refreshPromptCacheFn ?? null;
     this.providerRuntimeStatus = options.initialProviderRuntimeStatus ?? null;
     this._recapMode =
@@ -1133,27 +1095,33 @@ export class Process {
     this._lastMessageTime = new Date();
     this._lastProviderMessageTime = null;
     this._lastStateChangeTime = this.startedAt;
-    this.releaseViewerPresenceSubscription = this.viewerPresence.subscribe(
-      (hasViewers) => this.handleViewerPresenceChanged(hasViewers),
-    );
-    if (this.viewerPresence.hasViewers()) {
-      this.recordRuntimeViewerPresence(true);
-    }
 
     // Exit promise resolves when the CLI process fully terminates
     this._exitPromise = new Promise((resolve) => {
       this._exitResolve = resolve;
     });
 
+    const viewerLifecycleOptions: ProcessViewerLifecycleOptions = {
+      processId: this.id,
+      projectId: this.projectId,
+      getSessionId: () => this._sessionId,
+      startedAt: this.startedAt,
+      initialState: this._state,
+      idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+      viewerPresence: options.viewerPresence,
+      shouldRetainIdleProcess: options.shouldRetainIdleProcess,
+      hasPromptCacheKeepaliveLease: () => this.hasPromptCacheKeepaliveLease(),
+      getProviderRetention: () => this.getProviderRetentionSnapshot(),
+      getLivenessSnapshot: () => this.getLivenessSnapshot(),
+      getLiveDeltaSubscriberCount: () => this.liveDeltaSubscriberCount,
+      getRuntimeUnviewedSince: options.getRuntimeUnviewedSinceFn,
+      setRuntimeViewerPresence: options.setRuntimeViewerPresenceFn,
+      onIdleReap: () => this.handleIdleReap(),
+    };
+    this.viewerLifecycle = new ProcessViewerLifecycle(viewerLifecycleOptions);
+
     // Start bucket swap timer for bounded message history
     this.startBucketSwapTimer();
-
-    // A process created without a user turn is genuinely idle from birth. It
-    // must share the ordinary idle lifecycle so Activate/recovery cannot pin a
-    // provider child forever merely because no result event will ever arrive.
-    if (this._state.type === "idle") {
-      this.startIdleTimer();
-    }
 
     // Start processing messages from the SDK
     this.processMessages();
@@ -1393,9 +1361,7 @@ export class Process {
 
   handleProviderRetentionChanged(): void {
     this.emit({ type: "liveness-update" });
-    if (this._state.type === "idle") {
-      this.startIdleTimer();
-    }
+    this.viewerLifecycle.retentionChanged();
   }
 
   supportsPromptCacheKeepalive(): boolean {
@@ -1415,9 +1381,7 @@ export class Process {
       this.promptCacheKeepaliveLeases.delete(leaseId);
       if (this.promptCacheKeepaliveLeases.size === 0) {
         this.clearPromptCacheKeepaliveTimer();
-        if (this._state.type === "idle") {
-          this.startIdleTimer();
-        }
+        this.viewerLifecycle.retentionChanged();
       } else {
         this.schedulePromptCacheKeepalive();
       }
@@ -1595,7 +1559,6 @@ export class Process {
       return;
     }
     this.recordWakeReason(reason, message, at);
-    this.clearIdleTimer();
     this.setState({ type: "in-turn" });
   }
 
@@ -2226,7 +2189,7 @@ export class Process {
 
   /** A prior provider may still be running, so no replacement may claim this session. */
   get hasUnverifiedProviderOwnership(): boolean {
-    return this.lifecycleReapInProgress;
+    return this.viewerLifecycle.hasUnverifiedProviderOwnership;
   }
 
   /**
@@ -2298,9 +2261,7 @@ export class Process {
       `Process terminated: ${this._sessionId} - ${reason}`,
     );
 
-    this.clearIdleTimer();
-    this.stopRuntimeViewerPresencePublication();
-    this.releaseViewerPresence();
+    this.viewerLifecycle.stop();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.iteratorDone = true;
@@ -2313,7 +2274,7 @@ export class Process {
 
     this.setState({ type: "terminated", reason, error });
     this.emit({ type: "terminated", reason, error });
-    if (this.lifecycleReapInProgress) return;
+    if (this.viewerLifecycle.hasUnverifiedProviderOwnership) return;
 
     this.emitCompletion();
 
@@ -3101,10 +3062,10 @@ export class Process {
   }
 
   private inputRejectionError(): string | null {
-    if (this.detachingForServerReload) {
+    if (this.viewerLifecycle.isDetachingForServerReload) {
       return "Process is detaching for server reload";
     }
-    if (this.lifecycleReapInProgress) {
+    if (this.viewerLifecycle.hasUnverifiedProviderOwnership) {
       return "Process provider teardown is in progress or unverified";
     }
     if (this._state.type === "terminated") {
@@ -4090,11 +4051,11 @@ export class Process {
   }
 
   hasViewers(): boolean {
-    return this.viewerPresence.hasViewers();
+    return this.viewerLifecycle.hasViewers();
   }
 
   registerViewer(): () => void {
-    return this.viewerPresence.registerViewer();
+    return this.viewerLifecycle.registerViewer();
   }
 
   /** True when reload can detach without losing YA-owned queued input. */
@@ -4113,7 +4074,7 @@ export class Process {
    * orphaned processes that continue running after Yep stops tracking them.
    */
   terminate(reason: string): void {
-    if (!this.lifecycleReapInProgress) {
+    if (!this.viewerLifecycle.hasUnverifiedProviderOwnership) {
       // Kill the underlying CLI process first (if available), so it doesn't
       // continue running as an orphan after we unregister from the Supervisor.
       this.requestProviderAbortWithoutWaiting(reason);
@@ -4126,7 +4087,7 @@ export class Process {
    * verified gone. Replacement ownership must not begin before this resolves.
    */
   async terminateAndWait(reason: string): Promise<ProcessAbortResult> {
-    this.lifecycleReapInProgress = true;
+    this.viewerLifecycle.beginTeardownVerification();
     this.markTerminated(reason);
     try {
       return await this.abort();
@@ -4175,9 +4136,7 @@ export class Process {
   }
 
   private async abortAndVerify(): Promise<ProcessAbortResult> {
-    this.clearIdleTimer();
-    this.stopRuntimeViewerPresencePublication();
-    this.releaseViewerPresence();
+    this.viewerLifecycle.stop();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.clearRetryingProviderRuntimeStatus();
@@ -4240,7 +4199,7 @@ export class Process {
       verification = "iterator";
     }
 
-    this.lifecycleReapInProgress = false;
+    this.viewerLifecycle.completeTeardownVerification();
     this.emitCompletion();
     this.listeners.clear();
 
@@ -4262,36 +4221,12 @@ export class Process {
     // Set this before the first await. The shutdown caller checks volatile
     // queue blockers immediately before entering here, so no client turn can
     // slip into YA-owned memory after that decision.
-    this.detachingForServerReload = true;
-    this.clearIdleTimer();
-    this.releaseViewerPresence();
+    const viewerPresencePublication =
+      this.viewerLifecycle.prepareForServerReload();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.clearRetryingProviderRuntimeStatus();
-    this.unviewedSince = new Date();
-    this.recordRuntimeViewerPresence(false);
-    const viewerPresenceDeadline =
-      Date.now() + RUNTIME_VIEWER_PRESENCE_DETACH_GRACE_MS;
-    try {
-      await waitUntilAbortDeadline(
-        this.waitForRuntimeViewerPresence(false),
-        viewerPresenceDeadline,
-        "Timed out publishing no-viewer state before provider detach",
-      );
-    } catch (error) {
-      getLogger().warn(
-        {
-          event: "runtime_viewer_presence_detach_unconfirmed",
-          sessionId: this._sessionId,
-          processId: this.id,
-          projectId: this.projectId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Proceeding with provider detach without confirmed viewer state",
-      );
-    } finally {
-      this.stopRuntimeViewerPresencePublication();
-    }
+    await viewerPresencePublication;
     const deadline = Date.now() + PROCESS_ABORT_TIMEOUT_MS;
     await waitUntilAbortDeadline(
       this.detachForServerReloadFn
@@ -4499,7 +4434,10 @@ export class Process {
     } catch (error) {
       const err = error as Error;
 
-      if (this.lifecycleReapInProgress && this.isProcessTerminationError(err)) {
+      if (
+        this.viewerLifecycle.hasUnverifiedProviderOwnership &&
+        this.isProcessTerminationError(err)
+      ) {
         return;
       }
 
@@ -4611,13 +4549,13 @@ export class Process {
           this._state.type === "waiting-input" &&
           this.pendingToolApprovals.size > 0
         ) {
-          this.clearIdleTimer();
+          this.viewerLifecycle.suspendIdleDeadline();
           return;
         }
         if (this._state.type !== "in-turn") {
           this.transitionToInTurnForWake("session-state-running");
         } else {
-          this.clearIdleTimer();
+          this.viewerLifecycle.suspendIdleDeadline();
         }
         break;
 
@@ -4625,7 +4563,7 @@ export class Process {
         if (this._state.type === "idle") {
           this.transitionToInTurnForWake("session-state-requires-action");
         } else {
-          this.clearIdleTimer();
+          this.viewerLifecycle.suspendIdleDeadline();
         }
         break;
     }
@@ -4634,7 +4572,7 @@ export class Process {
   private transitionToIdle(options?: {
     applyPendingEffort?: boolean;
   }): Promise<void> | void {
-    this.clearIdleTimer();
+    this.viewerLifecycle.suspendIdleDeadline();
     this.clearRetryingProviderRuntimeStatus();
 
     // A provider turn boundary ends the special steering-retention window.
@@ -4684,7 +4622,6 @@ export class Process {
     }
 
     this.setState({ type: "idle", since: new Date() });
-    this.startIdleTimer();
     this.flushPendingRecapRequest();
     this.processNextInQueue();
   }
@@ -5068,123 +5005,11 @@ export class Process {
     );
   }
 
-  private startIdleTimer(delayMs = this.idleTimeoutMs): void {
-    this.clearIdleTimer();
-    if (!this.shouldScheduleIdleReapCheck()) {
-      return;
-    }
-    this.idleDeadlineMs = Date.now() + Math.max(0, delayMs);
-    this.armIdleTimer();
-  }
-
-  private armIdleTimer(): void {
-    const deadlineMs = this.idleDeadlineMs;
-    if (deadlineMs === null || !this.shouldScheduleIdleReapCheck()) {
-      this.clearIdleTimer();
-      return;
-    }
-    const delayMs = Math.min(
-      MAX_NODE_TIMER_DELAY_MS,
-      Math.max(0, deadlineMs - Date.now()),
-    );
-    this.idleTimer = setTimeout(() => {
-      this.idleTimer = null;
-      if (this.idleDeadlineMs !== deadlineMs) {
-        return;
-      }
-      if (Date.now() < deadlineMs) {
-        this.armIdleTimer();
-        return;
-      }
-      this.idleDeadlineMs = null;
-
-      if (!this.isIdleReapEligible()) {
-        const retainedByFeature =
-          this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
-        const retainedByPromptCacheKeepalive =
-          this.hasPromptCacheKeepaliveLease();
-        const providerRetention = this.getProviderRetentionSnapshot();
-        getLogger().debug(
-          {
-            event: "idle_cleanup_deferred",
-            sessionId: this._sessionId,
-            processId: this.id,
-            projectId: this.projectId,
-            idleTimeoutMs: this.idleTimeoutMs,
-            viewerCount: this.viewerPresence.getViewerCount(),
-            liveDeltaSubscriberCount: this.liveDeltaSubscriberCount,
-            retainedByFeature,
-            retainedByPromptCacheKeepalive,
-            retainedByProvider: providerRetention.retained,
-            providerRetentionReasons: providerRetention.reasons,
-            providerBackgroundTaskCount: providerRetention.backgroundTaskCount,
-            providerSessionCronCount: providerRetention.sessionCronCount,
-            providerLiveTaskCount: providerRetention.liveTaskCount,
-          },
-          `Idle cleanup deferred: ${this._sessionId} is not currently eligible`,
-        );
-        this.startIdleTimer(IDLE_REAP_ELIGIBILITY_RECHECK_MS);
-        return;
-      }
-
-      this.reapIdleProcess();
-    }, delayMs);
-    this.idleTimer.unref?.();
-  }
-
-  private rescheduleIdleTimerForCurrentIdlePeriod(): void {
-    if (this._state.type !== "idle" || !this.shouldScheduleIdleReapCheck()) {
-      this.clearIdleTimer();
-      return;
-    }
-    const runtimeUnviewedSinceMs =
-      this.getRuntimeUnviewedSinceFn?.()?.getTime();
-    const localUnviewedSinceMs = this.unviewedSince?.getTime();
-    const effectiveUnviewedSinceMs =
-      runtimeUnviewedSinceMs !== undefined &&
-      Number.isFinite(runtimeUnviewedSinceMs) &&
-      localUnviewedSinceMs !== undefined
-        ? Math.min(runtimeUnviewedSinceMs, localUnviewedSinceMs)
-        : (runtimeUnviewedSinceMs ?? localUnviewedSinceMs);
-    const eligibleSinceMs = Math.max(
-      this._state.since.getTime(),
-      effectiveUnviewedSinceMs ?? this._state.since.getTime(),
-    );
-    const elapsedMs = Date.now() - eligibleSinceMs;
-    this.startIdleTimer(Math.max(0, this.idleTimeoutMs - elapsedMs));
-  }
-
   updateIdleTimeoutMs(idleTimeoutMs: number): void {
-    this.idleTimeoutMs = idleTimeoutMs;
-    if (this._state.type === "idle") {
-      this.rescheduleIdleTimerForCurrentIdlePeriod();
-    }
+    this.viewerLifecycle.updateIdleTimeoutMs(idleTimeoutMs);
   }
 
-  private isIdleReapEligible(): boolean {
-    if (
-      !this.shouldScheduleIdleReapCheck() ||
-      this.shouldRetainIdleProcess?.(this._sessionId) === true ||
-      this.hasPromptCacheKeepaliveLease() ||
-      this.getProviderRetentionSnapshot().retained
-    ) {
-      return false;
-    }
-    return this.getLivenessSnapshot().derivedStatus === "verified-idle";
-  }
-
-  private shouldScheduleIdleReapCheck(): boolean {
-    return (
-      this.idleTimeoutMs >= 0 &&
-      this._state.type === "idle" &&
-      !this.hasViewers() &&
-      !this.detachingForServerReload &&
-      !this.lifecycleReapInProgress
-    );
-  }
-
-  private reapIdleProcess(): void {
-    this.lifecycleReapInProgress = true;
+  private handleIdleReap(): void {
     this.iteratorDone = true;
     this.emit({ type: "idle-reap" });
     void this.abort().catch((error) => {
@@ -5193,168 +5018,6 @@ export class Process {
         error,
       );
     });
-  }
-
-  private clearIdleTimer(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer);
-      this.idleTimer = null;
-    }
-    this.idleDeadlineMs = null;
-  }
-
-  private handleViewerPresenceChanged(hasViewers: boolean): void {
-    this.unviewedSince = hasViewers ? null : new Date();
-    this.recordRuntimeViewerPresence(hasViewers);
-    if (hasViewers) {
-      this.clearIdleTimer();
-    } else if (this._state.type === "idle") {
-      this.startIdleTimer();
-    }
-  }
-
-  private releaseViewerPresence(): void {
-    this.releaseViewerPresenceSubscription?.();
-    this.releaseViewerPresenceSubscription = null;
-  }
-
-  private recordRuntimeViewerPresence(hasViewers: boolean): void {
-    if (!this.setRuntimeViewerPresenceFn || this.runtimeViewerPresenceStopped) {
-      return;
-    }
-    if (this.desiredRuntimeViewerPresence !== hasViewers) {
-      this.desiredRuntimeViewerPresence = hasViewers;
-      this.runtimeViewerPresenceRetryAttempt = 0;
-      this.clearRuntimeViewerPresenceRetryTimer();
-      this.settleRuntimeViewerPresenceWaiters();
-    }
-    this.reconcileRuntimeViewerPresence();
-  }
-
-  private reconcileRuntimeViewerPresence(): void {
-    const update = this.setRuntimeViewerPresenceFn;
-    const desired = this.desiredRuntimeViewerPresence;
-    if (
-      !update ||
-      desired === null ||
-      this.runtimeViewerPresenceStopped ||
-      this.runtimeViewerPresenceInFlight
-    ) {
-      return;
-    }
-    if (this.acknowledgedRuntimeViewerPresence === desired) {
-      this.settleRuntimeViewerPresenceWaiters();
-      return;
-    }
-
-    const publication = Promise.resolve().then(() => update(desired));
-    this.runtimeViewerPresenceInFlight = publication;
-    void publication
-      .then(
-        () => {
-          if (!this.runtimeViewerPresenceStopped) {
-            this.acknowledgedRuntimeViewerPresence = desired;
-            this.runtimeViewerPresenceRetryAttempt = 0;
-          }
-        },
-        (error: unknown) => {
-          if (this.runtimeViewerPresenceStopped) return;
-          if (this.desiredRuntimeViewerPresence === desired) {
-            this.runtimeViewerPresenceRetryAttempt += 1;
-          }
-          getLogger().warn(
-            {
-              event: "runtime_viewer_presence_update_failed",
-              sessionId: this._sessionId,
-              processId: this.id,
-              projectId: this.projectId,
-              hasViewers: desired,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Failed to update reload-safe runtime viewer presence",
-          );
-        },
-      )
-      .finally(() => {
-        if (this.runtimeViewerPresenceInFlight === publication) {
-          this.runtimeViewerPresenceInFlight = null;
-        }
-        if (this.runtimeViewerPresenceStopped) return;
-        if (this.desiredRuntimeViewerPresence !== desired) {
-          this.reconcileRuntimeViewerPresence();
-        } else if (this.acknowledgedRuntimeViewerPresence !== desired) {
-          this.scheduleRuntimeViewerPresenceRetry();
-        } else {
-          this.settleRuntimeViewerPresenceWaiters();
-        }
-      });
-  }
-
-  private scheduleRuntimeViewerPresenceRetry(): void {
-    if (
-      this.runtimeViewerPresenceStopped ||
-      this.runtimeViewerPresenceRetryTimer ||
-      this.desiredRuntimeViewerPresence === null
-    ) {
-      return;
-    }
-    const exponent = Math.min(
-      Math.max(0, this.runtimeViewerPresenceRetryAttempt - 1),
-      30,
-    );
-    const delayMs = Math.min(
-      RUNTIME_VIEWER_PRESENCE_RETRY_INITIAL_MS * 2 ** exponent,
-      RUNTIME_VIEWER_PRESENCE_RETRY_MAX_MS,
-    );
-    this.runtimeViewerPresenceRetryTimer = setTimeout(() => {
-      this.runtimeViewerPresenceRetryTimer = null;
-      this.reconcileRuntimeViewerPresence();
-    }, delayMs);
-    this.runtimeViewerPresenceRetryTimer.unref?.();
-  }
-
-  private clearRuntimeViewerPresenceRetryTimer(): void {
-    if (this.runtimeViewerPresenceRetryTimer) {
-      clearTimeout(this.runtimeViewerPresenceRetryTimer);
-      this.runtimeViewerPresenceRetryTimer = null;
-    }
-  }
-
-  private waitForRuntimeViewerPresence(hasViewers: boolean): Promise<void> {
-    if (
-      !this.setRuntimeViewerPresenceFn ||
-      this.runtimeViewerPresenceStopped ||
-      (this.desiredRuntimeViewerPresence === hasViewers &&
-        this.acknowledgedRuntimeViewerPresence === hasViewers &&
-        !this.runtimeViewerPresenceInFlight)
-    ) {
-      return Promise.resolve();
-    }
-    return new Promise((resolve) => {
-      this.runtimeViewerPresenceWaiters.add({ hasViewers, resolve });
-    });
-  }
-
-  private settleRuntimeViewerPresenceWaiters(): void {
-    const desired = this.desiredRuntimeViewerPresence;
-    for (const waiter of this.runtimeViewerPresenceWaiters) {
-      const superseded = waiter.hasViewers !== desired;
-      const acknowledged =
-        !this.runtimeViewerPresenceInFlight &&
-        waiter.hasViewers === desired &&
-        waiter.hasViewers === this.acknowledgedRuntimeViewerPresence;
-      if (this.runtimeViewerPresenceStopped || superseded || acknowledged) {
-        this.runtimeViewerPresenceWaiters.delete(waiter);
-        waiter.resolve();
-      }
-    }
-  }
-
-  private stopRuntimeViewerPresencePublication(): void {
-    if (this.runtimeViewerPresenceStopped) return;
-    this.runtimeViewerPresenceStopped = true;
-    this.clearRuntimeViewerPresenceRetryTimer();
-    this.settleRuntimeViewerPresenceWaiters();
   }
 
   private clearPromptCacheKeepaliveTimer(): void {
@@ -5367,9 +5030,7 @@ export class Process {
   private setState(state: ProcessState): void {
     this._state = state;
     this._lastStateChangeTime = new Date();
-    if (state.type !== "idle") {
-      this.clearIdleTimer();
-    }
+    this.viewerLifecycle.observeProcessState(state);
     this.emit({ type: "state-change", state });
     this.schedulePromptCacheKeepalive();
   }
