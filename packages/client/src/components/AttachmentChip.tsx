@@ -67,12 +67,13 @@ export function formatAttachmentName(name: string): string {
   return `${trimmed.slice(0, ATTACHMENT_NAME_SOFT_LIMIT).replace(/[ -_]+$/u, "")}...`;
 }
 
-function getUploadUrl(
+export function getPersistedAttachmentUploadUrl(
   filePath: string | undefined,
   projectId?: string,
 ): string | null {
   if (!filePath) return null;
-  const parts = filePath.split("/");
+  const separator = filePath.includes("\\") ? "\\" : "/";
+  const parts = filePath.split(/[\\/]/);
   if (parts.length < 3) return null;
 
   const filename = parts[parts.length - 1];
@@ -93,14 +94,14 @@ function getUploadUrl(
   }
 
   if (projectSegment === ".attachments") {
-    const projectPath = parts.slice(0, -3).join("/");
+    const projectPath = parts.slice(0, -3).join(separator);
     if (!projectPath) return null;
     const projectId = toUrlProjectId(projectPath);
     return `/api/projects/${projectId}/sessions/${encodeURIComponent(pathSessionId)}/upload/${encodeURIComponent(filename)}`;
   }
 
   if (projectSegment === "attachments" && parts[parts.length - 4] === ".yep") {
-    const projectPath = parts.slice(0, -4).join("/");
+    const projectPath = parts.slice(0, -4).join(separator);
     if (!projectPath) return null;
     const projectId = toUrlProjectId(projectPath);
     return `/api/projects/${projectId}/sessions/${encodeURIComponent(pathSessionId)}/upload/${encodeURIComponent(filename)}`;
@@ -139,7 +140,7 @@ function useCachedAttachmentImage(
   const fullUrlRef = useRef<string | null>(null);
 
   const remotePath = useMemo(
-    () => getUploadUrl(path, projectId),
+    () => getPersistedAttachmentUploadUrl(path, projectId),
     [path, projectId],
   );
 

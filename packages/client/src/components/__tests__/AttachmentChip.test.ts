@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatAttachmentName } from "../AttachmentChip";
+import { toUrlProjectId } from "@yep-anywhere/shared";
+import {
+  formatAttachmentName,
+  getPersistedAttachmentUploadUrl,
+} from "../AttachmentChip";
 
 describe("formatAttachmentName", () => {
   it("keeps the last separator when the next word would overshoot the window", () => {
@@ -12,5 +16,34 @@ describe("formatAttachmentName", () => {
     expect(
       formatAttachmentName("averylongfilenamewithnospacesorbreaks.txt"),
     ).toBe("averylongfilenamewithnos...");
+  });
+});
+
+describe("getPersistedAttachmentUploadUrl", () => {
+  const filename = "12345678-1234-1234-1234-123456789abc_image.png";
+
+  it("uses the physical session directory from a Windows app-data path", () => {
+    const projectId = toUrlProjectId("C:\\work\\project");
+
+    expect(
+      getPersistedAttachmentUploadUrl(
+        `C:\\ya-data\\projects\\key\\attachments\\physical-session\\${filename}`,
+        projectId,
+      ),
+    ).toBe(
+      `/api/projects/${encodeURIComponent(projectId)}/sessions/physical-session/upload/${filename}`,
+    );
+  });
+
+  it("preserves a Windows project root for legacy path-based routing", () => {
+    const projectPath = "C:\\work\\project";
+
+    expect(
+      getPersistedAttachmentUploadUrl(
+        `${projectPath}\\.yep\\attachments\\physical-session\\${filename}`,
+      ),
+    ).toBe(
+      `/api/projects/${toUrlProjectId(projectPath)}/sessions/physical-session/upload/${filename}`,
+    );
   });
 });

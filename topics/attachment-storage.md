@@ -137,7 +137,9 @@ the physical path, and a provider may re-read it at any later turn. The
 persisted turn therefore also tells the browser where the file lives, and
 the client derives the URL's `<session>` segment from the physical
 directory in the persisted path — never from the viewed logical session
-id. Only the `<project>` segment uses logical identity, because an
+id. Persisted paths from both Windows and POSIX hosts retain this routing
+identity; client parsing accepts either platform's directory separator. Only
+the `<project>` segment uses logical identity, because an
 app-data project key is not reversible to a URL project id. The route
 performs exact lookups only; it does not search sibling session
 directories.

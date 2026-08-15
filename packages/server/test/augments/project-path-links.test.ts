@@ -171,6 +171,33 @@ describe("project path index", () => {
     index.release();
   });
 
+  it("links exact authorized Windows drive paths", async () => {
+    const repo = await createRepo();
+    const index = await getProjectPathIndex(repo);
+    const allowed = "C:\\work\\report.md";
+    const missing = "D:/work/missing.md";
+    const resolveAbsoluteFilePaths = vi.fn(
+      async (paths: readonly string[]) =>
+        new Set(paths.filter((path) => path === allowed)),
+    );
+
+    const html = await linkifyProjectPaths(
+      `<span>${allowed} ${missing}</span>`,
+      {
+        projectId: "project-1",
+        projectPath: repo,
+        index,
+        resolveAbsoluteFilePaths,
+      },
+    );
+
+    expect(resolveAbsoluteFilePaths).toHaveBeenCalledWith([allowed, missing]);
+    expect(html).toContain("path=C%3A%5Cwork%5Creport.md");
+    expect(html).toContain(`${allowed}</a>`);
+    expect(html).not.toContain("path=D%3A%2Fwork%2Fmissing.md");
+    index.release();
+  });
+
   it("does not link an existing prefix of a longer absolute token", async () => {
     const repo = await createRepo();
     const index = await getProjectPathIndex(repo);

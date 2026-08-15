@@ -25,7 +25,7 @@ import {
 const PATH_TOKEN = /[^\s"'`<>&,:;()[\]{}=|]+/g;
 
 /** One absolute token runs from a whitespace boundary to the next whitespace. */
-const ABSOLUTE_PATH_TOKEN = /(?:^|\s)(\/(?!\/)\S+)/g;
+const ABSOLUTE_PATH_TOKEN = /(?:^|\s)((?:\/(?!\/)|[A-Za-z]:[\\/])\S+)/g;
 
 /** Trailing punctuation a writer adds that is not part of the path. */
 const TRAILING_NOISE = /[.!?]+$/;
@@ -38,8 +38,8 @@ const MAX_ABSOLUTE_PATH_PROBES = 64;
 function mayCostAbsoluteLookup(token: string): boolean {
   return (
     token.length >= MIN_ABSOLUTE_PATH_LENGTH &&
-    token.startsWith("/") &&
-    !token.startsWith("//")
+    ((token.startsWith("/") && !token.startsWith("//")) ||
+      /^[A-Za-z]:[\\/]/.test(token))
   );
 }
 

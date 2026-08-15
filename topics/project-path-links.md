@@ -30,11 +30,12 @@ needs no key-name convention, and cannot link something that is not there. It
 also means the mechanism is safe to run over arbitrary content rather than only
 over JSON.
 
-**Absolute paths use a separate exact oracle.** A whitespace-delimited token
-beginning with one `/` and containing at least four characters is eligible for
-one direct file probe. The whole token is queried, including legal punctuation,
-so an existing prefix is never linked out of a longer filename. It is never
-added to the project index or discovered by a filesystem crawl.
+**Absolute paths use a separate exact oracle.** A whitespace-delimited POSIX
+token beginning with one `/`, or a Windows token beginning with a drive letter
+and separator, is eligible for one direct file probe when it contains at least
+four characters. The whole token is queried, including legal punctuation, so
+an existing prefix is never linked out of a longer filename. It is never added
+to the project index or discovered by a filesystem crawl.
 The probe uses the same realpath-resolved allow-set and regular-file check as
 the authenticated file endpoint, and click-time fetching repeats that check.
 At most 64 distinct absolute candidates are probed for one completed body.
