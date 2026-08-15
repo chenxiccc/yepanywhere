@@ -234,11 +234,13 @@ async function collectProviderHostUntilAccepted(
         if (record.type === "accepted") {
           clearTimeout(timeout);
           socket.destroy();
-          resolve(records);
+          resolve([...records]);
+          return;
         } else if (record.type === "error") {
           clearTimeout(timeout);
           socket.destroy();
           reject(new Error(String(record.error)));
+          return;
         }
       }
     });
