@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ErrorBoundary } from "../ErrorBoundary";
+import { ErrorBoundary, redactClientCrashUrl } from "../ErrorBoundary";
 
 function ThrowingSessionView(): never {
   throw new Error("maximum update depth probe");
@@ -41,6 +41,41 @@ describe("ErrorBoundary", () => {
     vi.unstubAllGlobals();
     document.body.replaceChildren();
     localStorage.clear();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it.each([
+    [
+      "https://ya.example/share/bearer-secret?viewer=private#fragment",
+      "https://ya.example/share/[redacted]",
+    ],
+    [
+      "https://ya.example/remote/share/other-secret/file?path=private.txt",
+      "https://ya.example/remote/share/[redacted]/file",
+    ],
+  ])("redacts public route credentials from %s", (href, expected) => {
+    expect(redactClientCrashUrl(href)).toBe(expected);
+  });
+
+  it("never emits a public-share bearer URL in fatal diagnostics", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/remote/share/fatal-secret/file?path=private.txt#viewer-state",
+    );
+
+    render(
+      <ErrorBoundary>
+        <ThrowingSessionView />
+      </ErrorBoundary>,
+    );
+    await waitFor(() => expect(consoleError).toHaveBeenCalled());
+
+    const emitted = String(consoleError.mock.calls.at(-1)?.[0]);
+    expect(emitted).toContain("/remote/share/[redacted]/file");
+    expect(emitted).not.toContain("fatal-secret");
+    expect(emitted).not.toContain("private.txt");
+    expect(emitted).not.toContain("viewer-state");
   });
 
   it("preserves the component stack and session render context", async () => {

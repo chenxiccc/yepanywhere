@@ -49,10 +49,29 @@ function readPreference(key: string): string | null {
   }
 }
 
+export function redactClientCrashUrl(href: string): string {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return "unknown";
+  }
+  const segments = url.pathname.split("/");
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    if (segments[index] === "share") {
+      segments[index + 1] = "[redacted]";
+    }
+  }
+  const route = segments.join("/");
+  return url.origin === "null"
+    ? `${url.protocol}${route}`
+    : `${url.origin}${route}`;
+}
+
 function captureCrashContext(): CrashContext {
   return {
     capturedAt: new Date().toISOString(),
-    url: window.location.href,
+    url: redactClientCrashUrl(window.location.href),
     userAgent: navigator.userAgent,
     dom: {
       nodes: document.getElementsByTagName("*").length,
