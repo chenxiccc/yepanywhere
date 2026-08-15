@@ -203,8 +203,10 @@ the selected project directly below the project selector. The selector and
 queue are one responsive layout unit: they remain in the same side column on a
 wide form and move together ahead of provider controls on a narrow form. A
 project change replaces the displayed items in place. An empty queue remains
-hidden, so users who have not invoked this default-off feature do not encounter
-a new empty-state concept.
+hidden after a successful read, so users who have not invoked this default-off
+feature do not encounter a new empty-state concept. An initial read failure is
+still rendered even when no stale items exist; failure must not masquerade as a
+confirmed empty queue.
 An active session composer's additional "queue as new session" action has
 useful semantics even while the project is idle, but it is present only when
 the separate `projectQueueNewSessionShortcut` toolbar control is enabled and

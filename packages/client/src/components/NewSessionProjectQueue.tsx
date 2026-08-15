@@ -65,7 +65,7 @@ export function NewSessionProjectQueue({
   const { t } = useI18n();
   const titleId = useId();
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && !error) return null;
 
   return (
     <section
