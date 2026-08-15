@@ -24,6 +24,35 @@ function request(token: string, body: unknown): RequestInit {
   };
 }
 
+function captureWakeLogs() {
+  return { warn: vi.fn(), error: vi.fn() };
+}
+
+function streamedRequest(token: string, body: string): Request {
+  const encoded = new TextEncoder().encode(body);
+  let offset = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= encoded.byteLength) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(offset + 1_024, encoded.byteLength);
+      controller.enqueue(encoded.slice(offset, end));
+      offset = end;
+    },
+  });
+  return new Request("http://localhost/session-1", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: stream,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
 describe("session wake route", () => {
   it("is mounted outside cookie and custom-header API authentication", async () => {
     const secret = Buffer.alloc(32, 5);
@@ -37,9 +66,11 @@ describe("session wake route", () => {
         key === "wakeTurnsEnabled" ? true : undefined,
       onSettingsChanged: () => () => undefined,
     } as unknown as ServerSettingsService;
+    const logger = captureWakeLogs();
     const { app, supervisor } = createApp({
       sdk: new MockClaudeSDK(),
       sessionWakeSecret: secret,
+      sessionWakeLogger: logger,
       serverSettingsService,
     });
 
@@ -49,6 +80,10 @@ describe("session wake route", () => {
     );
 
     expect(response.status).toBe(404);
+    expect(logger.warn).toHaveBeenCalledWith(
+      { sessionId: "missing-session", status: 404 },
+      "SESSION_WAKE: delivery rejected",
+    );
 
     const started = await supervisor.startSession(process.cwd(), {
       text: "initial turn",
@@ -132,12 +167,14 @@ describe("session wake route", () => {
       archived: true,
       wakeTurnsEnabled: true,
     });
+    const logger = captureWakeLogs();
     const { app, supervisor } = createApp({
       sdk,
       dataDir: join(root, "app-data"),
       projectsDir: join(root, "projects"),
       sessionMetadataService: metadata,
       sessionWakeSecret: secret,
+      sessionWakeLogger: logger,
     });
     const resumeSession = vi.spyOn(supervisor, "resumeSession");
     const tokens = new SessionWakeService({
@@ -171,6 +208,10 @@ describe("session wake route", () => {
         }),
       );
       expect(rejected.status).toBe(409);
+      expect(logger.warn).toHaveBeenCalledWith(
+        { sessionId: "archived-session", status: 409 },
+        "SESSION_WAKE: delivery rejected",
+      );
       expect(resumeSession).toHaveBeenCalledTimes(callsAfterAccepted);
     } finally {
       await supervisor.getProcessForSession("cold-session")?.abort();
@@ -197,14 +238,49 @@ describe("session wake route", () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
+  it("authenticates before declared-size rejection and streams hard bounds", async () => {
+    const service = new SessionWakeService({
+      secret: Buffer.alloc(32, 4),
+      isEnabled: () => true,
+      deliver: async () => ({ accepted: true }),
+    });
+    const routes = createSessionWakeRoutes(service);
+    const token = service.tokenForSession("session-1");
+    const declaredHeaders = {
+      Authorization: `Bearer ${token}`,
+      "Content-Length": "1000000",
+      "Content-Type": "application/json",
+    };
+
+    const unauthorized = await routes.request("/session-1", {
+      method: "POST",
+      headers: { ...declaredHeaders, Authorization: "Bearer wrong" },
+      body: "{}",
+    });
+    const declaredOverflow = await routes.request("/session-1", {
+      method: "POST",
+      headers: declaredHeaders,
+      body: "{}",
+    });
+    const chunkedOverflow = await routes.fetch(
+      streamedRequest(token, JSON.stringify({ text: "x".repeat(9_000) })),
+    );
+
+    expect(unauthorized.status).toBe(401);
+    expect(declaredOverflow.status).toBe(413);
+    expect(chunkedOverflow.status).toBe(413);
+  });
+
   it("enforces the feature gate, payload bound, and token-bucket rate limit", async () => {
     let now = 1_000;
     let enabled = false;
     const deliver = vi.fn(async () => ({ accepted: true as const }));
+    const logger = captureWakeLogs();
     const service = new SessionWakeService({
       secret: Buffer.alloc(32, 9),
       isEnabled: () => enabled,
       deliver,
+      logger,
       now: () => now,
       burst: 2,
       refillMs: 60_000,
@@ -241,6 +317,10 @@ describe("session wake route", () => {
       (await routes.request("/session-1", request(token, { text: "third" })))
         .status,
     ).toBe(429);
+    expect(logger.warn).toHaveBeenCalledWith(
+      { sessionId: "session-1" },
+      "SESSION_WAKE: rate limit exceeded",
+    );
     now += 60_000;
     expect(
       (
@@ -250,5 +330,30 @@ describe("session wake route", () => {
         )
       ).status,
     ).toBe(202);
+  });
+
+  it("captures delivery exceptions instead of leaking expected stderr", async () => {
+    const logger = captureWakeLogs();
+    const failure = new Error("delivery probe");
+    const service = new SessionWakeService({
+      secret: Buffer.alloc(32, 12),
+      isEnabled: () => true,
+      deliver: async () => {
+        throw failure;
+      },
+      logger,
+    });
+    const token = service.tokenForSession("session-1");
+
+    const response = await createSessionWakeRoutes(service).request(
+      "/session-1",
+      request(token, { text: "job finished" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: failure, sessionId: "session-1" },
+      "SESSION_WAKE: delivery failed",
+    );
   });
 });

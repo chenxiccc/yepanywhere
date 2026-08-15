@@ -35,10 +35,16 @@ export interface SessionWakeServiceOptions {
   secret: Uint8Array;
   isEnabled: (sessionId: string) => boolean;
   deliver: (request: SessionWakeRequest) => Promise<SessionWakeDeliveryResult>;
+  logger?: SessionWakeLogger;
   now?: () => number;
   burst?: number;
   refillMs?: number;
   maxTrackedSessions?: number;
+}
+
+export interface SessionWakeLogger {
+  warn(bindings: Record<string, unknown>, message: string): void;
+  error(bindings: Record<string, unknown>, message: string): void;
 }
 
 export type SessionWakeAcceptance =
@@ -52,6 +58,7 @@ export class SessionWakeService {
   private readonly secret: Buffer;
   private readonly isEnabled: SessionWakeServiceOptions["isEnabled"];
   private readonly deliver: SessionWakeServiceOptions["deliver"];
+  private readonly logger: SessionWakeLogger;
   private readonly now: () => number;
   private readonly burst: number;
   private readonly refillMs: number;
@@ -65,6 +72,7 @@ export class SessionWakeService {
     this.secret = Buffer.from(options.secret);
     this.isEnabled = options.isEnabled;
     this.deliver = options.deliver;
+    this.logger = options.logger ?? log;
     this.now = options.now ?? Date.now;
     this.burst = options.burst ?? DEFAULT_BURST;
     this.refillMs = options.refillMs ?? DEFAULT_REFILL_MS;
@@ -98,14 +106,14 @@ export class SessionWakeService {
     authorization: string | undefined,
     request: Omit<SessionWakeRequest, "sessionId">,
   ): Promise<SessionWakeAcceptance> {
-    if (!this.isValidAuthorization(sessionId, authorization)) {
+    if (!this.isAuthorized(sessionId, authorization)) {
       return { status: 401, error: "Invalid session wake credentials" };
     }
     if (!this.isEnabled(sessionId)) {
       return { status: 403, error: "Session wake turns are disabled" };
     }
     if (!this.takeRateToken(sessionId)) {
-      log.warn({ sessionId }, "SESSION_WAKE: rate limit exceeded");
+      this.logger.warn({ sessionId }, "SESSION_WAKE: rate limit exceeded");
       return { status: 429, error: "Session wake rate limit exceeded" };
     }
 
@@ -113,7 +121,10 @@ export class SessionWakeService {
     try {
       result = await this.deliver({ sessionId, ...request });
     } catch (error) {
-      log.error({ err: error, sessionId }, "SESSION_WAKE: delivery failed");
+      this.logger.error(
+        { err: error, sessionId },
+        "SESSION_WAKE: delivery failed",
+      );
       return {
         accepted: false,
         status: 503,
@@ -121,7 +132,7 @@ export class SessionWakeService {
       };
     }
     if (!result.accepted) {
-      log.warn(
+      this.logger.warn(
         { sessionId, status: result.status },
         "SESSION_WAKE: delivery rejected",
       );
@@ -130,10 +141,7 @@ export class SessionWakeService {
     return { status: 202 };
   }
 
-  private isValidAuthorization(
-    sessionId: string,
-    authorization: string | undefined,
-  ): boolean {
+  isAuthorized(sessionId: string, authorization: string | undefined): boolean {
     const prefix = "Bearer ";
     if (!authorization?.startsWith(prefix)) return false;
     const provided = Buffer.from(authorization.slice(prefix.length));

@@ -146,7 +146,8 @@ commit.
   freeze once per listed link): source builds that already advertised the
   original management contract keep their meaning, while the server can
   resolve reviewed opaque grant IDs to source sessions, capture each source
-  once, and avoid exposing project IDs in global inventory.
+  once, and avoid exposing project IDs in global inventory. One request carries
+  at most 100 reviewed grant IDs in a stream-enforced 32 KiB JSON body.
 
 All store content is owner-only app data. Opening remediates and verifies the
 store root before trusting it. Every control file, temporary file, gzip body,

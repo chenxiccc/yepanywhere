@@ -11,6 +11,10 @@ import {
   captureCompletePublicShare,
   type PublicShareRoutesDeps,
 } from "./public-shares.js";
+import {
+  LimitedJsonBodyError,
+  readLimitedJsonObject,
+} from "./limited-json-body.js";
 
 export type PublicShareManagementFreezeRoutesDeps = Pick<
   PublicShareRoutesDeps,
@@ -23,6 +27,8 @@ interface FreezeSourceGroup {
 }
 
 const SHARE_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+const MAX_FREEZE_BODY_BYTES = 32 * 1024;
+const MAX_FREEZE_SHARE_IDS = 100;
 
 function groupLiveSharesBySource(
   records: readonly PublicShareRecord[],
@@ -55,10 +61,16 @@ export function createPublicShareManagementFreezeRoutes(
       return c.json({ error: `Public share store is ${readiness.state}` }, 503);
     }
 
-    let body: { confirmation?: unknown; shareIds?: unknown };
+    let body: Record<string, unknown>;
     try {
-      body = await c.req.json();
-    } catch {
+      body = await readLimitedJsonObject(c.req.raw, MAX_FREEZE_BODY_BYTES);
+    } catch (error) {
+      if (
+        error instanceof LimitedJsonBodyError &&
+        error.failure === "too-large"
+      ) {
+        return c.json({ error: "Freeze request is too large" }, 413);
+      }
       return c.json({ error: "Invalid JSON body" }, 400);
     }
     if (body.confirmation !== PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION) {
@@ -70,12 +82,18 @@ export function createPublicShareManagementFreezeRoutes(
     if (
       !Array.isArray(body.shareIds) ||
       body.shareIds.length === 0 ||
+      body.shareIds.length > MAX_FREEZE_SHARE_IDS ||
       !body.shareIds.every(
         (shareId) =>
           typeof shareId === "string" && SHARE_ID_PATTERN.test(shareId),
       )
     ) {
-      return c.json({ error: "shareIds must contain valid share IDs" }, 400);
+      return c.json(
+        {
+          error: `shareIds must contain 1 to ${MAX_FREEZE_SHARE_IDS} valid share IDs`,
+        },
+        400,
+      );
     }
 
     const requestedShareIds = new Set(body.shareIds);

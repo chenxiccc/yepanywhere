@@ -192,6 +192,7 @@ import type { ServerSettingsService } from "./services/ServerSettingsService.js"
 import {
   SessionWakeService,
   type SessionWakeDeliveryResult,
+  type SessionWakeLogger,
 } from "./services/SessionWakeService.js";
 import type { SecurityClientService } from "./services/SecurityClientService.js";
 import type { WorkstreamService } from "./services/WorkstreamService.js";
@@ -355,6 +356,8 @@ export interface AppOptions {
   serverSettingsService?: ServerSettingsService;
   /** Persistent server secret used to mint per-session wake credentials. */
   sessionWakeSecret?: Uint8Array;
+  /** Session-wake diagnostics sink; injectable for warning-free tests. */
+  sessionWakeLogger?: SessionWakeLogger;
   /** Reachable server base URL injected into local provider child shells. */
   getSessionWakeBaseUrl?: (executor?: string) => string | undefined;
   /** Agent-reachable diagnostics broker and optional private trust anchor. */
@@ -1015,6 +1018,7 @@ export function createApp(options: AppOptions): AppResult {
   const sessionWakeService = options.sessionWakeSecret
     ? new SessionWakeService({
         secret: options.sessionWakeSecret,
+        logger: options.sessionWakeLogger,
         isEnabled: (sessionId) => {
           const sessionOverride =
             options.sessionMetadataService?.getMetadata(

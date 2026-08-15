@@ -39,8 +39,10 @@ turn text.
   `Authorization: Bearer <wake token>` and JSON `{text, source?,
   jobId?}`. Clients never construct the URL: they receive it fully
   formed in `YEP_SESSION_WAKE_URL` and treat it as opaque, so the
-  route's exact path shape stays an implementation detail. Text is
-  capped at 2000 characters and delivered verbatim.
+  route's exact path shape stays an implementation detail. Credentials are
+  checked before any payload read. The HTTP body has an 8 KiB streamed hard
+  limit (with declared length used only for early rejection); text is capped
+  at 2000 characters and delivered verbatim.
 - Auth is a per-session wake token — an HMAC of the YA session id under
   a persistent, owner-readable server secret — verified statelessly with a
   constant-time compare.

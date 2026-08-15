@@ -13,6 +13,32 @@ function jsonRequest(body: unknown, headers: HeadersInit = {}): RequestInit {
   };
 }
 
+function streamedJsonRequest(
+  url: string,
+  body: unknown,
+  headers: HeadersInit = {},
+): Request {
+  const encoded = new TextEncoder().encode(JSON.stringify(body));
+  let offset = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= encoded.byteLength) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(offset + 4_096, encoded.byteLength);
+      controller.enqueue(encoded.slice(offset, end));
+      offset = end;
+    },
+  });
+  return new Request(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: stream,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
 describe("browser debug routes", () => {
   it("requires both YA caller authorization and the per-tab grant", async () => {
     const service = new BrowserDebugService();
@@ -128,9 +154,9 @@ describe("browser debug routes", () => {
       lease: { leaseId: string; controllerToken: string };
     };
 
-    const response = await client.request(
-      `/leases/${lease.leaseId}/events`,
-      jsonRequest(
+    const response = await client.fetch(
+      streamedJsonRequest(
+        `http://localhost/leases/${lease.leaseId}/events`,
         {
           events: [
             {

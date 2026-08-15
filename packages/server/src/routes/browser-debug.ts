@@ -6,6 +6,10 @@ import {
   type BrowserDebugEvalResult,
   type BrowserDebugService,
 } from "../services/BrowserDebugService.js";
+import {
+  LimitedJsonBodyError,
+  readLimitedJsonObject,
+} from "./limited-json-body.js";
 
 const MAX_EVENT_BATCH = 100;
 const MAX_EVENT_KIND_CHARS = 80;
@@ -22,31 +26,26 @@ async function jsonObject(
   c: Context,
   maxBytes: number,
 ): Promise<Record<string, unknown>> {
-  const contentLength = Number.parseInt(
-    c.req.header("Content-Length") ?? "",
-    10,
-  );
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new BrowserDebugError(413, "Browser diagnostic request is too large");
-  }
-  let value: unknown;
   try {
-    const body = await c.req.text();
-    if (Buffer.byteLength(body, "utf8") > maxBytes) {
+    return await readLimitedJsonObject(c.req.raw, maxBytes);
+  } catch (error) {
+    if (
+      error instanceof LimitedJsonBodyError &&
+      error.failure === "too-large"
+    ) {
       throw new BrowserDebugError(
         413,
         "Browser diagnostic request is too large",
       );
     }
-    value = JSON.parse(body);
-  } catch (error) {
-    if (error instanceof BrowserDebugError) throw error;
+    if (
+      error instanceof LimitedJsonBodyError &&
+      error.failure === "expected-object"
+    ) {
+      throw new BrowserDebugError(400, "Expected a JSON object");
+    }
     throw new BrowserDebugError(400, "Expected a JSON request body");
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new BrowserDebugError(400, "Expected a JSON object");
-  }
-  return value as Record<string, unknown>;
 }
 
 function errorResponse(c: Context, error: unknown) {

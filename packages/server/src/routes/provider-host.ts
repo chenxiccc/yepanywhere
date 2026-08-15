@@ -19,6 +19,10 @@ import {
   resolveProviderSessionOptions,
   type ProviderSessionOptions,
 } from "../sdk/providers/types.js";
+import {
+  LimitedJsonBodyError,
+  readLimitedJsonObject,
+} from "./limited-json-body.js";
 
 const MAX_SESSION_TURN_BODY_BYTES = 1024 * 1024;
 const MAX_SESSION_TURN_TEXT_BYTES = 900 * 1024;
@@ -56,32 +60,24 @@ function unavailable(c: Context) {
 async function readTurnRequest(
   request: Request,
 ): Promise<ProviderHostSessionTurnRequest> {
-  const chunks: Uint8Array[] = [];
-  let bodyBytes = 0;
-  if (request.body) {
-    const reader = request.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bodyBytes += value.byteLength;
-      if (bodyBytes > MAX_SESSION_TURN_BODY_BYTES) {
-        await reader.cancel();
-        throw new Error("Session-turn request exceeds 1 MiB");
-      }
-      chunks.push(value);
-    }
-  }
-  const raw = Buffer.concat(chunks).toString("utf8");
-  let value: unknown;
+  let body: Record<string, unknown>;
   try {
-    value = JSON.parse(raw);
-  } catch {
+    body = await readLimitedJsonObject(request, MAX_SESSION_TURN_BODY_BYTES);
+  } catch (error) {
+    if (
+      error instanceof LimitedJsonBodyError &&
+      error.failure === "too-large"
+    ) {
+      throw new Error("Session-turn request exceeds 1 MiB");
+    }
+    if (
+      error instanceof LimitedJsonBodyError &&
+      error.failure === "expected-object"
+    ) {
+      throw new Error("Invalid session-turn request");
+    }
     throw new Error("Invalid session-turn JSON");
   }
-  if (!value || typeof value !== "object") {
-    throw new Error("Invalid session-turn request");
-  }
-  const body = value as Record<string, unknown>;
   const target = body.target as Record<string, unknown> | undefined;
   const message = body.message as Record<string, unknown> | undefined;
   const submissionId =

@@ -111,6 +111,28 @@ async function captureSession(
   return capture;
 }
 
+function streamedJsonRequest(url: string, body: unknown): Request {
+  const encoded = new TextEncoder().encode(JSON.stringify(body));
+  let offset = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= encoded.byteLength) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(offset + 4_096, encoded.byteLength);
+      controller.enqueue(encoded.slice(offset, end));
+      offset = end;
+    },
+  });
+  return new Request(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: stream,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
 describe("public share public routes", () => {
   let service: PublicShareService;
   let testDir: string;
@@ -1322,6 +1344,40 @@ describe("public share owner routes", () => {
     expect(response.status).toBe(400);
     expect(loadCompleteSession).not.toHaveBeenCalled();
     expect(service.getAllRecords()[0]?.mode).toBe("live");
+  });
+
+  it("bounds selective-freeze bodies and reviewed grant counts", async () => {
+    const loadCompleteSession = vi.fn(async () => makeSession());
+    const app = createPublicShareManagementFreezeRoutes({
+      publicShareService: service,
+      loadCompleteSession,
+    });
+
+    const tooMany = await app.request("/public-shares/freeze-live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirmation: PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION,
+        shareIds: Array.from(
+          { length: 101 },
+          (_, index) => `share-id-${String(index).padStart(7, "0")}`,
+        ),
+      }),
+    });
+    const chunkedOverflow = await app.fetch(
+      streamedJsonRequest("http://localhost/public-shares/freeze-live", {
+        confirmation: PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION,
+        shareIds: ["share-id-0000000"],
+        padding: "x".repeat(33 * 1_024),
+      }),
+    );
+
+    expect(tooMany.status).toBe(400);
+    await expect(tooMany.json()).resolves.toMatchObject({
+      error: "shareIds must contain 1 to 100 valid share IDs",
+    });
+    expect(chunkedOverflow.status).toBe(413);
+    expect(loadCompleteSession).not.toHaveBeenCalled();
   });
 
   it("paginates management stably across a revocation", async () => {
