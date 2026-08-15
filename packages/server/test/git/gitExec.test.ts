@@ -34,7 +34,16 @@ describe("Git execution", () => {
         callback: ExecFileCallback,
       ) => callback(null, "", ""),
     );
-    const { runGit, runGitBytes } = await import("../../src/git/gitExec.js");
+    const { buildGitProcessArgs, runGit, runGitBytes } = await import(
+      "../../src/git/gitExec.js"
+    );
+
+    expect(buildGitProcessArgs(["clone", "source", "destination"])).toEqual([
+      "--no-optional-locks",
+      "clone",
+      "source",
+      "destination",
+    ]);
 
     await runGit("/project", ["status", "--porcelain=v2"]);
     await runGitBytes("/project", ["show", "HEAD:file"]);

@@ -13,7 +13,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { DEFAULT_SNIPPET_CONTEXT_RADIUS } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
-import { runGit, runGitBytes } from "../git/gitExec.js";
+import { buildGitArgs, runGit, runGitBytes } from "../git/gitExec.js";
 import { HttpError } from "../middleware/error-handler.js";
 import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import {
@@ -530,7 +530,7 @@ function runGitWithInput(
   input: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", ["-C", projectPath, ...args], {
+    const child = spawn("git", buildGitArgs(projectPath, args), {
       stdio: ["pipe", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];

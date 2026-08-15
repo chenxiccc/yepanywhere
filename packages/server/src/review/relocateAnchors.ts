@@ -14,20 +14,17 @@
  * endpoint (P5) is thin glue over this. Tested against a fixture repo.
  */
 
-import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { promisify } from "node:util";
 import {
   DEFAULT_SNIPPET_CONTEXT_RADIUS,
   MAX_REVIEW_SNIPPET_LENGTH,
   type ReviewCommentAnchor,
 } from "@yep-anywhere/shared";
+import { runGit } from "../git/gitExec.js";
 import {
   repositoryFilePathIfExists,
   repositoryRelativePath,
 } from "./repositoryPath.js";
-
-const execFileAsync = promisify(execFile);
 
 export interface RelocatedAnchor {
   status: "relocated";
@@ -189,18 +186,9 @@ async function blameSha(
   line: number,
 ): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync(
-      "git",
-      [
-        "-C",
-        projectPath,
-        "blame",
-        "-L",
-        `${line},${line}`,
-        "--porcelain",
-        "--",
-        path,
-      ],
+    const { stdout } = await runGit(
+      projectPath,
+      ["blame", "-L", `${line},${line}`, "--porcelain", "--", path],
       { timeout: 5000 },
     );
     const sha = stdout.split(/\s/u)[0] ?? "";

@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   lstat,
@@ -10,11 +9,10 @@ import {
   unlink,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { promisify } from "node:util";
+import { runGit, runGitBytes } from "../git/gitExec.js";
 import type { ProjectDirectoryStorage } from "../services/ServerSettingsService.js";
 import { ensureManagedProjectDir } from "./managedProjectDir.js";
 
-const execFileAsync = promisify(execFile);
 const PROJECT_STORAGE_TRANSITION_VERSION = 1;
 const PROJECT_STORAGE_TRANSITION_FILENAME = "project-storage-transition.json";
 
@@ -365,19 +363,10 @@ async function runProjectStorageGit(
   output: "text" | "buffer",
 ): Promise<string | Buffer> {
   if (output === "buffer") {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", projectPath, ...args],
-      {
-        timeout: 5000,
-        encoding: "buffer",
-      },
-    );
+    const { stdout } = await runGitBytes(projectPath, args, { timeout: 5000 });
     return stdout;
   }
-  const { stdout } = await execFileAsync("git", ["-C", projectPath, ...args], {
-    timeout: 5000,
-  });
+  const { stdout } = await runGit(projectPath, args, { timeout: 5000 });
   return stdout;
 }
 

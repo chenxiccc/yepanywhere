@@ -14,6 +14,7 @@ import {
   mainWorkstreamId,
 } from "@yep-anywhere/shared";
 import type { EventBus } from "../watcher/EventBus.js";
+import { buildGitProcessArgs } from "../git/gitExec.js";
 
 const CURRENT_VERSION = 1;
 const FILE_NAME = "workstreams.json";
@@ -299,7 +300,7 @@ async function runGit(
   args: string[],
   options: { timeoutMs?: number } = {},
 ): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, {
+  const { stdout } = await execFileAsync("git", buildGitProcessArgs(args), {
     timeout: options.timeoutMs ?? GIT_DEFAULT_TIMEOUT_MS,
     maxBuffer: 1024 * 1024,
     env: {

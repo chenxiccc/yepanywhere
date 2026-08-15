@@ -14,12 +14,9 @@
  * ensure the dir stays excluded (hence the name, not "…Excluded").
  */
 
-import { execFile } from "node:child_process";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { runGit } from "../git/gitExec.js";
 
 /**
  * Ensure a YA-managed project subdir exists, returning its path. `name` is the
@@ -59,9 +56,9 @@ async function defaultGitExclude(
   name: string,
 ): Promise<void> {
   try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", projectPath, "rev-parse", "--git-path", "info/exclude"],
+    const { stdout } = await runGit(
+      projectPath,
+      ["rev-parse", "--git-path", "info/exclude"],
       { timeout: 5000 },
     );
     const rel = stdout.trim();

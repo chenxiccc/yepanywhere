@@ -29,7 +29,12 @@ import {
 } from "../git/diffPreviewGuards.js";
 import { gitDiffReportsBinary } from "../git/binaryDiff.js";
 import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
-import { GIT_DECODE_PATHS_ARGS, runGit, runGitBytes } from "../git/gitExec.js";
+import {
+  GIT_DECODE_PATHS_ARGS,
+  buildGitArgs,
+  runGit,
+  runGitBytes,
+} from "../git/gitExec.js";
 
 export interface GitStatusDeps {
   scanner: ProjectScanner;
@@ -1131,16 +1136,17 @@ async function collectUntrackedFolderFiles(
   limit: number,
 ): Promise<{ files: string[]; truncated: boolean }> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn("git", [
-      "-C",
-      projectPath,
-      ...GIT_DECODE_PATHS_ARGS,
-      "status",
-      "--porcelain=v2",
-      "--untracked-files=all",
-      "--",
-      folderPath,
-    ]);
+    const child = spawn(
+      "git",
+      buildGitArgs(projectPath, [
+        ...GIT_DECODE_PATHS_ARGS,
+        "status",
+        "--porcelain=v2",
+        "--untracked-files=all",
+        "--",
+        folderPath,
+      ]),
+    );
     const files: string[] = [];
     let stdoutRemainder = "";
     let stderr = "";
