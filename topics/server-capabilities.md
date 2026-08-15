@@ -120,6 +120,16 @@ browser context menu unchanged, and sends no management request. Storage
 readiness is reported by the routes themselves and is not inferred from an
 empty inventory.
 
+`public-share-management-freeze` independently advertises exact-ID batch
+conversion of live grants to current frozen snapshots. It is permanent,
+version-implied from `0.7.1`, and owns indexed ID 32. The split preserves the
+meaning already advertised by source servers with `public-share-management`.
+Without the freeze capability, the manager hides live-row and bulk freeze,
+keeps inventory/copy/revocation, and makes no freeze request. Stable releases
+`v0.7.0` and `v0.6.2` contain the older session-wide freeze route but neither
+selective management nor the authenticated management route family, so that
+session route is not a safe per-link fallback.
+
 `public-share-session-chunks-v1` is a representation capability carried by the
 secret-authorized v2 public metadata response, not a global `/api/version`
 claim. It means the selected immutable primary or viewer revision supports
@@ -213,9 +223,10 @@ the same ledger:
 | 29 | server | 0.7.1 | `git-file-diff-projections` |
 | 30 | server | 0.7.1 | `provider-host-control` |
 | 31 | server | 0.7.1 | `remote-browser-diagnostics-v1` |
+| 32 | server | 0.7.1 | `public-share-management-freeze` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 32; retired rows stay in the ledger as reserved IDs.
+ID 33; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

@@ -125,6 +125,7 @@ import {
   createPublicSharePublicRoutes,
   createPublicShareRoutes,
 } from "./routes/public-shares.js";
+import { createPublicShareManagementFreezeRoutes } from "./routes/public-share-management-freeze.js";
 import { createPublicShareManagementRoutes } from "./routes/public-share-management.js";
 import { createRecentsRoutes } from "./routes/recents.js";
 import {
@@ -2359,6 +2360,7 @@ export function createApp(options: AppOptions): AppResult {
         publicShareService: options.publicShareService,
       }),
     );
+    app.route("/api", createPublicShareManagementFreezeRoutes(publicShareDeps));
     app.route(
       "/public-api/shares",
       createPublicSharePublicRoutes(publicShareDeps),

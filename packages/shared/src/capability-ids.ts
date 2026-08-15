@@ -210,6 +210,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "remote-browser-diagnostics-v1",
     introducedIn: "0.7.1",
   },
+  publicShareManagementFreeze: {
+    id: 32,
+    direction: "server",
+    name: "public-share-management-freeze",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

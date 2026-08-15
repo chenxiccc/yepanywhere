@@ -3,8 +3,13 @@ import type {
   PublicSessionShareMode,
   UrlProjectId,
 } from "@yep-anywhere/shared";
+import {
+  PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { useRetainedVersionInfo } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { writeClipboardTextLater } from "../lib/clipboard";
@@ -22,6 +27,7 @@ interface PublicShareManagerModalProps {
   anchorRect?: ModalAnchorRect | null;
   creationIdentity?: PublicShareCreationIdentity;
   creationReady: boolean;
+  selectiveFreezeAvailable?: boolean;
   onClose: () => void;
 }
 
@@ -33,7 +39,10 @@ type InventoryFilter = {
   mode?: PublicSessionShareMode;
 };
 
-interface RevokeCategoryTarget {
+type CategoryAction = "freeze" | "revoke";
+
+interface CategoryActionTarget {
+  action: CategoryAction;
   key: `scope:${PublicShareManagementScope}` | `mode:${PublicSessionShareMode}`;
   mode?: PublicSessionShareMode;
   scope: PublicShareManagementScope;
@@ -41,7 +50,7 @@ interface RevokeCategoryTarget {
   typeLabel?: string;
 }
 
-interface PendingCategoryRevoke extends RevokeCategoryTarget {
+interface PendingCategoryAction extends CategoryActionTarget {
   generation: number;
   shareIds: readonly string[];
   viewerCount: number;
@@ -65,13 +74,24 @@ function formatShareBytes(bytes: number | undefined): string | null {
 
 export function PublicShareManagerModal(props: PublicShareManagerModalProps) {
   const sourceKey = useClientSummarySourceKey();
-  return <SourcePublicShareManagerModal key={sourceKey} {...props} />;
+  const version = useRetainedVersionInfo(sourceKey);
+  const selectiveFreezeAvailable =
+    props.selectiveFreezeAvailable ??
+    serverHasCapability(version, PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY);
+  return (
+    <SourcePublicShareManagerModal
+      key={sourceKey}
+      {...props}
+      selectiveFreezeAvailable={selectiveFreezeAvailable}
+    />
+  );
 }
 
 function SourcePublicShareManagerModal({
   anchorRect,
   creationIdentity,
   creationReady,
+  selectiveFreezeAvailable = false,
   onClose,
 }: PublicShareManagerModalProps) {
   const { t } = useI18n();
@@ -96,8 +116,8 @@ function SourcePublicShareManagerModal({
   const [operationWorking, setOperationWorking] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [pendingCategoryRevoke, setPendingCategoryRevoke] =
-    useState<PendingCategoryRevoke | null>(null);
+  const [pendingCategoryAction, setPendingCategoryAction] =
+    useState<PendingCategoryAction | null>(null);
   const [highlightedShareId, setHighlightedShareId] = useState<string | null>(
     null,
   );
@@ -154,7 +174,7 @@ function SourcePublicShareManagerModal({
     operationGenerationRef.current += 1;
     setOperationWorking(null);
     setOperationError(null);
-    setPendingCategoryRevoke(null);
+    setPendingCategoryAction(null);
     return true;
   }, []);
 
@@ -169,7 +189,7 @@ function SourcePublicShareManagerModal({
       setOperationWorking(working);
       setOperationError(null);
       setNotice(null);
-      setPendingCategoryRevoke(null);
+      setPendingCategoryAction(null);
       return generation;
     },
     [],
@@ -331,6 +351,33 @@ function SourcePublicShareManagerModal({
     }
   };
 
+  const freezeManagedShare = async (item: PublicShareManagementItem) => {
+    if (item.mode !== "live" || !cancelExclusiveOperation()) return;
+    if (!window.confirm(t("publicShareManagementFreezeOneConfirm"))) return;
+    const generation = beginExclusiveOperation(`freeze:${item.shareId}`, true);
+    if (generation === null) return;
+    try {
+      const response = await api.freezePublicShares([item.shareId]);
+      if (!operationIsCurrent(generation)) return;
+      setNotice(
+        t("publicShareManagementFreezeCompleted", {
+          count: response.convertedCount,
+        }),
+      );
+      refreshInventoryForOperation(generation);
+    } catch (freezeError) {
+      if (!operationIsCurrent(generation)) return;
+      setOperationError(
+        freezeError instanceof Error
+          ? freezeError.message
+          : t("sessionShareFreezeFailed"),
+      );
+      refreshInventoryForOperation(generation);
+    } finally {
+      finishExclusiveOperation(generation);
+    }
+  };
+
   const scopeLabel =
     scope === "session"
       ? t("publicShareManagementScopeSession")
@@ -339,10 +386,22 @@ function SourcePublicShareManagerModal({
         : t("publicShareManagementScopeAll");
 
   const categoryConfirmLabel = (
-    pending: PendingCategoryRevoke,
+    pending: PendingCategoryAction,
     clickAgain: boolean,
-  ) =>
-    pending.typeLabel
+  ) => {
+    if (pending.action === "freeze") {
+      return t(
+        clickAgain
+          ? "publicShareManagementFreezeConfirmAgain"
+          : "publicShareManagementFreezeConfirm",
+        {
+          count: pending.shareIds.length,
+          viewers: pending.viewerCount,
+          scope: pending.scopeLabel,
+        },
+      );
+    }
+    return pending.typeLabel
       ? t(
           clickAgain
             ? "publicShareManagementRevokeTypeConfirmAgain"
@@ -364,9 +423,12 @@ function SourcePublicShareManagerModal({
             scope: pending.scopeLabel,
           },
         );
+  };
 
-  const prepareCategoryRevoke = async (target: RevokeCategoryTarget) => {
-    const generation = beginExclusiveOperation(`prepare-revoke:${target.key}`);
+  const prepareCategoryAction = async (target: CategoryActionTarget) => {
+    const generation = beginExclusiveOperation(
+      `prepare-${target.action}:${target.key}`,
+    );
     if (generation === null) return;
     const filter = makeFilter(target.scope, target.mode);
     setScope(target.scope);
@@ -400,82 +462,112 @@ function SourcePublicShareManagerModal({
         nextCursor = response.nextCursor ?? undefined;
       }
 
-      if (shares.length === 0) {
+      const actionShares =
+        target.action === "freeze"
+          ? shares.filter((share) => share.mode === "live")
+          : shares;
+      if (actionShares.length === 0) {
         setNotice(
-          target.typeLabel
-            ? t("publicShareManagementRevokeTypeEmpty", {
-                type: target.typeLabel,
+          target.action === "freeze"
+            ? t("publicShareManagementFreezeEmpty", {
                 scope: target.scopeLabel,
               })
-            : t("publicShareManagementRevokeScopeEmpty", {
-                scope: target.scopeLabel,
-              }),
+            : target.typeLabel
+              ? t("publicShareManagementRevokeTypeEmpty", {
+                  type: target.typeLabel,
+                  scope: target.scopeLabel,
+                })
+              : t("publicShareManagementRevokeScopeEmpty", {
+                  scope: target.scopeLabel,
+                }),
         );
         return;
       }
 
-      const shareIds = Object.freeze(shares.map((share) => share.shareId));
-      setPendingCategoryRevoke({
+      const shareIds = Object.freeze(
+        actionShares.map((share) => share.shareId),
+      );
+      setPendingCategoryAction({
         ...target,
         generation,
         shareIds,
-        viewerCount: shares.reduce(
+        viewerCount: actionShares.reduce(
           (sum, share) => sum + share.activeViewerCount,
           0,
         ),
       });
-    } catch (revokeError) {
+    } catch (actionError) {
       if (!operationIsCurrent(generation) || !firstPageLoaded) return;
       setOperationError(
-        revokeError instanceof Error
-          ? revokeError.message
-          : t("sessionShareRevokeFailed"),
+        actionError instanceof Error
+          ? actionError.message
+          : t(
+              target.action === "freeze"
+                ? "sessionShareFreezeFailed"
+                : "sessionShareRevokeFailed",
+            ),
       );
     } finally {
       finishExclusiveOperation(generation);
     }
   };
 
-  const confirmCategoryRevoke = async () => {
-    const pending = pendingCategoryRevoke;
+  const confirmCategoryAction = async () => {
+    const pending = pendingCategoryAction;
     if (!pending || pending.generation !== operationGenerationRef.current)
       return;
     const shareIds = Object.freeze([...pending.shareIds]);
     const generation = beginExclusiveOperation(
-      `confirm-revoke:${pending.key}`,
+      `confirm-${pending.action}:${pending.key}`,
       true,
     );
     if (generation === null) return;
     const revokedShareIds = new Set<string>();
 
     try {
-      for (const shareId of shareIds) {
-        const response = await api.revokePublicShare(shareId);
+      if (pending.action === "freeze") {
+        const response = await api.freezePublicShares(shareIds);
         if (!operationIsCurrent(generation)) return;
-        if (response.revoked) revokedShareIds.add(shareId);
+        setNotice(
+          t("publicShareManagementFreezeCompleted", {
+            count: response.convertedCount,
+          }),
+        );
+      } else {
+        for (const shareId of shareIds) {
+          const response = await api.revokePublicShare(shareId);
+          if (!operationIsCurrent(generation)) return;
+          if (response.revoked) revokedShareIds.add(shareId);
+        }
+        if (!operationIsCurrent(generation)) return;
+        setNotice(
+          pending.typeLabel
+            ? t("publicShareManagementRevokeTypeRevoked", {
+                count: revokedShareIds.size,
+                type: pending.typeLabel,
+                scope: pending.scopeLabel,
+              })
+            : t("publicShareManagementRevokeScopeRevoked", {
+                count: revokedShareIds.size,
+                scope: pending.scopeLabel,
+              }),
+        );
       }
-      if (!operationIsCurrent(generation)) return;
-      setNotice(
-        pending.typeLabel
-          ? t("publicShareManagementRevokeTypeRevoked", {
-              count: revokedShareIds.size,
-              type: pending.typeLabel,
-              scope: pending.scopeLabel,
-            })
-          : t("publicShareManagementRevokeScopeRevoked", {
-              count: revokedShareIds.size,
-              scope: pending.scopeLabel,
-            }),
-      );
       refreshInventoryForOperation(generation);
-    } catch (revokeError) {
+    } catch (actionError) {
       if (!operationIsCurrent(generation)) return;
       setOperationError(
-        revokeError instanceof Error
-          ? revokeError.message
-          : t("sessionShareRevokeFailed"),
+        actionError instanceof Error
+          ? actionError.message
+          : t(
+              pending.action === "freeze"
+                ? "sessionShareFreezeFailed"
+                : "sessionShareRevokeFailed",
+            ),
       );
-      if (revokedShareIds.size > 0) refreshInventoryForOperation(generation);
+      if (pending.action === "freeze" || revokedShareIds.size > 0) {
+        refreshInventoryForOperation(generation);
+      }
     } finally {
       finishExclusiveOperation(generation);
     }
@@ -550,8 +642,9 @@ function SourcePublicShareManagerModal({
                         : t("publicShareManagementScopeSession");
                   const categoryKey = `scope:${scopeOption}` as const;
                   const pending =
-                    pendingCategoryRevoke?.key === categoryKey
-                      ? pendingCategoryRevoke
+                    pendingCategoryAction?.action === "revoke" &&
+                    pendingCategoryAction.key === categoryKey
+                      ? pendingCategoryAction
                       : null;
                   const revokeLabel = pending
                     ? categoryConfirmLabel(pending, false)
@@ -580,8 +673,9 @@ function SourcePublicShareManagerModal({
                         disabled={mutationsDisabled}
                         onClick={() =>
                           void (pending
-                            ? confirmCategoryRevoke()
-                            : prepareCategoryRevoke({
+                            ? confirmCategoryAction()
+                            : prepareCategoryAction({
+                                action: "revoke",
                                 key: categoryKey,
                                 scope: scopeOption,
                                 scopeLabel: optionLabel,
@@ -612,25 +706,45 @@ function SourcePublicShareManagerModal({
               {(["frozen", "live"] as const).map((modeOption) => {
                 const selected =
                   modeOption === "frozen" ? showFrozenShares : showLiveShares;
-                const pending =
-                  pendingCategoryRevoke?.key === `mode:${modeOption}` &&
-                  pendingCategoryRevoke.scope === scope
-                    ? pendingCategoryRevoke
+                const pendingRevoke =
+                  pendingCategoryAction?.action === "revoke" &&
+                  pendingCategoryAction.key === `mode:${modeOption}` &&
+                  pendingCategoryAction.scope === scope
+                    ? pendingCategoryAction
+                    : null;
+                const pendingFreeze =
+                  pendingCategoryAction?.action === "freeze" &&
+                  pendingCategoryAction.key === "mode:live" &&
+                  pendingCategoryAction.scope === scope
+                    ? pendingCategoryAction
                     : null;
                 const typeLabel =
                   modeOption === "live"
                     ? t("publicShareLiveBadge")
                     : t("publicShareManagementModeReadOnly");
-                const revokeLabel = pending
-                  ? categoryConfirmLabel(pending, false)
+                const revokeLabel = pendingRevoke
+                  ? categoryConfirmLabel(pendingRevoke, false)
                   : t("publicShareManagementRevokeType", {
                       type: typeLabel,
                       scope: scopeLabel,
                     });
+                const freezeLabel = pendingFreeze
+                  ? categoryConfirmLabel(pendingFreeze, false)
+                  : t("publicShareManagementFreeze", { scope: scopeLabel });
+                const freezeWorking =
+                  operationWorking?.includes("-freeze:") === true &&
+                  operationWorking.endsWith("mode:live");
+                const revokeWorking =
+                  operationWorking?.includes("-revoke:") === true &&
+                  operationWorking.endsWith(`mode:${modeOption}`);
                 return (
                   <div
                     className={`${styles.filterRow} ${
                       creationControlsVisible ? "" : styles.filterRowNoCreate
+                    } ${
+                      modeOption === "live" && selectiveFreezeAvailable
+                        ? styles.filterRowWithFreeze
+                        : ""
                     }`}
                     key={modeOption}
                   >
@@ -664,14 +778,44 @@ function SourcePublicShareManagerModal({
                         <PlusIcon />
                       </button>
                     )}
+                    {modeOption === "live" && selectiveFreezeAvailable && (
+                      <button
+                        type="button"
+                        className={styles.freezeTypeButton}
+                        disabled={mutationsDisabled}
+                        onClick={() =>
+                          void (pendingFreeze
+                            ? confirmCategoryAction()
+                            : prepareCategoryAction({
+                                action: "freeze",
+                                key: "mode:live",
+                                mode: "live",
+                                scope,
+                                scopeLabel,
+                                typeLabel,
+                              }))
+                        }
+                        title={freezeLabel}
+                        aria-label={freezeLabel}
+                      >
+                        {freezeWorking ? (
+                          "…"
+                        ) : pendingFreeze ? (
+                          <ConfirmIcon />
+                        ) : (
+                          <FreezeIcon />
+                        )}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className={styles.revokeTypeButton}
                       disabled={mutationsDisabled}
                       onClick={() =>
-                        void (pending
-                          ? confirmCategoryRevoke()
-                          : prepareCategoryRevoke({
+                        void (pendingRevoke
+                          ? confirmCategoryAction()
+                          : prepareCategoryAction({
+                              action: "revoke",
                               key: `mode:${modeOption}`,
                               mode: modeOption,
                               scope,
@@ -682,9 +826,9 @@ function SourcePublicShareManagerModal({
                       title={revokeLabel}
                       aria-label={revokeLabel}
                     >
-                      {operationWorking?.endsWith(`mode:${modeOption}`) ? (
+                      {revokeWorking ? (
                         "…"
-                      ) : pending ? (
+                      ) : pendingRevoke ? (
                         <ConfirmIcon />
                       ) : (
                         <RevokeIcon />
@@ -796,6 +940,22 @@ function SourcePublicShareManagerModal({
                         >
                           <CopyIcon />
                         </button>
+                        {item.mode === "live" && selectiveFreezeAvailable && (
+                          <button
+                            type="button"
+                            className={`${styles.iconButton} ${styles.iconButtonFreeze}`}
+                            disabled={mutationsDisabled}
+                            onClick={() => void freezeManagedShare(item)}
+                            title={t("publicShareManagementFreezeOne")}
+                            aria-label={t("publicShareManagementFreezeOne")}
+                          >
+                            {operationWorking === `freeze:${item.shareId}` ? (
+                              "…"
+                            ) : (
+                              <FreezeIcon />
+                            )}
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={`${styles.iconButton} ${styles.iconButtonDanger}`}
@@ -836,9 +996,16 @@ function SourcePublicShareManagerModal({
             )}
           </div>
         </div>
-        {pendingCategoryRevoke && (
-          <div className={styles.revokeConfirmationBanner} role="status">
-            {categoryConfirmLabel(pendingCategoryRevoke, true)}
+        {pendingCategoryAction && (
+          <div
+            className={
+              pendingCategoryAction.action === "freeze"
+                ? styles.freezeConfirmationBanner
+                : styles.revokeConfirmationBanner
+            }
+            role="status"
+          >
+            {categoryConfirmLabel(pendingCategoryAction, true)}
           </div>
         )}
       </div>
@@ -891,6 +1058,23 @@ function RevokeIcon() {
       aria-hidden="true"
     >
       <path d="m4 4 8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+function FreezeIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+      <path d="M5.5 7V4.75a2.5 2.5 0 0 1 5 0V7M8 10v1.5" />
     </svg>
   );
 }

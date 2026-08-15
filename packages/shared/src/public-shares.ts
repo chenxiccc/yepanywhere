@@ -13,6 +13,8 @@ export type PublicShareStorageState =
 
 export const PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY =
   "public-share-session-chunks-v1";
+export const PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION =
+  "freeze-live-public-shares";
 export const PUBLIC_SHARE_TITLE_MAX_LENGTH = 700;
 export const PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH = 700;
 export const PUBLIC_SHARE_LEGACY_RELAY_BODY_MAX_BYTES = 8 * 1024 * 1024;
@@ -150,6 +152,11 @@ export interface RevokePublicShareResponse {
 
 export interface RevokeAllPublicSharesResponse {
   revokedCount: number;
+  cleanupPending?: boolean;
+}
+
+export interface FreezePublicSharesResponse {
+  convertedCount: number;
   cleanupPending?: boolean;
 }
 

@@ -51,6 +51,12 @@ revocation scopes:
 - revoke every link for one YA session; or
 - revoke every public link on the server.
 
+Freezing is a separate authority-retargeting action, not a fourth revocation
+scope. An owner can freeze one reviewed live link or the exact reviewed set of
+live links in the manager's current location. Frozen links are ineligible, and
+successful conversion retains the same bearer authorization at the current
+complete snapshot.
+
 The authenticated inventory contains compact metadata for currently valid
 links and may report ephemeral activity. For a new grant it may return the
 retained complete public URL so the owner can copy and reshare that existing
@@ -91,6 +97,13 @@ request. The detailed storage, migration, API, and verification sequence lives
 in [Public Share Persistence](public-share-persistence.md); its temporary
 implementation ledger was deleted after the contract was implemented and
 verified.
+
+Selective freeze is separately gated by the permanent indexed
+`public-share-management-freeze` capability because already-deployed source
+servers can advertise the original management capability without its batch
+freeze route. Without the new capability, the manager retains inventory, copy,
+and revoke controls, hides per-link and bulk freeze, and sends no selective
+freeze request.
 
 Valid links do not expire because a viewer disconnects or because a snapshot
 is old. Automatic or selectable expiry is a separate product policy with

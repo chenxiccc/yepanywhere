@@ -26,11 +26,15 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function managedItem(shareId: string, title: string) {
+function managedItem(
+  shareId: string,
+  title: string,
+  mode: "frozen" | "live" = "frozen",
+) {
   return {
     shareId,
     url: `https://ya.graehl.org/share/${shareId}?h=test-host`,
-    mode: "frozen" as const,
+    mode,
     title,
     projectName: "project",
     sessionId: "session-1",
@@ -130,6 +134,9 @@ describe("SessionShareModal", () => {
       totalCount: 1,
     });
     vi.spyOn(api, "revokePublicShare").mockResolvedValue({ revoked: true });
+    vi.spyOn(api, "freezePublicShares").mockResolvedValue({
+      convertedCount: 1,
+    });
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
@@ -782,6 +789,127 @@ describe("SessionShareModal", () => {
       expect(api.revokePublicShare).toHaveBeenCalledWith("share-1");
     });
     expect(screen.getByText("No matching public links.")).toBeTruthy();
+  });
+
+  it("hides selective freeze controls without the indexed capability", async () => {
+    vi.mocked(api.getPublicShares).mockResolvedValue({
+      items: [managedItem("live-link", "Live link", "live")],
+      nextCursor: null,
+      totalCount: 1,
+    });
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          initialView="manage"
+          managementAvailable
+          managementFreezeAvailable={false}
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Live link");
+    expect(
+      screen.queryByRole("button", { name: "Freeze at current state" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: "Review all Live share links in All projects for freezing",
+      }),
+    ).toBeNull();
+  });
+
+  it("confirms a live link freeze without offering it on frozen rows", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(api.getPublicShares).mockResolvedValue({
+      items: [
+        managedItem("live-link", "Live link", "live"),
+        managedItem("frozen-link", "Frozen link"),
+      ],
+      nextCursor: null,
+      totalCount: 2,
+    });
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          initialView="manage"
+          managementAvailable
+          managementFreezeAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Live link");
+    const freezeButtons = screen.getAllByRole("button", {
+      name: "Freeze at current state",
+    });
+    expect(freezeButtons).toHaveLength(1);
+    fireEvent.click(freezeButtons[0]!);
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      "Freeze this live public link now? It will stop receiving updates, but anyone with the link will retain access to the current snapshot.",
+    );
+    await waitFor(() => {
+      expect(api.freezePublicShares).toHaveBeenCalledWith(["live-link"]);
+    });
+  });
+
+  it("reviews and freezes the exact live links in the selected scope", async () => {
+    vi.mocked(api.getPublicShares).mockImplementation((options = {}) =>
+      Promise.resolve(
+        options.mode === "live"
+          ? {
+              items: [
+                managedItem("live-a", "Live A", "live"),
+                managedItem("frozen-race", "Already frozen"),
+                managedItem("live-b", "Live B", "live"),
+              ],
+              nextCursor: null,
+              totalCount: 3,
+            }
+          : {
+              items: [managedItem("initial", "Initial inventory", "live")],
+              nextCursor: null,
+              totalCount: 1,
+            },
+      ),
+    );
+    vi.mocked(api.freezePublicShares).mockResolvedValue({ convertedCount: 2 });
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          initialView="manage"
+          managementAvailable
+          managementFreezeAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Initial inventory");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Review all Live share links in This session for freezing",
+      }),
+    );
+
+    const confirm = await screen.findByRole("button", {
+      name: "Confirm: freeze 2 Live share link(s) in This session (0 active client(s))",
+    });
+    expect(api.freezePublicShares).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        "Click again to freeze 2 Live share link(s) in This session (0 active client(s)). The links will retain the current snapshot but stop receiving updates.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(confirm);
+
+    await waitFor(() => {
+      expect(api.freezePublicShares).toHaveBeenCalledWith(["live-a", "live-b"]);
+    });
   });
 
   it("confirms exact type, scope, link, and viewer counts", async () => {

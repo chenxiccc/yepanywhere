@@ -994,8 +994,11 @@ function getSessionParams(
   return { projectId, sessionId };
 }
 
-async function captureCompletePublicShare(
-  deps: PublicShareRoutesDeps,
+export async function captureCompletePublicShare(
+  deps: Pick<
+    PublicShareRoutesDeps,
+    "loadCompleteSession" | "publicShareService"
+  >,
   projectId: UrlProjectId,
   sessionId: string,
 ): Promise<PublicShareCapture | null> {

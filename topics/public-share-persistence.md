@@ -139,6 +139,15 @@ content. Global inventory and revocation read compact grants only. Empty state
 and unreferenced revisions are garbage collected after authorization changes
 commit.
 
+## Design decisions
+
+- **Selective management freeze uses one indexed capability and an exact-ID
+  batch** (vs. widening `public-share-management` or calling the session-wide
+  freeze once per listed link): source builds that already advertised the
+  original management contract keep their meaning, while the server can
+  resolve reviewed opaque grant IDs to source sessions, capture each source
+  once, and avoid exposing project IDs in global inventory.
+
 All store content is owner-only app data. Opening remediates and verifies the
 store root before trusting it. Every control file, temporary file, gzip body,
 revision directory, project clone, and retained legacy backup is created or
@@ -324,8 +333,10 @@ projects and exposes only the frozen and live filters. Each
 selector uses the same white line-glyph tile, accent fill, and tinted-row
 selected-state grammar as Settings categories; selection does not depend on a
 subtle border alone. The right column lists matching grants with active
-connection counts, copy and revoke actions, and scrolling only when available
-viewport height cannot contain the rows. At narrow widths the pane stays
+connection counts, copy and revoke actions, and—on servers advertising
+`public-share-management-freeze`—a freeze action on live rows only. It scrolls
+only when available viewport height cannot contain the rows. At narrow widths
+the pane stays
 anchored below the broadcast icon and expands to the available viewport width;
 it does not switch to the centered or bottom modal placement. Each type row
 keeps its actions available before inventory resolves. Its green `+` is the
@@ -342,7 +353,12 @@ click on the same category control revokes; the All projects `×` is therefore
 the direct all-projects/all-types path. Any other in-pane control cancels the
 armed action; outside-click or clicking the broadcast icon dismisses the pane.
 Each listed share carries a compact right-side live/frozen glyph before its
-copy and smaller red revoke actions.
+copy and smaller action controls. A live row's freeze control uses the same
+significant-action confirmation as its revoke control, then retains bearer
+access at the newly captured state. The Live type row provides the bulk path:
+its first click selects and pages through the exact live-link set in the current
+location, its inert banner reports link and active-client counts, and its second
+click confirms. Frozen rows and the Frozen type row expose no freeze action.
 
 One mounted manager controller belongs to one backend source. Changing the
 current source remounts the controller, clears its inventory and operation
@@ -506,6 +522,17 @@ hash, transcript body, project root, or authorized path set. A URL is absent for
 legacy hash-only grants. One-link revocation and explicitly confirmed global
 revocation commit grant invalidation before best-effort content collection; a
 cleanup failure remains visible as `cleanupPending`.
+
+Selective live-link freezing is independently gated by the permanent indexed
+`public-share-management-freeze` capability. Its authenticated batch route
+requires an explicit confirmation marker and an exact non-empty opaque
+`shareIds` set. It ignores missing or already-frozen grants, groups the remaining
+live grants by source session, and publishes one complete current capture per
+source group before retargeting only those grants. Processing stays bounded to
+one source capture at a time; a later source failure can therefore follow
+earlier committed groups, reports the converted count in the error response,
+and causes the manager to refresh inventory. A client without the capability
+keeps inventory, copy, and revocation unchanged and makes no freeze request.
 
 ## Related contracts
 

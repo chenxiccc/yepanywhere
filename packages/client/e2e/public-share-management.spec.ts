@@ -93,6 +93,7 @@ test("left and right click open the same share manager", async ({
   });
   const version = await (await fetch(`${baseURL}/api/version`)).json();
   expect(version.capabilities).toContain("public-share-management");
+  expect(version.capabilities).toContain("public-share-management-freeze");
   await page.waitForTimeout(500);
 
   await page
@@ -137,12 +138,20 @@ test("left and right click open the same share manager", async ({
   ).toBeEnabled();
   await expect(
     dialog.getByRole("button", {
+      name: "Review all Live share links in This session for freezing",
+    }),
+  ).toBeEnabled();
+  await expect(
+    dialog.getByRole("button", {
       name: "Review all share links in This project for revocation",
     }),
   ).toBeEnabled();
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
   await expect(dialog.getByRole("img", { name: "Live" })).toBeVisible();
   await expect(dialog.getByRole("img", { name: "Frozen" })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Freeze at current state" }),
+  ).toHaveCount(1);
   await expect(page.getByText("2 matching public link(s)")).toBeVisible();
   const dialogBox = await dialog.boundingBox();
   expect(dialogBox).not.toBeNull();
@@ -160,24 +169,25 @@ test("left and right click open the same share manager", async ({
   const captureDirectory = process.env.YEP_PUBLIC_SHARE_CAPTURE_DIR;
   await dialog
     .getByRole("button", {
-      name: "Review all Frozen share links in This session for revocation",
+      name: "Review all Live share links in This session for freezing",
     })
     .click();
   await expect(
     dialog.getByRole("button", {
-      name: "Confirm: revoke 1 Frozen share link(s) in This session (0 active client(s))",
+      name: "Confirm: freeze 1 Live share link(s) in This session (0 active client(s))",
     }),
   ).toBeEnabled();
   await expect(
     dialog.getByText(
-      "Click again to revoke 1 Frozen share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+      "Click again to freeze 1 Live share link(s) in This session (0 active client(s)). The links will retain the current snapshot but stop receiving updates.",
     ),
   ).toBeVisible();
   await expect(
     dialog.getByRole("button", {
-      name: /Click again to revoke 1 Frozen/,
+      name: /Click again to freeze 1 Live/,
     }),
   ).toHaveCount(0);
+  await expect(dialog.getByRole("listitem")).toHaveCount(1);
   if (captureDirectory) {
     mkdirSync(captureDirectory, { recursive: true });
     await page.screenshot({
@@ -185,8 +195,8 @@ test("left and right click open the same share manager", async ({
     });
   }
 
-  await dialog.getByRole("button", { name: "Live", exact: true }).click();
-  await expect(dialog.getByText(/Click again to revoke/)).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Frozen", exact: true }).click();
+  await expect(dialog.getByText(/Click again to freeze/)).toHaveCount(0);
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
 
   if (captureDirectory) {

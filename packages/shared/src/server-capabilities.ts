@@ -200,6 +200,37 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace installed servers that lack compact inventory and one-link revocation routes.",
     },
   },
+  publicShareManagementFreeze: {
+    id: CAPABILITY_ID_ALLOCATIONS.publicShareManagementFreeze.id,
+    name: "public-share-management-freeze",
+    kind: "permanent",
+    area: "remoteAccess",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server selectively converts an exact reviewed set of live public-link grants to frozen snapshots.",
+    clientFallback:
+      "Hide management freeze controls, retain inventory/copy/revocation, and make no selective-freeze request.",
+    serverContract: {
+      routes: ["POST /api/public-shares/freeze-live"],
+      routeModules: [
+        "packages/server/src/routes/public-share-management-freeze.ts",
+      ],
+      requestFields: [
+        "publicShareManagementFreeze.shareIds",
+        "publicShareManagementFreeze.confirmation",
+      ],
+      responseFields: [
+        "publicShareManagementFreeze.convertedCount",
+        "publicShareManagementFreeze.cleanupPending",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace source and installed servers whose management surface supports revocation but not exact live-link freezing.",
+    },
+  },
   glossaryTooltips: {
     id: CAPABILITY_ID_ALLOCATIONS.glossaryTooltips.id,
     name: "glossary-tooltips",
@@ -1429,6 +1460,8 @@ export const PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY =
   SERVER_CAPABILITIES.projectDirectoryStoragePolicy.name;
 export const PUBLIC_SHARE_MANAGEMENT_CAPABILITY =
   SERVER_CAPABILITIES.publicShareManagement.name;
+export const PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY =
+  SERVER_CAPABILITIES.publicShareManagementFreeze.name;
 export const IDLE_REAP_HOURS_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.idleReapHoursSetting.name;
 export const GLOSSARY_TOOLTIPS_CAPABILITY =

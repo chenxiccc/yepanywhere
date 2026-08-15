@@ -27,6 +27,7 @@ export interface SessionShareModalProps {
   onClose: () => void;
   initialView?: "manage" | "session";
   managementAvailable?: boolean;
+  managementFreezeAvailable?: boolean;
 }
 
 type ShareWorkingState =
@@ -37,7 +38,10 @@ type ShareWorkingState =
   | `freeze:${string}`;
 
 interface LegacySessionShareModalProps
-  extends Omit<SessionShareModalProps, "initialView" | "managementAvailable"> {
+  extends Omit<
+    SessionShareModalProps,
+    "initialView" | "managementAvailable" | "managementFreezeAvailable"
+  > {
   onManage?: () => void;
 }
 
@@ -485,6 +489,7 @@ export function SessionShareModal({
         anchorRect={props.anchorRect}
         creationIdentity={creationIdentity}
         creationReady={props.canCreateShares ?? true}
+        selectiveFreezeAvailable={props.managementFreezeAvailable}
         onClose={props.onClose}
       />
     );

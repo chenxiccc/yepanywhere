@@ -1,6 +1,7 @@
 import type { HttpBindings } from "@hono/node-server";
 import {
   DEFAULT_RELAY_URL,
+  PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION,
   PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY,
   PUBLIC_SHARE_SESSION_CHUNK_MAX_BYTES,
   PUBLIC_SHARE_SESSION_COMPRESSED_MAX_BYTES,
@@ -27,6 +28,7 @@ import {
   createPublicShareRoutes,
   buildPublicSharePresentation,
 } from "../../src/routes/public-shares.js";
+import { createPublicShareManagementFreezeRoutes } from "../../src/routes/public-share-management-freeze.js";
 import { createPublicShareManagementRoutes } from "../../src/routes/public-share-management.js";
 import {
   LEGACY_PUBLIC_SHARE_RELAY_MAX_BYTES,
@@ -1206,6 +1208,120 @@ describe("public share owner routes", () => {
       revoked: true,
     });
     expect(service.getValidShareCount()).toBe(0);
+  });
+
+  it("freezes only the exact confirmed live grants", async () => {
+    const first = await service.createShare({
+      mode: "live",
+      source: { projectId, sessionId: "session-1" },
+    });
+    const unselected = await service.createShare({
+      mode: "live",
+      source: { projectId, sessionId: "session-1" },
+    });
+    const secondSession = await service.createShare({
+      mode: "live",
+      source: { projectId, sessionId: "session-2" },
+    });
+    const alreadyFrozen = await service.createShare({
+      mode: "frozen",
+      source: { projectId, sessionId: "session-1" },
+      capture: await captureSession(service),
+    });
+    const loadCompleteSession = vi.fn(
+      async (loadedProjectId: UrlProjectId, sessionId: string) =>
+        makeSession({ id: sessionId, projectId: loadedProjectId }),
+    );
+    const app = createPublicShareManagementFreezeRoutes({
+      publicShareService: service,
+      loadCompleteSession,
+    });
+
+    const response = await app.request("/public-shares/freeze-live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirmation: PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION,
+        shareIds: [
+          first.record.shareId,
+          first.record.shareId,
+          secondSession.record.shareId,
+          alreadyFrozen.record.shareId,
+        ],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ convertedCount: 2 });
+    expect(loadCompleteSession).toHaveBeenCalledTimes(4);
+    expect(
+      service
+        .getAllRecords()
+        .find((record) => record.shareId === first.record.shareId)?.mode,
+    ).toBe("frozen");
+    expect(
+      service
+        .getAllRecords()
+        .find((record) => record.shareId === secondSession.record.shareId)
+        ?.mode,
+    ).toBe("frozen");
+    expect(
+      service
+        .getAllRecords()
+        .find((record) => record.shareId === unselected.record.shareId)?.mode,
+    ).toBe("live");
+  });
+
+  it("does not capture or change an already-frozen grant", async () => {
+    const alreadyFrozen = await service.createShare({
+      mode: "frozen",
+      source: { projectId, sessionId: "session-1" },
+      capture: await captureSession(service),
+    });
+    const loadCompleteSession = vi.fn(async () => makeSession());
+    const app = createPublicShareManagementFreezeRoutes({
+      publicShareService: service,
+      loadCompleteSession,
+    });
+
+    const response = await app.request("/public-shares/freeze-live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirmation: PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION,
+        shareIds: [alreadyFrozen.record.shareId],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ convertedCount: 0 });
+    expect(loadCompleteSession).not.toHaveBeenCalled();
+    expect(service.getAllRecords()[0]?.mode).toBe("frozen");
+  });
+
+  it("requires explicit confirmation before selective freezing", async () => {
+    const live = await service.createShare({
+      mode: "live",
+      source: { projectId, sessionId: "session-1" },
+    });
+    const loadCompleteSession = vi.fn(async () => makeSession());
+    const app = createPublicShareManagementFreezeRoutes({
+      publicShareService: service,
+      loadCompleteSession,
+    });
+
+    const response = await app.request("/public-shares/freeze-live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirmation: "no",
+        shareIds: [live.record.shareId],
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(loadCompleteSession).not.toHaveBeenCalled();
+    expect(service.getAllRecords()[0]?.mode).toBe("live");
   });
 
   it("paginates management stably across a revocation", async () => {

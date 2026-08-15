@@ -6,6 +6,7 @@ import {
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PROVIDER_HOST_CONTROL_CAPABILITY,
+  PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
   PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   encodeCompactServerCapabilities,
@@ -159,6 +160,24 @@ describe("server capability advertisements", () => {
       serverHasCapability(
         { current: "0.7.0-741-gabcdef", ...sourceAdvertisement },
         PROJECT_SESSION_DEFAULTS_CAPABILITY,
+      ),
+    ).toBe(true);
+  });
+
+  it("encodes selective share freeze in the second capability word", () => {
+    const advertisement = encodeVersionedServerCapabilities(
+      [PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 1]],
+    });
+    expect(
+      serverHasCapability(
+        { current: "0.7.0-741-gabcdef", ...advertisement },
+        PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
       ),
     ).toBe(true);
   });

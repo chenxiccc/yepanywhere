@@ -15,6 +15,7 @@ import type {
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
   DeviceInfo,
+  FreezePublicSharesResponse,
   FreezePublicSessionLiveSharesResponse,
   HelperTargetConfig,
   HostAwakeMode,
@@ -62,6 +63,7 @@ import type {
   UserMessageMetadata,
   WorkstreamId,
 } from "@yep-anywhere/shared";
+import { PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION } from "@yep-anywhere/shared";
 import type {
   AgentSession,
   InputRequest,
@@ -1635,6 +1637,15 @@ export const api = {
     fetchJSON<RevokeAllPublicSharesResponse>("/public-shares/revoke-all", {
       method: "POST",
       body: JSON.stringify({ confirmation: "revoke-all-public-shares" }),
+    }),
+
+  freezePublicShares: (shareIds: readonly string[]) =>
+    fetchJSON<FreezePublicSharesResponse>("/public-shares/freeze-live", {
+      method: "POST",
+      body: JSON.stringify({
+        shareIds,
+        confirmation: PUBLIC_SHARE_MANAGEMENT_FREEZE_CONFIRMATION,
+      }),
     }),
 
   createPublicSessionShare: (body: CreatePublicSessionShareRequest) =>

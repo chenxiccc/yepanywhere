@@ -635,6 +635,17 @@ export class PublicShareService {
     };
   }
 
+  async freezeLiveSharesById(
+    shareIds: ReadonlySet<string>,
+    capture: PublicShareCapture,
+  ): Promise<number> {
+    const converted = await this.store.freezeMatching({
+      matches: (record) => shareIds.has(record.shareId),
+      capture,
+    });
+    return converted.length;
+  }
+
   canFreezeSessionViewerToken(
     projectId: UrlProjectId,
     sessionId: string,
