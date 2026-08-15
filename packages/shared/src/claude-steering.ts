@@ -1,3 +1,5 @@
+import { compileLinearWholeRegex } from "./linear-regex.js";
+
 export interface ClaudeSteerBackgroundBashSettings {
   allowRegex: string;
   denyRegex: string;
@@ -9,15 +11,16 @@ export const DEFAULT_CLAUDE_STEER_BACKGROUND_BASH: ClaudeSteerBackgroundBashSett
     denyRegex: "",
   };
 
-export const MAX_CLAUDE_STEER_BACKGROUND_BASH_REGEX_LENGTH = 2_000;
+export const MAX_CLAUDE_STEER_BACKGROUND_BASH_REGEX_LENGTH = 512;
+export const MAX_CLAUDE_STEER_BACKGROUND_BASH_COMMAND_LENGTH = 16 * 1024;
 
-function compileWholeCommandRegex(source: string): RegExp {
-  // Validate the operator source on its own. Compiling only after interpolation
-  // can accidentally balance malformed source with syntax from our wrapper.
-  new RegExp(source, "s");
-  // A bare `$` also matches before one final line terminator in JavaScript.
-  // The negative lookahead requires the true end of the command string.
-  return new RegExp(`^(?:${source})(?![\\s\\S])`, "s");
+function compileWholeCommandRegex(
+  source: string,
+): (command: string) => boolean {
+  return compileLinearWholeRegex(
+    source,
+    MAX_CLAUDE_STEER_BACKGROUND_BASH_COMMAND_LENGTH,
+  );
 }
 
 export function parseClaudeSteerBackgroundBashSettings(
@@ -70,5 +73,5 @@ export function createClaudeSteerBackgroundBashMatcher(
   const allow = compileWholeCommandRegex(parsed.allowRegex);
   const deny =
     parsed.denyRegex === "" ? null : compileWholeCommandRegex(parsed.denyRegex);
-  return (command) => allow.test(command) && !(deny?.test(command) ?? false);
+  return (command) => allow(command) && !(deny?.(command) ?? false);
 }

@@ -1719,6 +1719,8 @@ describe("Settings Routes", () => {
 
     it.each([
       { allowRegex: "[", denyRegex: "" },
+      { allowRegex: "(?=unsafe)", denyRegex: "" },
+      { allowRegex: "(unsafe)\\1", denyRegex: "" },
       { allowRegex: ".*" },
       { allowRegex: ".*", denyRegex: "", extra: true },
     ])("rejects invalid Claude steer Bash policy %j", async (policy) => {

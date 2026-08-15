@@ -56,6 +56,18 @@ describe("Claude steer Bash background policy", () => {
         extra: true,
       }),
     ).toBeNull();
+    expect(
+      parseClaudeSteerBackgroundBashSettings({
+        allowRegex: "(?=unsafe)",
+        denyRegex: "",
+      }),
+    ).toBeNull();
+    expect(
+      parseClaudeSteerBackgroundBashSettings({
+        allowRegex: "(unsafe)\\1",
+        denyRegex: "",
+      }),
+    ).toBeNull();
   });
 
   it("fails closed when invalid settings bypass parsing", () => {
@@ -65,5 +77,25 @@ describe("Claude steer Bash background policy", () => {
     });
 
     expect(matches("sleep 30")).toBe(false);
+  });
+
+  it("evaluates nested quantifiers without catastrophic backtracking", () => {
+    const matches = createClaudeSteerBackgroundBashMatcher({
+      allowRegex: "^(a+)+$",
+      denyRegex: "",
+    });
+    const longPrefix = "a".repeat(10_000);
+
+    expect(matches(longPrefix)).toBe(true);
+    expect(matches(`${longPrefix}!`)).toBe(false);
+  });
+
+  it("fails closed for commands beyond the bounded matching input", () => {
+    const matches = createClaudeSteerBackgroundBashMatcher({
+      allowRegex: ".*",
+      denyRegex: "",
+    });
+
+    expect(matches("x".repeat(16 * 1024 + 1))).toBe(false);
   });
 });

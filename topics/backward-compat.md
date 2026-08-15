@@ -7,6 +7,15 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-15 `claudeSteerBackgroundBash` expressions — keep the persisted
+`allowRegex` / `denyRegex` fields and whole-command matching, but evaluate the
+documented regular-expression subset with a linear-time engine. Reject
+lookarounds, backreferences, inline flags, word boundaries, and braced
+quantifiers on settings writes. A previously persisted expression outside the
+subset disables Bash backgrounding instead of reverting to the allow-all
+default; explicit supported policies and the absent-setting default retain
+their existing meaning.
+
 2026-08-08 session file-change facts — releases `v0.5.2`, `v0.6.0`,
 `v0.6.1`, `v0.6.2`, and `v0.7.0` expose the existing activity and focused
 session-watch streams but omit exact path/mtime/size correlation facts,

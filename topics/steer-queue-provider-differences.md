@@ -259,7 +259,13 @@ new Claude processes. Both expressions match the whole raw
 default is `{ allowRegex: ".*", denyRegex: "" }`: allow every Bash command and
 deny none. Empty allow disables re-foregrounding; empty deny has the special
 meaning "deny nothing"; deny wins when both match. Invalid settings writes are
-rejected, and invalid programmatic values fail closed. Operators can deny
+rejected, and invalid programmatic or persisted values fail closed. Matching
+uses a bounded linear-time regular-expression engine rather than JavaScript's
+backtracking engine. It supports literals, dot, character classes, grouping,
+alternation, anchors, `*`, `+`, `?`, and common character escapes; lookarounds,
+backreferences, inline flags, word boundaries, and braced quantifiers are
+rejected. Expressions are capped at 512 code units, and commands beyond 16 KiB
+are ineligible rather than consuming unbounded policy work. Operators can deny
 expensive, side-effecting, or lock-holding commands when Claude must not act
 concurrently with them. YA carries no built-in `agentctl` or command whitelist.
 

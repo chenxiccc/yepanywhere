@@ -395,9 +395,11 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
       ? settings.claudeAutoCompactPercentOverride
       : undefined;
   normalized.claudeSteerBackgroundBash =
-    parseClaudeSteerBackgroundBashSettings(
-      settings.claudeSteerBackgroundBash,
-    ) ?? DEFAULT_CLAUDE_STEER_BACKGROUND_BASH;
+    settings.claudeSteerBackgroundBash === undefined
+      ? DEFAULT_CLAUDE_STEER_BACKGROUND_BASH
+      : (parseClaudeSteerBackgroundBashSettings(
+          settings.claudeSteerBackgroundBash,
+        ) ?? { allowRegex: "", denyRegex: "" });
   const gatewayStartCommand = settings.claudeGatewayStartCommand;
   normalized.claudeGatewayStartCommand =
     typeof gatewayStartCommand === "string" &&
@@ -468,6 +470,7 @@ interface SettingsState {
 
 export interface ServerSettingsServiceOptions {
   dataDir: string;
+  logger?: Pick<Console, "error">;
 }
 
 export type ServerSettingsChangeListener = (
@@ -482,10 +485,12 @@ export class ServerSettingsService {
   private initialized = false;
   private updateTail: Promise<void> = Promise.resolve();
   private readonly changeListeners = new Set<ServerSettingsChangeListener>();
+  private readonly logger: Pick<Console, "error">;
 
   constructor(options: ServerSettingsServiceOptions) {
     this.dataDir = options.dataDir;
     this.filePath = path.join(this.dataDir, "server-settings.json");
+    this.logger = options.logger ?? console;
     this.state = {
       version: CURRENT_VERSION,
       settings: DEFAULT_SERVER_SETTINGS,
@@ -632,7 +637,10 @@ export class ServerSettingsService {
         await directory.close();
       }
     } catch (error) {
-      console.error("[ServerSettingsService] Failed to save settings:", error);
+      this.logger.error(
+        "[ServerSettingsService] Failed to save settings:",
+        error,
+      );
       throw error;
     } finally {
       if (!published) {

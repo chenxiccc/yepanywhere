@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_PROJECT_QUEUE_QUIET_SECONDS } from "@yep-anywhere/shared";
 import { ServerSettingsService } from "../../src/services/ServerSettingsService.js";
 
@@ -58,7 +58,11 @@ describe("ServerSettingsService", () => {
   });
 
   it("does not publish a storage mode whose durable write failed", async () => {
-    const service = new ServerSettingsService({ dataDir: testDir });
+    const error = vi.fn();
+    const service = new ServerSettingsService({
+      dataDir: testDir,
+      logger: { error },
+    });
     await service.initialize();
     await service.updateSettings({ projectDirectoryStorage: "project" });
 
@@ -70,6 +74,10 @@ describe("ServerSettingsService", () => {
         service.updateSettings({ projectDirectoryStorage: "app-data" }),
       ).rejects.toBeTruthy();
       expect(service.getSetting("projectDirectoryStorage")).toBe("project");
+      expect(error).toHaveBeenCalledWith(
+        "[ServerSettingsService] Failed to save settings:",
+        expect.any(Error),
+      );
     } finally {
       await fs.rm(testDir);
       await fs.rename(displaced, testDir);
@@ -121,7 +129,7 @@ describe("ServerSettingsService", () => {
     });
   });
 
-  it("normalizes an invalid persisted Claude steer policy to defaults", async () => {
+  it("fails closed for an invalid persisted Claude steer policy", async () => {
     await fs.writeFile(
       path.join(testDir, "server-settings.json"),
       JSON.stringify({
@@ -139,7 +147,7 @@ describe("ServerSettingsService", () => {
     await service.initialize();
 
     expect(service.getSetting("claudeSteerBackgroundBash")).toEqual({
-      allowRegex: ".*",
+      allowRegex: "",
       denyRegex: "",
     });
   });
