@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createServer as createNetServer } from "node:net";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createDevInstanceProvenance,
@@ -26,6 +26,7 @@ import {
   reapObsoleteDevInstances,
 } from "./dev-instance-provenance.mjs";
 import {
+  createProviderHostSourceIdentity,
   discoverProviderHost,
   recoverProviderHost,
   resolveProviderHostPaths,
@@ -179,6 +180,22 @@ const reloadSafeRuntimeHostsEnabled =
   process.platform === "linux" && !backendWatch;
 const providerHostPaths = reloadSafeRuntimeHostsEnabled
   ? resolveProviderHostPaths(env)
+  : null;
+const providerHostEntrypoint = join(__dirname, "provider-runtime-host.mjs");
+const providerRuntimeWorkerPath = env.YEP_PROVIDER_RUNTIME_WORKER_PATH?.trim()
+  ? resolve(env.YEP_PROVIDER_RUNTIME_WORKER_PATH)
+  : join(
+      rootDir,
+      "packages/server/src/sdk/providers/provider-runtime-worker.ts",
+    );
+const expectedProviderHostIdentity = providerHostPaths
+  ? createProviderHostSourceIdentity({
+      projectRoot: rootDir,
+      launcherPath: fileURLToPath(import.meta.url),
+      hostPath: providerHostEntrypoint,
+      workerPath: providerRuntimeWorkerPath,
+      env,
+    })
   : null;
 const wrapperToken = randomBytes(32).toString("base64url");
 
@@ -381,22 +398,32 @@ function configureProviderHostEnvironment(connection) {
   env.YEP_PROVIDER_RUNTIME_RECEIPTS = providerHostPaths.receiptPath;
 }
 
+function discoverCompatibleProviderHost(options) {
+  if (!expectedProviderHostIdentity) {
+    throw new Error("Provider host source identity is unavailable");
+  }
+  return discoverProviderHost(providerHostPaths, {
+    ...options,
+    expectedIdentity: expectedProviderHostIdentity,
+  });
+}
+
 async function waitForProviderHost(timeoutMs = 5_000) {
   const deadline = Date.now() + timeoutMs;
-  let discovery = await discoverProviderHost(providerHostPaths);
+  let discovery = await discoverCompatibleProviderHost();
   while (
     (discovery.state === "absent" || discovery.state === "unresponsive") &&
     Date.now() < deadline
   ) {
     await new Promise((resolve) => setTimeout(resolve, 50));
-    discovery = await discoverProviderHost(providerHostPaths);
+    discovery = await discoverCompatibleProviderHost();
   }
   return discovery;
 }
 
 async function startProviderRuntimeHost() {
   if (!providerHostPaths) return;
-  let discovery = await discoverProviderHost(providerHostPaths);
+  let discovery = await discoverCompatibleProviderHost();
   if (discovery.state === "available") {
     configureProviderHostEnvironment(discovery);
     console.log("[ProviderRuntimeHost] Attached to the existing host");
@@ -410,7 +437,7 @@ async function startProviderRuntimeHost() {
     console.error(
       `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}; interrupted submissions=${recovery.interruptedSubmissionIds.length}`,
     );
-    discovery = await discoverProviderHost(providerHostPaths);
+    discovery = await discoverCompatibleProviderHost();
   }
   if (discovery.state !== "absent") {
     throw new Error(
@@ -430,16 +457,12 @@ async function startProviderRuntimeHost() {
     YEP_PROVIDER_RUNTIME_RECEIPTS: providerHostPaths.receiptPath,
   };
   delete hostEnvironment.YEP_PROVIDER_RUNTIME_TOKEN;
-  const host = spawn(
-    process.execPath,
-    [join(__dirname, "provider-runtime-host.mjs")],
-    {
-      cwd: rootDir,
-      env: hostEnvironment,
-      detached: !isWindows,
-      stdio: ["ignore", "inherit", "inherit", "ipc"],
-    },
-  );
+  const host = spawn(process.execPath, [providerHostEntrypoint], {
+    cwd: rootDir,
+    env: hostEnvironment,
+    detached: !isWindows,
+    stdio: ["ignore", "inherit", "inherit", "ipc"],
+  });
   providerRuntimeHostChild = host;
 
   try {

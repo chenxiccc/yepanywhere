@@ -39,6 +39,7 @@ const DEFAULT_ATTACH_TIMEOUT_MS = 30_000;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(scriptDir, "..");
+const devEntrypoint = join(scriptDir, "dev.js");
 const workerEntrypoint = join(
   rootDir,
   "packages/server/src/sdk/providers/provider-runtime-worker.ts",
@@ -1442,7 +1443,16 @@ async function main() {
       join(runtimeDir, basename(stablePaths.recentRuntimePath)),
   };
   ensurePrivateProviderHostDirectory(paths.runtimeDir);
-  let discovery = await discoverProviderHost(paths);
+  const workerPath = resolveProviderRuntimeWorkerPath();
+  const identities = createProviderHostSourceIdentity({
+    projectRoot: rootDir,
+    launcherPath: devEntrypoint,
+    hostPath: fileURLToPath(import.meta.url),
+    workerPath,
+  });
+  let discovery = await discoverProviderHost(paths, {
+    expectedIdentity: identities,
+  });
   if (discovery.state === "available") {
     throw new Error("A provider host is already starting or running");
   }
@@ -1451,7 +1461,9 @@ async function main() {
     process.stderr.write(
       `[ProviderRuntimeHost] ${recovery.outcome}: replaced ${recovery.descriptorId}; interrupted submissions=${recovery.interruptedSubmissionIds.length}\n`,
     );
-    discovery = await discoverProviderHost(paths);
+    discovery = await discoverProviderHost(paths, {
+      expectedIdentity: identities,
+    });
   }
   if (discovery.state !== "absent") {
     throw new Error(
@@ -1462,22 +1474,15 @@ async function main() {
   const releaseHostLock = acquireProviderHostLock(paths, owner);
   const descriptorId = randomUUID();
   const startedAt = new Date().toISOString();
-  const workerPath = resolveProviderRuntimeWorkerPath();
   const cleanupStableState = () => {
     removeProviderHostArtifacts(paths);
     releaseHostLock();
   };
   let token;
-  let identities;
   let initialTurnReceipts;
   let initialRecentRuntimes = [];
   try {
     token = createProviderHostToken(paths.tokenPath);
-    identities = createProviderHostSourceIdentity({
-      projectRoot: rootDir,
-      hostPath: fileURLToPath(import.meta.url),
-      workerPath,
-    });
     initialTurnReceipts = readProviderHostReceipts(paths);
     try {
       initialRecentRuntimes = consumeProviderHostRecentRuntimes(paths);

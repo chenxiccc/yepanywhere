@@ -15,7 +15,8 @@ import {
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import ts from "typescript";
 
 export const PROVIDER_HOST_PROTOCOL_VERSION = 3;
 export const PROVIDER_HOST_DESCRIPTOR_VERSION = 1;
@@ -28,6 +29,16 @@ const RECENT_RUNTIME_SCHEMA_VERSION = 1;
 const RECENT_RUNTIME_MAX_AGE_MS = 5 * 60_000;
 const MAX_RECENT_RUNTIME_BYTES = 1024 * 1024;
 const MAX_RECENT_RUNTIMES = 1_000;
+const PROVIDER_HOST_SOURCE_IDENTITY_VERSION = 1;
+const SOURCE_RESOLUTION_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "tsconfig.base.json",
+  "packages/server/package.json",
+  "packages/server/tsconfig.json",
+  "packages/shared/package.json",
+  "packages/shared/tsconfig.json",
+];
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
@@ -554,26 +565,213 @@ function acquireProviderHostRecoveryLock(paths) {
   );
 }
 
+function sourceCompilerOptions(projectRoot) {
+  const configPath = join(projectRoot, "packages/server/tsconfig.json");
+  if (existsSync(configPath)) {
+    const config = ts.readConfigFile(configPath, ts.sys.readFile);
+    if (config.error) {
+      throw new Error(
+        `Cannot read provider source TypeScript config: ${ts.flattenDiagnosticMessageText(config.error.messageText, "\n")}`,
+      );
+    }
+    const parsed = ts.parseJsonConfigFileContent(
+      config.config,
+      ts.sys,
+      dirname(configPath),
+    );
+    if (parsed.errors.length > 0) {
+      throw new Error(
+        `Cannot parse provider source TypeScript config: ${ts.flattenDiagnosticMessageText(parsed.errors[0].messageText, "\n")}`,
+      );
+    }
+    return {
+      ...parsed.options,
+      allowJs: true,
+      customConditions: [
+        ...new Set([...(parsed.options.customConditions ?? []), "source"]),
+      ],
+      resolveJsonModule: true,
+    };
+  }
+  return {
+    allowJs: true,
+    customConditions: ["source"],
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    resolveJsonModule: true,
+  };
+}
+
+function pathWithin(root, candidate) {
+  const relativePath = relative(root, candidate);
+  return (
+    relativePath === "" ||
+    (!isAbsolute(relativePath) &&
+      relativePath !== ".." &&
+      !relativePath.startsWith(`..${sep}`))
+  );
+}
+
+function resolveLocalSourceImport(
+  specifier,
+  containingFile,
+  projectRoot,
+  compilerOptions,
+) {
+  if (specifier.startsWith("node:")) return null;
+  const mustResolveLocally =
+    specifier.startsWith(".") ||
+    isAbsolute(specifier) ||
+    specifier.startsWith("@yep-anywhere/");
+  const resolvedModule = ts.resolveModuleName(
+    specifier,
+    containingFile,
+    compilerOptions,
+    ts.sys,
+  ).resolvedModule;
+  if (!resolvedModule) {
+    if (mustResolveLocally) {
+      throw new Error(
+        `Cannot resolve provider source import ${specifier} from ${containingFile}`,
+      );
+    }
+    return null;
+  }
+  const resolvedPath = realpathSync(resolvedModule.resolvedFileName);
+  const projectSource =
+    pathWithin(projectRoot, resolvedPath) &&
+    !resolvedPath.split(sep).includes("node_modules");
+  const relativeSource =
+    (specifier.startsWith(".") || isAbsolute(specifier)) &&
+    !resolvedPath.split(sep).includes("node_modules");
+  return projectSource || relativeSource ? resolvedPath : null;
+}
+
+function providerSourceFiles(projectRoot, entryPaths) {
+  const compilerOptions = sourceCompilerOptions(projectRoot);
+  const pending = entryPaths.map((path) => realpathSync(path));
+  for (const relativePath of SOURCE_RESOLUTION_PATHS) {
+    const path = join(projectRoot, relativePath);
+    if (existsSync(path)) pending.push(realpathSync(path));
+  }
+  const visited = new Set();
+  while (pending.length > 0) {
+    const path = pending.pop();
+    if (visited.has(path)) continue;
+    visited.add(path);
+    const source = readFileSync(path);
+    for (const imported of ts.preProcessFile(
+      source.toString("utf8"),
+      true,
+      true,
+    ).importedFiles) {
+      const dependency = resolveLocalSourceImport(
+        imported.fileName,
+        path,
+        projectRoot,
+        compilerOptions,
+      );
+      if (dependency && !visited.has(dependency)) pending.push(dependency);
+    }
+  }
+  return [...visited].sort((left, right) =>
+    sourceIdentityPath(projectRoot, left).localeCompare(
+      sourceIdentityPath(projectRoot, right),
+    ),
+  );
+}
+
+function sourceIdentityPath(projectRoot, path) {
+  if (pathWithin(projectRoot, path)) {
+    return relative(projectRoot, path).split(sep).join("/");
+  }
+  return `external:${path.split(sep).join("/")}`;
+}
+
+function sourceDependencyHash(projectRoot, paths) {
+  const hash = createHash("sha256");
+  for (const path of paths) {
+    const label = sourceIdentityPath(projectRoot, path);
+    const contents = readFileSync(path);
+    hash.update(`${Buffer.byteLength(label)}:${label}:${contents.length}:`);
+    hash.update(contents);
+  }
+  return hash.digest("hex");
+}
+
+function hashFile(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
 export function createProviderHostSourceIdentity({
   projectRoot,
+  launcherPath,
   hostPath,
   workerPath,
   env = process.env,
 }) {
+  const canonicalProjectRoot = realpathSync(projectRoot);
+  const canonicalLauncherPath = realpathSync(launcherPath);
+  const canonicalHostPath = realpathSync(hostPath);
+  const canonicalWorkerPath = realpathSync(workerPath);
   const packageJson = JSON.parse(
-    readFileSync(join(projectRoot, "package.json"), "utf8"),
+    readFileSync(join(canonicalProjectRoot, "package.json"), "utf8"),
   );
-  const hash = (path) =>
-    createHash("sha256").update(readFileSync(path)).digest("hex");
+  const dependencies = providerSourceFiles(canonicalProjectRoot, [
+    canonicalLauncherPath,
+    canonicalHostPath,
+    canonicalWorkerPath,
+  ]);
   return {
     sourceIdentity: {
-      projectRoot: realpathSync(projectRoot),
-      hostSha256: hash(hostPath),
-      workerSha256: hash(workerPath),
+      version: PROVIDER_HOST_SOURCE_IDENTITY_VERSION,
+      projectRoot: canonicalProjectRoot,
+      launcherSha256: hashFile(canonicalLauncherPath),
+      hostSha256: hashFile(canonicalHostPath),
+      workerSha256: hashFile(canonicalWorkerPath),
+      dependencySha256: sourceDependencyHash(
+        canonicalProjectRoot,
+        dependencies,
+      ),
+      dependencyCount: dependencies.length,
     },
     buildIdentity:
       env.YEP_BUILD_ID?.trim() || `${packageJson.version ?? "unknown"}:source`,
   };
+}
+
+function stableIdentityJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableIdentityJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableIdentityJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function providerHostIdentityMismatch(descriptor, expectedIdentity) {
+  if (
+    !expectedIdentity?.sourceIdentity ||
+    typeof expectedIdentity.buildIdentity !== "string"
+  ) {
+    throw new Error(
+      "Provider host discovery requires expected source identity",
+    );
+  }
+  if (
+    stableIdentityJson(descriptor.sourceIdentity) !==
+    stableIdentityJson(expectedIdentity.sourceIdentity)
+  ) {
+    return "source-identity";
+  }
+  if (descriptor.buildIdentity !== expectedIdentity.buildIdentity) {
+    return "build-identity";
+  }
+  return null;
 }
 
 export function requestProviderHost(
@@ -641,8 +839,13 @@ export function requestProviderHost(
 
 export async function discoverProviderHost(
   paths,
-  { timeoutMs = DEFAULT_STATUS_TIMEOUT_MS } = {},
+  { expectedIdentity, timeoutMs = DEFAULT_STATUS_TIMEOUT_MS } = {},
 ) {
+  if (!expectedIdentity) {
+    throw new Error(
+      "Provider host discovery requires expected source identity",
+    );
+  }
   if (!existsSync(paths.descriptorPath)) return { state: "absent" };
   let descriptor;
   try {
@@ -651,7 +854,18 @@ export async function discoverProviderHost(
     return { state: "ownership-unknown", error: errorMessage(error) };
   }
   if (descriptor.hostProtocolVersion !== PROVIDER_HOST_PROTOCOL_VERSION) {
-    return { state: "incompatible", descriptor };
+    return { state: "incompatible", descriptor, incompatibility: "protocol" };
+  }
+  const identityMismatch = providerHostIdentityMismatch(
+    descriptor,
+    expectedIdentity,
+  );
+  if (identityMismatch) {
+    return {
+      state: "incompatible",
+      descriptor,
+      incompatibility: identityMismatch,
+    };
   }
   try {
     const token = readProviderHostToken(paths.tokenPath);
@@ -665,7 +879,12 @@ export async function discoverProviderHost(
       timeoutMs,
     );
     if (status?.protocolVersion !== PROVIDER_HOST_PROTOCOL_VERSION) {
-      return { state: "incompatible", descriptor, status };
+      return {
+        state: "incompatible",
+        descriptor,
+        status,
+        incompatibility: "protocol",
+      };
     }
     return { state: "available", descriptor, token, status };
   } catch (error) {

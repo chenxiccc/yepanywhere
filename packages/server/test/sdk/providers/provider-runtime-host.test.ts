@@ -16,6 +16,7 @@ import {
 import {
   captureProcessIdentity,
   consumeProviderHostRecentRuntimes,
+  createProviderHostSourceIdentity,
   createProviderHostToken,
   discoverProviderHost,
   readLinuxProcessStartTime,
@@ -42,6 +43,13 @@ const providerHostEntrypoint = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../../../../scripts/provider-runtime-host.mjs",
 );
+const projectRoot = join(dirname(providerHostEntrypoint), "..");
+const expectedProviderHostIdentity = createProviderHostSourceIdentity({
+  projectRoot,
+  launcherPath: join(projectRoot, "scripts/dev.js"),
+  hostPath: providerHostEntrypoint,
+  workerPath: fixtureWorker,
+});
 
 describe("resolveProviderRuntimeWorkerPath", () => {
   it("uses an explicit absolute worker path for harness-controlled runtimes", () => {
@@ -129,7 +137,10 @@ async function waitForAvailableHost(
 ) {
   const deadline = Date.now() + timeoutMs;
   while (true) {
-    const discovery = await discoverProviderHost(paths, { timeoutMs: 250 });
+    const discovery = await discoverProviderHost(paths, {
+      expectedIdentity: expectedProviderHostIdentity,
+      timeoutMs: 250,
+    });
     if (discovery.state === "available") return discovery;
     if (Date.now() >= deadline) {
       throw new Error(`provider host stayed ${discovery.state}`);
@@ -137,6 +148,63 @@ async function waitForAvailableHost(
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
+
+describe("provider host source identity", () => {
+  it("distinguishes checkouts and hashes imported source changes", async () => {
+    const firstRoot = await mkdtemp(join(tmpdir(), "provider-source-first-"));
+    const secondRoot = await mkdtemp(join(tmpdir(), "provider-source-second-"));
+    temporaryPaths.push(firstRoot, secondRoot);
+    const writeFixture = async (root: string) => {
+      await Promise.all([
+        writeFile(join(root, "package.json"), '{"version":"1.0.0"}\n'),
+        writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n"),
+        writeFile(join(root, "launcher.mjs"), 'import "./host.mjs";\n'),
+        writeFile(join(root, "host.mjs"), 'import "./host-helper.mjs";\n'),
+        writeFile(join(root, "host-helper.mjs"), "export const host = 1;\n"),
+        writeFile(join(root, "worker.ts"), 'import "./worker-helper.js";\n'),
+        writeFile(join(root, "worker-helper.ts"), "export const worker = 1;\n"),
+      ]);
+    };
+    await writeFixture(firstRoot);
+    await writeFixture(secondRoot);
+    const identityFor = (root: string) =>
+      createProviderHostSourceIdentity({
+        projectRoot: root,
+        launcherPath: join(root, "launcher.mjs"),
+        hostPath: join(root, "host.mjs"),
+        workerPath: join(root, "worker.ts"),
+      });
+
+    const first = identityFor(firstRoot);
+    const second = identityFor(secondRoot);
+    expect(first.sourceIdentity.projectRoot).not.toBe(
+      second.sourceIdentity.projectRoot,
+    );
+    expect(first.sourceIdentity.dependencySha256).toBe(
+      second.sourceIdentity.dependencySha256,
+    );
+
+    await writeFile(
+      join(firstRoot, "worker-helper.ts"),
+      "export const worker = 2;\n",
+    );
+    const changedImport = identityFor(firstRoot);
+    expect(changedImport.sourceIdentity.workerSha256).toBe(
+      first.sourceIdentity.workerSha256,
+    );
+    expect(changedImport.sourceIdentity.dependencySha256).not.toBe(
+      first.sourceIdentity.dependencySha256,
+    );
+
+    await writeFile(
+      join(firstRoot, "unimported.ts"),
+      "export const value = 1;\n",
+    );
+    expect(identityFor(firstRoot).sourceIdentity.dependencySha256).toBe(
+      changedImport.sourceIdentity.dependencySha256,
+    );
+  });
+});
 
 async function collectProviderHostStream(
   connection: {
@@ -311,11 +379,41 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
           startTime: expect.any(String),
         },
         sourceIdentity: {
+          version: 1,
           projectRoot: expect.any(String),
+          launcherSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
           hostSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
           workerSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          dependencySha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          dependencyCount: expect.any(Number),
         },
         buildIdentity: expect.any(String),
+      });
+      const differentCheckoutIdentity = structuredClone(
+        expectedProviderHostIdentity,
+      );
+      differentCheckoutIdentity.sourceIdentity.projectRoot = `${projectRoot}-other`;
+      await expect(
+        discoverProviderHost(paths, {
+          expectedIdentity: differentCheckoutIdentity,
+          timeoutMs: 250,
+        }),
+      ).resolves.toMatchObject({
+        state: "incompatible",
+        incompatibility: "source-identity",
+      });
+      const changedImportIdentity = structuredClone(
+        expectedProviderHostIdentity,
+      );
+      changedImportIdentity.sourceIdentity.dependencySha256 = "0".repeat(64);
+      await expect(
+        discoverProviderHost(paths, {
+          expectedIdentity: changedImportIdentity,
+          timeoutMs: 250,
+        }),
+      ).resolves.toMatchObject({
+        state: "incompatible",
+        incompatibility: "source-identity",
       });
       for (const path of [
         paths.descriptorPath,
@@ -989,7 +1087,13 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
           },
         },
       ]);
-      const discovery = await discoverProviderHost(paths, { timeoutMs: 50 });
+      const discovery = await discoverProviderHost(paths, {
+        expectedIdentity: {
+          sourceIdentity: { projectRoot: runtimeRoot },
+          buildIdentity: "test",
+        },
+        timeoutMs: 50,
+      });
       expect(discovery.state).toBe("unresponsive");
       if (discovery.state !== "unresponsive") return;
 
@@ -1055,7 +1159,13 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
         buildIdentity: "test",
         processGroups: [],
       });
-      const discovery = await discoverProviderHost(paths, { timeoutMs: 50 });
+      const discovery = await discoverProviderHost(paths, {
+        expectedIdentity: {
+          sourceIdentity: { projectRoot: runtimeRoot },
+          buildIdentity: "test",
+        },
+        timeoutMs: 50,
+      });
       expect(discovery.state).toBe("unresponsive");
       if (discovery.state !== "unresponsive") return;
 

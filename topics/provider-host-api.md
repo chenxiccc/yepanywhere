@@ -71,6 +71,14 @@ Hono receives the discovered endpoint and token through private environment
 state. A host started by the wrapper retains wrapper IPC as its terminal-owner
 channel; a separately started foreground host retains its terminal instead.
 
+Compatibility includes exact launch source, not only protocol version. The
+descriptor binds the canonical checkout root and a content digest over the dev
+launcher, host, worker, every statically reachable project-source dependency,
+and the manifests/lockfile that resolve those imports. Both launchers compute
+the same expected identity before discovery. A different checkout, changed
+import, changed dependency resolution, or build identity is incompatible and
+cannot be authenticated, registered, or attached as the current host.
+
 Host protocol version 3 is newline-delimited JSON over the control socket.
 Every request carries a request id, token, Hono generation, and protocol
 version. The implemented operations are:
@@ -377,6 +385,9 @@ version, while the permanent capability ledger retains all prior assignments.
 - Starting Hono attaches to the expected live host and does not create a second
   host. With no host it starts one; with a nonresponsive verified owner it
   performs bounded verified replacement.
+- A host from another canonical checkout or with any changed launcher/host/
+  worker dependency is reported incompatible before token use and is never
+  attached as the current source generation.
 - A hosted Claude turn uses the incumbent worker and creates no second resume
   process. Codex uses the same shared-host path after native-host retirement.
 - Provider-owned title, recap, progress-summary, and prompt-suggestion
@@ -401,6 +412,14 @@ version, while the permanent capability ledger retains all prior assignments.
   worker, provider process group, socket, descriptor, or token artifact behind.
 - Host absence degrades to ordinary in-Hono sessions; it never weakens network
   admission or makes the provider-host socket remotely reachable.
+
+## Design decisions
+
+- **Content-address the reachable provider-host source graph** (vs. hashing
+  only entrypoints or the whole server tree): imported provider changes fence
+  attachment while unrelated Hono-only edits retain Safe Reload. The canonical
+  checkout root remains a separate fence so identical bytes in another clone
+  cannot silently acquire an incumbent source checkout's host.
 
 ## Verification evidence
 

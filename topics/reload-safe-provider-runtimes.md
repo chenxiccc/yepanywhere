@@ -322,7 +322,11 @@ change does not manufacture a settings revision or rewrite metadata.
 One server generation controls a worker at a time. Attach and detach use the
 wrapper-issued server generation plus the private wrapper-lifetime credential.
 The host refuses concurrent controllers, stale generations, unknown canonical
-session ids, and incompatible protocol versions.
+session ids, incompatible protocol versions, and incompatible launch-source
+identities. Launch-source identity binds the canonical checkout plus the
+content-addressed dev-launcher/host/worker import graph and its dependency
+resolution files. A changed imported provider module therefore requires a host
+restart instead of silently attaching current Hono code to a stale owner.
 
 Intentional Hono detach, controller-socket loss, and an unconfirmed claim each
 start a bounded replacement attach deadline. Claiming alone does not clear the
