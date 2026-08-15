@@ -537,7 +537,7 @@ Migration-time correction of inherited cwd, date, repository, permission, and
 tool facts must follow
 [freshness repair after fork](agent-context-injection.md#freshness-repair-after-fork).
 For reusable request-free prefixes, see the opt-in
-[prepare-only boot manager](agent-context-injection.md#prepare-only-boot-manager).
+[prepare-only boot manager](agent-context-injection.sketches.md#prepare-only-boot-manager).
 
 A portable launch fingerprint should cover at least:
 

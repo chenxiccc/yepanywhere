@@ -297,18 +297,17 @@
   composer controller or session-list drawer uncovers the live session.
 - settings-ui-placement - Reviewed settings copy, placement, defaults, and
   externally visible behavior that the UI can state with confidence.
-- cache-aware-session-bootstrap - Proposal for a provider-aware opening
-  protocol that places YA capability hints before the first user request.
+- cache-aware-session-bootstrap - Current cold-start context placement and the
+  explicit absence of a prepared-session pool or cache-reuse guarantee.
 - agent-context-injection - Provider-specific placement and compaction
-  durability for YA, harness, and project instructions, plus cache-compatible
-  prepare-only boot, request-conditioned AGENTS compilation, and
-  protected-capsule proposals.
-- all-session-content-search - Proposal for incremental literal search over
-  visible user and assistant text across sessions and projects.
+  durability for YA, harness, and project instructions; candidate boot and
+  protected-capsule mechanisms live in its sketches companion.
+- all-session-content-search - Current catalog/in-session search boundary and
+  explicit absence of a cross-session transcript-content index.
 - source-review-followups - Optional clarification, discussion,
   source-comment, and gap annotations for a future review-sweep workflow.
-- user-authorization-attestation - Sketch of opt-in signed user turns or a
-  Linux-bounded capability inbox for only predeclared authorization gates.
+- user-authorization-attestation - Current absence of signed gate-specific
+  turns; candidate signature and capability-inbox transports live in sketches.
 - quarto-markdown - Safe `.qmd` viewing and inert, source-preserving file links
   for Quarto include directives.
 - remote-browser-diagnostics - Explicit per-tab full-JavaScript debugging
