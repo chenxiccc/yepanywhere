@@ -24,7 +24,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useOptionalToastContext } from "../contexts/ToastContext";
 import { ConversationViewIcon } from "./ConversationViewIcon";
@@ -63,7 +62,7 @@ import {
 } from "../hooks/useWaveformButtonBackgroundOpacity";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
-import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
+import { writeClipboardTextLater } from "../lib/clipboard";
 import { BROWSER_DEBUG_LEASE_TTL_MS } from "../lib/browserDebugLease";
 import {
   type SessionViewerControllerState,
@@ -124,6 +123,7 @@ import { SpeechControlMenu } from "./SpeechControlMenu";
 import { SpeechWaveform } from "./SpeechWaveform";
 import { ThinkingControlsPanel, ThinkingIcon } from "./ThinkingControls";
 import { RenderModeGlyph } from "./ui/RenderModeGlyph";
+import { SessionViewerToolbarController } from "./SessionViewerToolbarController";
 import {
   VoiceInputButton,
   type SpeechCycleSettlement,
@@ -789,236 +789,6 @@ function BrowserDebugLeaseIcon({
           {performanceLabel}
         </span>
       ) : null}
-    </>
-  );
-}
-
-function FileViewerRestoreIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 3.5h10v9H3z" />
-      <path d="M5.5 6.5L8 4l2.5 2.5M8 4v5" />
-    </svg>
-  );
-}
-
-function FileViewerMinimizeIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M3 11.5h10" />
-    </svg>
-  );
-}
-
-function FileViewerCloseIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M4 4l8 8M12 4l-8 8" />
-    </svg>
-  );
-}
-
-function SessionViewerToolbarController({
-  controller,
-  t,
-  waveformButtonBackgroundOpacityPercent,
-}: {
-  controller: SessionViewerControllerState;
-  t: ToolbarTranslate;
-  waveformButtonBackgroundOpacityPercent?: number;
-}) {
-  const slotRef = useRef<HTMLSpanElement | null>(null);
-  const floatingRef = useRef<HTMLDivElement | null>(null);
-  const location = controller.label;
-  const fullLocation =
-    controller.kind === "file" ? controller.filePath : location;
-  const briefLocation =
-    controller.kind === "file"
-      ? `…/${controller.briefLabel ?? controller.filePath}`
-      : (controller.briefLabel ?? location);
-
-  useLayoutEffect(() => {
-    const slot = slotRef.current;
-    const floating = floatingRef.current;
-    if (!slot || !floating || typeof window === "undefined") return;
-
-    floating.dataset.fileViewerState = controller.minimized ? "parked" : "open";
-    let frameId = 0;
-    const updatePosition = () => {
-      frameId = 0;
-      const rect = slot.getBoundingClientRect();
-      floating.style.left = `${rect.left}px`;
-      floating.style.top = `${rect.top}px`;
-      floating.style.width = `${rect.width}px`;
-      floating.style.height = `${rect.height}px`;
-    };
-    const schedulePositionUpdate = () => {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(updatePosition);
-    };
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(schedulePositionUpdate);
-    resizeObserver?.observe(slot);
-    window.addEventListener("resize", schedulePositionUpdate);
-    window.visualViewport?.addEventListener("resize", schedulePositionUpdate);
-    window.visualViewport?.addEventListener("scroll", schedulePositionUpdate);
-    updatePosition();
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", schedulePositionUpdate);
-      window.visualViewport?.removeEventListener(
-        "resize",
-        schedulePositionUpdate,
-      );
-      window.visualViewport?.removeEventListener(
-        "scroll",
-        schedulePositionUpdate,
-      );
-    };
-  }, [controller.minimized]);
-
-  const toggleLabel = controller.minimized
-    ? t(
-        controller.kind === "file"
-          ? "fileViewerRestore"
-          : "activityViewerRestore",
-        { name: location },
-      )
-    : t(
-        controller.kind === "file"
-          ? "fileViewerMinimizeNamed"
-          : "activityViewerMinimizeNamed",
-        { name: location },
-      );
-  const control = (
-    <div
-      ref={floatingRef}
-      className={`${toolbarModuleStyles.fileViewerController} ${
-        controller.minimized ? toolbarModuleStyles.fileViewerParked : ""
-      }${
-        waveformButtonBackgroundOpacityPercent === undefined
-          ? ""
-          : ` ${toolbarModuleStyles.fileViewerControllerWaveformActive}`
-      }`}
-      style={
-        waveformButtonBackgroundOpacityPercent === undefined
-          ? undefined
-          : ({
-              "--waveform-control-surface-opacity": `${waveformButtonBackgroundOpacityPercent}%`,
-            } as CSSProperties)
-      }
-      role="group"
-      aria-label={t(
-        controller.kind === "file"
-          ? "fileViewerController"
-          : "activityViewerController",
-        { name: location },
-      )}
-    >
-      <button
-        type="button"
-        className={toolbarModuleStyles.fileViewerToggle}
-        onClick={
-          controller.minimized ? controller.restore : controller.minimize
-        }
-        onContextMenu={
-          controller.kind === "file"
-            ? (event) => {
-                event.preventDefault();
-                void writeClipboardText(controller.filePath);
-              }
-            : undefined
-        }
-        title={toggleLabel}
-        aria-label={toggleLabel}
-      >
-        {controller.minimized ? (
-          <FileViewerRestoreIcon />
-        ) : (
-          <FileViewerMinimizeIcon />
-        )}
-        <span
-          className={toolbarModuleStyles.fileViewerLocation}
-          aria-hidden="true"
-        >
-          <span className={toolbarModuleStyles.fileViewerPath}>
-            <bdi>{fullLocation}</bdi>
-          </span>
-          <span className={toolbarModuleStyles.fileViewerBriefPath}>
-            <bdi>{briefLocation}</bdi>
-          </span>
-          {controller.kind === "file" && controller.lineSuffix && (
-            <span className={toolbarModuleStyles.fileViewerLine}>
-              {controller.lineSuffix}
-            </span>
-          )}
-        </span>
-      </button>
-      <button
-        type="button"
-        className={toolbarModuleStyles.fileViewerClose}
-        onClick={controller.close}
-        title={t(
-          controller.kind === "file"
-            ? "fileViewerClose"
-            : "activityViewerClose",
-          { name: location },
-        )}
-        aria-label={t(
-          controller.kind === "file"
-            ? "fileViewerClose"
-            : "activityViewerClose",
-          { name: location },
-        )}
-      >
-        <FileViewerCloseIcon />
-      </button>
-    </div>
-  );
-
-  return (
-    <>
-      <span
-        ref={slotRef}
-        className={toolbarModuleStyles.fileViewerControllerSlot}
-        data-file-viewer-controller-slot="true"
-        aria-hidden="true"
-      />
-      {typeof document === "undefined"
-        ? null
-        : createPortal(control, document.body)}
     </>
   );
 }

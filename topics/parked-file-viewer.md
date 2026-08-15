@@ -117,6 +117,16 @@ toolbar space retains normal backdrop dismissal. The toolbar parks during
 click capture and leaves the original event to reach the selected action;
 synthetic click replay would lose browser user activation.
 
+## Controller ownership
+
+**Keep the portaled controller and its positioning lifecycle in one component**
+(vs. embedding them in the composer toolbar):
+`SessionViewerToolbarController` owns the icons, accessible labels, copy-path
+gesture, portal, viewport and resize observers, and component-local styles.
+`MessageInputToolbar` owns only toolbar allocation, the open-viewer stacking
+state, and click-capture parking before another toolbar action. It places one
+typed controller and does not reach into its rendered subtree.
+
 ## Alternative: replace the session-list drawer
 
 A second viable presentation temporarily gives the existing left
