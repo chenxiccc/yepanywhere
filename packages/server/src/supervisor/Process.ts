@@ -1232,6 +1232,11 @@ export class Process {
     return this._lastMessageTime;
   }
 
+  /** Last real provider message, or null before this Process observes one. */
+  get lastProviderMessageTime(): Date | null {
+    return this._lastProviderMessageTime;
+  }
+
   get lastPromptCacheRefreshTime(): Date | null {
     return this.lastPromptCacheKeepaliveAt;
   }

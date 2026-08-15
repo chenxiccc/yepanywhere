@@ -121,11 +121,13 @@ poll loop behind.
 Unread state comes from `NotificationService.hasUnread(session.id,
 effectiveProviderUpdatedAt)`. For an unowned session this is the provider list
 summary's transcript recency. For a YA-owned process it is the later of that
-summary and `Process.lastMessageTime`, because the live runtime can observe a
-provider message before every supported filesystem publishes its final write
-timestamp. The same effective recency is returned and used for sorting; recap
-overlays may still make a row newer for display but never participate in the
-provider-unread comparison.
+summary and nullable `Process.lastProviderMessageTime`, because the live
+runtime can observe a provider message before every supported filesystem
+publishes its final write timestamp. Construction and reactivation leave that
+clock null until a real provider message arrives, so process ownership alone
+cannot manufacture recency or unread state. The same effective recency is
+returned and used for sorting; recap overlays may still make a row newer for
+display but never participate in the provider-unread comparison.
 
 Unread means YA believes the session changed after the user's last seen
 marker. It is not limited to "an idle assistant produced output and now needs

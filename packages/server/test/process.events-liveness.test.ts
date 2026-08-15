@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { getEffectiveProviderUpdatedAt } from "../src/sessions/recap-overlays.js";
 import {
   Process,
   createControllableIterator,
@@ -149,6 +150,33 @@ describe("Process", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(process.state.type).toBe("idle");
+    });
+
+    it("does not manufacture provider recency before the first message", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 10_000,
+      });
+      const summaryUpdatedAt = "2026-08-01T00:00:00.000Z";
+
+      expect(process.lastProviderMessageTime).toBeNull();
+      expect(getEffectiveProviderUpdatedAt(summaryUpdatedAt, process)).toBe(
+        summaryUpdatedAt,
+      );
+
+      controller.push({
+        type: "system",
+        subtype: "init",
+        session_id: "sess-1",
+      });
+      await waitFor(() =>
+        expect(process.lastProviderMessageTime).toBeInstanceOf(Date),
+      );
+      controller.finish();
     });
 
     it("publishes the provider session id for agentctl-active shells", async () => {

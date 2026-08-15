@@ -79,7 +79,7 @@ describe("Global Sessions Routes", () => {
       permissionMode: string;
       modeVersion: number;
       isRetainingProviderWork?: () => boolean;
-      lastMessageTime?: Date;
+      lastProviderMessageTime?: Date | null;
     }
   >;
   let unreadMap: Map<string, boolean>;
@@ -1050,7 +1050,7 @@ describe("Global Sessions Routes", () => {
         state: { type: "in-turn" },
         permissionMode: "default",
         modeVersion: 1,
-        lastMessageTime: processUpdatedAt,
+        lastProviderMessageTime: processUpdatedAt,
       });
       vi.mocked(mockNotificationService.hasUnread).mockImplementation(
         (_sessionId: string, updatedAt: string) => updatedAt > lastSeenAt,
