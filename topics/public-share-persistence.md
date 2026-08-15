@@ -6,10 +6,12 @@
 
 Topic: public-share-persistence
 
-The implemented store is owned by `PublicShareStore`; the specialized legacy
-aggregate reader is `LegacyPublicShareReader`. `PublicShareService` retains the
-product-level authorization and viewer-presence interface while delegating
-durable content and grants to that store.
+`PublicShareStore` owns grants, lifecycle, migration, and cleanup-journal
+coordination. `PublicShareRevisionRepository` owns per-share state and immutable
+revision bytes; the specialized legacy aggregate reader is
+`LegacyPublicShareReader`. `PublicShareService` retains the product-level
+authorization and viewer-presence interface while delegating those persistence
+roles to their respective owners.
 
 ## Why the aggregate must go
 
@@ -141,6 +143,13 @@ commit.
 
 ## Design decisions
 
+- **Immutable revisions use a repository that cannot publish grants** (vs. one
+  store owning revision bytes and bearer authority): revision commit, integrity
+  validation, copy-on-write capture, orphan adoption, and state metadata finish
+  behind one content-only boundary before `PublicShareStore` may insert or
+  retarget a grant. The repository accepts the exact referenced revision set for
+  collection but has no access to bearer secrets or the grant index, so recovery
+  cannot promote leftover content into authority.
 - **Selective management freeze uses one indexed capability and an exact-ID
   batch** (vs. widening `public-share-management` or calling the session-wide
   freeze once per listed link): source builds that already advertised the
