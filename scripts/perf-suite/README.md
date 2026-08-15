@@ -6,10 +6,32 @@ generates a deterministic Claude store whose sessions use those worktrees,
 starts one isolated YA instance from the named execution checkout, drives
 public interfaces, proves fixture-derived correctness, and records raw JSON
 results. Every result distinguishes the measured execution revision, fixture
-revision, and exact harness inputs. Harness identity includes the latest commit
-touching the runner, browser-memory helper, host profiler, ratchet selector,
-config, or ratchets, path-scoped dirty state, and a content SHA-256, so
-unrelated shared-worktree changes do not relabel the measurement.
+revision, and exact harness inputs. Harness identity covers every source module
+listed below, config, and ratchets through path-scoped revision/dirty state and
+a content SHA-256, so unrelated shared-worktree changes do not relabel the
+measurement and a changed imported driver cannot reuse an old identity.
+
+## Harness modules
+
+`run.mjs` is the CLI and result-writing orchestrator. It validates inputs,
+samples host eligibility, dispatches repetitions, evaluates selected ratchets,
+and owns final cleanup. Implementation seams are separate modules:
+
+- `core.mjs` — scenario validation, deterministic transcript fixtures, and
+  numeric primitives;
+- `process-fixture.mjs` — process markers/reaping, worktree fixtures, ports,
+  HTTP/inspector access, server lifecycle, and harness identity;
+- `telemetry.mjs` — server/browser phase capture and summaries;
+- `request-clients.mjs` — bounded HTTP client batches and herds;
+- `server-driver.mjs`, `browser-driver.mjs`, `built-client-driver.mjs`, and
+  `specialized-driver.mjs` — scenario ownership at each measured boundary;
+- `aggregation.mjs` — repetition-to-result aggregation; and
+- `ratchet-evaluation.mjs` — host policy and independent server/browser target
+  evaluation.
+
+`runner-modules.test.mjs` exercises these boundaries without launching a YA
+measurement. A real suite invocation remains the end-to-end process/fixture
+contract.
 
 Results also include an automatic host capacity key. The key covers platform,
 architecture, CPU model, visible/effective CPU capacity, and bucketed physical

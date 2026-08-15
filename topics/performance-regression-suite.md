@@ -14,14 +14,21 @@ contract.
 
 ## Execution and fixture ownership
 
-`scripts/perf-suite/run.mjs` imports no YA modules from the measured checkout.
-It creates detached project worktrees from an immutable fixture revision,
-generates deterministic provider files whose cwd values use those worktrees,
-starts an isolated execution checkout on non-production ports and app-data
-paths, checks fixture-derived API/rendering invariants, and writes one JSON
-result. Execution, fixture, and harness identities remain distinct. Harness
-identity is content-addressed and path-scoped so unrelated shared-worktree
-changes cannot relabel a measurement.
+`scripts/perf-suite/run.mjs` is a thin CLI/result orchestrator and imports no YA
+modules from the measured checkout. Process/fixture ownership, telemetry,
+request clients, server/browser/built/specialized drivers, aggregation, and
+ratchet evaluation live in independently testable sibling modules. Together
+they create detached project worktrees from an immutable fixture revision,
+generate deterministic provider files whose cwd values use those worktrees,
+start an isolated execution checkout on non-production ports and app-data
+paths, check fixture-derived API/rendering invariants, and write one JSON
+result.
+
+Execution, fixture, and harness identities remain distinct. Harness identity
+hashes every imported implementation module plus config and ratchets and uses
+their path-scoped revision/dirty state, so unrelated shared-worktree changes
+cannot relabel a measurement and a changed driver dependency cannot preserve an
+old identity.
 
 Every spawned process carries a unique `ya-perf-suite-` argv marker and
 `PERF_RUN_ID`, starts in its own process group, and enters a run-local
