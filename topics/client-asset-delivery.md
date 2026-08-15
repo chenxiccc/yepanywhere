@@ -6,9 +6,9 @@
 
 Topic: client-asset-delivery
 
-Status: Contract and measured correction target. API response compression is
-implemented; production static encoding, validators, immutable recognition,
-and generation retention are not.
+Status: Immutable recognition and hosted one-generation retention are
+implemented. API response compression is implemented; production static
+encoding, validators, and direct-server generation retention are not.
 
 ## Current demonstrated behavior
 
@@ -16,10 +16,13 @@ The production static handler reads the requested file completely with
 `fs.promises.readFile`. Hono compression is mounted only for `/api/*` and
 `/public-api/*`, so the application JavaScript and CSS bypass it.
 
-The handler recognizes an immutable asset only when its filename suffix is a
-hexadecimal hash. Current Vite names include hashes such as `D3zWbkxu` and
-`BPXPYV9_`, so real `/assets/` output fails that test. A fresh isolated build
-served the 2,668,843-byte application JavaScript response with:
+The handler now treats the Vite-owned `/assets/` namespace as immutable instead
+of guessing at Rollup hash characters. Current Vite names include hashes such
+as `D3zWbkxu` and `BPXPYV9_`; both direct/LAN responses and the latest hosted
+Cloudflare Pages deployment serve these paths with a one-year immutable browser
+lifetime. HTML, the service worker, manifests, and other entry resources remain
+revalidated. Before this correction, a fresh isolated build served the
+2,668,843-byte application JavaScript response with:
 
 ```text
 Content-Length: 2668843
@@ -49,9 +52,13 @@ Crypto API, preserving the existing secure-context requirement without a Node
 compatibility shim.
 
 The personal Pages publish path keeps earlier content-addressed assets instead
-of deleting them, so its old entrypoints retain the chunks they name. This does
-not complete the direct/LAN static-server retention, encoding, or cache-header
-work below.
+of deleting them, so its old entrypoints retain the chunks they name. The latest
+hosted deployment reads the currently deployed `asset-generation.json`, copies
+every previous runtime asset absent from the new build, and publishes a
+manifest containing only the new generation. A missing manifest or the legacy
+HTML SPA fallback is accepted for the first rollout; after a manifest exists,
+malformed metadata or a missing prior asset fails the deployment. This does not
+complete direct/LAN static-server generation retention or static encoding.
 
 ## Response contract
 

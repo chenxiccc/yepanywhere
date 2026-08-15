@@ -13,6 +13,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PREVIOUS_DEPLOYMENT_ORIGIN: https://latest.yepanywhere.com/
 
 concurrency:
   group: latest-remote-client
@@ -81,7 +82,12 @@ jobs:
         run: |
           cp packages/client/dist-remote/remote.html packages/client/dist-remote/index.html
           rm -f packages/client/dist-remote/404.html
+          node packages/client/scripts/retain-previous-asset-generation.mjs \
+            --dist packages/client/dist-remote \
+            --previous-origin "$PREVIOUS_DEPLOYMENT_ORIGIN"
           test -f packages/client/dist-remote/index.html
+          test -f packages/client/dist-remote/_headers
+          test -f packages/client/dist-remote/asset-generation.json
 
       - name: Install Wrangler
         if: steps.cloudflare-config.outputs.enabled == 'true'

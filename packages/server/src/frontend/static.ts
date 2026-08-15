@@ -81,7 +81,7 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
         const contentType = getContentType(ext);
 
         // Cache static assets (they have hashed filenames)
-        const cacheControl = isHashedAsset(reqPath)
+        const cacheControl = isImmutableClientAssetPath(reqPath)
           ? "public, max-age=31536000, immutable"
           : "public, max-age=0, must-revalidate";
 
@@ -172,11 +172,10 @@ function getContentType(ext: string): string {
   return types[ext] || "application/octet-stream";
 }
 
-/**
- * Check if a path is a hashed asset (can be cached forever).
- * Vite adds hashes to filenames like: index-abc123.js
- */
-function isHashedAsset(reqPath: string): boolean {
-  // Match patterns like: /assets/index-abc123.js or /assets/style-xyz789.css
-  return /\/assets\/[^/]+-[a-f0-9]+\.[a-z]+$/i.test(reqPath);
+/** Check whether a path belongs to Vite's content-addressed asset namespace. */
+export function isImmutableClientAssetPath(reqPath: string): boolean {
+  // Vite owns this namespace and emits content-addressed names within it. Use
+  // the build boundary itself instead of guessing which characters Rollup may
+  // use in a hash token (current output includes mixed case and underscores).
+  return /^\/assets\/[^/]+$/.test(reqPath);
 }
