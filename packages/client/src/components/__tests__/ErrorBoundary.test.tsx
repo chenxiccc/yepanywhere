@@ -65,9 +65,9 @@ describe("ErrorBoundary", () => {
     expect(diagnostic).toContain('"conversationView":"true"');
 
     fireEvent.click(screen.getByText("Copy Diagnostics"));
-    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    await screen.findByText("Diagnostics Copied");
+    expect(writeText).toHaveBeenCalledOnce();
     expect(writeText.mock.calls[0]?.[0]).toContain("ThrowingSessionView");
-    expect(screen.getByText("Diagnostics Copied")).toBeTruthy();
 
     const issueLink = screen.getByText("Report Issue").closest("a");
     expect(issueLink?.href).toContain(
