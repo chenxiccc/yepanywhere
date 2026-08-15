@@ -314,3 +314,6 @@
 - remote-browser-diagnostics - Explicit per-tab full-JavaScript debugging
   leases for YA-launched agents, with visible consent, bounded evidence, and
   server-mediated two-factor authority.
+- mobile-session-startup-stability - A monotonic hosted session shell,
+  selected-route parallel acquisition, coherent session-core chunking, and
+  cache-correct prior-generation asset delivery.
