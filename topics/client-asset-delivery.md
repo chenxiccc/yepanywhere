@@ -55,9 +55,17 @@ The personal Pages publish path keeps earlier content-addressed assets instead
 of deleting them, so its old entrypoints retain the chunks they name. The latest
 hosted deployment reads the currently deployed `asset-generation.json`, copies
 every previous runtime asset absent from the new build, and publishes a
-manifest containing only the new generation. A missing manifest or the legacy
-HTML SPA fallback is accepted for the first rollout; after a manifest exists,
-malformed metadata or a missing prior asset fails the deployment. This does not
+manifest containing only the new generation. Version 2 manifest entries bind
+each path to its byte size, SHA-256 digest, and media type; all three are checked
+before a fetched prior asset is written. The legacy path-only manifest remains a
+transition input but requires the fetched asset's path-derived media type, so a
+200 HTML fallback still fails.
+
+A missing manifest or the legacy HTML SPA fallback is accepted only when the
+operator explicitly sets the one-time `ASSET_RETENTION_BOOTSTRAP=true` publish
+variable. That flag fails if a valid prior manifest already exists and must be
+removed after bootstrap. Without it, missing, malformed, non-JSON, mismatched,
+or unavailable prior metadata/assets fail the deployment. This does not
 complete direct/LAN static-server generation retention or static encoding.
 
 ## Response contract

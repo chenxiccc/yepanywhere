@@ -79,12 +79,19 @@ jobs:
 
       - name: Prepare Cloudflare Pages output
         if: steps.cloudflare-config.outputs.enabled == 'true'
+        env:
+          ASSET_RETENTION_BOOTSTRAP: ${{ vars.ASSET_RETENTION_BOOTSTRAP }}
         run: |
           cp packages/client/dist-remote/remote.html packages/client/dist-remote/index.html
           rm -f packages/client/dist-remote/404.html
+          bootstrap_args=()
+          if [ "$ASSET_RETENTION_BOOTSTRAP" = "true" ]; then
+            bootstrap_args+=(--bootstrap)
+          fi
           node packages/client/scripts/retain-previous-asset-generation.mjs \
             --dist packages/client/dist-remote \
-            --previous-origin "$PREVIOUS_DEPLOYMENT_ORIGIN"
+            --previous-origin "$PREVIOUS_DEPLOYMENT_ORIGIN" \
+            "${bootstrap_args[@]}"
           test -f packages/client/dist-remote/index.html
           test -f packages/client/dist-remote/_headers
           test -f packages/client/dist-remote/asset-generation.json
