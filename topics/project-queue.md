@@ -198,6 +198,13 @@ The dedicated new-session form follows the same rule: hide its Project Queue
 action when the selected project is idle and has no Project Queue backlog; show
 it when the project has active work or existing Project Queue backlog. Its
 entry point remains governed by the ordinary Project Queue presence setting.
+Independently of that action preference, the form shows any existing items for
+the selected project directly below the project selector. The selector and
+queue are one responsive layout unit: they remain in the same side column on a
+wide form and move together ahead of provider controls on a narrow form. A
+project change replaces the displayed items in place. An empty queue remains
+hidden, so users who have not invoked this default-off feature do not encounter
+a new empty-state concept.
 An active session composer's additional "queue as new session" action has
 useful semantics even while the project is idle, but it is present only when
 the separate `projectQueueNewSessionShortcut` toolbar control is enabled and

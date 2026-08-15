@@ -195,6 +195,7 @@ import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { FullPaneComposerToggle } from "./FullPaneComposerToggle";
+import { NewSessionProjectQueue } from "./NewSessionProjectQueue";
 import { SpeechPrefixActionCue } from "./SpeechPrefixActionCue";
 import { ProviderBadge } from "./ProviderBadge";
 import { ModelSubscriptionUsage } from "./ModelSubscriptionUsage";
@@ -1062,9 +1063,10 @@ export function NewSessionForm({
   const activeProjectSessionIds = useActiveProjectSessionIds(
     projectQueueTargetProjectId,
   );
-  const projectQueueItemCount = projectQueueTargetProjectId
-    ? (projectQueues.queuesByProject[projectQueueTargetProjectId]?.length ?? 0)
-    : 0;
+  const selectedProjectQueueItems = projectQueueTargetProjectId
+    ? (projectQueues.queuesByProject[projectQueueTargetProjectId] ?? [])
+    : [];
+  const projectQueueItemCount = selectedProjectQueueItems.length;
   const projectQueueBlockingCount =
     currentProjectSelection?.projectQueueBlockingCount ?? null;
   const showProjectQueueAction =
@@ -3742,6 +3744,18 @@ export function NewSessionForm({
         {!fixedProject && (
           <aside className="new-session-project-slot">
             {projectChooser}
+            {!launch && supportsProjectQueue && projectQueueTargetProjectId && (
+              <NewSessionProjectQueue
+                items={selectedProjectQueueItems}
+                loading={projectQueues.loading}
+                error={projectQueues.error}
+                onOpenItem={(itemId) =>
+                  navigate(
+                    `${basePath}/projects?queueItem=${encodeURIComponent(itemId)}`,
+                  )
+                }
+              />
+            )}
             {workstreamChooser}
           </aside>
         )}

@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   PROJECT_QUEUE_CAPABILITY,
@@ -2063,11 +2064,29 @@ describe("NewSessionForm", () => {
     expect(
       screen.queryByRole("button", { name: "toolbarProjectQueueLabel" }),
     ).toBe(null);
+    expect(
+      document.querySelector('[data-new-session-project-queue="true"]'),
+    ).toBeNull();
   });
 
   it("hides the new-session Project Queue action without server capability", () => {
     toolbarVisibilityState.projectQueue = true;
     versionState.version = { capabilities: [] };
+    projectQueueState.byProject = {
+      "project-1": [
+        {
+          id: "unsupported-queue",
+          projectId: "project-1",
+          target: { type: "new-session", title: "Unsupported queue" },
+          messagePreview: "Unsupported queue",
+          message: { text: "Unsupported queue" },
+          createdAt: "2026-08-15T00:00:00.000Z",
+          updatedAt: "2026-08-15T00:00:00.000Z",
+          status: "queued",
+          attachmentCount: 0,
+        },
+      ],
+    };
     inboxState.active = [
       { sessionId: "session-active", projectId: "project-1" },
     ];
@@ -2084,6 +2103,9 @@ describe("NewSessionForm", () => {
     expect(
       screen.queryByRole("button", { name: "toolbarProjectQueueLabel" }),
     ).toBe(null);
+    expect(
+      document.querySelector('[data-new-session-project-queue="true"]'),
+    ).toBeNull();
   });
 
   it("hides the new-session Project Queue action by default", () => {
@@ -2168,6 +2190,84 @@ describe("NewSessionForm", () => {
     expect(screen.getAllByText("newSessionProjectDetached")).toHaveLength(2);
     expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Beta").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the selected project queue directly beneath its selector", () => {
+    projectQueueState.byProject = {
+      "project-1": [
+        {
+          id: "queue-alpha",
+          projectId: "project-1",
+          target: { type: "new-session", title: "Alpha queued session" },
+          messagePreview: "Alpha queued session",
+          message: { text: "Alpha queued session" },
+          createdAt: "2026-08-15T00:00:00.000Z",
+          updatedAt: "2026-08-15T00:00:00.000Z",
+          status: "queued",
+          attachmentCount: 0,
+        },
+      ],
+      "project-2": [
+        {
+          id: "queue-beta",
+          projectId: "project-2",
+          target: { type: "new-session", title: "Beta queued session" },
+          messagePreview: "Beta queued session",
+          message: { text: "Beta queued session" },
+          createdAt: "2026-08-15T00:01:00.000Z",
+          updatedAt: "2026-08-15T00:01:00.000Z",
+          status: "failed",
+          attachmentCount: 0,
+          lastError: "Provider startup failed",
+        },
+      ],
+    };
+    const onProjectChange = vi.fn();
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+        onProjectChange={onProjectChange}
+      />,
+    );
+
+    const projectSlot = container.querySelector(
+      ".new-session-project-slot",
+    ) as HTMLElement;
+    let queue = projectSlot.querySelector(
+      '[data-new-session-project-queue="true"]',
+    ) as HTMLElement;
+    expect(projectSlot.children[1]).toBe(queue);
+    expect(within(queue).getByText("Alpha queued session")).toBeDefined();
+    expect(within(queue).queryByText("Beta queued session")).toBeNull();
+
+    fireEvent.click(
+      projectSlot.querySelector(".new-session-project-summary") as HTMLElement,
+    );
+    const betaOption = Array.from(
+      projectSlot.querySelectorAll<HTMLElement>(
+        ".new-session-project-suggestions .new-session-project-option",
+      ),
+    ).find((option) => option.textContent?.includes("Beta"));
+    if (!betaOption) throw new Error("missing Beta project option");
+    fireEvent.click(betaOption);
+
+    queue = projectSlot.querySelector(
+      '[data-new-session-project-queue="true"]',
+    ) as HTMLElement;
+    expect(projectSlot.children[1]).toBe(queue);
+    expect(within(queue).getByText("Beta queued session")).toBeDefined();
+    expect(within(queue).getByText("Provider startup failed")).toBeDefined();
+    expect(within(queue).queryByText("Alpha queued session")).toBeNull();
+    expect(onProjectChange).toHaveBeenCalledWith("project-2");
+
+    fireEvent.click(
+      queue.querySelector(
+        '[data-new-session-project-queue-item-id="queue-beta"] button',
+      ) as HTMLElement,
+    );
+    expect(mockNavigate).toHaveBeenCalledWith("/projects?queueItem=queue-beta");
   });
 
   it("shows recent projects when opening a selected project chooser", () => {
