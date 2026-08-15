@@ -430,9 +430,14 @@ class WebClientActivityTest {
         val allowButtonSelector = By.res(
             "com.android.permissioncontroller:id/permission_allow_button",
         )
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        val startedAt = System.nanoTime()
+        val accessibilityFallbackAt = startedAt + TimeUnit.SECONDS.toNanos(5)
+        val deadline = startedAt + TimeUnit.SECONDS.toNanos(30)
         var clickAttempts = 0
         var nextClickAt = 0L
+        var nextDialogProbeAt = 0L
+        var permissionDialogSeen = false
+        var accessibilityFallbackUsed = false
 
         while (System.nanoTime() < deadline) {
             if (targetContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
@@ -440,6 +445,10 @@ class WebClientActivityTest {
             }
 
             val now = System.nanoTime()
+            if (!permissionDialogSeen && now >= nextDialogProbeAt) {
+                permissionDialogSeen = isPermissionDialogResumed(device)
+                nextDialogProbeAt = now + TimeUnit.MILLISECONDS.toNanos(500)
+            }
             val allowButton = device.findObject(allowButtonSelector)
             if (allowButton != null && now >= nextClickAt) {
                 try {
@@ -450,12 +459,40 @@ class WebClientActivityTest {
                     // The permission controller replaced its accessibility tree; retry the live node.
                 }
             }
+            if (
+                !accessibilityFallbackUsed &&
+                clickAttempts == 0 &&
+                permissionDialogSeen &&
+                now >= accessibilityFallbackAt
+            ) {
+                // Some API 35 emulator boots render the real permission activity while
+                // UiAutomator retains the app's stale accessibility tree. Complete that
+                // already-observed OS request without depending on the missing button node.
+                instrumentation.uiAutomation.grantRuntimePermission(
+                    targetContext.packageName,
+                    permission,
+                )
+                accessibilityFallbackUsed = true
+                if (isPermissionDialogResumed(device)) {
+                    device.pressBack()
+                }
+            }
             Thread.sleep(100)
         }
 
         throw AssertionError(
-            "Android did not grant notification permission after $clickAttempts Allow attempts",
+            "Android did not grant notification permission after $clickAttempts Allow attempts " +
+                "(dialogSeen=$permissionDialogSeen, fallbackUsed=$accessibilityFallbackUsed)",
         )
+    }
+
+    private fun isPermissionDialogResumed(device: UiDevice): Boolean {
+        return device.executeShellCommand("dumpsys activity activities")
+            .lineSequence()
+            .any { line ->
+                (line.contains("mResumedActivity") || line.contains("topResumedActivity")) &&
+                    line.contains("GrantPermissionsActivity")
+            }
     }
 
     private fun awaitOrientation(
