@@ -21,7 +21,6 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
-  CLAUDE_EXTENDED_CONTEXT_WINDOW,
   getModelContextWindow,
 } from "@yep-anywhere/shared";
 import {
@@ -4726,9 +4725,11 @@ export class Process {
                 // When the heuristic already knows this model is 1M (via [1m]
                 // suffix, known regexes, or explicit mapping), don't let the
                 // SDK's default 200K for unrecognized models override it.
+                // 1M mirrors shared CLAUDE_EXTENDED_CONTEXT_WINDOW; kept as a
+                // local literal so this branch avoids the shared barrel seam.
                 const heuristic = getModelContextWindow(model, this.provider);
                 if (
-                  heuristic === CLAUDE_EXTENDED_CONTEXT_WINDOW &&
+                  heuristic === 1_000_000 &&
                   entry.contextWindow < heuristic
                 ) {
                   continue;

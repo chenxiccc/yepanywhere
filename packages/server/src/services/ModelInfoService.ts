@@ -23,7 +23,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  CLAUDE_EXTENDED_CONTEXT_WINDOW,
   type ModelInfo,
   type ProviderName,
   getModelContextWindow,
@@ -116,7 +115,9 @@ export class ModelInfoService {
     // Short-circuit: if the heuristic says 1M, trust it. The SDK may report
     // 200K for unknown models, so observed values are not authoritative here.
     const heuristic = getModelContextWindow(model, provider);
-    if (heuristic === CLAUDE_EXTENDED_CONTEXT_WINDOW) {
+    // 1M mirrors shared CLAUDE_EXTENDED_CONTEXT_WINDOW; kept as a local
+    // literal so this branch avoids the shared barrel seam.
+    if (heuristic === 1_000_000) {
       return heuristic;
     }
 
