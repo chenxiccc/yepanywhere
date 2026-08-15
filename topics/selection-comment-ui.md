@@ -284,13 +284,25 @@ stable session-scoped draft signal and passes that unchanged object to
 `MessageList`; publishing a character does not set parent React state or change
 a transcript prop.
 
-The selection-quote controller owns comment anchors in refs because anchors
-drive the imperative CSS Custom Highlight registry rather than rendered
-transcript markup. It subscribes to the draft signal only while at least one
-anchor is live. Ordinary edits marked unable to affect quote-prefixed lines
-return before signature parsing. A relevant edit computes signatures once,
-drops missing anchors, and updates the highlight registry without rendering
-historical rows.
+The selection pipeline has three typed owners behind the stable
+`useSelectionActions` composition hook:
+
+- `useSelectionQuoteAnchors` owns quote insertion, comment anchors, draft
+  reconciliation, mutation observation, and CSS Custom Highlight updates. It
+  subscribes to the draft signal only while at least one anchor is live.
+  Ordinary edits marked unable to affect quote-prefixed lines return before
+  signature parsing. A relevant edit computes signatures once, drops missing
+  anchors, and updates the highlight registry without rendering historical
+  rows.
+- `useSelectionActionCapture` owns selection snapshots, geometry and placement,
+  global selection/pointer/resize/scroll listeners, native source-aware copy,
+  and coarse-pointer transcript shielding.
+- `useSelectionActionPresentation` owns preferences, action dispatch, the full
+  selected-text context menu, mobile docking, local-surface portals, and the
+  action-cluster React presentation.
+
+The owners exchange immutable typed snapshots and a boolean quote-application
+result. They do not share each other's mutable refs or listener lifecycles.
 
 The submit path still clears all anchors next to the existing
 `draftControls.clearDraft()` calls — that is the send seam.
@@ -448,6 +460,11 @@ already covers whole-paragraph quoting on those platforms.
   context-menu timing.
 
 ## Decisions
+
+- 2026-08-15 — **Selection behavior has three lifecycle owners behind one
+  composition hook** (vs. one hook owning anchors, global capture, and React
+  presentation): each owner can be exercised independently while callers keep
+  the existing `useSelectionActions` contract.
 
 - 2026-06-23 — **Tint paint = selected-span CSS highlight.** V1 keeps a list of
   live anchor ranges and paints them with `::highlight(comment-tint)`; the tint
