@@ -448,7 +448,10 @@ The browser runtime-validates metadata before publishing the compact header,
 constructing a decompressor, allocating the advertised destination, or pulling
 a first chunk. It requires safe integer lengths within both 64 MiB ceilings,
 the exact 256 KiB chunk bound, no more than 256 chunks, and exact HTTP status and
-response shape at every hop. It accepts one chunk before requesting the next
+response shape at every hop. Relay text-frame ceilings count encoded UTF-8
+bytes, not JavaScript string code units, so non-ASCII metadata, chunks, and
+legacy responses cannot exceed their physical transport bounds. It accepts one
+chunk before requesting the next
 over the same public viewer WebSocket, feeds the compressed bytes to one
 incremental gzip stream, uses fatal UTF-8 decoding, and parses then validates the
 complete `AppSession` only after final compressed and decompressed lengths

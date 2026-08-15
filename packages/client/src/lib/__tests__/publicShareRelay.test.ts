@@ -894,6 +894,24 @@ describe("publicShareRelay bounded frozen transport", () => {
     },
   );
 
+  it("counts multibyte string frames in encoded bytes", async () => {
+    FakeWebSocket.onRequest = (socket) => {
+      queueMicrotask(() => {
+        socket.emitData("€".repeat(Math.floor((128 * 1024) / 3) + 1));
+      });
+    };
+
+    await expect(
+      fetchPublicShareV2ViaRelay({
+        relayUrl: "wss://relay.invalid/ws",
+        relayUsername: "host",
+        secret: "bearer-secret",
+        viewerId: "viewer-1234",
+      }),
+    ).rejects.toThrow("Relay response is too large");
+    expect(FakeWebSocket.instances[0]!.closed).toBe(true);
+  });
+
   it("rejects when the relay disconnects during a transfer", async () => {
     FakeWebSocket.onRequest = (socket) => {
       queueMicrotask(() => socket.onclose?.());
