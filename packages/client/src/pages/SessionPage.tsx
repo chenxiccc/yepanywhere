@@ -18,6 +18,7 @@ import {
   getCanonicalInvocationToken,
   isClaudeProviderName,
   serverHasCapability,
+  startsWithSlashCommand,
   thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
 import {
@@ -1911,6 +1912,28 @@ function SessionPageContent({
   const prepareComposerSubmission = (
     text: string,
   ): PreparedComposerSubmission | null => {
+    // Recalling a turn and editing its slash command means "issue this command
+    // again", not "correct my last sentence". Correction framing prepends a
+    // line, which pushes `/goal ...` off offset 0 so the provider sends the
+    // command through as prose, and a stripping command like `/fast ...` would
+    // diff its bare argument against the unstripped original. So the whole
+    // submission below behaves as a fresh invocation, including re-issuing an
+    // unedited command the way shell history does. The decision reads the raw
+    // composer text because `resolveComposerSlashTurn` has already consumed the
+    // leading token by the time the outgoing text is built.
+    const issuesSlashCommand =
+      !!correctionDraft && startsWithSlashCommand(text);
+    const outgoingTextFor = (candidate: string): string | null =>
+      issuesSlashCommand ? candidate : getOutgoingMessageText(candidate);
+    // Commands YA runs itself never reach the send path that ends correction
+    // mode, so clear it here or the banner would outlive the command and wrap
+    // the next ordinary message.
+    const endCorrectionForLocalCommand = () => {
+      if (issuesSlashCommand) {
+        setCorrectionDraft(null);
+      }
+    };
+
     const slashTurn = resolveComposerSlashTurn(text);
     if (slashTurn.kind === "custom") {
       if (slashTurn.command === "btw" && !supportsBtwAsides) {
@@ -1931,18 +1954,20 @@ function SessionPageContent({
             pendingUploadsRef.current.size > 0,
         });
         if (doneTarget === "provider") {
-          const outgoingText = getOutgoingMessageText(text);
+          const outgoingText = outgoingTextFor(text);
           return outgoingText ? { outgoingText } : null;
         }
         if (doneTarget === "synthetic-session") {
+          endCorrectionForLocalCommand();
           void handleSyntheticDone();
           return null;
         }
       }
       if (handleCustomCommand(slashTurn.command, slashTurn.argument)) {
+        endCorrectionForLocalCommand();
         return null;
       }
-      const outgoingText = getOutgoingMessageText(text);
+      const outgoingText = outgoingTextFor(text);
       return outgoingText ? { outgoingText } : null;
     }
 
@@ -1952,7 +1977,7 @@ function SessionPageContent({
       return null;
     }
 
-    const outgoingText = getOutgoingMessageText(slashTurn.text);
+    const outgoingText = outgoingTextFor(slashTurn.text);
     if (!outgoingText) {
       return null;
     }

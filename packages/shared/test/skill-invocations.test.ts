@@ -4,7 +4,9 @@ import {
   findSkillInvocations,
   findUnrecognizedInvocations,
   getInvocationCompletionQuery,
+  getLeadingSlashCommandName,
   type SlashCommand,
+  startsWithSlashCommand,
 } from "../src/index.js";
 
 const commands: SlashCommand[] = [
@@ -143,5 +145,27 @@ describe("skill invocation resolution", () => {
     expect(findUnrecognizedInvocations("use /doubt", staleCommands)).toEqual(
       [],
     );
+  });
+});
+
+describe("leading slash command detection", () => {
+  it("reads the command name from an invocation at offset 0", () => {
+    expect(getLeadingSlashCommandName("/goal ship the fix")).toBe("goal");
+    expect(getLeadingSlashCommandName("/goal")).toBe("goal");
+    expect(getLeadingSlashCommandName("/goal\nand then stop")).toBe("goal");
+    expect(getLeadingSlashCommandName("/agent:code-review")).toBe(
+      "agent:code-review",
+    );
+  });
+
+  it("rejects tokens the provider would not parse as a command", () => {
+    // A path, a mid-text token, and an indented command all reach the provider
+    // as prose, so none of them may bypass correction framing.
+    expect(startsWithSlashCommand("/local/graehl/yepanywhere")).toBe(false);
+    expect(startsWithSlashCommand("run /goal after this")).toBe(false);
+    expect(startsWithSlashCommand(" /goal ship the fix")).toBe(false);
+    expect(startsWithSlashCommand("$doubt that conclusion")).toBe(false);
+    expect(startsWithSlashCommand("//")).toBe(false);
+    expect(startsWithSlashCommand("")).toBe(false);
   });
 });

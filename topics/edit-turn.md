@@ -66,6 +66,24 @@ that discards or supersedes later assistant output and replays from the edited
 turn. That is a different product contract from the existing latest-turn
 correction path.
 
+## Editing a slash-command turn issues the command
+
+A recalled draft that opens with a slash command is a fresh invocation, never
+prose to correct, and this holds for every command rather than a listed few.
+Correction framing prepends a line, which pushes the token off offset 0 so the
+provider receives the command as ordinary text; a stripping command such as
+`/fast` would additionally diff its bare argument against the unstripped
+original. Editing `/goal ship the fix` therefore issues the edited `/goal`, and
+re-submitting it unedited re-issues it the way shell history does instead of
+reporting no changes. A command YA runs itself, such as `/model` or `/compact`,
+also ends correction mode, since it never reaches the send path that normally
+clears it.
+
+The decision reads the raw composer text before slash resolution consumes the
+leading token, and it accepts only what the provider accepts: a leading space,
+a mid-text token, or a path like `/local/graehl` stays ordinary prose and is
+still corrected.
+
 ## Scroll and autofollow
 
 Entering inline edit mode should pause transcript autofollow enough that the

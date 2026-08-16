@@ -6,6 +6,9 @@ const INVOCATION_TOKEN_RE = new RegExp(
   "g",
 );
 const INVOCATION_NAME_RE = new RegExp(`^${INVOCATION_NAME_SOURCE}$`);
+const LEADING_SLASH_COMMAND_RE = new RegExp(
+  `^/(${INVOCATION_NAME_SOURCE})(?=\\s|$)`,
+);
 
 export interface SkillInvocationMatch {
   command: SlashCommand;
@@ -48,6 +51,21 @@ export function normalizeInvocationName(name: string): string {
 
 export function hasInvocationCandidate(text: string): boolean {
   return /(^|\s)[/$][A-Za-z0-9]/.test(text);
+}
+
+/**
+ * The command name when `text` opens with a `/name` token, else null. Providers
+ * only recognize a slash command at offset 0, so any prefix — even a leading
+ * space or a wrapper line — turns the same text into ordinary prose. A path
+ * such as `/local/graehl` is not a command: the name stops at the second slash
+ * rather than at whitespace or end of text.
+ */
+export function getLeadingSlashCommandName(text: string): string | null {
+  return LEADING_SLASH_COMMAND_RE.exec(text)?.[1] ?? null;
+}
+
+export function startsWithSlashCommand(text: string): boolean {
+  return getLeadingSlashCommandName(text) !== null;
 }
 
 export function getCanonicalInvocationToken(command: SlashCommand): string {
