@@ -344,6 +344,21 @@ export class ACPClient {
   }
 
   /**
+   * Send a provider-specific ACP extension request to the agent.
+   * The SDK prefixes `_` on the wire (`x.ai/interject` → `_x.ai/interject`).
+   */
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    if (!this.connection) {
+      throw new Error("ACPClient not connected. Call connect() first.");
+    }
+    this.log.debug({ method }, "Sending ACP extension method");
+    return this.connection.extMethod(method, params);
+  }
+
+  /**
    * Check if the client is connected.
    */
   get isConnected(): boolean {

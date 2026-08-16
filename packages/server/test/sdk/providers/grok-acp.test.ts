@@ -69,8 +69,8 @@ describe("GrokACPProvider", () => {
       expect(provider.supportsThinkingToggle).toBe(true);
     });
 
-    it("should report supportsSteering false (Grok has no current-turn steering)", () => {
-      expect(provider.supportsSteering).toBe(false);
+    it("should report supportsSteering true (x.ai/interject)", () => {
+      expect(provider.supportsSteering).toBe(true);
     });
 
     it("should report supportsSlashCommands true", () => {
@@ -410,6 +410,10 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
   let acpClientMock: unknown;
   let connectCalls: ACPClientConfig[] = [];
   let promptCalls: Array<{ sessionId: string; text: string }> = [];
+  let extMethodCalls: Array<{
+    method: string;
+    params: Record<string, unknown>;
+  }> = [];
   let sessionCalls: Array<
     | { type: "new"; cwd: string; id: string }
     | { type: "resume"; cwd: string; id: string }
@@ -494,6 +498,10 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
       }
       this.emitCommandInventory(id);
     }
+    async extMethod(method: string, params: Record<string, unknown>) {
+      extMethodCalls.push({ method, params });
+      return { status: "queued" };
+    }
     async prompt(_sessionId: string, _text: string) {
       promptCalls.push({ sessionId: _sessionId, text: _text });
       if (this.updateCb && promptUpdates.length > 0) {
@@ -526,6 +534,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
   beforeEach(async () => {
     connectCalls = [];
     promptCalls = [];
+    extMethodCalls = [];
     sessionCalls = [];
     holdFirstPrompt = false;
     releaseHeldPrompt = null;
@@ -1147,10 +1156,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     }
   });
 
-  it("offers no runtime steer function, so a busy session queues instead", async () => {
-    // A second session/prompt does not interrupt Grok's running turn; it is
-    // answered as a later turn. Exposing `steer` here would have told callers a
-    // mid-turn message had taken effect when it had not.
+  it("steers a running turn through x.ai/interject, not a second prompt", async () => {
     holdFirstPrompt = true;
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 
@@ -1177,7 +1183,20 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
         expect(promptCalls).toHaveLength(1);
       });
 
-      expect(session.steer).toBeUndefined();
+      expect(session.steer).toBeTypeOf("function");
+      await expect(
+        session.steer?.({ text: "stop and fix the test" }),
+      ).resolves.toBe(true);
+      expect(extMethodCalls).toEqual([
+        {
+          method: "x.ai/interject",
+          params: {
+            sessionId: expect.stringMatching(/^grok_ses_new_/),
+            text: "stop and fix the test",
+          },
+        },
+      ]);
+      expect(promptCalls).toHaveLength(1);
 
       releaseHeldPrompt?.();
       const firstAssistant = await firstAssistantPromise;

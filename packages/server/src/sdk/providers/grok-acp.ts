@@ -8,8 +8,8 @@
  * agent_message_chunk, plan) into SDKMessage (thinking blocks + tool_use/tool_result + approvals).
  * Grok's x.ai AskUserQuestion and ExitPlanMode extension requests reuse YA's
  * existing pending-input flow.
- * Grok exposes no current-turn steering, so busy sessions use YA's deferred
- * Queue; continuation of an existing session uses stable ACP session/load.
+ * Mid-turn steer uses Grok's `x.ai/interject` extension (safe-point drain,
+ * not a second session/prompt). Continuation uses stable ACP session/load.
  *
  * Effort mapping: YA EffortLevel is passed through to Grok's top-level --effort flag.
  *
@@ -33,7 +33,7 @@
  * - /home/graehl/.grok/docs/user-guide/03-keyboard-shortcuts.md + 14-headless-mode.md (effort,
  *   permission modes, interject for future phases)
  * - Local ~/.grok/models_cache.json + `grok models` + `~/.grok/bin/grok --help` (model info)
- * Native ACP fork, x.ai/interject steering, and full /btw remain later phases.
+ * Native ACP fork and full /btw remain later phases.
  *
  * Audited through Grok 1.0.4 (2026-08) using the installed binary, a no-token
  * ACP initialize/session/new probe, and matching first-party xai-org/grok-build
@@ -329,14 +329,11 @@ export class GrokACPProvider implements AgentProvider {
   readonly supportsThinkingToggle = true; // Effort via CLI --effort flag (attempted even if model cache says false)
   readonly supportsSlashCommands = true;
   /**
-   * Grok has no current-turn steering. A second `session/prompt` sent mid-turn
-   * does not interrupt the running one; Grok finishes it and answers the second
-   * as a later turn (measured against 0.2.118: a "stop counting" prompt sent at
-   * 7.9s left the turn counting to 40 and ending at 19.2s). x.ai exposes a
-   * separate `x.ai/interject` extension for real interruption, which YA does
-   * not implement. YA's deferred Queue is the busy-session path.
+   * Mid-turn steer is `x.ai/interject`, not a second `session/prompt`.
+   * Interjections drain after the current tool batch / next model step and
+   * do not cancel the turn (`supportsSteerNow` stays unset).
    */
-  readonly supportsSteering = false;
+  readonly supportsSteering = true;
 
   private readonly grokPath?: string;
   private readonly createClient: () => ACPClient;
@@ -510,8 +507,8 @@ export class GrokACPProvider implements AgentProvider {
       get pid() {
         return client.pid;
       },
-      // No `steer`: see supportsSteering. Omitting it keeps the runtime honest,
-      // so callers queue instead of believing a mid-turn prompt steered.
+      steer: async (message) =>
+        this.steerWithInterject(client, runtime, message),
       supportedCommands: async () => [...commandInventory.commands],
     };
   }
@@ -1250,6 +1247,33 @@ export class GrokACPProvider implements AgentProvider {
 
     if (runtime.promptError) {
       throw runtime.promptError;
+    }
+  }
+
+  private async steerWithInterject(
+    client: ACPClient,
+    runtime: GrokPromptRuntime,
+    message: unknown,
+  ): Promise<boolean> {
+    const sessionId = runtime.sessionId;
+    if (!sessionId || runtime.activePromptCount <= 0) {
+      return false;
+    }
+
+    const text = this.extractTextFromMessage(message).trim();
+    if (!text) {
+      return true;
+    }
+
+    try {
+      const result = await client.extMethod("x.ai/interject", {
+        sessionId,
+        text,
+      });
+      return result.status === "queued";
+    } catch (error) {
+      this.log.warn({ error, sessionId }, "Grok x.ai/interject failed");
+      return false;
     }
   }
 

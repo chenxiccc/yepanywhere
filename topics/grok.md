@@ -39,18 +39,15 @@ would duplicate it. Adding `_meta: { noReplay: true }` drops that to zero
 replayed chunks while the model keeps full context: a second turn on the
 loaded session correctly recalled a word from before the reload.
 
-**Grok has no current-turn steering.** YA advertised `supportsSteering = true`
-and implemented "steer" as a second `session/prompt` on the same session. Grok
-does not interject on that; it finishes the running turn and answers the second
-prompt as a later turn. Measured on 0.2.118: a "stop counting immediately"
-prompt sent 7.9s into a counting turn left that turn counting to 40 and ending
-at 19.2s, with the second prompt resolving separately at 22.9s. YA now reports
-`supportsSteering = false`, exposes no runtime `steer`, and drops `grok` from
-the client's static steering fallback, so a busy Grok session offers YA's
-deferred Queue instead of a control that never worked. x.ai exposes a separate
-`x.ai/interject` extension for real interruption; wiring it is separate work
-needing its own request-shape, lifecycle, and failure coverage, and it is not
-advertised in the 0.2.118 initialize capabilities.
+**Mid-turn steer is `x.ai/interject`, not a second `session/prompt`.** A second
+`session/prompt` finishes the running turn and answers later (measured on
+0.2.118). `x.ai/interject` queues into the running turn and drains at the next
+tool/model safe point without cancelling it — the same shape as Codex
+`turn/steer`. YA advertises `supportsSteering = true`, implements `steer()` as
+`x.ai/interject` `{ sessionId, text }`, and lists `grok` in the client's static
+steering fallback. `supportsSteerNow` stays unset: in-flight generation and
+ordinary tools finish; only blocking wait tools abort. If no prompt is in
+flight, or the extension call fails, `steer()` returns false and YA queues.
 
 This supersedes the steering plan in *Steering, Interject, and /btw Forking
 Support* and the 2026-05-28 smoke below: that smoke proved the second prompt
@@ -96,8 +93,8 @@ another client. `--include-partial-messages` does not apply to ACP.
 **Continuation is still `session/load` + `_meta.noReplay`.** 1.0.4 still
 advertises `agentCapabilities.loadSession: true`. It also advertises
 `sessionCapabilities.resume`; YA does not switch to `session/resume` until
-that method is re-measured. `supportsSteering` stays false; `x.ai/interject`
-is still the real mid-turn path and is not wired.
+that method is re-measured. Mid-turn steer uses `x.ai/interject` (see
+above), not `session/resume`.
 
 **Harness affordances vs YA visibility** (1.0.4):
 
@@ -110,7 +107,7 @@ is still the real mid-turn path and is not wired.
 | Video gen (`image_to_video`, `reference_to_video`, `video_gen`) | Generic `ImageToVideo` / `VideoGen` row plus the shared tool-result media player | Session `videos/` is allowlisted like `images/`; `.mp4` is stored as `video/mp4`, not as an image |
 | Goal / workflow / monitor / LSP | Native generic activity rows | dedicated goal/workflow UI is new facility |
 | Slash commands including `/workflow`, `/goal` | Live `/` menu from `available_commands_update` | descriptions/hints still API-only |
-| Mid-turn interject | YA Queue | `x.ai/interject` not implemented |
+| Mid-turn interject | YA Steer → `x.ai/interject` | `supportsSteerNow` unset (no sample abort) |
 | Session recap / voice / cancel-rewind bits on initialize | ignored metadata | new facility if a YA surface wants them |
 
 `updates.jsonl` remains the replay log. A live TUI session may create that
@@ -179,11 +176,10 @@ If no turn is running, or the interjection arrives after the turn's final
 drain, Grok converts it into a normal queued prompt (send-now / front of
 queue) so the text is not dropped.
 
-YA still reports `supportsSteering = false` and does not call
-`x.ai/interject`. A busy Grok session uses YA's deferred Queue, which waits
-for turn end — Grok's default `follow_up_behavior = queue`. Grok's optional
-TUI `steer` setting promotes queued follow-ups as interjections at those
-same safe points; that is a Grok-side config, not a YA control.
+YA Steer on a live Grok session calls `x.ai/interject`. YA Queue remains
+the end-of-turn path. Grok's TUI `follow_up_behavior = steer` setting is
+separate: it promotes Grok-queued follow-ups as interjections inside the
+CLI; YA does not read that config.
 
 ## Current upstream and local surface (2026-07-29)
 
@@ -476,10 +472,10 @@ Current state in YA's ACP providers (Gemini-ACP etc.): `supportsSteering = false
 
 **Good news**: Grok Build's native behavior + ACP surface makes this one of the *better* providers for both mechanisms.
 
-Recommended approach (add to the Phase 1 implementation in the existing plan):
+Landed 2026-08-16: `supportsSteering = true` and `steer()` call
+`x.ai/interject`. Do **not** implement steer as a second `session/prompt`.
 
-- Set `readonly supportsSteering = true;` on the Grok provider.
-- Implement `steer(message)` in the `AgentSession` return value by calling a second `connection.prompt(...)` (or extend `ACPClient` with an `interject(sessionId, text)` helper that re-uses the same session). Return `true` on success.
+Remaining from the original plan:
 - For the full `/btw` fork experience:
   - Add `"grok"` to `BTW_ASIDE_FORK_PROVIDERS` in `SessionPage.tsx` (YA-level forking will just work once the provider can start sessions).
   - Later (when Grok advertises the capability), prefer the native ACP `ForkSessionRequest` for the aside.

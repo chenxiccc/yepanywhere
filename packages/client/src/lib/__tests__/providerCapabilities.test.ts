@@ -67,22 +67,21 @@ describe("resolveSessionProviderCapabilities", () => {
     expect(capabilities.supportsSteerNow).toBe(false);
   });
 
-  it("never offers steering for grok, before or after metadata arrives", () => {
-    // Grok answers a mid-turn prompt as a later turn rather than steering the
-    // running one, so the client must not offer it during the metadata gap.
+  it("uses static Grok steering while provider metadata is still loading", () => {
     const beforeMetadata = resolveSessionProviderCapabilities({
       providers: [],
       providerName: "grok",
     });
-    expect(beforeMetadata.generallySupportsSteering).toBe(false);
-    expect(beforeMetadata.supportsCurrentTurnSteering).toBe(false);
+    expect(beforeMetadata.generallySupportsSteering).toBe(true);
+    expect(beforeMetadata.supportsCurrentTurnSteering).toBe(true);
+    expect(beforeMetadata.supportsSteerNow).toBe(false);
 
     const withMetadata = resolveSessionProviderCapabilities({
-      providers: [provider("grok", false)],
+      providers: [provider("grok", true)],
       providerName: "grok",
     });
-    expect(withMetadata.generallySupportsSteering).toBe(false);
-    expect(withMetadata.supportsCurrentTurnSteering).toBe(false);
+    expect(withMetadata.generallySupportsSteering).toBe(true);
+    expect(withMetadata.supportsCurrentTurnSteering).toBe(true);
     expect(withMetadata.supportsSteerNow).toBe(false);
   });
 

@@ -1,10 +1,10 @@
 import type { ProviderInfo, ProviderName } from "@yep-anywhere/shared";
 
-// Grok is deliberately absent: it has no current-turn steering, so listing it
-// here would keep the client offering steering before server metadata arrives
-// and contradict the `supportsSteering: false` it then reports.
+// Shown before server provider metadata arrives. Keep this aligned with
+// providers that advertise supportsSteering and implement a real mid-turn
+// path (Codex turn/steer, Grok x.ai/interject).
 const PROVIDERS_WITH_STATIC_STEERING_FALLBACK: ReadonlySet<ProviderName> =
-  new Set(["codex"]);
+  new Set(["codex", "grok"]);
 
 const PROVIDERS_WITH_LOCAL_SESSION_SANDBOX: ReadonlySet<ProviderName> = new Set(
   ["claude", "claude-gateway", "claude-ollama", "codex"],
