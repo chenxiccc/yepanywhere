@@ -77,6 +77,8 @@ export interface UserPromptItem extends RenderItemBase {
   type: "user_prompt";
   id: string;
   content: string | ContentBlock[];
+  /** Exact file targets confirmed by the serving project. */
+  projectPathLinks?: ProjectPathLinkTarget[];
 }
 
 /**

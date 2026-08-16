@@ -167,21 +167,22 @@ feature in Typography settings — both since landed.
 
 ### User-turn action packing
 
-Status: containment repaired 2026-08-01; geometry-based shape selection remains
-a layout-quality follow-up. The stacked rail now reserves the full block size
-of its actual action count and its hover path is pointer-addressable, so later
-assistant rows cannot cover or intercept its controls. The source-character
-packing heuristic below still makes suboptimal wide/stacked choices and remains
-the reason to implement the measured shape ladder.
+Status: containment repaired 2026-08-01; geometry-based shape selection
+implemented 2026-08-16. The old source-character and source-line predicates no
+longer participate. Each mounted turn measures its rendered prompt against the
+one-column, two-column when applicable, and one-row action shapes, then exposes
+the selected column and row counts to CSS. The action grid's measured block
+size remains reserved by the turn, so later assistant rows cannot cover or
+intercept its controls.
 
 A 774 px-wide capture exposed the same fixed-metric mistake in user turns.
-`shouldStackUserPromptActions` in `UserPromptBlock.tsx` chooses a horizontal
-row or vertical rail from source character count (`80`) and explicit newlines,
-not rendered geometry. A prompt can therefore remain one rendered line while
-being classified as “long”: its three actions become a vertical rail, but
-`.user-prompt-container` reserves only one action's block size, so the final
-button overlaps the following turn. Two-action turns have the same failure at
-shorter rendered heights.
+Before measured selection landed, `shouldStackUserPromptActions` chose a
+horizontal row or vertical rail from source character count (`80`) and
+explicit newlines rather than rendered geometry. A prompt could therefore
+remain one rendered line while being classified as “long”; its three actions
+became a vertical rail while `.user-prompt-container` reserved only one
+action's block size, allowing the final button to overlap the following turn.
+Two-action turns had the same failure at shorter rendered heights.
 
 The invariant is:
 
@@ -191,14 +192,14 @@ The invariant is:
 > are not layout predicates.
 
 Use a small deterministic shape ladder rather than a general solver. Evaluate
-the applicable one-column, `2×2`, `1×2`, and `1×3` candidates against the
-prompt width each would leave. Prefer the narrowest action allocation whose
-block size fits inside the resulting prompt, so already-tall prompts keep their
-inline space. For a short prompt, widen the action allocation when a `2×2` or
-one-row layout contains every action without increasing the prompt's rendered
-line count; if no candidate avoids growth, choose the one with the smallest
-resulting overall turn block size. Use a fixed tie-break order so resize and
-font changes cannot make equally fitting shapes oscillate.
+the one-column, distinct two-column, and all-actions-in-one-row candidates
+against the prompt width each would leave. Prefer the narrowest action
+allocation whose block size fits inside the resulting prompt, so already-tall
+prompts keep their inline space. For a short prompt, widen the action allocation
+when a two-column or one-row layout contains every action without increasing
+the prompt's rendered line count; if no candidate avoids growth, choose the one
+with the smallest resulting overall turn block size. Use a fixed tie-break
+order so resize and font changes cannot make equally fitting shapes oscillate.
 
 Narrowing the prompt's wrapped width is only ever justified when it strictly
 avoids adding a rendered line. A prompt already tall enough to contain the
@@ -208,14 +209,24 @@ to replace, so this packing must not trade a text line (or edge alignment) for a
 reshape it does not need. The geometry rule only overrides the default to cure
 the short-prompt clipping case.
 
-The selected action grid must participate in the turn's block-size allocation
+The selected action grid participates in the turn's block-size allocation
 (normal flow, grid sizing, or an equivalent explicit minimum), even if the
 controls remain visually positioned at the edge. Geometry-driven packing is
-an optimization; containment is unconditional. Re-evaluate when available
-width, font/size/spacing, or action membership changes, not on an unbounded
-polling loop. Browser coverage should exercise two and three actions at widths
-on both sides of a text-wrap boundary and assert from element rectangles that
+an optimization; containment is unconditional. A `ResizeObserver` re-evaluates
+after available width, rendered bubble geometry, font/size/spacing, or action
+membership changes, coalesced through one animation frame and never through a
+polling loop. The initial one-column layout is containment-safe before the
+first measurement. Browser coverage exercises two and three actions at widths
+on both sides of a text-wrap boundary and asserts from element rectangles that
 the action grid stays within its turn and clear of the following turn.
+
+The Appearance typography panel also exposes a browser-local **User turn size
+offset** from -3 px through +6 px in 0.5 px steps, defaulting to 0. It applies
+only to user-turn bubble text on top of the selected UI size; buttons,
+attachment chips, delivery metadata, and the composer retain their own UI
+metrics. Changing the offset alters the live bubble geometry and therefore
+triggers the same action-packing measurement rather than relying on a cached
+character threshold.
 
 ## Layout Invariant Scheme
 

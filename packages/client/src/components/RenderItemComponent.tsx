@@ -909,6 +909,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         return (
           <UserPromptBlock
             content={item.content}
+            projectPathLinks={item.projectPathLinks}
             onCorrect={onCorrectUserPrompt}
             onCancelUnconfirmed={
               cancellableTempId && onCancelUnconfirmedUserPrompt

@@ -1,9 +1,9 @@
 # Glossary Tooltips
 
-> Glossary tooltips enrich every Markdown-render-eligible view with subtle,
-> copyable definition hints from one governing current `GLOSSARY.md` and its
-> project-contained include graph, using an in-memory compiled phrase
-> automaton to keep matching linear in rendered text.
+> Glossary tooltips enrich eligible rendered prose, including user turns and
+> Markdown views, with subtle, copyable definition hints from one governing
+> current `GLOSSARY.md` and its project-contained include graph, using an
+> in-memory compiled phrase automaton to keep matching linear in rendered text.
 
 Topic: glossary-tooltips
 
@@ -17,16 +17,18 @@ shares deliberately remain unannotated. Demand-driven source resolution landed
 2026-08-04 and the observed-directory watches it implied landed 2026-08-05, so
 nothing in this feature reaches past the directories resolution actually named.
 External files opened in a session FileViewer gained that session's root
-glossary graph on 2026-08-10.
+glossary graph on 2026-08-10. Plain user-turn text gained root-glossary hints
+on 2026-08-16.
 
 ## Product contract
 
-When the browser-local **Glossary hints** Appearance preference is enabled and
-YA renders Markdown rather than source text, YA annotates glossary terms in the
-rendered prose. The preference is default-off under
+When the browser-local **Glossary hints** Appearance preference is enabled, YA
+annotates glossary terms in eligible rendered prose. The preference is
+default-off under
 [vanilla-defaults](vanilla-defaults.md). This is one render-boundary feature,
 not a file-preview special case. It covers:
 
+- plain user-turn text, using the project-root glossary artifact;
 - assistant Markdown and other project-affiliated Markdown documents;
 - full and range-based Markdown file previews;
 - Read and Write previews;
@@ -36,7 +38,10 @@ not a file-preview special case. It covers:
 A surface that stays in source/raw mode is unchanged. Existing gates that keep
 code files and non-Markdown diffs out of structural Markdown rendering remain
 authoritative; glossary matching does not make an otherwise ineligible surface
-Markdown-renderable.
+Markdown-renderable. User-turn text remains plain text rather than becoming a
+Markdown surface. Confirmed file paths and URLs are established first, and the
+glossary matcher annotates only the remaining plain segments, so it cannot split
+or nest inside either anchor.
 
 An eligible Markdown file opens as rendered Markdown, including when its link
 targets a line or bounded range. Source remains an explicit viewer toggle;
@@ -646,8 +651,8 @@ leave stale tooltip state.
 ## Acceptance boundary
 
 The feature is complete when, after asynchronous artifact readiness, every
-Markdown-render-eligible YA view uses one governing current glossary and the
-same project-contained include semantics, compiled artifact,
+eligible user-turn or Markdown YA view uses one governing current glossary and
+the same project-contained include semantics, compiled artifact,
 multi-definition paragraphs, match precedence, metric-neutral visual
 treatment, and reveal/copy interaction; warm scans are linear in rendered
 text; first paint never waits for glossary compilation; same-project session

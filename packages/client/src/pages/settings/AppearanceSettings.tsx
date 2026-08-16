@@ -73,6 +73,9 @@ import {
   OUTPUT_VERTICAL_SPACING_MAX_PERCENT,
   OUTPUT_VERTICAL_SPACING_MIN_PERCENT,
   OUTPUT_VERTICAL_SPACING_STEP_PERCENT,
+  USER_TURN_FONT_SIZE_OFFSET_MAX_PX,
+  USER_TURN_FONT_SIZE_OFFSET_MIN_PX,
+  USER_TURN_FONT_SIZE_OFFSET_STEP_PX,
   useOutputAppearance,
 } from "../../hooks/useOutputAppearance";
 import {
@@ -193,6 +196,7 @@ export function AppearanceSettings() {
   const {
     outputFont,
     outputUiFont,
+    userTurnFontSizeOffsetPx,
     outputFontSizePx,
     outputFixedFont,
     outputFixedFontSizeOffsetPx,
@@ -203,6 +207,7 @@ export function AppearanceSettings() {
     outputToolPreviewLineCount,
     setOutputFont,
     setOutputUiFont,
+    setUserTurnFontSizeOffsetPx,
     setOutputFontSizePx,
     setOutputFixedFont,
     setOutputFixedFontSizeOffsetPx,
@@ -311,6 +316,7 @@ export function AppearanceSettings() {
     undoEntry(sidebarSpacing, setSidebarSpacing),
     undoEntry(outputFont, setOutputFont),
     undoEntry(outputUiFont, setOutputUiFont),
+    undoEntry(userTurnFontSizeOffsetPx, setUserTurnFontSizeOffsetPx),
     undoEntry(outputFontSizePx, setOutputFontSizePx, (value) =>
       setOutputFontSizeDraft(formatNumberSetting(value)),
     ),
@@ -1282,6 +1288,24 @@ export function AppearanceSettings() {
                     />
                   ))}
                 </datalist>
+                <label
+                  className="output-appearance-control"
+                  htmlFor="user-turn-font-size-offset"
+                >
+                  <span className="output-appearance-label">
+                    {t("appearanceUserTurnSizeOffsetLabel")}
+                  </span>
+                  <CommittedRangeNumberInput
+                    id="user-turn-font-size-offset"
+                    min={USER_TURN_FONT_SIZE_OFFSET_MIN_PX}
+                    max={USER_TURN_FONT_SIZE_OFFSET_MAX_PX}
+                    step={USER_TURN_FONT_SIZE_OFFSET_STEP_PX}
+                    value={userTurnFontSizeOffsetPx}
+                    unit="px"
+                    ariaLabel={t("appearanceUserTurnSizeOffsetLabel")}
+                    onCommit={setUserTurnFontSizeOffsetPx}
+                  />
+                </label>
                 <div className="output-appearance-control">
                   <span className="output-appearance-label">
                     {t("appearanceOutputFontLabel")}
@@ -1671,6 +1695,11 @@ export function AppearanceSettings() {
                     </div>
                     <div className="output-preview-ui-composer">
                       Composer: type a message to the agent…
+                    </div>
+                    <div className="message message-user-prompt">
+                      <div className="text-block">
+                        {t("appearanceUserTurnPreview")}
+                      </div>
                     </div>
                     <div className="output-preview-ui-caption">
                       Caption · updated 2m ago · 3 files

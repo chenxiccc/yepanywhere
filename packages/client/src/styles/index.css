@@ -2975,20 +2975,11 @@ a.sidebar-nav-item {
 }
 
 .message-user-prompt .text-block {
+  font-size: calc(
+    var(--font-size-base) +
+    var(--user-turn-font-size-offset, 0px)
+  );
   white-space: pre-wrap;
-}
-
-/* Bare URLs linkified out of plain text (user prompts, queued chips,
-   system messages, thinking text). Long URLs must wrap inside bubbles. */
-a.linkified-url {
-  color: var(--link-color);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  overflow-wrap: anywhere;
-}
-
-a.linkified-url:hover {
-  text-decoration-thickness: 2px;
 }
 
 .message-user-prompt:focus {
@@ -3002,46 +2993,21 @@ a.linkified-url:hover {
 .user-prompt-container {
   --user-prompt-action-size: 34px;
   --user-prompt-actions-space: calc(
-    (var(--user-prompt-action-size) * 4) +
-    (var(--space-1) * 4) +
+    (var(--user-prompt-action-size) * var(--user-prompt-action-columns)) +
+    (var(--space-1) * var(--user-prompt-action-columns)) +
     var(--turn-rail-float-inset-inline-end)
   );
 
   position: relative;
-  min-height: var(--user-prompt-action-size);
+  min-height: calc(
+    (var(--user-prompt-action-size) * var(--user-prompt-action-rows)) +
+    (var(--space-1) * (var(--user-prompt-action-rows) - 1))
+  );
   padding-inline-end: var(--user-prompt-actions-space);
 }
 
 .user-prompt-container > .user-prompt-metadata {
   display: block;
-}
-
-.user-prompt-container.has-stacked-actions {
-  --user-prompt-actions-space: calc(
-    var(--user-prompt-action-size) +
-    var(--space-1) +
-    var(--turn-rail-float-inset-inline-end)
-  );
-  min-height: calc(
-    (var(--user-prompt-action-size) * var(--user-prompt-action-count)) +
-    (var(--space-1) * (var(--user-prompt-action-count) - 1))
-  );
-}
-
-.user-prompt-container.has-cancel-unconfirmed-action {
-  --user-prompt-actions-space: calc(
-    (var(--user-prompt-action-size) * 5) +
-    (var(--space-1) * 5) +
-    var(--turn-rail-float-inset-inline-end)
-  );
-}
-
-.user-prompt-container.has-stacked-actions.has-cancel-unconfirmed-action {
-  --user-prompt-actions-space: calc(
-    var(--user-prompt-action-size) +
-    var(--space-1) +
-    var(--turn-rail-float-inset-inline-end)
-  );
 }
 
 .user-prompt-correctable {
@@ -3052,16 +3018,15 @@ a.linkified-url:hover {
   position: absolute;
   inset-block-start: 0;
   inset-inline-end: var(--turn-rail-float-inset-inline-end);
-  display: inline-flex;
-  align-items: center;
+  display: inline-grid;
+  grid-template-columns: repeat(
+      var(--user-prompt-action-columns),
+      var(--user-prompt-action-size)
+    );
   gap: var(--space-1);
   opacity: 0;
   z-index: 3;
   transition: opacity 0.12s ease;
-}
-
-.user-prompt-container.has-stacked-actions .user-prompt-actions {
-  flex-direction: column;
 }
 
 .user-prompt-container:hover .user-prompt-actions,
@@ -3140,19 +3105,6 @@ a.linkified-url:hover {
 @media (max-width: 700px) {
   .user-prompt-container {
     --user-prompt-action-size: 30px;
-    --user-prompt-actions-space: calc(
-      (var(--user-prompt-action-size) * 4) +
-      (var(--space-1) * 4) +
-      var(--turn-rail-float-inset-inline-end)
-    );
-  }
-
-  .user-prompt-container.has-cancel-unconfirmed-action {
-    --user-prompt-actions-space: calc(
-      (var(--user-prompt-action-size) * 5) +
-      (var(--space-1) * 5) +
-      var(--turn-rail-float-inset-inline-end)
-    );
   }
 
   .user-prompt-action {

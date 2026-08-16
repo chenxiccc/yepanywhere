@@ -479,6 +479,7 @@ function processMessage(
         type: "user_prompt",
         id: msgId,
         content,
+        projectPathLinks: readProjectPathLinkTargets(msg._projectPathLinks),
         sourceMessages: [msg],
         isSubagent: msg.isSubagent,
       });

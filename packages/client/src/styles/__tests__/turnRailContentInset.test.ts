@@ -43,7 +43,10 @@ describe("turn rail horizontal clearance CSS contract", () => {
       /\.user-prompt-actions\s*\{[^}]*inset-inline-end:\s*var\(--turn-rail-float-inset-inline-end\)\s*;/s,
     );
     expect(css).toMatch(
-      /\.user-prompt-container\.has-stacked-actions\s*\{[^}]*min-height:\s*calc\([^}]*--user-prompt-action-count/s,
+      /\.user-prompt-container\s*\{[^}]*--user-prompt-actions-space:\s*calc\([^}]*--user-prompt-action-columns[^}]*min-height:\s*calc\([^}]*--user-prompt-action-rows/s,
+    );
+    expect(css).toMatch(
+      /\.user-prompt-actions\s*\{[^}]*grid-template-columns:\s*repeat\(\s*var\(--user-prompt-action-columns\)/s,
     );
     const userPromptActionsRule = css.match(
       /\.user-prompt-actions\s*\{[^}]*\}/s,

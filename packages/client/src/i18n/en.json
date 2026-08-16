@@ -169,6 +169,8 @@
   "appearanceOutputTypographyTitle": "Typography",
   "appearanceOutputFontLabel": "Prose font",
   "appearanceOutputUiFontLabel": "UI font",
+  "appearanceUserTurnSizeOffsetLabel": "User turn size offset",
+  "appearanceUserTurnPreview": "User turn: paths and terms stay readable.",
   "appearanceOutputFontSizeLabel": "Content Size",
   "appearanceOutputFixedFontLabel": "Fixed font",
   "appearanceOutputFixedSizeOffsetLabel": "Fixed size offset",

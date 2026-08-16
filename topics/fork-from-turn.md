@@ -50,7 +50,8 @@ window the trim dot controls).
   of the right-side turn rail. The first loaded real turn offers **After this
   turn**; later turns offer **Before this turn** and **After this turn**.
   **After with summary…** is an explicit secondary action.
-- A stacked prompt-action rail reserves its complete action-count height and
+- The prompt-action grid chooses its one-column, two-column, or one-row shape
+  from rendered geometry and reserves that complete shape's block size. It
   remains pointer-addressable while hidden for hover. The following assistant
   turn must never cover or intercept a visible Fork control.
 - Before/After create cold, message-less targets. Before retains the completed

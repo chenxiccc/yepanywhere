@@ -1002,10 +1002,10 @@ describe("MessageList scroll and follow", () => {
   });
 
   it("keeps following visible thinking after a user send", () => {
-    let resizeCallback: ResizeObserverCallback | null = null;
+    const resizeCallbacks: ResizeObserverCallback[] = [];
     class CapturingResizeObserver {
       constructor(callback: ResizeObserverCallback) {
-        resizeCallback = callback;
+        resizeCallbacks.push(callback);
       }
       observe() {}
       disconnect() {}
@@ -1079,7 +1079,9 @@ describe("MessageList scroll and follow", () => {
       />,
     );
     act(() => {
-      resizeCallback?.([], {} as ResizeObserver);
+      for (const callback of resizeCallbacks) {
+        callback([], {} as ResizeObserver);
+      }
     });
 
     expect(container.scrollTop).toBe(900);

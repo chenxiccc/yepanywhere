@@ -277,6 +277,28 @@ function getShellCommand(input: unknown): string | null {
   return typeof record.cmd === "string" ? record.cmd : null;
 }
 
+function getUserPromptText(message: Record<string, unknown>): string | null {
+  const innerMessage = message.message as Record<string, unknown> | undefined;
+  const role = innerMessage?.role ?? message.role;
+  if (message.type !== "user" && role !== "user") return null;
+
+  const content = innerMessage?.content ?? message.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+
+  const text = content
+    .filter(
+      (block): block is { text: string; type: "text" } =>
+        !!block &&
+        typeof block === "object" &&
+        (block as Record<string, unknown>).type === "text" &&
+        typeof (block as Record<string, unknown>).text === "string",
+    )
+    .map((block) => block.text)
+    .join("\n");
+  return text || null;
+}
+
 /**
  * Attach exact file targets to raw tool text without shipping a project path
  * corpus to the client. The field is optional so older servers and public
@@ -291,8 +313,6 @@ export async function augmentProjectPathLinksInMessage(
   const index = projectLinks.index;
 
   const content = getMessageContent(message);
-  if (!content) return;
-
   const resolveText = (text: string) =>
     resolveProjectPathTextLinks(text, {
       index,
@@ -302,6 +322,15 @@ export async function augmentProjectPathLinksInMessage(
       onUnversionedLookup: projectLinks.onUnversionedLookup,
       resolveAbsoluteFilePaths: projectLinks.resolveAbsoluteFilePaths,
     });
+
+  const userPromptText = getUserPromptText(message);
+  if (userPromptText !== null) {
+    const targets = await resolveText(userPromptText);
+    if (targets.length > 0) message._projectPathLinks = targets;
+    else delete message._projectPathLinks;
+  }
+
+  if (!content) return;
 
   await Promise.all(
     content.map(async (rawBlock) => {

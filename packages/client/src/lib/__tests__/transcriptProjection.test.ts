@@ -1127,6 +1127,34 @@ describe("compileTranscriptProjection", () => {
     });
   });
 
+  it("projects confirmed path links onto a user prompt", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-path-prompt",
+        type: "user",
+        content: "Please inspect topics/project-path-links.md",
+        _projectPathLinks: [
+          {
+            filePath: "topics/project-path-links.md",
+            text: "topics/project-path-links.md",
+          },
+        ],
+      },
+    ];
+
+    expect(compileTranscriptProjection(messages)).toMatchObject([
+      {
+        type: "user_prompt",
+        projectPathLinks: [
+          {
+            filePath: "topics/project-path-links.md",
+            text: "topics/project-path-links.md",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("renders Claude local slash commands as system markers", () => {
     const messages: Message[] = [
       {

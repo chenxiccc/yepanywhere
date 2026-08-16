@@ -1,10 +1,11 @@
 import {
   Children,
   memo,
-  type CSSProperties,
   type ReactNode,
+  type RefObject,
   useState,
 } from "react";
+import type { ProjectPathLinkTarget } from "@yep-anywhere/shared";
 import { useI18n } from "../../i18n";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import type { UserPromptDeliveryState } from "../../lib/deliveryState";
@@ -16,15 +17,16 @@ import {
 import type { ContentBlock } from "../../types";
 import { AttachmentChip } from "../AttachmentChip";
 import { CopyTextButton } from "../ui/CopyTextButton";
-import { LinkifiedText } from "../ui/LinkifiedText";
 import { ForkTurnMenu } from "./ForkTurnMenu";
+import { useUserPromptActionPacking } from "./useUserPromptActionPacking";
+import { UserPromptLinkedText } from "./UserPromptLinkedText";
 
 const MAX_LINES = 12;
 const MAX_CHARS = MAX_LINES * 100;
-const STACK_ACTIONS_MIN_CHARS = 80;
 
 interface Props {
   content: string | ContentBlock[];
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
   onCorrect?: () => void;
   onCancelUnconfirmed?: () => void;
   onTrimBefore?: () => void;
@@ -93,13 +95,6 @@ function getUserPromptCopyText(text: string): string {
   return correction.change
     ? `${correction.correctedText}\n\nChange: ${correction.change}`
     : correction.correctedText;
-}
-
-function shouldStackUserPromptActions(text: string): boolean {
-  return (
-    text.length >= STACK_ACTIONS_MIN_CHARS ||
-    text.split(/\r\n|\r|\n/).length > 1
-  );
 }
 
 /**
@@ -292,7 +287,13 @@ function UploadedFilesMetadata({ files }: { files: UploadedFileInfo[] }) {
 /**
  * Renders text content with optional truncation and "Show more" button
  */
-function CollapsibleText({ text }: { text: string }) {
+function CollapsibleText({
+  projectPathLinks,
+  text,
+}: {
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
+  text: string;
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
   const lines = text.split("\n");
   const exceedsLines = lines.length > MAX_LINES;
@@ -313,7 +314,10 @@ function CollapsibleText({ text }: { text: string }) {
     return (
       <div className="text-block">
         <div ref={fullTextRef}>
-          <LinkifiedText text={text} />
+          <UserPromptLinkedText
+            text={text}
+            projectPathLinks={projectPathLinks}
+          />
         </div>
         {isExpanded && needsTruncation && (
           <button
@@ -332,7 +336,11 @@ function CollapsibleText({ text }: { text: string }) {
     <div className="text-block collapsible-text">
       <div ref={truncatedRef} className="truncated-content">
         {/* A char-level cut can land mid-URL; don't link a truncated target. */}
-        <LinkifiedText text={truncatedText} suppressTrailingUrl={true} />
+        <UserPromptLinkedText
+          text={truncatedText}
+          projectPathLinks={projectPathLinks}
+          suppressTrailingUrl={true}
+        />
         <div className="fade-overlay" />
       </div>
       <button
@@ -347,6 +355,7 @@ function CollapsibleText({ text }: { text: string }) {
 }
 
 function UserPromptActionButtons({
+  actionsRef,
   onCorrect,
   onCancelUnconfirmed,
   onTrimBefore,
@@ -357,6 +366,7 @@ function UserPromptActionButtons({
   copyText,
   extraActions,
 }: {
+  actionsRef: RefObject<HTMLDivElement | null>;
   onCorrect?: () => void;
   onCancelUnconfirmed?: () => void;
   onTrimBefore?: () => void;
@@ -380,7 +390,7 @@ function UserPromptActionButtons({
     return null;
 
   return (
-    <div className="user-prompt-actions">
+    <div ref={actionsRef} className="user-prompt-actions">
       {copyText && (
         <CopyTextButton
           text={copyText}
@@ -517,19 +527,32 @@ function DeliveryStateMarker({
   );
 }
 
-function UserPromptText({ text }: { text: string }) {
+function UserPromptText({
+  projectPathLinks,
+  text,
+}: {
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
+  text: string;
+}) {
   const correction = parseCorrectionDisplay(text);
   if (!correction) {
-    return <CollapsibleText text={text} />;
+    return <CollapsibleText text={text} projectPathLinks={projectPathLinks} />;
   }
 
   return (
     <div className="user-prompt-correction">
       <div className="user-prompt-correction-label">Correction</div>
-      <CollapsibleText text={correction.correctedText} />
+      <CollapsibleText
+        text={correction.correctedText}
+        projectPathLinks={projectPathLinks}
+      />
       {correction.change && (
         <div className="user-prompt-correction-change">
-          Change: <LinkifiedText text={correction.change} />
+          Change:{" "}
+          <UserPromptLinkedText
+            text={correction.change}
+            projectPathLinks={projectPathLinks}
+          />
         </div>
       )}
     </div>
@@ -538,6 +561,7 @@ function UserPromptText({ text }: { text: string }) {
 
 export const UserPromptBlock = memo(function UserPromptBlock({
   content,
+  projectPathLinks,
   onCorrect,
   onCancelUnconfirmed,
   onTrimBefore,
@@ -550,18 +574,24 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 }: Props) {
   const unconfirmedClass =
     deliveryState === "sent" ? " user-prompt-unconfirmed" : "";
-  const actionClass = onCancelUnconfirmed
-    ? " has-cancel-unconfirmed-action"
-    : "";
-  const actionStyle = {
-    "--user-prompt-action-count":
-      Number(Boolean(content)) +
-      Number(Boolean(onCorrect)) +
-      Number(Boolean(onCancelUnconfirmed)) +
-      Number(Boolean(onForkAfter && onForkAfterSummary)) +
-      Number(Boolean(onTrimBefore)) +
-      Children.count(extraActions),
-  } as CSSProperties;
+  const actionCount =
+    Number(Boolean(content)) +
+    Number(Boolean(onCorrect)) +
+    Number(Boolean(onCancelUnconfirmed)) +
+    Number(Boolean(onForkAfter && onForkAfterSummary)) +
+    Number(Boolean(onTrimBefore)) +
+    Children.count(extraActions);
+  const measurementKey =
+    typeof content === "string"
+      ? content
+      : content
+          .map((block) =>
+            block.type === "text" && typeof block.text === "string"
+              ? block.text
+              : block.type,
+          )
+          .join("\0");
+  const actionPacking = useUserPromptActionPacking(actionCount, measurementKey);
   if (typeof content === "string") {
     const { text, openedFiles, uploadedFiles } = parseUserPrompt(content);
 
@@ -578,19 +608,22 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 
     return (
       <div
-        className={`user-prompt-container${actionClass} ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
-        style={actionStyle}
+        ref={actionPacking.containerRef}
+        className="user-prompt-container"
+        style={actionPacking.style}
       >
         <div
+          ref={actionPacking.bubbleRef}
           className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
         >
           <div className="message-content">
-            <UserPromptText text={text} />
+            <UserPromptText text={text} projectPathLinks={projectPathLinks} />
             <DeliveryStateMarker deliveryState={deliveryState} />
             <UploadedFilesMetadata files={uploadedFiles} />
           </div>
         </div>
         <UserPromptActionButtons
+          actionsRef={actionPacking.actionsRef}
           onCorrect={onCorrect}
           onCancelUnconfirmed={onCancelUnconfirmed}
           onTrimBefore={onTrimBefore}
@@ -639,19 +672,22 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 
   return (
     <div
-      className={`user-prompt-container${actionClass} ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
-      style={actionStyle}
+      ref={actionPacking.containerRef}
+      className="user-prompt-container"
+      style={actionPacking.style}
     >
       <div
+        ref={actionPacking.bubbleRef}
         className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
       >
         <div className="message-content">
-          <UserPromptText text={text} />
+          <UserPromptText text={text} projectPathLinks={projectPathLinks} />
           <DeliveryStateMarker deliveryState={deliveryState} />
           <UploadedFilesMetadata files={allUploadedFiles} />
         </div>
       </div>
       <UserPromptActionButtons
+        actionsRef={actionPacking.actionsRef}
         onCorrect={onCorrect}
         onCancelUnconfirmed={onCancelUnconfirmed}
         onTrimBefore={onTrimBefore}

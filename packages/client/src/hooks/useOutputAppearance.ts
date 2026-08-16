@@ -56,6 +56,11 @@ export const OUTPUT_FIXED_FONT_SIZE_OFFSET_MAX_PX = 3;
 export const OUTPUT_FIXED_FONT_SIZE_OFFSET_STEP_PX = 0.5;
 export const DEFAULT_OUTPUT_FIXED_FONT_SIZE_OFFSET_PX = 0;
 
+export const USER_TURN_FONT_SIZE_OFFSET_MIN_PX = -3;
+export const USER_TURN_FONT_SIZE_OFFSET_MAX_PX = 6;
+export const USER_TURN_FONT_SIZE_OFFSET_STEP_PX = 0.5;
+export const DEFAULT_USER_TURN_FONT_SIZE_OFFSET_PX = 0;
+
 export const OUTPUT_LINE_SPACING_MIN_PERCENT = -30;
 export const OUTPUT_LINE_SPACING_MAX_PERCENT = 50;
 export const OUTPUT_LINE_SPACING_STEP_PERCENT = 1;
@@ -75,6 +80,7 @@ const SOURCE_SERIF_4_OUTPUT_OPSZ_MAX = 20;
 interface OutputAppearance {
   font: OutputProseFont;
   uiFont: OutputProseFont;
+  userTurnFontSizeOffsetPx: number;
   fontSizePx: number;
   fixedFont: OutputFixedFont;
   fixedFontSizeOffsetPx: number;
@@ -88,6 +94,7 @@ interface OutputAppearance {
 const DEFAULT_OUTPUT_APPEARANCE: OutputAppearance = {
   font: "system",
   uiFont: "system",
+  userTurnFontSizeOffsetPx: DEFAULT_USER_TURN_FONT_SIZE_OFFSET_PX,
   fontSizePx: DEFAULT_OUTPUT_FONT_SIZE_PX,
   fixedFont: "system",
   fixedFontSizeOffsetPx: DEFAULT_OUTPUT_FIXED_FONT_SIZE_OFFSET_PX,
@@ -166,6 +173,15 @@ function normalizeFixedFontSizeOffset(value: number): number {
     roundToStep(value, OUTPUT_FIXED_FONT_SIZE_OFFSET_STEP_PX),
     OUTPUT_FIXED_FONT_SIZE_OFFSET_MIN_PX,
     OUTPUT_FIXED_FONT_SIZE_OFFSET_MAX_PX,
+  );
+}
+
+function normalizeUserTurnFontSizeOffset(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_USER_TURN_FONT_SIZE_OFFSET_PX;
+  return clamp(
+    roundToStep(value, USER_TURN_FONT_SIZE_OFFSET_STEP_PX),
+    USER_TURN_FONT_SIZE_OFFSET_MIN_PX,
+    USER_TURN_FONT_SIZE_OFFSET_MAX_PX,
   );
 }
 
@@ -263,6 +279,7 @@ function readStoredVerticalSpacingPercent(fontSizePx: number): number {
 function clearStoredOutputAppearance(): void {
   localStorage.removeItem(UI_KEYS.outputProseFont);
   localStorage.removeItem(UI_KEYS.outputUiFont);
+  localStorage.removeItem(UI_KEYS.userTurnFontSizeOffset);
   localStorage.removeItem(UI_KEYS.outputProseFontSize);
   localStorage.removeItem(UI_KEYS.outputFixedFont);
   localStorage.removeItem(UI_KEYS.outputFixedFontSizeOffset);
@@ -282,6 +299,12 @@ function loadOutputAppearance(): OutputAppearance {
   return {
     font: normalizeOutputFont(localStorage.getItem(UI_KEYS.outputProseFont)),
     uiFont: normalizeOutputFont(localStorage.getItem(UI_KEYS.outputUiFont)),
+    userTurnFontSizeOffsetPx: normalizeUserTurnFontSizeOffset(
+      readStoredNumber(
+        UI_KEYS.userTurnFontSizeOffset,
+        DEFAULT_USER_TURN_FONT_SIZE_OFFSET_PX,
+      ),
+    ),
     fontSizePx,
     fixedFont: normalizeOutputFixedFont(
       localStorage.getItem(UI_KEYS.outputFixedFont),
@@ -335,6 +358,10 @@ function applyOutputAppearance(appearance: OutputAppearance) {
     outputFontStacks[appearance.font],
   );
   root.style.setProperty("--font-ui", outputFontStacks[appearance.uiFont]);
+  root.style.setProperty(
+    "--user-turn-font-size-offset",
+    `${appearance.userTurnFontSizeOffsetPx}px`,
+  );
   root.style.setProperty(
     "--output-prose-font-size",
     `${appearance.fontSizePx}px`,
@@ -430,6 +457,15 @@ export function useOutputAppearance() {
     const normalized = normalizeOutputFont(font);
     localStorage.setItem(UI_KEYS.outputUiFont, normalized);
     setAppearance((current) => ({ ...current, uiFont: normalized }));
+  }, []);
+
+  const setUserTurnFontSizeOffsetPx = useCallback((offsetPx: number) => {
+    const normalized = normalizeUserTurnFontSizeOffset(offsetPx);
+    localStorage.setItem(UI_KEYS.userTurnFontSizeOffset, String(normalized));
+    setAppearance((current) => ({
+      ...current,
+      userTurnFontSizeOffsetPx: normalized,
+    }));
   }, []);
 
   const setOutputFontSizePx = useCallback((fontSizePx: number) => {
@@ -529,6 +565,7 @@ export function useOutputAppearance() {
   return {
     outputFont: appearance.font,
     outputUiFont: appearance.uiFont,
+    userTurnFontSizeOffsetPx: appearance.userTurnFontSizeOffsetPx,
     outputFontSizePx: appearance.fontSizePx,
     outputFixedFont: appearance.fixedFont,
     outputFixedFontSizeOffsetPx: appearance.fixedFontSizeOffsetPx,
@@ -539,6 +576,7 @@ export function useOutputAppearance() {
     outputToolPreviewLineCount: appearance.toolPreviewLineCount,
     setOutputFont,
     setOutputUiFont,
+    setUserTurnFontSizeOffsetPx,
     setOutputFontSizePx,
     setOutputFixedFont,
     setOutputFixedFontSizeOffsetPx,

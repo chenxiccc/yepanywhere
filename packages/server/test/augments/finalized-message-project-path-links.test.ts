@@ -23,7 +23,41 @@ const options = {
   },
 };
 
-describe("finalized tool-text project path links", () => {
+describe("finalized message project path links", () => {
+  it("annotates string user prompts with confirmed files only", async () => {
+    const content = `Please inspect ${existingPath}, not topics/commits.md.`;
+    const message = {
+      type: "user",
+      message: { role: "user", content },
+    } as Record<string, unknown>;
+
+    await augmentProjectPathLinksInMessage(message, options);
+
+    expect(message._projectPathLinks).toEqual([
+      { filePath: existingPath, text: existingPath },
+    ]);
+    expect((message.message as { content: string }).content).toBe(content);
+  });
+
+  it("annotates text-block user prompts as one visible body", async () => {
+    const message = {
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: `Please inspect ${existingPath}.` },
+          { type: "input_image", image_url: "data:image/png;base64,AAAA" },
+        ],
+      },
+    } as Record<string, unknown>;
+
+    await augmentProjectPathLinksInMessage(message, options);
+
+    expect(message._projectPathLinks).toEqual([
+      { filePath: existingPath, text: existingPath },
+    ]);
+  });
+
   it("annotates Bash command inputs with confirmed files only", async () => {
     const input = {
       command: `cat ${existingPath} topics/commits.md`,

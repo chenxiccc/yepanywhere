@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_USER_TURN_FONT_SIZE_OFFSET_PX } from "../../../hooks/useOutputAppearance";
 import { I18nProvider } from "../../../i18n";
 import { invalidateLocalStorageValues } from "../../../lib/localStorageValue";
 import { UI_KEYS } from "../../../lib/storageKeys";
@@ -135,6 +136,33 @@ describe("AppearanceSettings", () => {
         "--sidebar-row-min-height",
       ),
     ).toBe("calc(1.5rem + 1px)");
+  });
+
+  it("applies an independent user-turn font size offset", () => {
+    const { container } = renderAppearanceSettings();
+    const slider = container.querySelector<HTMLInputElement>(
+      "#user-turn-font-size-offset",
+    );
+    const number = screen.getByRole<HTMLInputElement>("spinbutton", {
+      name: "User turn size offset",
+    });
+
+    expect(slider).toBeTruthy();
+    expect(number.value).toBe(String(DEFAULT_USER_TURN_FONT_SIZE_OFFSET_PX));
+    act(() => {
+      fireEvent.change(number, { target: { value: "2.5" } });
+      fireEvent.blur(number);
+    });
+
+    expect(localStorage.getItem(UI_KEYS.userTurnFontSizeOffset)).toBe("2.5");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--user-turn-font-size-offset",
+      ),
+    ).toBe("2.5px");
+    expect(
+      screen.getByText("User turn: paths and terms stay readable."),
+    ).toBeDefined();
   });
 
   it("places compact image galleries beside inline media and defaults them on", () => {

@@ -1,10 +1,13 @@
-import { Fragment, memo, useMemo } from "react";
+import { Fragment, memo, type ReactNode, useMemo } from "react";
 import { containsLinkifiableUrl, splitUrlSegments } from "../../lib/linkify";
+import styles from "./LinkifiedText.module.css";
 
 interface Props {
   text: string;
   /** See SplitUrlSegmentsOptions.suppressTrailingUrl. */
   suppressTrailingUrl?: boolean;
+  /** Decorate text outside URL anchors without entering those anchors. */
+  renderText?: (text: string) => ReactNode;
 }
 
 /**
@@ -15,6 +18,7 @@ interface Props {
 export const LinkifiedText = memo(function LinkifiedText({
   text,
   suppressTrailingUrl,
+  renderText,
 }: Props) {
   const segments = useMemo(
     () =>
@@ -25,7 +29,7 @@ export const LinkifiedText = memo(function LinkifiedText({
   );
 
   if (!segments?.some((segment) => segment.type === "url")) {
-    return <>{text}</>;
+    return <>{renderText ? renderText(text) : text}</>;
   }
 
   return (
@@ -34,7 +38,7 @@ export const LinkifiedText = memo(function LinkifiedText({
         segment.type === "url" ? (
           <a
             key={`${index}-${segment.text}`}
-            className="linkified-url"
+            className={styles.link}
             href={segment.href}
             target="_blank"
             rel="noopener noreferrer"
@@ -43,7 +47,9 @@ export const LinkifiedText = memo(function LinkifiedText({
             {segment.text}
           </a>
         ) : (
-          <Fragment key={index}>{segment.text}</Fragment>
+          <Fragment key={index}>
+            {renderText ? renderText(segment.text) : segment.text}
+          </Fragment>
         ),
       )}
     </>

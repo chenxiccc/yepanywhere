@@ -116,7 +116,7 @@ describe("UserPromptBlock", () => {
     expect(screen.queryByText(path)).toBeNull();
   });
 
-  it("orders long-turn actions by priority in a stacked lane", () => {
+  it("orders actions and starts with containment-safe one-column packing", () => {
     render(
       <I18nProvider>
         <UserPromptBlock
@@ -133,10 +133,15 @@ describe("UserPromptBlock", () => {
     const container = screen
       .getByText(/Please handle this long user turn/)
       .closest<HTMLElement>(".user-prompt-container");
-    expect(container?.classList.contains("has-stacked-actions")).toBe(true);
     expect(
       container?.style.getPropertyValue("--user-prompt-action-count"),
     ).toBe("4");
+    expect(
+      container?.style.getPropertyValue("--user-prompt-action-columns"),
+    ).toBe("1");
+    expect(container?.style.getPropertyValue("--user-prompt-action-rows")).toBe(
+      "4",
+    );
 
     const actionLabels = Array.from(
       container?.querySelectorAll(".user-prompt-actions button") ?? [],

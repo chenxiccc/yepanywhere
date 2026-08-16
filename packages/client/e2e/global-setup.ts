@@ -152,6 +152,10 @@ export default async function globalSetup() {
       "",
     ].join("\n"),
   );
+  writeFileSync(
+    join(mockProjectPath, "turn-target.md"),
+    "# User-turn link target\n",
+  );
   const encodedPath = mockProjectPath.replace(/\//g, "-");
   const mockSessionDir = join(E2E_CLAUDE_SESSIONS_DIR, hostname(), encodedPath);
   mkdirSync(mockSessionDir, { recursive: true });
@@ -258,6 +262,72 @@ export default async function globalSetup() {
       .join("\n"),
   );
   console.log(`[E2E] Created transcript specimen at ${transcriptSpecimenFile}`);
+
+  const userTurnPresentationFile = join(
+    mockSessionDir,
+    "user-turn-presentation-001.jsonl",
+  );
+  const userTurnPresentationMessages = [
+    {
+      type: "user",
+      cwd: mockProjectPath,
+      message: {
+        role: "user",
+        content:
+          "Viewer context: inspect turn-target.md, then summarize the visible result and keep this deliberately long source sentence on one rendered desktop line.",
+      },
+      timestamp: "2026-01-03T00:00:00.000Z",
+      uuid: "user-turn-presentation-1",
+    },
+    {
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: "The short-width-dependent turn is complete.",
+      },
+      timestamp: "2026-01-03T00:00:01.000Z",
+      uuid: "user-turn-presentation-assistant-1",
+      parentUuid: "user-turn-presentation-1",
+    },
+    {
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          "This turn is deliberately tall.",
+          "Its visible lines contain the action rail.",
+          "Line three keeps the bubble tall.",
+          "Line four keeps the bubble tall.",
+          "Line five keeps the bubble tall.",
+          "Line six keeps the bubble tall.",
+          "Line seven keeps the bubble tall.",
+          "Line eight keeps the bubble tall.",
+        ].join("\n"),
+      },
+      timestamp: "2026-01-03T00:00:02.000Z",
+      uuid: "user-turn-presentation-2",
+      parentUuid: "user-turn-presentation-assistant-1",
+    },
+    {
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: "The explicitly tall turn is complete.",
+      },
+      timestamp: "2026-01-03T00:00:03.000Z",
+      uuid: "user-turn-presentation-assistant-2",
+      parentUuid: "user-turn-presentation-2",
+    },
+  ];
+  writeFileSync(
+    userTurnPresentationFile,
+    userTurnPresentationMessages
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
+  );
+  console.log(
+    `[E2E] Created user-turn presentation fixture at ${userTurnPresentationFile}`,
+  );
 
   const pageKeyPaginationFile = join(
     mockSessionDir,

@@ -93,6 +93,9 @@ export interface AppMessageExtensions {
    */
   role?: "user" | "assistant" | "system";
 
+  /** Server-confirmed file links for visible user-turn text. */
+  _projectPathLinks?: ProjectPathLinkTarget[];
+
   /**
    * IDs of tool_use blocks that don't have a matching tool_result in the message history.
    * Computed by SessionReader via DAG analysis.

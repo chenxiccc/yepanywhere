@@ -8,7 +8,8 @@ Topic: project-path-links
 
 Status: **implemented (2026-08-02); demand-driven cache and turn-text
 annotation landed 2026-08-05; authenticated absolute-path probes landed
-2026-08-10; command and tool-result annotations landed 2026-08-16.**
+2026-08-10; command, tool-result, and user-turn annotations landed
+2026-08-16.**
 Highlighted file content, assistant turn text, completed command text, and
 completed tool-result bodies link exact project files through a demand-driven,
 watcher-backed directory cache — the same cache that now also decides the
@@ -308,6 +309,23 @@ Public-share routes do not produce it, and public-share rendering ignores it if
 it is present in reused content, preserving the no-file-existence-oracle
 boundary.
 
+## User turns
+
+Completed authenticated user messages carry the same bounded, optional
+`_projectPathLinks` annotation at message level. String prompts and text blocks
+are resolved as one visible body; attachments and other structured blocks do
+not become path text. The transcript projection passes only the confirmed
+literal token/target pairs to the user-turn renderer. An optimistic prompt can
+therefore begin as plain text and gain its file anchors when the server's
+durable message arrives.
+
+User-turn decoration has an explicit nesting order: a confirmed complete path
+is one file-viewer anchor, a URL is one ordinary URL anchor, and glossary terms
+are annotated only in the remaining plain-text segments. Neither glossary
+matching nor URL matching enters or splits a file anchor. Missing annotations,
+older servers, and public shares retain plain text and make no follow-up file
+request.
+
 ## Version-control affordances
 
 An authenticated project-file link may append two compact version-control
@@ -328,9 +346,9 @@ link.
 
 ## Not yet covered
 
-Turn text, tool commands and results, and the file viewer's highlighted source
-run this. Other viewers showing project content, such as diff panes, would use
-the same server-confirmed annotation seam.
+Assistant and user turn text, tool commands and results, and the file viewer's
+highlighted source run this. Other viewers showing project content, such as
+diff panes, would use the same server-confirmed annotation seam.
 
 Completed Markdown HTML is retained behind a 32 MiB source-versioned
 single-flight cache. Its exact key includes Markdown text, local-file scope,
