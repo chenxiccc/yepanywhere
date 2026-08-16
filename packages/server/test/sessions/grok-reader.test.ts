@@ -189,3 +189,93 @@ describe("GrokSessionReader tool replay", () => {
     ]);
   });
 });
+
+describe("GrokSessionReader provider children", () => {
+  it("lists parent/subagents metas and hides child dirs from top-level lists", async () => {
+    const root = mkdtempSync(join(tmpdir(), "grok-reader-children-"));
+    tempRoots.push(root);
+    const sessionsDir = join(root, "sessions");
+    const projectPath = join(root, "project");
+    const encoded = encodeURIComponent(projectPath);
+    const parentId = "grok-parent-1";
+    const childId = "grok-child-1";
+    const parentDir = join(sessionsDir, encoded, parentId);
+    const childDir = join(sessionsDir, encoded, childId);
+    mkdirSync(projectPath, { recursive: true });
+    mkdirSync(join(parentDir, "subagents", childId), { recursive: true });
+    mkdirSync(childDir, { recursive: true });
+    writeFileSync(
+      join(parentDir, "summary.json"),
+      JSON.stringify({
+        info: { id: parentId, cwd: projectPath },
+        created_at: "2026-08-16T00:00:00.000Z",
+        updated_at: "2026-08-16T00:02:00.000Z",
+        generated_title: "Parent turn",
+        num_messages: 2,
+        current_model_id: "grok-4.6",
+      }),
+    );
+    writeFileSync(join(parentDir, "updates.jsonl"), "");
+    writeFileSync(
+      join(parentDir, "subagents", childId, "meta.json"),
+      JSON.stringify({
+        subagent_id: childId,
+        parent_session_id: parentId,
+        child_session_id: childId,
+        subagent_type: "explore",
+        description: "Search the repo",
+        status: "completed",
+        started_at: "2026-08-16T00:00:10.000Z",
+        completed_at: "2026-08-16T00:01:40.000Z",
+      }),
+    );
+    writeFileSync(
+      join(childDir, "summary.json"),
+      JSON.stringify({
+        info: { id: childId, cwd: projectPath },
+        created_at: "2026-08-16T00:00:10.000Z",
+        updated_at: "2026-08-16T00:01:40.000Z",
+        generated_title: "Search the repo",
+        num_messages: 1,
+        current_model_id: "grok-4.6",
+      }),
+    );
+    writeFileSync(
+      join(childDir, "updates.jsonl"),
+      `${JSON.stringify({
+        timestamp: 1_775_000_100,
+        params: {
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Found two matches." },
+          },
+        },
+      })}\n`,
+    );
+
+    const reader = new GrokSessionReader({ sessionsDir, projectPath });
+    const projectId = toUrlProjectId(projectPath);
+
+    await expect(reader.listSessions(projectId)).resolves.toEqual([
+      expect.objectContaining({ id: parentId, title: "Parent turn" }),
+    ]);
+    await expect(reader.listSessionFiles(sessionsDir)).resolves.toEqual([
+      expect.objectContaining({ sessionId: parentId }),
+    ]);
+    await expect(reader.listProviderChildSessions(parentId)).resolves.toEqual([
+      {
+        id: childId,
+        parentSessionId: parentId,
+        title: "Search the repo",
+        agentType: "explore",
+        updatedAt: "2026-08-16T00:01:40.000Z",
+      },
+    ]);
+
+    const agent = await reader.getAgentSession(childId, parentId);
+    expect(agent?.status).toBe("completed");
+    expect(agent?.agentType).toBe("explore");
+    expect(agent?.description).toBe("Search the repo");
+    expect(agent?.messages.length).toBeGreaterThan(0);
+  });
+});

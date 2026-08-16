@@ -44,6 +44,14 @@ role/prompt, and optional nickname; the child rollout supplies its durable
 content and timestamp. Child rollouts remain excluded from top-level session
 and project counts.
 
+Grok stores `SubagentMeta` at
+`<parent session dir>/subagents/<id>/meta.json` and a sibling child session
+directory under the same encoded cwd. `child_session_id` equals `subagent_id`.
+`GrokSessionReader.listProviderChildSessions` reads only those metas.
+`getAgentSession` replays the child's `updates.jsonl`. Those child ids are
+excluded from Grok top-level `listSessions` / `listSessionFiles`. Fork
+`parent_session_id` on `summary.json` is not a subagent link.
+
 ## Presentation contract
 
 Provider child summaries are nested beneath the parent process on **Agents**.
@@ -152,9 +160,9 @@ per file:
 - [Codex idle/cold list and live activity](../gaps/codex-subagent-summary-visibility.md)
   — reader + child rollouts already exist; first list walk after restart
   can still omit children, and `subagent_activity` is not on the strip.
-- [Grok nested child discovery](../gaps/grok-subagent-summary-visibility.md)
-  — TUI has a tasks pane and framed child transcript; YA has spawn rows
-  only, and child session dirs can leak into the top-level Grok list.
+- Grok nested child discovery is landed: parent `subagents/*/meta.json`
+  feeds the existing strip / page / idle list, and child session dirs stay
+  out of the top-level Grok list. TUI tasks-pane kill remains out of scope.
 - [Copilot event-shaped children](../gaps/copilot-subagent-summary-visibility.md)
   — no first-class YA Copilot provider; SDK/CLI children are parent-stream
   lifecycle events, not a sibling transcript tree.

@@ -79,7 +79,7 @@ in YA's environment wins. See [vanilla-defaults](vanilla-defaults.md).
 | --- | --- | --- |
 | Model picker 4.6 / 4.5 + effort | Existing new-session model/effort controls | none for catalog |
 | File/search/edit/bash/web/todo/ask/plan | Existing renderer names | none |
-| Subagent spawn / bg wait / kill | Existing generic or spawn rows | none |
+| Subagent spawn / bg wait / kill | Spawn rows plus parent-nested child summaries | TUI tasks pane / kill stay out of YA |
 | Image gen/edit | Generic row + image media candidate | none |
 | Video gen | Generic row plus shared tool-result media player | session `videos/` allowlisted |
 | Goal / workflow / monitor / LSP | Native generic activity rows | dedicated goal/workflow UI is new facility |

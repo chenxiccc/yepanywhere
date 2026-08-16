@@ -54,6 +54,7 @@ export class GrokSessionCatalogAdapter implements NativeSessionCatalogAdapter {
     context: SessionCatalogScanContext,
   ): Promise<SessionCatalogAdapterScan> {
     const rows: SessionCatalogRow[] = [];
+    const childIds = new Set<string>();
     let cwdDirsVisited = 0;
     let sessionDirsVisited = 0;
     let summariesRead = 0;
@@ -124,6 +125,7 @@ export class GrokSessionCatalogAdapter implements NativeSessionCatalogAdapter {
         }
         newestMs = Math.max(newestMs, mtimeMs);
 
+        await addGrokChildSessionIds(join(cwdDir, uuid), childIds);
         rows.push(
           buildCatalogRow({
             catalogFamily: this.catalogFamily,
@@ -148,16 +150,32 @@ export class GrokSessionCatalogAdapter implements NativeSessionCatalogAdapter {
       }
     }
 
+    const visibleRows = rows.filter((row) => !childIds.has(row.sessionId));
     return {
-      sourceVersion: `${cwdDirsVisited}:${rows.length}:${Math.trunc(newestMs)}`,
-      rows,
+      sourceVersion: `${cwdDirsVisited}:${visibleRows.length}:${Math.trunc(newestMs)}`,
+      rows: visibleRows,
       metrics: {
         cwdDirsVisited,
         sessionDirsVisited,
         summariesRead,
         skippedByMode,
-        rows: rows.length,
+        rows: visibleRows.length,
       },
     };
+  }
+}
+
+async function addGrokChildSessionIds(
+  sessionDir: string,
+  childIds: Set<string>,
+): Promise<void> {
+  let names: string[];
+  try {
+    names = await readdir(join(sessionDir, "subagents"));
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    childIds.add(name);
   }
 }

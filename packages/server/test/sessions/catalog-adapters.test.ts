@@ -105,6 +105,38 @@ describe("GrokSessionCatalogAdapter", () => {
     expect(metrics.cwdDirsVisited).toBe(2);
   });
 
+  it("hides Grok subagent session dirs from the catalog", async () => {
+    const sessionsDir = await seedGrok();
+    const parentDir = join(
+      sessionsDir,
+      encodeURIComponent("/work/alpha"),
+      "s-alpha",
+    );
+    await writeJson(join(parentDir, "subagents", "s-child", "meta.json"), {
+      subagent_id: "s-child",
+      parent_session_id: "s-alpha",
+      child_session_id: "s-child",
+    });
+    await writeJson(
+      join(
+        sessionsDir,
+        encodeURIComponent("/work/alpha"),
+        "s-child",
+        "summary.json",
+      ),
+      {
+        info: { id: "s-child", cwd: "/work/alpha" },
+        updated_at: "2026-08-02T00:05:00.000Z",
+        generated_title: "Child explore",
+      },
+    );
+
+    const { rows } = await collect(
+      new GrokSessionCatalogAdapter({ sessionsDir }),
+    );
+    expect(rows.map((row) => row.sessionId)).toEqual(["s-alpha", "s-beta"]);
+  });
+
   it("keeps a row identity that changes when its summary is rewritten", async () => {
     const sessionsDir = await seedGrok();
     const adapter = new GrokSessionCatalogAdapter({ sessionsDir });

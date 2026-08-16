@@ -25,7 +25,10 @@
 
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  ProviderChildSessionSummary,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { attachToolResultMediaCandidates } from "../media/inlineImageData.js";
 import {
   type NormalizedGrokToolState,
@@ -185,15 +188,23 @@ export class GrokSessionReader implements ISessionReader {
 
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
     const sessions = await this.scanSessions();
+    const childIds = await this.collectProviderChildIds(sessions);
     const out: SessionSummary[] = [];
 
     for (const s of sessions) {
+      if (childIds.has(s.id) || childIds.has(s.dirBasename)) {
+        continue;
+      }
       try {
         const raw = await readFile(s.summaryPath, "utf-8");
         const data = JSON.parse(raw);
+        const summaryId = data.info?.id ?? s.id;
+        if (childIds.has(summaryId)) {
+          continue;
+        }
 
         const summary: SessionSummary = {
-          id: data.info?.id ?? s.id,
+          id: summaryId,
           projectId,
           ownership: { owner: "none" as const },
           createdAt: data.created_at ?? new Date(s.mtime).toISOString(),
@@ -665,9 +676,52 @@ export class GrokSessionReader implements ISessionReader {
   }
 
   async getAgentSession(
-    _agentId: string,
-  ): Promise<{ messages: Message[]; status: string } | null> {
-    return null;
+    agentId: string,
+    parentSessionId?: string,
+  ): Promise<{
+    messages: Message[];
+    status: string;
+    agentType?: string;
+    description?: string;
+  } | null> {
+    const sessions = await this.scanSessions();
+    const child = this.findSessionInfo(sessions, agentId);
+    if (!child) {
+      return null;
+    }
+    const meta = parentSessionId
+      ? await this.readSubagentMeta(
+          this.findSessionInfo(sessions, parentSessionId)?.dirPath,
+          agentId,
+        )
+      : await this.findSubagentMeta(sessions, agentId);
+    const messages = (await this.loadUpdatesMessages(child)).map((message) => ({
+      ...message,
+      isSubagent: true,
+    }));
+    return {
+      messages,
+      status: mapGrokSubagentStatus(meta?.status, messages.length),
+      ...(meta?.subagent_type ? { agentType: meta.subagent_type } : {}),
+      ...(meta?.description ? { description: meta.description } : {}),
+    };
+  }
+
+  async listProviderChildSessions(
+    parentSessionId: string,
+  ): Promise<ProviderChildSessionSummary[]> {
+    const sessions = await this.scanSessions();
+    const parent = this.findSessionInfo(sessions, parentSessionId);
+    if (!parent) {
+      return [];
+    }
+    const metas = await this.readParentSubagentMetas(parent.dirPath);
+    return metas
+      .map((meta) => toGrokProviderChildSummary(parentSessionId, meta))
+      .sort(
+        (left, right) =>
+          Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+      );
   }
 
   async getSessionFilePath(sessionId: string): Promise<string | null> {
@@ -684,10 +738,16 @@ export class GrokSessionReader implements ISessionReader {
     _options?: { activeAfterMs?: number },
   ): Promise<{ sessionId: string; filePath: string }[]> {
     const sessions = await this.scanSessions();
-    return sessions.map((s) => ({
-      sessionId: s.id,
-      filePath: s.summaryPath,
-    }));
+    const childIds = await this.collectProviderChildIds(sessions);
+    return sessions
+      .filter(
+        (session) =>
+          !childIds.has(session.id) && !childIds.has(session.dirBasename),
+      )
+      .map((session) => ({
+        sessionId: session.id,
+        filePath: session.summaryPath,
+      }));
   }
 
   async getSessionProjectPath(sessionId: string): Promise<string | null> {
@@ -702,4 +762,139 @@ export class GrokSessionReader implements ISessionReader {
   getIndexScopeKey(sessionDir: string): string {
     return `grok::${sessionDir}::${this.projectIdentityKey ?? "*"}`;
   }
+
+  private async collectProviderChildIds(
+    sessions: GrokSessionInfo[],
+  ): Promise<Set<string>> {
+    const ids = new Set<string>();
+    for (const session of sessions) {
+      for (const meta of await this.readParentSubagentMetas(session.dirPath)) {
+        if (meta.subagent_id) ids.add(meta.subagent_id);
+        if (meta.child_session_id) ids.add(meta.child_session_id);
+      }
+    }
+    return ids;
+  }
+
+  private async findSubagentMeta(
+    sessions: GrokSessionInfo[],
+    agentId: string,
+  ): Promise<GrokSubagentMeta | undefined> {
+    for (const session of sessions) {
+      const meta = await this.readSubagentMeta(session.dirPath, agentId);
+      if (meta) {
+        return meta;
+      }
+    }
+    return undefined;
+  }
+
+  private async readSubagentMeta(
+    parentDir: string | undefined,
+    agentId: string,
+  ): Promise<GrokSubagentMeta | undefined> {
+    if (!parentDir) {
+      return undefined;
+    }
+    return readGrokSubagentMetaFile(
+      join(parentDir, "subagents", agentId, "meta.json"),
+    );
+  }
+
+  private async readParentSubagentMetas(
+    parentDir: string,
+  ): Promise<GrokSubagentMeta[]> {
+    const subagentsDir = join(parentDir, "subagents");
+    let names: string[];
+    try {
+      names = await readdir(subagentsDir);
+    } catch {
+      return [];
+    }
+    const metas: GrokSubagentMeta[] = [];
+    for (const name of names) {
+      const meta = await readGrokSubagentMetaFile(
+        join(subagentsDir, name, "meta.json"),
+      );
+      if (meta) {
+        metas.push(meta);
+      }
+    }
+    return metas;
+  }
+}
+
+interface GrokSubagentMeta {
+  subagent_id?: string;
+  child_session_id?: string;
+  parent_session_id?: string;
+  subagent_type?: string;
+  description?: string;
+  status?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+async function readGrokSubagentMetaFile(
+  path: string,
+): Promise<GrokSubagentMeta | undefined> {
+  try {
+    const raw = await readFile(path, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const record = parsed as Record<string, unknown>;
+    return {
+      ...(typeof record.subagent_id === "string" && {
+        subagent_id: record.subagent_id,
+      }),
+      ...(typeof record.child_session_id === "string" && {
+        child_session_id: record.child_session_id,
+      }),
+      ...(typeof record.parent_session_id === "string" && {
+        parent_session_id: record.parent_session_id,
+      }),
+      ...(typeof record.subagent_type === "string" && {
+        subagent_type: record.subagent_type,
+      }),
+      ...(typeof record.description === "string" && {
+        description: record.description,
+      }),
+      ...(typeof record.status === "string" && { status: record.status }),
+      ...(typeof record.started_at === "string" && {
+        started_at: record.started_at,
+      }),
+      ...(typeof record.completed_at === "string" && {
+        completed_at: record.completed_at,
+      }),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function toGrokProviderChildSummary(
+  parentSessionId: string,
+  meta: GrokSubagentMeta,
+): ProviderChildSessionSummary {
+  const id = meta.child_session_id || meta.subagent_id || parentSessionId;
+  return {
+    id,
+    parentSessionId,
+    ...(meta.description ? { title: meta.description } : {}),
+    ...(meta.subagent_type ? { agentType: meta.subagent_type } : {}),
+    updatedAt:
+      meta.completed_at || meta.started_at || new Date(0).toISOString(),
+  };
+}
+
+function mapGrokSubagentStatus(
+  status: string | undefined,
+  messageCount: number,
+): string {
+  if (status === "completed") return "completed";
+  if (status === "failed" || status === "cancelled") return "failed";
+  if (status === "running" || status === "pending") return "running";
+  return messageCount > 0 ? "running" : "pending";
 }
