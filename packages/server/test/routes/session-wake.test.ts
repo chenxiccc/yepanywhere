@@ -192,6 +192,7 @@ describe("session wake route", () => {
       );
       expect(accepted.status).toBe(202);
       expect(resumeSession).toHaveBeenCalledWith("cold-session", homedir(), {
+        automaticSource: "wake",
         text: "cold job finished",
       });
       expect(startSession).toHaveBeenCalledWith(

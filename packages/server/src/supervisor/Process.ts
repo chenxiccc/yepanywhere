@@ -757,6 +757,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   refreshPromptCacheFn?: (options: {
     sessionId: string;
   }) => Promise<PromptCacheRefreshResult>;
+  /** Durable YA automation pause owned by session metadata. */
+  isAutomationPaused?: () => boolean;
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
   /** Function to change effort without restarting the provider process. */
@@ -971,6 +973,7 @@ export class Process {
   private refreshPromptCacheFn:
     | ((options: { sessionId: string }) => Promise<PromptCacheRefreshResult>)
     | null = null;
+  private isAutomationPausedFn: () => boolean;
   private promptCacheKeepaliveLeases = new Map<
     string,
     PromptCacheKeepaliveLease
@@ -1083,6 +1086,7 @@ export class Process {
     this.getProviderActivityFn = options.getProviderActivityFn ?? null;
     this.getProviderRetentionFn = options.getProviderRetentionFn ?? null;
     this.refreshPromptCacheFn = options.refreshPromptCacheFn ?? null;
+    this.isAutomationPausedFn = options.isAutomationPaused ?? (() => false);
     this.providerRuntimeStatus = options.initialProviderRuntimeStatus ?? null;
     this._recapMode =
       options.recapMode ?? (options.recapsEnabled ? "side-session" : "off");
@@ -1110,7 +1114,8 @@ export class Process {
       idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
       viewerPresence: options.viewerPresence,
       shouldRetainIdleProcess: options.shouldRetainIdleProcess,
-      hasPromptCacheKeepaliveLease: () => this.hasPromptCacheKeepaliveLease(),
+      hasPromptCacheKeepaliveLease: () =>
+        this.hasPromptCacheKeepaliveLease() && !this.isAutomationPausedFn(),
       getProviderRetention: () => this.getProviderRetentionSnapshot(),
       getLivenessSnapshot: () => this.getLivenessSnapshot(),
       getLiveDeltaSubscriberCount: () => this.liveDeltaSubscriberCount,
@@ -1409,6 +1414,7 @@ export class Process {
     if (
       !this.refreshPromptCacheFn ||
       this.promptCacheKeepaliveLeases.size === 0 ||
+      this.isAutomationPausedFn() ||
       this._state.type === "terminated"
     ) {
       return;
@@ -1462,6 +1468,10 @@ export class Process {
   }
 
   private async runPromptCacheKeepalive(): Promise<void> {
+    if (this.isAutomationPausedFn()) {
+      this.clearPromptCacheKeepaliveTimer();
+      return;
+    }
     if (this.promptCacheKeepaliveInFlight) {
       this.schedulePromptCacheKeepalive();
       return;
@@ -1530,6 +1540,14 @@ export class Process {
       );
     } finally {
       this.promptCacheKeepaliveInFlight = false;
+      this.schedulePromptCacheKeepalive();
+    }
+  }
+
+  handleAutomationPauseChanged(): void {
+    this.clearPromptCacheKeepaliveTimer();
+    this.viewerLifecycle.retentionChanged();
+    if (!this.isAutomationPausedFn()) {
       this.schedulePromptCacheKeepalive();
     }
   }
@@ -2804,6 +2822,13 @@ export class Process {
       sinceMs,
       provider.supportsNativeRecaps ? NATIVE_RECAP_FALLBACK_GRACE_MS : 0,
     );
+    if (this.recapPausedUntilUserTurn) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recaps paused until next user turn",
+      };
+    }
     if (nativeRecap) {
       return {
         supported: true,
@@ -2832,6 +2857,13 @@ export class Process {
           model: this.resolveHelperSideModel(),
         })
       ).text.trim();
+      if (this.recapPausedUntilUserTurn) {
+        return {
+          supported: true,
+          emitted: false,
+          reason: "recaps paused until next user turn",
+        };
+      }
       if (!text) {
         return {
           supported: true,
@@ -3084,7 +3116,7 @@ export class Process {
 
     if (
       !isHiddenInjectedMessage(message) &&
-      message.automaticSource !== "heartbeat" &&
+      message.automaticSource === undefined &&
       message.metadata?.serverReceivedAt !== undefined
     ) {
       this.recapPausedUntilUserTurn = false;

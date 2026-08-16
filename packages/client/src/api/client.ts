@@ -15,6 +15,7 @@ import type {
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
   DeviceInfo,
+  DurableSyntheticDoneMessage,
   FreezePublicSharesResponse,
   FreezePublicSessionLiveSharesResponse,
   HelperTargetConfig,
@@ -1418,6 +1419,14 @@ export const api = {
   markSessionUnread: (sessionId: string) =>
     fetchJSON<{ marked: boolean }>(`/sessions/${sessionId}/mark-seen`, {
       method: "DELETE",
+    }),
+
+  markSessionDone: (sessionId: string) =>
+    fetchJSON<{
+      message: DurableSyntheticDoneMessage;
+      paused: true;
+    }>(`/sessions/${sessionId}/done`, {
+      method: "POST",
     }),
 
   getLastSeen: () =>

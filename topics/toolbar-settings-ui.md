@@ -90,11 +90,19 @@ meaning, so tier definitions are not tooltip-only):
 | 4     | `pin`           | always visible (no menu copy)        | (always-on) |
 
 The stored data model is that single enum (`ToolbarControlPresence` =
-`"hidden" | ToolbarNarrowingPriority`) — one value per control, no separate
-visibility boolean. Hiding a control **forgets** its previous tier; sliding
-back out of Hide lands on whichever tier the release chooses. The toolbar
-runtime still consumes boolean-visibility and tier *projections*, derived in
-`useSessionToolbarPresence` — non-settings render state, not stored.
+`"off" | "hidden" | ToolbarNarrowingPriority`) — one value per control, no
+separate visibility boolean. Ordinary controls do not expose `off`; it is
+reserved for controls whose behavior itself can be disabled. Hiding a control
+**forgets** its previous tier; sliding back out of Hide lands on whichever tier
+the release chooses. The toolbar runtime still consumes boolean-visibility and
+tier *projections*, derived in `useSessionToolbarPresence` — non-settings
+render state, not stored.
+
+Synthetic `/done` is the first disable-capable control. Its six notches are
+`off → hidden → first → mid → last → pin`: Off preserves provider-owned `/done`
+handling, Hidden enables YA's typed command without showing a button, and the
+four narrowing tiers enable both command and circle-check button. The setting
+row is absent when the server lacks `synthetic-done-command`.
 
 Defaults preserve the runtime collapse order: `modeSelector,attachments →
 first`; `slashMenu,thinkingToggle → mid`; `renderMode,nudge,shortcutsHelp →

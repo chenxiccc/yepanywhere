@@ -134,6 +134,7 @@ import {
 } from "./routes/server-admin.js";
 import { createEnvSettingsRoutes } from "./routes/env-settings.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
+import { createSessionDoneRoutes } from "./routes/session-done.js";
 import { createSessionIndexRoutes } from "./routes/session-index.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSessionWakeRoutes } from "./routes/session-wake.js";
@@ -1034,11 +1035,18 @@ export function createApp(options: AppOptions): AppResult {
           sessionId,
           text,
         }): Promise<SessionWakeDeliveryResult> => {
+          const metadata =
+            options.sessionMetadataService?.getMetadata(sessionId);
+          if (metadata?.automationPausedUntilUserTurn === true) {
+            return {
+              accepted: false,
+              status: 409,
+              error: "Session automation is paused until the next user turn",
+            };
+          }
           const live = supervisor.getProcessForSession(sessionId);
           let projectPath = live?.projectPath;
           if (!projectPath) {
-            const metadata =
-              options.sessionMetadataService?.getMetadata(sessionId);
             if (
               metadata?.isArchived ||
               !isAutomaticSessionResumeAllowed(metadata)
@@ -1072,6 +1080,7 @@ export function createApp(options: AppOptions): AppResult {
             projectPath,
             {
               text,
+              automaticSource: "wake",
             },
           );
           if ("error" in resumed) {
@@ -1333,6 +1342,9 @@ export function createApp(options: AppOptions): AppResult {
             options.serverSettingsService?.getSetting("globalInstructions"),
           hints: options.serverSettingsService?.getSetting("agentContextHints"),
         }),
+      isSessionAutomationPaused: (sessionId) =>
+        options.sessionMetadataService?.getMetadata(sessionId)
+          ?.automationPausedUntilUserTurn === true,
       onSessionStarted: async ({ item, process }) => {
         if (item.target.type !== "new-session") return;
         const metadata = options.sessionMetadataService;
@@ -1719,6 +1731,14 @@ export function createApp(options: AppOptions): AppResult {
       toolResultMediaStore,
       dataDir: options.dataDir,
       resolveAbsoluteFilePaths: localResourcePathPolicy.findAllowedFilePaths,
+    }),
+  );
+  app.route(
+    "/api/sessions",
+    createSessionDoneRoutes({
+      supervisor,
+      sessionMetadataService: options.sessionMetadataService,
+      notificationService: options.notificationService,
     }),
   );
   app.route(

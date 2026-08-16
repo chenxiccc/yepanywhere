@@ -222,6 +222,28 @@ compact command on an idle process, show the `Compacting` busy state
 per [provider-state-machine](provider-state-machine.md), and surface
 failure without retry loops.
 
+## Synthetic done
+
+YA's optional `/done` command is a local session boundary, not a provider
+command. When enabled, an exact attachment-free `/done` submission or its
+toolbar button persists a synthetic user row in YA metadata, marks the session
+read, and sends no provider turn. The row is merged into session history by
+timestamp without mutating the provider transcript, so it remains visible on a
+later visit.
+
+The same durable action pauses YA-driven provider work until a later real user
+turn. It blocks automatic compaction, recaps (including forked and cold
+recaps), heartbeat/session-wake turns, prompt-cache keepalive, patient queue
+promotion, and automatic Project Queue revival for that session. It does not
+interrupt current provider work, retract already accepted turns, or block
+message-less Activate. A real user Send clears the pause; automatically sourced
+heartbeat, wake, and Project Queue messages do not.
+
+The feature is server-capability gated (`synthetic-done-command`) and defaults
+to `off`, preserving provider-owned `/done` skills. `hidden` enables typed
+local `/done` without a toolbar button; the ordinary narrowing tiers enable the
+command and show the circle-check button.
+
 ## Action set
 
 Session kebab menu, capability-gated per provider, hidden or
@@ -234,6 +256,7 @@ configurable per [session-ui-customization](session-ui-customization.md):
 | Fork | Provider-native prefix fork at a real user-turn boundary | claude, codex, pi |
 | Handoff to agent | Existing restart-handoff with provider/model picker | all |
 | Compact now | Queue advertised compact command; busy state | claude, codex |
+| Done | YA-only transcript overlay plus durable automation pause | all |
 
 The fork point lives in the inline menu on each real user prompt; the right-side
 turn rail is an accelerator for the same actions. Remaining questions are

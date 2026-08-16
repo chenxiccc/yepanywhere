@@ -12,6 +12,11 @@ describe("resume exemption", () => {
       expect(
         isAutomaticSessionResumeAllowed({ autoResumeDisabled: true }),
       ).toBe(false);
+      expect(
+        isAutomaticSessionResumeAllowed({
+          automationPausedUntilUserTurn: true,
+        }),
+      ).toBe(false);
     });
   });
 
@@ -37,6 +42,12 @@ describe("resume exemption", () => {
         isUnownedHeartbeatResumeEligible({
           heartbeatTurnsEnabled: true,
           autoResumeDisabled: true,
+        }),
+      ).toBe(false);
+      expect(
+        isUnownedHeartbeatResumeEligible({
+          heartbeatTurnsEnabled: true,
+          automationPausedUntilUserTurn: true,
         }),
       ).toBe(false);
     });

@@ -113,6 +113,7 @@ interface PromoteNowOptions {
   itemId?: string;
   force?: boolean;
   deliveryIntent?: "steer";
+  automatic?: boolean;
 }
 
 export interface ProjectQueueSchedulerOptions {
@@ -126,6 +127,7 @@ export interface ProjectQueueSchedulerOptions {
   blockedRetryMs?: number;
   getIdleGraceMs?: () => number;
   getGlobalInstructions?: () => string | undefined;
+  isSessionAutomationPaused?: (sessionId: string) => boolean;
   onSessionStarted?: (args: {
     item: ProjectQueueItem;
     process: ProjectQueueProcessSnapshot;
@@ -280,6 +282,12 @@ export class ProjectQueueScheduler {
     const blockers = [...idle.blockers];
     if (first.status === "failed") {
       blockers.push("project-queue:first-failed");
+    }
+    if (
+      first.target.type === "existing-session" &&
+      this.options.isSessionAutomationPaused?.(first.target.sessionId)
+    ) {
+      blockers.push(`${first.target.sessionId}:automation-paused`);
     }
 
     const now = Date.now();
@@ -449,7 +457,7 @@ export class ProjectQueueScheduler {
     const timer = setTimeout(
       () => {
         this.timers.delete(projectId);
-        void this.runProject(projectId);
+        void this.runProject(projectId, { automatic: true });
       },
       Math.max(0, Math.round(delayMs)),
     );
@@ -534,6 +542,21 @@ export class ProjectQueueScheduler {
         promoted: false,
         reason: projectItems.length === 0 ? "empty" : "not-queued",
         ...(options.itemId ? { itemId: options.itemId } : {}),
+      };
+    }
+
+    const nextItem = options.itemId
+      ? projectItems.find((item) => item.id === options.itemId)
+      : projectItems.find((item) => item.status === "queued");
+    if (
+      options.automatic === true &&
+      nextItem?.target.type === "existing-session" &&
+      this.options.isSessionAutomationPaused?.(nextItem.target.sessionId)
+    ) {
+      return {
+        promoted: false,
+        reason: "blocked",
+        itemId: nextItem.id,
       };
     }
 
@@ -832,6 +855,7 @@ export class ProjectQueueScheduler {
         : undefined;
     return {
       text: item.message.text,
+      automaticSource: "project-queue",
       ...(attachments ? { attachments } : {}),
       ...(item.message.mode ? { mode: item.message.mode } : {}),
       ...(item.message.metadata || deliveryIntent

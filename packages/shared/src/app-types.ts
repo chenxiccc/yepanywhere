@@ -470,6 +470,21 @@ export interface DurableRecapMessage extends AppMessageExtensions {
   yaRecapSource: "provider-native" | "ya-synthetic";
 }
 
+/** YA-only user row that records an explicit local `/done` action. */
+export interface DurableSyntheticDoneMessage extends AppMessageExtensions {
+  type: "user";
+  content: "/done";
+  message: {
+    role: "user";
+    content: "/done";
+  };
+  timestamp: string;
+  uuid: string;
+  id: string;
+  isSynthetic: true;
+  yaSyntheticSource: "done";
+}
+
 /**
  * Session summary for list views.
  * Contains metadata without full message content.

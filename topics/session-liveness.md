@@ -48,6 +48,13 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   work may start that provider session again. Unowned heartbeat and cold
   fork-recap revival both obey this gate. Explicit user continuation through
   the full session page may still reactivate the session.
+- Once synthetic `/done` persists `automationPausedUntilUserTurn`, no YA-driven
+  provider work may enter that session: live/cold heartbeat, session wake,
+  recap/forked recap, threshold compaction, prompt-cache keepalive, patient
+  queue promotion, and automatic Project Queue revival all stop. The action
+  does not interrupt an active turn. Message-less Activate leaves the pause in
+  force; the next real user turn clears it, while automatically sourced turns
+  never do.
 - Sidebar session rows are navigation and status surfaces only; they never
   reactivate a provider process. Message-less activation remains available in
   the full session's model panel, while sending a message resumes an unowned

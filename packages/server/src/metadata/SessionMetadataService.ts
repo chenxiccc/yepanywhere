@@ -10,6 +10,7 @@ import * as path from "node:path";
 import {
   type CacheMissBillingRecord,
   type DurableRecapMessage,
+  type DurableSyntheticDoneMessage,
   type EffortLevel,
   type PermissionMode,
   type ProviderName,
@@ -64,6 +65,8 @@ export interface SessionMetadata {
   transcriptDisplayObjects?: TranscriptDisplayObject[];
   /** Durable YA-owned recap rows merged into the transcript view only. */
   recapMessages?: DurableRecapMessage[];
+  /** Durable YA-only `/done` rows merged into the transcript view only. */
+  syntheticDoneMessages?: DurableSyntheticDoneMessage[];
   /** Provider usage evidence for warm/forked prefix cache hits and recomputes. */
   cacheMissBillingEvents?: CacheMissBillingRecord[];
   /**
@@ -99,6 +102,8 @@ export interface SessionMetadata {
   recapAfterSeconds?: number;
   /** Explicit Stop/Terminate suppresses recaps until a fresh user turn. */
   recapPausedUntilUserTurn?: boolean;
+  /** YA `/done` suppresses all automatic session turns until a real user turn. */
+  automationPausedUntilUserTurn?: boolean;
   /** Settled YA host filesystem confinement for every launch of this session. */
   sandboxLevel?: SessionSandboxLevel;
   /** Opaque key for the canonical project's private provider runtime state. */
@@ -129,6 +134,7 @@ export interface SessionMetadataState {
 
 const CURRENT_VERSION = 3;
 const MAX_RECAP_MESSAGES_PER_SESSION = 200;
+const MAX_SYNTHETIC_DONE_MESSAGES_PER_SESSION = 200;
 const MAX_CACHE_MISS_BILLING_EVENTS_PER_SESSION = 100;
 
 export interface SessionMetadataServiceOptions {
@@ -275,6 +281,13 @@ export class SessionMetadataService {
     ];
   }
 
+  getSyntheticDoneMessages(sessionId: string): DurableSyntheticDoneMessage[] {
+    return [
+      ...(this.state.sessions[this.resolveSessionId(sessionId)]
+        ?.syntheticDoneMessages ?? []),
+    ];
+  }
+
   getCacheMissBillingEvents(limit = 200): CacheMissBillingRecord[] {
     const safeLimit = Math.max(0, Math.min(500, Math.floor(limit)));
     if (safeLimit === 0) {
@@ -320,6 +333,30 @@ export class SessionMetadataService {
       return {
         ...metadata,
         recapMessages: nextMessages.slice(-MAX_RECAP_MESSAGES_PER_SESSION),
+      };
+    });
+    await this.save();
+  }
+
+  async recordSyntheticDone(
+    sessionId: string,
+    message: DurableSyntheticDoneMessage,
+  ): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => {
+      const existing = metadata.syntheticDoneMessages ?? [];
+      const nextMessages = existing.some(
+        (candidate) => candidate.uuid === message.uuid,
+      )
+        ? existing.map((candidate) =>
+            candidate.uuid === message.uuid ? message : candidate,
+          )
+        : [...existing, message];
+      return {
+        ...metadata,
+        syntheticDoneMessages: nextMessages.slice(
+          -MAX_SYNTHETIC_DONE_MESSAGES_PER_SESSION,
+        ),
+        automationPausedUntilUserTurn: true,
       };
     });
     await this.save();
@@ -736,6 +773,7 @@ export class SessionMetadataService {
       recapAfterSeconds?: number | null;
       recapMode?: RecapMode | null;
       recapPausedUntilUserTurn?: boolean;
+      automationPausedUntilUserTurn?: boolean;
     },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
@@ -829,6 +867,11 @@ export class SessionMetadataService {
           updates.recapPausedUntilUserTurn || undefined;
       }
 
+      if (updates.automationPausedUntilUserTurn !== undefined) {
+        result.automationPausedUntilUserTurn =
+          updates.automationPausedUntilUserTurn || undefined;
+      }
+
       return result;
     });
     await this.save();
@@ -863,6 +906,9 @@ export class SessionMetadataService {
     }
     if (updated.recapMessages?.length) {
       cleaned.recapMessages = updated.recapMessages;
+    }
+    if (updated.syntheticDoneMessages?.length) {
+      cleaned.syntheticDoneMessages = updated.syntheticDoneMessages;
     }
     if (updated.cacheMissBillingEvents?.length) {
       cleaned.cacheMissBillingEvents = updated.cacheMissBillingEvents;
@@ -903,6 +949,10 @@ export class SessionMetadataService {
     }
     if (updated.recapPausedUntilUserTurn) {
       cleaned.recapPausedUntilUserTurn = updated.recapPausedUntilUserTurn;
+    }
+    if (updated.automationPausedUntilUserTurn) {
+      cleaned.automationPausedUntilUserTurn =
+        updated.automationPausedUntilUserTurn;
     }
     if (updated.sandboxLevel) {
       cleaned.sandboxLevel = updated.sandboxLevel;

@@ -245,6 +245,7 @@ interface Props {
   isRunning?: boolean;
   isThinking?: boolean;
   onStop?: () => void;
+  onDone?: () => void;
   draftKey: string; // localStorage key for draft persistence
   draftIndex?: {
     sourceKey: ClientSummarySourceKey;
@@ -411,6 +412,7 @@ export function MessageInput({
   isRunning,
   isThinking,
   onStop,
+  onDone,
   draftKey,
   draftIndex,
   collapsed: externalCollapsed,
@@ -1383,6 +1385,44 @@ export function MessageInput({
     ],
   );
 
+  const handleSyntheticDoneSubmission = useCallback(
+    (
+      finalText: string,
+      preserveComposer = false,
+      focusAfterSubmit = true,
+    ): boolean => {
+      if (
+        !onDone ||
+        disabled ||
+        finalText.trim() !== "/done" ||
+        attachments.length > 0 ||
+        uploadProgress.length > 0
+      ) {
+        return false;
+      }
+      if (!preserveComposer) {
+        controls.clearInput();
+        resetCompositionMetadata();
+        setInterimTranscript("");
+      }
+      onDone();
+      if (focusAfterSubmit) {
+        textareaRef.current?.focus();
+      } else {
+        textareaRef.current?.blur();
+      }
+      return true;
+    },
+    [
+      attachments.length,
+      controls,
+      disabled,
+      onDone,
+      resetCompositionMetadata,
+      uploadProgress.length,
+    ],
+  );
+
   const handleSubmit = useCallback(
     async (
       messageOverride?: unknown,
@@ -1413,6 +1453,16 @@ export function MessageInput({
       });
 
       if (forkSummaryMode) return;
+
+      if (
+        handleSyntheticDoneSubmission(
+          finalText,
+          preserveComposer,
+          focusAfterSubmit,
+        )
+      ) {
+        return;
+      }
 
       if (bangSupport) {
         const bangDraft = resolveComposerBangDraft(finalText);
@@ -1481,6 +1531,7 @@ export function MessageInput({
       buildSubmissionMetadata,
       resetCompositionMetadata,
       forkSummaryMode,
+      handleSyntheticDoneSubmission,
       bangSupport,
       consumeSpeechAttribution,
       deferSpeechDelivery,
@@ -1509,6 +1560,10 @@ export function MessageInput({
       }
 
       const finalText = (override ?? controls.getDraft()).trimEnd();
+
+      if (handleSyntheticDoneSubmission(finalText, preserveComposer)) {
+        return;
+      }
 
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled && queueHandler) {
@@ -1540,6 +1595,7 @@ export function MessageInput({
       onQueue,
       onSend,
       effectivePrimaryActionKind,
+      handleSyntheticDoneSubmission,
       patientQueueEnabled,
       attachments.length,
       buildSubmissionMetadata,
@@ -1562,6 +1618,10 @@ export function MessageInput({
     ) => {
       if (!submit) return;
       const finalText = (messageOverride ?? controls.getDraft()).trimEnd();
+
+      if (handleSyntheticDoneSubmission(finalText, preserveComposer)) {
+        return;
+      }
 
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled) {
@@ -1593,6 +1653,7 @@ export function MessageInput({
       controls,
       consumeSpeechAttribution,
       disabled,
+      handleSyntheticDoneSubmission,
       isRecentSpeechAttribution,
       resetCompositionMetadata,
       speechMessagePrefix,
@@ -3008,6 +3069,7 @@ export function MessageInput({
     isRunning,
     isThinking,
     onStop,
+    onDone,
     onSend: forkSummaryMode
       ? handleForkSummarySubmit
       : effectivePrimaryActionKind === "queue"

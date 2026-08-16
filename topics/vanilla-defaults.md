@@ -66,6 +66,11 @@ novelty must never be the out-of-the-box experience.
   be useful should be removed, not accumulated. The configuration
   surface is itself a user-visible cost.
 
+Synthetic `/done` is a direct instance of this rule. Its toolbar presence
+defaults to Off, so an agent or installed skill named `/done` continues to
+receive the user's text. Opting into Hidden enables YA's local command without
+adding chrome; visible narrowing tiers also show its toolbar button.
+
 ## Known Exceptions
 
 [source-review-to-session](source-review-to-session.md) defaults review

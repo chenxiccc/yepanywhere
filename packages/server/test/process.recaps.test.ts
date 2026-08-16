@@ -281,6 +281,16 @@ describe("Process", () => {
       expect(process.isRecapPausedUntilUserTurn).toBe(true);
 
       process.queueMessage({
+        text: "automatic project queue",
+        automaticSource: "project-queue",
+      });
+      process.queueMessage({
+        text: "automatic wake",
+        automaticSource: "wake",
+      });
+      expect(process.isRecapPausedUntilUserTurn).toBe(true);
+
+      process.queueMessage({
         text: "/compact",
         metadata: { hidden: true },
       });
@@ -292,6 +302,54 @@ describe("Process", () => {
       });
       expect(process.isRecapPausedUntilUserTurn).toBe(false);
 
+      controller.finish();
+      await process.abort();
+    });
+
+    it("drops a recap that finishes after the session is paused", async () => {
+      const controller = createControllableIterator();
+      let finishSummary: (value: { text: string }) => void = () => {};
+      const generateSummary = vi.fn(
+        () =>
+          new Promise<{ text: string }>((resolve) => {
+            finishSummary = resolve;
+          }),
+      );
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        recapsEnabled: true,
+      });
+      const recaps: SDKMessage[] = [];
+      process.subscribe((event) => {
+        if (
+          event.type === "message" &&
+          event.message.type === "system" &&
+          event.message.subtype === "away_summary"
+        ) {
+          recaps.push(event.message);
+        }
+      });
+
+      controller.push({ type: "assistant", message: { content: "finished" } });
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+
+      const request = process.requestRecap(
+        createRecapProvider(generateSummary),
+      );
+      await waitFor(() => expect(generateSummary).toHaveBeenCalledTimes(1));
+      process.pauseRecapsUntilUserTurn();
+      finishSummary({ text: "too late" });
+
+      await expect(request).resolves.toMatchObject({
+        emitted: false,
+        reason: "recaps paused until next user turn",
+      });
+      expect(recaps).toEqual([]);
       controller.finish();
       await process.abort();
     });

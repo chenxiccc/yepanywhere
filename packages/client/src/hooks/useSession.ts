@@ -2397,5 +2397,6 @@ export function useSession(
     updateActiveWindowFollowingBottom, // Immediate active-window follow intent
     restoredFromSnapshot, // Initial render came from retained same-tab data
     reconnectStream, // Force session stream reconnection (e.g., after process restart)
+    fetchNewMessages, // Fetch durable YA/provider rows added since the visible tail
   };
 }

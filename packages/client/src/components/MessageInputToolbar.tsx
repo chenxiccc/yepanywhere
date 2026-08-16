@@ -289,6 +289,7 @@ export interface MessageInputToolbarProps {
   isRunning?: boolean;
   isThinking?: boolean;
   onStop?: () => void;
+  onDone?: () => void;
   onSend?: () => void;
   /** Queue a deferred message. Only provided when agent is running. */
   onQueue?: () => void;
@@ -672,6 +673,11 @@ interface ToolbarStopControl {
   title: string;
 }
 
+interface ToolbarDoneControl {
+  onDone: () => void;
+  title: string;
+}
+
 interface ToolbarActionsControl {
   disabled?: boolean;
   voiceDisabled?: boolean;
@@ -703,6 +709,7 @@ export interface MessageInputToolbarViewProps {
   conversationViewControl?: ToolbarConversationViewControl | null;
   browserDebugControl?: ToolbarBrowserDebugControl | null;
   nudgeControl?: ToolbarNudgeControl | null;
+  doneControl?: ToolbarDoneControl | null;
   speechControl?: ToolbarSpeechControl | null;
   speechWaveformActive?: boolean;
   speechWaveformPreview?: boolean;
@@ -732,6 +739,25 @@ function ToolbarMicrophoneIcon() {
       <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
       <line x1="12" y1="19" x2="12" y2="23" />
       <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function ToolbarDoneIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8 12 2.5 2.5L16 9" />
     </svg>
   );
 }
@@ -1046,6 +1072,7 @@ export function MessageInputToolbarView({
   conversationViewControl,
   browserDebugControl,
   nudgeControl,
+  doneControl,
   speechControl,
   speechWaveformActive = false,
   speechWaveformPreview = false,
@@ -1429,6 +1456,9 @@ export function MessageInputToolbarView({
       browserDebugControl &&
       isPriorityCollapsible("browserDebug")) ||
     (visibility.nudge && nudgeControl && isPriorityCollapsible("nudge")) ||
+    (visibility.syntheticDone &&
+      doneControl &&
+      isPriorityCollapsible("syntheticDone")) ||
     (visibility.sessionStatus &&
       showToolbarStatus &&
       statusControl &&
@@ -1476,6 +1506,10 @@ export function MessageInputToolbarView({
         : "off",
     nudge:
       visibility.nudge && nudgeControl ? effectivePriority("nudge") : "off",
+    syntheticDone:
+      visibility.syntheticDone && doneControl
+        ? effectivePriority("syntheticDone")
+        : "off",
     sessionStatus:
       visibility.sessionStatus && showToolbarStatus && statusControl
         ? effectivePriority("sessionStatus")
@@ -1744,6 +1778,18 @@ export function MessageInputToolbarView({
                 />
                 <path className="heartbeat-baseline" d="M18 15h5.25" />
               </svg>
+            </button>
+          )}
+          {visibility.syntheticDone && doneControl && (
+            <button
+              type="button"
+              className={inlineTierClass("syntheticDone")}
+              onClick={doneControl.onDone}
+              title={doneControl.title}
+              aria-label={doneControl.title}
+              data-testid="synthetic-done-toolbar-button"
+            >
+              <ToolbarDoneIcon />
             </button>
           )}
           {visibility.microphone &&
@@ -2058,6 +2104,21 @@ export function MessageInputToolbarView({
                         />
                         <path className="heartbeat-baseline" d="M18 15h5.25" />
                       </svg>
+                    </button>
+                  )}
+                {visibility.syntheticDone &&
+                  doneControl &&
+                  isPriorityCollapsible("syntheticDone") && (
+                    <button
+                      type="button"
+                      className={menuTierClass("syntheticDone")}
+                      onClick={doneControl.onDone}
+                      title={doneControl.title}
+                      aria-label={doneControl.title}
+                      role="menuitem"
+                      data-testid="synthetic-done-overflow-button"
+                    >
+                      <ToolbarDoneIcon />
                     </button>
                   )}
                 {visibility.shortcutsHelp &&
@@ -2647,6 +2708,7 @@ export function MessageInputToolbar({
   isRunning,
   isThinking,
   onStop,
+  onDone,
   onSend,
   onQueue,
   onProjectQueue,
@@ -3415,6 +3477,14 @@ export function MessageInputToolbar({
               onTouchStart: handleHeartbeatTouchStart,
               onTouchEnd: handleHeartbeatTouchEnd,
               onClearTouch: clearHeartbeatLongPress,
+            }
+          : null
+      }
+      doneControl={
+        onDone
+          ? {
+              onDone,
+              title: t("syntheticDoneToolbarTitle"),
             }
           : null
       }

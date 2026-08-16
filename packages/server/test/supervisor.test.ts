@@ -357,6 +357,7 @@ describe("Supervisor", () => {
       mockSdk.addScenario(createMockScenario("sess-eligible", "Hello!"));
       const onSuccessfulProviderSession = vi.fn(async () => {});
       const providerMetadata = {
+        getMetadata: vi.fn(() => undefined),
         recordEffectiveLaunchSettings: vi.fn(async () => undefined),
         remapSessionId: vi.fn(async () => {}),
         setProvider: vi.fn(async () => {}),
@@ -2874,6 +2875,7 @@ describe("Supervisor", () => {
         },
       );
       const metadata = {
+        getMetadata: () => undefined,
         getEffectiveLaunchSettings: () => durable,
         getRequestedModel: () => durable?.requestedModel ?? undefined,
         recordEffectiveLaunchSettings,
@@ -3691,6 +3693,84 @@ describe("Supervisor", () => {
       await process.abort();
     });
 
+    it("clears a durable automation pause only on a fresh user turn", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      let automationPaused = true;
+      metadata.service.getMetadata = (() =>
+        automationPaused
+          ? { automationPausedUntilUserTurn: true }
+          : undefined) as SessionMetadataService["getMetadata"];
+      metadata.writes.updateMetadata.mockImplementation(
+        async (_sessionId, updates) => {
+          if (updates.automationPausedUntilUserTurn !== undefined) {
+            automationPaused = updates.automationPausedUntilUserTurn;
+          }
+        },
+      );
+      let aborted = false;
+      const provider = testProvider(async (options) => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: options.resumeSessionId ?? "done-pause-session",
+          };
+          for await (const message of queue) {
+            if (aborted) return;
+            void message;
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort: () => {
+            aborted = true;
+            queue.push({ text: "__abort__" });
+          },
+        };
+      });
+      const doneSupervisor = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+        sessionMetadataService: metadata.service,
+      });
+      const process = await doneSupervisor.reactivateSession(
+        "/tmp/test",
+        "done-pause-session",
+        undefined,
+        { providerName: "claude", recapMode: "fork" },
+      );
+      metadata.writes.updateMetadata.mockClear();
+      await doneSupervisor.pauseSessionAutomation("done-pause-session");
+
+      process.queueMessage({
+        text: "automatic project work",
+        automaticSource: "project-queue",
+      });
+      process.queueMessage({ text: "automatic wake", automaticSource: "wake" });
+      expect(automationPaused).toBe(true);
+      expect(metadata.writes.updateMetadata).not.toHaveBeenCalled();
+
+      process.queueMessage({
+        text: "continue intentionally",
+        metadata: { serverReceivedAt: new Date().toISOString() },
+      });
+
+      await vi.waitFor(() => {
+        expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
+          "done-pause-session",
+          { automationPausedUntilUserTurn: false },
+        );
+      });
+      expect(automationPaused).toBe(false);
+      expect(
+        doneSupervisor.isAutomationPausedUntilUserTurn("done-pause-session"),
+      ).toBe(false);
+
+      await process.abort();
+    });
+
     it("falls back to tailed recap generation when forked recap cannot fork", async () => {
       const generateSummary = vi.fn(async (request) => ({
         text:
@@ -3969,6 +4049,7 @@ describe("Supervisor", () => {
       // service here; back the stub with a swappable recap row list.
       let persistedRecaps: unknown[] = [];
       const metadataStub = {
+        getMetadata: () => undefined,
         recordEffectiveLaunchSettings: async () => ({
           schemaVersion: 1,
           revision: 1,
@@ -5596,6 +5677,7 @@ describe("Supervisor", () => {
         eventBus.subscribe((event) => events.push(event));
         const remapSessionId = vi.fn(async () => {});
         const sessionMetadataService = {
+          getMetadata: () => undefined,
           recordEffectiveLaunchSettings: async () => ({
             schemaVersion: 1,
             revision: 1,

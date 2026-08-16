@@ -67,9 +67,11 @@ const SESSION_TOOLBAR_PRESENCE_CLIENT_DEFAULT_KEYS = [
   "sessionStatus",
   "projectQueue",
   "projectQueueNewSessionShortcut",
+  "syntheticDone",
   "composerRecall",
 ] as const satisfies readonly (keyof SessionToolbarPresenceClientDefaults)[];
 const TOOLBAR_CONTROL_PRESENCES = [
+  "off",
   "hidden",
   "pin",
   "last",

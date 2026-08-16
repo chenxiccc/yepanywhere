@@ -2,6 +2,7 @@ import {
   ALL_PERMISSION_MODES,
   type ContextUsage,
   type DurableRecapMessage,
+  type DurableSyntheticDoneMessage,
   type PermissionRules,
   type PromptSuggestionMode,
   type ProviderName,
@@ -66,12 +67,12 @@ import {
   normalizeSession,
 } from "../sessions/normalization.js";
 import {
-  applyRecapOverlayToSession,
+  applySessionOverlaysToSession,
   applyRecapOverlayToSummary,
   hasEquivalentRecapMessage,
   hasUnreadProviderContent,
   latestRecapMessage,
-  mergeRecapMessages,
+  mergeSessionOverlayMessages,
 } from "../sessions/recap-overlays.js";
 import { isAutomaticSessionResumeAllowed } from "../sessions/resume-exemption.js";
 import {
@@ -708,30 +709,36 @@ function messageId(message: Message | undefined): string | undefined {
   );
 }
 
-function findDurableRecapCursor(
+type DurableSessionOverlayMessage =
+  | DurableRecapMessage
+  | DurableSyntheticDoneMessage;
+
+function findDurableOverlayCursor(
   afterMessageId: string | undefined,
-  recaps: readonly DurableRecapMessage[],
-): DurableRecapMessage | undefined {
+  overlays: readonly DurableSessionOverlayMessage[],
+): DurableSessionOverlayMessage | undefined {
   if (!afterMessageId) {
     return undefined;
   }
-  return recaps.find(
-    (recap) => recap.uuid === afterMessageId || recap.id === afterMessageId,
+  return overlays.find(
+    (overlay) =>
+      overlay.uuid === afterMessageId || overlay.id === afterMessageId,
   );
 }
 
-function sliceAfterDurableRecapCursor(params: {
+function sliceAfterDurableOverlayCursor(params: {
   messages: Message[];
-  recap: DurableRecapMessage;
+  overlay: DurableSessionOverlayMessage;
   cursorId: string;
 }): { messages: Message[]; found: boolean } {
   const index = params.messages.findIndex((message) => {
     const id = messageId(message);
     return (
       id === params.cursorId ||
-      id === params.recap.uuid ||
-      id === params.recap.id ||
-      hasEquivalentRecapMessage([message], params.recap)
+      id === params.overlay.uuid ||
+      id === params.overlay.id ||
+      (params.overlay.type === "system" &&
+        hasEquivalentRecapMessage([message], params.overlay))
     );
   });
   if (index < 0) {
@@ -2874,8 +2881,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     ) as ProviderName | undefined;
     const recapMessages =
       deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
-    const recapCursor = findDurableRecapCursor(afterMessageId, recapMessages);
-    const providerAfterMessageId = recapCursor ? undefined : afterMessageId;
+    const syntheticDoneMessages =
+      deps.sessionMetadataService?.getSyntheticDoneMessages?.(sessionId) ?? [];
+    const overlayCursor = findDurableOverlayCursor(afterMessageId, [
+      ...recapMessages,
+      ...syntheticDoneMessages,
+    ]);
+    const providerAfterMessageId = overlayCursor ? undefined : afterMessageId;
     const primaryReaderAfterMessageId =
       isClaudeSdkProviderName(project.provider) ||
       isClaudeSdkProviderName(metadataProvider)
@@ -3010,9 +3022,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
         const recapMessages =
           deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
-        const visibleProcessMessages = mergeRecapMessages(
+        const syntheticDoneMessages =
+          deps.sessionMetadataService?.getSyntheticDoneMessages?.(sessionId) ??
+          [];
+        const visibleProcessMessages = mergeSessionOverlayMessages(
           processMessages,
           recapMessages,
+          syntheticDoneMessages,
         );
         // Get notification data for new sessions too
         const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
@@ -3204,11 +3220,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // the pre-overlay timestamp.
     const preRecapUpdatedAt = session.updatedAt;
     if (!beforeMessageId) {
-      session = applyRecapOverlayToSession(session, recapMessages);
-      if (recapCursor && afterMessageId) {
-        const sliced = sliceAfterDurableRecapCursor({
+      session = applySessionOverlaysToSession(
+        session,
+        recapMessages,
+        syntheticDoneMessages,
+      );
+      if (overlayCursor && afterMessageId) {
+        const sliced = sliceAfterDurableOverlayCursor({
           messages: session.messages,
-          recap: recapCursor,
+          overlay: overlayCursor,
           cursorId: afterMessageId,
         });
         session = { ...session, messages: sliced.messages };

@@ -104,6 +104,7 @@ import { useServerSettings } from "../hooks/useServerSettings";
 import { useSessionLoadingProgress } from "../hooks/useSessionLoadingProgress";
 import type { SessionLoadProgress } from "../hooks/useSessionMessages";
 import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
+import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useVersion } from "../hooks/useVersion";
 import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
 import {
@@ -444,6 +445,8 @@ function SessionPageContent({
     [sessionDraftReference],
   );
   const { version: versionInfo } = useVersion();
+  const { presence: toolbarPresence } = useSessionToolbarPresence();
+  const syntheticDoneEnabled = toolbarPresence.syntheticDone !== "off";
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const supportsProjectSessionDefaults = serverHasCapability(
     versionInfo,
@@ -610,6 +613,7 @@ function SessionPageContent({
     updateRouteScrollSnapshot,
     updateActiveWindowFollowingBottom,
     reconnectStream,
+    fetchNewMessages,
     promptSuggestion,
     dismissPromptSuggestion,
   } = useSession(
@@ -2033,10 +2037,29 @@ function SessionPageContent({
     [setComposerAttachments, t, updatePendingMessage],
   );
 
+  const handleSyntheticDone = useCallback(async () => {
+    try {
+      await api.markSessionDone(actualSessionId);
+      await fetchNewMessages();
+      setScrollTrigger((previous) => previous + 1);
+    } catch {
+      showToast(t("syntheticDoneFailed"), "error");
+    }
+  }, [actualSessionId, fetchNewMessages, showToast, t]);
+
   const handleSend = async (
     text: string,
     metadata?: MessageSubmissionMetadata,
   ) => {
+    if (
+      syntheticDoneEnabled &&
+      text.trim() === "/done" &&
+      attachmentsRef.current.length === 0 &&
+      pendingUploadsRef.current.size === 0
+    ) {
+      await handleSyntheticDone();
+      return;
+    }
     const prepared = prepareComposerSubmission(text);
     if (!prepared) {
       return;
@@ -5347,6 +5370,9 @@ function SessionPageContent({
                     isRunning={status.owner === "self"}
                     isThinking={canStopOwnedProcess}
                     onStop={handleAbort}
+                    onDone={
+                      syntheticDoneEnabled ? handleSyntheticDone : undefined
+                    }
                     pendingApproval={
                       approvalCollapsed
                         ? {
@@ -5417,6 +5443,11 @@ function SessionPageContent({
                 isRunning={status.owner === "self"}
                 isThinking={canStopOwnedProcess}
                 onStop={handleAbort}
+                onDone={
+                  !mainComposerForAside && syntheticDoneEnabled
+                    ? handleSyntheticDone
+                    : undefined
+                }
                 draftKey={
                   mainComposerForAside && focusedBtwAside
                     ? `draft-btw-${focusedBtwAside.sessionId ?? focusedBtwAside.id}`

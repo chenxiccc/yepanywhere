@@ -240,9 +240,41 @@ describe("ProjectQueueScheduler", () => {
     expect(supervisor.resumeCalls[0]).toMatchObject({
       sessionId: "session-1",
       projectPath: PROJECT_PATH,
-      message: { text: "run after idle  " },
+      message: {
+        text: "run after idle  ",
+        automaticSource: "project-queue",
+      },
     });
     expect(service.listProject(projectId).items).toEqual([]);
+  });
+
+  it("holds automatic existing-session work behind a done boundary", async () => {
+    await scheduler.dispose();
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 1,
+      blockedRetryMs: 10,
+      isSessionAutomationPaused: (sessionId) => sessionId === "session-1",
+    });
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "wait for a real user turn" },
+      },
+    });
+
+    await wait(25);
+    await expect(scheduler.getProjectStatus(projectId)).resolves.toMatchObject({
+      state: "blocked",
+      blockers: ["session-1:automation-paused"],
+      itemCount: 1,
+    });
+    expect(supervisor.resumeCalls).toHaveLength(0);
   });
 
   it("waits for the configured project quiet window before promoting", async () => {

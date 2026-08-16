@@ -780,6 +780,45 @@ describe("SessionMetadataService", () => {
     });
   });
 
+  describe("synthetic done messages", () => {
+    it("persists the overlay and automation pause atomically", async () => {
+      await service.initialize();
+      const message = {
+        type: "user" as const,
+        content: "/done" as const,
+        message: { role: "user" as const, content: "/done" as const },
+        timestamp: "2026-08-16T12:00:00.000Z",
+        uuid: "done-1",
+        id: "done-1",
+        isSynthetic: true as const,
+        yaSyntheticSource: "done" as const,
+      };
+
+      await service.recordSyntheticDone("session-1", message);
+
+      expect(service.getSyntheticDoneMessages("session-1")).toEqual([message]);
+      expect(service.getMetadata("session-1")).toMatchObject({
+        syntheticDoneMessages: [message],
+        automationPausedUntilUserTurn: true,
+      });
+
+      const reloaded = new SessionMetadataService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.getMetadata("session-1")).toMatchObject({
+        syntheticDoneMessages: [message],
+        automationPausedUntilUserTurn: true,
+      });
+
+      await reloaded.updateMetadata("session-1", {
+        automationPausedUntilUserTurn: false,
+      });
+      expect(
+        reloaded.getMetadata("session-1")?.automationPausedUntilUserTurn,
+      ).toBeUndefined();
+      expect(reloaded.getSyntheticDoneMessages("session-1")).toEqual([message]);
+    });
+  });
+
   describe("clearSession", () => {
     it("removes all metadata for a session", async () => {
       await service.initialize();

@@ -1270,6 +1270,32 @@ export const SERVER_CAPABILITIES = {
         "Older servers do not expose the durable manual-termination marker in sidebar session summaries.",
     },
   },
+  syntheticDoneCommand: {
+    id: CAPABILITY_ID_ALLOCATIONS.syntheticDoneCommand.id,
+    name: "synthetic-done-command",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server persists a YA-only /done transcript row and pauses automatic session-waking work until the next real user turn.",
+    clientFallback:
+      "Hide the toolbar setting and action, treat typed /done as an ordinary provider command, and make no done request.",
+    serverContract: {
+      routes: ["POST /api/sessions/:sessionId/done"],
+      routeModules: ["packages/server/src/routes/session-done.ts"],
+      responseFields: [
+        "message",
+        "paused",
+        "settings.clientDefaults.sessionToolbarPresence.syntheticDone",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, and older servers neither persist the overlay nor enforce the automation pause.",
+    },
+  },
   projectQueueNewSessionShortcutSetting: {
     name: "project-queue-new-session-shortcut-setting",
     kind: "permanent",
@@ -1476,6 +1502,8 @@ export const PROJECT_SESSION_DEFAULTS_CAPABILITY =
   SERVER_CAPABILITIES.projectSessionDefaults.name;
 export const SIDEBAR_SESSION_RESUME_CAPABILITY =
   SERVER_CAPABILITIES.sidebarSessionResume.name;
+export const SYNTHETIC_DONE_COMMAND_CAPABILITY =
+  SERVER_CAPABILITIES.syntheticDoneCommand.name;
 export const PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.projectQueueNewSessionShortcutSetting.name;
 

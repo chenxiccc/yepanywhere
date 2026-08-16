@@ -628,6 +628,7 @@ const toolbarVisibility: MessageInputToolbarViewProps["visibility"] = {
   contextUsage: false,
   btw: false,
   nudge: false,
+  syntheticDone: false,
   sessionStatus: false,
   projectQueue: false,
   projectQueueNewSessionShortcut: false,
@@ -5524,6 +5525,7 @@ describe("MessageInput", () => {
       conversationView: "last",
       browserDebug: "last",
       nudge: "last",
+      syntheticDone: "off",
       sessionStatus: "pin",
       shortcutsHelp: "last",
       contextUsage: "pin",
@@ -5972,5 +5974,26 @@ describe("MessageInput bang commands", () => {
     await waitFor(() =>
       expect(document.querySelector(".bang-completion-menu")).toBeTruthy(),
     );
+  });
+
+  it("handles enabled /done locally across a queued primary action", () => {
+    const onDone = vi.fn();
+    const onSend = vi.fn();
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(undefined, {
+      onDone,
+      onSend,
+      onQueue,
+      isRunning: true,
+      primaryActionKind: "queue",
+    });
+
+    fireEvent.change(textarea, { target: { value: "/done" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onQueue).not.toHaveBeenCalled();
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
   });
 });

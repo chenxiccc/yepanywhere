@@ -6,6 +6,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+  SYNTHETIC_DONE_COMMAND_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { useCallback, useMemo, useState } from "react";
@@ -64,6 +65,7 @@ interface ToolbarControlMeta {
   description: string;
   side: ToolbarSide;
   canSetPriority: boolean;
+  canDisable: boolean;
   /**
    * Whether the control has a toolbar rendering to preview. Controls that only
    * appear elsewhere in the composer would render an empty preview tile, so
@@ -86,6 +88,7 @@ const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
   "conversationView",
   "browserDebug",
   "nudge",
+  "syntheticDone",
   "sessionStatus",
   "shortcutsHelp",
   "contextUsage",
@@ -95,8 +98,8 @@ const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
   "projectQueueNewSessionShortcut",
 ]);
 
-// Presence-slider notch order above the Hide notch (0): rightward notches
-// survive narrowing longer, ending at "show always" (pin).
+// Enabled presence-slider notches run from hidden through increasingly durable
+// narrowing priorities. Controls that can be disabled add an Off notch first.
 const PRESENCE_SLIDER_PRIORITIES: readonly ToolbarNarrowingPriority[] = [
   "first",
   "mid",
@@ -108,10 +111,20 @@ function presenceSliderId(key: SessionToolbarVisibilityKey): string {
   return `session-toolbar-presence-${key}`;
 }
 
-function presenceCaptionKey(canSetPriority: boolean, notch: number) {
-  if (notch <= 0) return "appearanceToolbarPresenceHiddenCaption" as const;
+function presenceCaptionKey(
+  canSetPriority: boolean,
+  canDisable: boolean,
+  notch: number,
+) {
+  if (canDisable && notch <= 0) {
+    return "appearanceToolbarPresenceOffCaption" as const;
+  }
+  const enabledNotch = notch - (canDisable ? 1 : 0);
+  if (enabledNotch <= 0) {
+    return "appearanceToolbarPresenceHiddenCaption" as const;
+  }
   if (!canSetPriority) return "appearanceToolbarPresenceShownCaption" as const;
-  switch (PRESENCE_SLIDER_PRIORITIES[notch - 1]) {
+  switch (PRESENCE_SLIDER_PRIORITIES[enabledNotch - 1]) {
     case "first":
       return "appearanceToolbarPresenceFirstCaption" as const;
     case "mid":
@@ -129,10 +142,10 @@ interface ControlPresenceSliderProps {
   onCommitNotch: (control: ToolbarControlMeta, notch: number) => void;
 }
 
-// One slider per control editing its single presence value: hidden or a
-// narrowing-priority tier. Controls outside the overflow engine get only the
-// two end notches, since first/mid/last would not map to real runtime
-// behavior.
+// One slider per control edits its single presence value: optional off,
+// hidden, or a narrowing-priority tier. Controls outside the overflow engine
+// get only the enabled end notches, since first/mid/last would not map to real
+// runtime behavior.
 function ControlPresenceSlider({
   control,
   presence,
@@ -140,15 +153,24 @@ function ControlPresenceSlider({
 }: ControlPresenceSliderProps) {
   const { t } = useI18n();
   const [draftNotch, setDraftNotch] = useState<number | null>(null);
-  const max = control.canSetPriority ? PRESENCE_SLIDER_PRIORITIES.length : 1;
+  const disabledOffset = control.canDisable ? 1 : 0;
+  const max =
+    (control.canSetPriority ? PRESENCE_SLIDER_PRIORITIES.length : 1) +
+    disabledOffset;
   const notch =
-    presence === "hidden"
+    presence === "off"
       ? 0
-      : control.canSetPriority
-        ? 1 + Math.max(0, PRESENCE_SLIDER_PRIORITIES.indexOf(presence))
-        : 1;
+      : presence === "hidden"
+        ? disabledOffset
+        : control.canSetPriority
+          ? disabledOffset +
+            1 +
+            Math.max(0, PRESENCE_SLIDER_PRIORITIES.indexOf(presence))
+          : disabledOffset + 1;
   const shownNotch = draftNotch ?? notch;
-  const caption = t(presenceCaptionKey(control.canSetPriority, shownNotch));
+  const caption = t(
+    presenceCaptionKey(control.canSetPriority, control.canDisable, shownNotch),
+  );
   const inputId = presenceSliderId(control.key);
   const captionId = `${inputId}-caption`;
   const clearDraft = () => setDraftNotch(null);
@@ -187,7 +209,13 @@ function ControlPresenceSlider({
         ))}
       </span>
       <span className="session-toolbar-presence-labels" aria-hidden="true">
-        <span>{t("appearanceToolbarHide")}</span>
+        <span>
+          {t(
+            control.canDisable
+              ? "appearanceToolbarOff"
+              : "appearanceToolbarHide",
+          )}
+        </span>
         <span>{t("appearanceToolbarShowAlways")}</span>
       </span>
       <span className="session-toolbar-presence-caption" id={captionId}>
@@ -218,6 +246,10 @@ export function ToolbarSettings() {
   const supportsBrowserDebug = serverHasCapability(
     version,
     REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+  );
+  const supportsSyntheticDone = serverHasCapability(
+    version,
+    SYNTHETIC_DONE_COMMAND_CAPABILITY,
   );
   const supportsProjectQueueNewSessionShortcutSetting =
     serverSupportsProjectQueueNewSessionShortcutSetting(version);
@@ -286,6 +318,7 @@ export function ToolbarSettings() {
     description,
     side,
     canSetPriority: PRIORITY_EDITABLE_CONTROLS.has(key),
+    canDisable: key === "syntheticDone",
     hasToolbarPreview: !NON_TOOLBAR_CONTROLS.has(key),
   });
 
@@ -342,6 +375,16 @@ export function ToolbarSettings() {
       t("appearanceToolbarNudgeDescription"),
       "left",
     ),
+    ...(supportsSyntheticDone
+      ? [
+          controlMeta(
+            "syntheticDone",
+            t("appearanceToolbarSyntheticDoneTitle"),
+            t("appearanceToolbarSyntheticDoneDescription"),
+            "left",
+          ),
+        ]
+      : []),
     controlMeta(
       "microphone",
       t("appearanceToolbarMicrophoneTitle"),
@@ -414,24 +457,34 @@ export function ToolbarSettings() {
 
   const hiddenLeft = toolbarControls.filter(
     (control) =>
-      placementPresence[control.key] === "hidden" && control.side === "left",
+      (placementPresence[control.key] === "hidden" ||
+        placementPresence[control.key] === "off") &&
+      control.side === "left",
   );
   const hiddenRight = toolbarControls.filter(
     (control) =>
-      placementPresence[control.key] === "hidden" && control.side === "right",
+      (placementPresence[control.key] === "hidden" ||
+        placementPresence[control.key] === "off") &&
+      control.side === "right",
   );
   const shownControls = toolbarControls.filter(
-    (control) => placementPresence[control.key] !== "hidden",
+    (control) =>
+      placementPresence[control.key] !== "hidden" &&
+      placementPresence[control.key] !== "off",
   );
 
   const commitPresenceNotch = useCallback(
     (control: ToolbarControlMeta, notch: number) => {
       const next: ToolbarControlPresence =
-        notch <= 0
-          ? "hidden"
-          : control.canSetPriority
-            ? (PRESENCE_SLIDER_PRIORITIES[notch - 1] ?? "pin")
-            : "pin";
+        control.canDisable && notch <= 0
+          ? "off"
+          : notch <= (control.canDisable ? 1 : 0)
+            ? "hidden"
+            : control.canSetPriority
+              ? (PRESENCE_SLIDER_PRIORITIES[
+                  notch - 1 - (control.canDisable ? 1 : 0)
+                ] ?? "pin")
+              : "pin";
       if (toolbarPresence[control.key] !== next) {
         setControlPresence(control.key, next);
       }
@@ -445,7 +498,8 @@ export function ToolbarSettings() {
   ) => (
     <div
       className={`session-toolbar-control-row is-${placement} ${
-        toolbarPresence[control.key] === "hidden"
+        toolbarPresence[control.key] === "hidden" ||
+        toolbarPresence[control.key] === "off"
           ? "is-currently-hidden"
           : "is-currently-shown"
       }`}

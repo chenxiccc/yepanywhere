@@ -81,7 +81,7 @@ export function concatUserMessages(
     messages.every(
       (message) =>
         message.recapResumeHandled === true ||
-        message.automaticSource === "heartbeat",
+        message.automaticSource !== undefined,
     )
   ) {
     combined.recapResumeHandled = true;

@@ -8,7 +8,10 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
+  SYNTHETIC_DONE_COMMAND_CAPABILITY,
+} from "@yep-anywhere/shared";
 import {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
@@ -42,6 +45,7 @@ const state = vi.hoisted(() => {
     sessionStatus: "pin",
     projectQueue: "pin",
     projectQueueNewSessionShortcut: "hidden",
+    syntheticDone: "off",
     composerRecall: "hidden",
   };
   return {
@@ -160,6 +164,8 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarBtwDescription: "Show /btw",
           appearanceToolbarNudgeTitle: "Heartbeat/Nudge Button",
           appearanceToolbarNudgeDescription: "Show nudge",
+          appearanceToolbarSyntheticDoneTitle: "/done Button",
+          appearanceToolbarSyntheticDoneDescription: "Mark done locally",
           appearanceToolbarStatusTitle: "Session Status",
           appearanceToolbarStatusDescription: "Show status",
           appearanceToolbarSteerNowTitle: '"Now" steering selector',
@@ -185,6 +191,7 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarCollapsedButtonAlternate: "Alternate",
           appearanceToolbarCollapsedButtonMicrophone: "Microphone",
           appearanceToolbarPresenceAria: `${params?.control} visibility`,
+          appearanceToolbarPresenceOffCaption: "Disabled",
           appearanceToolbarPresenceHiddenCaption: "Not shown on the toolbar.",
           appearanceToolbarPresenceFirstCaption: "Collapses first",
           appearanceToolbarPresenceMidCaption: "Collapses in the middle",
@@ -194,6 +201,7 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarActivateControl: `Edit ${params?.control}`,
           appearanceSessionToolbarReset: "Reset",
           appearanceToolbarHide: "Hide",
+          appearanceToolbarOff: "Off",
           appearanceToolbarShowAlways: "Show always",
         }) as Record<string, string>
       )[key] ?? key,
@@ -303,6 +311,28 @@ describe("ToolbarSettings", () => {
     expect(slider.value).toBe("0");
     // Keyboard-row only, so it never enters the toolbar overflow engine.
     expect(slider.getAttribute("max")).toBe("1");
+  });
+
+  it("shows synthetic done only with capability and gives it an Off notch", () => {
+    state.version = {
+      capabilities: [SYNTHETIC_DONE_COMMAND_CAPABILITY],
+    };
+    render(<ToolbarSettings />);
+
+    const row = screen
+      .getByText("/done Button")
+      .closest(".session-toolbar-control-row");
+    expect(row).toBeTruthy();
+    const slider = within(row as HTMLElement).getByRole<HTMLInputElement>(
+      "slider",
+      { name: "/done Button visibility" },
+    );
+    expect(slider.value).toBe("0");
+    expect(slider.getAttribute("max")).toBe("5");
+
+    fireEvent.change(slider, { target: { value: "1" } });
+    fireEvent.pointerUp(slider);
+    expect(state.presence.syntheticDone).toBe("hidden");
   });
 
   it("shows a presence slider for every control row", () => {

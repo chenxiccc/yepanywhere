@@ -55,6 +55,16 @@ describe("concatUserMessages", () => {
 
     expect(combined.mode).toBe("bypassPermissions");
   });
+
+  it("keeps automatic batches from posing as fresh user intent", () => {
+    const combined = concatUserMessages([
+      { ...msg("heartbeat"), automaticSource: "heartbeat" },
+      { ...msg("queued project work"), automaticSource: "project-queue" },
+      { ...msg("wake continuation"), automaticSource: "wake" },
+    ]);
+
+    expect(combined.recapResumeHandled).toBe(true);
+  });
 });
 
 describe("MessageQueue", () => {

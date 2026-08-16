@@ -1495,6 +1495,7 @@ export class Supervisor {
    * even if the durable usage summary has not caught up yet.
    */
   private async maybeCompactAfterIdle(process: Process): Promise<void> {
+    if (this.isAutomationPausedUntilUserTurn(process.sessionId)) return;
     const percent = process.compactAtContextPercent;
     if (typeof percent !== "number" || percent <= 0 || percent >= 100) return;
     if (process.state.type !== "idle") return;
@@ -1993,6 +1994,8 @@ export class Supervisor {
       getRuntimeUnviewedSinceFn: result.getRuntimeUnviewedSince,
       setRuntimeViewerPresenceFn: result.setRuntimeViewerPresence,
       refreshPromptCacheFn: result.refreshPromptCache,
+      isAutomationPaused: () =>
+        this.isAutomationPausedUntilUserTurn(resumeSessionId ?? tempSessionId),
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -2203,6 +2206,8 @@ export class Supervisor {
       getRuntimeUnviewedSinceFn: result.getRuntimeUnviewedSince,
       setRuntimeViewerPresenceFn: result.setRuntimeViewerPresence,
       refreshPromptCacheFn: result.refreshPromptCache,
+      isAutomationPaused: () =>
+        this.isAutomationPausedUntilUserTurn(resumeSessionId ?? tempSessionId),
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -2994,6 +2999,7 @@ export class Supervisor {
 
   private flushPendingForkedRecapRequest(process: Process): void {
     if (
+      this.isAutomationPausedUntilUserTurn(process.sessionId) ||
       process.recapMode !== "fork" ||
       process.state.type !== "idle" ||
       this.forkedRecapInFlight.has(process.id) ||
@@ -3018,6 +3024,49 @@ export class Supervisor {
       this.sessionMetadataService?.getMetadata(sessionId)
         ?.recapPausedUntilUserTurn === true
     );
+  }
+
+  isAutomationPausedUntilUserTurn(sessionId: string): boolean {
+    return (
+      this.sessionMetadataService?.getMetadata(sessionId)
+        ?.automationPausedUntilUserTurn === true
+    );
+  }
+
+  async pauseSessionAutomation(sessionId: string): Promise<void> {
+    const process = this.getProcessForSession(sessionId);
+    if (process) {
+      process.pauseRecapsUntilUserTurn();
+      this.cancelInFlightForkedRecap(process);
+      process.handleAutomationPauseChanged();
+    }
+    this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS);
+  }
+
+  private resumeAutomationAfterUserTurn(process: Process): void {
+    if (!this.isAutomationPausedUntilUserTurn(process.sessionId)) {
+      return;
+    }
+    void this.sessionMetadataService
+      ?.updateMetadata(process.sessionId, {
+        automationPausedUntilUserTurn: false,
+      })
+      .then(() => {
+        process.handleAutomationPauseChanged();
+        this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS);
+      })
+      .catch((error) => {
+        getLogger().warn(
+          {
+            event: "session_automation_resume_persistence_failed",
+            sessionId: process.sessionId,
+            processId: process.id,
+            projectId: process.projectId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to clear session automation pause",
+        );
+      });
   }
 
   async pauseRecapsUntilUserTurn(processId: string): Promise<boolean> {
@@ -3448,6 +3497,9 @@ export class Supervisor {
     let dueAtMs: number | null = null;
 
     for (const process of this.processes.values()) {
+      if (this.isAutomationPausedUntilUserTurn(process.sessionId)) {
+        continue;
+      }
       const patient = this.queuePatientDeferredMessagesForProcess(
         process,
         now,
@@ -3555,6 +3607,9 @@ export class Supervisor {
   }
 
   private shouldRetainIdleProcess(sessionId: string): boolean {
+    if (this.isAutomationPausedUntilUserTurn(sessionId)) {
+      return false;
+    }
     const process = this.getProcessForSession(sessionId);
     return (
       process?.hasPatientDeferredMessages() === true ||
@@ -3567,6 +3622,9 @@ export class Supervisor {
     now: number,
     log: ReturnType<typeof getLogger>,
   ): { promoted: boolean; dueAtMs: number | null } {
+    if (this.isAutomationPausedUntilUserTurn(process.sessionId)) {
+      return { promoted: false, dueAtMs: null };
+    }
     if (!process.hasPatientDeferredMessages()) {
       return { promoted: false, dueAtMs: null };
     }
@@ -3667,6 +3725,9 @@ export class Supervisor {
     now: number,
     log: ReturnType<typeof getLogger>,
   ): Promise<number | null> {
+    if (this.isAutomationPausedUntilUserTurn(process.sessionId)) {
+      return null;
+    }
     const settings = this.getHeartbeatTurnSettings?.(process.sessionId);
     if (!settings?.enabled) {
       return null;
@@ -3803,6 +3864,9 @@ export class Supervisor {
     },
   ): Promise<void> {
     const { log } = details;
+    if (this.isAutomationPausedUntilUserTurn(process.sessionId)) {
+      return;
+    }
     const { interrupted, timedOut } = await this.interruptProcessWithTimeout(
       process,
       {
@@ -3848,6 +3912,9 @@ export class Supervisor {
       );
     }
 
+    if (this.isAutomationPausedUntilUserTurn(process.sessionId)) {
+      return;
+    }
     const result = await this.queueProcessMessage(process, {
       text: `${FORCED_HEARTBEAT_INTERRUPT_PREAMBLE}\n\n${details.text}`,
       automaticSource: "heartbeat",
@@ -4188,6 +4255,13 @@ export class Supervisor {
         reason: "recaps paused until next user turn",
       };
     }
+    if (this.isAutomationPausedUntilUserTurn(process.sessionId)) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "automation paused until next user turn",
+      };
+    }
     const sandboxError = getSessionSandboxSettingsError(
       process.sandboxEnforcement?.effective,
       process.recapMode,
@@ -4391,6 +4465,7 @@ export class Supervisor {
     process.subscribe((event) => {
       if (event.type === "user-turn-accepted") {
         this.resumeRecapsAfterUserTurn(process);
+        this.resumeAutomationAfterUserTurn(process);
       } else if (
         event.type === "mode-change" ||
         event.type === "configuration-applied"

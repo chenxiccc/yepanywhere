@@ -73,6 +73,7 @@ function usePreviewToolbarControls(previewNowMs: number) {
       | "conversationViewControl"
       | "browserDebugControl"
       | "nudgeControl"
+      | "doneControl"
       | "speechControl"
       | "statusControl"
       | "shortcutsControl"
@@ -130,6 +131,10 @@ function usePreviewToolbarControls(previewNowMs: number) {
         onTouchStart: noop,
         onTouchEnd: (event) => event.preventDefault(),
         onClearTouch: noop,
+      },
+      doneControl: {
+        onDone: noop,
+        title: t("syntheticDoneToolbarTitle"),
       },
       speechControl: {
         showMethodSelector: false,
@@ -243,6 +248,7 @@ export function SessionToolbarPreview() {
           conversationViewControl={controls.conversationViewControl}
           browserDebugControl={controls.browserDebugControl}
           nudgeControl={controls.nudgeControl}
+          doneControl={controls.doneControl}
           speechControl={controls.speechControl}
           speechWaveformActive={visibility.waveform}
           speechWaveformPreview
@@ -337,6 +343,7 @@ export function ToolbarControlPreview({
         conversationViewControl={controls.conversationViewControl}
         browserDebugControl={controls.browserDebugControl}
         nudgeControl={controls.nudgeControl}
+        doneControl={controls.doneControl}
         speechControl={controls.speechControl}
         speechWaveformActive={controlKey === "waveform"}
         speechWaveformPreview={controlKey === "waveform"}

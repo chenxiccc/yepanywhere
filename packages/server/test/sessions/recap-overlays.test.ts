@@ -1,8 +1,12 @@
-import type { DurableRecapMessage } from "@yep-anywhere/shared";
+import type {
+  DurableRecapMessage,
+  DurableSyntheticDoneMessage,
+} from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import {
   applyRecapOverlayToSummary,
   mergeRecapMessages,
+  mergeSessionOverlayMessages,
 } from "../../src/sessions/recap-overlays.js";
 import type { Message, SessionSummary } from "../../src/supervisor/types.js";
 
@@ -30,6 +34,19 @@ function providerMessage(
     timestamp: "2026-06-24T12:00:00.000Z",
     message: { role: "assistant", content: "assistant text" },
     ...overrides,
+  };
+}
+
+function done(uuid: string, timestamp: string): DurableSyntheticDoneMessage {
+  return {
+    type: "user",
+    content: "/done",
+    message: { role: "user", content: "/done" },
+    timestamp,
+    uuid,
+    id: uuid,
+    isSynthetic: true,
+    yaSyntheticSource: "done",
   };
 }
 
@@ -217,6 +234,37 @@ describe("recap overlays", () => {
       "provider-1",
       "recap-old",
       "provider-2",
+      "recap-new",
+    ]);
+  });
+
+  it("keeps done rows in timestamp order as recap boundaries", () => {
+    const merged = mergeSessionOverlayMessages(
+      [
+        providerMessage({
+          uuid: "provider-1",
+          timestamp: "2026-06-24T12:00:00.000Z",
+        }),
+      ],
+      [
+        recap({
+          uuid: "recap-old",
+          content: "First recap.",
+          timestamp: "2026-06-24T12:00:10.000Z",
+        }),
+        recap({
+          uuid: "recap-new",
+          content: "Second recap.",
+          timestamp: "2026-06-24T12:02:00.000Z",
+        }),
+      ],
+      [done("done-1", "2026-06-24T12:01:00.000Z")],
+    );
+
+    expect(merged.map((message) => message.uuid)).toEqual([
+      "provider-1",
+      "recap-old",
+      "done-1",
       "recap-new",
     ]);
   });

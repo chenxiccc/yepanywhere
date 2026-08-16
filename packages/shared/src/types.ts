@@ -545,12 +545,15 @@ export interface SpeechClientDefaults {
 export type ToolbarNarrowingPriority = "pin" | "last" | "mid" | "first";
 
 /**
- * A session-toolbar control's single presence setting: `hidden` keeps it off
- * the toolbar entirely; any narrowing-priority tier shows it with that
- * collapse behavior. There is no separate visibility boolean — hiding a
- * control forgets its previous tier.
+ * A session-toolbar control's single presence setting: `off` disables the
+ * control, `hidden` keeps an enabled control off the toolbar, and any
+ * narrowing-priority tier shows it with that collapse behavior. Controls
+ * without a disabled behavior should not offer `off` in their settings UI.
  */
-export type ToolbarControlPresence = "hidden" | ToolbarNarrowingPriority;
+export type ToolbarControlPresence =
+  | "off"
+  | "hidden"
+  | ToolbarNarrowingPriority;
 
 /** Per-control presence defaults for controls with no local override. */
 export interface SessionToolbarPresenceClientDefaults {
@@ -569,6 +572,7 @@ export interface SessionToolbarPresenceClientDefaults {
   sessionStatus?: ToolbarControlPresence;
   projectQueue?: ToolbarControlPresence;
   projectQueueNewSessionShortcut?: ToolbarControlPresence;
+  syntheticDone?: ToolbarControlPresence;
   composerRecall?: ToolbarControlPresence;
 }
 
