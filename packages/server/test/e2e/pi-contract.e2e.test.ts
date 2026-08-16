@@ -12,7 +12,7 @@ import { piVersionUsesAgentSettled } from "../../src/sdk/providers/pi.js";
 const execFileAsync = promisify(execFile);
 const describePiContract =
   process.env.PI_CONTRACT_TEST === "true" ? describe : describe.skip;
-const PI_EXECUTABLE = "pi";
+const PI_EXECUTABLE = process.env.PI_EXECUTABLE ?? "pi";
 const RPC_TIMEOUT_MS = 10_000;
 const EXIT_TIMEOUT_MS = 5_000;
 const UPDATE_NOTICE =

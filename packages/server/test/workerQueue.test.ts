@@ -1,5 +1,6 @@
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../src/logging/logger.js";
 import { WorkerQueue } from "../src/supervisor/WorkerQueue.js";
 import type { EventBus } from "../src/watcher/EventBus.js";
 
@@ -219,6 +220,9 @@ describe("WorkerQueue", () => {
     });
 
     it("should finish cancellation when the failure callback throws", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const onFailed = vi.fn(() => {
         throw new Error("callback failed");
       });
@@ -256,6 +260,16 @@ describe("WorkerQueue", () => {
         }),
       );
       await vi.waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1));
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "queued_session_failed_callback_failed",
+          queueId: first.queueId,
+          projectId: TEST_PROJECT_ID,
+          error: "callback failed",
+        }),
+        "Cancelled queued session but its failure callback failed",
+      );
+      warn.mockRestore();
     });
 
     it("should update positions for remaining items", () => {

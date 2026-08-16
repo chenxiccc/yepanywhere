@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import { NotificationService } from "../../src/notifications/NotificationService.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
 
@@ -20,6 +21,7 @@ describe("NotificationService", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -72,6 +74,9 @@ describe("NotificationService", () => {
     });
 
     it("handles corrupted JSON gracefully", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       await fs.writeFile(
         join(testDir, "notifications.json"),
         "not valid json{{{",
@@ -82,6 +87,10 @@ describe("NotificationService", () => {
 
       // Should start fresh
       expect(service.getAllLastSeen()).toEqual({});
+      expect(warn).toHaveBeenCalledWith(
+        { err: expect.any(SyntaxError) },
+        "[NotificationService] Failed to load state, starting fresh",
+      );
     });
   });
 

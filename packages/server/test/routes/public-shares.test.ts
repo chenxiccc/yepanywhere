@@ -23,6 +23,7 @@ import { gunzipSync } from "node:zlib";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import {
   createPublicSharePublicRoutes,
   createPublicShareRoutes,
@@ -297,6 +298,9 @@ describe("public share public routes", () => {
   });
 
   it("caps an oversized legacy response from the real public route", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const snapshot = makeSession({
       messages: [
         makeUserMessage("x".repeat(LEGACY_PUBLIC_SHARE_RELAY_MAX_BYTES)),
@@ -344,6 +348,12 @@ describe("public share public routes", () => {
       status: 413,
       body: { retryable: false, updateRequired: true },
     });
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[WS Relay] Public share response capped: method=GET, kind=legacy-session, status=200, bytes=",
+      ),
+    );
   });
 
   it("advertises and pulls one immutable frozen revision in bounded chunks", async () => {

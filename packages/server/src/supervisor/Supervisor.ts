@@ -486,8 +486,8 @@ export type RecoverSessionLaunchSettingsCallback = (
 const INITIAL_RECONCILE_DELAYS_MS = [1000, 3000] as const;
 
 export interface SupervisorOptions {
-  /** Agent provider interface (preferred for new code) */
-  provider?: AgentProvider;
+  /** Agent provider interface; null disables registry-backed provider discovery. */
+  provider?: AgentProvider | null;
   /** Legacy SDK interface for mock SDK */
   sdk?: ClaudeSDK;
   /** Real SDK interface with full features */
@@ -572,6 +572,7 @@ export class Supervisor {
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
   private terminatedProcesses: ProcessInfo[] = []; // Recently terminated processes
   private provider: AgentProvider | null;
+  private readonly providerDiscoveryEnabled: boolean;
   private sdk: ClaudeSDK | null;
   private realSdk: RealClaudeSDKInterface | null;
   private idleTimeoutMs: number;
@@ -640,6 +641,7 @@ export class Supervisor {
   private recapPausedSessionIds = new Set<string>();
 
   constructor(options: SupervisorOptions) {
+    this.providerDiscoveryEnabled = options.provider !== null;
     this.provider = options.provider ?? null;
     this.sdk = options.sdk ?? null;
     this.realSdk = options.realSdk ?? null;
@@ -733,7 +735,7 @@ export class Supervisor {
     if (this.provider?.name === providerName) {
       return this.provider;
     }
-    return getProvider(providerName);
+    return this.providerDiscoveryEnabled ? getProvider(providerName) : null;
   }
 
   private async assertAuthoritativeNewSessionModel(
@@ -3001,7 +3003,7 @@ export class Supervisor {
     }
     const sinceMs = this.pendingForkedRecapRequests.get(process.id) ?? null;
     this.pendingForkedRecapRequests.delete(process.id);
-    const provider = getProvider(process.provider);
+    const provider = this.resolveProvider({ providerName: process.provider });
     if (!provider) {
       return;
     }
@@ -4198,7 +4200,7 @@ export class Supervisor {
       };
     }
 
-    const provider = getProvider(process.provider);
+    const provider = this.resolveProvider({ providerName: process.provider });
     if (!provider) {
       return {
         supported: false,

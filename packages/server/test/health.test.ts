@@ -50,4 +50,12 @@ describe("GET /health", () => {
       }),
     ]);
   });
+
+  it("keeps isolated mock-SDK apps out of provider discovery", async () => {
+    const { app } = createApp({ sdk: new MockClaudeSDK() });
+    const res = await app.request("/api/providers");
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ providers: [] });
+  });
 });

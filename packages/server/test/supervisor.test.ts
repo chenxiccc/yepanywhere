@@ -40,6 +40,9 @@ function createLaunchSettingsMetadata(
     setSessionSandbox: vi.fn<SessionMetadataService["setSessionSandbox"]>(
       async () => undefined,
     ),
+    remapSessionId: vi.fn<SessionMetadataService["remapSessionId"]>(
+      async () => undefined,
+    ),
     flushPendingWrites: vi.fn<SessionMetadataService["flushPendingWrites"]>(
       async () => undefined,
     ),
@@ -114,6 +117,34 @@ describe("Supervisor", () => {
 
       expect(process.id).toBeDefined();
       expect(process.projectPath).toBe("/tmp/test");
+    });
+
+    it("keeps an isolated mock SDK out of provider discovery", async () => {
+      const isolatedSdk = new MockClaudeSDK();
+      isolatedSdk.addScenario(createMockScenario("isolated-session", "Hello!"));
+      const isolatedSupervisor = new Supervisor({
+        provider: null,
+        sdk: isolatedSdk,
+        idleTimeoutMs: 100,
+      });
+
+      const process = await isolatedSupervisor.startSession(
+        "/tmp/test",
+        { text: "hi" },
+        undefined,
+        { providerName: "claude" },
+      );
+
+      await vi.waitFor(() => {
+        expect(process.sessionId).toBe("isolated-session");
+      });
+      await expect(
+        isolatedSupervisor.requestRecap(process.id),
+      ).resolves.toMatchObject({
+        supported: false,
+        emitted: false,
+        reason: "provider not found",
+      });
     });
 
     it("tracks process in getAllProcesses", async () => {
@@ -3185,6 +3216,9 @@ describe("Supervisor", () => {
 
   describe("interruptProcess", () => {
     it("hard-aborts and unregisters when interrupt reports incomplete", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       let aborted = false;
       const interrupt = vi.fn(async () => false);
 
@@ -3242,9 +3276,16 @@ describe("Supervisor", () => {
           "interrupt-fallback-session",
         ),
       ).toBe(true);
+      expect(
+        warn.mock.calls.map(([fields]) => (fields as { event?: string }).event),
+      ).toEqual(["session_interrupt_incomplete", "process_terminated"]);
+      warn.mockRestore();
     });
 
     it("times out a stalled interrupt before hard-aborting", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       let aborted = false;
       const interrupt = vi.fn(() => new Promise<boolean>(() => {}));
 
@@ -3300,9 +3341,20 @@ describe("Supervisor", () => {
       expect(
         supervisorWithRealSdk.getProcessForSession("interrupt-timeout-session"),
       ).toBeUndefined();
+      expect(
+        warn.mock.calls.map(([fields]) => (fields as { event?: string }).event),
+      ).toEqual([
+        "session_interrupt_timeout",
+        "session_interrupt_incomplete",
+        "process_terminated",
+      ]);
+      warn.mockRestore();
     });
 
     it("recovers deferred messages onto a replacement after hard abort", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       let startCount = 0;
       const aborts: Array<() => void> = [];
       const interrupt = vi.fn(async () => false);
@@ -3380,9 +3432,16 @@ describe("Supervisor", () => {
       expect(aborts).toHaveLength(2);
 
       await replacement?.abort();
+      expect(
+        warn.mock.calls.map(([fields]) => (fields as { event?: string }).event),
+      ).toEqual(["session_interrupt_incomplete", "process_terminated"]);
+      warn.mockRestore();
     });
 
     it("recovers queued provider messages onto a replacement after hard abort", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       let startCount = 0;
       const aborts: Array<() => void> = [];
       const interrupt = vi.fn(async () => false);
@@ -3458,9 +3517,16 @@ describe("Supervisor", () => {
       expect(replacement?.id).not.toBe(process.id);
 
       await replacement?.abort();
+      expect(
+        warn.mock.calls.map(([fields]) => (fields as { event?: string }).event),
+      ).toEqual(["session_interrupt_incomplete", "process_terminated"]);
+      warn.mockRestore();
     });
 
     it("waits for provider teardown before starting hard-abort recovery", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       let startCount = 0;
       let releaseFirstAbort: (() => void) | undefined;
       const firstAbortGate = new Promise<void>((resolve) => {
@@ -3547,6 +3613,10 @@ describe("Supervisor", () => {
       await supervisorWithRealSdk
         .getProcessForSession("interrupt-ordered-recovery-session")
         ?.abort();
+      expect(
+        warn.mock.calls.map(([fields]) => (fields as { event?: string }).event),
+      ).toEqual(["session_interrupt_incomplete", "process_terminated"]);
+      warn.mockRestore();
     });
   });
 
@@ -5677,6 +5747,12 @@ describe("Supervisor", () => {
     });
 
     it("emits process-terminated when the underlying process exits unexpectedly", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const eventBus = new EventBus();
       const events: BusEvent[] = [];
       eventBus.subscribe((event) => events.push(event));
@@ -5727,6 +5803,24 @@ describe("Supervisor", () => {
         sessionId: "terminated-session-1",
         reason: "underlying process terminated",
       });
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_error",
+          sessionId: "terminated-session-1",
+          errorMessage: "process exited",
+        }),
+        "Process error: terminated-session-1 - process exited",
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_terminated",
+          sessionId: "terminated-session-1",
+          reason: "underlying process terminated",
+        }),
+        "Process terminated: terminated-session-1 - underlying process terminated",
+      );
+      errorLog.mockRestore();
+      warn.mockRestore();
     });
 
     it("keeps an idle owner registered until provider abort is verified", async () => {
@@ -5836,6 +5930,9 @@ describe("Supervisor", () => {
 
     it("retains a failed idle teardown until an explicit abort retry", async () => {
       vi.useFakeTimers();
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
       try {
         let providerAlive = true;
         const queue = new MessageQueue();
@@ -5939,7 +6036,17 @@ describe("Supervisor", () => {
               event.ownership.owner === "none",
           ),
         ).toHaveLength(1);
+        expect(errorLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: "lifecycle_teardown_failed",
+            sessionId: "idle-failed-abort-session",
+            reason: "idle reap provider teardown failed",
+            errorMessage: "provider refused shutdown",
+          }),
+          "Provider teardown remains unverified: idle-failed-abort-session",
+        );
       } finally {
+        errorLog.mockRestore();
         vi.useRealTimers();
       }
     });
@@ -6262,6 +6369,9 @@ describe("Supervisor", () => {
 
     it("does not terminate long-silent active sessions without liveness", async () => {
       vi.useFakeTimers();
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       try {
         let aborted = false;
 
@@ -6316,7 +6426,17 @@ describe("Supervisor", () => {
         );
         await vi.advanceTimersByTimeAsync(5000);
         await expect(abortPromise).resolves.toBe(true);
+        expect(warn).toHaveBeenCalledTimes(2);
+        expect(
+          warn.mock.calls.map(
+            ([fields]) => (fields as { event?: string }).event,
+          ),
+        ).toEqual([
+          "stale_process_liveness_unknown",
+          "stale_process_liveness_unknown",
+        ]);
       } finally {
+        warn.mockRestore();
         vi.useRealTimers();
       }
     });

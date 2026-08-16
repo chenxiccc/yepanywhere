@@ -4,7 +4,7 @@ import type {
   UploadProgressMessage,
   UploadedFile,
 } from "@yep-anywhere/shared";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   UploadError,
   type WebSocketFactory,
@@ -15,6 +15,10 @@ import {
   uploadChunks,
   uploadStagedChunks,
 } from "./upload";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /** Mock WebSocket for testing */
 class MockWebSocket implements WebSocketLike {
@@ -371,6 +375,9 @@ describe("uploadChunks", () => {
   });
 
   it("rejects on WebSocket error", async () => {
+    const errorLog = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     const uploadPromise = uploadChunks(
       "ws://test/upload",
       testMetadata,
@@ -384,6 +391,10 @@ describe("uploadChunks", () => {
     mockWs.simulateError();
 
     await expect(uploadPromise).rejects.toThrow("WebSocket error");
+    expect(errorLog).toHaveBeenCalledWith(
+      "[Upload] WebSocket error:",
+      expect.any(Event),
+    );
   });
 
   it("rejects on unexpected WebSocket close", async () => {

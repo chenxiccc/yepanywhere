@@ -23,6 +23,7 @@ export function createApp(options: AppOptions): AppResult {
     geminiSessionsDir: join(EMPTY_PROVIDER_ROOT, "gemini"),
     grokSessionsDir: join(EMPTY_PROVIDER_ROOT, "grok"),
     piSessionsDir: join(EMPTY_PROVIDER_ROOT, "pi"),
+    provider: null,
     ...options,
   });
 }

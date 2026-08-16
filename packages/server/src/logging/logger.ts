@@ -33,11 +33,12 @@ export interface LogConfig {
 }
 
 function getDefaultConfig(): LogConfig {
+  const autoConsoleLevel = process.env.VITEST === "true" ? "warn" : "info";
   return {
     logDir:
       process.env.LOG_DIR ?? path.join(os.homedir(), ".yep-anywhere", "logs"),
     logFile: process.env.LOG_FILE ?? "server.log",
-    consoleLevel: (process.env.LOG_LEVEL as LogLevel) || "info",
+    consoleLevel: (process.env.LOG_LEVEL as LogLevel) || autoConsoleLevel,
     fileLevel:
       (process.env.LOG_FILE_LEVEL as LogLevel) ||
       (process.env.LOG_LEVEL as LogLevel) ||
@@ -81,24 +82,26 @@ export function initLogger(config: Partial<LogConfig> = {}): pino.Logger {
   const streams: pino.StreamEntry[] = [];
 
   // Console stream
-  if (finalConfig.prettyPrint) {
-    const pretty = pino.transport({
-      target: "pino-pretty",
-      options: {
-        colorize: true,
-        translateTime: "HH:MM:ss",
-        ignore: "pid,hostname,console",
-      },
-    });
-    streams.push({
-      stream: pretty,
-      level: finalConfig.consoleLevel as pino.Level,
-    });
-  } else {
-    streams.push({
-      stream: process.stdout,
-      level: finalConfig.consoleLevel as pino.Level,
-    });
+  if (finalConfig.consoleLevel !== "silent") {
+    if (finalConfig.prettyPrint) {
+      const pretty = pino.transport({
+        target: "pino-pretty",
+        options: {
+          colorize: true,
+          translateTime: "HH:MM:ss",
+          ignore: "pid,hostname,console",
+        },
+      });
+      streams.push({
+        stream: pretty,
+        level: finalConfig.consoleLevel as pino.Level,
+      });
+    } else {
+      streams.push({
+        stream: process.stdout,
+        level: finalConfig.consoleLevel as pino.Level,
+      });
+    }
   }
 
   // File stream

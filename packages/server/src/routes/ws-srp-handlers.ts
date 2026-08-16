@@ -17,6 +17,7 @@ import {
   deriveTransportKey,
   encrypt,
 } from "../crypto/index.js";
+import { getLogger } from "../logging/logger.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -633,7 +634,7 @@ export async function handleSrpProof(
 
     if (!result) {
       const now = Date.now();
-      console.warn(
+      getLogger().warn(
         `[WS Relay] SRP authentication failed for ${connState.username}`,
       );
       applyFailedProofPenalty(connState.srpLimiter, now);

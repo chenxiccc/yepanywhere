@@ -237,8 +237,8 @@ import type { EventBus } from "./watcher/index.js";
 import { LifecycleWebhookService } from "./webhooks/LifecycleWebhookService.js";
 
 export interface AppOptions {
-  /** Explicit provider override for embedding and isolated tests. */
-  provider?: AgentProvider;
+  /** Explicit provider override; null suppresses ambient provider discovery. */
+  provider?: AgentProvider | null;
   /** Legacy SDK interface for mock SDK (for testing) */
   sdk?: ClaudeSDK;
   /** Real SDK interface with full features */
@@ -1146,15 +1146,27 @@ export function createApp(options: AppOptions): AppResult {
       projectId: row.projectId as UrlProjectId,
     }));
   };
+  const resolveConfiguredProvider = (
+    providerName: ProviderName,
+  ): AgentProvider | undefined => {
+    const configuredProvider = options.provider;
+    if (configuredProvider?.name === providerName) {
+      return configuredProvider;
+    }
+    return configuredProvider === null
+      ? undefined
+      : (getProvider(providerName) ?? undefined);
+  };
 
   supervisor = new Supervisor({
     sdk: options.sdk,
     realSdk: options.realSdk,
     provider:
-      options.provider ??
-      (isProviderRuntimeHostAvailable()
-        ? (getProvider("claude") ?? undefined)
-        : undefined),
+      options.provider !== undefined
+        ? options.provider
+        : isProviderRuntimeHostAvailable()
+          ? resolveConfiguredProvider("claude")
+          : undefined,
     idleTimeoutMs: options.idleTimeoutMs,
     defaultPermissionMode: options.defaultPermissionMode,
     eventBus: options.eventBus,
@@ -1251,7 +1263,8 @@ export function createApp(options: AppOptions): AppResult {
       ? () => heartbeatCandidates.getWaitingSessionIds()
       : undefined,
     getPromptCacheKeepaliveSettings: (providerName) => {
-      const capability = getProvider(providerName)?.promptCacheKeepalive;
+      const capability =
+        resolveConfiguredProvider(providerName)?.promptCacheKeepalive;
       if (!capability?.supportsNoContextPollutionNudge) {
         return {
           enabled: false,
@@ -2031,7 +2044,12 @@ export function createApp(options: AppOptions): AppResult {
     createProvidersRoutes({
       modelInfoService: options.modelInfoService,
       enabledProviders: options.enabledProviders,
-      providers: options.provider ? [options.provider] : undefined,
+      providers:
+        options.provider === null
+          ? []
+          : options.provider
+            ? [options.provider]
+            : undefined,
       desktopRuntime: options.desktopRuntime,
     }),
   );

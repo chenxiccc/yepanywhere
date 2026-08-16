@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { getLogger } from "../logging/logger.js";
 import type { EventBus, SessionSeenEvent } from "../watcher/EventBus.js";
 
 export type { SessionSeenEvent };
@@ -81,9 +82,9 @@ export class NotificationService {
     } catch (error) {
       // File doesn't exist or is invalid - start fresh
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.warn(
-          "[NotificationService] Failed to load state, starting fresh:",
-          error,
+        getLogger().warn(
+          { err: error },
+          "[NotificationService] Failed to load state, starting fresh",
         );
       }
       this.state = { lastSeen: {}, version: CURRENT_VERSION };

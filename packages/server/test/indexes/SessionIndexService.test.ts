@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionIndexService } from "../../src/indexes/SessionIndexService.js";
+import { getLogger } from "../../src/logging/logger.js";
 import { GrokSessionReader } from "../../src/sessions/grok-reader.js";
 import { SessionReader } from "../../src/sessions/reader.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
@@ -45,6 +46,7 @@ describe("SessionIndexService", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(testDir, { recursive: true, force: true });
   });
 
@@ -368,6 +370,9 @@ describe("SessionIndexService", () => {
 
   describe("corrupt index", () => {
     it("gracefully handles malformed index file", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       await createSession("session-1", "Test content");
 
       // Write corrupt index
@@ -383,6 +388,10 @@ describe("SessionIndexService", () => {
       );
       expect(sessions).toHaveLength(1);
       expect(sessions[0]?.title).toBe("Test content");
+      expect(warn).toHaveBeenCalledWith(
+        { err: expect.any(SyntaxError) },
+        `[SessionIndexService] Failed to load index for ${sessionDir}, starting fresh`,
+      );
     });
 
     it("handles index with wrong version", async () => {

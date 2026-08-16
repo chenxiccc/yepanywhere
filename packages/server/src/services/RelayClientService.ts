@@ -21,6 +21,7 @@ import {
   isRelayServerRejected,
 } from "@yep-anywhere/shared";
 import { WebSocket } from "ws";
+import { getLogger } from "../logging/logger.js";
 import { MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES } from "../websocketLimits.js";
 
 export interface RelayClientConfig {
@@ -293,7 +294,7 @@ export class RelayClientService {
     } catch {
       // Not valid JSON - shouldn't happen for relay protocol. Incoming frames
       // can contain credentials, so only log framing metadata.
-      console.warn(
+      getLogger().warn(
         `[RelayClient] Received non-JSON text frame (${data.length} bytes)`,
       );
       return;
@@ -328,7 +329,7 @@ export class RelayClientService {
   }
 
   private handleRejection(ws: WebSocket, msg: RelayServerRejected): void {
-    console.warn(`[RelayClient] Registration rejected: ${msg.reason}`);
+    getLogger().warn(`[RelayClient] Registration rejected: ${msg.reason}`);
 
     // Close the connection
     ws.close();

@@ -841,6 +841,10 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
 
   it("surfaces load failures without creating a new native session", async () => {
     failLoad = true;
+    const { getLogger } = await import("../../../src/logging/logger.js");
+    const errorLog = vi
+      .spyOn(getLogger(), "error")
+      .mockImplementation(() => undefined);
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 
     const session = await provider.startSession({
@@ -862,6 +866,24 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
       ).toBe(true);
       // Fail closed: a lost session must not silently become a fresh one.
       expect(sessionCalls.some((c) => c.type === "new")).toBe(false);
+      expect(errorLog).toHaveBeenNthCalledWith(
+        1,
+        {
+          err: expect.objectContaining({ message: "mock load failed" }),
+          resumeSessionId: "missing-session",
+        },
+        "Failed to load Grok ACP session",
+      );
+      expect(errorLog).toHaveBeenNthCalledWith(
+        2,
+        {
+          err: expect.objectContaining({
+            message:
+              "Failed to load Grok session missing-session: mock load failed",
+          }),
+        },
+        "Grok ACP session error",
+      );
     } finally {
       session.abort();
     }

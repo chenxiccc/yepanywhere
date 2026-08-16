@@ -427,6 +427,9 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("requeues immediate startup failures and pauses the third attempt", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     await scheduler.dispose();
     scheduler = new ProjectQueueScheduler({
       projectQueueService: service,
@@ -482,6 +485,16 @@ describe("ProjectQueueScheduler", () => {
         lastError: expect.stringContaining("Codex app-server socket timed out"),
       }),
     ]);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      {
+        event: "project_queue_dispatch_retry_exhausted",
+        projectId,
+        error:
+          "Provider session startup did not settle: Codex app-server socket timed out",
+      },
+      "Project queue item paused after repeated provider startup failures",
+    );
   });
 
   it("materializes staged attachments before promoting a queued new session", async () => {

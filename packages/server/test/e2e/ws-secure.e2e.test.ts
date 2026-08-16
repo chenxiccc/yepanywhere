@@ -40,13 +40,14 @@ import {
   isSrpSessionInvalid,
   isSrpSessionResumed,
 } from "@yep-anywhere/shared";
+import { getLogger } from "../../src/logging/logger.js";
 import {
   SRPClientSession,
   SRPParameters,
   SRPRoutines,
   bigIntToArrayBuffer,
 } from "tssrp6a";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { createApp } from "../setup/create-app.js";
 import { AuthService } from "../../src/auth/AuthService.js";
@@ -613,13 +614,20 @@ describe("Secure WebSocket Transport E2E", () => {
 
     it("should reject incorrect password", async () => {
       const ws = await connectWebSocket();
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
 
       try {
         await expect(
           performSrpHandshakeV2(ws, TEST_USERNAME, "wrongpassword"),
         ).rejects.toThrow();
+        expect(warn).toHaveBeenCalledWith(
+          `[WS Relay] SRP authentication failed for ${TEST_USERNAME}`,
+        );
       } finally {
         await closeWebSocket(ws);
+        warn.mockRestore();
       }
     }, 15000);
 
@@ -1065,6 +1073,9 @@ describe("Secure WebSocket Transport E2E", () => {
       expect(firstResponse?.status).toBe(200);
       await closeWebSocket(ws1);
 
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const ws2 = await connectWebSocket();
       try {
         const resumeInit: SrpSessionResumeInit = {
@@ -1116,8 +1127,12 @@ describe("Secure WebSocket Transport E2E", () => {
         const closeResult = await closePromise;
         expect(closeResult.code).toBe(4004);
         expect(closeResult.reason).toBe("Decryption failed");
+        expect(warn).toHaveBeenCalledWith(
+          "[WS Relay] Failed to decrypt binary envelope",
+        );
       } finally {
         await closeWebSocket(ws2);
+        warn.mockRestore();
       }
 
       // Reconnect again and verify fresh resume traffic works as expected.
@@ -1238,6 +1253,9 @@ describe("Secure WebSocket Transport E2E", () => {
     }, 15000);
 
     it("should close connection with code 4001 when plaintext message sent without auth", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const ws = await connectWebSocket();
 
       // Set up close handler before sending message
@@ -1265,9 +1283,16 @@ describe("Secure WebSocket Transport E2E", () => {
 
       expect(closeResult.code).toBe(4001);
       expect(closeResult.reason).toBe("Authentication required");
+      expect(warn).toHaveBeenCalledWith(
+        "[WS Relay] Received plaintext message but auth required",
+      );
+      warn.mockRestore();
     }, 5000);
 
     it("should close connection with code 4005 when plaintext message sent after auth", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const ws = await connectWebSocket();
 
       await performSrpHandshakeV2(ws, TEST_USERNAME, TEST_PASSWORD);
@@ -1292,6 +1317,10 @@ describe("Secure WebSocket Transport E2E", () => {
       const closeResult = await closePromise;
       expect(closeResult.code).toBe(4005);
       expect(closeResult.reason).toBe("Encrypted message required");
+      expect(warn).toHaveBeenCalledWith(
+        "[WS Relay] Received plaintext message after authentication",
+      );
+      warn.mockRestore();
     }, 5000);
   });
 
@@ -1531,6 +1560,9 @@ describe("Secure WebSocket Transport E2E", () => {
     }, 15000);
 
     it("should reject JSON encrypted envelopes after authentication", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const ws = await connectWebSocket();
 
       try {
@@ -1569,8 +1601,12 @@ describe("Secure WebSocket Transport E2E", () => {
         const closed = await closedPromise;
         expect(closed.code).toBe(4005);
         expect(closed.reason).toBe("Binary encrypted message required");
+        expect(warn).toHaveBeenCalledWith(
+          "[WS Relay] Received obsolete encrypted text envelope",
+        );
       } finally {
         await closeWebSocket(ws);
+        warn.mockRestore();
       }
 
       const ws2 = await connectWebSocket();

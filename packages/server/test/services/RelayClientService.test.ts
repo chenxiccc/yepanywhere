@@ -86,6 +86,7 @@ vi.mock("ws", () => {
 });
 
 // Import after mock setup
+import { getLogger } from "../../src/logging/logger.js";
 import { RelayClientService } from "../../src/services/RelayClientService.js";
 import { MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES } from "../../src/websocketLimits.js";
 
@@ -106,6 +107,7 @@ describe("RelayClientService", () => {
     service.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe("start", () => {
@@ -314,6 +316,9 @@ describe("RelayClientService", () => {
 
   describe("rejection handling", () => {
     it("handles username_taken rejection", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       service.start({
         relayUrl: "wss://relay.example.com/ws",
         username: "taken-user",
@@ -333,6 +338,9 @@ describe("RelayClientService", () => {
       expect(state.status).toBe("rejected");
       expect(state.error).toContain("taken-user");
       expect(state.error).toContain("already registered");
+      expect(warn).toHaveBeenCalledWith(
+        "[RelayClient] Registration rejected: username_taken",
+      );
 
       // Should not attempt to reconnect
       await vi.advanceTimersByTimeAsync(120000);
@@ -340,6 +348,9 @@ describe("RelayClientService", () => {
     });
 
     it("handles invalid_username rejection", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       service.start({
         relayUrl: "wss://relay.example.com/ws",
         username: "bad!user",
@@ -358,6 +369,9 @@ describe("RelayClientService", () => {
       const state = service.getState();
       expect(state.status).toBe("rejected");
       expect(state.error).toContain("Invalid username format");
+      expect(warn).toHaveBeenCalledWith(
+        "[RelayClient] Registration rejected: invalid_username",
+      );
     });
   });
 
@@ -418,7 +432,7 @@ describe("RelayClientService", () => {
     it("never logs claimed or malformed text payloads", async () => {
       const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
       const warn = vi
-        .spyOn(console, "warn")
+        .spyOn(getLogger(), "warn")
         .mockImplementation(() => undefined);
       try {
         service.start({
@@ -450,6 +464,11 @@ describe("RelayClientService", () => {
         expect(logged).not.toContain(claimedBearer);
         expect(logged).not.toContain(malformedBearer);
         expect(logged).not.toContain(claimedMessage);
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "[RelayClient] Received non-JSON text frame (",
+          ),
+        );
         expect(mockOnRelayConnection).toHaveBeenCalledWith(
           ws,
           claimedMessage,

@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type VapidKeys,
   generateVapidKeys,
@@ -19,6 +19,7 @@ describe("setup-vapid", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
@@ -165,12 +166,22 @@ describe("setup-vapid", () => {
     });
 
     it("should return null for invalid JSON", async () => {
+      const warn = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => undefined);
       await fs.writeFile(vapidFile, "not valid json");
       const loaded = await loadVapidKeys(vapidFile);
       expect(loaded).toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        `[vapid] Failed to load ${vapidFile}:`,
+        expect.any(SyntaxError),
+      );
     });
 
     it("should return null for invalid keys", async () => {
+      const warn = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => undefined);
       await fs.writeFile(
         vapidFile,
         JSON.stringify({
@@ -181,6 +192,9 @@ describe("setup-vapid", () => {
       );
       const loaded = await loadVapidKeys(vapidFile);
       expect(loaded).toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        `[vapid] Invalid keys in ${vapidFile}: Subject must start with mailto: or https://`,
+      );
     });
 
     it("should tighten permissions on existing vapid.json files at load", async () => {

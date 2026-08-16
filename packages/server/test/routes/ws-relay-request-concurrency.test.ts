@@ -5,7 +5,7 @@ import {
   type YepMessage,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLogger } from "../../src/logging/logger.js";
 import type { RelayHandlerDeps } from "../../src/routes/ws-relay-handlers.js";
 import {
@@ -22,6 +22,10 @@ import {
 
 beforeEach(() => {
   __relayResponseSerializationTest.reset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 /**
@@ -531,6 +535,9 @@ describe("WS relay request concurrency", () => {
   });
 
   it("keeps failed SRP mode from accepting later public plaintext", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     let routeCalls = 0;
     const app = new Hono<{ Bindings: HttpBindings }>();
     app.get("/public-api/shares/:secret/metadata", (c) => {
@@ -580,6 +587,9 @@ describe("WS relay request concurrency", () => {
     expect(state.connectionMode).toBe("srp");
     expect(routeCalls).toBe(0);
     expect(close).toHaveBeenCalledWith(4001, "Authentication required");
+    expect(warn).toHaveBeenCalledWith(
+      "[WS Relay] Received plaintext message but auth required",
+    );
   });
 });
 
@@ -759,12 +769,21 @@ describe("WS relay legacy public-share response bound", () => {
       LEGACY_PUBLIC_SHARE_RELAY_MAX_BYTES +
         LEGACY_PUBLIC_SHARE_RESPONSE_CHUNK_MAX_BYTES,
     );
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[WS Relay] Public share response capped: method=GET, kind=legacy-session, status=200, bytes=",
+      ),
+    );
     expect(JSON.stringify(warn.mock.calls)).not.toContain(
       "never-log-this-bearer",
     );
   });
 
   it("rejects a controlled producer chunk above 64 KiB", async () => {
+    const errorLog = vi
+      .spyOn(getLogger(), "error")
+      .mockImplementation(() => undefined);
     const app = new Hono<{ Bindings: HttpBindings }>();
     let cancelled = false;
     app.get(
@@ -798,9 +817,16 @@ describe("WS relay legacy public-share response bound", () => {
 
     expect(response.status).toBe(500);
     expect(cancelled).toBe(true);
+    expect(errorLog).toHaveBeenCalledOnce();
+    expect(errorLog).toHaveBeenCalledWith(
+      "[WS Relay] Public share request failed: method=GET",
+    );
   });
 
   it("rejects an unbounded producer chunk as an internal failure", async () => {
+    const errorLog = vi
+      .spyOn(getLogger(), "error")
+      .mockImplementation(() => undefined);
     const app = new Hono<{ Bindings: HttpBindings }>();
     let cancelled = false;
     app.get(
@@ -832,9 +858,16 @@ describe("WS relay legacy public-share response bound", () => {
 
     expect(response.status).toBe(500);
     expect(cancelled).toBe(true);
+    expect(errorLog).toHaveBeenCalledOnce();
+    expect(errorLog).toHaveBeenCalledWith(
+      "[WS Relay] Public share request failed: method=GET",
+    );
   });
 
   it("returns 413 for an oversized generic preauth public resource", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const app = new Hono<{ Bindings: HttpBindings }>();
     let cancelled = false;
     app.get(
@@ -871,9 +904,15 @@ describe("WS relay legacy public-share response bound", () => {
     });
     expect(response.body).not.toHaveProperty("updateRequired");
     expect(cancelled).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      `[WS Relay] Public share response capped: method=GET, kind=public-resource, status=200, bytes=${LEGACY_PUBLIC_SHARE_RELAY_MAX_BYTES + 2}`,
+    );
   });
 
   it("rejects a declared oversized preauth body before pulling it", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const app = new Hono<{ Bindings: HttpBindings }>();
     let pullCalls = 0;
     let cancelled = false;
@@ -910,6 +949,9 @@ describe("WS relay legacy public-share response bound", () => {
     expect(response.status).toBe(413);
     expect(pullCalls).toBe(0);
     expect(cancelled).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      `[WS Relay] Public share response capped: method=GET, kind=public-resource, status=200, bytes=${LEGACY_PUBLIC_SHARE_RELAY_MAX_BYTES + 1}`,
+    );
   });
 
   it("does not apply the limit to an authenticated public-share request", async () => {

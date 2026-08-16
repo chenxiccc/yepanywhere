@@ -8,7 +8,7 @@ describe("logger auto-init defaults", () => {
     vi.resetModules();
   });
 
-  it("disables file logging by default in test environment", async () => {
+  it("keeps auto-initialized test logging warning-only and file-free", async () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("VITEST", "true");
     vi.stubEnv("LOG_TO_FILE", undefined);
@@ -25,7 +25,7 @@ describe("logger auto-init defaults", () => {
     const loggerModule = await import("../../src/logging/logger.js");
     const logger = loggerModule.getLogger();
 
-    expect(logger).toBeDefined();
+    expect(logger.level).toBe("warn");
     expect(createWriteStream).not.toHaveBeenCalled();
   });
 

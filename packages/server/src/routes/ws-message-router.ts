@@ -10,6 +10,7 @@ import {
   isClientCapabilities,
 } from "@yep-anywhere/shared";
 import { decompressGzip, decryptBinaryEnvelopeRaw } from "../crypto/index.js";
+import { getLogger } from "../logging/logger.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type {
@@ -91,7 +92,7 @@ export async function decodeFrameToParsedMessage(
           ? decryptBinaryEnvelopeRaw(bytes, connState.sessionKey)
           : null;
         if (!result) {
-          console.warn("[WS Relay] Failed to decrypt binary envelope");
+          getLogger().warn("[WS Relay] Failed to decrypt binary envelope");
           ws.close(4004, "Decryption failed");
           return null;
         }
@@ -247,9 +248,9 @@ export async function decodeFrameToParsedMessage(
       return JSON.parse(json);
     } catch (err) {
       if (err instanceof BinaryFrameError) {
-        console.warn(
-          `[WS Relay] Binary frame error (${err.code}):`,
-          err.message,
+        getLogger().warn(
+          { code: err.code, error: err.message },
+          "[WS Relay] Binary frame error",
         );
         if (err.code === "UNKNOWN_FORMAT") {
           ws.close(4002, err.message);
@@ -274,7 +275,7 @@ export async function decodeFrameToParsedMessage(
   try {
     return JSON.parse(textData);
   } catch {
-    console.warn(
+    getLogger().warn(
       `[WS Relay] Failed to parse text frame: characters=${textData.length}`,
     );
     return null;
@@ -397,9 +398,9 @@ export async function routeClientMessageSafely(
     }
   } catch (err) {
     const messageId = getMessageId(msg);
-    console.error(
-      `[WS Relay] Unhandled error in routeMessage (type=${msg.type}, id=${messageId}):`,
-      err,
+    getLogger().error(
+      { err, type: msg.type, messageId },
+      "[WS Relay] Unhandled error in routeMessage",
     );
     if (messageId) {
       try {

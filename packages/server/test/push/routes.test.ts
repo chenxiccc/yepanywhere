@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpError } from "../../src/middleware/error-handler.js";
 import { createPushRoutes } from "../../src/push/routes.js";
 import type { PushService } from "../../src/push/PushService.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("Push Routes", () => {
   describe("PUT /settings", () => {
@@ -111,6 +115,9 @@ describe("Push Routes", () => {
     });
 
     it("returns the real error message when subscribe throws", async () => {
+      const errorLog = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const routes = createPushRoutes({
         pushService: {
           subscribe: vi.fn(async () => {
@@ -131,9 +138,16 @@ describe("Push Routes", () => {
       await expect(response.json()).resolves.toEqual({
         error: "EACCES: permission denied, open 'push-subscriptions.json'",
       });
+      expect(errorLog).toHaveBeenCalledWith(
+        "[API] POST /subscribe error:",
+        "EACCES: permission denied, open 'push-subscriptions.json'",
+      );
     });
 
     it("maps an uninitialized service to 503 with the reason", async () => {
+      const errorLog = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       // The 503 rides on the typed HttpError PushService throws, not on the
       // message text — matching ensureInitialized in PushService.ts.
       const routes = createPushRoutes({
@@ -156,9 +170,16 @@ describe("Push Routes", () => {
       expect(response.status).toBe(503);
       const body = (await response.json()) as { error: string };
       expect(body.error).toContain("not initialized");
+      expect(errorLog).toHaveBeenCalledWith(
+        "[API] POST /subscribe error:",
+        "PushService not initialized. Call initialize() first.",
+      );
     });
 
     it("passes through a web-push statusCode when one escapes", async () => {
+      const errorLog = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
       const routes = createPushRoutes({
         pushService: {
           subscribe: vi.fn(async () => {
@@ -184,6 +205,10 @@ describe("Push Routes", () => {
         error: "Received unexpected response code",
         statusCode: 403,
       });
+      expect(errorLog).toHaveBeenCalledWith(
+        "[API] POST /subscribe error:",
+        "Received unexpected response code",
+      );
     });
   });
 });

@@ -146,7 +146,20 @@ import type {
 import { inactiveProviderSessionOptionsResult } from "./types.js";
 import type { SessionSandboxRuntime } from "../../session-sandbox.js";
 
-const log = getLogger().child({ component: "codex-provider" });
+const log = {
+  debug(bindings: Record<string, unknown>, message: string): void {
+    getLogger().debug({ component: "codex-provider", ...bindings }, message);
+  },
+  info(bindings: Record<string, unknown>, message: string): void {
+    getLogger().info({ component: "codex-provider", ...bindings }, message);
+  },
+  warn(bindings: Record<string, unknown>, message: string): void {
+    getLogger().warn({ component: "codex-provider", ...bindings }, message);
+  },
+  error(bindings: Record<string, unknown>, message: string): void {
+    getLogger().error({ component: "codex-provider", ...bindings }, message);
+  },
+};
 const CODEX_DESKTOP_BROWSER_SKILL_NAME = "browser:control-in-app-browser";
 
 function logSdkCorrelationDebug(
@@ -2541,8 +2554,11 @@ export class CodexProvider implements AgentProvider {
       );
       return true;
     } catch (error) {
-      log.warn(
-        { error },
+      log.info(
+        {
+          event: "codex_experimental_api_unavailable",
+          error: error instanceof Error ? error.message : String(error),
+        },
         "Codex initialize with experimentalApi failed; retrying without capabilities",
       );
       await appServer.request<{ userAgent: string }>(

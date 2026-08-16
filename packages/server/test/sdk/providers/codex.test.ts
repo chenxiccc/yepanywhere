@@ -30,6 +30,7 @@ import {
   vi,
 } from "vitest";
 import { compileTranscriptProjection } from "../../../../client/src/lib/transcriptProjection/compiler.ts";
+import { getLogger } from "../../../src/logging/logger.js";
 import { getCodexCommonPaths } from "../../../src/sdk/cli-detection.js";
 import { logSDKMessage } from "../../../src/sdk/messageLogger.js";
 import {
@@ -77,6 +78,7 @@ afterEach(() => {
       process.env[key] = value;
     }
   }
+  vi.restoreAllMocks();
 });
 
 function createFakeCodexCommand(
@@ -380,6 +382,9 @@ describe("CodexProvider", () => {
     });
 
     it("should emit error if Codex CLI is not found", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
       const noCliProvider = new CodexProvider({
         codexPath: "/nonexistent/codex",
       });
@@ -409,6 +414,16 @@ describe("CodexProvider", () => {
         codexErrorScope: "app_server_process",
       });
       expect(error?.error).toContain("/nonexistent/codex");
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          component: "codex-provider",
+          error: expect.any(Error),
+          codexFailureTrace: expect.objectContaining({
+            activeTurnId: null,
+          }),
+        }),
+        "Error in codex app-server session",
+      );
     });
   });
 });
@@ -895,6 +910,9 @@ describe("CodexProvider app-server lifecycle", () => {
   });
 
   it("resynchronizes and retries a steer after an active-turn mismatch", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-steer-race-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
     const codexPath = createFakeCodexCommand(
@@ -935,6 +953,15 @@ describe("CodexProvider app-server lifecycle", () => {
           (request) => request.method === "turn/interrupt",
         )?.params,
       ).toMatchObject({ turnId: "turn-active" });
+      expect(warn).toHaveBeenCalledWith(
+        {
+          component: "codex-provider",
+          threadId: "thread-race",
+          expectedTurnId: "turn-submission",
+          actualTurnId: "turn-active",
+        },
+        "Resynchronized Codex turn id after steer mismatch",
+      );
     } finally {
       await session?.abort();
       await consume?.catch(() => undefined);
@@ -943,6 +970,9 @@ describe("CodexProvider app-server lifecycle", () => {
   });
 
   it("resynchronizes and retries an interrupt after an active-turn mismatch", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const tempDir = mkdtempSync(
       join(tmpdir(), "codex-provider-interrupt-race-"),
     );
@@ -979,6 +1009,15 @@ describe("CodexProvider app-server lifecycle", () => {
       expect(
         interruptRequests.map((request) => request.params?.turnId),
       ).toEqual(["turn-submission", "turn-active"]);
+      expect(warn).toHaveBeenCalledWith(
+        {
+          component: "codex-provider",
+          threadId: "thread-race",
+          expectedTurnId: "turn-submission",
+          actualTurnId: "turn-active",
+        },
+        "Resynchronized Codex turn id after interrupt mismatch",
+      );
     } finally {
       await session?.abort();
       await consume?.catch(() => undefined);
@@ -987,6 +1026,9 @@ describe("CodexProvider app-server lifecycle", () => {
   });
 
   it("adopts the active turn id observed in provider notifications", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const tempDir = mkdtempSync(
       join(tmpdir(), "codex-provider-turn-observation-"),
     );
@@ -1030,6 +1072,16 @@ describe("CodexProvider app-server lifecycle", () => {
       expect(steerRequests[0]?.params).toMatchObject({
         expectedTurnId: "turn-active",
       });
+      expect(warn).toHaveBeenCalledWith(
+        {
+          component: "codex-provider",
+          sessionId: "thread-race",
+          expectedTurnId: "turn-submission",
+          actualTurnId: "turn-active",
+          notificationMethod: "turn/plan/updated",
+        },
+        "Resynchronized Codex turn id from provider notification",
+      );
     } finally {
       await session?.abort();
       await consume?.catch(() => undefined);
@@ -3507,6 +3559,45 @@ describe("CodexProvider Event Normalization", () => {
     });
     expect((params.clientInfo as { name?: unknown }).name).toEqual(
       expect.any(String),
+    );
+  });
+
+  it("records and recovers an unsupported experimental initialize", async () => {
+    const infoLog = vi
+      .spyOn(getLogger(), "info")
+      .mockImplementation(() => undefined);
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("unsupported capabilities"))
+      .mockResolvedValueOnce({ userAgent: "fake-codex" });
+    const provider = createTestProvider() as unknown as {
+      initializeAppServer: (appServer: {
+        request: typeof request;
+      }) => Promise<boolean>;
+    };
+
+    await expect(provider.initializeAppServer({ request })).resolves.toBe(
+      false,
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      "initialize",
+      expect.objectContaining({
+        capabilities: { experimentalApi: true },
+      }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "initialize",
+      expect.objectContaining({ capabilities: null }),
+    );
+    expect(infoLog).toHaveBeenCalledWith(
+      {
+        component: "codex-provider",
+        event: "codex_experimental_api_unavailable",
+        error: "unsupported capabilities",
+      },
+      "Codex initialize with experimentalApi failed; retrying without capabilities",
     );
   });
 

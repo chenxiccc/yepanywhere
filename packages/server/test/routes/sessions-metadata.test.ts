@@ -7,7 +7,8 @@ import type {
   TranscriptDisplayObject,
   UrlProjectId,
 } from "@yep-anywhere/shared";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import {
   canonicalizeProjectPath,
   encodeProjectId,
@@ -36,6 +37,10 @@ import type {
   Project,
   SessionSummary,
 } from "../../src/supervisor/types.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function createProject(): Project {
   return {
@@ -2290,6 +2295,9 @@ describe("Sessions metadata route", () => {
   });
 
   it("blocks Claude resume when the latest assistant is an SDK API error", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const project = createProject();
     const resumeSession = vi.fn(async () => ({
       id: "proc-1",
@@ -2380,6 +2388,17 @@ describe("Sessions metadata route", () => {
     const json = await response.json();
     expect(json.recovery).toBe("handoff-required");
     expect(json.error).toContain("Start a handoff session");
+    expect(warn).toHaveBeenCalledWith(
+      {
+        event: "claude_resume_blocked_after_api_error",
+        sessionId: "sess-1",
+        projectId: project.id,
+        providerName: "claude",
+        messageId: "c7bff7ca-1111-4111-8111-111111111111",
+        apiErrorStatus: 400,
+      },
+      "Blocked Claude provider resume after SDK API-error message",
+    );
   });
 
   it("resumes before the API-error tail when a good assistant message exists", async () => {
@@ -2493,6 +2512,9 @@ describe("Sessions metadata route", () => {
   });
 
   it("returns full-resume recovery when compact-first resume fails", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const project = createProject();
     const resumeSession = vi.fn(async () => {
       throw new ResumeCompactionError({
@@ -2561,6 +2583,19 @@ describe("Sessions metadata route", () => {
         reason: "no compact/compress slash command advertised",
       },
     });
+    expect(warn).toHaveBeenCalledWith(
+      {
+        event: "resume_compaction_failed",
+        sessionId: "sess-1",
+        projectId: project.id,
+        providerName: "claude",
+        attempt: {
+          status: "unavailable",
+          reason: "no compact/compress slash command advertised",
+        },
+      },
+      "Compact-first resume failed",
+    );
   });
 
   it("preserves persisted provider and model when queueing a restartable message", async () => {

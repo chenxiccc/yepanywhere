@@ -23,10 +23,11 @@ import {
   encodeJsonFrame,
   encodeUploadChunkFrame,
 } from "@yep-anywhere/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { createApp } from "../setup/create-app.js";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";
+import { getLogger } from "../../src/logging/logger.js";
 import { createWsRelayRoutes } from "../../src/routes/ws-relay.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import { UploadManager } from "../../src/uploads/manager.js";
@@ -975,6 +976,9 @@ describe("WebSocket Transport E2E", () => {
     });
 
     it("should reject unknown format bytes", async () => {
+      const warn = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
       const ws = await connectWebSocket();
 
       try {
@@ -1000,7 +1004,12 @@ describe("WebSocket Transport E2E", () => {
         const closeResult = await closePromise;
         expect(closeResult.code).toBe(4002);
         expect(closeResult.reason).toContain("Unknown format byte");
+        expect(warn).toHaveBeenCalledWith(
+          { code: "UNKNOWN_FORMAT", error: "Unknown format byte: 0x00" },
+          "[WS Relay] Binary frame error",
+        );
       } finally {
+        warn.mockRestore();
         if (ws.readyState === WebSocket.OPEN) {
           ws.close();
         }

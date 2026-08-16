@@ -1,11 +1,12 @@
 import type { RemoteClientMessage } from "@yep-anywhere/shared";
 import { BinaryFormat } from "@yep-anywhere/shared";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deriveTransportKey,
   encryptBytesToBinaryEnvelope,
   encryptToBinaryEnvelopeWithCompression,
 } from "../../src/crypto/index.js";
+import { getLogger } from "../../src/logging/logger.js";
 import {
   decodeFrameToParsedMessage,
   routeClientMessageSafely,
@@ -30,6 +31,10 @@ function createDecodeDeps() {
   };
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("WebSocket Message Router", () => {
   it("decodes text JSON frames", async () => {
     const connState = createConnectionState();
@@ -53,7 +58,9 @@ describe("WebSocket Message Router", () => {
     const ws = createMockWs();
     const deps = createDecodeDeps();
     const bearer = "never-log-this-public-share-secret";
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
 
     const parsed = await decodeFrameToParsedMessage(
       ws,
@@ -198,6 +205,9 @@ describe("WebSocket Message Router", () => {
   });
 
   it("rejects base-key encrypted binary envelopes", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const connState = createConnectionState();
     connState.authState = "authenticated";
     connState.baseSessionKey = new Uint8Array(32).fill(6);
@@ -229,9 +239,15 @@ describe("WebSocket Message Router", () => {
     expect(deps.routeClientMessage).not.toHaveBeenCalled();
     expect(connState.supportedFormats).toEqual(new Set([BinaryFormat.JSON]));
     expect(ws.close).toHaveBeenCalledWith(4004, "Decryption failed");
+    expect(warn).toHaveBeenCalledWith(
+      "[WS Relay] Failed to decrypt binary envelope",
+    );
   });
 
   it("closes unknown plaintext binary formats with code 4002", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
     const connState = createConnectionState();
     const ws = createMockWs();
     const deps = createDecodeDeps();
@@ -251,9 +267,16 @@ describe("WebSocket Message Router", () => {
       4002,
       expect.stringContaining("0x7f"),
     );
+    expect(warn).toHaveBeenCalledWith(
+      { code: "UNKNOWN_FORMAT", error: "Unknown format byte: 0x7f" },
+      "[WS Relay] Binary frame error",
+    );
   });
 
   it("routes message handlers and returns 500 response on handler failure", async () => {
+    const errorLog = vi
+      .spyOn(getLogger(), "error")
+      .mockImplementation(() => undefined);
     const send = vi.fn();
     const handlers = {
       onClientCapabilities: vi.fn(async () => undefined),
@@ -284,6 +307,14 @@ describe("WebSocket Message Router", () => {
       status: 500,
       body: { error: "Internal server error" },
     });
+    expect(errorLog).toHaveBeenCalledWith(
+      {
+        err: expect.objectContaining({ message: "boom" }),
+        type: "request",
+        messageId: "req-1",
+      },
+      "[WS Relay] Unhandled error in routeMessage",
+    );
   });
 
   it("routes a versioned client capability notification", async () => {
