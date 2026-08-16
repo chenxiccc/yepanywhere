@@ -242,7 +242,10 @@ heartbeat, wake, and Project Queue messages do not.
 The feature is server-capability gated (`synthetic-done-command`) and defaults
 to `off`, preserving provider-owned `/done` skills. `hidden` enables typed
 local `/done` without a toolbar button; the ordinary narrowing tiers enable the
-command and show the circle-check button.
+command and show the circle-check button. `/done` follows its composer: an
+aside-routed composer closes that aside, while the Mother composer keeps this
+synthetic session behavior even when a side pane is open. With the setting Off,
+Mother passes `/done` through to the provider.
 
 ## Action set
 

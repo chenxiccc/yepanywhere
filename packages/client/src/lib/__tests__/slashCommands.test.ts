@@ -5,6 +5,7 @@ import {
   getSlashCommandMenuParts,
   normalizeSlashCommandForMatch,
   parseComposerSlashCommand,
+  resolveComposerDoneTarget,
   resolveComposerSlashTurn,
 } from "../slashCommands";
 
@@ -64,6 +65,49 @@ describe("slashCommands", () => {
       command: "done",
       argument: "",
     });
+  });
+
+  it("routes /done by composer destination, opt-in, and attachments", () => {
+    expect(
+      resolveComposerDoneTarget({
+        text: "/done",
+        routesToFocusedAside: true,
+        syntheticDoneEnabled: true,
+        hasAttachments: false,
+      }),
+    ).toBe("focused-aside");
+    expect(
+      resolveComposerDoneTarget({
+        text: "/done",
+        routesToFocusedAside: false,
+        syntheticDoneEnabled: true,
+        hasAttachments: false,
+      }),
+    ).toBe("synthetic-session");
+    expect(
+      resolveComposerDoneTarget({
+        text: "/done",
+        routesToFocusedAside: false,
+        syntheticDoneEnabled: false,
+        hasAttachments: false,
+      }),
+    ).toBe("provider");
+    expect(
+      resolveComposerDoneTarget({
+        text: "/done with notes",
+        routesToFocusedAside: false,
+        syntheticDoneEnabled: true,
+        hasAttachments: false,
+      }),
+    ).toBe("provider");
+    expect(
+      resolveComposerDoneTarget({
+        text: "/done",
+        routesToFocusedAside: false,
+        syntheticDoneEnabled: true,
+        hasAttachments: true,
+      }),
+    ).toBe("provider");
   });
 
   it("parses /btw as a client-side aside command", () => {

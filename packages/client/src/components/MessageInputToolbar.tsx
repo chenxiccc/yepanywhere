@@ -290,6 +290,7 @@ export interface MessageInputToolbarProps {
   isThinking?: boolean;
   onStop?: () => void;
   onDone?: () => void;
+  doneTitle?: string;
   onSend?: () => void;
   /** Queue a deferred message. Only provided when agent is running. */
   onQueue?: () => void;
@@ -1783,7 +1784,7 @@ export function MessageInputToolbarView({
           {visibility.syntheticDone && doneControl && (
             <button
               type="button"
-              className={inlineTierClass("syntheticDone")}
+              className={`${inlineTierClass("syntheticDone")} ${toolbarModuleStyles.doneButton}`}
               onClick={doneControl.onDone}
               title={doneControl.title}
               aria-label={doneControl.title}
@@ -2111,7 +2112,7 @@ export function MessageInputToolbarView({
                   isPriorityCollapsible("syntheticDone") && (
                     <button
                       type="button"
-                      className={menuTierClass("syntheticDone")}
+                      className={`${menuTierClass("syntheticDone")} ${toolbarModuleStyles.doneButton}`}
                       onClick={doneControl.onDone}
                       title={doneControl.title}
                       aria-label={doneControl.title}
@@ -2709,6 +2710,7 @@ export function MessageInputToolbar({
   isThinking,
   onStop,
   onDone,
+  doneTitle,
   onSend,
   onQueue,
   onProjectQueue,
@@ -3484,7 +3486,7 @@ export function MessageInputToolbar({
         onDone
           ? {
               onDone,
-              title: t("syntheticDoneToolbarTitle"),
+              title: doneTitle ?? t("syntheticDoneToolbarTitle"),
             }
           : null
       }

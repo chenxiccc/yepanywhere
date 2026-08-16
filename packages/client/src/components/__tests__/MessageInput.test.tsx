@@ -5515,6 +5515,38 @@ describe("MessageInput", () => {
     ).toHaveLength(1);
   });
 
+  it("renders synthetic done with its centered transparent control style", () => {
+    const onDone = vi.fn();
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{ ...toolbarVisibility, syntheticDone: true }}
+        attachmentControl={{ attachmentCount: 0 }}
+        doneControl={{ onDone, title: "Close focused aside" }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    const button = screen.getByTestId("synthetic-done-toolbar-button");
+    expect(button.className).toContain("doneButton");
+    expect(button.getAttribute("aria-label")).toBe("Close focused aside");
+    fireEvent.click(button);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
   it("tracks toolbar overflow layout membership in a pure signature", () => {
     const baseInput: ComposerToolbarOverflowLayoutSignatureInput = {
       modeSelector: "first",

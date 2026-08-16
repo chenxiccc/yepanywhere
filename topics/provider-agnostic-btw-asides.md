@@ -154,9 +154,14 @@ path. It is not sent to the aside agent. Argument shapes:
 
 Contracts:
 
-- `/done` is valid only when the composer is focused on an aside. In the
-  parent composer it is rejected with a toast, never forwarded as prompt
-  text.
+- `/done` follows the composer it is submitted from. The side-pane composer,
+  the narrow footer while it routes to an aside, and either one's Done button
+  close that aside and return focus to Mother. A wide-layout Mother composer
+  continues to target Mother even while an aside pane is open.
+- In the Mother composer, the separate synthetic-done setting owns only an
+  enabled, exact, attachment-free `/done`. When that setting is Off, or the
+  draft is otherwise ineligible for the synthetic action, `/done` remains
+  provider text; YA does not reject it as an aside-only command.
 - Report-back to Mother always goes through the autodraft-if-empty /
   clipboard-otherwise path; never auto-send a turn to Mother.
 - After report-back is drafted (or copied), the aside is dismissed.

@@ -27,6 +27,31 @@ export type ComposerSlashTurn =
   | { kind: "custom"; command: string; argument: string }
   | { kind: "error"; command: "fast" | "run"; message: string };
 
+export type ComposerDoneTarget =
+  | "focused-aside"
+  | "synthetic-session"
+  | "provider";
+
+export function resolveComposerDoneTarget({
+  text,
+  routesToFocusedAside,
+  syntheticDoneEnabled,
+  hasAttachments,
+}: {
+  text: string;
+  routesToFocusedAside: boolean;
+  syntheticDoneEnabled: boolean;
+  hasAttachments: boolean;
+}): ComposerDoneTarget {
+  if (routesToFocusedAside) {
+    return "focused-aside";
+  }
+  if (syntheticDoneEnabled && text.trim() === "/done" && !hasAttachments) {
+    return "synthetic-session";
+  }
+  return "provider";
+}
+
 const COMMAND_DISPLAY: Record<string, { label: string; shortcut: string }> = {
   fast: { label: "fast turn", shortcut: "/f" },
   run: { label: "run exactly", shortcut: "/r" },

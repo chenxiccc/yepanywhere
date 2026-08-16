@@ -204,6 +204,7 @@ import {
   CLIENT_SLASH_COMMANDS,
   createClientSlashCommand,
   normalizeSlashCommandForMatch,
+  resolveComposerDoneTarget,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
@@ -998,7 +999,9 @@ function SessionPageContent({
             (command) =>
               command !== "model" &&
               (command !== "btw" || supportsBtwAsides) &&
-              (command !== "done" || !!focusedBtwAsideId),
+              (command !== "done" ||
+                mainComposerForAside ||
+                syntheticDoneEnabled),
           ).map(createClientSlashCommand)
         : [];
     if (supportsManualCompact) {
@@ -1030,11 +1033,12 @@ function SessionPageContent({
 
     return orderedCommands;
   }, [
-    focusedBtwAsideId,
+    mainComposerForAside,
     slashCommands,
     status.owner,
     supportsBtwAsides,
     supportsManualCompact,
+    syntheticDoneEnabled,
   ]);
 
   // Get provider capabilities based on session's provider
@@ -1917,13 +1921,23 @@ function SessionPageContent({
         );
         return null;
       }
-      if (slashTurn.command === "done" && !focusedBtwAside) {
-        draftControlsRef.current?.setDraft(text);
-        showToast(
-          "/done closes a focused /btw aside; no aside is focused.",
-          "error",
-        );
-        return null;
+      if (slashTurn.command === "done") {
+        const doneTarget = resolveComposerDoneTarget({
+          text,
+          routesToFocusedAside: false,
+          syntheticDoneEnabled,
+          hasAttachments:
+            attachmentsRef.current.length > 0 ||
+            pendingUploadsRef.current.size > 0,
+        });
+        if (doneTarget === "provider") {
+          const outgoingText = getOutgoingMessageText(text);
+          return outgoingText ? { outgoingText } : null;
+        }
+        if (doneTarget === "synthetic-session") {
+          void handleSyntheticDone();
+          return null;
+        }
       }
       if (handleCustomCommand(slashTurn.command, slashTurn.argument)) {
         return null;
@@ -2047,19 +2061,51 @@ function SessionPageContent({
     }
   }, [actualSessionId, fetchNewMessages, showToast, t]);
 
+  const closeFocusedBtwAside = useCallback(
+    (argument = "") => {
+      if (!focusedBtwAside) {
+        return false;
+      }
+      hideBtwAside(focusedBtwAside.id);
+      if (argument.trim()) {
+        // Report-back drafting (/done <text>, /done summary, /done file ...)
+        // is described in topics/provider-agnostic-btw-asides.md but is not
+        // wired yet; close-only for now.
+        showToast(
+          "Aside closed. (Report-back drafting not yet implemented.)",
+          "info",
+        );
+      }
+      return true;
+    },
+    [focusedBtwAside, hideBtwAside, showToast],
+  );
+
+  const handleDoneAction = useCallback(() => {
+    const target = resolveComposerDoneTarget({
+      text: "/done",
+      routesToFocusedAside: mainComposerForAside,
+      syntheticDoneEnabled,
+      hasAttachments: false,
+    });
+    if (target === "focused-aside") {
+      closeFocusedBtwAside();
+      return;
+    }
+    if (target === "synthetic-session") {
+      void handleSyntheticDone();
+    }
+  }, [
+    closeFocusedBtwAside,
+    handleSyntheticDone,
+    mainComposerForAside,
+    syntheticDoneEnabled,
+  ]);
+
   const handleSend = async (
     text: string,
     metadata?: MessageSubmissionMetadata,
   ) => {
-    if (
-      syntheticDoneEnabled &&
-      text.trim() === "/done" &&
-      attachmentsRef.current.length === 0 &&
-      pendingUploadsRef.current.size === 0
-    ) {
-      await handleSyntheticDone();
-      return;
-    }
     const prepared = prepareComposerSubmission(text);
     if (!prepared) {
       return;
@@ -3349,13 +3395,21 @@ function SessionPageContent({
         void handleSendRef.current(text);
         return;
       }
+      const slashTurn = resolveComposerSlashTurn(text);
+      if (
+        slashTurn.kind === "custom" &&
+        slashTurn.command === "done" &&
+        closeFocusedBtwAside(slashTurn.argument)
+      ) {
+        return;
+      }
       void runBtwAsideTurn(
         focusedBtwAside,
         text,
         focusedBtwAside.status === "draft" && !focusedBtwAside.sessionId,
       );
     },
-    [focusedBtwAside, runBtwAsideTurn],
+    [closeFocusedBtwAside, focusedBtwAside, runBtwAsideTurn],
   );
 
   const applyMotherComposerTransfer = useCallback(
@@ -3544,21 +3598,10 @@ function SessionPageContent({
         return startBtwAside(argument);
       }
       if (command === "done") {
-        if (!focusedBtwAside) {
+        if (!closeFocusedBtwAside(argument)) {
           showToast(
             "/done closes a focused /btw aside; no aside is focused.",
             "error",
-          );
-          return true;
-        }
-        hideBtwAside(focusedBtwAside.id);
-        if (argument.trim()) {
-          // Report-back drafting (/done <text>, /done summary, /done file ...)
-          // is described in topics/provider-agnostic-btw-asides.md but is not
-          // wired yet; close-only for now.
-          showToast(
-            "Aside closed. (Report-back drafting not yet implemented.)",
-            "info",
           );
         }
         return true;
@@ -3566,9 +3609,8 @@ function SessionPageContent({
       return false;
     },
     [
-      focusedBtwAside,
+      closeFocusedBtwAside,
       handleCompactSession,
-      hideBtwAside,
       showToast,
       startBtwAside,
       supportsManualCompact,
@@ -5371,7 +5413,12 @@ function SessionPageContent({
                     isThinking={canStopOwnedProcess}
                     onStop={handleAbort}
                     onDone={
-                      syntheticDoneEnabled ? handleSyntheticDone : undefined
+                      syntheticDoneEnabled || mainComposerForAside
+                        ? handleDoneAction
+                        : undefined
+                    }
+                    doneTitle={
+                      mainComposerForAside ? t("btwAsideDoneTitle") : undefined
                     }
                     pendingApproval={
                       approvalCollapsed
@@ -5444,9 +5491,12 @@ function SessionPageContent({
                 isThinking={canStopOwnedProcess}
                 onStop={handleAbort}
                 onDone={
-                  !mainComposerForAside && syntheticDoneEnabled
-                    ? handleSyntheticDone
+                  syntheticDoneEnabled || mainComposerForAside
+                    ? handleDoneAction
                     : undefined
+                }
+                doneTitle={
+                  mainComposerForAside ? t("btwAsideDoneTitle") : undefined
                 }
                 draftKey={
                   mainComposerForAside && focusedBtwAside

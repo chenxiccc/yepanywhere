@@ -246,6 +246,7 @@ interface Props {
   isThinking?: boolean;
   onStop?: () => void;
   onDone?: () => void;
+  doneTitle?: string;
   draftKey: string; // localStorage key for draft persistence
   draftIndex?: {
     sourceKey: ClientSummarySourceKey;
@@ -413,6 +414,7 @@ export function MessageInput({
   isThinking,
   onStop,
   onDone,
+  doneTitle,
   draftKey,
   draftIndex,
   collapsed: externalCollapsed,
@@ -3070,6 +3072,7 @@ export function MessageInput({
     isThinking,
     onStop,
     onDone,
+    doneTitle,
     onSend: forkSummaryMode
       ? handleForkSummarySubmit
       : effectivePrimaryActionKind === "queue"
