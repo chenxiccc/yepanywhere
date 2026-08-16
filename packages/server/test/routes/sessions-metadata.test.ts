@@ -5533,6 +5533,10 @@ describe("Sessions metadata route", () => {
     expect(handoffText).toContain(
       "(read or grep there for detail beyond this summary): /home/user/.claude/projects/enc/sess-1.jsonl",
     );
+    // A claude/codex source also gets the non-forking consult command.
+    expect(handoffText).toContain(
+      "echo '<question>' | session-turn codex sess-1",
+    );
     // The real compact summary section still renders.
     expect(handoffText).toContain("## Provider-Native Compact Summary");
     expect(handoffText).toContain("Existing compact summary");

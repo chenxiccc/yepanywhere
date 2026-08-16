@@ -98,6 +98,16 @@ invalid replacement request cannot sacrifice the live session.
 - **Transcript pointer** (see below) identifies both the YA host and the
   host-local path. When the successor uses an SSH executor, the line also
   names that executor so the host boundary is explicit.
+- **session-turn consult line** (`formatRestartSessionTurnHint`): when the
+  source provider is a claude or codex family, one line offers
+  `echo '<question>' | session-turn <harness> <session-id>` — a live
+  alternative to grepping the transcript. The helper (an external tool over
+  YA's provider-host protocol, `topics/provider-host-api.md`) submits the
+  turn through the incumbent worker's own queue, or resumes an absent
+  worker atomically, so the source session is consulted without a second
+  writer or transcript fork. The line renders unconditionally for those
+  providers and says the helper is optional; hosts without it lose nothing
+  but the hint. Other providers get no line.
 - **Dropped:** the `- Provider-native compact: …` status line (the compaction
   *attempt* still runs for its boundary effect — `tryRestartCompact` — its
   status is just no longer echoed) and the `- Restart reason:` line (always

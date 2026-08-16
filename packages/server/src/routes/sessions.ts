@@ -1586,6 +1586,10 @@ function buildRestartHandoff(params: {
     host: sourceTranscriptHost,
     targetExecutor,
   });
+  const sessionTurnLine = formatRestartSessionTurnHint({
+    provider: sourceProvider ?? sourceSession.provider,
+    sessionId: sourceSession.id,
+  });
   const transcriptBlock = [
     omittedCount > 0
       ? `_${omittedCount} older rendered messages were omitted to keep this handoff bounded._`
@@ -1620,6 +1624,7 @@ function buildRestartHandoff(params: {
     `- Provider: ${sourceProvider ?? sourceSession.provider}`,
     `- Model: ${sourceModel ?? sourceSession.model ?? "unknown"}`,
     transcriptPathLine,
+    sessionTurnLine,
     "",
     transcriptBlock,
     queuedSection,
@@ -1654,6 +1659,26 @@ function formatRestartTranscriptPath(params: {
     trimmed,
     400,
   )}`;
+}
+
+// A claude/codex source session can answer one more turn in place through the
+// optional session-turn helper (YA provider-host protocol; the incumbent
+// worker keeps ownership, so no second writer or transcript fork). Offer that
+// alongside the transcript path; other providers have no helper harness.
+function formatRestartSessionTurnHint(params: {
+  provider: string | undefined;
+  sessionId: string;
+}): string | undefined {
+  const provider = params.provider ?? "";
+  const harness = provider.startsWith("claude")
+    ? "claude"
+    : provider.startsWith("codex")
+      ? "codex"
+      : undefined;
+  if (!harness) {
+    return undefined;
+  }
+  return `- Ask the source session itself (non-forking; needs the optional session-turn helper on PATH): echo '<question>' | session-turn ${harness} ${compactRestartLine(params.sessionId, 200)}`;
 }
 
 function isRestartReplacementActivity(message: SDKMessage): boolean {
