@@ -67,6 +67,21 @@ export function isClaudeProviderName(
  */
 export const DEFAULT_PROVIDER: ProviderName = "claude";
 
+export const CODEX_REASONING_SUMMARIES = [
+  "auto",
+  "concise",
+  "detailed",
+  "none",
+] as const;
+export type CodexReasoningSummary = (typeof CODEX_REASONING_SUMMARIES)[number];
+export const DEFAULT_CODEX_REASONING_SUMMARY: CodexReasoningSummary = "auto";
+
+export function isCodexReasoningSummary(
+  value: unknown,
+): value is CodexReasoningSummary {
+  return CODEX_REASONING_SUMMARIES.some((summary) => summary === value);
+}
+
 /**
  * Model information for a provider.
  */

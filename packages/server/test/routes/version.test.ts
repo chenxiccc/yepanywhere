@@ -6,6 +6,7 @@ import {
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
+  CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GLOSSARY_TOOLTIPS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
@@ -82,6 +83,12 @@ describe("Version Routes", () => {
   it("retains the reload-safe Codex settings compatibility schema", () => {
     expect(getServerCapabilities()).toContain(
       RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
+    );
+  });
+
+  it("advertises the Codex reasoning-summary setting", () => {
+    expect(getServerCapabilities()).toContain(
+      CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
     );
   });
 

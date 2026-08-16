@@ -12,6 +12,9 @@ import {
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
+  CODEX_REASONING_SUMMARIES,
+  CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
+  DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_IDLE_REAP_HOURS,
   DEFAULT_SUBAGENT_MAX_DEPTH,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
@@ -21,10 +24,12 @@ import {
   NEVER_IDLE_REAP_HOURS,
   SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
+  isCodexReasoningSummary,
   isValidClaudeAdditionalModelId,
   isValidClaudeAdditionalModelLabel,
   normalizeIdleReapHours,
   type ClaudeAdditionalModelSelection,
+  type CodexReasoningSummary,
   type HelperTargetConfig,
   type ModelInfo,
   type ProviderInfo,
@@ -823,6 +828,57 @@ function CodexUpdatePanel() {
   );
 }
 
+function CodexReasoningSummarySetting({
+  value,
+  updateSetting,
+}: {
+  value: CodexReasoningSummary;
+  updateSetting: UpdateServerSetting;
+}) {
+  const { t } = useI18n();
+  const labels: Record<CodexReasoningSummary, string> = {
+    auto: t("providersCodexReasoningSummaryAutomatic"),
+    concise: t("providersCodexReasoningSummaryConcise"),
+    detailed: t("providersCodexReasoningSummaryDetailed"),
+    none: t("providersCodexReasoningSummaryOff"),
+  };
+
+  return (
+    <SettingsItem
+      id="provider-codex-reasoning-summary"
+      label={t("providersCodexReasoningSummaryTitle")}
+      description={t("providersCodexReasoningSummaryDescription")}
+      keywords={[
+        "model_reasoning_summary",
+        "reasoning summary",
+        "auto",
+        "concise",
+        "detailed",
+        "none",
+        "off",
+      ]}
+      valueText={labels[value]}
+    >
+      <select
+        className="settings-select"
+        aria-label={t("providersCodexReasoningSummaryAria")}
+        value={value}
+        onChange={(event) => {
+          if (isCodexReasoningSummary(event.target.value)) {
+            void updateSetting("codexReasoningSummary", event.target.value);
+          }
+        }}
+      >
+        {CODEX_REASONING_SUMMARIES.map((summary) => (
+          <option key={summary} value={summary}>
+            {labels[summary]}
+          </option>
+        ))}
+      </select>
+    </SettingsItem>
+  );
+}
+
 function OllamaSettings() {
   const { settings } = useServerSettings();
   const useFullPrompt = settings?.ollamaUseFullSystemPrompt ?? false;
@@ -1302,6 +1358,10 @@ export function ProvidersSettings() {
     version,
     CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   );
+  const supportsCodexReasoningSummary = serverHasCapability(
+    version,
+    CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
+  );
   const supportsClaudeGateway = serverHasCapability(
     version,
     CLAUDE_GATEWAY_CAPABILITY,
@@ -1588,6 +1648,15 @@ export function ProvidersSettings() {
                 </a>
               )}
             </SettingsItem>
+            {provider.id === "codex" && supportsCodexReasoningSummary && (
+              <CodexReasoningSummarySetting
+                value={
+                  settings?.codexReasoningSummary ??
+                  DEFAULT_CODEX_REASONING_SUMMARY
+                }
+                updateSetting={updateSetting}
+              />
+            )}
             {provider.id === "claude" &&
               provider.supportsLaunchCompactPercentOverride && (
                 <ClaudeAutoCompactPercentOverrideControl

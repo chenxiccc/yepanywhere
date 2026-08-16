@@ -492,6 +492,9 @@ export function createApp(options: AppOptions): AppResult {
       ).some((metadata) => metadata.provider === "claude-ollama"),
     getProviderRuntimeSnapshot: () => ({
       codexCliPath: options.codexCliPath,
+      codexReasoningSummary: options.serverSettingsService?.getSetting(
+        "codexReasoningSummary",
+      ),
       claudeAdditionalModels: options.serverSettingsService?.getSetting(
         "claudeAdditionalModels",
       ),

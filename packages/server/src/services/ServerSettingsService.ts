@@ -14,6 +14,7 @@ import type {
   ClaudeAdditionalModelSelection,
   ClaudeSteerBackgroundBashSettings,
   ClientDefaults,
+  CodexReasoningSummary,
   HelperTargetConfig,
   HostIdentity,
   HostAwakeMode,
@@ -26,6 +27,7 @@ import type {
 import {
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
   DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
+  DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_HEARTBEAT_TURN_TEXT,
   DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
@@ -38,6 +40,7 @@ import {
   normalizeYaClientBaseUrlFromShareViewerUrl,
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
+  isCodexReasoningSummary,
   parseClaudeAdditionalModelSelections,
   parseClaudeSteerBackgroundBashSettings,
 } from "@yep-anywhere/shared";
@@ -186,6 +189,8 @@ export interface ServerSettings {
   lifecycleWebhookToken?: string;
   /** When true, include dryRun=true in lifecycle webhook payloads */
   lifecycleWebhookDryRun?: boolean;
+  /** Reasoning-summary mode applied when Codex app-server sessions start. */
+  codexReasoningSummary: CodexReasoningSummary;
   /**
    * How the server handles Codex CLI updates:
    * - "auto": automatically run `npm install -g <pkg>@latest` when an update
@@ -254,6 +259,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   grokBuildUseXaiApiKey: false,
   claudeGatewayDisableAgent: true,
   subagentMaxDepth: DEFAULT_SUBAGENT_MAX_DEPTH,
+  codexReasoningSummary: DEFAULT_CODEX_REASONING_SUMMARY,
   codexUpdatePolicy: "notify",
   codexReloadSafeSessions: false,
   claudeSteerBackgroundBash: DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
@@ -372,6 +378,11 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     typeof settings.hostProcessObservabilityEnabled === "boolean"
       ? settings.hostProcessObservabilityEnabled
       : DEFAULT_SERVER_SETTINGS.hostProcessObservabilityEnabled;
+  normalized.codexReasoningSummary = isCodexReasoningSummary(
+    settings.codexReasoningSummary,
+  )
+    ? settings.codexReasoningSummary
+    : DEFAULT_CODEX_REASONING_SUMMARY;
   normalized.codexReloadSafeSessions =
     typeof settings.codexReloadSafeSessions === "boolean"
       ? settings.codexReloadSafeSessions

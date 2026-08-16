@@ -30,6 +30,7 @@ describe("Settings Routes", () => {
 
   beforeEach(() => {
     settings = {
+      ...DEFAULT_SERVER_SETTINGS,
       projectDirectoryStorage: "app-data",
       toolResultMediaPreservation: "on-demand",
       serviceWorkerEnabled: true,
@@ -42,6 +43,7 @@ describe("Settings Routes", () => {
       hostProcessObservabilityEnabled: true,
       hostAwakeMode: "off",
       hostAwakeBatteryFloorPercent: 10,
+      codexReasoningSummary: "auto",
       codexReloadSafeSessions: false,
       claudeGatewayDisableAgent: true,
       subagentMaxDepth: 1,
@@ -367,6 +369,47 @@ describe("Settings Routes", () => {
       expect(response.status).toBe(400);
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
+    it.each(["auto", "concise", "detailed", "none"] as const)(
+      "persists the %s Codex reasoning-summary mode",
+      async (codexReasoningSummary) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codexReasoningSummary }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+          codexReasoningSummary,
+        });
+      },
+    );
+
+    it.each(["short", "off", "", null, true])(
+      "rejects invalid Codex reasoning-summary mode %j",
+      async (codexReasoningSummary) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codexReasoningSummary }),
+        });
+
+        expect(response.status).toBe(400);
+        expect((await response.json()).error).toContain(
+          "codexReasoningSummary",
+        );
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+      },
+    );
+
     it("persists the reload-safe Codex opt-in", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

@@ -354,6 +354,28 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients may outpace installed servers, and older servers do not expose a process-launch subagent-depth policy.",
     },
   },
+  codexReasoningSummarySetting: {
+    id: CAPABILITY_ID_ALLOCATIONS.codexReasoningSummarySetting.id,
+    name: "codex-reasoning-summary-setting",
+    kind: "permanent",
+    area: "providers",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server persists the reasoning-summary mode applied when Codex app-server sessions start, resume, or fork.",
+    clientFallback:
+      "Hide the Codex reasoning-summary control and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.codexReasoningSummary"],
+      responseFields: ["settings.codexReasoningSummary"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients may outpace installed servers, and older servers do not expose the Codex reasoning-summary policy.",
+    },
+  },
   toolResultMediaPreservationPolicy: {
     id: CAPABILITY_ID_ALLOCATIONS.toolResultMediaPreservationPolicy.id,
     name: "tool-result-media-preservation-policy",
@@ -1514,6 +1536,8 @@ export const IDLE_REAP_HOURS_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.idleReapHoursSetting.name;
 export const SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.subagentMaxDepthSetting.name;
+export const CODEX_REASONING_SUMMARY_SETTING_CAPABILITY =
+  SERVER_CAPABILITIES.codexReasoningSummarySetting.name;
 export const GLOSSARY_TOOLTIPS_CAPABILITY =
   SERVER_CAPABILITIES.glossaryTooltips.name;
 export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =

@@ -3601,7 +3601,7 @@ describe("CodexProvider Event Normalization", () => {
     );
   });
 
-  it("requests automatic reasoning summaries on turn start", () => {
+  it("inherits the thread reasoning-summary mode on ordinary turns", () => {
     const provider = createTestProvider() as unknown as {
       createTurnStartParams: (
         threadId: string,
@@ -3616,10 +3616,8 @@ describe("CodexProvider Event Normalization", () => {
       {},
     );
 
-    expect(params).toMatchObject({
-      threadId: "thread-1",
-      summary: "auto",
-    });
+    expect(params).toMatchObject({ threadId: "thread-1" });
+    expect(params).not.toHaveProperty("summary");
   });
 
   it("pairs every turn approval override with its native sandbox policy", () => {
@@ -3860,6 +3858,53 @@ describe("CodexProvider Event Normalization", () => {
       excludeTurns: true,
     });
     expect(resume.persistExtendedHistory).toBeUndefined();
+  });
+
+  it("applies the configured reasoning-summary mode to every thread path", () => {
+    const provider = createTestProvider() as unknown as {
+      setReasoningSummaryGetter: (
+        getter: () => "auto" | "concise" | "detailed" | "none",
+      ) => void;
+      createThreadStartParams: (
+        options: { cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadResumeParams: (
+        options: { resumeSessionId: string; cwd: string },
+        sessionId: string,
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadForkParams: (
+        options: { sessionId: string; cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+    };
+    const policy = {
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+    };
+
+    expect(
+      provider.createThreadStartParams({ cwd: "/tmp" }, policy),
+    ).toMatchObject({ config: { model_reasoning_summary: "auto" } });
+
+    provider.setReasoningSummaryGetter(() => "detailed");
+    expect(
+      provider.createThreadStartParams({ cwd: "/tmp" }, policy),
+    ).toMatchObject({ config: { model_reasoning_summary: "detailed" } });
+    expect(
+      provider.createThreadResumeParams(
+        { resumeSessionId: "thread-1", cwd: "/tmp" },
+        "thread-1",
+        policy,
+      ),
+    ).toMatchObject({ config: { model_reasoning_summary: "detailed" } });
+    expect(
+      provider.createThreadForkParams(
+        { sessionId: "thread-1", cwd: "/tmp" },
+        policy,
+      ),
+    ).toMatchObject({ config: { model_reasoning_summary: "detailed" } });
   });
 
   it("applies V1 subagent nesting depth to every thread path", () => {

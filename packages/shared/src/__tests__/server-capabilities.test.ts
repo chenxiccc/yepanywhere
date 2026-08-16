@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CAPABILITY_ID_ALLOCATIONS,
   CAPABILITY_ID_ENCODING_VERSION,
+  CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
@@ -67,6 +68,19 @@ describe("server capability advertisements", () => {
       ),
     ).toBe(false);
     expect(CAPABILITY_ID_ALLOCATIONS.subagentMaxDepthSetting.id).toBe(34);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.0" },
+        CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(CAPABILITY_ID_ALLOCATIONS.codexReasoningSummarySetting.id).toBe(35);
   });
 
   it("lets a negative bit override an otherwise implied capability", () => {
@@ -192,6 +206,24 @@ describe("server capability advertisements", () => {
       serverHasCapability(
         { current: "0.7.0-741-gabcdef", ...advertisement },
         PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
+      ),
+    ).toBe(true);
+  });
+
+  it("encodes the source-ahead Codex setting in the second capability word", () => {
+    const advertisement = encodeVersionedServerCapabilities(
+      [CODEX_REASONING_SUMMARY_SETTING_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 8]],
+    });
+    expect(
+      serverHasCapability(
+        { current: "0.7.0-741-gabcdef", ...advertisement },
+        CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
       ),
     ).toBe(true);
   });

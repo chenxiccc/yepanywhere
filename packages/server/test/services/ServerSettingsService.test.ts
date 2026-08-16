@@ -147,6 +147,34 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("codexReloadSafeSessions")).toBe(true);
   });
 
+  it("defaults Codex reasoning summaries to auto and persists a selection", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("codexReasoningSummary")).toBe("auto");
+    await service.updateSettings({ codexReasoningSummary: "concise" });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("codexReasoningSummary")).toBe("concise");
+  });
+
+  it("normalizes an invalid persisted Codex reasoning summary to auto", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: { codexReasoningSummary: "short" },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("codexReasoningSummary")).toBe("auto");
+  });
+
   it("defaults Claude steer backgrounding to every Bash command", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

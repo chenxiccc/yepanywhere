@@ -5,8 +5,10 @@
  */
 
 import {
+  DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_SUBAGENT_MAX_DEPTH,
   type ClaudeAdditionalModelSelection,
+  type CodexReasoningSummary,
   type SubagentMaxDepth,
 } from "@yep-anywhere/shared";
 import {
@@ -113,6 +115,7 @@ export interface ProviderRuntimeConfig {
 
 export interface ProviderRuntimeSnapshot {
   codexCliPath?: string;
+  codexReasoningSummary?: CodexReasoningSummary;
   claudeAdditionalModels?: readonly ClaudeAdditionalModelSelection[];
   claudeGatewayUrl?: string;
   claudeGatewayStartCommand?: string;
@@ -138,6 +141,9 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   isClaudeOllamaVisible = config.isClaudeOllamaVisible ?? (() => false);
   getProviderRuntimeSnapshot =
     config.getProviderRuntimeSnapshot ?? (() => ({}));
+  const getCodexReasoningSummary = (): CodexReasoningSummary =>
+    getProviderRuntimeSnapshot().codexReasoningSummary ??
+    DEFAULT_CODEX_REASONING_SUMMARY;
   const getSubagentMaxDepth = (): SubagentMaxDepth => {
     const configured = getProviderRuntimeSnapshot().subagentMaxDepth;
     return configured === undefined ? DEFAULT_SUBAGENT_MAX_DEPTH : configured;
@@ -146,6 +152,7 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   claudeGatewayProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
   claudeOllamaProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
   grokACPProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
+  codexProvider.setReasoningSummaryGetter(getCodexReasoningSummary);
   codexProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
 }
 

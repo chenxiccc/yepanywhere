@@ -13,6 +13,7 @@ import {
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
+  CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
@@ -153,6 +154,51 @@ describe("ProvidersSettings additional models", () => {
 
     expect(screen.queryByText("providersIdleReapHoursLabel")).toBeNull();
     expect(screen.queryByText("providersSubagentMaxDepthLabel")).toBeNull();
+  });
+
+  it("hides Codex reasoning summaries from older servers", () => {
+    render(<ProvidersSettings />);
+
+    expect(
+      screen.queryByText("providersCodexReasoningSummaryTitle"),
+    ).toBeNull();
+    expect(mockUpdateSetting).not.toHaveBeenCalled();
+  });
+
+  it("shows the default Codex reasoning-summary mode and saves exact values", async () => {
+    versionState.capabilities = [CODEX_REASONING_SUMMARY_SETTING_CAPABILITY];
+    render(<ProvidersSettings />);
+    const select = screen.getByLabelText(
+      "providersCodexReasoningSummaryAria",
+    ) as HTMLSelectElement;
+
+    expect(select.value).toBe("auto");
+    fireEvent.change(select, { target: { value: "detailed" } });
+
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith(
+        "codexReasoningSummary",
+        "detailed",
+      );
+    });
+  });
+
+  it("reflects a saved Codex reasoning-summary mode", () => {
+    hookState.settings = {
+      ...hookState.settings,
+      codexReasoningSummary: "concise",
+    };
+    versionState.capabilities = [CODEX_REASONING_SUMMARY_SETTING_CAPABILITY];
+
+    render(<ProvidersSettings />);
+
+    expect(
+      (
+        screen.getByLabelText(
+          "providersCodexReasoningSummaryAria",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("concise");
   });
 
   it("shows the Never notch as -1", () => {

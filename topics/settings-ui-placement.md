@@ -74,7 +74,7 @@ the ordinary local settings behavior.
 ## Reviewed settings behavior
 
 The following controls and descriptions were checked against their current
-implementation on 2026-08-11. These are the user-visible contracts the Settings
+implementation on 2026-08-16. These are the user-visible contracts the Settings
 UI should state directly.
 
 - **Settings search.** Matching rows render their real controls, so ordinary
@@ -123,6 +123,14 @@ UI should state directly.
   denial policy are nested in the Claude Gateway provider card. URL and command
   edits require explicit confirmation because they control provider launch;
   Save or Enter submits both fields together.
+- **Providers → Codex reasoning summaries.** The server-persisted Codex app-server
+  mode is one of `auto`, `concise`, `detailed`, or `none`, displayed as Automatic,
+  Concise, Detailed, and Off. Automatic preserves YA's previous fixed behavior.
+  The saved mode applies when a Codex thread starts, resumes, or forks; an already
+  active thread keeps its current mode. Detailed is not supported by every model.
+  Hidden recap/title helpers stay on their explicit helper mode, and Codex OSS is
+  unchanged. Without `codex-reasoning-summary-setting`, the client hides the row
+  and sends no unsupported settings write.
 - **Speech → Speech backends.** Chooses speech-recognition routing. Smart Turn
   timeout, command grace, and follow-up listening are durations shown in `ms`.
   Keep Mic Warm is browser-local and default-off; while a visible tab holds the

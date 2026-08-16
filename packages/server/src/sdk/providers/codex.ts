@@ -9,10 +9,12 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
+  DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_SUBAGENT_MAX_DEPTH,
   canonicalInvocationName,
   canonicalizeSkillInvocations,
   createCodexToolCorrelation,
+  type CodexReasoningSummary,
   type EffortLevel,
   hasInvocationCandidate,
   type ModelInfo,
@@ -1004,6 +1006,8 @@ export class CodexProvider implements AgentProvider {
 
   private readonly config: CodexProviderConfig;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
+  private getConfiguredReasoningSummary: () => CodexReasoningSummary = () =>
+    DEFAULT_CODEX_REASONING_SUMMARY;
   private getConfiguredSubagentMaxDepth: () => SubagentMaxDepth = () =>
     DEFAULT_SUBAGENT_MAX_DEPTH;
 
@@ -1014,6 +1018,10 @@ export class CodexProvider implements AgentProvider {
   setCodexPath(codexPath: string | undefined): void {
     this.config.codexPath = codexPath;
     this.modelCache = null;
+  }
+
+  setReasoningSummaryGetter(getter: () => CodexReasoningSummary): void {
+    this.getConfiguredReasoningSummary = getter;
   }
 
   setSubagentMaxDepthGetter(getter: () => SubagentMaxDepth): void {
@@ -2762,6 +2770,7 @@ export class CodexProvider implements AgentProvider {
     // skill at thread scope so Codex follows YA's Playwright fallback instead
     // of advertising a browser that fails during backend discovery.
     const config: NonNullable<ThreadStartParams["config"]> = {
+      model_reasoning_summary: this.getConfiguredReasoningSummary(),
       skills: {
         config: [
           {
@@ -2923,7 +2932,6 @@ export class CodexProvider implements AgentProvider {
               options.thinking,
               options.model,
             ),
-      summary: "auto",
       ...this.buildTurnPermissionParams(
         turnPolicy,
         workspaceWriteSandboxPolicy,

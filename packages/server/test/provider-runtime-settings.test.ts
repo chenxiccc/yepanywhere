@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SubagentMaxDepth } from "@yep-anywhere/shared";
+import type {
+  CodexReasoningSummary,
+  SubagentMaxDepth,
+} from "@yep-anywhere/shared";
 import {
   claudeProvider,
+  codexProvider,
   configureProviderRuntime,
 } from "../src/sdk/providers/index.js";
 import type {
@@ -17,6 +21,14 @@ function getClaudeLaunchEnvironment(): Record<string, string | undefined> {
       getEnv(): Record<string, string | undefined>;
     }
   ).getEnv();
+}
+
+function getCodexThreadConfig(): Record<string, unknown> {
+  return (
+    codexProvider as unknown as {
+      buildThreadConfigOverrides(options: object): Record<string, unknown>;
+    }
+  ).buildThreadConfigOverrides({});
 }
 
 describe("provider runtime settings", () => {
@@ -64,5 +76,31 @@ describe("provider runtime settings", () => {
     expect(
       getSetting.mock.calls.filter(([key]) => key === "subagentMaxDepth"),
     ).toHaveLength(3);
+  });
+
+  it("reads the current Codex reasoning-summary mode for each thread launch", () => {
+    let codexReasoningSummary: CodexReasoningSummary = "auto";
+    const getSetting = vi.fn((key: keyof ServerSettings) =>
+      key === "codexReasoningSummary" ? codexReasoningSummary : undefined,
+    );
+    const serverSettingsService = {
+      getSetting,
+      onSettingsChanged: vi.fn(() => () => {}),
+    } as unknown as ServerSettingsService;
+
+    createApp({
+      sdk: new MockClaudeSDK(),
+      serverSettingsService,
+    });
+
+    expect(getCodexThreadConfig()).toMatchObject({
+      model_reasoning_summary: "auto",
+    });
+
+    codexReasoningSummary = "none";
+    expect(getCodexThreadConfig()).toMatchObject({
+      model_reasoning_summary: "none",
+    });
+    expect(getSetting).toHaveBeenCalledWith("codexReasoningSummary");
   });
 });

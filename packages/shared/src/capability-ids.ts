@@ -228,6 +228,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "subagent-max-depth-setting",
     introducedIn: "0.7.1",
   },
+  codexReasoningSummarySetting: {
+    id: 35,
+    direction: "server",
+    name: "codex-reasoning-summary-setting",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

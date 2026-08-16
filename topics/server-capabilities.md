@@ -66,6 +66,14 @@ request; it does not reuse `git-source-review-projections`, whose advertised
 meaning predates these routes. The capability is permanent and
 version-implied from `0.7.1`.
 
+`codex-reasoning-summary-setting` owns `settings.codexReasoningSummary` on
+`GET /api/settings` and `PUT /api/settings`. The ordinary optional-feature
+corpus was `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other stable
+server release fell in the preceding 14 days as of 2026-08-16. Both lack the
+field. The permanent capability is version-implied from `0.7.1` and owns ID 35.
+Without it, the client hides the Codex reasoning-summary row and sends no field.
+Existing capability meanings and older capable behavior remain unchanged.
+
 `serverHasCapability` accepts release implication, encoding-1 IDs, and both
 legacy representations. This union keeps old installed servers usable without
 making a new capability depend on its textual name.
@@ -225,9 +233,11 @@ the same ledger:
 | 31 | server | 0.7.1 | `remote-browser-diagnostics-v1` |
 | 32 | server | 0.7.1 | `public-share-management-freeze` |
 | 33 | server | 0.7.1 | `synthetic-done-command` |
+| 34 | server | 0.7.1 | `subagent-max-depth-setting` |
+| 35 | server | 0.7.1 | `codex-reasoning-summary-setting` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 34; retired rows stay in the ledger as reserved IDs.
+ID 36; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

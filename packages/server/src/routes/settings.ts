@@ -3,6 +3,7 @@
  */
 
 import {
+  CODEX_REASONING_SUMMARIES,
   MAX_HEARTBEAT_TURN_TEXT_LENGTH,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
@@ -14,6 +15,7 @@ import {
   isIdleReapHours,
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
+  isCodexReasoningSummary,
   isSubagentMaxDepth,
   normalizeYaClientBaseUrl,
   normalizeYaClientBaseUrlFromShareViewerUrl,
@@ -801,6 +803,18 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
             5000,
           );
         }
+      }
+
+      if ("codexReasoningSummary" in body) {
+        if (!isCodexReasoningSummary(body.codexReasoningSummary)) {
+          return c.json(
+            {
+              error: `codexReasoningSummary must be one of: ${CODEX_REASONING_SUMMARIES.join(", ")}`,
+            },
+            400,
+          );
+        }
+        updates.codexReasoningSummary = body.codexReasoningSummary;
       }
 
       if ("codexUpdatePolicy" in body) {
