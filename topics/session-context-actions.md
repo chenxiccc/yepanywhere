@@ -232,13 +232,17 @@ timestamp without mutating the provider transcript, so it remains visible on a
 later visit.
 
 During an active turn (including provider-retained background work), the action
-first appears in the canonical queued-message projection as a `ya-command`
-`/done` chip. This is a separate Process-local control lane: it never enters the
-deferred, patient, direct, or provider queues and does not interrupt the current
-turn. At the first unretained idle boundary, YA atomically records the durable
-synthetic row before removing the chip; only then may already-accepted ordinary
-queued turns resume their normal delivery. A persistence/read-state failure
-leaves the command visibly queued for an explicit retry and still sends no
+first persists `automationPausedUntilUserTurn` and then appears in the
+canonical queued-message projection as a `ya-command` `/done` chip. The chip is
+a separate Process-local control lane: it never enters the deferred, patient,
+direct, or provider queues and does not interrupt the current turn. The pause
+is session metadata, so a restart or reap before idle finalize still leaves the
+session done until a later real user turn. At the first unretained idle
+boundary, YA records the durable synthetic row before removing the chip; only
+then may already-accepted ordinary queued turns resume their normal delivery. A
+failed pause persist fails the request without queuing a chip. A later
+synthetic-row or read-state failure leaves the already-persisted pause in force
+and the command visibly queued for an explicit retry, and still sends no
 provider input.
 
 The same durable action pauses YA-driven provider work until a later real user

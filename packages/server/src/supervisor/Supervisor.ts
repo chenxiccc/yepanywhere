@@ -73,6 +73,10 @@ import {
   type RecapRequestResult,
 } from "./Process.js";
 import {
+  SessionDoneCoordinator,
+  type SessionDoneResult,
+} from "./SessionDoneCoordinator.js";
+import {
   type ModelSettings,
   SessionActivationCoordinator,
   type SessionReactivationOptions,
@@ -564,11 +568,7 @@ export interface SupervisorOptions {
   sandboxStateRoot?: string;
 }
 
-export interface SessionDoneResult {
-  message: DurableSyntheticDoneMessage;
-  paused: true;
-  queued: boolean;
-}
+export type { SessionDoneResult };
 
 export class Supervisor {
   private processes: Map<string, Process> = new Map();
@@ -578,6 +578,7 @@ export class Supervisor {
     Extract<Exclude<ProviderRuntimeStatus, null>, { kind: "terminal" }>
   >();
   private readonly activationCoordinator: SessionActivationCoordinator;
+  private readonly sessionDone: SessionDoneCoordinator;
   private observedProcessIds: Set<string> = new Set();
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
   private terminatedProcesses: ProcessInfo[] = []; // Recently terminated processes
@@ -723,6 +724,15 @@ export class Supervisor {
       errorRetryMs: HEARTBEAT_RECHECK_MS,
     });
     this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS);
+    this.sessionDone = new SessionDoneCoordinator({
+      sessionMetadataService: this.sessionMetadataService,
+      notificationService: this.notificationService,
+      getProcessForSession: (sessionId) => this.getProcessForSession(sessionId),
+      cancelInFlightForkedRecap: (process) =>
+        this.cancelInFlightForkedRecap(process),
+      requestHeartbeatSweep: () =>
+        this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS),
+    });
     this.livenessProbeTimer = setInterval(
       () => this.probeLongSilentProcesses(),
       LIVENESS_PROBE_CHECK_INTERVAL_MS,
@@ -3039,158 +3049,25 @@ export class Supervisor {
   }
 
   isAutomationPausedUntilUserTurn(sessionId: string): boolean {
-    return (
-      this.getProcessForSession(sessionId)?.hasPendingYaCommand("done") ===
-        true ||
-      this.sessionMetadataService?.getMetadata(sessionId)
-        ?.automationPausedUntilUserTurn === true
-    );
+    return this.sessionDone.isAutomationPausedUntilUserTurn(sessionId);
   }
 
   async requestSessionDone(sessionId: string): Promise<SessionDoneResult> {
-    if (!this.sessionMetadataService) {
-      throw new Error("Session metadata service unavailable");
-    }
-
-    const process = this.getProcessForSession(sessionId);
-    const existing = process?.getPendingYaCommand("done");
-    const hasActiveTurn =
-      process !== undefined &&
-      (process.state.type === "in-turn" ||
-        process.state.type === "waiting-input" ||
-        process.isRetainingProviderWork());
-
-    if (process && (existing || hasActiveTurn)) {
-      const pending = existing ?? process.queueYaCommand("done");
-      await this.pauseSessionAutomation(sessionId);
-
-      if (process.state.type === "idle" && !process.isRetainingProviderWork()) {
-        const completed = await this.finalizePendingDone(process);
-        if (completed) {
-          return { message: completed, paused: true, queued: false };
-        }
-      }
-
-      return {
-        message: this.syntheticDoneMessage(pending.tempId, pending.timestamp),
-        paused: true,
-        queued: true,
-      };
-    }
-
-    const timestamp = new Date().toISOString();
-    const uuid = `ya-done-${randomUUID()}`;
-    const message = this.syntheticDoneMessage(uuid, timestamp);
-    await this.sessionMetadataService.recordSyntheticDone(sessionId, message);
-    await this.pauseSessionAutomation(sessionId);
-    await this.notificationService?.markSeen(sessionId, timestamp, uuid);
-    return { message, paused: true, queued: false };
-  }
-
-  private syntheticDoneMessage(
-    uuid: string,
-    timestamp: string,
-  ): DurableSyntheticDoneMessage {
-    return {
-      type: "user",
-      content: "/done",
-      message: { role: "user", content: "/done" },
-      timestamp,
-      uuid,
-      id: uuid,
-      isSynthetic: true,
-      yaSyntheticSource: "done",
-    };
+    return this.sessionDone.requestSessionDone(sessionId);
   }
 
   private async finalizePendingDone(
     process: Process,
   ): Promise<DurableSyntheticDoneMessage | null> {
-    const pending = process.beginPendingYaCommandCompletion("done");
-    if (!pending) {
-      return null;
-    }
-
-    const sessionMetadataService = this.sessionMetadataService;
-    if (!sessionMetadataService) {
-      process.releasePendingYaCommandCompletion(pending.tempId);
-      return null;
-    }
-
-    const timestamp = new Date().toISOString();
-    const message = this.syntheticDoneMessage(pending.tempId, timestamp);
-    try {
-      await sessionMetadataService.recordSyntheticDone(
-        process.sessionId,
-        message,
-      );
-      await this.pauseSessionAutomation(process.sessionId);
-      await this.notificationService?.markSeen(
-        process.sessionId,
-        timestamp,
-        pending.tempId,
-      );
-      if (process.userTurnVersion > pending.userTurnVersion) {
-        await sessionMetadataService.updateMetadata(process.sessionId, {
-          automationPausedUntilUserTurn: false,
-        });
-        process.resumeRecapsAfterUserTurn();
-        process.handleAutomationPauseChanged();
-        this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS);
-      }
-    } catch (error) {
-      process.releasePendingYaCommandCompletion(pending.tempId);
-      getLogger().warn(
-        {
-          event: "pending_done_finalize_failed",
-          sessionId: process.sessionId,
-          processId: process.id,
-          projectId: process.projectId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to finalize queued /done command",
-      );
-      return null;
-    }
-
-    process.completePendingYaCommand(pending.tempId);
-    return message;
+    return this.sessionDone.finalizePendingDone(process);
   }
 
   async pauseSessionAutomation(sessionId: string): Promise<void> {
-    const process = this.getProcessForSession(sessionId);
-    if (process) {
-      process.pauseRecapsUntilUserTurn();
-      this.cancelInFlightForkedRecap(process);
-      process.handleAutomationPauseChanged();
-    }
-    this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS);
+    await this.sessionDone.pauseSessionAutomation(sessionId);
   }
 
   private resumeAutomationAfterUserTurn(process: Process): void {
-    if (!this.isAutomationPausedUntilUserTurn(process.sessionId)) {
-      return;
-    }
-    void this.sessionMetadataService
-      ?.updateMetadata(process.sessionId, {
-        automationPausedUntilUserTurn: false,
-      })
-      .then(() => {
-        process.handleAutomationPauseChanged();
-        this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS);
-      })
-      .catch((error) => {
-        getLogger().warn(
-          {
-            event: "session_automation_resume_persistence_failed",
-            sessionId: process.sessionId,
-            processId: process.id,
-            projectId: process.projectId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to clear session automation pause",
-        );
-      });
+    this.sessionDone.resumeAfterUserTurn(process);
   }
 
   async pauseRecapsUntilUserTurn(processId: string): Promise<boolean> {

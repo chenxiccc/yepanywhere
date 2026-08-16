@@ -3891,6 +3891,10 @@ describe("Supervisor", () => {
           yaCommand: "done",
         }),
       ]);
+      expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
+        "queued-done-session",
+        { automationPausedUntilUserTurn: true },
+      );
       expect(
         doneSupervisor.isAutomationPausedUntilUserTurn("queued-done-session"),
       ).toBe(true);
@@ -3933,6 +3937,192 @@ describe("Supervisor", () => {
         recordedMessage?.timestamp,
         result.message.uuid,
       );
+
+      await process.abort();
+    });
+
+    it("keeps a queued /done pause after the live process dies", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      let automationPaused = false;
+      metadata.service.getMetadata = (() =>
+        automationPaused
+          ? { automationPausedUntilUserTurn: true }
+          : undefined) as SessionMetadataService["getMetadata"];
+      metadata.writes.updateMetadata.mockImplementation(
+        async (_sessionId, updates) => {
+          if (updates.automationPausedUntilUserTurn !== undefined) {
+            automationPaused = updates.automationPausedUntilUserTurn;
+          }
+        },
+      );
+      const providerMessages: string[] = [];
+      let finishTurn: (() => void) | undefined;
+      const turnBoundary = new Promise<void>((resolve) => {
+        finishTurn = resolve;
+      });
+      let aborted = false;
+      const provider = testProvider(async (options) => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: options.resumeSessionId ?? "done-restart-session",
+          };
+          for await (const message of queue) {
+            if (aborted) return;
+            providerMessages.push(
+              typeof message.message.content === "string"
+                ? message.message.content
+                : "non-text provider message",
+            );
+            yield {
+              type: "assistant" as const,
+              message: { content: "working" },
+            };
+            await turnBoundary;
+            if (aborted) return;
+            yield {
+              type: "result" as const,
+              session_id: "done-restart-session",
+            };
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort: () => {
+            aborted = true;
+            queue.push({ text: "__abort__" });
+          },
+        };
+      });
+      const doneSupervisor = new Supervisor({
+        provider,
+        idleTimeoutMs: 10_000,
+        sessionMetadataService: metadata.service,
+      });
+      const process = await doneSupervisor.reactivateSession(
+        "/tmp/test",
+        "done-restart-session",
+        undefined,
+        { providerName: "claude", recapMode: "fork" },
+      );
+      process.queueMessage({
+        text: "work already in progress",
+        metadata: { serverReceivedAt: new Date().toISOString() },
+      });
+      await vi.waitFor(() => {
+        expect(providerMessages).toEqual(["work already in progress"]);
+      });
+
+      const result = await doneSupervisor.requestSessionDone(
+        "done-restart-session",
+      );
+      expect(result.queued).toBe(true);
+      expect(automationPaused).toBe(true);
+
+      const coldSupervisor = new Supervisor({
+        provider: testProvider(async () => {
+          throw new Error("cold supervisor should not start a provider");
+        }),
+        sessionMetadataService: metadata.service,
+      });
+      expect(
+        coldSupervisor.isAutomationPausedUntilUserTurn("done-restart-session"),
+      ).toBe(true);
+      expect(metadata.writes.recordSyntheticDone).not.toHaveBeenCalled();
+
+      aborted = true;
+      finishTurn?.();
+      await process.abort();
+    });
+
+    it("leaves automation paused after an idle /done commit with no later user turn", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      let automationPaused = false;
+      metadata.service.getMetadata = (() =>
+        automationPaused
+          ? { automationPausedUntilUserTurn: true }
+          : undefined) as SessionMetadataService["getMetadata"];
+      metadata.writes.recordSyntheticDone.mockImplementation(async () => {
+        automationPaused = true;
+      });
+      metadata.writes.updateMetadata.mockImplementation(
+        async (_sessionId, updates) => {
+          if (updates.automationPausedUntilUserTurn !== undefined) {
+            automationPaused = updates.automationPausedUntilUserTurn;
+          }
+        },
+      );
+      const providerMessages: string[] = [];
+      let finishTurn: (() => void) | undefined;
+      const turnBoundary = new Promise<void>((resolve) => {
+        finishTurn = resolve;
+      });
+      let aborted = false;
+      const provider = testProvider(async (options) => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: options.resumeSessionId ?? "done-hold-session",
+          };
+          for await (const message of queue) {
+            if (aborted) return;
+            providerMessages.push(
+              typeof message.message.content === "string"
+                ? message.message.content
+                : "non-text provider message",
+            );
+            yield {
+              type: "assistant" as const,
+              message: { content: "working" },
+            };
+            await turnBoundary;
+            yield {
+              type: "result" as const,
+              session_id: "done-hold-session",
+            };
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort: () => {
+            aborted = true;
+            queue.push({ text: "__abort__" });
+          },
+        };
+      });
+      const doneSupervisor = new Supervisor({
+        provider,
+        idleTimeoutMs: 10_000,
+        sessionMetadataService: metadata.service,
+      });
+      const process = await doneSupervisor.reactivateSession(
+        "/tmp/test",
+        "done-hold-session",
+        undefined,
+        { providerName: "claude", recapMode: "fork" },
+      );
+      process.queueMessage({
+        text: "work already in progress",
+        metadata: { serverReceivedAt: new Date().toISOString() },
+      });
+      await vi.waitFor(() => {
+        expect(providerMessages).toEqual(["work already in progress"]);
+      });
+
+      await doneSupervisor.requestSessionDone("done-hold-session");
+      finishTurn?.();
+      await vi.waitFor(() => {
+        expect(metadata.writes.recordSyntheticDone).toHaveBeenCalledOnce();
+      });
+      expect(
+        doneSupervisor.isAutomationPausedUntilUserTurn("done-hold-session"),
+      ).toBe(true);
 
       await process.abort();
     });

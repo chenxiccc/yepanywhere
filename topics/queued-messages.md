@@ -60,7 +60,9 @@ minutes.
    uses the Process-local `pendingYaCommands` lane and a `kind: "ya-command"`
    summary. It is never inferred from slash-shaped queued text and never enters
    deferred, patient, direct, or provider delivery. This preserves provider
-   skills with colliding command names.
+   skills with colliding command names. The `/done` chip itself stays
+   Process-local; its automation pause is durable session metadata written at
+   request time (see [session-context-actions](session-context-actions.md)).
 6. **No optimism.** Queuing and cancelling behave exactly like sending a normal
    session message: the composer disables, the request goes to the server, and
    the UI only changes when confirmed server state comes back. No optimistic
