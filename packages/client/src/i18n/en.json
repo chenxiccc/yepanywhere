@@ -2041,7 +2041,7 @@
   "providersSubagentMaxDepthValue": "Depth {value}",
   "providersSubagentMaxDepthUnit": "levels",
   "providersSubagentMaxDepthAria": "Maximum subagent nesting depth",
-  "providersSubagentMaxDepthCoverage": "Applies to Claude, Claude Gateway, Claude Ollama, and Codex V1 multi-agent threads. Codex V2 ignores this setting. An explicit CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH in YA's environment takes precedence for Claude providers.",
+  "providersSubagentMaxDepthCoverage": "Applies to Claude, Claude Gateway, Claude Ollama, Codex V1 multi-agent threads, and Grok. Codex V2 ignores this setting. Grok already hard-caps nesting at 1; 0 disables Grok subagents via GROK_SUBAGENTS. An explicit CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH or GROK_SUBAGENTS in YA's environment takes precedence.",
   "providersIdleReapHoursLabel": "Idle harness lifetime",
   "providersIdleReapHoursDescription": "How long YA keeps an eligible idle provider process after no session viewer is open anywhere and no feature retains it.",
   "providersIdleReapHoursValue": "{value} hours",

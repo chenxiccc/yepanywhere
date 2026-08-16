@@ -188,6 +188,21 @@ For a released binary, prefer:
 - `~/.grok/docs/user-guide/03-keyboard-shortcuts.md` (active-turn
   `Ctrl+Enter` interject)
 - `05-configuration.md`, `14-headless-mode.md`, `15-agent-mode.md`,
-  `17-sessions.md`
+  `16-subagents.md`, `17-sessions.md`
 - `~/.grok/bin/grok --help`, `grok models`, `~/.grok/models_cache.json`
 - Actual session directories under `~/.grok/sessions/`
+
+## 2026-08-16 — Grok subagent depth launch knobs
+
+Installed 1.0.4 user-guide `16-subagents.md` and `05-configuration.md`
+document only:
+
+- `GROK_SUBAGENTS=0` (or `1` to enable) as a process environment variable
+- `[subagents] enabled = false` in `~/.grok/config.toml` (not used by YA)
+- a hard nesting cap of one: a subagent that calls `spawn_subagent` fails
+
+`grok --help` also lists `--no-subagents` and `--agents <JSON>` on the
+top-level TUI command. `grok agent --help` does not list `--no-subagents`.
+YA therefore injects `GROK_SUBAGENTS=0` on the `grok agent stdio` child
+when the server-wide limit is `0`, and does not try to raise Grok's
+native cap of one.

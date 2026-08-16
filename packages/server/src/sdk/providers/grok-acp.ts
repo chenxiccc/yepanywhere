@@ -61,8 +61,12 @@ import type {
   EffortLevel,
   ModelInfo,
   SlashCommand,
+  SubagentMaxDepth,
 } from "@yep-anywhere/shared";
-import { canonicalizeSkillInvocations } from "@yep-anywhere/shared";
+import {
+  canonicalizeSkillInvocations,
+  DEFAULT_SUBAGENT_MAX_DEPTH,
+} from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
 import { whichCommand } from "../cli-detection.js";
@@ -341,6 +345,8 @@ export class GrokACPProvider implements AgentProvider {
   private ambientXaiApiKey: string | undefined;
   private useAmbientXaiApiKey = false;
   private modelCache: ModelInfo[] | undefined;
+  private getConfiguredSubagentMaxDepth: () => SubagentMaxDepth = () =>
+    DEFAULT_SUBAGENT_MAX_DEPTH;
   private log = getLogger();
 
   constructor(config: GrokACPProviderConfig = {}) {
@@ -355,6 +361,24 @@ export class GrokACPProvider implements AgentProvider {
 
   setUseAmbientXaiApiKey(enabled: boolean): void {
     this.useAmbientXaiApiKey = enabled;
+  }
+
+  setSubagentMaxDepthGetter(getter: () => SubagentMaxDepth): void {
+    this.getConfiguredSubagentMaxDepth = getter;
+  }
+
+  /**
+   * Grok's documented process knobs are `GROK_SUBAGENTS=0` (disable) and a
+   * hard nesting cap of one. Numeric YA depths 1–4 cannot raise that cap, and
+   * this never writes `~/.grok/config.toml`.
+   */
+  private getSubagentDepthEnvironment(): Record<string, string> {
+    if (process.env.GROK_SUBAGENTS !== undefined) {
+      return {};
+    }
+    return this.getConfiguredSubagentMaxDepth() === 0
+      ? { GROK_SUBAGENTS: "0" }
+      : {};
   }
 
   /**
@@ -579,11 +603,17 @@ export class GrokACPProvider implements AgentProvider {
       const connectStart = Date.now();
       const xaiApiKey = this.ambientXaiApiKey;
       const passXaiApiKey = this.useAmbientXaiApiKey && xaiApiKey !== undefined;
+      const extraEnv: Record<string, string> = {
+        ...this.getSubagentDepthEnvironment(),
+        ...(passXaiApiKey && xaiApiKey !== undefined
+          ? { XAI_API_KEY: xaiApiKey }
+          : {}),
+      };
       await client.connect({
         command: grokPath,
         args,
         cwd: options.cwd,
-        env: passXaiApiKey ? { XAI_API_KEY: xaiApiKey } : undefined,
+        env: Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
         excludeEnv: passXaiApiKey
           ? GROK_BILLING_ENV_DENYLIST.filter((key) => key !== "XAI_API_KEY")
           : GROK_BILLING_ENV_DENYLIST,

@@ -824,6 +824,59 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     );
   });
 
+  it("disables Grok subagents only when YA depth is 0", async () => {
+    const previous = process.env.GROK_SUBAGENTS;
+    delete process.env.GROK_SUBAGENTS;
+    try {
+      const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+
+      await startAndReadInit(provider, {
+        cwd: "/tmp",
+        initialMessage: { text: "hi" },
+      });
+      expect(connectCalls[0].env?.GROK_SUBAGENTS).toBeUndefined();
+
+      connectCalls.length = 0;
+      provider.setSubagentMaxDepthGetter(() => 0);
+      await startAndReadInit(provider, {
+        cwd: "/tmp",
+        initialMessage: { text: "hi" },
+      });
+      expect(connectCalls[0].env).toMatchObject({ GROK_SUBAGENTS: "0" });
+
+      connectCalls.length = 0;
+      provider.setSubagentMaxDepthGetter(() => 4);
+      await startAndReadInit(provider, {
+        cwd: "/tmp",
+        initialMessage: { text: "hi" },
+      });
+      expect(connectCalls[0].env?.GROK_SUBAGENTS).toBeUndefined();
+
+      connectCalls.length = 0;
+      provider.setSubagentMaxDepthGetter(() => null);
+      await startAndReadInit(provider, {
+        cwd: "/tmp",
+        initialMessage: { text: "hi" },
+      });
+      expect(connectCalls[0].env?.GROK_SUBAGENTS).toBeUndefined();
+
+      process.env.GROK_SUBAGENTS = "1";
+      connectCalls.length = 0;
+      provider.setSubagentMaxDepthGetter(() => 0);
+      await startAndReadInit(provider, {
+        cwd: "/tmp",
+        initialMessage: { text: "hi" },
+      });
+      expect(connectCalls[0].env?.GROK_SUBAGENTS).toBeUndefined();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GROK_SUBAGENTS;
+      } else {
+        process.env.GROK_SUBAGENTS = previous;
+      }
+    }
+  });
+
   it("strips xAI API-key env vars from the spawned grok child", async () => {
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 

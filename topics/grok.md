@@ -63,6 +63,16 @@ default. YA scrubs ambient `XAI_API_KEY` from the child unless the
 default-off Providers opt-in is on. That opt-in does not reuse
 `YEP_STT_XAI_API_KEY`.
 
+**Subagent nesting.** Grok's documented process knobs are
+`GROK_SUBAGENTS=0` / `--no-subagents` (disable) and a hard nesting cap of
+one: a child cannot spawn further children. YA never writes
+`~/.grok/config.toml` or clones `GROK_HOME`. When the server-wide
+Subagent nesting limit is `0` and YA's own environment does not already
+set `GROK_SUBAGENTS`, the spawned `grok agent stdio` child gets
+`GROK_SUBAGENTS=0`. Depths `1`–`4` and **Provider default** inject
+nothing: Grok already cannot nest past one. An explicit `GROK_SUBAGENTS`
+in YA's environment wins. See [vanilla-defaults](vanilla-defaults.md).
+
 ## Harness affordances vs YA visibility
 
 | Grok TUI / ACP affordance | YA surface now | Gap |

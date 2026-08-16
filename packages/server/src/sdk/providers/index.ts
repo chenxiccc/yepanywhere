@@ -145,6 +145,7 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   claudeProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
   claudeGatewayProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
   claudeOllamaProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
+  grokACPProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
   codexProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
 }
 

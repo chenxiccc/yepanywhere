@@ -78,11 +78,12 @@ Claude Code's first-party default of `3`. Native subagent fan-out can multiply
 token and quota use before an operator can see or stop the deeper work, so this
 configurable resource guard intentionally starts safer. `0` disables subagents,
 `1` through `4` select an explicit maximum depth, and **Provider default** makes
-YA inject no override. An explicit Claude depth value in YA's environment still
-wins. The control identifies its actual provider coverage and applies only to
-newly started or resumed processes; it never mutates provider configuration
-files. Authorized by graehl on 2026-08-16 as a deliberate quota-protection
-exception. See [claude](claude.md) and [codex-sessions](codex-sessions.md).
+YA inject no override. An explicit Claude or Grok depth value in YA's
+environment still wins. The control identifies its actual provider coverage
+and applies only to newly started or resumed processes; it never mutates
+provider configuration files. Authorized by graehl on 2026-08-16 as a
+deliberate quota-protection exception. See [claude](claude.md),
+[codex-sessions](codex-sessions.md), and [grok](grok.md).
 
 [source-review-to-session](source-review-to-session.md) defaults review
 history and outcome visibility on for new installs. A review is already an
