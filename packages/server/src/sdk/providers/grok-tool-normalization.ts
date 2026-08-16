@@ -277,11 +277,20 @@ export function formatGrokToolResultContent(
   }
 }
 
+const GROK_MEDIA_OUTPUT_TYPES = new Set([
+  "ImageGen",
+  "ImageEdit",
+  "VideoGen",
+  "ImageToVideo",
+  "ReferenceToVideo",
+]);
+
 export function grokToolResultMediaCandidate(
   update: GrokToolUpdate,
 ): GrokToolResultMediaCandidate | undefined {
   const rawOutput = asRecord(update.rawOutput);
-  if (rawOutput?.type !== "ImageGen" && rawOutput?.type !== "ImageEdit") {
+  const outputType = stringField(rawOutput, "type");
+  if (!outputType || !GROK_MEDIA_OUTPUT_TYPES.has(outputType)) {
     return undefined;
   }
   const originalPath = stringField(rawOutput, "path");

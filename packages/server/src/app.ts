@@ -63,6 +63,7 @@ import {
   GROK_SESSIONS_DIR,
   PI_SESSIONS_DIR,
   decodeProjectId,
+  grokSessionMediaRoots,
 } from "./projects/paths.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import {
@@ -674,14 +675,7 @@ export function createApp(options: AppOptions): AppResult {
     },
     providerSourceRoots: ({ provider, projectPath, sessionId }) =>
       provider === "grok"
-        ? [
-            join(
-              grokSessionsDir,
-              encodeURIComponent(projectPath),
-              sessionId,
-              "images",
-            ),
-          ]
+        ? grokSessionMediaRoots(grokSessionsDir, projectPath, sessionId)
         : [],
   });
   const bangCommandService =

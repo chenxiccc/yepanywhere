@@ -159,6 +159,32 @@ describe("ToolResultMediaRows", () => {
     ).toHaveLength(1);
   });
 
+  it("renders a stored video with a video player", async () => {
+    setInlineMediaExpandedPreference(true);
+    const fetchBlob = vi.fn(
+      async () => new Blob(["ftyp"], { type: "video/mp4" }),
+    );
+    renderRows(
+      [
+        {
+          state: "stored",
+          toolCallId: "tool-video",
+          id: "media-v",
+          mimeType: "video/mp4",
+          byteLength: 64,
+          filename: "1.mp4",
+        },
+      ],
+      new FakeSourceTransport({ fetchBlob }),
+    );
+
+    await waitFor(() => expect(fetchBlob).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("(video)")).toBeTruthy();
+    const player = document.querySelector("video");
+    expect(player).toBeTruthy();
+    expect(player?.getAttribute("src")).toBe("blob:tool-result");
+  });
+
   it("shows rejected media explicitly without fetching", () => {
     const fetchBlob = vi.fn();
     renderRows(

@@ -107,7 +107,7 @@ is still the real mid-turn path and is not wired.
 | File/search/edit/bash/web/todo/ask/plan | Existing renderer names | none |
 | Subagent spawn / bg wait / kill | Existing generic or spawn rows | none |
 | Image gen/edit | Generic row + image media candidate | none |
-| Video gen (`image_to_video`, `reference_to_video`, `video_gen`) | Generic `ImageToVideo` / `VideoGen` row; path on input/result | replay-safe video playback needs a new media facility; do not feed `.mp4` through the image store |
+| Video gen (`image_to_video`, `reference_to_video`, `video_gen`) | Generic `ImageToVideo` / `VideoGen` row plus the shared tool-result media player | Session `videos/` is allowlisted like `images/`; `.mp4` is stored as `video/mp4`, not as an image |
 | Goal / workflow / monitor / LSP | Native generic activity rows | dedicated goal/workflow UI is new facility |
 | Slash commands including `/workflow`, `/goal` | Live `/` menu from `available_commands_update` | descriptions/hints still API-only |
 | Mid-turn interject | YA Queue | `x.ai/interject` not implemented |
@@ -115,6 +115,75 @@ is still the real mid-turn path and is not wired.
 
 `updates.jsonl` remains the replay log. A live TUI session may create that
 file after the first persist, not at directory creation.
+
+### Video output (1.0.4)
+
+Grok generates MP4s with `image_to_video`, `reference_to_video`, and
+`video_gen`. The file is written to
+`GROK_SESSIONS_DIR/<encoded-project>/<session-id>/videos/<n>.mp4`. The model
+is instructed to mention the short session-relative path (`videos/1.mp4`) in
+assistant text so the TUI can open it. It may also copy the file into the
+project.
+
+YA surfaces:
+
+- **Tool-result media row** — the terminal video path is a media candidate.
+  Capture grants the matching Grok session `videos/` root (and still
+  `images/`). The store accepts an `ftyp` MP4 as `video/mp4` and serves it
+  through the existing session media handle. The client plays it with a
+  `<video>` control, relay-safe.
+- **Markdown / HTML in the turn** — a project-relative `videos/hero.mp4` or
+  `<video src="...">` already plays through `LocalMediaModal` /
+  `/api/local-image` when the file is inside an allowed project path. A
+  session-relative `videos/1.mp4` link that was never copied into the project
+  does not resolve against the project tree; the tool-result row is the
+  session-file path.
+
+ZDR/uploaded-only videos (`uploaded_url`, empty local path) stay
+non-playable in YA. They have no local file to materialize.
+
+### Interject semantics (1.0.4)
+
+`x.ai/interject` does **not** cancel the turn. ACP returns `{ status:
+"queued" }` immediately. The session actor holds the text (and optional
+images) in a pending buffer and drains it at the next **safe point**:
+
+- after a completed tool batch
+- at the top of the next model step (before the next sample)
+- immediately before the turn would otherwise return to the user
+
+At drain time Grok injects a synthetic user item tagged
+`SyntheticReason::Interjection`. The model-visible envelope is:
+
+```
+The user sent a message while you were working:
+<user_query>
+…interjection text…
+</user_query>
+Make sure to complete any unfinished tasks from previous turns.
+```
+
+That item does not consume a prompt-index slot and is not a new turn. The
+running turn continues; in-flight file/search/edit/bash tools finish.
+The only tools aborted for an interjection are **blocking wait** tools
+(`get_task_output` / `wait_tasks` and aliases, when they are actually
+waiting): those return "Wait interrupted: the user sent a message." so the
+model can read the interjection instead of sitting on a timeout.
+
+Mid-thought / mid-stream: the current model sample finishes. The
+interjection is not spliced into the token stream. The next model step sees
+the full assistant text so far, the completed tool results, then the
+synthetic user message.
+
+If no turn is running, or the interjection arrives after the turn's final
+drain, Grok converts it into a normal queued prompt (send-now / front of
+queue) so the text is not dropped.
+
+YA still reports `supportsSteering = false` and does not call
+`x.ai/interject`. A busy Grok session uses YA's deferred Queue, which waits
+for turn end — Grok's default `follow_up_behavior = queue`. Grok's optional
+TUI `steer` setting promotes queued follow-ups as interjections at those
+same safe points; that is a Grok-side config, not a YA control.
 
 ## Current upstream and local surface (2026-07-29)
 

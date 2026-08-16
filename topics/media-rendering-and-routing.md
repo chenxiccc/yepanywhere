@@ -70,7 +70,8 @@ and the route it pulls from.
   toggle controls a lazy object-URL preview. Route:
   `/api/projects/:id/sessions/:sid/media/:mediaId`. Relay-safe. Legacy
   unmaterialized `Read` results retain their base64 renderer as a compatibility
-  fallback.
+  fallback. The same handle and row play Grok session `videos/*.mp4`
+  tool results as `<video>` when the stored mime is `video/mp4`.
 - **Embedded media inside rendered Markdown/HTML** — an `![](...)` image or
   video that appears inline within an assistant/user message body.
   `useLocalMediaInlinePreviews` (`components/LocalMediaModal.tsx`) hydrates the

@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthService } from "../../src/auth/AuthService.js";
 import { SESSION_COOKIE_NAME } from "../../src/auth/routes.js";
 import { ToolResultMediaStore } from "../../src/media/ToolResultMediaStore.js";
+import { grokSessionMediaRoots } from "../../src/projects/paths.js";
 import { createAuthMiddleware } from "../../src/middleware/auth.js";
 import { createToolResultMediaRoutes } from "../../src/routes/tool-result-media.js";
 import { normalizeSession } from "../../src/sessions/normalization.js";
@@ -33,6 +34,10 @@ const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const PNG_BYTES = Buffer.from(PNG_BASE64, "base64");
 const DATA_URL = `data:image/png;base64,${PNG_BASE64}`;
+const MP4_BYTES = Buffer.from([
+  0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0x00,
+  0x00, 0x00, 0x00, 0x69, 0x73, 0x6f, 0x6d, 0x6d, 0x70, 0x34, 0x31,
+]);
 
 describe("tool-result media storage", () => {
   let tempDir: string;
@@ -274,6 +279,47 @@ describe("tool-result media storage", () => {
       toolCallId: "call-wrong-session",
       reason: "source-unavailable",
       filename: "1.png",
+    });
+  });
+
+  it("admits Grok session videos through the same media store", async () => {
+    const grokSessionsDir = join(tempDir, "grok-sessions");
+    const sessionId = "grok-session";
+    const videoRoot = join(
+      grokSessionsDir,
+      encodeURIComponent(projectDir),
+      sessionId,
+      "videos",
+    );
+    const sourcePath = join(videoRoot, "1.mp4");
+    await mkdir(videoRoot, { recursive: true });
+    await writeFile(sourcePath, MP4_BYTES);
+    const store = new ToolResultMediaStore({
+      dataDir,
+      resolveSourcePath: async () => null,
+      providerSourceRoots: ({ provider, projectPath, sessionId }) =>
+        provider === "grok"
+          ? grokSessionMediaRoots(grokSessionsDir, projectPath, sessionId)
+          : [],
+    });
+    const projectId = encodeProjectId(projectDir);
+
+    await expect(
+      store.capture(
+        { originalPath: sourcePath, filename: "1.mp4" },
+        {
+          provider: "grok",
+          projectId,
+          projectPath: projectDir,
+          getSessionId: () => sessionId,
+        },
+        "call-video",
+        0,
+      ),
+    ).resolves.toMatchObject({
+      state: "stored",
+      mimeType: "video/mp4",
+      filename: "1.mp4",
     });
   });
 

@@ -268,7 +268,10 @@ describe("Grok tool normalization", () => {
       filename: "1.mp4",
       sessionFolder: "videos",
     });
-    expect(grokToolResultMediaCandidate(terminalUpdate)).toBeUndefined();
+    expect(grokToolResultMediaCandidate(terminalUpdate)).toEqual({
+      originalPath: "/home/test/.grok/sessions/project/videos/1.mp4",
+      filename: "1.mp4",
+    });
   });
 
   it("keeps goal and workflow actions as native generic rows", () => {

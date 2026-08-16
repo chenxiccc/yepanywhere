@@ -1317,6 +1317,7 @@
   "toolResultMediaCollapse": "Collapse image preview",
   "toolResultMediaExpand": "Expand image preview",
   "toolResultMediaImage": "image",
+  "toolResultMediaVideo": "video",
   "toolResultMediaInvalidImageData": "The tool returned invalid image data.",
   "toolResultMediaLoadFailed": "Image unavailable",
   "toolResultMediaLoading": "Loading image…",

@@ -31,17 +31,23 @@ import { ToolResultMediaMessageMaterializer } from "./ToolResultMediaMessageMate
 
 const STORE_VERSION = 1;
 const DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+const DEFAULT_MAX_VIDEO_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TRANSIENT_MEDIA_MAX_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TRANSIENT_MEDIA_TTL_MS = 30 * 60 * 1000;
 const SAFE_SEGMENT_RE = /^[A-Za-z0-9._-]+$/;
 const MEDIA_ID_RE = /^[A-Za-z0-9_-]{43}$/;
 const CONTENT_HASH_RE = /^[a-f0-9]{64}$/;
 
-interface ValidatedImage {
+interface ValidatedMedia {
   bytes: Buffer;
   contentHash: string;
-  extension: "gif" | "jpg" | "png" | "webp";
-  mimeType: "image/gif" | "image/jpeg" | "image/png" | "image/webp";
+  extension: "gif" | "jpg" | "mp4" | "png" | "webp";
+  mimeType:
+    | "image/gif"
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp"
+    | "video/mp4";
   width?: number;
   height?: number;
 }
@@ -54,7 +60,7 @@ interface ToolResultMediaCatalogEntry {
   sessionId: string;
   toolCallId: string;
   mediaIndex: number;
-  mimeType: ValidatedImage["mimeType"];
+  mimeType: ValidatedMedia["mimeType"];
   byteLength: number;
   width?: number;
   height?: number;
@@ -82,6 +88,7 @@ export interface ToolResultMediaFile {
 export interface ToolResultMediaStoreOptions {
   dataDir?: string;
   maxImageBytes?: number;
+  maxVideoBytes?: number;
   resolveSourcePath?: (absolutePath: string) => Promise<string | null>;
   providerSourceRoots?: (
     context: ToolResultMediaProviderSourceContext,
@@ -101,6 +108,7 @@ export interface ToolResultMediaProviderSourceContext {
 export class ToolResultMediaStore {
   private readonly dataDir: string | undefined;
   private readonly maxImageBytes: number;
+  private readonly maxVideoBytes: number;
   private readonly resolveSourcePath:
     | ((absolutePath: string) => Promise<string | null>)
     | undefined;
@@ -120,6 +128,7 @@ export class ToolResultMediaStore {
   constructor(options: ToolResultMediaStoreOptions = {}) {
     this.dataDir = options.dataDir;
     this.maxImageBytes = options.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+    this.maxVideoBytes = options.maxVideoBytes ?? DEFAULT_MAX_VIDEO_BYTES;
     this.resolveSourcePath = options.resolveSourcePath;
     this.providerSourceRoots = options.providerSourceRoots;
     this.storagePolicy = options.storagePolicy;
@@ -188,14 +197,17 @@ export class ToolResultMediaStore {
       originalPath = sourcePath;
       const sourceStats = await stat(sourcePath).catch(() => null);
       if (!sourceStats?.isFile()) return rejected("source-unavailable");
-      if (sourceStats.size > this.maxImageBytes) return rejected("too-large");
+      const maxBytes = looksLikeVideoPath(sourcePath, filename)
+        ? this.maxVideoBytes
+        : this.maxImageBytes;
+      if (sourceStats.size > maxBytes) return rejected("too-large");
       bytes = await readFile(sourcePath).catch(() => Buffer.alloc(0));
       if (bytes.length === 0) return rejected("source-unavailable");
     } else {
       return rejected("invalid-image-data");
     }
 
-    const validated = validateImage(bytes);
+    const validated = validateMedia(bytes);
     if (!validated) return rejected("unsupported-media");
 
     const id = mediaIdFor({
@@ -504,8 +516,16 @@ function decodeImageDataUrl(
   return { bytes };
 }
 
-function validateImage(bytes: Buffer): ValidatedImage | null {
-  const detected = detectImage(bytes);
+function looksLikeVideoPath(
+  sourcePath: string | undefined,
+  filename: string | undefined,
+): boolean {
+  const name = (filename ?? sourcePath ?? "").toLowerCase();
+  return name.endsWith(".mp4") || name.endsWith(".m4v");
+}
+
+function validateMedia(bytes: Buffer): ValidatedMedia | null {
+  const detected = detectImage(bytes) ?? detectMp4(bytes);
   if (!detected) return null;
   return {
     bytes,
@@ -514,9 +534,18 @@ function validateImage(bytes: Buffer): ValidatedImage | null {
   };
 }
 
+function detectMp4(
+  bytes: Buffer,
+): Omit<ValidatedMedia, "bytes" | "contentHash"> | null {
+  if (bytes.length < 8 || bytes.subarray(4, 8).toString("ascii") !== "ftyp") {
+    return null;
+  }
+  return { extension: "mp4", mimeType: "video/mp4" };
+}
+
 function detectImage(
   bytes: Buffer,
-): Omit<ValidatedImage, "bytes" | "contentHash"> | null {
+): Omit<ValidatedMedia, "bytes" | "contentHash"> | null {
   if (
     bytes.length >= 24 &&
     bytes
@@ -795,7 +824,7 @@ function safeClaimedMimeType(value: string | undefined): string | undefined {
 
 function extensionForMimeType(
   mimeType: string,
-): ValidatedImage["extension"] | null {
+): ValidatedMedia["extension"] | null {
   switch (mimeType) {
     case "image/gif":
       return "gif";
@@ -805,6 +834,8 @@ function extensionForMimeType(
       return "png";
     case "image/webp":
       return "webp";
+    case "video/mp4":
+      return "mp4";
     default:
       return null;
   }

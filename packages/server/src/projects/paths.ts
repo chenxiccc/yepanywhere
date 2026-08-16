@@ -89,6 +89,20 @@ export const GROK_DIR =
 export const GROK_SESSIONS_DIR =
   process.env.GROK_SESSIONS_DIR ?? join(GROK_DIR, "sessions");
 
+/** Session-scoped Grok media roots YA may materialize (images + videos). */
+export function grokSessionMediaRoots(
+  sessionsDir: string,
+  projectPath: string,
+  sessionId: string,
+): string[] {
+  const sessionDir = join(
+    sessionsDir,
+    encodeURIComponent(projectPath),
+    sessionId,
+  );
+  return [join(sessionDir, "images"), join(sessionDir, "videos")];
+}
+
 /** Root for pi sessions (append-only JSONL, persistent across restarts) */
 export const PI_DIR =
   process.env.PI_SESSIONS_DIR?.replace(new RegExp(`\\${sep}sessions$`), "") ??

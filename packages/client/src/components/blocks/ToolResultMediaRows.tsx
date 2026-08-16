@@ -181,6 +181,7 @@ function StoredToolResultMediaRow({
     };
   }, [expanded, loadBlob]);
 
+  const isVideo = media.mimeType.startsWith("video/");
   const dimensions =
     media.width && media.height ? `${media.width}×${media.height}` : null;
   const previewStyle: MediaPreviewStyle = {
@@ -218,7 +219,9 @@ function StoredToolResultMediaRow({
         >
           {filename}
         </button>
-        <span className={styles.suffix}>({t("toolResultMediaImage")})</span>
+        <span className={styles.suffix}>
+          ({t(isVideo ? "toolResultMediaVideo" : "toolResultMediaImage")})
+        </span>
         {dimensions && <span className={styles.dimensions}>{dimensions}</span>}
       </div>
 
@@ -234,22 +237,33 @@ function StoredToolResultMediaRow({
               {t("toolResultMediaLoadFailed")}
             </span>
           )}
-          {preview.state === "loaded" && (
-            <button
-              type="button"
-              className={styles.imageButton}
-              onClick={openViewer}
-              onContextMenu={imageActions.handleContextMenu}
-              aria-label={t("toolResultMediaOpen", { filename })}
-            >
-              <img
+          {preview.state === "loaded" &&
+            (isVideo ? (
+              // biome-ignore lint/a11y/useMediaCaption: generated tool output has no captions
+              <video
+                className={styles.imageButton}
                 src={preview.objectUrl}
-                alt={t("toolResultMediaAlt", { filename })}
-                width={media.width}
-                height={media.height}
+                controls
+                playsInline
+                preload="metadata"
+                aria-label={t("toolResultMediaAlt", { filename })}
               />
-            </button>
-          )}
+            ) : (
+              <button
+                type="button"
+                className={styles.imageButton}
+                onClick={openViewer}
+                onContextMenu={imageActions.handleContextMenu}
+                aria-label={t("toolResultMediaOpen", { filename })}
+              >
+                <img
+                  src={preview.objectUrl}
+                  alt={t("toolResultMediaAlt", { filename })}
+                  width={media.width}
+                  height={media.height}
+                />
+              </button>
+            ))}
         </div>
       )}
 
@@ -257,7 +271,7 @@ function StoredToolResultMediaRow({
         <LocalMediaModal
           path={filename}
           filePath={sourcePath ?? null}
-          mediaType="image"
+          mediaType={isVideo ? "video" : "image"}
           mediaSource={mediaSource}
           onClose={() => setModalOpen(false)}
         />
