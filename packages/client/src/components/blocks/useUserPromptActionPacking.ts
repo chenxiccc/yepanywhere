@@ -147,9 +147,9 @@ export function useUserPromptActionPacking(
     const probeHost = document.createElement("div");
     const probe = bubble.cloneNode(true) as HTMLDivElement;
     probeHost.setAttribute("aria-hidden", "true");
-    probe
-      .querySelectorAll("[id]")
-      .forEach((element) => element.removeAttribute("id"));
+    for (const element of probe.querySelectorAll("[id]")) {
+      element.removeAttribute("id");
+    }
     Object.assign(probeHost.style, {
       boxSizing: "border-box",
       contain: "layout style paint",
@@ -192,6 +192,9 @@ export function useUserPromptActionPacking(
   }, [actionCount]);
 
   useLayoutEffect(() => {
+    // The probe measures a clone of the rendered bubble, so new prompt text
+    // invalidates the packing even though nothing here reads the digest of it.
+    void measurementKey;
     setLayout((current) => {
       const fallback = defaultLayout(actionCount);
       return current.columns <= actionCount &&
