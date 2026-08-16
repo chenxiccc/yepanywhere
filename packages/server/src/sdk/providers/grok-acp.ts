@@ -33,10 +33,13 @@
  * - /home/graehl/.grok/docs/user-guide/03-keyboard-shortcuts.md + 14-headless-mode.md (effort,
  *   permission modes, interject for future phases)
  * - Local ~/.grok/models_cache.json + `grok models` + `~/.grok/bin/grok --help` (model info)
- * Native ACP fork and full /btw remain later phases.
+ * Native ACP fork, x.ai/interject steering, and full /btw remain later phases.
  *
- * Audited through Grok 0.2.112 (2026-07) using the installed binary, complete
- * live tool streams, and matching first-party xai-org/grok-build source.
+ * Audited through Grok 1.0.4 (2026-08) using the installed binary, a no-token
+ * ACP initialize/session/new probe, and matching first-party xai-org/grok-build
+ * source (package 1.0.5, SOURCE_REV 7bd63df). ACP `grok agent --no-leader
+ * stdio` remains the official embedding path; there is no Grok-specific Node
+ * agent SDK.
  */
 
 import { exec, execFile } from "node:child_process";
@@ -153,7 +156,7 @@ function parseGrokModelsOutput(output: string | undefined): {
       defaultModelId = declaredDefault[1];
       continue;
     }
-    const listed = line.match(/^\s*\*\s+(\S+)(?:\s+\(default\))?\s*$/i);
+    const listed = line.match(/^\s*[-*]\s+(\S+)(?:\s+\(default\))?\s*$/i);
     if (!listed) continue;
     const listedId = listed[1];
     if (!listedId) continue;
@@ -203,12 +206,15 @@ export function normalizeGrokModels(
     const supportedEffortLevels = reasoningEfforts
       .map((value) => effortLevel(value.value ?? value.id))
       .filter((value): value is EffortLevel => value !== undefined);
+    // Prefer the first advertised default. Grok 4.6 marks both xhigh and high
+    // as default:true; the CLI/ACP default is the first row (xhigh). The
+    // cache's info.reasoning_effort can lag that row.
     const defaultEffortLevel =
-      effortLevel(info.reasoning_effort) ??
       reasoningEfforts
         .filter((value) => value.default === true)
         .map((value) => effortLevel(value.value ?? value.id))
-        .find((value): value is EffortLevel => value !== undefined);
+        .find((value): value is EffortLevel => value !== undefined) ??
+      effortLevel(info.reasoning_effort);
     const contextWindow =
       typeof info.context_window === "number" ? info.context_window : undefined;
     const supportsEffort =
@@ -531,9 +537,11 @@ export class GrokACPProvider implements AgentProvider {
       return;
     }
 
-    // Build args for `grok agent stdio` (per 15-agent-mode.md and 17-sessions.md).
-    // Global flags (--effort, -m) before subcommand where possible.
-    const args: string[] = [];
+    // Grok 1.0.4: agent options go after `agent` and before the transport
+    // (`grok agent --effort … -m … --no-leader stdio`). `--no-leader` keeps
+    // this YA process off a shared TUI/leader backend so session updates are
+    // not buffered behind another client.
+    const args: string[] = ["agent"];
     if (options.effort) {
       args.push("--effort", options.effort);
     }
@@ -547,9 +555,9 @@ export class GrokACPProvider implements AgentProvider {
     ) {
       args.push("-m", options.model);
     }
-    args.push("agent", "stdio");
+    args.push("--no-leader", "stdio");
 
-    // (Optional future: --yolo for bypassPermissions, but ACP permission routing is preferred for supervision)
+    // ACP permission routing stays preferred over `--always-approve` / `--yolo`.
 
     const updateQueue: SessionNotification[] = [];
 

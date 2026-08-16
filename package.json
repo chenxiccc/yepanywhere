@@ -106,6 +106,9 @@
     },
     "piCli": {
       "compatibleThroughVersion": "0.82.1"
+    },
+    "grokCli": {
+      "compatibleThroughVersion": "1.0.4"
     }
   },
   "dependencies": {

@@ -70,6 +70,7 @@ disambiguates within-color cases.
 | `codex-oss`    | `Cd↓`  | `--provider-codex`     | OSS / local |
 | `gemini`       | `✦`    | `--provider-gemini`    | Keep brand mark |
 | `gemini-acp`   | `✦↓`   | `--provider-gemini`    | ACP = local transport |
+| `grok`         | `Gk`   | `--provider-grok`      | xAI Grok |
 | `opencode`     | `OC`   | `--provider-opencode`  | OpenCode purple |
 
 Model sub-family abbreviations (appended after provider abbrev):
@@ -91,6 +92,9 @@ Model sub-family abbreviations (appended after provider abbrev):
 | gpt-4        | `4`   | `Cd 4`                    |
 | 2.5-flash    | `2.5f`| `✦ 2.5f`                  |
 | 2.5-pro      | `2.5p`| `✦ 2.5p`                  |
+| grok-4.6     | `4.6` | `Gk 4.6`                  |
+| grok-4.5     | `4.5` | `Gk 4.5`                  |
+| grok-build   | —     | `Gk`                      |
 
 The pattern is: provider abbrev + space + model short. Fits in ~6–8 chars
 for all common cases. Tooltip shows the raw full model ID (already wired).

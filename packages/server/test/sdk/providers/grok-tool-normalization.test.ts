@@ -26,7 +26,7 @@ function toolMeta(
   };
 }
 
-describe("Grok 0.2.112 tool normalization", () => {
+describe("Grok tool normalization", () => {
   it("uses canonical metadata instead of the generic ACP edit kind", () => {
     const initial = normalizeGrokToolUpdate({
       sessionUpdate: "tool_call",
@@ -229,6 +229,71 @@ describe("Grok 0.2.112 tool normalization", () => {
         prompt: "Read only.\n",
         subagent_type: "explore",
       },
+    });
+  });
+
+  it("maps 1.0.4 video generation to a generic media-capable action", () => {
+    const initial = normalizeGrokToolUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "video-1",
+      rawInput: {
+        variant: "ImageToVideo",
+        prompt: "gentle camera push-in",
+        duration: 6,
+      },
+      ...toolMeta("image_to_video", "image_to_video", "Generate Video", {
+        prompt: "gentle camera push-in",
+      }),
+    });
+    const terminalUpdate = {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "video-1",
+      status: "completed",
+      rawOutput: {
+        type: "ImageToVideo",
+        path: "/home/test/.grok/sessions/project/videos/1.mp4",
+        filename: "1.mp4",
+        session_folder: "videos",
+      },
+    };
+    const terminal = normalizeGrokToolUpdate(terminalUpdate, initial);
+
+    expect(terminal.name).toBe("ImageToVideo");
+    expect(terminal.input.path).toBe(
+      "/home/test/.grok/sessions/project/videos/1.mp4",
+    );
+    expect(buildGrokStructuredToolResult(terminalUpdate, terminal)).toEqual({
+      type: "video",
+      path: "/home/test/.grok/sessions/project/videos/1.mp4",
+      filename: "1.mp4",
+      sessionFolder: "videos",
+    });
+    expect(grokToolResultMediaCandidate(terminalUpdate)).toBeUndefined();
+  });
+
+  it("keeps goal and workflow actions as native generic rows", () => {
+    expect(
+      normalizeGrokToolUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "goal-1",
+        rawInput: { variant: "UpdateGoal", objective: "Ship the provider" },
+        ...toolMeta("update_goal", "goal_update", "Update Goal"),
+      }),
+    ).toMatchObject({
+      name: "update_goal",
+      nativeName: "update_goal",
+      input: { objective: "Ship the provider" },
+    });
+    expect(
+      normalizeGrokToolUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "wf-1",
+        rawInput: { variant: "Workflow", name: "review-changes" },
+        ...toolMeta("workflow", "workflow", "Workflow"),
+      }),
+    ).toMatchObject({
+      name: "workflow",
+      nativeName: "workflow",
     });
   });
 

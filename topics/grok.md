@@ -56,6 +56,66 @@ This supersedes the steering plan in *Steering, Interject, and /btw Forking
 Support* and the 2026-05-28 smoke below: that smoke proved the second prompt
 was *accepted*, not that it steered the running turn.
 
+## 1.0.4 refresh and grok-4.6 default (2026-08-16)
+
+Installed `grok 1.0.4 (d846eb93d9) [stable]` is the current local target.
+Root `yepAnywhere.grokCli.compatibleThroughVersion` records that version.
+Public `xai-org/grok-build` was refreshed to git
+`9fabadea800fa6e2ed8ec91c4f45f02b7e2504f4` (`SOURCE_REV`
+`7bd63df3c9bb1bf98e7a9b3486f4a0189ea94e55`, crate 1.0.5).
+
+**ACP remains the embedding path.** xAI's docs still point integrators at
+`grok agent stdio` and `@agentclientprotocol/sdk`. There is no first-party
+Grok-specific Node/TypeScript agent SDK. Alternatives considered and rejected
+for YA live supervision:
+
+- `grok agent serve` — same ACP contract over WebSocket, extra process and
+  auth surface, no richer events.
+- Headless `-p --output-format streaming-json` / `--include-partial-messages`
+  — one-shot script output, not a durable multi-turn session.
+- Direct xAI HTTP APIs — lose the CLI tool loop, sandbox, skills, and
+  `~/.grok/sessions` identity.
+- Unofficial CLIs such as `@vibe-kit/grok-cli` — a different product.
+
+YA already uses the official ACP SDK. 0.12.0 still covers the 1.0.4 initialize
+union and the two reverse extension methods YA handles. Upgrading to 0.24.0
+is a shared ACP-client change, not a Grok-backend replacement.
+
+**Default model is `grok-4.6`.** A no-token ACP `initialize`/`session/new`
+reported `currentModelId: grok-4.6` with 500k context and default effort
+`xhigh`. `grok models` lists `grok-4.6` (default) and `grok-4.5`. YA's
+`getAvailableModels()` follows that listing; it does not hardcode 4.6 so an
+older CLI can still advertise 4.5. The unreadable-catalog fallback remains
+`grok-build`. Compact glyphs are `Gk 4.6` / `Gk 4.5`.
+
+**Launch is `grok agent [--effort] [-m] --no-leader stdio`.** 1.0.4 docs put
+agent flags after `agent` and before the transport. `--no-leader` keeps the
+YA-owned process off a shared TUI/leader so updates are not buffered behind
+another client. `--include-partial-messages` does not apply to ACP.
+
+**Continuation is still `session/load` + `_meta.noReplay`.** 1.0.4 still
+advertises `agentCapabilities.loadSession: true`. It also advertises
+`sessionCapabilities.resume`; YA does not switch to `session/resume` until
+that method is re-measured. `supportsSteering` stays false; `x.ai/interject`
+is still the real mid-turn path and is not wired.
+
+**Harness affordances vs YA visibility** (1.0.4):
+
+| Grok TUI / ACP affordance | YA surface now | Gap |
+| --- | --- | --- |
+| Model picker 4.6 / 4.5 + effort | Existing new-session model/effort controls | none for catalog |
+| File/search/edit/bash/web/todo/ask/plan | Existing renderer names | none |
+| Subagent spawn / bg wait / kill | Existing generic or spawn rows | none |
+| Image gen/edit | Generic row + image media candidate | none |
+| Video gen (`image_to_video`, `reference_to_video`, `video_gen`) | Generic `ImageToVideo` / `VideoGen` row; path on input/result | replay-safe video playback needs a new media facility; do not feed `.mp4` through the image store |
+| Goal / workflow / monitor / LSP | Native generic activity rows | dedicated goal/workflow UI is new facility |
+| Slash commands including `/workflow`, `/goal` | Live `/` menu from `available_commands_update` | descriptions/hints still API-only |
+| Mid-turn interject | YA Queue | `x.ai/interject` not implemented |
+| Session recap / voice / cancel-rewind bits on initialize | ignored metadata | new facility if a YA surface wants them |
+
+`updates.jsonl` remains the replay log. A live TUI session may create that
+file after the first persist, not at directory creation.
+
 ## Current upstream and local surface (2026-07-29)
 
 Grok Build is xAI's terminal-first coding agent. It supports an interactive
@@ -166,9 +226,10 @@ YA's new-session flow (`NewSessionForm.tsx`, `useProviders`, `getAvailableModels
 
 From the Grok CLI and cache, which define what the installed binary can run:
 
-- The current visible/default model is `grok-4.5` (display name "Grok 4.5").
-- The current model supports `low`, `medium`, and `high` effort, with `high`
-  as its default.
+- The current visible/default model is `grok-4.6` (display name "Grok 4.6").
+  `grok-4.5` remains listed.
+- Grok 4.6 supports `xhigh` (default), `high`, `medium`, and `low`. Grok 4.5
+  supports `high` (default), `medium`, and `low`.
 - `getAvailableModels()` queries `grok models` for the visible ids, ordering,
   and default, then enriches them from `GROK_HOME/models_cache.json`.
   Object-keyed and older array-shaped caches are both accepted.
@@ -462,9 +523,9 @@ Gap at that snapshot, now resolved:
 Grok provider work remains broader than modal prompt/interview handling:
 
 - **Source refresh:** the provider-refresh audit currently marks Grok ACP as
-  current through installed and public-source 0.2.112. Re-run it when
-  the installed model/command catalog, ACP dependency, or first-party request
-  and notification enums change.
+  current through installed 1.0.4. Re-run it when the installed
+  model/command catalog, ACP dependency, or first-party request and
+  notification enums change.
 - **Broader replay corpus:** current `updates.jsonl` replay covers the
   transcript and 0.2.112 vocabulary observed in the live coverage sessions.
   Preserve generic fallbacks for valid future tool kinds and provider metadata
@@ -575,6 +636,8 @@ place. Liveness-specific evidence from the takeover also informs
 - [x] 0.2.111 CLI/cache/ACP and public 0.2.110 source audited
 - [x] 0.2.112 installed CLI, matching public source, canonical tool metadata,
   full live vocabulary, and persisted replay audited
+- [x] 1.0.4 installed CLI, public 1.0.5 source, grok-4.6 default/xhigh
+  catalog, `--no-leader` ACP launch, and new generic tool kinds audited
 - [x] Live and replay tool lifecycles share stable canonical normalization,
   compatible YA renderer schemas, one terminal result, and image media
   candidates
@@ -594,6 +657,6 @@ task file; that file references this committed topic, not the reverse.
 
 Topic: grok
 
-<!-- epistemic status: installed 0.2.112 binary/cache + successful Grok 4.5
-ACP/tool sessions + matching public xai-org/grok-build 0.2.112 source as of
-2026-07-29; provider remains gated -->
+<!-- epistemic status: installed 1.0.4 binary + no-token ACP initialize
+(grok-4.6 default, xhigh) + matching public xai-org/grok-build 1.0.5 source
+as of 2026-08-16; provider remains gated -->

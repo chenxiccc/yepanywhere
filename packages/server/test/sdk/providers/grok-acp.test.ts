@@ -142,6 +142,76 @@ describe("GrokACPProvider", () => {
         },
       ]);
     });
+
+    it("defaults to grok-4.6 extra-high effort when the listing marks it default", () => {
+      expect(
+        normalizeGrokModels(
+          {
+            models: {
+              "grok-4.6": {
+                info: {
+                  id: "grok-4.6",
+                  name: "Grok 4.6",
+                  description: "SpaceXAI's latest frontier model",
+                  context_window: 500_000,
+                  supports_reasoning_effort: true,
+                  reasoning_effort: "high",
+                  reasoning_efforts: [
+                    {
+                      id: "xhigh",
+                      value: "xhigh",
+                      description: "Highest effort and reasoning level",
+                      default: true,
+                    },
+                    {
+                      id: "high",
+                      value: "high",
+                      description: "Higher implementation quality",
+                      default: true,
+                    },
+                    { id: "medium", value: "medium", default: false },
+                    { id: "low", value: "low", default: false },
+                  ],
+                },
+              },
+              "grok-4.5": {
+                info: {
+                  id: "grok-4.5",
+                  name: "Grok 4.5",
+                  context_window: 500_000,
+                  supports_reasoning_effort: true,
+                  reasoning_effort: "high",
+                  reasoning_efforts: [
+                    { id: "high", value: "high", default: true },
+                    { id: "low", value: "low" },
+                  ],
+                },
+              },
+            },
+          },
+          [
+            "Default model: grok-4.6",
+            "Available models:",
+            "  * grok-4.6 (default)",
+            "  - grok-4.5",
+          ].join("\n"),
+        ),
+      ).toMatchObject([
+        {
+          id: "grok-4.6",
+          name: "Grok 4.6",
+          isDefault: true,
+          defaultEffortLevel: "xhigh",
+          defaultReasoningEffort: "xhigh",
+          supportedEffortLevels: ["xhigh", "high", "medium", "low"],
+        },
+        {
+          id: "grok-4.5",
+          name: "Grok 4.5",
+          defaultEffortLevel: "high",
+        },
+      ]);
+    });
   });
 
   describe("isInstalled", () => {
@@ -736,7 +806,13 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     });
     const argsNone = connectCalls[0].args;
     expect(argsNone).not.toContain("--effort");
-    expect(argsNone).toEqual(["agent", "stdio"]);
+    expect(argsNone).toEqual(["agent", "--no-leader", "stdio"]);
+    expect(argsLow?.indexOf("agent")).toBeLessThan(
+      argsLow?.indexOf("--effort") ?? -1,
+    );
+    expect(argsLow?.indexOf("--effort")).toBeLessThan(
+      argsLow?.indexOf("stdio") ?? -1,
+    );
   });
 
   it("strips xAI API-key env vars from the spawned grok child", async () => {

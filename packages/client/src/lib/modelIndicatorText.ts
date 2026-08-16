@@ -84,7 +84,10 @@ const modelGlyphRulesByProvider: Readonly<
     { patterns: ["1.5-pro"], glyph: "✹" },
     { patterns: ["gemini"], glyph: "◗" },
   ],
-  grok: [{ patterns: ["grok-build"], glyph: "Gk" }],
+  grok: [
+    { patterns: ["grok-build"], glyph: "", fixedSuffix: "" },
+    { patterns: ["grok-"], glyph: "" },
+  ],
   opencode: [
     { patterns: ["gpt-5"], glyph: "◆" },
     { patterns: ["gpt-4"], glyph: "⧉" },
@@ -232,6 +235,11 @@ function inferModelFamilyProviderKey(modelPart: string): string | null {
   return null;
 }
 
+function formatGlyphAndSuffix(match: ModelGlyphMatch): string {
+  if (!match.glyph) return match.suffix;
+  return match.suffix ? `${match.glyph} ${match.suffix}` : match.glyph;
+}
+
 /** Model glyph + suffix only (no provider abbrev prefix). */
 function formatModelGlyphOnly(familyKey: string, modelPart: string): string {
   const normalized = normalizeForModelGlyphMatching(modelPart);
@@ -243,7 +251,7 @@ function formatModelGlyphOnly(familyKey: string, modelPart: string): string {
   if (!match) {
     return normalizedForMatching;
   }
-  return match.suffix ? `${match.glyph} ${match.suffix}` : match.glyph;
+  return formatGlyphAndSuffix(match);
 }
 
 export interface ModelIndicatorParts {
@@ -326,7 +334,7 @@ export function getModelIndicatorModelParts(
 
   return {
     providerGlyph,
-    modelLabel: match.suffix ? `${match.glyph} ${match.suffix}` : match.glyph,
+    modelLabel: formatGlyphAndSuffix(match),
     modelFamilyKey: providerKey,
   };
 }

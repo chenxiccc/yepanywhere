@@ -755,7 +755,9 @@ Primary sources:
   `11-custom-models.md`, and `22-permissions-and-safety.md`;
 - first-party `xai-org/grok-build` source, including its package version and
   root `SOURCE_REV`;
+- root `package.json` `yepAnywhere.grokCli.compatibleThroughVersion`;
 - `packages/server/src/sdk/providers/grok-acp.ts`;
+- `packages/server/src/sdk/providers/grok-tool-normalization.ts`;
 - `packages/server/src/sessions/grok-reader.ts`;
 - ACP SDK dependency `@agentclientprotocol/sdk`;
 - persisted sessions under `~/.grok/sessions/`.
@@ -775,7 +777,8 @@ Difference detectors:
 - `grok models` or `models_cache.json` changes visible ids, metadata, cache
   shape, or the default in a way the dynamic normalizer does not preserve.
 - `grok agent` flags move between top-level, `agent`, and `agent stdio`
-  positions; YA currently places effort/model flags before `agent stdio`.
+  positions; YA 1.0.4+ places `--effort`/`-m` after `agent` and passes
+  `--no-leader` before `stdio`.
 - Local docs or first-party source add or remove ACP methods, reverse
   extension requests, permission modes, interject/steering semantics, session
   storage files, compaction behavior, or custom-model credential precedence.
@@ -783,6 +786,33 @@ Difference detectors:
   normalization tests.
 - `@agentclientprotocol/sdk` changes enough to alter `ACPClient` request,
   notification, or permission typings.
+
+Current source refresh, 2026-08-16:
+
+- Installed Grok is `grok 1.0.4 (d846eb93d9) [stable]`. Public `xai-org/grok-build`
+  is git `9fabadea800fa6e2ed8ec91c4f45f02b7e2504f4`, `SOURCE_REV`
+  `7bd63df3c9bb1bf98e7a9b3486f4a0189ea94e55`, crate version 1.0.5 (one patch
+  ahead of the installed binary).
+- `grok models` and a no-token ACP `initialize`/`session/new` both advertise
+  default `grok-4.6` plus `grok-4.5`. Grok 4.6 default effort is `xhigh`; 4.5
+  remains `high`. YA's catalog listing parser now accepts both `*` and `-`
+  rows so 4.5 stays selectable.
+- Launch is `grok agent [--effort] [-m] --no-leader stdio`. `--include-partial-messages`
+  is headless-only and is not an ACP launch flag. There is no Grok-specific
+  Node agent SDK; official embedding remains ACP via
+  `@agentclientprotocol/sdk`.
+- `loadSession` is still true. Initialize also advertises
+  `sessionCapabilities.resume`; YA keeps `session/load` + `_meta.noReplay`
+  because that path is measured and still advertised.
+- New canonical kinds (`video_gen` / `image_to_video` / `reference_to_video`,
+  `update_goal`, `workflow`, `monitor`, `lsp`) stay on the existing generic
+  activity vocabulary. Video files are not fed through the image media
+  store.
+- `@agentclientprotocol/sdk` remains 0.12.0. 0.24.0 is latest; 1.0.4 initialize
+  and the extension methods YA already handles do not require the upgrade.
+
+Status: Grok ACP is current through installed 1.0.4. Root
+`yepAnywhere.grokCli.compatibleThroughVersion` records `1.0.4`.
 
 Enacted audit, 2026-07-23:
 

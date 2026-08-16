@@ -185,6 +185,7 @@ describe("getModelIndicatorModelLabel", () => {
       ["codex-oss", "Cd↓"],
       ["gemini", "✦"],
       ["gemini-acp", "✦"],
+      ["grok", "Gk"],
       ["opencode", "OC"],
     ])("provider %s uses abbrev %s", (provider, abbrev) => {
       const label = getModelIndicatorModelLabel(provider, "unknown-model-zzz");
@@ -204,6 +205,12 @@ describe("getModelIndicatorModelLabel", () => {
         getModelIndicatorModelLabel("claude-ollama", "claude-sonnet-4-6"),
       ).toBe("Cl↓ ♪ 4.6");
     });
+    it("grok-4.6 and grok-4.5 use the Grok abbrev plus version", () => {
+      expect(getModelIndicatorModelLabel("grok", "grok-4.6")).toBe("Gk 4.6");
+      expect(getModelIndicatorModelLabel("grok", "grok-4.5")).toBe("Gk 4.5");
+      expect(getModelIndicatorModelLabel("grok", "grok-build")).toBe("Gk");
+    });
+
     it("gemini-acp uses gemini model rules", () => {
       expect(
         getModelIndicatorModelLabel("gemini-acp", "gemini-2.5-flash"),
