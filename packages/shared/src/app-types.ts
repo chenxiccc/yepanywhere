@@ -24,6 +24,7 @@ import type {
   SlashCommand,
 } from "./types.js";
 import type { ToolDisplayAction } from "./tool-display-actions.js";
+import type { ProjectPathLinkTarget } from "./project-path-links.js";
 import type { UploadedFile } from "./upload.js";
 import type { UserMessageMetadata } from "./user-message-metadata.js";
 import type { WorkstreamId } from "./workstreams.js";
@@ -49,6 +50,8 @@ export interface AppContentBlock {
   input?: unknown;
   /** YA-derived presentation semantics; recomputed rather than persisted. */
   _displayActions?: ToolDisplayAction[];
+  /** Server-confirmed file links for visible command or result text. */
+  _projectPathLinks?: ProjectPathLinkTarget[];
   // tool_result block
   tool_use_id?: string;
   content?: string | AppContentBlock[];

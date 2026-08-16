@@ -97,6 +97,8 @@ interface FilePathLinkProps {
   viewMode?: FileViewerMode;
   /** Whether to render the faint copy-path button after the link */
   showCopyButton?: boolean;
+  /** Whether to append source-control affordances after the path. */
+  showVersionControlLinks?: boolean;
 }
 
 function getProjectPath(projectId: string): string | null {
@@ -151,6 +153,7 @@ export const FilePathLink = memo(function FilePathLink({
   showFullPath = false,
   viewMode = "full",
   showCopyButton = true,
+  showVersionControlLinks = true,
 }: FilePathLinkProps) {
   const publicShareContext = usePublicShareContext();
   const basePath = useRemoteBasePath();
@@ -281,7 +284,7 @@ export const FilePathLink = memo(function FilePathLink({
           )}
         </a>
         {showCopyButton && <FilePathCopyButton filePath={viewerFilePath} />}
-        {publicShareContext === null && (
+        {publicShareContext === null && showVersionControlLinks && (
           <FileVersionControlLinks
             className={styles.inlineDiffLinks}
             projectId={projectId}

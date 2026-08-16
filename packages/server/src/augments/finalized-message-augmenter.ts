@@ -11,6 +11,7 @@ import {
   renderMarkdownToHtml,
 } from "./markdown-augments.js";
 import { getMessageContent } from "./message-utils.js";
+import { resolveProjectPathTextLinks } from "./project-path-links.js";
 import { computeReadAugment } from "./read-augments.js";
 import type { SafeMarkdownRenderOptions } from "./safe-markdown.js";
 import type {
@@ -259,6 +260,73 @@ export async function augmentExitPlanModeAndReadResultsInMessage(
   }
 }
 
+function isShellToolName(name: unknown): boolean {
+  if (typeof name !== "string") return false;
+  const normalized = name.toLowerCase();
+  return (
+    normalized === "bash" ||
+    normalized === "exec_command" ||
+    normalized === "shell_command"
+  );
+}
+
+function getShellCommand(input: unknown): string | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  if (typeof record.command === "string") return record.command;
+  return typeof record.cmd === "string" ? record.cmd : null;
+}
+
+/**
+ * Attach exact file targets to raw tool text without shipping a project path
+ * corpus to the client. The field is optional so older servers and public
+ * shares retain their existing plain-text behavior.
+ */
+export async function augmentProjectPathLinksInMessage(
+  message: Record<string, unknown>,
+  safeMarkdownOptions?: SafeMarkdownRenderOptions,
+): Promise<void> {
+  const projectLinks = safeMarkdownOptions?.projectFileLinks;
+  if (!projectLinks?.index) return;
+  const index = projectLinks.index;
+
+  const content = getMessageContent(message);
+  if (!content) return;
+
+  const resolveText = (text: string) =>
+    resolveProjectPathTextLinks(text, {
+      index,
+      projectId: projectLinks.projectId,
+      projectPath: projectLinks.projectPath,
+      gateLookupsByShape: true,
+      onUnversionedLookup: projectLinks.onUnversionedLookup,
+      resolveAbsoluteFilePaths: projectLinks.resolveAbsoluteFilePaths,
+    });
+
+  await Promise.all(
+    content.map(async (rawBlock) => {
+      if (!rawBlock || typeof rawBlock !== "object") return;
+      const block = rawBlock as Record<string, unknown>;
+
+      if (block.type === "tool_use" && isShellToolName(block.name)) {
+        const command = getShellCommand(block.input);
+        const input = block.input as Record<string, unknown> | undefined;
+        if (!command || !input) return;
+        const targets = await resolveText(command);
+        if (targets.length > 0) input._projectPathLinks = targets;
+        else delete input._projectPathLinks;
+        return;
+      }
+
+      if (block.type === "tool_result" && typeof block.content === "string") {
+        const targets = await resolveText(block.content);
+        if (targets.length > 0) block._projectPathLinks = targets;
+        else delete block._projectPathLinks;
+      }
+    }),
+  );
+}
+
 export async function augmentFinalizedMessage(
   message: Record<string, unknown>,
   options: FinalizedMessageAugmentOptions = {},
@@ -267,6 +335,7 @@ export async function augmentFinalizedMessage(
   await augmentWriteToolUsesInMessage(message, options.onError);
   await augmentTextBlocks([message], options.safeMarkdownOptions);
   await augmentExitPlanModeAndReadResultsInMessage(message, options.onError);
+  await augmentProjectPathLinksInMessage(message, options.safeMarkdownOptions);
 }
 
 export function getFinalMarkdownHtml(

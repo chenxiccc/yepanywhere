@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { ProjectPathLinkTarget } from "@yep-anywhere/shared";
 import type { UserQuestionAnswers } from "../../../types";
 import type { ToolCallItem } from "../../../types/renderItems";
 import type { ContentBlock, RenderContext } from "../types";
@@ -11,6 +12,7 @@ export interface BashInput {
   description?: string;
   timeout?: number;
   run_in_background?: boolean;
+  _projectPathLinks?: ProjectPathLinkTarget[];
 }
 
 export interface BashResult {

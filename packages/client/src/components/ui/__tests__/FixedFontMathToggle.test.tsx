@@ -162,4 +162,26 @@ describe("fixed-font file-link hints", () => {
     expect(rendered.html).not.toContain("Click to view");
     expect(rendered.html).not.toContain("middle-click");
   });
+
+  it("links a server-confirmed bare path as one exact anchor", () => {
+    const path = "topics/performance-regression-suite.md";
+    const rendered = renderFixedFontRichContent(
+      `228 ${path}\nwc: topics/commits.md: missing`,
+      {
+        projectId: "project-1",
+        projectPathLinks: [{ filePath: path, text: path }],
+      },
+    );
+    const template = document.createElement("template");
+    template.innerHTML = rendered.html;
+    const links = template.content.querySelectorAll(
+      "a[data-fixed-font-file-path]",
+    );
+
+    expect(rendered.changed).toBe(true);
+    expect(links).toHaveLength(1);
+    expect(links[0]?.textContent).toBe(path);
+    expect(links[0]?.getAttribute("data-fixed-font-file-path")).toBe(path);
+    expect(template.content.textContent).toContain("topics/commits.md");
+  });
 });

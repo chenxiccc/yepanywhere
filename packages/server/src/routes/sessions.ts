@@ -30,7 +30,6 @@ import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { performance } from "node:perf_hooks";
 import { Hono } from "hono";
-import { augmentTextBlocks } from "../augments/markdown-augments.js";
 import type { ISessionIndexService } from "../indexes/types.js";
 import { getLogger } from "../logging/logger.js";
 import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
@@ -2416,7 +2415,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         routing.workingProject.path,
       );
       try {
-        await augmentTextBlocks(agentSession.messages, {
+        await augmentPersistedSessionMessages(agentSession.messages, {
           projectFileLinks: {
             projectId: routing.workingProjectId,
             projectPath: routing.workingProject.path,

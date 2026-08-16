@@ -1,4 +1,8 @@
-import { parseToonDocument } from "@yep-anywhere/shared";
+import {
+  findProjectPathTokens,
+  parseToonDocument,
+  type ProjectPathLinkTarget,
+} from "@yep-anywhere/shared";
 import katex from "katex";
 import {
   type ClipboardEventHandler,
@@ -45,6 +49,7 @@ interface FixedFontMathToggleProps {
   baseFilePath?: string;
   precomputedRendered?: RenderedMathResult;
   renderMode?: FixedFontRenderMode;
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
 }
 
 export interface RenderedMathResult {
@@ -66,6 +71,7 @@ interface RenderOptions {
   basePath?: string;
   projectPath?: string;
   publicShare?: PublicShareContextValue | null;
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
 }
 
 interface MathRenderOptions {
@@ -210,6 +216,49 @@ function renderMarkdownFileLink(
     html: `<a class="fixed-font-file-link" href="${escapeHtmlAttribute(fileUrl)}" data-fixed-font-file-path="${escapeHtmlAttribute(filePath)}" data-tooltip="${escapeHtmlAttribute(titlePath)}">${labelHtml}</a>`,
     changed: true,
   };
+}
+
+function renderConfirmedProjectPathText(
+  text: string,
+  options: RenderOptions,
+): RenderedMathResult {
+  if (
+    options.publicShare ||
+    !options.projectId ||
+    !options.projectPathLinks?.length
+  ) {
+    return { html: escapeHtml(text), changed: false };
+  }
+
+  const targets = new Map(
+    options.projectPathLinks.map((target) => [target.text, target.filePath]),
+  );
+  const matches = findProjectPathTokens(text).filter((token) =>
+    targets.has(token.text),
+  );
+  if (matches.length === 0) {
+    return { html: escapeHtml(text), changed: false };
+  }
+
+  let html = "";
+  let cursor = 0;
+  for (const match of matches) {
+    html += escapeHtml(text.slice(cursor, match.start));
+    const filePath = targets.get(match.text)!;
+    const rawUrl =
+      options.publicShare &&
+      buildPublicShareFileHref(options.publicShare, { filePath });
+    const fileUrl =
+      rawUrl ??
+      toBrowserAppHref(
+        `${options.basePath ?? ""}/projects/${encodeURIComponent(options.projectId)}/file?path=${encodeURIComponent(filePath)}`,
+      );
+    const titlePath = makeDisplayPath(filePath, options.projectPath);
+    html += `<a class="fixed-font-file-link" href="${escapeHtmlAttribute(fileUrl)}" data-fixed-font-file-path="${escapeHtmlAttribute(filePath)}" data-tooltip="${escapeHtmlAttribute(titlePath)}">${escapeHtml(match.text)}</a>`;
+    cursor = match.end;
+  }
+  html += escapeHtml(text.slice(cursor));
+  return { html, changed: true };
 }
 
 function renderKatexHtml(tex: string, displayMode: boolean): string {
@@ -497,7 +546,12 @@ function renderInlineFixedFontContent(
 
   const flushPlain = (end: number) => {
     if (end > plainStart) {
-      html += escapeHtml(sourceText.slice(plainStart, end));
+      const rendered = renderConfirmedProjectPathText(
+        sourceText.slice(plainStart, end),
+        options,
+      );
+      html += rendered.html;
+      if (rendered.changed) changed = true;
     }
   };
 
@@ -508,7 +562,11 @@ function renderInlineFixedFontContent(
       const end = sourceText.indexOf("`", cursor + 1);
       if (end > cursor + 1) {
         flushPlain(cursor);
-        html += `<code>${escapeHtml(sourceText.slice(cursor + 1, end))}</code>`;
+        const rendered = renderConfirmedProjectPathText(
+          sourceText.slice(cursor + 1, end),
+          options,
+        );
+        html += `<code>${rendered.html}</code>`;
         changed = true;
         cursor = end + 1;
         plainStart = cursor;
@@ -1003,6 +1061,7 @@ export function FixedFontMathToggle({
   initialMode,
   precomputedRendered,
   renderMode = "rich",
+  projectPathLinks,
 }: FixedFontMathToggleProps) {
   const sessionMetadata = useOptionalSessionMetadata();
   const publicShare = usePublicShareContext();
@@ -1035,6 +1094,7 @@ export function FixedFontMathToggle({
             baseFilePath,
             basePath,
             publicShare,
+            projectPathLinks,
           })),
     [
       precomputedRendered,
@@ -1046,6 +1106,7 @@ export function FixedFontMathToggle({
       baseFilePath,
       basePath,
       publicShare,
+      projectPathLinks,
     ],
   );
   const { showRendered, toggleLocalMode } = useRenderModeToggle(

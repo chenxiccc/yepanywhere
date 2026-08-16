@@ -1,3 +1,4 @@
+import type { ProjectPathLinkTarget } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
 
 /**
@@ -43,6 +44,8 @@ export interface RenderContext {
   provider?: string;
   /** Absolute session project path, used for compact file path display */
   projectPath?: string | null;
+  /** Exact file targets confirmed for this tool result body. */
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
   /** Expanded state for a renderer-owned row summary outline. */
   summaryExpanded?: boolean;
   /** Toggle a renderer-owned row summary outline. */

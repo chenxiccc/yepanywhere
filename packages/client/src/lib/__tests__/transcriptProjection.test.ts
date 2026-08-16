@@ -27,6 +27,7 @@ describe("compileTranscriptProjection", () => {
             type: "tool_result",
             tool_use_id: "tool-1",
             content: "file contents",
+            _projectPathLinks: [{ filePath: "test.ts", text: "test.ts" }],
           },
         ],
         timestamp: "2024-01-01T00:00:01Z",
@@ -41,7 +42,11 @@ describe("compileTranscriptProjection", () => {
       id: "tool-1",
       toolName: "Read",
       status: "complete",
-      toolResult: { content: "file contents", isError: false },
+      toolResult: {
+        content: "file contents",
+        isError: false,
+        projectPathLinks: [{ filePath: "test.ts", text: "test.ts" }],
+      },
     });
   });
 

@@ -707,6 +707,11 @@ export type {
   ToolDisplayReadAction,
   ToolDisplaySearchAction,
 } from "./tool-display-actions.js";
+export {
+  findProjectPathTokens,
+  type ProjectPathLinkTarget,
+  type ProjectPathToken,
+} from "./project-path-links.js";
 export type {
   CodexWebRunLine,
   CodexWebRunPage,

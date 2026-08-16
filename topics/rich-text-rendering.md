@@ -111,6 +111,12 @@ These run unconditionally and are not user-configurable:
   target currently exists under the project root. The Markdown parser's
   existing `codespan` token is the detection boundary; YA does not reparse raw
   assistant Markdown for this.
+- **Confirmed tool-content file links** — completed Bash/Ran command text and
+  string tool-result bodies render exact server-confirmed project paths as file
+  viewer links. A whole path anchor takes precedence over glossary annotation,
+  and activating it does not trigger the containing row's expand action. The
+  optional per-body annotation is absent on older servers and ignored in public
+  shares, where the same content remains plain.
 - **Line numbers** — shown in the plain-text fallback path (no Shiki highlight).
 
 ## Math delimiter parity

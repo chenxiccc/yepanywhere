@@ -1,4 +1,5 @@
 import type {
+  ProjectPathLinkTarget,
   ToolDisplayAction,
   ToolResultMedia,
   TranscriptDisplayObject,
@@ -68,6 +69,8 @@ export interface ToolResultData {
   structured?: unknown;
   /** Session-scoped media captured from the tool result. */
   media?: ToolResultMedia[];
+  /** Exact file targets confirmed by the serving project. */
+  projectPathLinks?: ProjectPathLinkTarget[];
 }
 
 export interface UserPromptItem extends RenderItemBase {

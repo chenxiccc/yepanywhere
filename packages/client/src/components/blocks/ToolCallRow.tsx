@@ -24,6 +24,7 @@ import {
 } from "../../hooks/useTooltipAppearance";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
+import { readProjectPathLinkTargets } from "../../lib/projectPathLinks";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
 import {
   formatCommandDuration,
@@ -35,6 +36,7 @@ import {
   isElementFullyScrollVisible,
 } from "../../lib/tooltipVisibility";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
+import { ProjectPathLinkedText } from "../ProjectPathLinkedText";
 import {
   getToolResultImageSourcePath,
   ToolResultMediaRows,
@@ -558,8 +560,15 @@ export const ToolCallRow = memo(function ToolCallRow({
       toolUseId: id,
       provider: sessionProvider,
       projectPath: sessionMetadata?.projectPath ?? null,
+      projectPathLinks: toolResult?.projectPathLinks,
     }),
-    [status, id, sessionProvider, sessionMetadata?.projectPath],
+    [
+      status,
+      id,
+      sessionProvider,
+      sessionMetadata?.projectPath,
+      toolResult?.projectPathLinks,
+    ],
   );
   const interactiveSummaryContext: RenderContext = useMemo(
     () => ({
@@ -842,6 +851,9 @@ export const ToolCallRow = memo(function ToolCallRow({
   const headerCommand = isBashTool
     ? getDisplayBashCommandFromInput(toolInput)
     : "";
+  const commandProjectPathLinks = readProjectPathLinkTargets(
+    isRecord(toolInput) ? toolInput._projectPathLinks : undefined,
+  );
   const hasBashDescription =
     isBashTool &&
     isRecord(toolInput) &&
@@ -1189,12 +1201,16 @@ export const ToolCallRow = memo(function ToolCallRow({
               ref={bashCommandQuoteRef}
               className="tool-summary-command-text"
             >
-              {bashCommandPreview.text}
+              <ProjectPathLinkedText
+                text={bashCommandPreview.text}
+                links={commandProjectPathLinks}
+              />
             </span>
           </span>
         ) : showBashCommandTarget ? (
-          <button
-            type="button"
+          // A native button cannot contain the file anchors that may appear in
+          // the command. This delegated target preserves both interactions.
+          <span
             className={[
               "tool-summary",
               "tool-summary-command",
@@ -1212,18 +1228,38 @@ export const ToolCallRow = memo(function ToolCallRow({
             }
             aria-expanded={bashCommandExpanded}
             onClick={(event) => {
+              if ((event.target as Element | null)?.closest?.("a,button")) {
+                return;
+              }
               event.preventDefault();
               event.stopPropagation();
               setBashCommandExpanded((current) => !current);
             }}
+            onKeyDown={(event) => {
+              if (
+                event.target === event.currentTarget &&
+                (event.key === "Enter" || event.key === " ")
+              ) {
+                event.preventDefault();
+                event.stopPropagation();
+                setBashCommandExpanded((current) => !current);
+              }
+            }}
+            role="button"
+            tabIndex={0}
           >
             <span
               ref={bashCommandQuoteRef}
               className="tool-summary-command-text"
             >
-              {bashCommandExpanded ? headerCommand : bashCommandPreview.text}
+              <ProjectPathLinkedText
+                text={
+                  bashCommandExpanded ? headerCommand : bashCommandPreview.text
+                }
+                links={commandProjectPathLinks}
+              />
             </span>
-          </button>
+          </span>
         ) : (
           <span className="tool-summary">
             {summary}

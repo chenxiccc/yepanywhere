@@ -13,7 +13,10 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { linkifyProjectPaths } from "../../src/augments/project-path-links.js";
+import {
+  linkifyProjectPaths,
+  resolveProjectPathTextLinks,
+} from "../../src/augments/project-path-links.js";
 import {
   __test__,
   getProjectPathIndex,
@@ -1505,7 +1508,8 @@ describe("linkifyProjectPaths", () => {
   function existsInFake(path: string): boolean {
     return (
       path === "untracked/pii-eval/prod/nl-final20-control.jsonl" ||
-      path === "scripts/run.py"
+      path === "scripts/run.py" ||
+      path === "topics/performance-regression-suite.md"
     );
   }
 
@@ -1525,6 +1529,25 @@ describe("linkifyProjectPaths", () => {
     );
     // The JSON punctuation around the value is not swallowed into the link.
     expect(out).toContain("&quot;,</span>");
+  });
+
+  it("resolves only exact existing tokens in raw command text", async () => {
+    const targets = await resolveProjectPathTextLinks(
+      "cat topics/performance-regression-suite.md topics/commits.md",
+      {
+        projectId: "project-1",
+        projectPath: "/repo",
+        index,
+        gateLookupsByShape: true,
+      },
+    );
+
+    expect(targets).toEqual([
+      {
+        filePath: "topics/performance-regression-suite.md",
+        text: "topics/performance-regression-suite.md",
+      },
+    ]);
   });
 
   it("does not link a string that merely looks like a path", async () => {

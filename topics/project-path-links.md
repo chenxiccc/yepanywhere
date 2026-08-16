@@ -8,13 +8,14 @@ Topic: project-path-links
 
 Status: **implemented (2026-08-02); demand-driven cache and turn-text
 annotation landed 2026-08-05; authenticated absolute-path probes landed
-2026-08-10.** Highlighted file content and assistant turn
-text both link exact project files through a demand-driven, watcher-backed
-directory cache — the same cache that now also decides the inline-code file
-references turn text already linked. Tracked, untracked, and gitignored files
-share the same membership test. The breadth-first warm, the per-use
-directory-mtime validation, and the `.yepignore` crawl exclusions this feature
-originally shipped with are gone.
+2026-08-10; command and tool-result annotations landed 2026-08-16.**
+Highlighted file content, assistant turn text, completed command text, and
+completed tool-result bodies link exact project files through a demand-driven,
+watcher-backed directory cache — the same cache that now also decides the
+inline-code file references turn text already linked. Tracked, untracked, and
+gitignored files share the same membership test. The breadth-first warm, the
+per-use directory-mtime validation, and the `.yepignore` crawl exclusions this
+feature originally shipped with are gone.
 
 ## Why membership, not shape
 
@@ -284,6 +285,29 @@ first component is a cached `absent` costs one cache hit regardless of its
 length. Scanning character by character would save regex and allocation work,
 not the filesystem I/O that is the actual cost.
 
+## Tool commands and result bodies
+
+Completed authenticated tool-use command strings and string tool-result bodies
+carry a small optional `_projectPathLinks` annotation containing only exact
+tokens the server confirmed. The annotation is per body, not a project path
+corpus. Bash/Ran command headers, collapsed previews, expanded output, and the
+detail modal all consume the same annotation. A missing target remains ordinary
+text even when a glossary term inside that text is independently annotated.
+
+A confirmed full path is one anchor. Glossary annotation does not enter an
+existing anchor, so it cannot split or replace the file link. Source/raw mode
+may show the original plain text; rendered mode owns the link. The command row
+uses a delegated keyboard/click target instead of wrapping its contents in a
+native button, allowing file anchors and the row's expand action to coexist.
+Activating an anchor does not expand the row or open the Bash detail modal.
+
+The field is optional and field-presence-gated. Servers without it preserve the
+previous plain rendering and receive no new request. The compatibility review
+covered stable releases `v0.7.0` and `v0.6.2`; neither supplies the annotation.
+Public-share routes do not produce it, and public-share rendering ignores it if
+it is present in reused content, preserving the no-file-existence-oracle
+boundary.
+
 ## Version-control affordances
 
 An authenticated project-file link may append two compact version-control
@@ -304,9 +328,9 @@ link.
 
 ## Not yet covered
 
-Turn text and the file viewer's highlighted source run this. Other viewers
-showing project content — diff panes, tool-result bodies — would use the same
-`linkifyProjectPaths` seam.
+Turn text, tool commands and results, and the file viewer's highlighted source
+run this. Other viewers showing project content, such as diff panes, would use
+the same server-confirmed annotation seam.
 
 Completed Markdown HTML is retained behind a 32 MiB source-versioned
 single-flight cache. Its exact key includes Markdown text, local-file scope,
@@ -327,6 +351,11 @@ class on a mobile-first client, and it is open rather than closed: any write
 anywhere changes it, whereas glossary terms change only on an edit the
 subscription already streams. Against that, a path link is decided once per body
 the server is already rendering, so nothing needs re-deriving client-side.
+
+Tool content follows the same decision without requiring server-side ownership
+of its presentation: the server ships only the confirmed literal token/target
+pairs for that one body, and the client inserts anchors while rendering the
+existing command/output surface.
 
 The general rule the two surfaces settle: ship the matcher client-side when the
 pattern set is small, closed, and slow-changing; annotate server-side when it is

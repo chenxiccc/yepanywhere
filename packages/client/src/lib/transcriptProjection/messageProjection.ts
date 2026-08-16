@@ -17,6 +17,7 @@ import {
   isTaskNotificationMessage,
   parseTaskNotification,
 } from "../parseTaskNotification";
+import { readProjectPathLinkTargets } from "../projectPathLinks";
 import { parseShellToolOutput } from "../shellToolOutput";
 import { parseAgentResultFromText } from "./agentResults";
 import { contentBlocksText } from "./slashCommandBodies";
@@ -709,11 +710,13 @@ function attachToolResult(
     structured = parseAgentResultFromText(block);
   }
   structured = normalizeBashFailureResult(item, block, structured);
+  const projectPathLinks = readProjectPathLinkTargets(block._projectPathLinks);
 
   const resultData: ToolResultData = {
     content: typeof block.content === "string" ? block.content : "",
     isError: block.is_error || false,
     structured,
+    ...(projectPathLinks ? { projectPathLinks } : {}),
     ...(resultMessage.toolResultMedia?.some(
       (media) => media.toolCallId === block.tool_use_id,
     )

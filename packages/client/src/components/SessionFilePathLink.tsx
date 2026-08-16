@@ -12,6 +12,7 @@ export function SessionFilePathLink({
   showLineSuffix,
   viewMode,
   showCopyButton = true,
+  showVersionControlLinks = true,
 }: {
   displayPath?: string;
   filePath: string;
@@ -21,6 +22,8 @@ export function SessionFilePathLink({
   viewMode?: FileViewerMode;
   /** Set false where the same path already carries a copy button nearby */
   showCopyButton?: boolean;
+  /** Set false in prose-like text where adjacent source-control chrome is noise. */
+  showVersionControlLinks?: boolean;
 }) {
   const sessionMetadata = useOptionalSessionMetadata();
   const resolvedDisplayPath =
@@ -36,6 +39,7 @@ export function SessionFilePathLink({
         showLineSuffix={showLineSuffix}
         viewMode={viewMode}
         showCopyButton={showCopyButton}
+        showVersionControlLinks={showVersionControlLinks}
       />
     );
   }

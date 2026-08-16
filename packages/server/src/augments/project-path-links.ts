@@ -1,3 +1,7 @@
+import {
+  findProjectPathTokens,
+  type ProjectPathLinkTarget,
+} from "@yep-anywhere/shared";
 import { resolve } from "node:path";
 import type { ProjectPathIndex } from "../projects/projectPathIndex.js";
 import {
@@ -174,6 +178,119 @@ export interface ProjectPathLinkOptions {
   ) => Promise<ReadonlySet<string>>;
 }
 
+interface ResolvedProjectPathCandidates {
+  absolute: ReadonlySet<string>;
+  relative: ReadonlySet<string>;
+}
+
+async function resolveProjectPathCandidates(
+  relativeCandidates: readonly string[],
+  absoluteCandidates: readonly string[],
+  {
+    index,
+    gateLookupsByShape,
+    onUnversionedLookup,
+    resolveAbsoluteFilePaths,
+  }: ProjectPathLinkOptions,
+): Promise<ResolvedProjectPathCandidates | null> {
+  const worthLookup = gateLookupsByShape
+    ? relativeCandidates.filter(mayCostLookup)
+    : relativeCandidates;
+
+  let relative: Set<string>;
+  let absolute = new Set<string>();
+  try {
+    const [existingRelative, existingAbsolute] = await Promise.all([
+      index.findExisting(worthLookup),
+      absoluteCandidates.length > 0
+        ? resolveAbsoluteFilePaths?.(absoluteCandidates)
+        : undefined,
+    ]);
+    relative = new Set(existingRelative);
+    absolute = new Set(existingAbsolute);
+  } catch {
+    // Link discovery is advisory. An unavailable index must not fail the view
+    // that owns the source text.
+    onUnversionedLookup?.();
+    return null;
+  }
+
+  if (worthLookup.some((path) => index.knownFile(path) === undefined)) {
+    onUnversionedLookup?.();
+  }
+  if (absoluteCandidates.length > 0) {
+    onUnversionedLookup?.();
+  }
+  if (gateLookupsByShape) {
+    // A token not worth a lookup is still worth an answer the cache already
+    // holds, which is what keeps `Makefile` and `LICENSE` linking.
+    for (const token of relativeCandidates) {
+      if (!mayCostLookup(token) && index.knownFile(token) === true) {
+        relative.add(token);
+      }
+    }
+  }
+
+  return { absolute, relative };
+}
+
+/** Resolve raw command/result text to a small exact-link annotation. */
+export async function resolveProjectPathTextLinks(
+  text: string,
+  options: ProjectPathLinkOptions,
+): Promise<ProjectPathLinkTarget[]> {
+  if (!text) return [];
+
+  const tokens = findProjectPathTokens(text);
+  const relativeCandidates = Array.from(
+    new Set(
+      tokens
+        .filter((token) => token.kind === "relative")
+        .map((token) => token.text)
+        .filter((token) => token !== options.selfRelativePath),
+    ),
+  );
+  const absoluteCandidates =
+    options.projectId && options.resolveAbsoluteFilePaths
+      ? Array.from(
+          new Set(
+            tokens
+              .filter(
+                (token) =>
+                  token.kind === "absolute" &&
+                  mayCostAbsoluteLookup(token.text),
+              )
+              .map((token) => token.text),
+          ),
+        ).slice(0, MAX_ABSOLUTE_PATH_PROBES)
+      : [];
+  if (relativeCandidates.length === 0 && absoluteCandidates.length === 0) {
+    return [];
+  }
+
+  const resolved = await resolveProjectPathCandidates(
+    relativeCandidates,
+    absoluteCandidates,
+    options,
+  );
+  if (!resolved) return [];
+
+  const targets = new Map<string, ProjectPathLinkTarget>();
+  for (const token of tokens) {
+    const isConfirmed =
+      token.kind === "absolute"
+        ? resolved.absolute.has(token.text)
+        : resolved.relative.has(token.text) &&
+          token.text !== options.selfRelativePath;
+    if (!isConfirmed || targets.has(token.text)) continue;
+    targets.set(token.text, {
+      filePath: token.text,
+      text: token.text,
+    });
+  }
+  return Array.from(targets.values());
+}
+
 /**
  * Hydrate the index for every path-shaped token in raw source text.
  *
@@ -282,9 +399,6 @@ export async function linkifyProjectPaths(
   if (!html) return html;
 
   const relativeCandidates = collectCandidatePaths(html, selfRelativePath);
-  const worthLookup = gateLookupsByShape
-    ? relativeCandidates.filter(mayCostLookup)
-    : relativeCandidates;
   const absoluteCandidates =
     projectId && resolveAbsoluteFilePaths
       ? collectAbsoluteCandidatePaths(html)
@@ -295,38 +409,23 @@ export async function linkifyProjectPaths(
     return html;
   }
 
-  let existing: Set<string>;
-  let existingAbsolute = new Set<string>();
-  try {
-    const [relative, absolute] = await Promise.all([
-      index.findExisting(worthLookup),
-      absoluteCandidates.length > 0
-        ? resolveAbsoluteFilePaths?.(absoluteCandidates)
-        : undefined,
-    ]);
-    existing = new Set(relative);
-    existingAbsolute = new Set(absolute);
-  } catch {
-    // Link discovery is advisory. An unavailable index must not fail the file
-    // view that owns the highlighted source.
-    onUnversionedLookup?.();
-    return html;
-  }
-  if (worthLookup.some((path) => index.knownFile(path) === undefined)) {
-    onUnversionedLookup?.();
-  }
-  if (absoluteCandidates.length > 0) {
-    onUnversionedLookup?.();
-  }
-  if (gateLookupsByShape) {
-    // A token not worth a lookup is still worth an answer the cache already
-    // holds, which is what keeps `Makefile` and `LICENSE` linking.
-    for (const token of relativeCandidates) {
-      if (!mayCostLookup(token) && index.knownFile(token) === true) {
-        existing.add(token);
-      }
-    }
-  }
+  const resolved = await resolveProjectPathCandidates(
+    relativeCandidates,
+    absoluteCandidates,
+    {
+      projectPath,
+      projectId,
+      index,
+      selfRelativePath,
+      gateLookupsByShape,
+      onUnversionedLookup,
+      resolveAbsoluteFilePaths,
+    },
+  );
+  if (!resolved) return html;
+
+  const existing = resolved.relative;
+  const existingAbsolute = resolved.absolute;
   let linkedHtml =
     projectId && existingAbsolute.size > 0
       ? linkAbsolutePaths(html, projectId, existingAbsolute)

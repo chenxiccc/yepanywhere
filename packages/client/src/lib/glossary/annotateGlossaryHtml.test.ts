@@ -65,6 +65,29 @@ describe("annotateGlossaryHtml", () => {
     expect(result).toEqual({ changed: false, html: source });
   });
 
+  it("leaves a whole file link intact when its label contains a term", () => {
+    const pathArtifact = compileGlossaryArtifact(
+      [
+        {
+          termMarkdown: "**performance-regression-suite**",
+          definitionMarkdown: "The performance regression suite.",
+          glossaryDirectory: "",
+          glossaryOrder: 0,
+          rowOrder: 0,
+        },
+      ],
+      "source-v2",
+    );
+    if (!pathArtifact.ok) throw new Error(pathArtifact.diagnostic.message);
+    const path = "topics/performance-regression-suite.md";
+    const source = `<a data-fixed-font-file-path="${path}" href="/file">${path}</a>`;
+
+    const result = annotateGlossaryHtml(source, pathArtifact.artifact);
+
+    expect(result).toEqual({ changed: false, html: source });
+    expect(result.html).not.toContain("data-glossary-term");
+  });
+
   it("does not match across block boundaries", () => {
     const result = annotateGlossaryHtml(
       "<p>published</p><p>oracle</p>",
