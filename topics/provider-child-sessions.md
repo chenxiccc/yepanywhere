@@ -142,3 +142,19 @@ existing payloads; older servers omit it and the client treats absence as no
 children. The nested child page uses the existing agent-session GET and does
 not add a capability. A later indexed historical projection may replace the
 per-parent readdir, but list reads must not parse child or parent JSONL.
+
+## Other providers
+
+Claude is the first provider with strip + nested page + idle-list
+summaries. Remaining first-party coverage is filed as gaps, one provider
+per file:
+
+- [Codex idle/cold list and live activity](../gaps/codex-subagent-summary-visibility.md)
+  — reader + child rollouts already exist; first list walk after restart
+  can still omit children, and `subagent_activity` is not on the strip.
+- [Grok nested child discovery](../gaps/grok-subagent-summary-visibility.md)
+  — TUI has a tasks pane and framed child transcript; YA has spawn rows
+  only, and child session dirs can leak into the top-level Grok list.
+- [Copilot event-shaped children](../gaps/copilot-subagent-summary-visibility.md)
+  — no first-class YA Copilot provider; SDK/CLI children are parent-stream
+  lifecycle events, not a sibling transcript tree.
