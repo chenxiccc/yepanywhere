@@ -122,13 +122,6 @@ function gatewayEnvironment(
     // the session loses flag-gated features — the Monitor tool and hosted push
     // among them. Retained deliberately; see topics/claude.md.
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    // Gateway models pay for nesting twice: every extra level multiplies
-    // quota burn against a shared Copilot allowance, and the deeper agents
-    // are the ones least able to recover from a truncated context. Claude
-    // Code's own default is 3; one level of subagents is the useful part.
-    // An explicit operator value still wins.
-    CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH:
-      process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH ?? "1",
     ...(model
       ? {
           ANTHROPIC_MODEL: model,
@@ -480,12 +473,15 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     const launch = ClaudeGatewayProvider.launchContext(model);
     if (!launch) return undefined;
     return {
-      env: gatewayEnvironment(
-        launch.baseUrl,
-        model,
-        launch.metadata,
-        launch.isCopilotApi,
-      ),
+      env: {
+        ...this.getSubagentDepthEnvironment(),
+        ...gatewayEnvironment(
+          launch.baseUrl,
+          model,
+          launch.metadata,
+          launch.isCopilotApi,
+        ),
+      },
       ...(ClaudeGatewayProvider.gatewayDisableAgent
         ? { permissions: { deny: ["Agent"] } }
         : {}),

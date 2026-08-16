@@ -20,6 +20,7 @@ import type {
   NewSessionDefaults,
   PromptCacheKeepaliveSettings,
   SessionToolbarPresenceClientDefaults,
+  SubagentMaxDepth,
   ToolbarControlPresence,
 } from "@yep-anywhere/shared";
 import {
@@ -28,9 +29,11 @@ import {
   DEFAULT_HEARTBEAT_TURN_TEXT,
   DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
+  DEFAULT_SUBAGENT_MAX_DEPTH,
   MAX_HEARTBEAT_TURN_TEXT_LENGTH,
   clampProjectQueueQuietSeconds,
   isIdleReapHours,
+  isSubagentMaxDepth,
   normalizeIdleReapHours,
   normalizeYaClientBaseUrlFromShareViewerUrl,
   isHostAwakeBatteryFloorPercent,
@@ -142,6 +145,8 @@ export interface ServerSettings {
   claudeGatewayStartCommand?: string;
   /** Whether Claude Gateway launches deny Claude Code's Agent tool. */
   claudeGatewayDisableAgent: boolean;
+  /** YA launch override for supported providers' native subagent nesting. */
+  subagentMaxDepth: SubagentMaxDepth;
   /** Ollama server URL for claude-ollama provider (default: http://localhost:11434) */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider (overrides the default minimal prompt) */
@@ -248,6 +253,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   lifecycleWebhookDryRun: true,
   grokBuildUseXaiApiKey: false,
   claudeGatewayDisableAgent: true,
+  subagentMaxDepth: DEFAULT_SUBAGENT_MAX_DEPTH,
   codexUpdatePolicy: "notify",
   codexReloadSafeSessions: false,
   claudeSteerBackgroundBash: DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
@@ -412,6 +418,9 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     typeof settings.claudeGatewayDisableAgent === "boolean"
       ? settings.claudeGatewayDisableAgent
       : DEFAULT_SERVER_SETTINGS.claudeGatewayDisableAgent;
+  normalized.subagentMaxDepth = isSubagentMaxDepth(settings.subagentMaxDepth)
+    ? settings.subagentMaxDepth
+    : DEFAULT_SUBAGENT_MAX_DEPTH;
   const loadedHeartbeatText = settings.heartbeatTurnText?.trim();
   if (!loadedHeartbeatText) {
     normalized.heartbeatTurnText = DEFAULT_SERVER_SETTINGS.heartbeatTurnText;

@@ -7,11 +7,14 @@ import {
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   MAX_PROJECT_QUEUE_QUIET_SECONDS,
+  MAX_SUBAGENT_MAX_DEPTH,
+  MIN_SUBAGENT_MAX_DEPTH,
   PROMPT_CACHE_KEEPALIVE_MODES,
   clampProjectQueueQuietSeconds,
   isIdleReapHours,
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
+  isSubagentMaxDepth,
   normalizeYaClientBaseUrl,
   normalizeYaClientBaseUrlFromShareViewerUrl,
   normalizeIdleReapHours,
@@ -276,6 +279,17 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         }
         updates.hostProcessObservabilityEnabled =
           body.hostProcessObservabilityEnabled;
+      }
+      if ("subagentMaxDepth" in body) {
+        if (!isSubagentMaxDepth(body.subagentMaxDepth)) {
+          return c.json(
+            {
+              error: `subagentMaxDepth must be null or an integer from ${MIN_SUBAGENT_MAX_DEPTH} through ${MAX_SUBAGENT_MAX_DEPTH}`,
+            },
+            400,
+          );
+        }
+        updates.subagentMaxDepth = body.subagentMaxDepth;
       }
       if (typeof body.composeAnchorsEnabled === "boolean") {
         updates.composeAnchorsEnabled = body.composeAnchorsEnabled;

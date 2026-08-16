@@ -9,6 +9,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
+  DEFAULT_SUBAGENT_MAX_DEPTH,
   canonicalInvocationName,
   canonicalizeSkillInvocations,
   createCodexToolCorrelation,
@@ -18,6 +19,7 @@ import {
   type PermissionMode,
   type ProviderSubscriptionUsage,
   type SlashCommand,
+  type SubagentMaxDepth,
 } from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
@@ -1002,6 +1004,8 @@ export class CodexProvider implements AgentProvider {
 
   private readonly config: CodexProviderConfig;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
+  private getConfiguredSubagentMaxDepth: () => SubagentMaxDepth = () =>
+    DEFAULT_SUBAGENT_MAX_DEPTH;
 
   constructor(config: CodexProviderConfig = {}) {
     this.config = config;
@@ -1010,6 +1014,10 @@ export class CodexProvider implements AgentProvider {
   setCodexPath(codexPath: string | undefined): void {
     this.config.codexPath = codexPath;
     this.modelCache = null;
+  }
+
+  setSubagentMaxDepthGetter(getter: () => SubagentMaxDepth): void {
+    this.getConfiguredSubagentMaxDepth = getter;
   }
 
   /**
@@ -2763,6 +2771,10 @@ export class CodexProvider implements AgentProvider {
         ],
       },
     };
+    const subagentMaxDepth = this.getConfiguredSubagentMaxDepth();
+    if (subagentMaxDepth !== null) {
+      config.agents = { max_depth: subagentMaxDepth };
+    }
     const reasoningEffort = this.mapEffortToReasoningEffort(
       options.effort,
       options.thinking,

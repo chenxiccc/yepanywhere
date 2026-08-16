@@ -15,6 +15,12 @@ import {
 import { resolveProviderSessionOptions } from "../../../src/sdk/providers/types.js";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
+class ExposedClaudeProvider extends ClaudeProvider {
+  getLaunchEnvironment() {
+    return this.getEnv();
+  }
+}
+
 describe("normalizeClaudeLaunchModel", () => {
   it("keeps Opus on the stable alias and retains Sonnet's extended spelling", () => {
     expect(normalizeClaudeLaunchModel("opus")).toBe("opus");
@@ -75,6 +81,41 @@ describe("Claude auto-compaction launch environment", () => {
     expect(() => getClaudeAutoCompactOverrideEnv(percent)).toThrow(
       "integer from 1 to 100",
     );
+  });
+});
+
+describe("Claude subagent nesting launch environment", () => {
+  it("uses YA's default, supports unset, and preserves an operator value", () => {
+    const previous = process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+    delete process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+    try {
+      const provider = new ExposedClaudeProvider();
+      expect(provider.getLaunchEnvironment()).toMatchObject({
+        CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1",
+      });
+
+      provider.setSubagentMaxDepthGetter(() => 4);
+      expect(provider.getLaunchEnvironment()).toMatchObject({
+        CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "4",
+      });
+
+      provider.setSubagentMaxDepthGetter(() => null);
+      expect(provider.getLaunchEnvironment()).not.toHaveProperty(
+        "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH",
+      );
+
+      process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "3";
+      provider.setSubagentMaxDepthGetter(() => 0);
+      expect(provider.getLaunchEnvironment()).toMatchObject({
+        CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "3",
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+      } else {
+        process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = previous;
+      }
+    }
   });
 });
 

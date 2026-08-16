@@ -222,6 +222,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "synthetic-done-command",
     introducedIn: "0.7.1",
   },
+  subagentMaxDepthSetting: {
+    id: 34,
+    direction: "server",
+    name: "subagent-max-depth-setting",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

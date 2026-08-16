@@ -4,7 +4,11 @@
  * Re-exports all provider implementations and types.
  */
 
-import type { ClaudeAdditionalModelSelection } from "@yep-anywhere/shared";
+import {
+  DEFAULT_SUBAGENT_MAX_DEPTH,
+  type ClaudeAdditionalModelSelection,
+  type SubagentMaxDepth,
+} from "@yep-anywhere/shared";
 import {
   isProviderRuntimeHostAvailable,
   retainProviderRuntimeProcessGroup,
@@ -113,6 +117,7 @@ export interface ProviderRuntimeSnapshot {
   claudeGatewayUrl?: string;
   claudeGatewayStartCommand?: string;
   claudeGatewayDisableAgent?: boolean;
+  subagentMaxDepth?: SubagentMaxDepth;
   ollamaUrl?: string;
   ollamaSystemPrompt?: string;
   ollamaUseFullSystemPrompt?: boolean;
@@ -133,6 +138,14 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   isClaudeOllamaVisible = config.isClaudeOllamaVisible ?? (() => false);
   getProviderRuntimeSnapshot =
     config.getProviderRuntimeSnapshot ?? (() => ({}));
+  const getSubagentMaxDepth = (): SubagentMaxDepth => {
+    const configured = getProviderRuntimeSnapshot().subagentMaxDepth;
+    return configured === undefined ? DEFAULT_SUBAGENT_MAX_DEPTH : configured;
+  };
+  claudeProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
+  claudeGatewayProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
+  claudeOllamaProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
+  codexProvider.setSubagentMaxDepthGetter(getSubagentMaxDepth);
 }
 
 function hostedProvider(rawProvider: AgentProvider): AgentProvider {

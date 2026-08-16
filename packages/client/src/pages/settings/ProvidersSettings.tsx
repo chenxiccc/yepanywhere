@@ -13,9 +13,13 @@ import {
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   DEFAULT_IDLE_REAP_HOURS,
+  DEFAULT_SUBAGENT_MAX_DEPTH,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   MAX_IDLE_REAP_HOURS,
+  MAX_SUBAGENT_MAX_DEPTH,
+  MIN_SUBAGENT_MAX_DEPTH,
   NEVER_IDLE_REAP_HOURS,
+  SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   isValidClaudeAdditionalModelId,
   isValidClaudeAdditionalModelLabel,
@@ -57,6 +61,7 @@ const CLAUDE_OLLAMA_DEPRECATION_DISMISSAL_KEY =
   "yep-anywhere:claude-ollama-deprecation-v1";
 // Re-enable with topics/openai-compatible-helper-sessions.md.
 const SHOW_HELPER_TARGETS_SETTINGS = false;
+const PROVIDER_DEFAULT_SUBAGENT_MAX_DEPTH = -1;
 
 function shouldShowClaudeOllamaDeprecation(): boolean {
   try {
@@ -1313,7 +1318,15 @@ export function ProvidersSettings() {
     version,
     IDLE_REAP_HOURS_SETTING_CAPABILITY,
   );
+  const supportsSubagentMaxDepth = serverHasCapability(
+    version,
+    SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
+  );
   const idleReapHours = settings?.idleReapHours ?? DEFAULT_IDLE_REAP_HOURS;
+  const subagentMaxDepth =
+    settings?.subagentMaxDepth === undefined
+      ? DEFAULT_SUBAGENT_MAX_DEPTH
+      : settings.subagentMaxDepth;
 
   const handleCopyClaudeLoginCommand = useCallback(
     async (command: string) => {
@@ -1372,6 +1385,56 @@ export function ProvidersSettings() {
         </div>
       )}
       <div className="settings-group">
+        {supportsSubagentMaxDepth && (
+          <SettingsItem
+            id="providers-subagent-max-depth"
+            label={t("providersSubagentMaxDepthLabel")}
+            description={t("providersSubagentMaxDepthDescription")}
+            className="settings-item--wide-control"
+            valueText={
+              subagentMaxDepth === null
+                ? t("providersSubagentMaxDepthProviderDefault")
+                : subagentMaxDepth === 0
+                  ? t("providersSubagentMaxDepthDisabled")
+                  : t("providersSubagentMaxDepthValue", {
+                      value: subagentMaxDepth,
+                    })
+            }
+          >
+            <div>
+              <CommittedRangeNumberInput
+                id="providers-subagent-max-depth-control"
+                min={PROVIDER_DEFAULT_SUBAGENT_MAX_DEPTH}
+                max={MAX_SUBAGENT_MAX_DEPTH}
+                numberMin={MIN_SUBAGENT_MAX_DEPTH}
+                numberMax={MAX_SUBAGENT_MAX_DEPTH}
+                step={1}
+                list="providers-subagent-max-depth-ticks"
+                value={subagentMaxDepth}
+                unsetSliderValue={PROVIDER_DEFAULT_SUBAGENT_MAX_DEPTH}
+                unit={t("providersSubagentMaxDepthUnit")}
+                ariaLabel={t("providersSubagentMaxDepthAria")}
+                onCommit={(value) => {
+                  void updateSetting("subagentMaxDepth", value);
+                }}
+              />
+              <datalist id="providers-subagent-max-depth-ticks">
+                <option
+                  value={PROVIDER_DEFAULT_SUBAGENT_MAX_DEPTH}
+                  label={t("providersSubagentMaxDepthProviderDefault")}
+                />
+                <option value={MIN_SUBAGENT_MAX_DEPTH} />
+                <option value="1" />
+                <option value="2" />
+                <option value="3" />
+                <option value={MAX_SUBAGENT_MAX_DEPTH} />
+              </datalist>
+              <p className="settings-hint">
+                {t("providersSubagentMaxDepthCoverage")}
+              </p>
+            </div>
+          </SettingsItem>
+        )}
         {supportsIdleReapHours && (
           <SettingsItem
             id="providers-idle-reap-hours"

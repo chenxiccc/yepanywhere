@@ -161,8 +161,12 @@ default-off. Narrow carve-out: an established cross-harness convention that
 stays invisible until the user deliberately invokes it (e.g. a `!!`
 shell-escape prefix, echoing Claude Code's `!` bash mode) is not YA-novel and
 may ship always-on; any discoverable surface it adds (a sidebar entry) still
-ships default-off. See `topics/vanilla-defaults.md` § Known Exceptions.
-A believed-but-unproven benefit earns an option, never a default.
+ships default-off. A configurable, visible resource-protection limit may also
+default safer than the first-party harness only when invisible nested fan-out
+can cause unpredictable token or quota burn, the provider default remains an
+explicit choice, and the Maintainer has authorized the exact exception. See
+`topics/vanilla-defaults.md` § Known Exceptions. A believed-but-unproven
+benefit earns an option, never a default.
 Novel features remain welcome; do not assume first-party harnesses already
 cover all useful behavior. Read the topic before adding or enabling any
 user-visible feature that is not configurable default-off.

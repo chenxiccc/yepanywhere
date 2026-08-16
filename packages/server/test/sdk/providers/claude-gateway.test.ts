@@ -370,6 +370,29 @@ describe("ClaudeGatewayProvider", () => {
     }
   });
 
+  it("omits the subagent spawn depth when YA leaves it unspecified", () => {
+    const previous = process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+    delete process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+    try {
+      ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+      const provider = new ExposedClaudeGatewayProvider();
+      provider.setSubagentMaxDepthGetter(() => null);
+
+      expect(
+        provider.getLaunchSettings("kimi-k2.7-code")?.env,
+      ).not.toHaveProperty("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH");
+      expect(
+        provider.getLaunchEnvironment("kimi-k2.7-code"),
+      ).not.toHaveProperty("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+      } else {
+        process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = previous;
+      }
+    }
+  });
+
   it("keeps Claude Code inside the catalog's total and prompt windows", async () => {
     // Claude Code resolves its model and automatic-compaction windows
     // independently; the catalog provides both parts of that launch contract.

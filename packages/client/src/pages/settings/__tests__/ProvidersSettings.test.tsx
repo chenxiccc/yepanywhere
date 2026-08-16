@@ -16,6 +16,7 @@ import {
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
+  SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
   type ProviderInfo,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -151,6 +152,7 @@ describe("ProvidersSettings additional models", () => {
     render(<ProvidersSettings />);
 
     expect(screen.queryByText("providersIdleReapHoursLabel")).toBeNull();
+    expect(screen.queryByText("providersSubagentMaxDepthLabel")).toBeNull();
   });
 
   it("shows the Never notch as -1", () => {
@@ -190,6 +192,73 @@ describe("ProvidersSettings additional models", () => {
 
     await waitFor(() => {
       expect(mockUpdateSetting).toHaveBeenCalledWith("idleReapHours", 2.5);
+    });
+  });
+
+  it("shows the default subagent limit and provider coverage", () => {
+    versionState.capabilities = [SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY];
+
+    render(<ProvidersSettings />);
+
+    expect(screen.getByText("providersSubagentMaxDepthLabel")).toBeTruthy();
+    expect(screen.getByText("providersSubagentMaxDepthCoverage")).toBeTruthy();
+    expect(
+      document.querySelector<HTMLInputElement>(
+        "#providers-subagent-max-depth-control-number",
+      )?.value,
+    ).toBe("1");
+  });
+
+  it("renders provider-default subagent depth as an empty number", () => {
+    hookState.settings = {
+      ...hookState.settings,
+      subagentMaxDepth: null,
+    };
+    versionState.capabilities = [SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY];
+
+    render(<ProvidersSettings />);
+
+    expect(
+      document.querySelector<HTMLInputElement>(
+        "#providers-subagent-max-depth-control-number",
+      )?.value,
+    ).toBe("");
+    expect(
+      document.querySelector<HTMLInputElement>(
+        "#providers-subagent-max-depth-control",
+      )?.value,
+    ).toBe("-1");
+  });
+
+  it("saves blank and zero subagent depth selections", async () => {
+    hookState.settings = {
+      ...hookState.settings,
+      subagentMaxDepth: 2,
+    };
+    versionState.capabilities = [SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY];
+    render(<ProvidersSettings />);
+    const numberInput = document.querySelector<HTMLInputElement>(
+      "#providers-subagent-max-depth-control-number",
+    );
+    const slider = document.querySelector<HTMLInputElement>(
+      "#providers-subagent-max-depth-control",
+    );
+    expect(numberInput).not.toBeNull();
+    expect(slider).not.toBeNull();
+
+    fireEvent.change(numberInput as HTMLInputElement, {
+      target: { value: "" },
+    });
+    fireEvent.blur(numberInput as HTMLInputElement);
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith("subagentMaxDepth", null);
+    });
+
+    mockUpdateSetting.mockClear();
+    fireEvent.change(slider as HTMLInputElement, { target: { value: "0" } });
+    fireEvent.pointerUp(slider as HTMLInputElement);
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith("subagentMaxDepth", 0);
     });
   });
 

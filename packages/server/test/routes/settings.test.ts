@@ -44,6 +44,7 @@ describe("Settings Routes", () => {
       hostAwakeBatteryFloorPercent: 10,
       codexReloadSafeSessions: false,
       claudeGatewayDisableAgent: true,
+      subagentMaxDepth: 1,
     };
 
     mockServerSettingsService = {
@@ -122,6 +123,44 @@ describe("Settings Routes", () => {
         wakeTurnsEnabled: true,
       });
     });
+
+    it.each([null, 0, 1, 4])(
+      "persists valid subagent nesting depth %p",
+      async (subagentMaxDepth) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subagentMaxDepth }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+          subagentMaxDepth,
+        });
+      },
+    );
+
+    it.each([-1, 5, 1.5, "1"])(
+      "rejects invalid subagent nesting depth %p",
+      async (subagentMaxDepth) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subagentMaxDepth }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+      },
+    );
 
     it("returns the effective idle-reap grace before it is persisted", async () => {
       const routes = createSettingsRoutes({

@@ -12,6 +12,7 @@ import {
   DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
+  DEFAULT_SUBAGENT_MAX_DEPTH,
   buildEffectiveAgentContext,
   clampProjectQueueQuietSeconds,
   idleReapHoursToMs,
@@ -469,6 +470,11 @@ function getPreservedRestartWork(
 }
 
 export function createApp(options: AppOptions): AppResult {
+  const getConfiguredSubagentMaxDepth = () => {
+    const configured =
+      options.serverSettingsService?.getSetting("subagentMaxDepth");
+    return configured === undefined ? DEFAULT_SUBAGENT_MAX_DEPTH : configured;
+  };
   configureProviderRuntime({
     codexCliPath: options.codexCliPath,
     getClaudeAdditionalModels: () =>
@@ -497,6 +503,7 @@ export function createApp(options: AppOptions): AppResult {
       claudeGatewayDisableAgent: options.serverSettingsService?.getSetting(
         "claudeGatewayDisableAgent",
       ),
+      subagentMaxDepth: getConfiguredSubagentMaxDepth(),
       ollamaUrl: options.serverSettingsService?.getSetting("ollamaUrl"),
       ollamaSystemPrompt:
         options.serverSettingsService?.getSetting("ollamaSystemPrompt"),

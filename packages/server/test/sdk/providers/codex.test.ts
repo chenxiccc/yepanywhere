@@ -3862,6 +3862,52 @@ describe("CodexProvider Event Normalization", () => {
     expect(resume.persistExtendedHistory).toBeUndefined();
   });
 
+  it("applies V1 subagent nesting depth to every thread path", () => {
+    const provider = createTestProvider() as unknown as {
+      setSubagentMaxDepthGetter: (getter: () => number | null) => void;
+      createThreadStartParams: (
+        options: { cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadResumeParams: (
+        options: { resumeSessionId: string; cwd: string },
+        sessionId: string,
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadForkParams: (
+        options: { sessionId: string; cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+    };
+    const policy = {
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+    };
+
+    provider.setSubagentMaxDepthGetter(() => 4);
+    expect(
+      provider.createThreadStartParams({ cwd: "/tmp" }, policy),
+    ).toMatchObject({ config: { agents: { max_depth: 4 } } });
+    expect(
+      provider.createThreadResumeParams(
+        { resumeSessionId: "thread-1", cwd: "/tmp" },
+        "thread-1",
+        policy,
+      ),
+    ).toMatchObject({ config: { agents: { max_depth: 4 } } });
+    expect(
+      provider.createThreadForkParams(
+        { sessionId: "thread-1", cwd: "/tmp" },
+        policy,
+      ),
+    ).toMatchObject({ config: { agents: { max_depth: 4 } } });
+
+    provider.setSubagentMaxDepthGetter(() => null);
+    expect(
+      provider.createThreadStartParams({ cwd: "/tmp" }, policy),
+    ).not.toHaveProperty("config.agents");
+  });
+
   it("suppresses the unavailable desktop browser skill for every thread path", () => {
     const provider = createTestProvider() as unknown as {
       createThreadStartParams: (

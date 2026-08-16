@@ -32,6 +32,34 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("claudeGatewayDisableAgent")).toBe(true);
   });
 
+  it("defaults subagent nesting to one level and preserves explicit unset", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("subagentMaxDepth")).toBe(1);
+    await service.updateSettings({ subagentMaxDepth: null });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("subagentMaxDepth")).toBeNull();
+  });
+
+  it("normalizes invalid persisted subagent nesting to one level", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: { subagentMaxDepth: 5 },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("subagentMaxDepth")).toBe(1);
+  });
+
   it("keeps experimental workstreams disabled by default", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
 

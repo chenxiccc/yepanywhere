@@ -7,7 +7,7 @@ import {
 } from "react";
 import { CommittedRangeInput } from "./CommittedRangeInput";
 
-interface CommittedRangeNumberInputProps {
+interface CommittedRangeNumberInputBaseProps {
   id?: string;
   min: number;
   max: number;
@@ -15,44 +15,76 @@ interface CommittedRangeNumberInputProps {
   numberMax?: number;
   step?: number;
   list?: string;
-  value: number;
   unit?: ReactNode;
   disabled?: boolean;
   ariaLabel: string;
   className?: string;
   onEdit?: () => void;
-  onCommit: (value: number) => void;
   snapTextToStep?: boolean;
 }
+
+type CommittedRangeNumberInputProps = CommittedRangeNumberInputBaseProps &
+  (
+    | {
+        value: number;
+        unsetSliderValue?: never;
+        onCommit: (value: number) => void;
+      }
+    | {
+        value: number | null;
+        unsetSliderValue: number;
+        onCommit: (value: number | null) => void;
+      }
+  );
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function CommittedRangeNumberInput({
-  id,
-  min,
-  max,
-  numberMin = min,
-  numberMax = max,
-  step = 1,
-  list,
-  value,
-  unit,
-  disabled,
-  ariaLabel,
-  className,
-  onEdit,
-  onCommit,
-  snapTextToStep = true,
-}: CommittedRangeNumberInputProps) {
-  const [rangeValue, setRangeValue] = useState(() => clamp(value, min, max));
-  const [textDraft, setTextDraft] = useState(String(value));
+function displayRangeValue(
+  value: number | null,
+  unsetSliderValue: number | undefined,
+  min: number,
+  max: number,
+): number {
+  if (value !== null) return clamp(value, min, max);
+  if (unsetSliderValue === undefined) {
+    throw new Error("A null range value requires unsetSliderValue");
+  }
+  return unsetSliderValue;
+}
+
+export function CommittedRangeNumberInput(
+  props: CommittedRangeNumberInputProps,
+) {
+  const {
+    id,
+    min,
+    max,
+    numberMin = min,
+    numberMax = max,
+    step = 1,
+    list,
+    value,
+    unsetSliderValue,
+    unit,
+    disabled,
+    ariaLabel,
+    className,
+    onEdit,
+    snapTextToStep = true,
+  } = props;
+  const [rangeValue, setRangeValue] = useState(() =>
+    displayRangeValue(value, unsetSliderValue, min, max),
+  );
+  const [textDraft, setTextDraft] = useState(
+    value === null ? "" : String(value),
+  );
 
   useEffect(() => {
-    setRangeValue(clamp(value, min, max));
-    setTextDraft(String(value));
-  }, [max, min, value]);
+    setRangeValue(displayRangeValue(value, unsetSliderValue, min, max));
+    setTextDraft(value === null ? "" : String(value));
+  }, [max, min, unsetSliderValue, value]);
 
   const normalizeRange = useCallback(
     (next: number) => {
@@ -63,25 +95,37 @@ export function CommittedRangeNumberInput({
   );
 
   const resetDraft = useCallback(() => {
-    setRangeValue(clamp(value, min, max));
-    setTextDraft(String(value));
-  }, [max, min, value]);
+    setRangeValue(displayRangeValue(value, unsetSliderValue, min, max));
+    setTextDraft(value === null ? "" : String(value));
+  }, [max, min, unsetSliderValue, value]);
 
   const commit = useCallback(
     (next: number, snapToStep = true, lowerBound = min, upperBound = max) => {
       const normalized = snapToStep
         ? normalizeRange(next)
         : clamp(next, lowerBound, upperBound);
+      if (unsetSliderValue !== undefined && normalized === unsetSliderValue) {
+        setRangeValue(unsetSliderValue);
+        setTextDraft("");
+        if (props.unsetSliderValue !== undefined) props.onCommit(null);
+        return;
+      }
       setRangeValue(clamp(normalized, min, max));
       setTextDraft(String(normalized));
-      onCommit(normalized);
+      props.onCommit(normalized);
     },
-    [max, min, normalizeRange, onCommit],
+    [max, min, normalizeRange, props, unsetSliderValue],
   );
 
   const commitText = useCallback(() => {
     if (textDraft.trim() === "") {
-      resetDraft();
+      if (props.unsetSliderValue !== undefined) {
+        setRangeValue(props.unsetSliderValue);
+        setTextDraft("");
+        props.onCommit(null);
+      } else {
+        resetDraft();
+      }
       return;
     }
     const parsed = Number(textDraft);
@@ -90,7 +134,15 @@ export function CommittedRangeNumberInput({
       return;
     }
     commit(parsed, snapTextToStep, numberMin, numberMax);
-  }, [commit, numberMax, numberMin, resetDraft, snapTextToStep, textDraft]);
+  }, [
+    commit,
+    numberMax,
+    numberMin,
+    props,
+    resetDraft,
+    snapTextToStep,
+    textDraft,
+  ]);
 
   const handleTextKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -122,7 +174,7 @@ export function CommittedRangeNumberInput({
         disabled={disabled}
         aria-label={ariaLabel}
         onDraftChange={(next) => {
-          setTextDraft(String(next));
+          setTextDraft(next === unsetSliderValue ? "" : String(next));
           onEdit?.();
         }}
         onCommit={commit}
@@ -141,7 +193,10 @@ export function CommittedRangeNumberInput({
           onChange={(event) => {
             const nextText = event.currentTarget.value;
             setTextDraft(nextText);
-            if (nextText.trim() === "") return;
+            if (nextText.trim() === "") {
+              if (unsetSliderValue !== undefined) onEdit?.();
+              return;
+            }
             const parsed = Number(nextText);
             if (!Number.isFinite(parsed)) return;
             setRangeValue(clamp(parsed, min, max));

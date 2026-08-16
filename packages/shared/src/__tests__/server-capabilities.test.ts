@@ -8,6 +8,7 @@ import {
   PROVIDER_HOST_CONTROL_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
   PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY,
+  SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   encodeCompactServerCapabilities,
   encodeOptionalServerCapabilityBits,
@@ -53,6 +54,19 @@ describe("server capability advertisements", () => {
         PROJECT_SESSION_DEFAULTS_CAPABILITY,
       ),
     ).toBe(false);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.0" },
+        SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(CAPABILITY_ID_ALLOCATIONS.subagentMaxDepthSetting.id).toBe(34);
   });
 
   it("lets a negative bit override an otherwise implied capability", () => {

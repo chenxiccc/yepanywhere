@@ -115,6 +115,14 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   an existing saved selection. Preserve its exact provider id and saved label
   as an unlisted/custom entry until the user removes it. Never silently replace
   a rejected, retired, or provider-remapped model with a newer one.
+- The server-wide **Subagent nesting limit** applies per newly started or
+  resumed plain Claude, Claude Gateway, and Claude Ollama process. A numeric
+  value sets `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` only in the launch's child
+  environment (and Gateway flag-settings environment); `0` disables subagents
+  and `1` through `4` set the maximum nesting depth. YA defaults this setting to
+  `1`. **Provider default** stores `null` and adds no YA value. An explicit value
+  already present in YA's own environment takes precedence. This mechanism
+  never mutates Claude user, project, or local settings files.
 - `claude-gateway` is a separate, default-off provider for an
   Anthropic-compatible LLM gateway. Configuring it must not reroute the regular
   `claude` provider or mutate `~/.claude/settings.json`: every Gateway launch
@@ -140,9 +148,6 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   files. The server-wide **Disable Agent tool** setting may omit YA's rule for
   processes started or resumed afterward; it does not override a deny from
   Claude's user, project, or local settings.
-  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` defaults to `1` (one level of
-  subagents, no nesting; the CLI default is 3), deferring to an explicit
-  operator value in YA's own environment.
   `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is retained deliberately, but
   it is a privacy/traffic choice and not a token or quota saver, and it has a
   cost worth knowing: it puts the CLI in essential-traffic mode, which

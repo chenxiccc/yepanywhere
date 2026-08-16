@@ -65,6 +65,64 @@ describe("CommittedRangeNumberInput", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it("commits an empty number draft as explicit unset when enabled", () => {
+    const onEdit = vi.fn();
+    const onCommit = vi.fn();
+    render(
+      <CommittedRangeNumberInput
+        min={-1}
+        max={4}
+        numberMin={0}
+        value={2}
+        unsetSliderValue={-1}
+        ariaLabel="Subagent depth"
+        onEdit={onEdit}
+        onCommit={onCommit}
+      />,
+    );
+
+    const slider = screen.getByRole<HTMLInputElement>("slider", {
+      name: "Subagent depth",
+    });
+    const number = screen.getByRole<HTMLInputElement>("spinbutton", {
+      name: "Subagent depth",
+    });
+    fireEvent.change(number, { target: { value: "" } });
+    expect(onEdit).toHaveBeenCalledOnce();
+    fireEvent.blur(number);
+
+    expect(onCommit).toHaveBeenCalledWith(null);
+    expect(number.value).toBe("");
+    expect(slider.value).toBe("-1");
+  });
+
+  it("maps the explicit unset slider notch to a blank number", () => {
+    const onCommit = vi.fn();
+    render(
+      <CommittedRangeNumberInput
+        min={-1}
+        max={4}
+        numberMin={0}
+        value={2}
+        unsetSliderValue={-1}
+        ariaLabel="Subagent depth"
+        onCommit={onCommit}
+      />,
+    );
+
+    const slider = screen.getByRole<HTMLInputElement>("slider", {
+      name: "Subagent depth",
+    });
+    const number = screen.getByRole<HTMLInputElement>("spinbutton", {
+      name: "Subagent depth",
+    });
+    fireEvent.change(slider, { target: { value: "-1" } });
+    expect(number.value).toBe("");
+    fireEvent.pointerUp(slider);
+
+    expect(onCommit).toHaveBeenCalledWith(null);
+  });
+
   it("selects the edit path for valid number drafts and normalizes on blur", () => {
     const onEdit = vi.fn();
     const onCommit = vi.fn();

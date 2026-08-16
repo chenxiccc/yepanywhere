@@ -31,6 +31,7 @@ import {
 import {
   DEFAULT_CLAUDE_STEER_BACKGROUND_BASH,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
+  DEFAULT_SUBAGENT_MAX_DEPTH,
   HELPER_SIDE_MODEL_CHEAPEST,
   type ClaudeAdditionalModelSelection,
   type EffortLevel,
@@ -38,6 +39,7 @@ import {
   type PromptCacheKeepaliveProviderInfo,
   type ProviderSubscriptionUsage,
   type SlashCommand,
+  type SubagentMaxDepth,
   getModelContextWindow,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
@@ -966,6 +968,12 @@ export class ClaudeProvider implements AgentProvider {
   private getAdditionalModelSelections: () =>
     | readonly ClaudeAdditionalModelSelection[]
     | undefined = () => [];
+  private getConfiguredSubagentMaxDepth: () => SubagentMaxDepth = () =>
+    DEFAULT_SUBAGENT_MAX_DEPTH;
+
+  setSubagentMaxDepthGetter(getter: () => SubagentMaxDepth): void {
+    this.getConfiguredSubagentMaxDepth = getter;
+  }
 
   setAdditionalModelsGetter(
     getter: () => readonly ClaudeAdditionalModelSelection[] | undefined,
@@ -1223,8 +1231,24 @@ export class ClaudeProvider implements AgentProvider {
    * Get filtered environment variables for child processes.
    * Subclasses can override to inject custom env vars (e.g., ANTHROPIC_BASE_URL).
    */
+  protected getSubagentDepthEnvironment(): Record<string, string> {
+    const operatorValue = process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH;
+    if (operatorValue !== undefined) {
+      return { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: operatorValue };
+    }
+    const configuredValue = this.getConfiguredSubagentMaxDepth();
+    return configuredValue === null
+      ? {}
+      : {
+          CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: String(configuredValue),
+        };
+  }
+
   protected getEnv(_model?: string): Record<string, string | undefined> {
-    return filterEnvForChildProcess();
+    return {
+      ...filterEnvForChildProcess(),
+      ...this.getSubagentDepthEnvironment(),
+    };
   }
 
   /**

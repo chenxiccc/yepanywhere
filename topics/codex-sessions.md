@@ -42,6 +42,19 @@ find it. The rename is reversible and the content untouched; see
 `topics/heartbeat.md` § Unowned Resume Exemptions and
 `packages/server/src/sessions/resume-exemption.ts`.
 
+## Process-Scoped Subagent Depth
+
+The server-wide **Subagent nesting limit** is snapshotted for each newly started
+or resumed Codex provider process. Numeric values `0` through `4` are sent as
+`agents.max_depth` in the app-server config for `thread/start`, `thread/resume`,
+and `thread/fork`; **Provider default** stores `null` and omits that key. YA
+defaults the setting to `1` and never writes `~/.codex/config.toml`.
+
+Pinned Codex core source describes `agents.max_depth` as a V1 multi-agent-thread
+limit and explicitly says V2 ignores it. The Providers caption must retain that
+limitation; YA must not imply that the setting constrains Codex V2 or Codex OSS
+without a separately verified control.
+
 ## Read Surfaces
 
 There are two main YA surfaces over the same rollout tree:

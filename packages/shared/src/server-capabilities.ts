@@ -332,6 +332,28 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients may outpace installed servers, and older servers do not expose a persisted idle-reap policy.",
     },
   },
+  subagentMaxDepthSetting: {
+    id: CAPABILITY_ID_ALLOCATIONS.subagentMaxDepthSetting.id,
+    name: "subagent-max-depth-setting",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server persists a process-launch limit for supported providers' native subagent nesting depth.",
+    clientFallback:
+      "Hide the subagent-depth control and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.subagentMaxDepth"],
+      responseFields: ["settings.subagentMaxDepth"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients may outpace installed servers, and older servers do not expose a process-launch subagent-depth policy.",
+    },
+  },
   toolResultMediaPreservationPolicy: {
     id: CAPABILITY_ID_ALLOCATIONS.toolResultMediaPreservationPolicy.id,
     name: "tool-result-media-preservation-policy",
@@ -1490,6 +1512,8 @@ export const PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY =
   SERVER_CAPABILITIES.publicShareManagementFreeze.name;
 export const IDLE_REAP_HOURS_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.idleReapHoursSetting.name;
+export const SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY =
+  SERVER_CAPABILITIES.subagentMaxDepthSetting.name;
 export const GLOSSARY_TOOLTIPS_CAPABILITY =
   SERVER_CAPABILITIES.glossaryTooltips.name;
 export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =
