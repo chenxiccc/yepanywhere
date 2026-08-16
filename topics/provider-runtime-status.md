@@ -39,10 +39,11 @@ turn ended; it must not imply that the session or provider process crashed.
 Hover/title detail should say explicitly whether retry is automatic and include
 the provider's error text when available.
 
-Changing models while `retrying` is an explicit recovery override. Apply the
-new model first, then interrupt the provider-owned retrying turn so the next
-queued or newly submitted turn can use that model; clear the retry status once
-the interrupt is accepted. A model change during an ordinary active turn
+Changing models while `retrying` is an explicit recovery override. Interrupt
+the provider-owned retry wait first so its model-control RPC cannot remain
+blocked behind that wait, then apply the new model through the retained session
+before releasing queued messages. Clear the retry status only after the
+interrupt is accepted and the model applies. A model change during an ordinary active turn
 remains a next-turn setting and must not truncate useful output. If a provider
 can change models dynamically but cannot interrupt a retrying request, YA must
 restart that provider process rather than leave the old-model retry clock in
@@ -268,8 +269,8 @@ turn proceeds; a repeated failure records a new terminal incident.
 Coverage should prove:
 
 - retrying and terminal statuses have different color/copy semantics;
-- changing models during retry applies the new model before interrupting the
-  held turn and clears the retry status;
+- changing models during retry interrupts the held wait before model control,
+  applies the model before queued delivery, and clears the retry status;
 - changing models during an ordinary active turn does not interrupt it;
 - Codex `willRetry: false` errors become terminal status with the right reason;
 - terminal status survives `result`, idle transition, and idle process reap;

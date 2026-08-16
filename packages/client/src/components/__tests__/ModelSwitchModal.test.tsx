@@ -10,15 +10,23 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelSwitchModal } from "../ModelSwitchModal";
 
-const { mockGetProcessInfo, mockGetProcessModels } = vi.hoisted(() => ({
+const {
+  mockGetProcessInfo,
+  mockGetProcessModels,
+  mockSetProcessConfig,
+  mockTranslate,
+} = vi.hoisted(() => ({
   mockGetProcessInfo: vi.fn(),
   mockGetProcessModels: vi.fn(),
+  mockSetProcessConfig: vi.fn(),
+  mockTranslate: vi.fn((key: string) => key),
 }));
 
 vi.mock("../../api/client", () => ({
   api: {
     getProcessInfo: mockGetProcessInfo,
     getProcessModels: mockGetProcessModels,
+    setProcessConfig: mockSetProcessConfig,
   },
 }));
 
@@ -42,9 +50,7 @@ vi.mock("../../hooks/useProviderSubscriptionUsage", () => ({
 }));
 
 vi.mock("../../i18n", () => ({
-  useI18n: () => ({
-    t: (key: string) => key,
-  }),
+  useI18n: () => ({ t: mockTranslate }),
 }));
 
 describe("ModelSwitchModal", () => {
@@ -57,6 +63,11 @@ describe("ModelSwitchModal", () => {
         thinking: undefined,
         effort: "high",
       },
+    });
+    mockSetProcessConfig.mockResolvedValue({
+      success: true,
+      processId: "process-1",
+      model: "other",
     });
   });
 
@@ -124,5 +135,83 @@ describe("ModelSwitchModal", () => {
     expect(screen.getAllByText("previousModelsGroup")).toHaveLength(1);
     expect(screen.getAllByText("removed-current").length).toBeGreaterThan(0);
     expect(screen.getByText("modelSelectionUnavailable")).toBeTruthy();
+  });
+
+  it("dismisses dirty changes without saving", async () => {
+    mockGetProcessModels.mockResolvedValue({
+      models: [
+        { id: "latest", name: "Latest" },
+        { id: "other", name: "Other" },
+      ],
+    });
+    const onClose = vi.fn();
+
+    render(
+      <ModelSwitchModal
+        processId="process-1"
+        sessionId="session-1"
+        currentModel="latest"
+        onModelChanged={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Other/ }));
+    fireEvent.click(screen.getByRole("button", { name: "modalClose" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mockSetProcessConfig).not.toHaveBeenCalled();
+  });
+
+  it("dismisses while an explicit save remains pending", async () => {
+    mockGetProcessModels.mockResolvedValue({
+      models: [
+        { id: "latest", name: "Latest" },
+        { id: "other", name: "Other" },
+      ],
+    });
+    let resolveConfig!: (result: {
+      success: boolean;
+      processId: string;
+      model: string;
+    }) => void;
+    mockSetProcessConfig.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveConfig = resolve;
+        }),
+    );
+    const onClose = vi.fn();
+    const onModelChanged = vi.fn();
+
+    render(
+      <ModelSwitchModal
+        processId="process-1"
+        sessionId="session-1"
+        currentModel="latest"
+        onModelChanged={onModelChanged}
+        onClose={onClose}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Other/ }));
+    const saveButtons = await screen.findAllByRole("button", {
+      name: /modelSwitchSaveAll/,
+    });
+    const saveButton = saveButtons[0];
+    if (!saveButton) throw new Error("Expected a model save button");
+    fireEvent.click(saveButton);
+    await waitFor(() => {
+      expect(mockSetProcessConfig).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "modalClose" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    resolveConfig({ success: true, processId: "process-1", model: "other" });
+    await waitFor(() => {
+      expect(onModelChanged).toHaveBeenCalledTimes(1);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -1817,6 +1817,7 @@ export class Process {
   async interrupt(options?: {
     extraMessages?: UserMessage[];
     preamble?: string;
+    beforeQueueDrain?: () => Promise<void>;
   }): Promise<boolean> {
     if (!this.interruptFn) {
       return false;
@@ -1837,6 +1838,7 @@ export class Process {
     const interrupted = await this.interruptFn();
 
     if (interrupted !== false) {
+      await options?.beforeQueueDrain?.();
       this.resolvePendingToolApprovals({
         message: "Operation interrupted",
         interrupt: true,
@@ -2161,7 +2163,8 @@ export class Process {
     model?: string,
     requestedModel: string | null = model ?? null,
   ): Promise<boolean> {
-    if (!this.setModelFn) {
+    const setModel = this.setModelFn;
+    if (!setModel) {
       return false;
     }
 
@@ -2184,14 +2187,10 @@ export class Process {
       `Changing model: ${this.model} → ${model}`,
     );
 
-    await this.setModelFn(model);
-    if (
-      interruptsRetryingTurn &&
-      this._state.type === "in-turn" &&
-      this.providerRuntimeStatus?.kind === "retrying"
-    ) {
+    if (interruptsRetryingTurn) {
       const interrupted = await this.interrupt({
         preamble: MODEL_SWITCH_RETRY_INTERRUPT_PREAMBLE,
+        beforeQueueDrain: () => setModel(model),
       });
       if (
         !interrupted &&
@@ -2199,10 +2198,12 @@ export class Process {
         this.providerRuntimeStatus?.kind === "retrying"
       ) {
         throw new Error(
-          "Provider retry could not be interrupted after changing models",
+          "Provider retry could not be interrupted before changing models",
         );
       }
       this.clearRetryingProviderRuntimeStatus();
+    } else {
+      await setModel(model);
     }
 
     // Follow switches, including an explicit return to provider default.

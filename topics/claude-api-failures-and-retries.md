@@ -240,8 +240,9 @@ Session `6ed5ccec-0f4f-4c2a-beb4-5d428a01b918` demonstrated the failure:
   `06:13:06` and Opus answered at `06:13:09`.
 
 The recovery contract is now status-sensitive: a model switch while YA has an
-explicit Claude `api_retry` status applies the new model and interrupts that
-retrying turn. An ordinary active turn is not interrupted; its model change
+explicit Claude `api_retry` status interrupts that held retry first, then applies
+the new model before releasing queued messages. An ordinary active turn is not
+interrupted; its model change
 continues to apply at the next turn boundary. This is a user override of
 Claude's retry ownership, not a second YA retry or resend loop.
 

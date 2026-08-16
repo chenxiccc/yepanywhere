@@ -134,6 +134,7 @@ export function ModelSwitchModal({
     initialTab ?? "model",
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const dismissedRef = useRef(false);
   const [activating, setActivating] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
 
@@ -271,22 +272,24 @@ export function ModelSwitchModal({
       setThinkingMode(effectiveThinkingMode);
       setEffortLevel(effectiveEffortLevel);
       onModelChanged(result);
-      onClose();
+      if (!dismissedRef.current) {
+        dismissedRef.current = true;
+        onClose();
+      }
       afterApply?.();
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : t("modelSwitchChangeFailed"),
-      );
-      setSwitching(false);
+      if (!dismissedRef.current) {
+        setError(
+          err instanceof Error ? err.message : t("modelSwitchChangeFailed"),
+        );
+        setSwitching(false);
+      }
     }
   };
 
   const handleDismiss = () => {
-    if (switching) return;
-    if (dirty) {
-      void applyConfig();
-      return;
-    }
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
     onClose();
   };
 
@@ -645,8 +648,7 @@ export function ModelSwitchModal({
                 <button
                   type="button"
                   className="settings-button settings-button-secondary model-switch-action-button"
-                  onClick={onClose}
-                  disabled={switching}
+                  onClick={handleDismiss}
                 >
                   <span className="model-switch-action-label">
                     {t("modalCancel")}
