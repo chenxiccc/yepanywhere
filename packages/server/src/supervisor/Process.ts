@@ -10,6 +10,7 @@ import type {
   RecapMode,
   SessionLivenessSnapshot,
   SessionQueuedMessageSummary,
+  SessionQueuedYaCommand,
   SessionSandboxEnforcement,
   SessionWakeReason,
   SessionWakeReasonSnapshot,
@@ -101,6 +102,13 @@ type DeferredQueueEntry = {
    */
   lastSeenHead?: string;
   persistedQueueId?: string;
+};
+export type PendingYaCommand = {
+  command: SessionQueuedYaCommand;
+  tempId: string;
+  timestamp: string;
+  userTurnVersion: number;
+  completionStarted: boolean;
 };
 type RecentAssistantRecapEntry = {
   completedAtMs: number;
@@ -1005,6 +1013,8 @@ export class Process {
   private _assistantActivityVersion = 0;
   /** Monotonic marker for delivery intent received before any async priming. */
   private _inputIntentVersion = 0;
+  /** Monotonic marker for accepted real user turns. */
+  private _userTurnVersion = 0;
   private _compactAtContextPercent: number | undefined;
   private _compactAtContextWindow: number | undefined;
   private _forceYaOrchestratedCompaction: boolean;
@@ -1013,6 +1023,8 @@ export class Process {
 
   /** Deferred message queue — messages queued while agent is in-turn, auto-sent when turn ends */
   private deferredQueue: DeferredQueueEntry[] = [];
+  /** YA-local commands awaiting a provider turn boundary, never provider input. */
+  private pendingYaCommands: PendingYaCommand[] = [];
 
   /** Promise that resolves when the process fully terminates (CLI exits) */
   private _exitPromise: Promise<void>;
@@ -1196,6 +1208,10 @@ export class Process {
     this._inputIntentVersion += 1;
   }
 
+  get userTurnVersion(): number {
+    return this._userTurnVersion;
+  }
+
   get state(): ProcessState {
     return this._state;
   }
@@ -1302,7 +1318,7 @@ export class Process {
   }
 
   private get deferredQueueDepth(): number {
-    return this.deferredQueue.length;
+    return this.deferredQueue.length + this.pendingYaCommands.length;
   }
 
   hasPatientDeferredMessages(): boolean {
@@ -3119,10 +3135,15 @@ export class Process {
       message.automaticSource === undefined &&
       message.metadata?.serverReceivedAt !== undefined
     ) {
-      this.recapPausedUntilUserTurn = false;
+      this._userTurnVersion += 1;
+      this.resumeRecapsAfterUserTurn();
       this.emit({ type: "user-turn-accepted" });
     }
     return { ...message, recapResumeHandled: true };
+  }
+
+  resumeRecapsAfterUserTurn(): void {
+    this.recapPausedUntilUserTurn = false;
   }
 
   /**
@@ -3522,6 +3543,87 @@ export class Process {
   }
 
   /**
+   * Project a YA-local command through the queued-message UI. The command is
+   * deliberately separate from both deferred and patient provider input.
+   */
+  queueYaCommand(
+    command: SessionQueuedYaCommand,
+    options?: { tempId?: string; timestamp?: string },
+  ): PendingYaCommand {
+    const existing = this.pendingYaCommands.find(
+      (entry) => entry.command === command,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const entry: PendingYaCommand = {
+      command,
+      tempId: options?.tempId ?? `ya-${command}-${randomUUID()}`,
+      timestamp: options?.timestamp ?? new Date().toISOString(),
+      userTurnVersion: this._userTurnVersion,
+      completionStarted: false,
+    };
+    this.pendingYaCommands.push(entry);
+    this.emitDeferredQueueChange("queued", entry.tempId, entry.command);
+    return entry;
+  }
+
+  hasPendingYaCommand(command?: SessionQueuedYaCommand): boolean {
+    return command
+      ? this.pendingYaCommands.some((entry) => entry.command === command)
+      : this.pendingYaCommands.length > 0;
+  }
+
+  getPendingYaCommand(
+    command: SessionQueuedYaCommand,
+  ): PendingYaCommand | undefined {
+    return this.pendingYaCommands.find((entry) => entry.command === command);
+  }
+
+  beginPendingYaCommandCompletion(
+    command: SessionQueuedYaCommand,
+  ): PendingYaCommand | undefined {
+    const entry = this.getPendingYaCommand(command);
+    if (!entry || entry.completionStarted) {
+      return undefined;
+    }
+    entry.completionStarted = true;
+    return entry;
+  }
+
+  releasePendingYaCommandCompletion(tempId: string): void {
+    const entry = this.pendingYaCommands.find(
+      (candidate) => candidate.tempId === tempId,
+    );
+    if (entry) {
+      entry.completionStarted = false;
+    }
+  }
+
+  completePendingYaCommand(tempId: string): boolean {
+    const index = this.pendingYaCommands.findIndex(
+      (entry) => entry.tempId === tempId && entry.completionStarted,
+    );
+    if (index === -1) {
+      return false;
+    }
+    const [entry] = this.pendingYaCommands.splice(index, 1);
+    if (!entry) {
+      return false;
+    }
+    this.emitDeferredQueueChange("promoted", tempId, entry.command);
+    if (
+      this.pendingYaCommands.length === 0 &&
+      this._state.type === "idle" &&
+      !this.isRetainingProviderWork()
+    ) {
+      this.continueAfterTurnBoundary();
+    }
+    return true;
+  }
+
+  /**
    * Cancel a deferred message by its tempId.
    */
   cancelDeferredMessage(tempId: string): boolean {
@@ -3612,7 +3714,7 @@ export class Process {
    * Get a summary of the live deferred queue for canonical server projection.
    */
   getDeferredQueueSummary(): SessionQueuedMessageSummary[] {
-    return this.deferredQueue.map((entry) => {
+    const deferred = this.deferredQueue.map((entry) => {
       const attachmentCount =
         (entry.message.attachments?.length ?? 0) +
         (entry.message.images?.length ?? 0) +
@@ -3636,6 +3738,15 @@ export class Process {
         ...(attachmentCount > 0 ? { attachmentCount } : {}),
       };
     });
+    const yaCommands = this.pendingYaCommands.map((entry) => ({
+      tempId: entry.tempId,
+      content: `/${entry.command}`,
+      timestamp: entry.timestamp,
+      kind: "ya-command" as const,
+      yaCommand: entry.command,
+      status: "queued" as const,
+    }));
+    return [...deferred, ...yaCommands];
   }
 
   /**
@@ -3680,11 +3791,13 @@ export class Process {
   private emitDeferredQueueChange(
     reason?: "queued" | "cancelled" | "promoted",
     tempId?: string,
+    yaCommand?: SessionQueuedYaCommand,
   ): void {
     this.emit({
       type: "deferred-queue",
       reason,
       tempId,
+      yaCommand,
     });
   }
 
@@ -4646,6 +4759,15 @@ export class Process {
   }
 
   private finishTransitionToIdle(): void {
+    if (this.pendingYaCommands.length > 0) {
+      this.setState({ type: "idle", since: new Date() });
+      return;
+    }
+
+    this.continueAfterTurnBoundary(true);
+  }
+
+  private continueAfterTurnBoundary(refreshIdleState = false): void {
     // Promote deferred messages as the same stitched user turn the provider
     // receives, so the live echo and later transcript catch-up agree.
     if (this.promoteEligibleDeferredAfterTurn()) {
@@ -4653,7 +4775,9 @@ export class Process {
       return;
     }
 
-    this.setState({ type: "idle", since: new Date() });
+    if (refreshIdleState || this._state.type !== "idle") {
+      this.setState({ type: "idle", since: new Date() });
+    }
     this.flushPendingRecapRequest();
     this.processNextInQueue();
   }

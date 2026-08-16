@@ -12,6 +12,7 @@ import type {
   ProviderName,
   RecapMode,
   SessionSandboxEnforcement,
+  SessionQueuedYaCommand,
   ThinkingConfig,
   UrlProjectId,
   SessionLivenessSnapshot,
@@ -322,6 +323,7 @@ export type ProcessEvent =
       type: "deferred-queue";
       reason?: "queued" | "cancelled" | "promoted";
       tempId?: string;
+      yaCommand?: SessionQueuedYaCommand;
     }
   | {
       type: "recap-result";

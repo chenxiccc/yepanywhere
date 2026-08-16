@@ -4,7 +4,8 @@
 > server's list and issues add/cancel requests. It never keeps its own copy of
 > the queue or reconciles by text. Long-lived patient entries are durable
 > server state while queued; short-term direct/deferred entries remain
-> process-local.
+> process-local. YA-local command chips may reuse this projection without
+> entering any provider-delivery queue.
 
 Topic: queued-messages
 
@@ -55,7 +56,12 @@ minutes.
    `paused-after-restart` queue chips and require an explicit action: resume
    (rejoin the provider's patient/deferred delivery path), steer (deliver now),
    or delete.
-5. **No optimism.** Queuing and cancelling behave exactly like sending a normal
+5. **YA commands are explicitly tagged controls.** A queued YA-routed command
+   uses the Process-local `pendingYaCommands` lane and a `kind: "ya-command"`
+   summary. It is never inferred from slash-shaped queued text and never enters
+   deferred, patient, direct, or provider delivery. This preserves provider
+   skills with colliding command names.
+6. **No optimism.** Queuing and cancelling behave exactly like sending a normal
    session message: the composer disables, the request goes to the server, and
    the UI only changes when confirmed server state comes back. No optimistic
    chip, no optimistic removal, no revert path.
@@ -77,12 +83,18 @@ minutes.
   gone. Persisted patient entries load as `paused-after-restart`; clients
   reflect those server-reported entries on the next sync and never resurrect
   queue state locally.
+- **YA-local command boundary.** An accepted command may use the same queued
+  chip while an agent turn remains active. The control lane resolves locally at
+  the first safe boundary, and ordinary queued provider work stays held until
+  that resolution commits. It neither consumes a patient/regular queue
+  position nor exposes provider-queue edit, steer, or cancel actions.
 
 ## Canonical queue projection
 
 Every complete wire snapshot is produced by `sessionQueueSummaries()`. It
-combines the active `Process` queue with persisted `paused-after-restart`
-patient entries, orders the result chronologically, and removes a
+combines the active `Process` deferred and YA-command projections with
+persisted `paused-after-restart` patient entries, orders the result
+chronologically, and removes a
 resume-transition duplicate by durable queue id. A resumed live patient entry
 carries the same durable id as its persisted representation and wins while both
 stores briefly contain it.

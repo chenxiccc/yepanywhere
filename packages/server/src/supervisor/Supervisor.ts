@@ -3,6 +3,7 @@ import {
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   type CacheMissBillingSettings,
   type ClaudeSteerBackgroundBashSettings,
+  type DurableSyntheticDoneMessage,
   type PromptSuggestionMode,
   type ProviderName,
   type ProviderRuntimeStatus,
@@ -20,6 +21,7 @@ import { createLruMap, refreshLruMap } from "../lib/lruCollections.js";
 import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
+import type { NotificationService } from "../notifications/index.js";
 import { getProjectName } from "../projects/paths.js";
 import {
   getSessionSandboxSettingsError,
@@ -550,6 +552,8 @@ export interface SupervisorOptions {
   interruptTimeoutMs?: number;
   /** Metadata service used to hide/archive server-owned helper forks. */
   sessionMetadataService?: SessionMetadataService;
+  /** Read-state service updated when a synthetic done boundary commits. */
+  notificationService?: NotificationService;
   /** Durable store for long-lived patient queued messages. */
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** Durable store for image-bearing tool results. */
@@ -558,6 +562,12 @@ export interface SupervisorOptions {
   dirtyFileEditorService?: DirtyFileEditorService;
   /** Root for persistent project-private provider state. */
   sandboxStateRoot?: string;
+}
+
+export interface SessionDoneResult {
+  message: DurableSyntheticDoneMessage;
+  paused: true;
+  queued: boolean;
 }
 
 export class Supervisor {
@@ -628,6 +638,7 @@ export class Supervisor {
   private compactThresholdCheckedAssistantVersion = new Map<string, number>();
   private interruptTimeoutMs: number;
   private sessionMetadataService?: SessionMetadataService;
+  private notificationService?: NotificationService;
   private sessionQueuePersistenceService?: SessionQueuePersistenceService;
   private toolResultMediaStore?: ToolResultMediaStore;
   private dirtyFileEditorService?: DirtyFileEditorService;
@@ -676,6 +687,7 @@ export class Supervisor {
     this.interruptTimeoutMs =
       options.interruptTimeoutMs ?? DEFAULT_INTERRUPT_TIMEOUT_MS;
     this.sessionMetadataService = options.sessionMetadataService;
+    this.notificationService = options.notificationService;
     this.sessionQueuePersistenceService =
       options.sessionQueuePersistenceService;
     this.toolResultMediaStore = options.toolResultMediaStore;
@@ -3028,9 +3040,121 @@ export class Supervisor {
 
   isAutomationPausedUntilUserTurn(sessionId: string): boolean {
     return (
+      this.getProcessForSession(sessionId)?.hasPendingYaCommand("done") ===
+        true ||
       this.sessionMetadataService?.getMetadata(sessionId)
         ?.automationPausedUntilUserTurn === true
     );
+  }
+
+  async requestSessionDone(sessionId: string): Promise<SessionDoneResult> {
+    if (!this.sessionMetadataService) {
+      throw new Error("Session metadata service unavailable");
+    }
+
+    const process = this.getProcessForSession(sessionId);
+    const existing = process?.getPendingYaCommand("done");
+    const hasActiveTurn =
+      process !== undefined &&
+      (process.state.type === "in-turn" ||
+        process.state.type === "waiting-input" ||
+        process.isRetainingProviderWork());
+
+    if (process && (existing || hasActiveTurn)) {
+      const pending = existing ?? process.queueYaCommand("done");
+      await this.pauseSessionAutomation(sessionId);
+
+      if (process.state.type === "idle" && !process.isRetainingProviderWork()) {
+        const completed = await this.finalizePendingDone(process);
+        if (completed) {
+          return { message: completed, paused: true, queued: false };
+        }
+      }
+
+      return {
+        message: this.syntheticDoneMessage(pending.tempId, pending.timestamp),
+        paused: true,
+        queued: true,
+      };
+    }
+
+    const timestamp = new Date().toISOString();
+    const uuid = `ya-done-${randomUUID()}`;
+    const message = this.syntheticDoneMessage(uuid, timestamp);
+    await this.sessionMetadataService.recordSyntheticDone(sessionId, message);
+    await this.pauseSessionAutomation(sessionId);
+    await this.notificationService?.markSeen(sessionId, timestamp, uuid);
+    return { message, paused: true, queued: false };
+  }
+
+  private syntheticDoneMessage(
+    uuid: string,
+    timestamp: string,
+  ): DurableSyntheticDoneMessage {
+    return {
+      type: "user",
+      content: "/done",
+      message: { role: "user", content: "/done" },
+      timestamp,
+      uuid,
+      id: uuid,
+      isSynthetic: true,
+      yaSyntheticSource: "done",
+    };
+  }
+
+  private async finalizePendingDone(
+    process: Process,
+  ): Promise<DurableSyntheticDoneMessage | null> {
+    const pending = process.beginPendingYaCommandCompletion("done");
+    if (!pending) {
+      return null;
+    }
+
+    const sessionMetadataService = this.sessionMetadataService;
+    if (!sessionMetadataService) {
+      process.releasePendingYaCommandCompletion(pending.tempId);
+      return null;
+    }
+
+    const timestamp = new Date().toISOString();
+    const message = this.syntheticDoneMessage(pending.tempId, timestamp);
+    try {
+      await sessionMetadataService.recordSyntheticDone(
+        process.sessionId,
+        message,
+      );
+      await this.pauseSessionAutomation(process.sessionId);
+      await this.notificationService?.markSeen(
+        process.sessionId,
+        timestamp,
+        pending.tempId,
+      );
+      if (process.userTurnVersion > pending.userTurnVersion) {
+        await sessionMetadataService.updateMetadata(process.sessionId, {
+          automationPausedUntilUserTurn: false,
+        });
+        process.resumeRecapsAfterUserTurn();
+        process.handleAutomationPauseChanged();
+        this.heartbeatScheduler.requestSweepWithin(HEARTBEAT_RECHECK_MS);
+      }
+    } catch (error) {
+      process.releasePendingYaCommandCompletion(pending.tempId);
+      getLogger().warn(
+        {
+          event: "pending_done_finalize_failed",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to finalize queued /done command",
+      );
+      return null;
+    }
+
+    process.completePendingYaCommand(pending.tempId);
+    return message;
   }
 
   async pauseSessionAutomation(sessionId: string): Promise<void> {
@@ -4654,6 +4778,9 @@ export class Supervisor {
           this.schedulePatientDeferredCheck(process, 250);
         }
         if (event.state.type === "idle") {
+          if (!process.isRetainingProviderWork()) {
+            void this.finalizePendingDone(process);
+          }
           this.flushPendingForkedRecapRequest(process);
           void this.maybeCompactAfterIdle(process);
         }
@@ -5124,6 +5251,7 @@ export class Supervisor {
         process.isRetainingProviderWork() ? "in-turn" : "idle",
       );
       if (!process.isRetainingProviderWork()) {
+        void this.finalizePendingDone(process);
         void this.maybeCompactAfterIdle(process);
       }
     }

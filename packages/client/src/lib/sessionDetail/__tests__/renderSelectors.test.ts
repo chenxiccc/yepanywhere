@@ -584,6 +584,39 @@ describe("session detail render selectors", () => {
     ).toBe(true);
   });
 
+  it("keeps queued YA commands out of provider-delivery lanes", () => {
+    const rows = buildComposerTailDisplayRows({
+      deferredMessages: [
+        {
+          tempId: "ya-done-queued",
+          timestamp: "2026-08-16T10:00:00.000Z",
+          kind: "ya-command",
+          yaCommand: "done",
+        },
+        {
+          tempId: "regular-after-command",
+          timestamp: "2026-08-16T10:00:01.000Z",
+        },
+      ],
+      latestVisibleTimestampMs: null,
+      nowMs: Date.parse("2026-08-16T10:00:02.000Z"),
+      staleThresholdMs: 5 * 60 * 1000,
+    });
+    const doneRow = rows.find((row) => row.key === "ya-done-queued");
+    const regularRow = rows.find((row) => row.key === "regular-after-command");
+
+    expect(doneRow?.kind === "deferred" && doneRow.isYaCommand).toBe(true);
+    expect(doneRow?.kind === "deferred" && doneRow.allowsDeferredCancel).toBe(
+      false,
+    );
+    expect(
+      doneRow?.kind === "deferred" && doneRow.lanePosition,
+    ).toBeUndefined();
+    expect(regularRow?.kind === "deferred" && regularRow.lanePosition).toEqual({
+      regularIndex: 0,
+    });
+  });
+
   it("derives user navigation anchors from searchable user turns", () => {
     const sourceMessages: Message[] = [
       {

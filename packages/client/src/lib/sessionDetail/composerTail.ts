@@ -13,6 +13,8 @@ export interface RenderDeferredMessage {
   tempId?: string;
   timestamp: string;
   status?: string;
+  kind?: string;
+  yaCommand?: string;
   metadata?: {
     deliveryIntent?: string;
   };
@@ -93,6 +95,7 @@ export type ComposerTailDisplayRow<
       deferredIndex: number;
       isPatient: boolean;
       isRecovered: boolean;
+      isYaCommand: boolean;
       kind: "deferred";
       lanePosition: ComposerTailLanePosition | undefined;
       message: TDeferred;
@@ -127,6 +130,12 @@ export function isRecoveredDeferredMessage(
   message: RenderDeferredMessage,
 ): boolean {
   return message.status === "paused-after-restart";
+}
+
+export function isYaCommandDeferredMessage(
+  message: RenderDeferredMessage,
+): boolean {
+  return message.kind === "ya-command" && Boolean(message.yaCommand);
 }
 
 export function compareComposerTailItems(
@@ -236,6 +245,9 @@ export function getComposerTailLanePositions<
     if (item.kind !== "deferred") {
       continue;
     }
+    if (isYaCommandDeferredMessage(item.message)) {
+      continue;
+    }
     if (isPatientDeferredMessage(item.message)) {
       positions.set(item.key, { patientIndex });
       patientIndex += 1;
@@ -318,16 +330,18 @@ export function buildComposerTailDisplayRows<
     }
 
     const isRecovered = isRecoveredDeferredMessage(item.message);
+    const isYaCommand = isYaCommandDeferredMessage(item.message);
     const recoveredQueueId =
       isRecovered && item.message.id ? item.message.id : null;
     return {
       ...base,
-      allowsDeferredCancel: Boolean(item.message.tempId),
+      allowsDeferredCancel: !isYaCommand && Boolean(item.message.tempId),
       allowsRecoveredDelete: recoveredQueueId !== null,
       allowsRecoveredResume: recoveredQueueId !== null,
       deferredIndex: item.deferredIndex,
       isPatient: isPatientDeferredMessage(item.message),
       isRecovered,
+      isYaCommand,
       kind: "deferred",
       lanePosition: lanePositions.get(item.key),
       message: item.message,

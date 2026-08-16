@@ -681,6 +681,7 @@ export type {
   SessionQueuedMessageKind,
   SessionQueuedMessageStatus,
   SessionQueuedMessageSummary,
+  SessionQueuedYaCommand,
   // Agent session types
   AgentStatus,
   AgentSession,

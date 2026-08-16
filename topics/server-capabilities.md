@@ -224,9 +224,10 @@ the same ledger:
 | 30 | server | 0.7.1 | `provider-host-control` |
 | 31 | server | 0.7.1 | `remote-browser-diagnostics-v1` |
 | 32 | server | 0.7.1 | `public-share-management-freeze` |
+| 33 | server | 0.7.1 | `synthetic-done-command` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 33; retired rows stay in the ledger as reserved IDs.
+ID 34; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

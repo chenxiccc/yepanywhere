@@ -1180,6 +1180,7 @@ export function createApp(options: AppOptions): AppResult {
     defaultPermissionMode: options.defaultPermissionMode,
     eventBus: options.eventBus,
     sessionMetadataService: options.sessionMetadataService,
+    notificationService: options.notificationService,
     maxWorkers: options.maxWorkers,
     idlePreemptThresholdMs: options.idlePreemptThresholdMs,
     maxQueueSize: options.maxQueueSize,
@@ -1738,7 +1739,7 @@ export function createApp(options: AppOptions): AppResult {
     createSessionDoneRoutes({
       supervisor,
       sessionMetadataService: options.sessionMetadataService,
-      notificationService: options.notificationService,
+      sessionQueuePersistenceService: options.sessionQueuePersistenceService,
     }),
   );
   app.route(

@@ -7,6 +7,7 @@ import type {
   SessionMetadataService,
 } from "../src/metadata/index.js";
 import { getLogger } from "../src/logging/logger.js";
+import type { NotificationService } from "../src/notifications/index.js";
 import { MockClaudeSDK, createMockScenario } from "../src/sdk/mock.js";
 import type { AgentProvider } from "../src/sdk/providers/types.js";
 import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
@@ -44,6 +45,9 @@ function createLaunchSettingsMetadata(
       async () => undefined,
     ),
     flushPendingWrites: vi.fn<SessionMetadataService["flushPendingWrites"]>(
+      async () => undefined,
+    ),
+    recordSyntheticDone: vi.fn<SessionMetadataService["recordSyntheticDone"]>(
       async () => undefined,
     ),
   };
@@ -3767,6 +3771,168 @@ describe("Supervisor", () => {
       expect(
         doneSupervisor.isAutomationPausedUntilUserTurn("done-pause-session"),
       ).toBe(false);
+
+      await process.abort();
+    });
+
+    it("commits /done immediately when no provider turn is active", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      const markSeen = vi.fn(async () => undefined);
+      const doneSupervisor = new Supervisor({
+        provider: testProvider(async () => {
+          throw new Error("provider should not start");
+        }),
+        sessionMetadataService: metadata.service,
+        notificationService: { markSeen } as unknown as NotificationService,
+      });
+
+      const result = await doneSupervisor.requestSessionDone("idle-session");
+
+      expect(result).toMatchObject({ queued: false, paused: true });
+      expect(metadata.writes.recordSyntheticDone).toHaveBeenCalledWith(
+        "idle-session",
+        result.message,
+      );
+      expect(markSeen).toHaveBeenCalledWith(
+        "idle-session",
+        result.message.timestamp,
+        result.message.uuid,
+      );
+    });
+
+    it("queues /done locally during a turn and commits it at the boundary", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      let automationPaused = false;
+      metadata.service.getMetadata = (() =>
+        automationPaused
+          ? { automationPausedUntilUserTurn: true }
+          : undefined) as SessionMetadataService["getMetadata"];
+      metadata.writes.recordSyntheticDone.mockImplementation(async () => {
+        automationPaused = true;
+      });
+      metadata.writes.updateMetadata.mockImplementation(
+        async (_sessionId, updates) => {
+          if (updates.automationPausedUntilUserTurn !== undefined) {
+            automationPaused = updates.automationPausedUntilUserTurn;
+          }
+        },
+      );
+      const markSeen = vi.fn(async () => undefined);
+      let finishTurn: (() => void) | undefined;
+      const turnBoundary = new Promise<void>((resolve) => {
+        finishTurn = resolve;
+      });
+      const providerMessages: string[] = [];
+      let aborted = false;
+      const provider = testProvider(async (options) => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: options.resumeSessionId ?? "queued-done-session",
+          };
+          for await (const message of queue) {
+            if (aborted) return;
+            providerMessages.push(
+              typeof message.message.content === "string"
+                ? message.message.content
+                : "non-text provider message",
+            );
+            yield {
+              type: "assistant" as const,
+              message: { content: "working" },
+            };
+            await turnBoundary;
+            yield {
+              type: "result" as const,
+              session_id: "queued-done-session",
+            };
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort: () => {
+            aborted = true;
+            queue.push({ text: "__abort__" });
+          },
+        };
+      });
+      const doneSupervisor = new Supervisor({
+        provider,
+        idleTimeoutMs: 10_000,
+        sessionMetadataService: metadata.service,
+        notificationService: { markSeen } as unknown as NotificationService,
+      });
+      const process = await doneSupervisor.reactivateSession(
+        "/tmp/test",
+        "queued-done-session",
+        undefined,
+        { providerName: "claude", recapMode: "fork" },
+      );
+
+      process.queueMessage({
+        text: "work already in progress",
+        metadata: { serverReceivedAt: new Date().toISOString() },
+      });
+      await vi.waitFor(() => {
+        expect(providerMessages).toEqual(["work already in progress"]);
+      });
+
+      const result = await doneSupervisor.requestSessionDone(
+        "queued-done-session",
+      );
+      expect(result).toMatchObject({ queued: true, paused: true });
+      expect(process.getDeferredQueueSummary()).toEqual([
+        expect.objectContaining({
+          content: "/done",
+          kind: "ya-command",
+          yaCommand: "done",
+        }),
+      ]);
+      expect(
+        doneSupervisor.isAutomationPausedUntilUserTurn("queued-done-session"),
+      ).toBe(true);
+      expect(metadata.writes.recordSyntheticDone).not.toHaveBeenCalled();
+      expect(providerMessages).toEqual(["work already in progress"]);
+
+      process.deferMessage({
+        text: "real user follow-up after done",
+        tempId: "follow-up-after-done",
+        metadata: { serverReceivedAt: new Date().toISOString() },
+      });
+
+      finishTurn?.();
+      await vi.waitFor(() => {
+        expect(metadata.writes.recordSyntheticDone).toHaveBeenCalledOnce();
+      });
+      await vi.waitFor(() => {
+        expect(process.getDeferredQueueSummary()).toEqual([]);
+      });
+      const [recordedSessionId, recordedMessage] =
+        metadata.writes.recordSyntheticDone.mock.calls[0] ?? [];
+      expect(recordedSessionId).toBe("queued-done-session");
+      expect(recordedMessage).toMatchObject({
+        content: "/done",
+        uuid: result.message.uuid,
+        yaSyntheticSource: "done",
+      });
+      await vi.waitFor(() => {
+        expect(providerMessages).toEqual([
+          "work already in progress",
+          "real user follow-up after done",
+        ]);
+      });
+      expect(providerMessages).not.toContain("/done");
+      expect(
+        doneSupervisor.isAutomationPausedUntilUserTurn("queued-done-session"),
+      ).toBe(false);
+      expect(markSeen).toHaveBeenCalledWith(
+        "queued-done-session",
+        recordedMessage?.timestamp,
+        result.message.uuid,
+      );
 
       await process.abort();
     });

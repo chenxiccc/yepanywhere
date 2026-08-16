@@ -741,6 +741,7 @@
   "sessionDeferredEditLocalOnly": "Queued message restored locally; it may already have left the server queue.",
   "sessionDeferredEditMissingAttachments": "Queued message text restored, but its attachments were not available.",
   "sessionQueuedCopy": "Copy queued message",
+  "sessionQueuedYaCommandAfterTurn": "Queued (after current turn)",
   "sessionQueuedEdit": "Edit queued message",
   "sessionQueuedCancel": "Cancel queued message",
   "sessionQueuedInlineEditLabel": "Edit queued message text",

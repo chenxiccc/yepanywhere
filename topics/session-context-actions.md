@@ -231,13 +231,25 @@ read, and sends no provider turn. The row is merged into session history by
 timestamp without mutating the provider transcript, so it remains visible on a
 later visit.
 
+During an active turn (including provider-retained background work), the action
+first appears in the canonical queued-message projection as a `ya-command`
+`/done` chip. This is a separate Process-local control lane: it never enters the
+deferred, patient, direct, or provider queues and does not interrupt the current
+turn. At the first unretained idle boundary, YA atomically records the durable
+synthetic row before removing the chip; only then may already-accepted ordinary
+queued turns resume their normal delivery. A persistence/read-state failure
+leaves the command visibly queued for an explicit retry and still sends no
+provider input.
+
 The same durable action pauses YA-driven provider work until a later real user
 turn. It blocks automatic compaction, recaps (including forked and cold
 recaps), heartbeat/session-wake turns, prompt-cache keepalive, patient queue
 promotion, and automatic Project Queue revival for that session. It does not
 interrupt current provider work, retract already accepted turns, or block
 message-less Activate. A real user Send clears the pause; automatically sourced
-heartbeat, wake, and Project Queue messages do not.
+heartbeat, wake, and Project Queue messages do not. If that real Send is
+accepted while `/done` is still queued, its later intent wins after the done row
+commits, so the already-accepted user turn does not leave automation paused.
 
 The feature is server-capability gated (`synthetic-done-command`) and defaults
 to `off`, preserving provider-owned `/done` skills. `hidden` enables typed
@@ -246,6 +258,14 @@ command and show the circle-check button. `/done` follows its composer: an
 aside-routed composer closes that aside, while the Mother composer keeps this
 synthetic session behavior even when a side pane is open. With the setting Off,
 Mother passes `/done` through to the provider.
+
+Compatibility: stable `v0.7.0` and `v0.6.2` lack the complete
+`synthetic-done-command` route and capability, so current clients hide the
+surface and make no request. A source-ahead server with the original immediate
+route may omit the additive `queued` and `deferredMessages` response fields;
+the client treats both as optional and retains the immediate local-done
+behavior. The capability's existing meaning and request contract do not
+change, and no new request is made to an older server.
 
 ## Action set
 

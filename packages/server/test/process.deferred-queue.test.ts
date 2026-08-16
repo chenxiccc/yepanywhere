@@ -104,6 +104,93 @@ describe("Process", () => {
   });
 
   describe("deferred queue", () => {
+    it("holds provider delivery behind a separate queued YA command", async () => {
+      const warnLog = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
+      const controller = createControllableIterator();
+      const providerQueue = new MessageQueue();
+      const push = vi.spyOn(providerQueue, "push");
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "ya-command-session",
+        provider: "claude",
+        queue: providerQueue,
+        idleTimeoutMs: 10_000,
+      });
+      const queueEvents: ProcessEvent[] = [];
+      const unsubscribe = process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          queueEvents.push(event);
+        }
+      });
+
+      process.deferMessage({
+        text: "ordinary queued work",
+        tempId: "temp-ordinary",
+      });
+      const pending = process.queueYaCommand("done", {
+        tempId: "ya-done-queued",
+        timestamp: "2026-08-16T10:00:00.000Z",
+      });
+      expect(process.getDeferredQueueSummary()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            tempId: pending.tempId,
+            content: "/done",
+            kind: "ya-command",
+            yaCommand: "done",
+            status: "queued",
+          }),
+        ]),
+      );
+
+      controller.push({
+        type: "result",
+        session_id: "ya-command-session",
+      });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(push).not.toHaveBeenCalled();
+
+      expect(process.beginPendingYaCommandCompletion("done")).toBe(pending);
+      expect(process.completePendingYaCommand(pending.tempId)).toBe(true);
+      await waitFor(() => expect(push).toHaveBeenCalledOnce());
+      expect(push.mock.calls[0]?.[0]).toMatchObject({
+        text: "ordinary queued work",
+      });
+      expect(
+        push.mock.calls.some(([message]) => message.text === "/done"),
+      ).toBe(false);
+      expect(queueEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "deferred-queue",
+            reason: "queued",
+            tempId: pending.tempId,
+            yaCommand: "done",
+          }),
+          expect.objectContaining({
+            type: "deferred-queue",
+            reason: "promoted",
+            tempId: pending.tempId,
+            yaCommand: "done",
+          }),
+        ]),
+      );
+
+      unsubscribe();
+      process.terminate("test complete");
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_terminated",
+          reason: "test complete",
+        }),
+        expect.any(String),
+      );
+      controller.finish();
+    });
+
     it("includes attachment count in deferred queue summaries", async () => {
       const iterator = createMockIterator([
         { type: "system", session_id: "sess-1" },

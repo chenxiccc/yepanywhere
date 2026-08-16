@@ -2053,13 +2053,18 @@ function SessionPageContent({
 
   const handleSyntheticDone = useCallback(async () => {
     try {
-      await api.markSessionDone(actualSessionId);
-      await fetchNewMessages();
+      const result = await api.markSessionDone(actualSessionId);
+      if (result.deferredMessages) {
+        setDeferredMessages(result.deferredMessages);
+      }
+      if (result.queued !== true) {
+        await fetchNewMessages();
+      }
       setScrollTrigger((previous) => previous + 1);
     } catch {
       showToast(t("syntheticDoneFailed"), "error");
     }
-  }, [actualSessionId, fetchNewMessages, showToast, t]);
+  }, [actualSessionId, fetchNewMessages, setDeferredMessages, showToast, t]);
 
   const closeFocusedBtwAside = useCallback(
     (argument = "") => {

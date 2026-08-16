@@ -4,6 +4,7 @@ import {
   type ProviderRuntimeStatus,
   type RecapMode,
   type SessionQueuedMessageSummary,
+  type SessionQueuedYaCommand,
   type SessionLivenessSnapshot,
   type SlashCommand,
   type UploadedFile,
@@ -1980,11 +1981,13 @@ export function useSession(
           messages: DeferredMessage[];
           reason?: "queued" | "cancelled" | "edited" | "promoted";
           tempId?: string;
+          yaCommand?: SessionQueuedYaCommand;
         };
         logSessionUiTrace("stream-deferred-queue", {
           sessionId,
           reason: deferredData.reason ?? null,
           tempId: deferredData.tempId ?? null,
+          yaCommand: deferredData.yaCommand ?? null,
           count: deferredData.messages?.length ?? 0,
         });
         // Mirror the server's authoritative queue wholesale.
@@ -1992,9 +1995,10 @@ export function useSession(
         const sessionProvider = session?.provider;
         const needsDeferredPromotionCatchUp =
           deferredData.reason === "promoted" &&
-          (deferredData.messages?.length ?? 0) === 0 &&
-          sessionProvider !== "codex" &&
-          sessionProvider !== "codex-oss";
+          (deferredData.yaCommand === "done" ||
+            ((deferredData.messages?.length ?? 0) === 0 &&
+              sessionProvider !== "codex" &&
+              sessionProvider !== "codex-oss"));
         if (needsDeferredPromotionCatchUp) {
           throttledFetch();
           // A second call asks the existing throttle for a trailing catch-up in

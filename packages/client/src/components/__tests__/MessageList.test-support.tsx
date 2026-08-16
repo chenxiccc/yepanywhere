@@ -25,6 +25,7 @@ vi.mock("../../i18n", () => ({
         sessionSteerQueuedMessageThrough:
           "Steer this and {count} earlier patient message{suffix} now",
         sessionQueuedCopy: "Copy queued message",
+        sessionQueuedYaCommandAfterTurn: "Queued (after current turn)",
         sessionQueuedEdit: "Edit queued message",
         sessionQueuedCancel: "Cancel queued message",
         sessionQueuedInlineEditLabel: "Edit queued message text",

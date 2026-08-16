@@ -1425,6 +1425,8 @@ export const api = {
     fetchJSON<{
       message: DurableSyntheticDoneMessage;
       paused: true;
+      queued?: boolean;
+      deferredMessages?: SessionQueuedMessageSummary[];
     }>(`/sessions/${sessionId}/done`, {
       method: "POST",
     }),

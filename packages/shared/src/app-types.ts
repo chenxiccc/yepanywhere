@@ -577,7 +577,9 @@ export interface SessionMetadataPayload
   workstreamId?: WorkstreamId;
 }
 
-export type SessionQueuedMessageKind = "deferred" | "patient";
+export type SessionQueuedYaCommand = "done";
+
+export type SessionQueuedMessageKind = "deferred" | "patient" | "ya-command";
 
 export type SessionQueuedMessageStatus = "queued" | "paused-after-restart";
 
@@ -596,6 +598,8 @@ export interface SessionQueuedMessageSummary {
   attachmentCount?: number;
   metadata?: UserMessageMetadata;
   kind?: SessionQueuedMessageKind;
+  /** YA-local command projected through queue UI without provider delivery. */
+  yaCommand?: SessionQueuedYaCommand;
   status?: SessionQueuedMessageStatus;
   sessionId?: string;
   projectId?: UrlProjectId;

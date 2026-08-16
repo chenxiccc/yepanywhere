@@ -39,9 +39,22 @@ as the runtime skills directory.
   `local_command` row for live delivery and short replay, without writing it to
   the provider transcript. Once advertised, such a command must either produce
   its local result or fail visibly; it must never fall through to model text.
+- A YA-routed command accepted during an active provider turn may project a
+  tagged `ya-command` chip through the canonical queued-message UI until the
+  safe local boundary. Routing is decided before provider ingress and carried
+  by the tag; YA must never reinterpret arbitrary deferred slash-shaped text by
+  content, because the same name may belong to a provider or user skill. The
+  boundary consumes the tagged control locally and sends no provider turn.
 - Emulated commands should preserve the user's argument text verbatim except
   for the declared template substitution. Parsing inside the command belongs to
   the skill/provider behavior, not to the generic rewrite layer.
+
+## Design decisions
+
+- **Tag pending YA commands at ingress** (vs. interpreting slash-shaped queued
+  text at delivery): explicit routing preserves provider and user skill name
+  collisions while allowing YA-local commands to reuse the existing
+  server-authoritative queue projection and UI.
 
 ## Default Skill Vocabulary
 

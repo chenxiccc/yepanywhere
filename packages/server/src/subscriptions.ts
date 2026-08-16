@@ -419,6 +419,7 @@ export function createSessionSubscription(
             ),
             reason: event.reason,
             tempId: event.tempId,
+            yaCommand: event.yaCommand,
           });
           break;
 

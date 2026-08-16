@@ -1026,6 +1026,27 @@ describe("useSession completion reconciliation", () => {
     ]);
   });
 
+  it("fetches the durable row when a queued YA command completes", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        reason: "promoted",
+        tempId: "ya-done-queued",
+        yaCommand: "done",
+        messages: [],
+      });
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
   it("replaces the deferred mirror wholesale on each server event", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

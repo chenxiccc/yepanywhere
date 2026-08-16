@@ -3693,12 +3693,14 @@ export const MessageList = memo(function MessageList({
           const recoveredQueueId = tailRow.recoveredQueueId;
           const deferredStatus = tailRow.isRecovered
             ? t("sessionRecoveredQueuedPaused")
-            : getDeferredMessageStatus({
-                isPatient: tailRow.isPatient,
-                lanePosition: tailRow.lanePosition,
-                timestampMs,
-                nowMs,
-              });
+            : tailRow.isYaCommand
+              ? t("sessionQueuedYaCommandAfterTurn")
+              : getDeferredMessageStatus({
+                  isPatient: tailRow.isPatient,
+                  lanePosition: tailRow.lanePosition,
+                  timestampMs,
+                  nowMs,
+                });
           const earlierPatientCount = tailRow.lanePosition?.patientIndex ?? 0;
           const steerQueuedLabel =
             earlierPatientCount > 0
@@ -3838,7 +3840,9 @@ export const MessageList = memo(function MessageList({
                         composerEditAvailabilityStore
                       }
                       onEdit={
-                        deferred.tempId && onEditDeferred
+                        !tailRow.isYaCommand &&
+                        deferred.tempId &&
+                        onEditDeferred
                           ? () => onEditDeferred(deferred.tempId as string)
                           : undefined
                       }
