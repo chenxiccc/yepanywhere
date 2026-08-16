@@ -61,6 +61,10 @@ import { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import { extractLastAgentExcerpt } from "../sessions/agent-excerpt.js";
 import {
+  readerForProviderChildren,
+  resolveProviderChildSessions,
+} from "../sessions/provider-child-sessions.js";
+import {
   detachSessionMessageProjection,
   getCodexProviderForkTurnId,
   normalizeSession,
@@ -2575,6 +2579,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         )
       : undefined;
 
+    const providerChildren = await resolveProviderChildSessions(
+      readerForProviderChildren(
+        transcriptProject,
+        providerResolutionDeps(deps),
+        metadataProvider ?? process?.provider ?? project.provider,
+      ),
+      sessionId,
+      "fresh",
+    );
+
     const response = {
       session: {
         id: sessionId,
@@ -2621,6 +2635,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         lastSeenAt,
         hasUnread,
+        ...(providerChildren ? { providerChildren } : {}),
       },
       ownership,
       processState: process?.state.type ?? null,
@@ -2996,6 +3011,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         project.provider,
     );
     const deferredMessages = sessionQueueSummaries(deps, sessionId, process);
+    const providerChildren = await resolveProviderChildSessions(
+      readerForProviderChildren(
+        transcriptProject,
+        providerResolutionDeps(deps),
+        metadataProvider ?? process?.provider ?? project.provider,
+      ),
+      sessionId,
+      "fresh",
+    );
 
     if (!session) {
       // Session file doesn't exist yet - only valid if we own the process
@@ -3104,6 +3128,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             provider: process.provider,
             model: process.resolvedModel,
             contextUsage,
+            ...(providerChildren ? { providerChildren } : {}),
           },
           messages: visibleProcessMessages,
           ownership,
@@ -3434,6 +3459,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         model: session.model,
         lastSeenAt,
         hasUnread,
+        ...(providerChildren ? { providerChildren } : {}),
       },
       messages: session.messages,
       ownership,

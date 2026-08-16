@@ -24,3 +24,7 @@
   color: var(--text-primary);
   font-weight: 700;
 }
+
+.providerChildLink {
+  cursor: pointer;
+}

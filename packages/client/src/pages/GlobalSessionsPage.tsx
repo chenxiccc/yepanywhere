@@ -1036,9 +1036,10 @@ export function GlobalSessionsPage() {
                       model={session.model}
                       parentSessionId={session.parentSessionId}
                       parentSessionKind={session.parentSessionKind}
-                      providerChildren={providerChildrenBySessionId.get(
-                        session.id,
-                      )}
+                      providerChildren={
+                        providerChildrenBySessionId.get(session.id) ??
+                        session.providerChildren
+                      }
                       executor={session.executor}
                       isStarred={session.isStarred}
                       isArchived={session.isArchived}
@@ -1125,9 +1126,10 @@ export function GlobalSessionsPage() {
                             model={session.model}
                             parentSessionId={session.parentSessionId}
                             parentSessionKind={session.parentSessionKind}
-                            providerChildren={providerChildrenBySessionId.get(
-                              session.id,
-                            )}
+                            providerChildren={
+                              providerChildrenBySessionId.get(session.id) ??
+                              session.providerChildren
+                            }
                             executor={session.executor}
                             isStarred={session.isStarred}
                             isArchived={session.isArchived}

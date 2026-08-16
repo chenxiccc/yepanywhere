@@ -39,6 +39,7 @@ import type {
   PromptSuggestionMode,
   PromptCacheKeepaliveSettings,
   ProviderInfo,
+  ProviderChildSessionSummary,
   ProviderName,
   ProviderSubscriptionUsage,
   ProviderRuntimeStatus,
@@ -161,6 +162,8 @@ export interface GlobalSessionItem {
   executor?: string;
   /** Capped excerpt of the most recent regular agent turn (hover card). */
   lastAgentText?: string;
+  /** Provider-launched child work nested under this parent. Absent on older servers. */
+  providerChildren?: ProviderChildSessionSummary[];
 }
 
 /** Stats about all sessions (computed during full scan on server) */

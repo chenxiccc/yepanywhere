@@ -13,6 +13,10 @@ import { activityBus } from "../lib/activityBus";
 import { toBrowserAppHref } from "../lib/appHref";
 import { formatBriefAge, formatSessionHoverAge } from "../lib/sessionAge";
 import {
+  providerChildSessionHref,
+  providerChildTitle,
+} from "../lib/providerChildSessions";
+import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
   isBtwAsideSession,
@@ -24,6 +28,7 @@ import type {
   ProviderChildSessionSummary,
   SessionStatus,
 } from "../types";
+import { ProviderChildNavTarget } from "./ProviderChildNavTarget";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ProviderBadge } from "./ProviderBadge";
 import { SessionHoverCard } from "./SessionHoverCard";
@@ -812,22 +817,34 @@ export function SessionListItem({
                   aria-label={providerChildrenLabel}
                 >
                   {providerChildren.map((child) => (
-                    <span
-                      className="session-list-item__provider-child"
-                      key={child.id}
-                      role="listitem"
-                    >
-                      <span aria-hidden>↳</span>
-                      <span className="session-list-item__provider-child-title">
-                        {child.title ||
-                          child.agentType ||
-                          t("providerChildFallback")}
-                      </span>
-                      {child.agentType && child.agentType !== child.title && (
-                        <span className="session-list-item__provider-child-type">
-                          {child.agentType}
+                    <span key={child.id} role="listitem">
+                      <ProviderChildNavTarget
+                        className={`session-list-item__provider-child ${styles.providerChildLink}`}
+                        href={providerChildSessionHref(
+                          basePath,
+                          projectId,
+                          sessionId,
+                          child.id,
+                        )}
+                      >
+                        <span aria-hidden>↳</span>
+                        <span className="session-list-item__provider-child-title">
+                          {providerChildTitle(
+                            child,
+                            t("providerChildFallback"),
+                          )}
                         </span>
-                      )}
+                        {child.agentType &&
+                          child.agentType !==
+                            providerChildTitle(
+                              child,
+                              t("providerChildFallback"),
+                            ) && (
+                            <span className="session-list-item__provider-child-type">
+                              {child.agentType}
+                            </span>
+                          )}
+                      </ProviderChildNavTarget>
                     </span>
                   ))}
                 </span>

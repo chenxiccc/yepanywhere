@@ -170,6 +170,19 @@ function readSessionRouteFromPathname(
   };
 }
 
+function readSidebarSessionRouteFromPathname(
+  pathname: string,
+): { projectId: string; sessionId: string } | null {
+  const match = pathname.match(/(?:^|\/)projects\/([^/]+)\/sessions\/([^/]+)/);
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+  return {
+    projectId: decodeURIComponent(match[1]),
+    sessionId: decodeURIComponent(match[2]),
+  };
+}
+
 function readProjectIdFromPathname(pathname: string): string | null {
   const match = pathname.match(/(?:^|\/)projects\/([^/]+)/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
@@ -204,6 +217,10 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   const location = useLocation();
   const currentSessionMatch = useMemo(
     () => readSessionRouteFromPathname(location.pathname),
+    [location.pathname],
+  );
+  const sidebarSessionMatch = useMemo(
+    () => readSidebarSessionRouteFromPathname(location.pathname),
     [location.pathname],
   );
   const currentProjectId = useMemo(
@@ -513,7 +530,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
               isOpen={true}
               onClose={NOOP}
               onNavigate={NOOP}
-              currentSessionId={currentSessionMatch?.sessionId}
+              currentSessionId={sidebarSessionMatch?.sessionId}
               isDesktop={true}
               isCollapsed={effectivelyCollapsed}
               onToggleExpanded={handleToggleExpanded}
@@ -532,7 +549,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
           isOpen={sidebarOpen}
           onClose={closeSidebar}
           onNavigate={closeSidebar}
-          currentSessionId={currentSessionMatch?.sessionId}
+          currentSessionId={sidebarSessionMatch?.sessionId}
         />
       )}
 

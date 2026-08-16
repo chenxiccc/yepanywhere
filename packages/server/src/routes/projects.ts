@@ -26,7 +26,9 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import type { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import { attachProviderChildSessions } from "../sessions/provider-child-sessions.js";
 import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js";
+import { providerResolutionDeps } from "./session-provider-resolution.js";
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
@@ -580,8 +582,15 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     const enriched = enrichSessions(sessions).filter((session) =>
       projectIdsShareIdentity(session.projectId, resolvedProjectId),
     );
+    const withChildren = await attachProviderChildSessions(
+      enriched,
+      project,
+      providerResolutionDeps(deps),
+      "accepted-or-cheap",
+      providerCatalog,
+    );
 
-    return c.json({ sessions: enriched });
+    return c.json({ sessions: withChildren });
   });
 
   return routes;

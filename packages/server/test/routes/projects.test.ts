@@ -128,9 +128,23 @@ describe("Projects Routes", () => {
     const summary = createSummary();
     const claudeReader = {
       listSessions: vi.fn(async () => []),
+      listProviderChildSessions: vi.fn(async () => []),
     } as unknown as ISessionReader;
+    const children = [
+      {
+        id: "child-1",
+        parentSessionId: "sess-1",
+        title: "Review the restart guard",
+        updatedAt: "2026-08-16T12:00:00.000Z",
+      },
+    ];
+    const listProviderChildSessions = vi.fn(async () => {
+      throw new Error("list reads must not cold-parse Codex children");
+    });
     const codexReader = {
       listSessions: vi.fn(async () => [summary]),
+      listAcceptedProviderChildSessions: vi.fn(() => children),
+      listProviderChildSessions,
     } as unknown as ISessionReader;
 
     const routes = createProjectsRoutes({
@@ -159,7 +173,9 @@ describe("Projects Routes", () => {
       id: "sess-1",
       title: "Codex project session",
       provider: "codex",
+      providerChildren: children,
     });
+    expect(listProviderChildSessions).not.toHaveBeenCalled();
   });
 
   it("enriches single-project responses with live activity counts", async () => {

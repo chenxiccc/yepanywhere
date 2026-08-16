@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AgentContentProvider,
@@ -76,25 +77,27 @@ function TestWrapper({
 }) {
   return (
     <I18nProvider>
-      <SessionMetadataProvider
-        projectId="proj-1"
-        projectPath="/test/project"
-        sessionId="session-1"
-      >
-        <ToastProvider>
-          <SchemaValidationProvider>
-            <AgentContentProvider
-              agentContent={agentContent}
-              mergeLoadedAgentContent={mergeLoadedAgentContent}
-              toolUseToAgent={toolUseToAgent}
-              projectId="proj-1"
-              sessionId="session-1"
-            >
-              {children}
-            </AgentContentProvider>
-          </SchemaValidationProvider>
-        </ToastProvider>
-      </SessionMetadataProvider>
+      <MemoryRouter>
+        <SessionMetadataProvider
+          projectId="proj-1"
+          projectPath="/test/project"
+          sessionId="session-1"
+        >
+          <ToastProvider>
+            <SchemaValidationProvider>
+              <AgentContentProvider
+                agentContent={agentContent}
+                mergeLoadedAgentContent={mergeLoadedAgentContent}
+                toolUseToAgent={toolUseToAgent}
+                projectId="proj-1"
+                sessionId="session-1"
+              >
+                {children}
+              </AgentContentProvider>
+            </SchemaValidationProvider>
+          </ToastProvider>
+        </SessionMetadataProvider>
+      </MemoryRouter>
     </I18nProvider>
   );
 }

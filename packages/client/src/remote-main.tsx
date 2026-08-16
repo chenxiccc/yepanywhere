@@ -105,6 +105,9 @@ const loadRelayLoginPageModule = cachedModule(
   () => import("./pages/RelayLoginPage"),
 );
 const loadSessionPageModule = cachedModule(() => import("./pages/SessionPage"));
+const loadProviderChildSessionPageModule = cachedModule(
+  () => import("./pages/ProviderChildSessionPage"),
+);
 const loadSettingsModule = cachedModule(() => import("./pages/settings"));
 const loadWorkstreamsPageModule = cachedModule(
   () => import("./pages/WorkstreamsPage"),
@@ -237,6 +240,11 @@ const SessionPage = lazy(() =>
     default: SessionPage,
   })),
 );
+const ProviderChildSessionPage = lazy(() =>
+  loadProviderChildSessionPageModule().then(({ ProviderChildSessionPage }) => ({
+    default: ProviderChildSessionPage,
+  })),
+);
 const SettingsLayout = lazy(() =>
   loadSettingsModule().then(({ SettingsLayout }) => ({
     default: SettingsLayout,
@@ -364,6 +372,10 @@ const APP_ROUTES = (
       <Route
         path="projects/:projectId/sessions/:sessionId"
         element={routeModule(<SessionDomLingerRouteMarker />)}
+      />
+      <Route
+        path="projects/:projectId/sessions/:sessionId/agents/:agentId"
+        element={routeModule(<ProviderChildSessionPage />)}
       />
     </Route>
 

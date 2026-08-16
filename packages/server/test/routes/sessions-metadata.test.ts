@@ -571,6 +571,51 @@ describe("Sessions metadata route", () => {
     );
   });
 
+  it("attaches provider children to session metadata", async () => {
+    const project = createProject();
+    const summary = {
+      ...createSummary(),
+      provider: "claude" as const,
+      title: "Parent session",
+    };
+    const children = [
+      {
+        id: "child-1",
+        parentSessionId: "sess-1",
+        title: "Explore the tree",
+        updatedAt: "2026-08-16T12:00:00.000Z",
+      },
+    ];
+    const listProviderChildSessions = vi.fn(async () => children);
+    const reader = {
+      getSessionSummary: vi.fn(async () => summary),
+      listProviderChildSessions,
+    } as unknown as ISessionReader;
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getProject: vi.fn(async () => project),
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/metadata`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      session: {
+        id: "sess-1",
+        providerChildren: children,
+      },
+    });
+    expect(listProviderChildSessions).toHaveBeenCalledWith("sess-1");
+  });
+
   it("keeps explicit gateway identity over Claude model heuristics", async () => {
     const project = createProject();
     const summary: SessionSummary = {

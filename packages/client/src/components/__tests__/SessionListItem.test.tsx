@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { DEFAULT_HOVERCARD_SHOW_DELAY_MS } from "../../hooks/useHoverCardAppearance";
@@ -1032,33 +1032,57 @@ describe("SessionListItem links", () => {
   });
 
   it("shows provider child work inside its parent session row", () => {
+    function LocationProbe() {
+      const location = useLocation();
+      return <div data-testid="location">{location.pathname}</div>;
+    }
+
     render(
       <I18nProvider>
         <MemoryRouter>
-          <ul>
-            <SessionListItem
-              sessionId="session-parent"
-              projectId="project-1"
-              title="Parent session"
-              provider="claude"
-              mode="card"
-              providerChildren={[
-                {
-                  id: "child-native-1",
-                  parentSessionId: "session-parent",
-                  title: "Audit the child-session API",
-                  agentType: "general-purpose",
-                  updatedAt: "2026-07-19T12:00:00.000Z",
-                },
-              ]}
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ul>
+                  <SessionListItem
+                    sessionId="session-parent"
+                    projectId="project-1"
+                    title="Parent session"
+                    provider="claude"
+                    mode="card"
+                    providerChildren={[
+                      {
+                        id: "child-native-1",
+                        parentSessionId: "session-parent",
+                        title: "Audit the child-session API",
+                        agentType: "general-purpose",
+                        updatedAt: "2026-07-19T12:00:00.000Z",
+                      },
+                    ]}
+                  />
+                </ul>
+              }
             />
-          </ul>
+            <Route
+              path="/projects/:projectId/sessions/:sessionId/agents/:agentId"
+              element={<div>opened child</div>}
+            />
+          </Routes>
         </MemoryRouter>
       </I18nProvider>,
     );
 
     expect(screen.getByText("Audit the child-session API")).toBeTruthy();
     expect(screen.getByText("general-purpose")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("link", { name: /Audit the child-session API/ }),
+    );
+    expect(screen.getByText("opened child")).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/projects/project-1/sessions/session-parent/agents/child-native-1",
+    );
   });
 
   it("shows number-only child counts with read and unread emphasis", () => {

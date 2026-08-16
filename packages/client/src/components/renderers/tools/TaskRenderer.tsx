@@ -2,10 +2,14 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router-dom";
+import { useRemoteBasePath } from "../../../hooks/useRemoteBasePath";
+import { useI18n } from "../../../i18n";
+import { providerChildSessionHref } from "../../../lib/providerChildSessions";
+import styles from "./TaskRenderer.module.css";
 import type { ZodError } from "zod";
 import { AgentContentContext } from "../../../contexts/AgentContentContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
@@ -15,12 +19,10 @@ import {
 } from "../../../contexts/SessionMetadataContext";
 import { classifyToolError } from "../../../lib/classifyToolError";
 import { validateToolResult } from "../../../lib/validateToolResult";
-import { getCachedWebTranscriptProjection } from "../../../lib/webTranscriptProjection";
-import type { Message } from "../../../types";
 import type { ToolCallItem } from "../../../types/renderItems";
-import { RenderItemComponent } from "../../RenderItemComponent";
 import { SchemaWarning } from "../../SchemaWarning";
 import { ContentBlockRenderer } from "../ContentBlockRenderer";
+import { TaskNestedContent } from "./TaskNestedContent";
 import type { TaskInput, TaskResult, ToolRenderer } from "./types";
 
 const MAX_PROMPT_LENGTH = 200;
@@ -128,40 +130,7 @@ function TaskToolUse({ input }: { input: TaskInput }) {
   );
 }
 
-/**
- * Task nested content - renders full agent messages
- */
-export function TaskNestedContent({
-  messages,
-  isStreaming,
-}: {
-  messages: Message[];
-  isStreaming: boolean;
-}) {
-  const [thinkingExpanded, setThinkingExpanded] = useState(false);
-  const toggleThinkingExpanded = useCallback(() => {
-    setThinkingExpanded((prev) => !prev);
-  }, []);
-
-  const renderItems = useMemo(
-    () => getCachedWebTranscriptProjection(messages),
-    [messages],
-  );
-
-  return (
-    <div className="task-nested-content">
-      {renderItems.map((item) => (
-        <RenderItemComponent
-          key={item.id}
-          item={item}
-          isStreaming={isStreaming}
-          thinkingExpanded={thinkingExpanded}
-          toggleThinkingExpanded={toggleThinkingExpanded}
-        />
-      ))}
-    </div>
-  );
-}
+export { TaskNestedContent } from "./TaskNestedContent";
 
 /**
  * Task inline renderer - shows complete Task UI with nested content
@@ -179,6 +148,8 @@ function TaskInline({
   status: ToolCallItem["status"];
   toolUseId?: string;
 }) {
+  const { t } = useI18n();
+  const basePath = useRemoteBasePath();
   const { projectId, projectPath, sessionId } = useSessionMetadata();
   const context = useContext(AgentContentContext);
   const {
@@ -402,50 +373,67 @@ function TaskInline({
       className={`task-inline ${isExpanded ? "expanded" : "collapsed"} status-${statusBadge.text}`}
     >
       {/* Header row */}
-      <button
-        type="button"
-        className="task-inline-header"
-        onClick={handleExpand}
-      >
-        <span className="task-expand-icon">{isExpanded ? "▼" : "▶"}</span>
-        <span className="badge badge-info task-agent-type">
-          {input.subagent_type}
-        </span>
-        <span className="task-inline-title">{input.description}</span>
-        {input.model && <span className="badge task-model">{input.model}</span>}
-        {isRunning && (
-          <>
-            <span className="task-spinner" role="status" aria-label="Running">
-              <Spinner />
-            </span>
-            {liveContent?.contextUsage && (
-              <span className="task-context-usage">
-                {liveContent.contextUsage.percentage.toFixed(0)}% context
+      <div className={styles.headerRow}>
+        <button
+          type="button"
+          className={`task-inline-header ${styles.expandButton}`}
+          onClick={handleExpand}
+        >
+          <span className="task-expand-icon">{isExpanded ? "▼" : "▶"}</span>
+          <span className="badge badge-info task-agent-type">
+            {input.subagent_type}
+          </span>
+          <span className="task-inline-title">{input.description}</span>
+          {input.model && (
+            <span className="badge task-model">{input.model}</span>
+          )}
+          {isRunning && (
+            <>
+              <span className="task-spinner" role="status" aria-label="Running">
+                <Spinner />
               </span>
+              {liveContent?.contextUsage && (
+                <span className="task-context-usage">
+                  {liveContent.contextUsage.percentage.toFixed(0)}% context
+                </span>
+              )}
+            </>
+          )}
+          {!isRunning && (
+            <span className={`badge ${statusBadge.class}`}>
+              {statusBadge.text}
+            </span>
+          )}
+          {/* Show error summary in collapsed view */}
+          {!isExpanded && errorInfo && (
+            <span className="task-error-summary" title={errorInfo.raw}>
+              {errorInfo.summary}
+            </span>
+          )}
+          {result && !isError && (
+            <span className="task-stats">
+              {formatDuration(result.totalDurationMs ?? 0)} ·{" "}
+              {(result.totalTokens ?? 0).toLocaleString()} tokens
+            </span>
+          )}
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Task" errors={validationErrors} />
+          )}
+        </button>
+        {agentId && (
+          <Link
+            className={styles.openPage}
+            to={providerChildSessionHref(
+              basePath,
+              projectId,
+              sessionId,
+              agentId,
             )}
-          </>
+          >
+            {t("providerChildOpen")}
+          </Link>
         )}
-        {!isRunning && (
-          <span className={`badge ${statusBadge.class}`}>
-            {statusBadge.text}
-          </span>
-        )}
-        {/* Show error summary in collapsed view */}
-        {!isExpanded && errorInfo && (
-          <span className="task-error-summary" title={errorInfo.raw}>
-            {errorInfo.summary}
-          </span>
-        )}
-        {result && !isError && (
-          <span className="task-stats">
-            {formatDuration(result.totalDurationMs ?? 0)} ·{" "}
-            {(result.totalTokens ?? 0).toLocaleString()} tokens
-          </span>
-        )}
-        {showValidationWarning && validationErrors && (
-          <SchemaWarning toolName="Task" errors={validationErrors} />
-        )}
-      </button>
+      </div>
 
       {/* Loading indicator */}
       {isLoadingContent && (

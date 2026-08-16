@@ -54,9 +54,18 @@ uses ordinary sidebar text sizing and retains a visible gap before the project
 label; neither glyph density nor title truncation may make the count or project
 name overlap. A read row uses a quiet grey pill; the existing session unread
 state strengthens its fill and weight, then viewing the session settles it
-again without a separate child-count acknowledgement state. Every row navigates
-to the parent YA session, where the existing Task/Agent renderer owns expansion
-of the actual child transcript.
+again without a separate child-count acknowledgement state.
+
+The parent session header shows a count / recently-active / last-activity
+strip when any children exist. Recently-active means the parent process is
+`in-turn` and that child's transcript mtime is within the last three minutes.
+The compact sidebar pill still opens the parent session. Child rows on Agents
+and session-list cards, strip items, and the Task / spawn-agent "Open" control
+navigate to the read-only nested page
+`/projects/:projectId/sessions/:sessionId/agents/:agentId`. That page loads the
+existing `GET .../agents/:agentId` transcript and has no composer: Claude
+children have no SDK input channel. The parent YA session ID stays in the URL;
+the sidebar highlights that parent while the child page is open.
 
 This is not optional YA-novel behavior under
 [vanilla-defaults](vanilla-defaults.md): it restores visibility for work the
@@ -123,8 +132,13 @@ route content by the provider child ID and map a parent tool call only when that
 ID is actually present. Reload and lazy-load endpoints pass the canonical
 parent ID into the reader, which makes current-layout discovery parent-scoped.
 
-The Agents and session-list projections currently cover active and recently
-terminated parent processes, matching the process snapshot's retention. A
-durable historical-session projection should extend the indexed session-summary
-contract rather than making every global list read rescan every possible child
-directory.
+The Agents projection still comes from the process snapshot. Project and
+global session lists attach children for idle parents too: Claude uses the
+cheap `subagents/` readdir already owned by `listProviderChildSessions`;
+Codex uses only the accepted child projection and never starts a cold parent
+rollout parse for a list read. Session metadata and session-detail attach a
+fresh listing for the one open parent. `providerChildren` is optional on those
+existing payloads; older servers omit it and the client treats absence as no
+children. The nested child page uses the existing agent-session GET and does
+not add a capability. A later indexed historical projection may replace the
+per-parent readdir, but list reads must not parse child or parent JSONL.

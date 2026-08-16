@@ -793,7 +793,8 @@ describe("Global Sessions Routes", () => {
 
       expect(codexScanner.listProjects).toHaveBeenCalledTimes(1);
       expect(codexScanner.getSessionsForProject).not.toHaveBeenCalled();
-      expect(codexReaderFactory).toHaveBeenCalledTimes(1);
+      // List walk plus one child-attach pass per project, not per session.
+      expect(codexReaderFactory).toHaveBeenCalledTimes(2);
       expect(codexReaderFactory).toHaveBeenCalledWith(project1.path);
       expect(result.sessions.some((s) => s.id === "codex-sess-1")).toBe(true);
     });

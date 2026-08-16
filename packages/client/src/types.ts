@@ -168,6 +168,9 @@ export interface Session extends SessionMetadata {
 export interface AgentSession {
   messages: Message[];
   status: AgentStatusType;
+  agentType?: string;
+  description?: string;
+  spawnDepth?: number;
 }
 
 /**

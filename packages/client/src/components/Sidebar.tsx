@@ -883,7 +883,10 @@ export function Sidebar({
         updatedAt={session.updatedAt}
         parentSessionId={session.parentSessionId}
         parentSessionKind={session.parentSessionKind}
-        providerChildren={providerChildrenBySessionId.get(session.id)}
+        providerChildren={
+          providerChildrenBySessionId.get(session.id) ??
+          session.providerChildren
+        }
         status={session.ownership}
         pendingInputType={session.pendingInputType}
         hasUnread={session.hasUnread}

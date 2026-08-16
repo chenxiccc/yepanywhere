@@ -1,6 +1,7 @@
 import type {
   AgentActivity,
   PendingInputType,
+  ProviderChildSessionSummary,
   ProviderName,
   ProviderRuntimeStatus,
   ProjectQueueChangedEvent,
@@ -168,6 +169,7 @@ const REMAP_MERGE_GROUPS = {
     "model",
     "initialPrompt",
     "lastAgentText",
+    "providerChildren",
   ],
   metadataObservedAt: [
     "customTitle",
@@ -1160,6 +1162,7 @@ function withContentFields(
     model?: string;
     initialPrompt?: string;
     lastAgentText?: string;
+    providerChildren?: ProviderChildSessionSummary[];
   },
   observation: SessionCollectionObservation,
 ): SessionCollectionRecord {
@@ -1204,6 +1207,13 @@ function withContentFields(
       isFresh,
     )
       ? { lastAgentText: fields.lastAgentText }
+      : {}),
+    ...(canApplyObservedField(
+      record.providerChildren,
+      fields.providerChildren,
+      isFresh,
+    )
+      ? { providerChildren: fields.providerChildren }
       : {}),
     ...(isFresh ? { contentObservedAt: observation.observedAt } : {}),
     observedAt: Math.max(record.observedAt, observation.observedAt),
@@ -1423,6 +1433,7 @@ function upsertSnapshotRecord(
       model: row.model,
       initialPrompt: row.initialPrompt,
       lastAgentText: row.lastAgentText,
+      providerChildren: row.providerChildren,
     },
     observation,
   );
@@ -1927,6 +1938,7 @@ export function applySessionCollectionCreated(
       model: session.model,
       initialPrompt: session.initialPrompt,
       lastAgentText: session.lastAgentText,
+      providerChildren: session.providerChildren,
     },
     observation,
   );

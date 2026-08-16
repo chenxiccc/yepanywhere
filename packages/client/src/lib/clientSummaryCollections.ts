@@ -7,6 +7,7 @@ import type {
   ProjectQueueProjectStatus,
   ProjectQueueRecoveredSessionQueueSummary,
   ProjectQueueResponse,
+  ProviderChildSessionSummary,
   ProviderName,
   ProviderRuntimeStatus,
 } from "@yep-anywhere/shared";
@@ -56,6 +57,7 @@ export interface SessionCollectionRecord {
   initialPrompt?: string;
   executor?: string;
   lastAgentText?: string;
+  providerChildren?: ProviderChildSessionSummary[];
   observedAt: number;
   snapshotObservedAt?: number;
   contentObservedAt?: number;

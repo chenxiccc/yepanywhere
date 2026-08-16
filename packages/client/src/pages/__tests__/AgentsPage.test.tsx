@@ -183,6 +183,9 @@ describe("AgentsPage process kill", () => {
     expect(
       screen.getByRole("list", { name: "1 provider subagent" }),
     ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Review the restart guard/ }),
+    ).toBeTruthy();
   });
 
   it("decorates owned rows and shows external process trees without controls", () => {

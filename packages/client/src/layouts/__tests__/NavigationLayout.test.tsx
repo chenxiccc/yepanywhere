@@ -40,11 +40,16 @@ const mocks = vi.hoisted(() => ({
     ({
       isDesktop,
       onMinimize,
+      currentSessionId,
     }: {
       isDesktop?: boolean;
       onMinimize?: () => void;
+      currentSessionId?: string;
     }) => (
-      <div data-testid={isDesktop ? "desktop-sidebar" : "mobile-sidebar"}>
+      <div
+        data-testid={isDesktop ? "desktop-sidebar" : "mobile-sidebar"}
+        data-current-session-id={currentSessionId ?? ""}
+      >
         {onMinimize && (
           <button type="button" onClick={onMinimize}>
             Minimize sidebar
@@ -152,6 +157,16 @@ function renderNavigationLayoutWithSessionLinger(
             <Route
               path="/projects/:projectId/sessions/:sessionId"
               element={<SessionDomLingerRouteMarker />}
+            />
+            <Route
+              path="/projects/:projectId/sessions/:sessionId/agents/:agentId"
+              element={
+                <div data-testid="provider-child-page">
+                  <Link to="/projects/project-1/sessions/session-1">
+                    Parent
+                  </Link>
+                </div>
+              }
             />
           </Route>
         </Routes>
@@ -439,6 +454,25 @@ describe("NavigationLayout", () => {
 
     expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
     expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
+  });
+
+  it("parks the parent session under a read-only child page and keeps sidebar highlight", () => {
+    enableSessionDomLinger();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+    });
+    renderNavigationLayoutWithSessionLinger(
+      "/projects/project-1/sessions/session-1/agents/child-1",
+    );
+
+    expect(screen.getByTestId("provider-child-page")).toBeTruthy();
+    expect(screen.queryByTestId("session-layer")).toBeNull();
+    expect(
+      screen
+        .getByTestId("desktop-sidebar")
+        .getAttribute("data-current-session-id"),
+    ).toBe("session-1");
   });
 
   it("expires the parked session DOM after the linger window", () => {

@@ -1,9 +1,14 @@
 import { useContext, useState } from "react";
+import { Link } from "react-router-dom";
 import { AgentContentContext } from "../../../contexts/AgentContentContext";
 import { useSessionMetadata } from "../../../contexts/SessionMetadataContext";
+import { useRemoteBasePath } from "../../../hooks/useRemoteBasePath";
+import { useI18n } from "../../../i18n";
+import { providerChildSessionHref } from "../../../lib/providerChildSessions";
 import type { ToolCallItem } from "../../../types/renderItems";
 import type { ToolRenderer } from "./types";
 import { Spinner, TaskNestedContent } from "./TaskRenderer";
+import styles from "./TaskRenderer.module.css";
 
 interface SpawnAgentInput {
   description?: string;
@@ -165,6 +170,8 @@ function SpawnAgentInline({
   status: ToolCallItem["status"];
   toolUseId?: string;
 }) {
+  const { t } = useI18n();
+  const basePath = useRemoteBasePath();
   const { projectId, sessionId } = useSessionMetadata();
   const context = useContext(AgentContentContext);
   const parsedResult = normalizeSpawnAgentResult(result);
@@ -205,41 +212,58 @@ function SpawnAgentInline({
     <div
       className={`task-inline ${isExpanded ? "expanded" : "collapsed"} status-${badge.text}`}
     >
-      {failedWithoutAgent ? (
-        <div className="task-inline-header noninteractive">
-          <span className="task-expand-icon" />
-          <span className="badge badge-info task-agent-type">
-            {spawnAgentType(input)}
-          </span>
-          <span className="task-inline-title">{title}</span>
-          {input.model && (
-            <span className="badge task-model">{input.model}</span>
-          )}
-          <span className={`badge ${badge.className}`}>{badge.text}</span>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="task-inline-header"
-          onClick={handleExpand}
-        >
-          <span className="task-expand-icon">{isExpanded ? "▼" : "▶"}</span>
-          <span className="badge badge-info task-agent-type">
-            {spawnAgentType(input)}
-          </span>
-          <span className="task-inline-title">{title}</span>
-          {input.model && (
-            <span className="badge task-model">{input.model}</span>
-          )}
-          {badge.isRunning ? (
-            <span className="task-spinner" role="status" aria-label="Running">
-              <Spinner />
+      <div className={styles.headerRow}>
+        {failedWithoutAgent ? (
+          <div
+            className={`task-inline-header noninteractive ${styles.expandButton}`}
+          >
+            <span className="task-expand-icon" />
+            <span className="badge badge-info task-agent-type">
+              {spawnAgentType(input)}
             </span>
-          ) : (
+            <span className="task-inline-title">{title}</span>
+            {input.model && (
+              <span className="badge task-model">{input.model}</span>
+            )}
             <span className={`badge ${badge.className}`}>{badge.text}</span>
-          )}
-        </button>
-      )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={`task-inline-header ${styles.expandButton}`}
+            onClick={handleExpand}
+          >
+            <span className="task-expand-icon">{isExpanded ? "▼" : "▶"}</span>
+            <span className="badge badge-info task-agent-type">
+              {spawnAgentType(input)}
+            </span>
+            <span className="task-inline-title">{title}</span>
+            {input.model && (
+              <span className="badge task-model">{input.model}</span>
+            )}
+            {badge.isRunning ? (
+              <span className="task-spinner" role="status" aria-label="Running">
+                <Spinner />
+              </span>
+            ) : (
+              <span className={`badge ${badge.className}`}>{badge.text}</span>
+            )}
+          </button>
+        )}
+        {agentId && (
+          <Link
+            className={styles.openPage}
+            to={providerChildSessionHref(
+              basePath,
+              projectId,
+              sessionId,
+              agentId,
+            )}
+          >
+            {t("providerChildOpen")}
+          </Link>
+        )}
+      </div>
 
       {failedWithoutAgent && rawResultText(result) && (
         <pre className="tool-fallback tool-fallback-error">

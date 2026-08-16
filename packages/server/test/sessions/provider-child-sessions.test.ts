@@ -1,0 +1,91 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  attachProviderChildSessions,
+  resolveProviderChildSessions,
+} from "../../src/sessions/provider-child-sessions.js";
+import type { ISessionReader } from "../../src/sessions/types.js";
+import type { Project } from "../../src/supervisor/types.js";
+import { toUrlProjectId } from "@yep-anywhere/shared";
+
+const child = {
+  id: "child-1",
+  parentSessionId: "sess-1",
+  title: "Explore the tree",
+  updatedAt: "2026-08-16T12:00:00.000Z",
+};
+
+describe("resolveProviderChildSessions", () => {
+  it("uses the accepted projection when list reads must stay cheap", async () => {
+    const listAcceptedProviderChildSessions = vi.fn(() => [child]);
+    const listProviderChildSessions = vi.fn(async () => {
+      throw new Error("fresh listing should not run");
+    });
+    const reader = {
+      listAcceptedProviderChildSessions,
+      listProviderChildSessions,
+    };
+
+    await expect(
+      resolveProviderChildSessions(reader, "sess-1", "accepted-or-cheap"),
+    ).resolves.toEqual([child]);
+    expect(listProviderChildSessions).not.toHaveBeenCalled();
+  });
+
+  it("omits children when the accepted projection is still cold", async () => {
+    const reader = {
+      listAcceptedProviderChildSessions: vi.fn(() => undefined),
+      listProviderChildSessions: vi.fn(async () => [child]),
+    };
+
+    await expect(
+      resolveProviderChildSessions(reader, "sess-1", "accepted-or-cheap"),
+    ).resolves.toBeUndefined();
+    expect(reader.listProviderChildSessions).not.toHaveBeenCalled();
+  });
+
+  it("lists freshly for a single open session", async () => {
+    const reader = {
+      listAcceptedProviderChildSessions: vi.fn(() => []),
+      listProviderChildSessions: vi.fn(async () => [child]),
+    };
+
+    await expect(
+      resolveProviderChildSessions(reader, "sess-1", "fresh"),
+    ).resolves.toEqual([child]);
+    expect(reader.listAcceptedProviderChildSessions).not.toHaveBeenCalled();
+  });
+});
+
+describe("attachProviderChildSessions", () => {
+  it("attaches cheap Claude children and skips empty results", async () => {
+    const project: Project = {
+      id: toUrlProjectId("/tmp/project"),
+      path: "/tmp/project",
+      name: "project",
+      sessionCount: 1,
+      sessionDir: "/tmp/project/.claude-sessions",
+      activeOwnedCount: 0,
+      activeExternalCount: 0,
+      lastActivity: null,
+      provider: "claude",
+    };
+    const reader = {
+      listProviderChildSessions: vi.fn(async (sessionId: string) =>
+        sessionId === "sess-1" ? [child] : [],
+      ),
+    } as unknown as ISessionReader;
+
+    const attached = await attachProviderChildSessions(
+      [
+        { id: "sess-1", provider: "claude" },
+        { id: "sess-2", provider: "claude" },
+      ],
+      project,
+      { readerFactory: () => reader },
+      "accepted-or-cheap",
+    );
+
+    expect(attached[0]?.providerChildren).toEqual([child]);
+    expect(attached[1]?.providerChildren).toBeUndefined();
+  });
+});

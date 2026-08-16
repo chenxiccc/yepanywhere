@@ -92,6 +92,13 @@ const SessionPage = lazy(() =>
     default: SessionPage,
   })),
 );
+const ProviderChildSessionPage = lazy(() =>
+  import("./pages/ProviderChildSessionPage").then(
+    ({ ProviderChildSessionPage }) => ({
+      default: ProviderChildSessionPage,
+    }),
+  ),
+);
 const SettingsLayout = lazy(() =>
   import("./pages/settings").then(({ SettingsLayout }) => ({
     default: SettingsLayout,
@@ -330,6 +337,10 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                     <Route
                       path="/projects/:projectId/sessions/:sessionId"
                       element={routeModule(<SessionDomLingerRouteMarker />)}
+                    />
+                    <Route
+                      path="/projects/:projectId/sessions/:sessionId/agents/:agentId"
+                      element={routeModule(<ProviderChildSessionPage />)}
                     />
                   </Route>
                   {/* Activity page has its own layout */}

@@ -5,7 +5,12 @@
  * this returns a flat list suitable for navigation/sidebar use.
  */
 
-import type { ProviderName, WorkstreamId } from "@yep-anywhere/shared";
+import {
+  isUrlProjectId,
+  type ProviderChildSessionSummary,
+  type ProviderName,
+  type WorkstreamId,
+} from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionIndexListOptions } from "../indexes/types.js";
@@ -17,7 +22,9 @@ import { isDetachedProjectPath } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import { attachProviderChildSessions } from "../sessions/provider-child-sessions.js";
 import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js";
+import { providerResolutionDeps } from "./session-provider-resolution.js";
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
@@ -113,6 +120,8 @@ export interface GlobalSessionItem {
   executor?: string;
   /** Capped excerpt of the most recent visible agent turn or provider recap. */
   lastAgentText?: string;
+  /** Provider-launched child work nested under this parent. Absent when none. */
+  providerChildren?: ProviderChildSessionSummary[];
 }
 
 /** Stats about all sessions (computed during full scan) */
@@ -660,6 +669,38 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         });
       }
     }
+
+    const resolutionDeps = providerResolutionDeps(deps);
+    const sessionsByProject = new Map<string, GlobalSessionItem[]>();
+    for (const session of allSessions) {
+      const existing = sessionsByProject.get(session.projectId);
+      if (existing) {
+        existing.push(session);
+      } else {
+        sessionsByProject.set(session.projectId, [session]);
+      }
+    }
+    const sessionsWithChildren: GlobalSessionItem[] = [];
+    for (const [projectId, projectSessions] of sessionsByProject) {
+      const sessionProject = isUrlProjectId(projectId)
+        ? projectsById.get(projectId)
+        : undefined;
+      if (!sessionProject) {
+        sessionsWithChildren.push(...projectSessions);
+        continue;
+      }
+      sessionsWithChildren.push(
+        ...(await attachProviderChildSessions(
+          projectSessions,
+          sessionProject,
+          resolutionDeps,
+          "accepted-or-cheap",
+          providerCatalog,
+        )),
+      );
+    }
+    allSessions.length = 0;
+    allSessions.push(...sessionsWithChildren);
 
     // Sort by updatedAt descending (most recent first)
     allSessions.sort(

@@ -35,6 +35,7 @@ export function sessionCollectionRecordToGlobalSessionItem(
     initialPrompt: record.initialPrompt,
     executor: record.executor,
     lastAgentText: record.lastAgentText,
+    providerChildren: record.providerChildren,
   };
 }
 

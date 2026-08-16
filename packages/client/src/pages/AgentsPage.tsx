@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { Link } from "react-router-dom";
+import { ProviderChildNavTarget } from "../components/ProviderChildNavTarget";
 import { api } from "../api/client";
 import { ContextUsageIndicator } from "../components/ContextUsageIndicator";
 import { PageHeader } from "../components/PageHeader";
@@ -17,6 +18,10 @@ import { type ProcessInfo, useProcesses } from "../hooks/useProcesses";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import {
+  providerChildSessionHref,
+  providerChildTitle,
+} from "../lib/providerChildSessions";
 import styles from "./AgentsPage.module.css";
 
 function cx(...classNames: (string | false | undefined)[]): string {
@@ -441,26 +446,34 @@ function ProcessCard({
           )}
         >
           {providerChildren.map((child) => {
-            const childTitle =
-              child.title ||
-              child.agentType ||
-              t("providerChildFallback" as never);
+            const childTitle = providerChildTitle(
+              child,
+              t("providerChildFallback" as never),
+            );
             return (
-              <div
-                className={styles.providerChild}
-                key={child.id}
-                role="listitem"
-              >
-                <span className={styles.providerChildBranch} aria-hidden>
-                  ↳
-                </span>
-                <span className={styles.providerChildTitle}>{childTitle}</span>
-                {child.agentType && child.agentType !== childTitle && (
-                  <span className={styles.providerChildType}>
-                    {child.agentType}
+              <span key={child.id} role="listitem">
+                <ProviderChildNavTarget
+                  className={styles.providerChild}
+                  href={providerChildSessionHref(
+                    basePath,
+                    process.projectId,
+                    process.sessionId,
+                    child.id,
+                  )}
+                >
+                  <span className={styles.providerChildBranch} aria-hidden>
+                    ↳
                   </span>
-                )}
-              </div>
+                  <span className={styles.providerChildTitle}>
+                    {childTitle}
+                  </span>
+                  {child.agentType && child.agentType !== childTitle && (
+                    <span className={styles.providerChildType}>
+                      {child.agentType}
+                    </span>
+                  )}
+                </ProviderChildNavTarget>
+              </span>
             );
           })}
         </div>

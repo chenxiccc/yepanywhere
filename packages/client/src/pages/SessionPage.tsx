@@ -46,6 +46,7 @@ import { useStartNewSessionWithPrefillAction } from "../components/FileResourceA
 import { HostIdentityMarker } from "../components/HostIdentityMarker";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
+import { ProviderChildSessionStrip } from "../components/ProviderChildSessionStrip";
 import type {
   FullPaneComposerControls,
   MessageSubmissionMetadata,
@@ -5016,6 +5017,14 @@ function SessionPageContent({
           </div>
         </div>
       </header>
+
+      <ProviderChildSessionStrip
+        projectId={projectId}
+        sessionId={actualSessionId}
+        basePath={basePath}
+        childrenFromSession={session?.providerChildren}
+        processState={processState}
+      />
 
       {showHeartbeatModal && (
         <SessionHeartbeatModal
