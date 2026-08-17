@@ -15,6 +15,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
+import { findRenderRow, indexRenderRowsById } from "../lib/scrollAnchors";
 import styles from "./UserTurnNavigator.module.css";
 
 export interface UserTurnNavAnchor {
@@ -198,21 +199,6 @@ function spreadMinGap(xs: number[], gap: number): number[] {
     }
   }
   return out;
-}
-
-function findRenderRow(
-  messageList: HTMLDivElement | null,
-  id: string,
-): HTMLElement | null {
-  if (!messageList) return null;
-  for (const row of messageList.querySelectorAll<HTMLElement>(
-    "[data-render-id]",
-  )) {
-    if (row.dataset.renderId === id) {
-      return row;
-    }
-  }
-  return null;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -513,15 +499,7 @@ function measureLayout(
   const scrollHeight = Math.max(scrollContainer.scrollHeight, 1);
   const clientHeight = Math.max(scrollContainer.clientHeight, 1);
   const markers: UserTurnMarker[] = [];
-  const rowsById = new Map<string, HTMLElement>();
-
-  for (const row of messageList.querySelectorAll<HTMLElement>(
-    "[data-render-id]",
-  )) {
-    if (row.dataset.renderId) {
-      rowsById.set(row.dataset.renderId, row);
-    }
-  }
+  const rowsById = indexRenderRowsById(messageList);
 
   for (const anchor of anchors) {
     const row = rowsById.get(anchor.targetId ?? anchor.id);

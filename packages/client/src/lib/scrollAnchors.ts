@@ -10,19 +10,59 @@ export interface VisibleRenderAnchor {
   timestampMs?: number;
 }
 
+function isTopLevelRenderRow(
+  messageList: HTMLElement,
+  row: HTMLElement,
+): boolean {
+  const parentRow = row.parentElement?.closest("[data-render-id]");
+  return !parentRow || !messageList.contains(parentRow);
+}
+
+/**
+ * Map each `data-render-id` to its transcript row. Explored-group entries
+ * nest another `[data-render-id]` under the group; jumps and rail layout
+ * must prefer the top-level row so preview position and scroll target agree.
+ */
+export function indexRenderRowsById(
+  messageList: HTMLDivElement | null,
+): Map<string, HTMLElement> {
+  const topLevelById = new Map<string, HTMLElement>();
+  const nestedById = new Map<string, HTMLElement>();
+  if (!messageList) {
+    return topLevelById;
+  }
+
+  for (const row of messageList.querySelectorAll<HTMLElement>(
+    "[data-render-id]",
+  )) {
+    const id = row.dataset.renderId;
+    if (!id) {
+      continue;
+    }
+    if (isTopLevelRenderRow(messageList, row)) {
+      if (!topLevelById.has(id)) {
+        topLevelById.set(id, row);
+      }
+      continue;
+    }
+    if (!nestedById.has(id)) {
+      nestedById.set(id, row);
+    }
+  }
+
+  for (const [id, row] of nestedById) {
+    if (!topLevelById.has(id)) {
+      topLevelById.set(id, row);
+    }
+  }
+  return topLevelById;
+}
+
 export function findRenderRow(
   messageList: HTMLDivElement | null,
   id: string,
 ): HTMLElement | null {
-  if (!messageList) return null;
-  for (const row of messageList.querySelectorAll<HTMLElement>(
-    "[data-render-id]",
-  )) {
-    if (row.dataset.renderId === id) {
-      return row;
-    }
-  }
-  return null;
+  return indexRenderRowsById(messageList).get(id) ?? null;
 }
 
 function getRowRenderId(row: HTMLElement | undefined): string | undefined {

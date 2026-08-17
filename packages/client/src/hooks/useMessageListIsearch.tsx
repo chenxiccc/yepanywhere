@@ -407,7 +407,7 @@ export function useMessageListIsearch({
         originalScrollTop: searchOriginalScrollTopRef.current,
       });
       requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
+        searchInputRef.current?.focus({ preventScroll: true });
         searchInputRef.current?.select();
       });
     },

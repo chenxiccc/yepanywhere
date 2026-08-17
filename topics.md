@@ -320,3 +320,5 @@
 - attachment-storage - YA-managed attachment location and viewer access.
 - nested-harness-launch - Linking a shell-launched second harness process to
   the session it writes, read from the launching command.
+- isearch-jump - Ctrl+R/S Enter and click must land on the highlighted match
+  after search unhides non-matching turns.

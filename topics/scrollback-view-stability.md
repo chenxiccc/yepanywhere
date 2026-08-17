@@ -159,6 +159,10 @@ Consequences:
   intent.
 - The collapse/tidy trigger is a UX choice; jitter-safety is a separate,
   always-required property.
+- Committing in-session search (Enter on the highlighted match, or a click
+  jump to that same match) is explicit navigation: leave tail-follow, jump
+  to the selected row, and if search then unhides non-matches, pin that row
+  while the document height changes.
 
 ## Follow-engagement policy & proposed preferences
 

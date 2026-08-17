@@ -338,6 +338,203 @@ describe("MessageList reverse search", () => {
     transcriptControl.remove();
   });
 
+  it("Enter after arrowing to a match jumps like clicking that match", async () => {
+    const composerTarget = document.createElement("div");
+    composerTarget.className = "session-input-inner";
+    document.body.append(composerTarget);
+
+    const rafQueue: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      rafQueue.push(callback);
+      return rafQueue.length;
+    });
+    const flushAnimationFrames = () => {
+      act(() => {
+        const pending = rafQueue.splice(0);
+        for (const callback of pending) {
+          callback(0);
+        }
+      });
+    };
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "unmatched setup request"),
+          assistantMessage("assistant-1", "first needle answer"),
+          userMessage("user-2", "later unmatched request"),
+          assistantMessage("assistant-2", "second needle answer"),
+        ]}
+      />,
+    );
+    const { scrollTo } = installSearchGeometry({
+      "user-1": 20,
+      "assistant-1": 420,
+      "user-2": 900,
+      "assistant-2": 1320,
+    });
+
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "Reverse search all turns" }),
+      { target: { value: "needle" } },
+    );
+    expect(await screen.findByText("2/2")).toBeTruthy();
+    flushAnimationFrames();
+    const preview = await screen.findByRole("button", {
+      name: "first needle answer",
+    });
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(await screen.findByText("1/2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    // Same destination as clicking `preview` (offset 420, centered in 200px).
+    expect(preview).toBeTruthy();
+    expect(scrollTo).toHaveBeenCalledWith({ top: 332, behavior: "auto" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", { name: "Reverse search all turns" }),
+      ).toBeNull();
+    });
+    installSearchGeometry({
+      "user-1": 20,
+      "assistant-1": 420,
+      "user-2": 900,
+      "assistant-2": 1320,
+    });
+    flushAnimationFrames();
+    flushAnimationFrames();
+    expect(screen.getByText("unmatched setup request")).toBeTruthy();
+    expect(screen.getByText("first needle answer")).toBeTruthy();
+    composerTarget.remove();
+  });
+
+  it("Ctrl+R Enter after arrowing jumps to the highlighted user turn", async () => {
+    const composerTarget = document.createElement("div");
+    composerTarget.className = "session-input-inner";
+    document.body.append(composerTarget);
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "first needle request"),
+          assistantMessage("assistant-1", "first answer"),
+          userMessage("user-2", "second needle request"),
+          assistantMessage("assistant-2", "second answer"),
+        ]}
+      />,
+    );
+
+    const { scrollTo } = installSearchGeometry({
+      "user-1": 420,
+      "assistant-1": 700,
+      "user-2": 1100,
+      "assistant-2": 1400,
+    });
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Reverse search user turns",
+      }),
+      { target: { value: "needle" } },
+    );
+    expect(await screen.findByText("2/2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(await screen.findByText("1/2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 332, behavior: "auto" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", { name: "Reverse search user turns" }),
+      ).toBeNull();
+    });
+    composerTarget.remove();
+  });
+
+  it("Enter after arrowing in conversation view pins the same match", async () => {
+    const composerTarget = document.createElement("div");
+    composerTarget.className = "session-input-inner";
+    document.body.append(composerTarget);
+
+    const rafQueue: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      rafQueue.push(callback);
+      return rafQueue.length;
+    });
+    const flushAnimationFrames = () => {
+      act(() => {
+        const pending = rafQueue.splice(0);
+        for (const callback of pending) {
+          callback(0);
+        }
+      });
+    };
+
+    render(
+      <MessageList
+        conversationViewEnabledOverride
+        messages={[
+          userMessage("user-1", "unmatched setup request"),
+          assistantToolUseMessage("assistant-tools-1", [
+            {
+              type: "tool_use",
+              id: "read-1",
+              name: "Read",
+              input: { file_path: "packages/client/src/recap.ts" },
+            },
+          ]),
+          assistantMessage("assistant-1", "first needle answer"),
+          userMessage("user-2", "later unmatched request"),
+          assistantToolUseMessage("assistant-tools-2", [
+            {
+              type: "tool_use",
+              id: "read-2",
+              name: "Read",
+              input: { file_path: "packages/client/src/notice.ts" },
+            },
+          ]),
+          assistantMessage("assistant-2", "second needle answer"),
+        ]}
+      />,
+    );
+
+    const { scrollTo } = installSearchGeometry({
+      "user-1": 20,
+      "assistant-1": 420,
+      "user-2": 900,
+      "assistant-2": 1320,
+    });
+
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "Reverse search all turns" }),
+      { target: { value: "needle" } },
+    );
+    expect(await screen.findByText("2/2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(await screen.findByText("1/2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 332, behavior: "auto" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", { name: "Reverse search all turns" }),
+      ).toBeNull();
+    });
+    installSearchGeometry({
+      "user-1": 20,
+      "assistant-1": 420,
+      "user-2": 900,
+      "assistant-2": 1320,
+    });
+    flushAnimationFrames();
+    flushAnimationFrames();
+    expect(screen.getByText("first needle answer")).toBeTruthy();
+    composerTarget.remove();
+  });
+
   it("repeats all-turn search arrow movement at a fast cadence", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,

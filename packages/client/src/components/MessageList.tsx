@@ -1106,6 +1106,7 @@ export const MessageList = memo(function MessageList({
     typeof setTimeout
   > | null>(null);
   const previousProgressiveRevealActiveRef = useRef(false);
+  const settleSearchJumpFrameRef = useRef<number | null>(null);
   const scrollSnapshotWritesSuppressedRef = useRef(false);
   const previousScrollSnapshotWritesSuppressedRef = useRef(false);
   const previousActiveWindowTrimRevisionRef = useRef(activeWindowTrimRevision);
@@ -1927,6 +1928,12 @@ export const MessageList = memo(function MessageList({
   );
   useEffect(() => {
     if (!progressiveRenderAllowed) {
+      // Isearch temporarily shows its filtered rows. Do not reset the
+      // progressive cycle here: closing search used to restart from the tail,
+      // unmounting the selected match before Enter could jump to it.
+      if (searchActive) {
+        return;
+      }
       progressiveActiveRenderKeyRef.current = null;
       setProgressiveRenderStateKey(null);
       setProgressiveEntryCount(null);
@@ -1956,6 +1963,7 @@ export const MessageList = memo(function MessageList({
     progressiveInitialEntryCount,
     progressiveRenderAllowed,
     progressiveRenderCycleKey,
+    searchActive,
     visibleTimelineEntries.length,
   ]);
   useEffect(() => {
@@ -2409,6 +2417,9 @@ export const MessageList = memo(function MessageList({
         0,
         scrollContainer.scrollTop + rowRect.top - scrollRect.top - offset,
       );
+      if (Math.abs(nextTop - scrollContainer.scrollTop) < 1) {
+        return;
+      }
       if (showMotionCue) {
         showNavMotionCue(nextTop < scrollContainer.scrollTop ? "up" : "down");
       }
@@ -2428,11 +2439,64 @@ export const MessageList = memo(function MessageList({
   }, [reportFollowingBottom, scheduleSettledScrollState]);
 
   const jumpToSearchTarget = useCallback(
-    (targetId: string) => {
+    (targetId: string, settle = true) => {
       beginTurnNavigation();
       scrollToRenderId(targetId, "auto", "center", true);
+      if (!settle) {
+        return;
+      }
+      if (settleSearchJumpFrameRef.current !== null) {
+        cancelAnimationFrame(settleSearchJumpFrameRef.current);
+      }
+      settleSearchJumpFrameRef.current = requestAnimationFrame(() => {
+        settleSearchJumpFrameRef.current = requestAnimationFrame(() => {
+          settleSearchJumpFrameRef.current = null;
+          // Recap/activity/synthetic rows often reflow after the first
+          // geometry read. Re-center once on settled heights so the rail
+          // preview and the landed viewport agree.
+          scrollToRenderId(targetId, "auto", "center", false);
+        });
+      });
     },
     [beginTurnNavigation, scrollToRenderId],
+  );
+  useEffect(
+    () => () => {
+      if (settleSearchJumpFrameRef.current !== null) {
+        cancelAnimationFrame(settleSearchJumpFrameRef.current);
+        settleSearchJumpFrameRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const completeProgressiveReveal = useCallback(() => {
+    progressiveCompletedRenderKeyRef.current = progressiveRenderCycleKey;
+    progressiveActiveRenderKeyRef.current = null;
+  }, [progressiveRenderCycleKey]);
+
+  const commitSearchJump = useCallback(
+    (targetId: string) => {
+      completeProgressiveReveal();
+      jumpToSearchTarget(targetId, false);
+      preserveScrollAfterTranscriptHeightChange(() => {
+        closeSearch(false);
+      }, targetId);
+    },
+    [
+      closeSearch,
+      completeProgressiveReveal,
+      jumpToSearchTarget,
+      preserveScrollAfterTranscriptHeightChange,
+    ],
+  );
+
+  const startSearch = useCallback(
+    (scope: SessionIsearchScope) => {
+      beginTurnNavigation();
+      openSearch(scope);
+    },
+    [beginTurnNavigation, openSearch],
   );
 
   const handleSearchMatchSelect = useCallback(
@@ -2528,7 +2592,7 @@ export const MessageList = memo(function MessageList({
         if (searchActive && searchScope === requestedScope) {
           moveSearchSelection("previous");
         } else {
-          openSearch(requestedScope);
+          startSearch(requestedScope);
         }
         return;
       }
@@ -2554,9 +2618,12 @@ export const MessageList = memo(function MessageList({
         event.stopPropagation();
         const selectedId = getSelectedSearchTargetId();
         stopSearchArrowRepeat();
-        closeSearch(false);
         if (selectedId) {
-          requestAnimationFrame(() => jumpToSearchTarget(selectedId));
+          // Same jump as clicking the highlighted match; then close while
+          // pinning that row so unhiding non-matches cannot move it.
+          commitSearchJump(selectedId);
+        } else {
+          closeSearch(false);
         }
       }
     };
@@ -2575,15 +2642,15 @@ export const MessageList = memo(function MessageList({
     };
   }, [
     closeSearch,
+    commitSearchJump,
     getSelectedSearchTargetId,
     handleSearchArrowKey,
-    jumpToSearchTarget,
     moveSearchSelection,
     navigateToAdjacentHiddenUserTurn,
-    openSearch,
     scrollToCurrent,
     searchActive,
     searchScope,
+    startSearch,
     stopSearchArrowRepeat,
     toggleThinkingItemsVisible,
     inert,

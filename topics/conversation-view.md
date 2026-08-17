@@ -104,7 +104,12 @@ provider-history rewrite and not deletion.
   from the normal default.
 - Search follows the currently projected transcript. Condensed tool/thinking
   text does not produce hidden matches; expanding its turn makes those rows
-  searchable again.
+  searchable again. Arrowing to a match and pressing Enter jumps to the same
+  render row as clicking that highlighted preview. Enter then closes search
+  while pinning that row, so unhiding non-matches — including conversation
+  activity, recap, and other synthetic rows that change height — cannot leave
+  the reader at the pre-search place. Opening search leaves tail-follow.
+  Closing search does not restart progressive reveal.
 - The thinking-transcript visibility control composes with Conversation View
   instead of being shadowed by it. When thinking is visible, a compact preview
   follows the final activity summary on the same wrapping row. A completed turn
