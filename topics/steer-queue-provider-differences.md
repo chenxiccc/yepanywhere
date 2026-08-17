@@ -298,6 +298,9 @@ had been sending a second ordinary `session/prompt`, which Grok answers as a
 later turn ([grok.md](grok.md)). As of 2026-08-16 Grok steer is real again:
 `steer()` calls `x.ai/interject`, which drains at the next tool/model safe
 point without ending the turn — the same shape as Codex `turn/steer`.
+Success is Grok's `ExtMethodResult` `{ result: { status: "queued" } }`;
+a check of only the outer `status` false-fails the ack and later
+re-sends the same steer as a concatenated `session/prompt`.
 Distinguish that from a provider-native *queued follow-up prompt*, which is
 not steering, whatever the call site is named. As of 2026-06-11, the Claude half
 is also no longer true in YA:

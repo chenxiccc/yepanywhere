@@ -5,6 +5,20 @@ implementation chronology behind the live contract in
 [`grok.md`](grok.md). It is evidence and design history, not the current
 product contract.
 
+## 2026-08-17 — Interject ack is wrapped
+
+Live session `01a00e85-819d-7850-8a0d-800a7fa3ad3c` accepted every mid-turn
+steer (`events.jsonl` `type: interjected`) and still issued a later
+`session/prompt` that concatenated those same texts with `--------`.
+Grok's ACP handler returns `ExtMethodResult`
+`{ result: { status: "queued" } }`. YA's `steer()` had compared the outer
+`status`, returned false, and `Process.queuePreparedMessage` pushed the
+already-accepted text into `MessageQueue`. When the first prompt ended,
+the iterator drained that queue as one joined turn. Observed 2026-08-17
+after the `0275d564` interject wiring; Codex + patient queue was not
+involved in that concat. Grok patient items still promote at ordinary
+turn-end (not Claude's verified-idle path).
+
 ## 2026-08-17 — Interject envelope is display-only
 
 Live `01a00e6c-4f08-7e11-9cad-32996bb47a0c` `updates.jsonl` confirmed

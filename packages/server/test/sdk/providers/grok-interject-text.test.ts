@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { unwrapGrokInterjectText } from "../../../src/sdk/providers/grok-interject-text.js";
+import {
+  grokInterjectAccepted,
+  unwrapGrokInterjectText,
+} from "../../../src/sdk/providers/grok-interject-text.js";
 
 const WRAP_PREFIX =
   "The user sent a message while you were working:\n<user_query>\n";
@@ -38,5 +41,24 @@ describe("unwrapGrokInterjectText", () => {
   it("leaves a partial envelope alone", () => {
     const partial = `${WRAP_PREFIX}still typing`;
     expect(unwrapGrokInterjectText(partial)).toBe(partial);
+  });
+});
+
+describe("grokInterjectAccepted", () => {
+  it("accepts Grok's ExtMethodResult envelope", () => {
+    expect(grokInterjectAccepted({ result: { status: "queued" } })).toBe(true);
+  });
+
+  it("accepts a bare status payload", () => {
+    expect(grokInterjectAccepted({ status: "queued" })).toBe(true);
+  });
+
+  it("rejects failures and unknown shapes", () => {
+    expect(grokInterjectAccepted({ result: null, error: "no session" })).toBe(
+      false,
+    );
+    expect(grokInterjectAccepted({ result: { status: "ok" } })).toBe(false);
+    expect(grokInterjectAccepted({})).toBe(false);
+    expect(grokInterjectAccepted(undefined)).toBe(false);
   });
 });

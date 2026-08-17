@@ -500,7 +500,8 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     }
     async extMethod(method: string, params: Record<string, unknown>) {
       extMethodCalls.push({ method, params });
-      return { status: "queued" };
+      // Real Grok ACP wraps the payload in ExtMethodResult.
+      return { result: { status: "queued" } };
     }
     async prompt(_sessionId: string, _text: string) {
       promptCalls.push({ sessionId: _sessionId, text: _text });

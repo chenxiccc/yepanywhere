@@ -40,11 +40,15 @@ re-measured. A load failure stays fail-closed and never falls back to
 `GrokSessionReader` already owns the durable transcript.
 
 **Mid-turn steer is `x.ai/interject`.** A second `session/prompt` becomes a
-later turn. `steer()` sends `{ sessionId, text }` and treats
-`status: "queued"` as success. `supportsSteerNow` stays unset: in-flight
-generation and ordinary tools finish; only blocking wait tools abort. If
-no prompt is in flight, or the extension call fails, `steer()` returns
-false and YA queues.
+later turn. `steer()` sends `{ sessionId, text }` and treats Grok's
+`ExtMethodResult` `{ result: { status: "queued" } }` — or a bare
+`{ status: "queued" }` — as success. Checking only the outer `status`
+treats a successful interject as a failed steer, so YA also pushes the
+same text into `MessageQueue` and later concatenates it into another
+`session/prompt`. `supportsSteerNow` stays unset: in-flight generation
+and ordinary tools finish; only blocking wait tools abort. If no prompt
+is in flight, or the extension call fails, `steer()` returns false and
+YA queues.
 
 Interject does not cancel the turn. Grok drains the text at the next safe
 point (after a completed tool batch, before the next model step, or just

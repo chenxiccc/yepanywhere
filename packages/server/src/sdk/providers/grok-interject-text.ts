@@ -12,6 +12,28 @@ const INTERJECT_PREFIX =
 const INTERJECT_SUFFIX =
   /\r?\n<\/user_query>\r?\nMake sure to complete any unfinished tasks from previous turns\.\s*$/;
 
+/**
+ * Grok's ACP `x.ai/interject` success is
+ * `{ result: { status: "queued" } }` (`ExtMethodResult`). A bare
+ * `{ status: "queued" }` is also accepted. Checking only the outer
+ * `status` treats a successful interject as a failed steer, so YA also
+ * pushes the same text into MessageQueue and later concatenates it into
+ * a second `session/prompt`.
+ */
+export function grokInterjectAccepted(
+  result: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!result) return false;
+  if (result.status === "queued") return true;
+  const inner = result.result;
+  return (
+    !!inner &&
+    typeof inner === "object" &&
+    !Array.isArray(inner) &&
+    (inner as { status?: unknown }).status === "queued"
+  );
+}
+
 export function unwrapGrokInterjectText(text: string): string {
   const prefix = text.match(INTERJECT_PREFIX);
   if (prefix?.index !== 0) return text;

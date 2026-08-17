@@ -77,6 +77,7 @@ import type {
   ToolApprovalResult,
 } from "../types.js";
 import { ACPClient } from "./acp/client.js";
+import { grokInterjectAccepted } from "./grok-interject-text.js";
 import {
   type NormalizedGrokToolState,
   buildGrokStructuredToolResult,
@@ -1300,7 +1301,7 @@ export class GrokACPProvider implements AgentProvider {
         sessionId,
         text,
       });
-      return result.status === "queued";
+      return grokInterjectAccepted(result);
     } catch (error) {
       this.log.warn({ error, sessionId }, "Grok x.ai/interject failed");
       return false;
