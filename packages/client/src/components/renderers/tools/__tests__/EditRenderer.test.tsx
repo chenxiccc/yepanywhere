@@ -15,11 +15,26 @@ import { editRenderer } from "../EditRenderer";
 
 const mocks = vi.hoisted(() => ({
   useFileVersionControl: vi.fn(),
+  getFile: vi.fn(),
+  expandDiffContext: vi.fn(),
 }));
 
 vi.mock("../../../../hooks/useFileVersionControl", () => ({
   useFileVersionControl: mocks.useFileVersionControl,
 }));
+
+vi.mock("../../../../api/client", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../../api/client")>();
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      getFile: mocks.getFile,
+      expandDiffContext: mocks.expandDiffContext,
+    },
+  };
+});
 
 vi.mock("../../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({
@@ -44,6 +59,22 @@ const renderCollapsedPreview = editRenderer.renderCollapsedPreview;
 describe("EditRenderer collapsed preview fallback", () => {
   beforeEach(() => {
     window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+    mocks.getFile.mockReset();
+    mocks.expandDiffContext.mockReset();
+    mocks.getFile.mockResolvedValue({
+      metadata: {
+        path: "notes.md",
+        size: 12,
+        mimeType: "text/markdown",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "",
+    });
+    mocks.expandDiffContext.mockResolvedValue({
+      structuredPatch: [],
+      diffHtml: "",
+    });
     mocks.useFileVersionControl.mockImplementation(
       (_projectId: string, filePath: string) => ({
         cumulativeFile: null,
@@ -1200,5 +1231,149 @@ describe("EditRenderer collapsed preview fallback", () => {
         selection?.anchorNode ? modal?.contains(selection.anchorNode) : false,
       ).toBe(true);
     });
+  });
+
+  it("expands a Grok-style edit to full context from the current file", async () => {
+    const structuredPatch = [
+      {
+        oldStart: 2,
+        oldLines: 1,
+        newStart: 2,
+        newLines: 2,
+        lines: [" keep", "+added"],
+      },
+    ];
+    mocks.getFile.mockResolvedValue({
+      metadata: {
+        path: "notes.md",
+        size: 20,
+        mimeType: "text/markdown",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "keep\nadded\n",
+    });
+    mocks.expandDiffContext.mockResolvedValue({
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 1,
+          newStart: 1,
+          newLines: 2,
+          lines: [" keep", "+added"],
+        },
+      ],
+      diffHtml:
+        '<pre class="shiki"><code><span class="line">keep</span></code></pre>',
+    });
+
+    render(
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        <I18nProvider>
+          {renderCollapsedPreview(
+            {
+              old_string: "",
+              new_string: "added",
+              _structuredPatch: structuredPatch,
+            } as never,
+            {
+              filePath: "notes.md",
+              oldString: "",
+              newString: "added",
+              originalFile: "",
+              structuredPatch,
+            } as never,
+            false,
+            renderContext,
+          )}
+        </I18nProvider>
+      </SessionMetadataProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show full diff" }));
+    const toggle = await screen.findByRole("button", {
+      name: "Show full context",
+    });
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(mocks.getFile).toHaveBeenCalledWith("project-1", "notes.md");
+      expect(mocks.expandDiffContext).toHaveBeenCalledWith(
+        "project-1",
+        "notes.md",
+        "keep\n",
+        "keep\nadded\n",
+        "keep\n",
+      );
+    });
+    expect(
+      await screen.findByRole("button", { name: "Show diff only" }),
+    ).toBeDefined();
+  });
+
+  it("shows the current file without diff markers when the edit cannot be located", async () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-old", "+new"],
+      },
+    ];
+    mocks.getFile.mockResolvedValue({
+      metadata: {
+        path: "notes.md",
+        size: 9,
+        mimeType: "text/markdown",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "unrelated",
+    });
+
+    render(
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        <I18nProvider>
+          {renderCollapsedPreview(
+            {
+              old_string: "old",
+              new_string: "new",
+              _structuredPatch: structuredPatch,
+            } as never,
+            {
+              filePath: "notes.md",
+              oldString: "old",
+              newString: "new",
+              originalFile: "",
+              structuredPatch,
+            } as never,
+            false,
+            renderContext,
+          )}
+        </I18nProvider>
+      </SessionMetadataProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show full diff" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show full context" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("unrelated")).toBeDefined();
+    });
+    expect(mocks.expandDiffContext).not.toHaveBeenCalled();
+    const modal = document.body.querySelector(".modal");
+    expect(modal?.querySelector(".diff-added")).toBeNull();
+    expect(modal?.textContent).not.toContain("+new");
   });
 });

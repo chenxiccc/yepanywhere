@@ -199,6 +199,22 @@ falls back to a `_rawPatch` (`RawPatchPreview`) parsed from the V4A text via
 collapsed preview, expand-to-modal, "show full context", and copy-post-change
 affordances regardless of backend.
 
+### Edit-block full-context toggle
+
+The full-diff modal offers **Show full context** whenever the session has a
+project and a file path. Default remains the hunk-only view.
+
+- If the provider supplied a nonempty `originalFile` snapshot, the toggle
+  expands that snapshot the way it always has (`POST /diff/expand`).
+- Otherwise the client reads the **current** file. It keeps diff markers only
+  when the replacement can be uniquely identified: an exact substring match, or
+  a single whitespace-insensitive line-block match (same rule as a merge that
+  ignores space). Ambiguous or missing matches drop the markers and show the
+  current file as plain source.
+- Grok and pi leave `originalFile` empty, so they take the current-file path.
+  No new server capability: the client uses existing `GET /files` and
+  `POST /diff/expand`.
+
 ## Initiation — where the edit format comes from
 
 The user's original framing is correct: a model emits read/edit actions in its

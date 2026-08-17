@@ -827,7 +827,9 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
 
 /**
  * Modal content for viewing complete diff with optional full file context.
- * Full context toggle is only available when originalFile is provided.
+ * The toggle reads the SDK originalFile snapshot when present, otherwise the
+ * current file. Diff markers stay only when the replacement can be uniquely
+ * located.
  */
 function DiffModalContent({
   diffHtml,
@@ -843,7 +845,7 @@ function DiffModalContent({
   filePath: string;
   oldString: string;
   newString: string;
-  /** Complete file content from SDK Edit result (never truncated). Null for file creation. */
+  /** Complete file content from SDK Edit result when the provider supplies it. */
   originalFile?: string | null;
   selection?: DiffSelectionSnapshot | null;
 }) {
@@ -853,14 +855,15 @@ function DiffModalContent({
   const contentRef = useRef<HTMLDivElement>(null);
   useRestoreDiffSelection(contentRef, selection);
 
-  // Only fetch expanded diff when originalFile is available (not for file creation)
-  // The SDK's originalFile is never truncated - it's the complete file content.
-  const canExpandContext = !!originalFile;
+  const canExpandContext = Boolean(
+    filePath && (originalFile || sessionMetadata?.projectId),
+  );
   const { loading, error, result, fetchExpandedDiff } = useExpandedDiff({
     filePath,
     oldString,
     newString,
-    originalFile: originalFile ?? "", // Empty string won't be used if canExpandContext is false
+    originalFile: originalFile ?? "",
+    structuredPatch,
   });
 
   const handleToggle = useCallback(async () => {
@@ -871,10 +874,14 @@ function DiffModalContent({
     setShowFullContext(!showFullContext);
   }, [canExpandContext, showFullContext, result, fetchExpandedDiff]);
 
-  // Scroll to the first changed line when showing full context
+  const fullContextDiff =
+    showFullContext && result?.kind === "diff" ? result : null;
+  const fullContextFile =
+    showFullContext && result?.kind === "file" ? result : null;
+
+  // Scroll to the first changed line when showing a full-file diff
   useEffect(() => {
-    if (showFullContext && result && contentRef.current) {
-      // Wait for DOM to update with new content
+    if (fullContextDiff && contentRef.current) {
       requestAnimationFrame(() => {
         const firstChange = contentRef.current?.querySelector(
           ".line-deleted, .line-inserted",
@@ -884,16 +891,13 @@ function DiffModalContent({
         }
       });
     }
-  }, [showFullContext, result]);
+  }, [fullContextDiff]);
 
-  // Use expanded result when showing full context
-  const displayHtml =
-    showFullContext && result?.diffHtml ? result.diffHtml : diffHtml;
-  const displayPatch =
-    showFullContext && result?.structuredPatch
-      ? result.structuredPatch
-      : structuredPatch;
-  const fileLineRange = getPatchFileLineRange(displayPatch);
+  const displayHtml = fullContextDiff?.diffHtml ?? diffHtml;
+  const displayPatch = fullContextDiff?.structuredPatch ?? structuredPatch;
+  const fileLineRange = fullContextFile
+    ? undefined
+    : getPatchFileLineRange(displayPatch);
 
   // Strip project path prefix for display
   const displayPath = makeDisplayPath(filePath, projectPath);
@@ -929,18 +933,32 @@ function DiffModalContent({
         {error && <span className="diff-context-error">{error}</span>}
       </div>
 
-      <DiffMathView
-        sourceText={displayPatch.flatMap((h) => h.lines).join("\n")}
-        baseFilePath={displayPath}
-        initialMode={selection?.renderMode}
-        sourceView={
-          displayHtml ? (
-            <HighlightedDiff diffHtml={displayHtml} />
-          ) : (
-            <DiffLines lines={displayPatch.flatMap((h) => h.lines)} />
-          )
-        }
-      />
+      {fullContextFile ? (
+        <DiffMathView
+          sourceText={fullContextFile.content}
+          diffAware={false}
+          baseFilePath={displayPath}
+          initialMode={selection?.renderMode}
+          sourceView={
+            <pre className="code-block">
+              <code>{fullContextFile.content}</code>
+            </pre>
+          }
+        />
+      ) : (
+        <DiffMathView
+          sourceText={displayPatch.flatMap((h) => h.lines).join("\n")}
+          baseFilePath={displayPath}
+          initialMode={selection?.renderMode}
+          sourceView={
+            displayHtml ? (
+              <HighlightedDiff diffHtml={displayHtml} />
+            ) : (
+              <DiffLines lines={displayPatch.flatMap((h) => h.lines)} />
+            )
+          }
+        />
+      )}
     </div>
   );
 }
