@@ -11,18 +11,25 @@ untracked expansion via `git status`). Related existing gap:
 Observed 2026-08-17 on a Working tree with 11 898 changed paths, almost all
 untracked under `runs/aim/pii-handout-fresh7-…`.
 
-## 0 — `‹ Commit history` looks inert
+Old 0–10 handles from the first draft map as:
 
-`CommitHistoryParentLink` is a real button
-(`packages/client/src/pages/CommitHistoryParentLink.tsx`) but
-`.source-history-parent-link` paints it as muted secondary text on a full-width
-bar (`packages/client/src/styles/renderers.css`). It reads as a section label,
-not an action.
+| Old | Now |
+| --- | --- |
+| 0 | [6 — Commit history affordance](#6--commit-history-affordance) |
+| 1 | [1 — Cluster untracked files by directory](#1--cluster-untracked-files-by-directory) |
+| 2 | [2 — Cache untracked listing without Git enumeration](#2--cache-untracked-listing-without-git-enumeration) |
+| 3 | [3 — Highlight and reveal the path match](#3--highlight-and-reveal-the-path-match) |
+| 4 | [4 — Apply search as files are discovered](#4--apply-search-as-files-are-discovered) |
+| 5 | [5 — Ellipsis to the live pane width](#5--ellipsis-to-the-live-pane-width) |
+| 6 | [7 — Selectable commit message](#7--selectable-commit-message) |
+| 7 | [9 — Title-row repository actions](#9--title-row-repository-actions) and [10 — Comments control](#10--comments-control) |
+| 8 | [11 — Back leaves Comments](#11--back-leaves-comments) |
+| 9 | [12 — Branch opens HEAD](#12--branch-opens-head) and [13 — Upstream opens incoming commits](#13--upstream-opens-incoming-commits) |
+| 10 | [8 — Middle-click focused commit tab](#8--middle-click-focused-commit-tab) |
 
-Give it a link-like hover (accent/underline) or the same filled-button
-treatment as Pull / Push. Keyboard and click already work.
+## Working tree files
 
-## 1 — Cluster untracked files by directory prefix
+### 1 — Cluster untracked files by directory
 
 Untracked rows are a flat list of full paths. After folder expansion, 11k
 near-identical prefixes hide the distinctive filename. Group by common parent
@@ -35,10 +42,11 @@ list unless a later pass proves they need the same grouping. The `?` status
 code remains the untracked marker; do not bring back the long **untracked**
 word on every row.
 
-Collapsed groups are the UI that makes deferred listing in **2** possible:
-do not realize 11k child rows until the group is opened or search needs them.
+Collapsed groups are the UI that makes deferred listing in
+[2](#2--cache-untracked-listing-without-git-enumeration) possible: do not
+realize 11k child rows until the group is opened or search needs them.
 
-## 2 — Cache untracked listing; do not ask Git to enumerate it
+### 2 — Cache untracked listing without Git enumeration
 
 Today the client expands every compact `dir/` from `git status` through
 `GET /git/untracked-folder`, and each call is `git status --untracked-files=all`
@@ -62,7 +70,7 @@ Replace that expansion path:
   cached path at most once per hour; do not `stat` the whole cache on every
   Working tree render or 5s poll.
 - Directory children load only when their group is expanded or search
-  requires them (**1**).
+  requires them ([1](#1--cluster-untracked-files-by-directory)).
 
 **Gitignore is the crux.** A raw `HEAD` vs filesystem walk will surface
 `node_modules/`, build output, and other excluded trees. The listing must
@@ -82,7 +90,7 @@ calls it, follow the Source Control compatibility review in
 Without the gate, keep today's compact `dir/` rows and do not issue the new
 request.
 
-## 3 — Search does not highlight or reveal the match
+### 3 — Highlight and reveal the path match
 
 `useChangesetFileFilter` / `FileSearchIndex` already match the query against
 the full display path. `SourceFilePath` then renders the path as plain text
@@ -96,7 +104,7 @@ window, shift the visible window so the match is shown (keep a leading `…`
 when the directory prefix is clipped). Same treatment in commit and Files
 rows that share `SourceFilePath`.
 
-## 4 — Search must apply as rows arrive
+### 4 — Apply search as files are discovered
 
 The filter already reruns when `files` changes, so a path that appears from
 an expansion and matches the current query is included. That is not obvious
@@ -108,12 +116,14 @@ in the UI:
   children. A query can miss thousands of files that exist only in the
   untracked cache or on disk under a closed group.
 
-Once **1** / **2** land, a non-empty query must match cached/unrealized
-children and either reveal the matching groups or list the matching suffixes
-without forcing every sibling to expand. New cache arrivals must pass through
-the same filter before they appear.
+Once [1](#1--cluster-untracked-files-by-directory) and
+[2](#2--cache-untracked-listing-without-git-enumeration) land, a non-empty
+query must match cached/unrealized children and either reveal the matching
+groups or list the matching suffixes without forcing every sibling to
+expand. New cache arrivals must pass through the same filter before they
+appear.
 
-## 5 — Ellipsis does not use the files-pane width
+### 5 — Ellipsis to the live pane width
 
 `.git-file-path` is `flex: 1; min-width: 0; overflow: hidden; text-overflow:
 ellipsis`. In the 2026-08-17 capture the visible path still dies well before
@@ -131,11 +141,24 @@ Likely contributors, in order to check:
   `flex: 1`.
 
 Measure against the live files-pane content box, not a character budget or
-the default column width. After **1**, most visible labels are short
-suffixes and this matters less — still fix the shared row so a long
-ungrouped path uses the pane it sits in.
+the default column width. After [1](#1--cluster-untracked-files-by-directory),
+most visible labels are short suffixes and this matters less — still fix the
+shared row so a long ungrouped path uses the pane it sits in.
 
-## 6 — Commit message card cannot be drag-selected
+## Commit view
+
+### 6 — Commit history affordance
+
+`CommitHistoryParentLink` is a real button
+(`packages/client/src/pages/CommitHistoryParentLink.tsx`) but
+`.source-history-parent-link` paints it as muted secondary text on a full-width
+bar (`packages/client/src/styles/renderers.css`). It reads as a section label,
+not an action.
+
+Give it a link-like hover (accent/underline) or the same filled-button
+treatment as Pull / Push. Keyboard and click already work.
+
+### 7 — Selectable commit message
 
 The selected commit's message preview is a `<button class="commit-body">`
 that calls `onShowMessage` (`CommitFilesPane.tsx`). Platform buttons do not
@@ -149,81 +172,7 @@ selection starts a comment; a completed selection does not*). Make the
 preview selectable (`user-select: text`) or stop using a button as the
 text container.
 
-## 7 — Header actions and the Review control
-
-### Placement
-
-Pull, Push, Check remote, and Review currently occupy their own row
-(`.source-control-action-row`). The top identity row (project, branch,
-upstream, Dirty/Clean, mode tabs) often has unused space between the
-identity cluster and the Changes / Files / Pending Comments / Reviews
-tabs. `topics/source-control.md` § Header hierarchy currently *requires*
-that second row at every width.
-
-When the topmost title row has leftover space, place those actions in
-that middle gap instead of adding a row. Same wrap rule as the mode tabs:
-browser-computed from intrinsic widths, not a viewport breakpoint. If they
-do not fit, keep today's action row. Do not let branch names, badges, or
-action feedback shove the group around.
-
-### Naming and target
-
-The control label is **Review** / **Review (N)** (`sourceReviewStart`,
-`sourceReviewReview`). With no drafts it `setTab("comments")` and the
-Comments mode shows **No pending comments.** With drafts it opens the
-submit modal and skips the list.
-
-That is not a “start a review” verb. It is access to the drafted
-accumulator (and, when nonempty, a shortcut past the list into submit).
-The mode tab for that accumulator is already **Pending Comments**;
-submitted history is **Reviews**.
-
-Rename the control to **Comments** or **Review comments**. Always open the
-Comments mode. Leave submit on that pane (it already has `onSubmit`). The
-tab's existing count chip is enough when drafts exist. Do not keep the
-zero-vs-nonzero dual target.
-
-## 8 — Back does not leave Review / Comments
-
-The Dirty badge already returns to standalone Working tree
-(`onSelectChanges` → `setTab("changes")`). Browser / in-app Back does not.
-
-`useSourceTab` writes `tab` with `replace: true`
-(`GitStatusPage.tsx`). Changes → Comments / Reviews therefore does not
-push a history entry, so Back skips the Source Control mode change and
-leaves the page or stays put.
-
-Push a history entry when the Source Control mode changes. Back from
-Comments or Reviews should restore the previous Source Control mode
-(usually Working tree). A deep link that *lands* on `?tab=comments`
-should still Back off the Source Control page. Phone commit-detail
-`pushState` (`useMobileCommitDetailHistory`) is a separate stack and
-must keep working.
-
-## 9 — Branch and upstream in the identity bar
-
-`RepoStatusBar` renders the branch name as inert text plus a copy
-control; the upstream (`→ graehl/main`) is inert text.
-
-- Clicking the local branch (e.g. `main`) opens the `HEAD` commit the
-  same way a focused commit view does — files and diff for `HEAD`, not
-  the Working tree. `GitStatusInfo.recentCommits[0]` is the current `HEAD`
-  tip when present; detached `HEAD` still has a tip SHA even when
-  `branch` is null (copy/click should use the SHA, and the copy control
-  already needs a non-branch value in that case).
-- Clicking the upstream name opens a preview of commits that are on the
-  remote-tracking branch and not in local `HEAD` (Git *behind*; “ahead
-  on the remote”). Populate it from the last Check remote / fetch, not
-  from a hidden fetch on click. This surface does not exist yet.
-
-Keep the copy control on the branch name; the name click is navigation,
-the icon is copy. Do not hide Check remote — the upstream preview reads
-whatever the last check observed.
-
-The incoming-commit list is new API if the client cannot derive it from
-data it already has. Same compatibility gate as **2**.
-
-## 10 — Middle-click a commit for a focused new tab
+### 8 — Middle-click focused commit tab
 
 Commit and Working tree rows in the history pane are `<button>`s
 (`CommitRevisionPane.tsx`). Middle-click (Chrome: new tab) does nothing,
@@ -254,17 +203,110 @@ The Working tree row in the history list should middle-click to the
 focused Working tree URL (the Dirty-badge view). Regular left-click in
 the current tab still selects in place and keeps the sidebar.
 
+## Header and Review
+
+### 9 — Title-row repository actions
+
+Pull, Push, Check remote, and the comments control currently occupy their
+own row (`.source-control-action-row`). The top identity row (project,
+branch, upstream, Dirty/Clean, mode tabs) often has unused space between
+the identity cluster and the Changes / Files / Pending Comments / Reviews
+tabs. `topics/source-control.md` § Header hierarchy currently *requires*
+that second row at every width.
+
+When the topmost title row has leftover space, place those actions in
+that middle gap instead of adding a row. Same wrap rule as the mode tabs:
+browser-computed from intrinsic widths, not a viewport breakpoint. If they
+do not fit, keep today's action row. Do not let branch names, badges, or
+action feedback shove the group around.
+
+### 10 — Comments control
+
+The control label is **Review** / **Review (N)** (`sourceReviewStart`,
+`sourceReviewReview`). With no drafts it `setTab("comments")` and the
+Comments mode shows **No pending comments.** With drafts it opens the
+submit modal and skips the list.
+
+That is not a “start a review” verb. It is access to the drafted
+accumulator (and, when nonempty, a shortcut past the list into submit).
+The mode tab for that accumulator is already **Pending Comments**;
+submitted history is **Reviews**.
+
+Rename the control to **Comments** or **Review comments**. Always open the
+Comments mode. Leave submit on that pane (it already has `onSubmit`). The
+tab's existing count chip is enough when drafts exist. Do not keep the
+zero-vs-nonzero dual target.
+
+### 11 — Back leaves Comments
+
+The Dirty badge already returns to standalone Working tree
+(`onSelectChanges` → `setTab("changes")`). Browser / in-app Back does not.
+
+`useSourceTab` writes `tab` with `replace: true`
+(`GitStatusPage.tsx`). Changes → Comments / Reviews therefore does not
+push a history entry, so Back skips the Source Control mode change and
+leaves the page or stays put.
+
+Push a history entry when the Source Control mode changes. Back from
+Comments or Reviews should restore the previous Source Control mode
+(usually Working tree). A deep link that *lands* on `?tab=comments`
+should still Back off the Source Control page. Phone commit-detail
+`pushState` (`useMobileCommitDetailHistory`) is a separate stack and
+must keep working.
+
+## Identity bar
+
+### 12 — Branch opens HEAD
+
+`RepoStatusBar` renders the branch name as inert text plus a copy
+control.
+
+Clicking the local branch (e.g. `main`) opens the `HEAD` commit the same
+way a focused commit view does — files and diff for `HEAD`, not the
+Working tree. `GitStatusInfo.recentCommits[0]` is the current `HEAD` tip
+when present; detached `HEAD` still has a tip SHA even when `branch` is
+null (copy/click should use the SHA, and the copy control already needs a
+non-branch value in that case).
+
+Keep the copy control on the branch name; the name click is navigation,
+the icon is copy.
+
+### 13 — Upstream opens incoming commits
+
+The upstream (`→ graehl/main`) is inert text. Clicking it should open a
+preview of commits that are on the remote-tracking branch and not in
+local `HEAD` (Git *behind*; “ahead on the remote”). Populate it from the
+last Check remote / fetch, not from a hidden fetch on click. This
+surface does not exist yet.
+
+Do not hide Check remote — the upstream preview reads whatever the last
+check observed.
+
+The incoming-commit list is new API if the client cannot derive it from
+data it already has. Same compatibility gate as
+[2](#2--cache-untracked-listing-without-git-enumeration). Land
+[12](#12--branch-opens-head) first.
+
 ## Suggested implementation order
 
-Cheap, current contracts: **0**, **3**, **5**, **6**, **7** rename, **8**.
+Cheap, current contracts: [6](#6--commit-history-affordance),
+[3](#3--highlight-and-reveal-the-path-match),
+[5](#5--ellipsis-to-the-live-pane-width),
+[7](#7--selectable-commit-message),
+[10](#10--comments-control),
+[11](#11--back-leaves-comments).
 
-Needs a URL or layout-contract edit: **7** placement, **9** branch →
-`HEAD`, **10**.
+Needs a URL or layout-contract edit: [9](#9--title-row-repository-actions),
+[12](#12--branch-opens-head),
+[8](#8--middle-click-focused-commit-tab).
 
-Needs a new untracked model and likely a capability: **1** + **2**, then
-**4** against that model.
+Needs a new untracked model and likely a capability:
+[1](#1--cluster-untracked-files-by-directory) +
+[2](#2--cache-untracked-listing-without-git-enumeration), then
+[4](#4--apply-search-as-files-are-discovered) against that model.
 
-**9** upstream preview is a new surface; land the `HEAD` click first.
+[13](#13--upstream-opens-incoming-commits) is a new surface; land
+[12](#12--branch-opens-head) first.
 
 Found 2026-08-17 while reviewing Source Control Working tree on a large
 untracked corpus.
