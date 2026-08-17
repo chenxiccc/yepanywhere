@@ -48,9 +48,12 @@ false and YA queues.
 
 Interject does not cancel the turn. Grok drains the text at the next safe
 point (after a completed tool batch, before the next model step, or just
-before returning to the user) as a synthetic user item. YA Queue remains
-the end-of-turn path. Grok TUI `follow_up_behavior = steer` is CLI-local;
-YA does not read it.
+before returning to the user) as a synthetic user item whose durable
+`user_message_chunk` is wrapped in Grok's "while you were working" /
+`<user_query>` envelope. YA already echoed the raw steer; replay strips
+that outer envelope and keeps any `<user_query>` the user themselves
+quoted. YA Queue remains the end-of-turn path. Grok TUI
+`follow_up_behavior = steer` is CLI-local; YA does not read it.
 
 **Video output.** Grok writes MP4s under the session `videos/` directory.
 YA allowlists that root next to `images/`, stores `ftyp` MP4s as

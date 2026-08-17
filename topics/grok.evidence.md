@@ -5,6 +5,14 @@ implementation chronology behind the live contract in
 [`grok.md`](grok.md). It is evidence and design history, not the current
 product contract.
 
+## 2026-08-17 — Interject envelope is display-only
+
+Live `01a00e6c-4f08-7e11-9cad-32996bb47a0c` `updates.jsonl` confirmed
+drain writes one `user_message_chunk` whose text is the documented
+envelope. YA's optimistic steer echo is the inner text; replay must
+unwrap the outer wrapper or the confirmed turn shows the boilerplate.
+Quoted inner `<user_query>` blocks stay in the user's text.
+
 ## 2026-08-16 — 1.0.4 / grok-4.6 refresh
 
 Installed `grok 1.0.4 (d846eb93d9) [stable]`. Public `xai-org/grok-build`

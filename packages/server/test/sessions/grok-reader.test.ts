@@ -190,6 +190,77 @@ describe("GrokSessionReader tool replay", () => {
   });
 });
 
+describe("GrokSessionReader interject replay", () => {
+  it("strips Grok's outer steer envelope from user_message_chunk text", async () => {
+    const root = mkdtempSync(join(tmpdir(), "grok-reader-interject-"));
+    tempRoots.push(root);
+    const sessionsDir = join(root, "sessions");
+    const projectPath = join(root, "project");
+    const sessionId = "grok-session-interject";
+    const sessionDir = join(
+      sessionsDir,
+      encodeURIComponent(projectPath),
+      sessionId,
+    );
+    mkdirSync(projectPath, { recursive: true });
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(
+      join(sessionDir, "summary.json"),
+      JSON.stringify({
+        info: { id: sessionId, cwd: projectPath },
+        created_at: "2026-08-17T00:00:00.000Z",
+        updated_at: "2026-08-17T00:01:00.000Z",
+        generated_title: "Interject",
+        num_messages: 1,
+        current_model_id: "grok-4.6",
+      }),
+    );
+    const inner = [
+      "keep this quoted example",
+      "<user_query>",
+      "quoted inner",
+      "</user_query>",
+    ].join("\n");
+    writeFileSync(
+      join(sessionDir, "updates.jsonl"),
+      `${JSON.stringify({
+        timestamp: 1_775_000_000,
+        params: {
+          update: {
+            sessionUpdate: "user_message_chunk",
+            content: {
+              type: "text",
+              text: [
+                "The user sent a message while you were working:",
+                "<user_query>",
+                inner,
+                "</user_query>",
+                "Make sure to complete any unfinished tasks from previous turns.",
+              ].join("\n"),
+            },
+          },
+        },
+      })}\n`,
+    );
+
+    const reader = new GrokSessionReader({ sessionsDir, projectPath });
+    const loaded = await reader.getSession(
+      sessionId,
+      toUrlProjectId(projectPath),
+    );
+    expect(loaded?.data.provider).toBe("grok");
+    if (loaded?.data.provider !== "grok") {
+      throw new Error("Expected a Grok session");
+    }
+    expect(loaded.data.session.messages).toMatchObject([
+      {
+        type: "user",
+        message: { role: "user", content: inner },
+      },
+    ]);
+  });
+});
+
 describe("GrokSessionReader provider children", () => {
   it("lists parent/subagents metas and hides child dirs from top-level lists", async () => {
     const root = mkdtempSync(join(tmpdir(), "grok-reader-children-"));

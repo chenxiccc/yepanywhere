@@ -30,6 +30,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { attachToolResultMediaCandidates } from "../media/inlineImageData.js";
+import { unwrapGrokInterjectText } from "../sdk/providers/grok-interject-text.js";
 import {
   type NormalizedGrokToolState,
   buildGrokStructuredToolResult,
@@ -494,11 +495,17 @@ export class GrokSessionReader implements ISessionReader {
   ): null {
     if (!buffer?.content.trim()) return null;
 
+    const text =
+      buffer.role === "user" && buffer.kind === "text"
+        ? unwrapGrokInterjectText(buffer.content)
+        : buffer.content;
+    if (!text.trim()) return null;
+
     const uuid = `grok-${messages.length}-${buffer.role}-${buffer.kind}`;
     const content =
       buffer.kind === "thinking"
-        ? [{ type: "thinking", thinking: buffer.content }]
-        : buffer.content;
+        ? [{ type: "thinking", thinking: text }]
+        : text;
     messages.push({
       type: buffer.role,
       uuid,
