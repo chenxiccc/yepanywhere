@@ -31,6 +31,19 @@ export interface SessionListSummary {
   isStarred?: SessionSummary["isStarred"];
 }
 
+/**
+ * Canonical provider-child order: most recently active first, so every surface
+ * that lists subagents (Agents, session cards, the sidebar outline, the child
+ * selector) puts the child that ran last at the top. Sorts in place.
+ */
+export function sortProviderChildSessions(
+  children: ProviderChildSessionSummary[],
+): ProviderChildSessionSummary[] {
+  return children.sort(
+    (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+  );
+}
+
 export function toSessionListSummary(
   summary: Pick<
     SessionSummary,
@@ -209,7 +222,8 @@ export interface ISessionReader {
   ): Promise<{ messages: Message[]; status: string } | null>;
 
   /**
-   * List provider-native child work attached to one canonical YA session.
+   * List provider-native child work attached to one canonical YA session,
+   * most recently active first (see `sortProviderChildSessions`).
    * Readers without provider child sessions omit this method.
    */
   listProviderChildSessions?(

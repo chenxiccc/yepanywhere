@@ -45,6 +45,51 @@ export function latestProviderChildUpdatedAt(
   return latest;
 }
 
+/** How prominent a subagent's activity marker is among its siblings. */
+export type ProviderChildActivityLevel = "latest" | "recent" | "older";
+
+/** Sibling lag that still counts as "was working around the same time". */
+const RECENT_BEHIND_LATEST_MS = 5 * 60 * 1000;
+
+/**
+ * Rank sibling subagents by how recently each transcript changed, measured
+ * against the freshest sibling rather than the wall clock.
+ *
+ * A relative scale is what the sidebar marker needs: it answers "which of
+ * these ran last", and it only changes when the summaries themselves change.
+ * An absolute age would need a per-minute clock and would repaint every
+ * expanded outline on every tick for no added meaning.
+ */
+export function providerChildActivityLevels(
+  children: readonly ProviderChildSessionSummary[],
+): Map<string, ProviderChildActivityLevel> {
+  const levels = new Map<string, ProviderChildActivityLevel>();
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const child of children) {
+    const ms = Date.parse(child.updatedAt);
+    if (Number.isFinite(ms) && ms > latestMs) {
+      latestMs = ms;
+    }
+  }
+  for (const child of children) {
+    const ms = Date.parse(child.updatedAt);
+    if (!Number.isFinite(ms) || latestMs === Number.NEGATIVE_INFINITY) {
+      levels.set(child.id, "older");
+      continue;
+    }
+    const behindMs = latestMs - ms;
+    levels.set(
+      child.id,
+      behindMs === 0
+        ? "latest"
+        : behindMs < RECENT_BEHIND_LATEST_MS
+          ? "recent"
+          : "older",
+    );
+  }
+  return levels;
+}
+
 export function countRecentlyActiveProviderChildren(
   children: readonly ProviderChildSessionSummary[],
   processState: string | null | undefined,

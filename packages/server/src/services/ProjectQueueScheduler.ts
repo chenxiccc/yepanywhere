@@ -244,6 +244,7 @@ export class ProjectQueueScheduler {
       externalTracker: this.externalTracker,
       getRecoveredPatientQueueCount: (candidateProjectId) =>
         this.getRecoveredPatientQueueCount(candidateProjectId),
+      ignoreSessionsPendingDone: true,
     });
     const reservations = this.userSessionStartReservations.get(projectId);
     if (reservations) {

@@ -31,6 +31,7 @@ function createProcess(
     isRetainingProviderWork: () => false,
     getPendingInputRequest: () => null,
     getDeferredQueueSummary: () => [],
+    hasPendingYaCommand: () => false,
     getLivenessSnapshot: () => ({
       derivedStatus:
         process.state.type === "idle" ? "verified-idle" : "recently-active",

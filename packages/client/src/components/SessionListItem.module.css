@@ -39,20 +39,26 @@
   min-width: 0;
 }
 
+/*
+ * The disclosure column, overlay menu, and unread dot all sit beside the
+ * parent row, so they must track the sidebar density setting rather than the
+ * comfortable-mode constant. Hardcoding 34px here made every session with
+ * subagents 9px taller than its siblings in compact spacing.
+ */
 .compactWithProviderChildren :global(.session-list-item__menu) {
   top: 0;
-  height: 34px;
+  height: var(--sidebar-row-min-height, 34px);
   transform: none;
 }
 
 .compactWithProviderChildren:global(.unread)::before {
-  top: 17px;
+  top: calc(var(--sidebar-row-min-height, 34px) / 2);
 }
 
 .providerChildrenDisclosure {
   display: inline-flex;
   width: 1.5rem;
-  min-height: 34px;
+  min-height: var(--sidebar-row-min-height, 34px);
   flex: 0 0 1.5rem;
   align-items: center;
   justify-content: center;
@@ -72,7 +78,9 @@
 }
 
 .providerChildrenDisclosure:focus-visible {
-  outline: 2px solid var(--accent-primary);
+  /* --accent-primary is never defined; without the fallback the whole
+     outline declaration is invalid and the focus ring disappears. */
+  outline: 2px solid var(--accent-primary, #3b82f6);
   outline-offset: -2px;
 }
 
@@ -91,15 +99,19 @@
   transform: rotate(90deg);
 }
 
+/*
+ * The outline is a dense sub-list, not a second session list: rows sit flush
+ * against each other and the indent is only deep enough to read as nested.
+ * The left padding is the gutter the per-row activity rail occupies.
+ */
 .providerChildrenOutline {
   display: flex;
   min-width: 0;
   flex: 0 0 100%;
   flex-direction: column;
-  gap: 1px;
   box-sizing: border-box;
   margin: 0;
-  padding: 0 0.75ch var(--space-1) calc(1.5rem + 1ch);
+  padding: 0 0.75ch 2px calc(0.5rem + 1ch);
   list-style: none;
 }
 
@@ -110,14 +122,14 @@
 .providerChildrenOutlineLink {
   display: flex;
   min-width: 0;
-  min-height: 28px;
+  min-height: max(20px, calc(var(--sidebar-row-min-height, 34px) - 10px));
   align-items: center;
-  gap: var(--space-2);
-  padding: 2px var(--space-2);
+  gap: var(--space-1);
+  padding: 0 var(--space-2) 0 0;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
-  line-height: 1.2;
+  line-height: var(--sidebar-row-line-height, 1.2);
   text-decoration: none;
 }
 
@@ -128,14 +140,31 @@
   outline: none;
 }
 
-.providerChildrenTreeLine {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  align-self: flex-start;
-  margin-top: 3px;
-  border-bottom: 1px solid var(--border-color);
-  border-left: 1px solid var(--border-color);
+/*
+ * Activity rail. Sits at the indent boundary so the column of markers reads
+ * as the nesting guide and the recency cue at once. Levels are relative to
+ * the freshest sibling (see providerChildActivityLevels), so the rail is
+ * stable between renders and needs no clock.
+ *
+ * The ramp is prominence, not hue: the sidebar's green already means unread,
+ * and a second green here would read as a second unread signal.
+ */
+.providerChildrenActivity {
+  width: 3px;
+  height: 0.85em;
+  flex: 0 0 3px;
+  margin-right: 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+}
+
+.providerChildrenActivityRecent {
+  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
+}
+
+.providerChildrenActivityLatest {
+  height: 1.15em;
+  background: var(--text-primary);
 }
 
 .providerChildrenOutlineTitle {
@@ -166,5 +195,10 @@
 
   .providerChildrenDisclosure {
     min-height: 40px;
+  }
+
+  /* Child rows stay tappable even though the outline is otherwise dense. */
+  .providerChildrenOutlineLink {
+    min-height: 32px;
   }
 }

@@ -45,6 +45,7 @@ import type {
   ISessionReader,
   LoadedSession,
 } from "./types.js";
+import { sortProviderChildSessions } from "./types.js";
 import {
   GROK_SESSIONS_DIR,
   canonicalizeProjectPath,
@@ -716,12 +717,9 @@ export class GrokSessionReader implements ISessionReader {
       return [];
     }
     const metas = await this.readParentSubagentMetas(parent.dirPath);
-    return metas
-      .map((meta) => toGrokProviderChildSummary(parentSessionId, meta))
-      .sort(
-        (left, right) =>
-          Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-      );
+    return sortProviderChildSessions(
+      metas.map((meta) => toGrokProviderChildSummary(parentSessionId, meta)),
+    );
   }
 
   async getSessionFilePath(sessionId: string): Promise<string | null> {

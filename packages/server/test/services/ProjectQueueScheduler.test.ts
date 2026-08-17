@@ -84,6 +84,7 @@ function createProcess(
     isRetainingProviderWork: () => false,
     getPendingInputRequest: () => null,
     getDeferredQueueSummary: () => [],
+    hasPendingYaCommand: () => false,
     getLivenessSnapshot: () => ({
       derivedStatus:
         process.state.type === "idle" ? "verified-idle" : "recently-active",
@@ -869,6 +870,49 @@ describe("ProjectQueueScheduler", () => {
       projectPath: PROJECT_PATH,
       message: { text: "project work waits" },
     });
+  });
+
+  it("dispatches past a session whose user already queued /done", async () => {
+    // The agent is still finishing some final action, but the user has
+    // declared the session done, so it is no longer project backlog.
+    const process = createProcess(projectId, {
+      state: { type: "in-turn" },
+      isRetainingProviderWork: () => true,
+      getDeferredQueueSummary: () => [{ kind: "ya-command" }],
+      hasPendingYaCommand: (command?: "done") => command === "done",
+    });
+    supervisor.processes = [process];
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "runs while /done settles" },
+      },
+    });
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+  });
+
+  it("still blocks on an in-turn session with no queued /done", async () => {
+    const process = createProcess(projectId, {
+      state: { type: "in-turn" },
+      isRetainingProviderWork: () => true,
+    });
+    supervisor.processes = [process];
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "waits for the turn" },
+      },
+    });
+
+    await wait(25);
+    expect(supervisor.resumeCalls).toHaveLength(0);
   });
 
   it("waits for per-session deferred queues to drain", async () => {

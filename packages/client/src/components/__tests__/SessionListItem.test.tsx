@@ -1254,6 +1254,58 @@ describe("SessionListItem links", () => {
     expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 
+  it("marks the most recently active subagent in the outline gutter", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-parent"
+              projectId="project-1"
+              title="Parent session"
+              provider="claude"
+              mode="compact"
+              providerChildren={[
+                {
+                  id: "child-newest",
+                  parentSessionId: "session-parent",
+                  title: "Newest child",
+                  updatedAt: "2026-07-19T12:00:00.000Z",
+                },
+                {
+                  id: "child-nearby",
+                  parentSessionId: "session-parent",
+                  title: "Nearby child",
+                  updatedAt: "2026-07-19T11:58:00.000Z",
+                },
+                {
+                  id: "child-stale",
+                  parentSessionId: "session-parent",
+                  title: "Stale child",
+                  updatedAt: "2026-07-19T09:00:00.000Z",
+                },
+              ]}
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show subagents for Parent session" }),
+    );
+
+    const levelFor = (childTitle: string) =>
+      screen
+        .getByRole("link", { name: new RegExp(childTitle) })
+        .querySelector("[data-activity]")
+        ?.getAttribute("data-activity");
+
+    expect(levelFor("Newest child")).toBe("latest");
+    expect(levelFor("Nearby child")).toBe("recent");
+    expect(levelFor("Stale child")).toBe("older");
+  });
+
   it("keeps compact session rows free of Resume actions", () => {
     render(
       <I18nProvider>

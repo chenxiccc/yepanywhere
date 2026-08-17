@@ -2608,6 +2608,7 @@
   "providerChildrenCountMany": "{count} provider subagents",
   "providerChildrenExpand": "Show subagents for {title}",
   "providerChildrenCollapse": "Hide subagents for {title}",
+  "providerChildActivityAge": "last activity {age} ago",
   "providerChildOpen": "Open",
   "providerChildViewerTitle": "Subagents",
   "providerChildViewerBriefLabel": "Subagents",

@@ -138,6 +138,14 @@ A project is not idle while any owned session in that project has:
 - pending input;
 - liveness other than `verified-idle`.
 
+A session whose user has queued `/done` is exempt from all of the above for
+Project Queue promotion. The user has declared that session finished, so the
+final action the agent is still completing is not backlog the next queued
+request should wait behind, and the queued `/done` chip itself must not read as
+a deferred-queue blocker. The exemption is Project Queue's alone: the
+inactivity push notifier reports whether work is literally still running and
+therefore keeps counting that session.
+
 A project is also not idle while it has a worker/startup queue entry or known
 external session ownership. It is likewise not idle while an admitted
 user-initiated session start is still establishing its provider harness.

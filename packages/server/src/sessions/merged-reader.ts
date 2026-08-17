@@ -11,6 +11,7 @@ import type {
   RecoveredSessionLaunchSettings,
   SessionListSummary,
 } from "./types.js";
+import { sortProviderChildSessions } from "./types.js";
 
 /**
  * One logical provider reader backed by multiple authoritative session roots.
@@ -169,7 +170,7 @@ export class MergedSessionReader implements ISessionReader {
         if (!byId.has(child.id)) byId.set(child.id, child);
       }
     }
-    return [...byId.values()];
+    return sortProviderChildSessions([...byId.values()]);
   }
 
   listAcceptedProviderChildSessions(
@@ -188,7 +189,9 @@ export class MergedSessionReader implements ISessionReader {
         if (!byId.has(child.id)) byId.set(child.id, child);
       }
     }
-    return sawAccepted ? [...byId.values()] : undefined;
+    return sawAccepted
+      ? sortProviderChildSessions([...byId.values()])
+      : undefined;
   }
 
   async getSessionFilePath(sessionId: string): Promise<string | null> {

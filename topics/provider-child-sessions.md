@@ -54,11 +54,26 @@ excluded from Grok top-level `listSessions` / `listSessionFiles`. Fork
 
 ## Presentation contract
 
+Every reader returns children most recently active first, through the one
+`sortProviderChildSessions` owner in `sessions/types.ts`; a merged reader
+re-sorts across roots rather than concatenating per-root runs. Surfaces present
+that order as given.
+
 Provider child summaries are nested beneath the parent process on **Agents**.
 Session-list cards repeat the child descriptions. A compact sidebar row keeps
 its number-only count pill and, only when children exist, adds a disclosure
 button. The outline is collapsed by default; expanding it renders child
-title/type links beneath the parent without navigating the parent row. The
+title/type links beneath the parent without navigating the parent row.
+
+The outline is a dense sub-list, not a second session list. Its row height,
+the disclosure chevron, the overlay menu, and the unread dot all derive from
+`--sidebar-row-min-height`, so a session with subagents is exactly as tall as
+its siblings in either sidebar density. The indent is shallow, and the gutter
+it creates carries a per-row activity rail: the freshest sibling is accented
+and full height, siblings within five minutes of it are half-tinted, and older
+ones stay muted. Those levels are relative to the freshest sibling rather than
+the wall clock, so the rail repaints only when the summaries change and needs
+no per-minute timer. The row title carries the absolute age. The
 pill's tooltip begins with an explicit "N provider subagent(s)" label, followed
 by the child descriptions. The pill uses ordinary sidebar text sizing and
 retains a visible gap before the project label; neither glyph density nor title

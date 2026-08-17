@@ -255,6 +255,17 @@ heartbeat, wake, and Project Queue messages do not. If that real Send is
 accepted while `/done` is still queued, its later intent wins after the done row
 commits, so the already-accepted user turn does not leave automation paused.
 
+`/done` is consumed on submit, including while it sits queued. The composer
+clears the text optimistically and the settled request drops the localStorage
+recovery copy, so the session shows no "Draft" badge and a later visit does not
+restore a literal `/done` the command already consumed; a failed request
+restores it for retry. The aside-closing variant clears the same way.
+
+Because the user has declared the session finished, a queued `/done` also stops
+that session from blocking Project Queue promotion for its project, even while
+the agent completes a final action. See
+[project-queue](project-queue.md) § Project Idle Predicate.
+
 The feature is server-capability gated (`synthetic-done-command`) and defaults
 to `off`, preserving provider-owned `/done` skills. `hidden` enables typed
 local `/done` without a toolbar button; the ordinary narrowing tiers enable the

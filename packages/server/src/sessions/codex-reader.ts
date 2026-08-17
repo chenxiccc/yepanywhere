@@ -81,6 +81,7 @@ import {
   type RecoveredSessionLaunchSettings,
   type SessionListSummary,
   type SessionSummaryReadMode,
+  sortProviderChildSessions,
   toSessionListSummary,
 } from "./types.js";
 
@@ -1254,11 +1255,7 @@ export class CodexSessionReader implements ISessionReader {
           this.getCachedSessionFile(child.id)?.timestamp ?? parentUpdatedAt,
       });
     }
-    return children.sort(
-      (left, right) =>
-        new Date(right.updatedAt).getTime() -
-        new Date(left.updatedAt).getTime(),
-    );
+    return sortProviderChildSessions(children);
   }
 
   private getProviderChildProjectionKey(parentSessionId: string): string {

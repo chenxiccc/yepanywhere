@@ -34,9 +34,11 @@ describe("MergedSessionReader provider child freshness", () => {
       childReader({ accepted: second }),
     ]);
 
+    // Merged across roots in canonical most-recently-active-first order, not
+    // as per-root runs concatenated in reader-authority order.
     expect(reader.listAcceptedProviderChildSessions("parent")).toEqual([
-      expect.objectContaining({ id: "child-1" }),
       expect.objectContaining({ id: "child-2" }),
+      expect.objectContaining({ id: "child-1" }),
     ]);
     expect(first).toHaveBeenCalledWith("parent");
     expect(second).toHaveBeenCalledWith("parent");

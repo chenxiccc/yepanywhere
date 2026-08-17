@@ -2080,6 +2080,10 @@ function SessionPageContent({
   const handleSyntheticDone = useCallback(async () => {
     try {
       const result = await api.markSessionDone(actualSessionId);
+      // The composer cleared `/done` optimistically but kept the localStorage
+      // recovery copy. Without this the text is restored on remount and the
+      // session keeps a "Draft" badge for a command it already consumed.
+      draftControlsRef.current?.confirmInputClear();
       if (result.deferredMessages) {
         setDeferredMessages(result.deferredMessages);
       }
@@ -2088,6 +2092,7 @@ function SessionPageContent({
       }
       setScrollTrigger((previous) => previous + 1);
     } catch {
+      draftControlsRef.current?.restoreFromStorage();
       showToast(t("syntheticDoneFailed"), "error");
     }
   }, [actualSessionId, fetchNewMessages, setDeferredMessages, showToast, t]);
@@ -2120,7 +2125,9 @@ function SessionPageContent({
       hasAttachments: false,
     });
     if (target === "focused-aside") {
-      closeFocusedBtwAside();
+      if (closeFocusedBtwAside()) {
+        draftControlsRef.current?.confirmInputClear();
+      }
       return;
     }
     if (target === "synthetic-session") {

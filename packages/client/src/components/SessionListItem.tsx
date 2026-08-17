@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
@@ -13,6 +20,7 @@ import { activityBus } from "../lib/activityBus";
 import { toBrowserAppHref } from "../lib/appHref";
 import { formatBriefAge, formatSessionHoverAge } from "../lib/sessionAge";
 import {
+  providerChildActivityLevels,
   providerChildSessionHref,
   providerChildTitle,
 } from "../lib/providerChildSessions";
@@ -589,6 +597,12 @@ export function SessionListItem({
       : "providerChildrenExpand",
     { title: visibleTitle },
   );
+  // Children arrive newest-transcript-activity first; the rail marks which of
+  // them actually ran last so the order is readable without a timestamp column.
+  const providerChildActivity = useMemo(
+    () => providerChildActivityLevels(providerChildren),
+    [providerChildren],
+  );
 
   const handleBtwBadgeClick = useCallback(
     (e: React.MouseEvent<HTMLSpanElement>) => {
@@ -994,6 +1008,9 @@ export function SessionListItem({
                 child,
                 t("providerChildFallback"),
               );
+              const activityLevel =
+                providerChildActivity.get(child.id) ?? "older";
+              const activityAge = formatBriefAge(child.updatedAt);
               return (
                 <li
                   key={child.id}
@@ -1007,6 +1024,13 @@ export function SessionListItem({
                       child.id,
                     )}
                     className={styles.providerChildrenOutlineLink}
+                    title={
+                      activityAge
+                        ? `${childTitle} — ${t("providerChildActivityAge", {
+                            age: activityAge,
+                          })}`
+                        : childTitle
+                    }
                     onClick={(event) => {
                       event.stopPropagation();
                       if (
@@ -1021,7 +1045,14 @@ export function SessionListItem({
                     onAuxClick={(event) => event.stopPropagation()}
                   >
                     <span
-                      className={styles.providerChildrenTreeLine}
+                      className={`${styles.providerChildrenActivity} ${
+                        activityLevel === "latest"
+                          ? styles.providerChildrenActivityLatest
+                          : activityLevel === "recent"
+                            ? styles.providerChildrenActivityRecent
+                            : ""
+                      }`}
+                      data-activity={activityLevel}
                       aria-hidden
                     />
                     <span className={styles.providerChildrenOutlineTitle}>

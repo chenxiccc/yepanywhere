@@ -35,6 +35,7 @@ import type {
   ISessionReader,
   LoadedSession,
 } from "./types.js";
+import { sortProviderChildSessions } from "./types.js";
 
 /** Default OpenCode storage directory */
 export const OPENCODE_STORAGE_DIR = join(
@@ -1355,9 +1356,7 @@ export class OpenCodeSessionReader implements ISessionReader {
     )) {
       if (!byId.has(child.id)) byId.set(child.id, child);
     }
-    return [...byId.values()].sort(
-      (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-    );
+    return sortProviderChildSessions([...byId.values()]);
   }
 
   async getAgentMappings(

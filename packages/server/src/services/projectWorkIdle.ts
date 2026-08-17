@@ -9,6 +9,7 @@ export interface ProjectWorkProcessSnapshot {
   getPendingInputRequest(): unknown;
   getDeferredQueueSummary(): readonly unknown[];
   getLivenessSnapshot(): { derivedStatus: string };
+  hasPendingYaCommand(command?: "done"): boolean;
 }
 
 export interface ProjectWorkSupervisor {
@@ -38,12 +39,26 @@ export async function getProjectWorkIdleStatus(
     supervisor: ProjectWorkSupervisor;
     externalTracker?: ProjectWorkExternalTracker;
     getRecoveredPatientQueueCount?: (projectId: UrlProjectId) => number;
+    /**
+     * Treat a session with a queued `/done` as finished work rather than as a
+     * blocker. The user has already declared that session done, so whatever
+     * final action the agent is still completing is not project backlog the
+     * next queued request should wait behind. Callers that report literal
+     * "is anything still running" (inactivity push) leave this off.
+     */
+    ignoreSessionsPendingDone?: boolean;
   },
 ): Promise<ProjectWorkIdleStatus> {
   const blockers: string[] = [];
 
   for (const process of options.supervisor.getAllProcesses()) {
     if (process.projectId !== projectId) continue;
+    if (
+      options.ignoreSessionsPendingDone &&
+      process.hasPendingYaCommand("done")
+    ) {
+      continue;
+    }
     const stateType = process.state.type;
     if (stateType === "in-turn" || stateType === "waiting-input") {
       blockers.push(`${process.sessionId}:${stateType}`);

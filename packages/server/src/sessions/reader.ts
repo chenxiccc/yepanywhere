@@ -19,6 +19,7 @@ import type {
   ISessionReader,
   LoadedSession,
 } from "./types.js";
+import { sortProviderChildSessions } from "./types.js";
 
 // Re-export interface types
 export type { GetSessionOptions, ISessionReader } from "./types.js";
@@ -620,10 +621,7 @@ export class ClaudeSessionReader implements ISessionReader {
       }
     }
 
-    return children.sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
+    return sortProviderChildSessions(children);
   }
 
   /**
