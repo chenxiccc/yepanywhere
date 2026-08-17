@@ -97,4 +97,18 @@ describe("filterEnvForChildProcess", () => {
     expect(env.YEP_BROWSER_DEBUG_CALLER_TOKEN).toBe("boot-token");
     expect(env.YEP_DATA_DIR).toBeUndefined();
   });
+
+  it("passes the agent's own launch markers through to the child", () => {
+    const env = filterEnvForChildProcess({
+      AGENT_LAUNCHER: "yepanywhere",
+      AGENT_LAUNCH_HARNESS: "claude",
+      AGENT_LAUNCH_MODEL: "claude-opus-5",
+      AGENT_LAUNCH_EFFORT: "xhigh",
+    });
+
+    expect(env.AGENT_LAUNCHER).toBe("yepanywhere");
+    expect(env.AGENT_LAUNCH_HARNESS).toBe("claude");
+    expect(env.AGENT_LAUNCH_MODEL).toBe("claude-opus-5");
+    expect(env.AGENT_LAUNCH_EFFORT).toBe("xhigh");
+  });
 });

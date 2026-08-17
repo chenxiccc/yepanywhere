@@ -94,22 +94,38 @@ set legacy value supplies it, and every listed legacy key is deleted.
 - **`YA_*` / `YEP_ANYWHERE_*` — legacy compatibility aliases.** Normalize to
   `YEP_*` at startup, with canonical values winning, then remove the aliases
   from `process.env`.
+- **`AGENT_*` — addressed to the agent, not to YA.** Launch facts the agent
+  itself reads (`AGENT_LAUNCHER`, `AGENT_LAUNCH_*`). Deliberately outside the
+  product prefix, because the shared child filter strips `YEP_*`/`YA_*` as YA's
+  own configuration; see § Child launch markers.
 - **Unprefixed** (`PORT`, `VOICE_INPUT`, `ENABLED_PROVIDERS`, `LOG_*`,
   `WHISPER_*`, …) — historical YA config that predates the product prefix.
   This migration does not rename them merely to maximize prefix coverage.
 
 ## Child launch markers
 
-`YEP_AGENT_HARNESS` identifies the harness family launched by YA's shared
-provider host (`claude`, `codex`, `gemini`, `grok`, `opencode`, or `pi`).
-`YEP_AGENT_INITIAL_MODEL` and `YEP_AGENT_INITIAL_EFFORT` record the explicit
-model and effort selected at that launch; they are omitted when YA has no
-explicit value and intentionally remain unchanged after a live model or effort
-switch. The host replaces inherited values at the worker boundary and applies
-the same launch facts to remote-provider environments. These are trusted
-child-session outputs, not operator inputs. `AGENTCTL_SESSION_ID` remains the
-canonical YA session-id marker: a resume may have it at launch, while a new
-session receives it later through the session environment bridge.
+Launch markers are addressed to the agent, so they carry no product prefix:
+`filterEnvForChildProcess` drops inherited `YEP_*` on the way into a provider
+child, so a `YEP_`-named marker would reach the worker and vanish one process
+later. They live in the unprefixed `AGENT_` namespace instead, which needs no
+allowlist exception and keeps the "`YEP_*`/`YA_*` is YA's own configuration"
+rule intact.
+
+`AGENT_LAUNCHER=yepanywhere` says which launcher started the session, and
+selects the launcher-scoped agent instruction file. `AGENT_LAUNCH_HARNESS`
+identifies the harness family launched by YA's shared provider host (`claude`,
+`codex`, `gemini`, `grok`, `opencode`, or `pi`). `AGENT_LAUNCH_MODEL` and
+`AGENT_LAUNCH_EFFORT` record the explicit model and effort selected at that
+launch; they are omitted when YA has no explicit value and intentionally remain
+unchanged after a live model or effort switch. The host replaces inherited
+values at the worker boundary — including the pre-2026-08-17 `YEP_AGENT_HARNESS`
+/ `YEP_AGENT_INITIAL_MODEL` / `YEP_AGENT_INITIAL_EFFORT` names, so a YA server
+running inside an older YA's session cannot pass the outer session's stale
+values down — and applies the same launch facts to remote-provider
+environments. These are trusted child-session outputs, not operator inputs.
+`AGENTCTL_SESSION_ID` remains the canonical YA session-id marker: a resume may
+have it at launch, while a new session receives it later through the session
+environment bridge.
 
 `YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN` are YA-owned outputs for a
 supervised provider session, not operator inputs. The URL is an opaque,

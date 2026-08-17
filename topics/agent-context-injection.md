@@ -53,11 +53,12 @@ enabled `[Client capabilities]` fragments before the free-form
 | Codex OSS and legacy Gemini | same ordinary-user prefix | yes | no |
 | Pi, OpenCode, Grok ACP, Gemini ACP | same ordinary-user prefix | yes | first message after process launch |
 
-Shared-hosted provider processes also receive `YEP_AGENT_HARNESS`,
-`YEP_AGENT_INITIAL_MODEL`, and `YEP_AGENT_INITIAL_EFFORT`. The latter two
-record the explicit initial selections and do not change after live model or
-effort updates. These markers are launch facts only; they do not alter
-instruction placement or implement a compiled boot.
+Shared-hosted provider processes also receive `AGENT_LAUNCHER`,
+`AGENT_LAUNCH_HARNESS`, `AGENT_LAUNCH_MODEL`, and `AGENT_LAUNCH_EFFORT`. The
+latter two record the explicit initial selections and do not change after live
+model or effort updates. These markers are launch facts only; they do not alter
+instruction placement or implement a compiled boot. They are unprefixed because
+the shared child filter strips `YEP_*` — see `topics/ya-env-vars.md`.
 
 The non-Claude prefix has this provider-facing shape:
 

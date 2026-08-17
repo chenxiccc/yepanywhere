@@ -7,6 +7,11 @@
  * - Other irrelevant development/build-time variables
  *
  * We keep essential system variables that Claude might need.
+ *
+ * A marker meant for the agent to read must not be named `YEP_*` or `YA_*`:
+ * those are YA's own configuration and are dropped here. Publish it under the
+ * unprefixed `AGENT_` namespace instead, as the provider host does for
+ * `AGENT_LAUNCHER` and `AGENT_LAUNCH_*`. See topics/ya-env-vars.md.
  */
 
 /** Prefixes to exclude from child process environment */

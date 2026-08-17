@@ -73,8 +73,8 @@ enabled `[Client capabilities]` fragments before the free-form
 | Pi, OpenCode, Grok ACP, Gemini ACP | same ordinary-user prefix | yes | yes, on the first message after process launch |
 
 Shared-hosted provider processes also receive YA-owned
-`YEP_AGENT_HARNESS`, `YEP_AGENT_INITIAL_MODEL`, and
-`YEP_AGENT_INITIAL_EFFORT` launch markers. The latter two record explicit
+`AGENT_LAUNCHER`, `AGENT_LAUNCH_HARNESS`, `AGENT_LAUNCH_MODEL`, and
+`AGENT_LAUNCH_EFFORT` launch markers. The latter two record explicit
 initial selections and do not change after live model or effort updates. These
 markers let an installed global boot route known launch facts without
 re-deriving them from a provider transcript; they do not implement the proposed

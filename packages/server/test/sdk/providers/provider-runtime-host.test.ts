@@ -75,16 +75,18 @@ describe("withAgentLaunchEnvironment", () => {
         { model: "gpt-5.6-sol", effort: "high" },
         {
           KEEP_ME: "yes",
-          YEP_AGENT_HARNESS: "codex",
-          YEP_AGENT_INITIAL_MODEL: "ambient-model",
-          YEP_AGENT_INITIAL_EFFORT: "ambient-effort",
+          AGENT_LAUNCHER: "someone-else",
+          AGENT_LAUNCH_HARNESS: "codex",
+          AGENT_LAUNCH_MODEL: "ambient-model",
+          AGENT_LAUNCH_EFFORT: "ambient-effort",
         },
       ),
     ).toEqual({
       KEEP_ME: "yes",
-      YEP_AGENT_HARNESS: "claude",
-      YEP_AGENT_INITIAL_MODEL: "gpt-5.6-sol",
-      YEP_AGENT_INITIAL_EFFORT: "high",
+      AGENT_LAUNCHER: "yepanywhere",
+      AGENT_LAUNCH_HARNESS: "claude",
+      AGENT_LAUNCH_MODEL: "gpt-5.6-sol",
+      AGENT_LAUNCH_EFFORT: "high",
     });
   });
 
@@ -94,11 +96,25 @@ describe("withAgentLaunchEnvironment", () => {
         "pi",
         {},
         {
+          AGENT_LAUNCH_MODEL: "ambient-model",
+          AGENT_LAUNCH_EFFORT: "ambient-effort",
+        },
+      ),
+    ).toEqual({ AGENT_LAUNCHER: "yepanywhere", AGENT_LAUNCH_HARNESS: "pi" });
+  });
+
+  it("removes the markers' pre-rename names so a nested launch cannot lie", () => {
+    expect(
+      withAgentLaunchEnvironment(
+        "pi",
+        {},
+        {
+          YEP_AGENT_HARNESS: "codex",
           YEP_AGENT_INITIAL_MODEL: "ambient-model",
           YEP_AGENT_INITIAL_EFFORT: "ambient-effort",
         },
       ),
-    ).toEqual({ YEP_AGENT_HARNESS: "pi" });
+    ).toEqual({ AGENT_LAUNCHER: "yepanywhere", AGENT_LAUNCH_HARNESS: "pi" });
   });
 });
 
@@ -1223,9 +1239,10 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     });
     expect(launched.worker.remoteAgentLaunchEnvironment).toEqual({
       REMOTE_KEEP_ME: "yes",
-      YEP_AGENT_HARNESS: "claude",
-      YEP_AGENT_INITIAL_MODEL: "gpt-5.6-sol",
-      YEP_AGENT_INITIAL_EFFORT: "high",
+      AGENT_LAUNCHER: "yepanywhere",
+      AGENT_LAUNCH_HARNESS: "claude",
+      AGENT_LAUNCH_MODEL: "gpt-5.6-sol",
+      AGENT_LAUNCH_EFFORT: "high",
       YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/browser-debug/v1",
       YEP_BROWSER_DEBUG_CALLER_TOKEN: "boot-token",
     });

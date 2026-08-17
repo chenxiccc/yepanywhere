@@ -32,11 +32,17 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
   server setting does not mutate an already-running provider process. Dynamic
   data needed by later grandchildren requires a provider-supported control
   channel or an explicit bridge such as the local `agentctl` `BASH_ENV` file.
-- The shared provider host replaces ambient `YEP_AGENT_HARNESS`,
-  `YEP_AGENT_INITIAL_MODEL`, and `YEP_AGENT_INITIAL_EFFORT` values with its
-  launch snapshot before creating a worker. Model and effort markers describe
-  the initial launch only; the later session-id bridge remains separate because
-  new canonical YA ids are not known at process creation.
+- The shared provider host replaces ambient `AGENT_LAUNCHER`,
+  `AGENT_LAUNCH_HARNESS`, `AGENT_LAUNCH_MODEL`, and `AGENT_LAUNCH_EFFORT` values
+  with its launch snapshot before creating a worker, and deletes the markers'
+  pre-2026-08-17 `YEP_AGENT_*` names so a nested YA cannot present the outer
+  session's launch as this one's. Model and effort markers describe the initial
+  launch only; the later session-id bridge remains separate because new
+  canonical YA ids are not known at process creation.
+- A marker the agent is meant to read must not be named `YEP_*` or `YA_*`. The
+  shared child filter strips those prefixes as YA's own configuration, so such a
+  marker survives only to the worker and is gone by the time the agent binary
+  starts. Publish agent-facing markers under the unprefixed `AGENT_` namespace.
 
 ## Shell-startup contracts
 

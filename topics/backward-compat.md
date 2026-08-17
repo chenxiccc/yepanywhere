@@ -7,6 +7,21 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-17 agent launch markers — renamed `YEP_AGENT_HARNESS`,
+`YEP_AGENT_INITIAL_MODEL`, and `YEP_AGENT_INITIAL_EFFORT` to
+`AGENT_LAUNCH_HARNESS`, `AGENT_LAUNCH_MODEL`, and `AGENT_LAUNCH_EFFORT`, and
+added `AGENT_LAUNCHER=yepanywhere`. No compatibility shim: the old names never
+reached the reader they were written for. The provider host stamped them on the
+worker, then `filterEnvForChildProcess` stripped them one process later along
+with every other inherited `YEP_*`, so no agent binary ever saw them and no
+in-repo consumer read them. Keeping the `YEP_*` names would have required an
+allowlist exception that contradicts "`YEP_*`/`YA_*` is YA's own configuration,
+not the agent's"; the unprefixed `AGENT_` namespace passes the filter with no
+exception. The host now also deletes the three old names from a worker
+environment, so a YA server running inside a session an older YA launched cannot
+pass the outer session's stale launch facts down as this launch's. See
+[YA environment variables](ya-env-vars.md) § Child launch markers.
+
 2026-08-17 `cacheMissBilling.minimumInputTokens` — dropped and replaced by
 `minimumWastedTokens`, which counts only the excess over a turn's expected new
 content rather than raw uncached input. The old key measured a quantity the

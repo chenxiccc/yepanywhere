@@ -50,11 +50,27 @@ export function resolveProviderRuntimeWorkerPath(env = process.env) {
   return override ? resolve(override) : workerEntrypoint;
 }
 
+// Launch facts published for the agent itself to read. They carry no product
+// prefix on purpose: `filterEnvForChildProcess` drops inherited `YEP_*` from a
+// provider child, so a `YEP_`-named marker would reach the worker and vanish
+// one process later. See topics/ya-env-vars.md.
 const AGENT_LAUNCH_ENV_NAMES = [
+  "AGENT_LAUNCHER",
+  "AGENT_LAUNCH_HARNESS",
+  "AGENT_LAUNCH_MODEL",
+  "AGENT_LAUNCH_EFFORT",
+];
+
+// Names these markers used before 2026-08-17. A YA server running inside a
+// session an older YA launched would otherwise pass the outer session's stale
+// values down as if they described this launch.
+const REPLACED_AGENT_LAUNCH_ENV_NAMES = [
   "YEP_AGENT_HARNESS",
   "YEP_AGENT_INITIAL_MODEL",
   "YEP_AGENT_INITIAL_EFFORT",
 ];
+
+const AGENT_LAUNCHER_NAME = "yepanywhere";
 
 function agentHarness(providerName) {
   switch (providerName) {
@@ -77,14 +93,16 @@ export function withAgentLaunchEnvironment(
 ) {
   const environment = { ...baseEnvironment };
   for (const name of AGENT_LAUNCH_ENV_NAMES) delete environment[name];
+  for (const name of REPLACED_AGENT_LAUNCH_ENV_NAMES) delete environment[name];
 
-  environment.YEP_AGENT_HARNESS = agentHarness(providerName);
+  environment.AGENT_LAUNCHER = AGENT_LAUNCHER_NAME;
+  environment.AGENT_LAUNCH_HARNESS = agentHarness(providerName);
   const model =
     typeof options?.model === "string" ? options.model.trim() : undefined;
   const effort =
     typeof options?.effort === "string" ? options.effort.trim() : undefined;
-  if (model) environment.YEP_AGENT_INITIAL_MODEL = model;
-  if (effort) environment.YEP_AGENT_INITIAL_EFFORT = effort;
+  if (model) environment.AGENT_LAUNCH_MODEL = model;
+  if (effort) environment.AGENT_LAUNCH_EFFORT = effort;
   return environment;
 }
 

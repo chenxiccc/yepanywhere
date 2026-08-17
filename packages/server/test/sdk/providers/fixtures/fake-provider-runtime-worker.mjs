@@ -193,9 +193,9 @@ server.listen(socketPath, () => {
       queueDepth: 0,
       capabilities: {},
       agentLaunchEnvironment: {
-        harness: process.env.YEP_AGENT_HARNESS,
-        model: process.env.YEP_AGENT_INITIAL_MODEL,
-        effort: process.env.YEP_AGENT_INITIAL_EFFORT,
+        harness: process.env.AGENT_LAUNCH_HARNESS,
+        model: process.env.AGENT_LAUNCH_MODEL,
+        effort: process.env.AGENT_LAUNCH_EFFORT,
         browserDebugUrl: process.env.YEP_BROWSER_DEBUG_AGENT_URL,
         browserDebugCallerToken: process.env.YEP_BROWSER_DEBUG_CALLER_TOKEN,
       },
