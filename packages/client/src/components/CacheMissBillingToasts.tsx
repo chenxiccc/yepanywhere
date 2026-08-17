@@ -23,14 +23,14 @@ export function CacheMissBillingToasts() {
 
   useEffect(() => {
     return activityBus.on("cache-miss-billing", (event) => {
-      if (!event.showToast || event.record.outcome !== "unexpected-recompute") {
+      if (!event.showToast || !event.record.exception) {
         return;
       }
       const { record } = event;
       showToast(
         t("cacheMissBillingToast", {
           provider: record.provider,
-          tokens: formatTokenCount(record.observedUsage.uncachedInputTokens),
+          tokens: formatTokenCount(record.wastedInputTokens),
         }),
         "error",
         {

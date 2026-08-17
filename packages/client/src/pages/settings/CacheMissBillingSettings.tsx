@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import styles from "./CacheMissBillingSettings.module.css";
+import { CacheMissInactivityChart } from "./CacheMissInactivityChart";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useI18n } from "../../i18n";
@@ -92,8 +93,32 @@ function eventUsageLabel(event: CacheMissBillingRecord, t: TFunction): string {
   }
   return t("cacheMissBillingEventUsageMiss", {
     provider: event.provider,
-    tokens: formatTokenCount(event.observedUsage.uncachedInputTokens),
+    tokens: formatTokenCount(event.wastedInputTokens),
   });
+}
+
+/** Wasted tokens, idle gap, and whether the miss was flagged. */
+function eventMissDetail(
+  event: CacheMissBillingRecord,
+  t: TFunction,
+): string | null {
+  if (event.outcome !== "unexpected-recompute") return null;
+  const parts = [
+    t("cacheMissBillingEventWasted", {
+      tokens: formatTokenCount(event.wastedInputTokens),
+    }),
+  ];
+  if (event.elapsedSinceExpectedCacheMs !== undefined) {
+    parts.push(
+      t("cacheMissBillingEventAfterIdle", {
+        minutes: String(Math.round(event.elapsedSinceExpectedCacheMs / 60_000)),
+      }),
+    );
+  }
+  if (!event.exception) {
+    parts.push(t("cacheMissBillingEventNotFlagged"));
+  }
+  return parts.join(" · ");
 }
 
 function eventExpectedCostLabel(
@@ -155,6 +180,11 @@ function CacheMissBillingEventList({
               position: eventPositionLabel(event, t),
             })}
           </p>
+          {eventMissDetail(event, t) && (
+            <p className={`settings-hint ${styles.eventDetail}`}>
+              {eventMissDetail(event, t)}
+            </p>
+          )}
           <p className={`settings-hint ${styles.eventDetail}`}>
             {eventExpectedCostLabel(event, t)}
           </p>
@@ -376,25 +406,25 @@ export function CacheMissBillingSettings() {
             <div className="settings-item-actions">
               <span className="settings-input-unit">
                 <input
-                  key={`minimum-${effective.minimumInputTokens}`}
+                  key={`minimum-${effective.minimumWastedTokens}`}
                   type="number"
                   className={`settings-input-small ${styles.tokenInput}`}
                   min={1}
                   max={5_000_000}
                   step={1000}
-                  defaultValue={effective.minimumInputTokens}
+                  defaultValue={effective.minimumWastedTokens}
                   disabled={!effective.enabled}
                   onBlur={(event) => {
                     const value = clampInteger(
                       event.currentTarget.value,
-                      effective.minimumInputTokens,
+                      effective.minimumWastedTokens,
                       1,
                       5_000_000,
                     );
                     event.currentTarget.value = String(value);
-                    if (value !== effective.minimumInputTokens) {
+                    if (value !== effective.minimumWastedTokens) {
                       void updateCacheMissBilling({
-                        minimumInputTokens: value,
+                        minimumWastedTokens: value,
                       });
                     }
                   }}
@@ -404,9 +434,54 @@ export function CacheMissBillingSettings() {
               </span>
             </div>
           </SettingsItem>
+
+          <SettingsItem
+            label={t("cacheMissBillingRecentActivityTitle")}
+            description={t("cacheMissBillingRecentActivityDescription")}
+            className="settings-item--wide-control"
+          >
+            <div className="settings-item-actions">
+              <span className="settings-input-unit">
+                <input
+                  key={`recent-${effective.recentActivityMinutes}`}
+                  type="number"
+                  className="settings-input-small"
+                  min={0}
+                  max={1440}
+                  defaultValue={effective.recentActivityMinutes}
+                  disabled={!effective.enabled}
+                  onBlur={(event) => {
+                    const value = clampInteger(
+                      event.currentTarget.value,
+                      effective.recentActivityMinutes,
+                      0,
+                      1440,
+                    );
+                    event.currentTarget.value = String(value);
+                    if (value !== effective.recentActivityMinutes) {
+                      void updateCacheMissBilling({
+                        recentActivityMinutes: value,
+                      });
+                    }
+                  }}
+                  aria-label={t("cacheMissBillingRecentActivityTitle")}
+                />
+                <span>{t("cacheMissBillingMinutesUnit")}</span>
+              </span>
+            </div>
+          </SettingsItem>
         </div>
 
         {error && <p className="settings-warning">{error}</p>}
+      </SettingsSection>
+
+      <SettingsSection
+        title={t("cacheMissChartTitle")}
+        description={t("cacheMissChartDescription")}
+      >
+        <HideInSettingsSearch>
+          <CacheMissInactivityChart events={events} />
+        </HideInSettingsSearch>
       </SettingsSection>
 
       <SettingsSection description={t("cacheMissBillingEventsDescription")}>

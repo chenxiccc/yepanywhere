@@ -1598,7 +1598,8 @@ describe("Settings Routes", () => {
               claude: 60,
               codex: 10,
             },
-            minimumInputTokens: 100_000,
+            minimumWastedTokens: 25_000,
+            recentActivityMinutes: 5,
           },
         }),
       });
@@ -1613,7 +1614,8 @@ describe("Settings Routes", () => {
             claude: 60,
             codex: 10,
           },
-          minimumInputTokens: 100_000,
+          minimumWastedTokens: 25_000,
+          recentActivityMinutes: 5,
         },
       });
     });

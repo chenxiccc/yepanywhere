@@ -281,11 +281,15 @@ even though the operator reports that Cache Billing has effectively never
 surfaced an outcome.
 
 That report was confirmed on 2026-08-17 and traced to two shape mismatches in
-`extractCacheMissBillingObservation`, which reject every real Claude and Codex
-message before classification; the expected-cost contract behind the classifier
-is separately wrong for window-extending turns. Details, corrected contract,
-and the cheap first fix are in
-[`gaps/cache-billing-records-nothing.md`](../gaps/cache-billing-records-nothing.md).
+`extractCacheMissBillingObservation`, which rejected every real Claude and
+Codex message before classification. The setting had in fact been enabled on
+that host, with an aggressive 500-token threshold, and still recorded nothing.
+Both mismatches and the expected-cost contract behind the classifier were
+fixed the same day; the contract now lives in
+[`cache-miss-accounting.md`](cache-miss-accounting.md).
+
+The stage counters proposed below remain unbuilt, and would have named that
+defect in one session instead of by code reading.
 
 A prompt-cache investigation needs stage counters rather than only final
 hit/miss records: usage-bearing provider message observed, expected-warm state

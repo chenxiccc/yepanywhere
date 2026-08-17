@@ -1158,22 +1158,40 @@ export function parseCacheMissBilling(
       parsed.providerFreshWindowMinutes = providerFreshWindowMinutes;
     }
   }
-  if ("minimumInputTokens" in raw) {
+  if ("minimumWastedTokens" in raw) {
     if (
-      raw.minimumInputTokens === undefined ||
-      raw.minimumInputTokens === null
+      raw.minimumWastedTokens === undefined ||
+      raw.minimumWastedTokens === null
     ) {
-      parsed.minimumInputTokens =
-        DEFAULT_CACHE_MISS_BILLING_SETTINGS.minimumInputTokens;
+      parsed.minimumWastedTokens =
+        DEFAULT_CACHE_MISS_BILLING_SETTINGS.minimumWastedTokens;
     } else if (
-      typeof raw.minimumInputTokens !== "number" ||
-      !Number.isInteger(raw.minimumInputTokens) ||
-      raw.minimumInputTokens < 1 ||
-      raw.minimumInputTokens > 5_000_000
+      typeof raw.minimumWastedTokens !== "number" ||
+      !Number.isInteger(raw.minimumWastedTokens) ||
+      raw.minimumWastedTokens < 1 ||
+      raw.minimumWastedTokens > 5_000_000
     ) {
       return null;
     } else {
-      parsed.minimumInputTokens = raw.minimumInputTokens;
+      parsed.minimumWastedTokens = raw.minimumWastedTokens;
+    }
+  }
+  if ("recentActivityMinutes" in raw) {
+    if (
+      raw.recentActivityMinutes === undefined ||
+      raw.recentActivityMinutes === null
+    ) {
+      parsed.recentActivityMinutes =
+        DEFAULT_CACHE_MISS_BILLING_SETTINGS.recentActivityMinutes;
+    } else if (
+      typeof raw.recentActivityMinutes !== "number" ||
+      !Number.isInteger(raw.recentActivityMinutes) ||
+      raw.recentActivityMinutes < 0 ||
+      raw.recentActivityMinutes > 1440
+    ) {
+      return null;
+    } else {
+      parsed.recentActivityMinutes = raw.recentActivityMinutes;
     }
   }
 

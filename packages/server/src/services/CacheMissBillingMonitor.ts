@@ -20,6 +20,8 @@ interface ProcessUsageState {
   messageIndex: number;
   assistantUsageCount: number;
   lastExpectedWarmAtMs?: number;
+  /** Total prompt size of the previous observation, for the growth measure. */
+  lastTotalContextTokens?: number;
 }
 
 type UsageFields = {
@@ -74,15 +76,41 @@ function messageId(message: SDKMessage): string | undefined {
     : undefined;
 }
 
+/**
+ * Where each provider puts the token counts. Claude's Agent SDK yields
+ * `SDKAssistantMessage`, whose usage lives on the nested API message
+ * (`message.message.usage`) exactly as the transcript stores it. Codex reports
+ * usage out of band, on a synthetic `system`/`token_usage` message whose usage
+ * *is* top level. A monitor that assumes one shape sees neither provider.
+ */
+function findUsageFields(message: SDKMessage): UsageFields | undefined {
+  const candidates: unknown[] = [
+    (message as { usage?: unknown }).usage,
+    (message as { message?: { usage?: unknown } }).message?.usage,
+    (message as { modelUsage?: unknown }).modelUsage,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") {
+      return candidate as UsageFields;
+    }
+  }
+  return undefined;
+}
+
+function carriesUsage(message: SDKMessage): boolean {
+  if (message.type === "assistant") return true;
+  return message.type === "system" && message.subtype === "token_usage";
+}
+
 export function extractCacheMissBillingObservation(
   message: SDKMessage,
   provider: ProviderName,
 ): CacheMissBillingObservation | undefined {
-  if (message.type !== "assistant") {
+  if (!carriesUsage(message)) {
     return undefined;
   }
-  const rawUsage = (message as { usage?: UsageFields }).usage;
-  if (!rawUsage || typeof rawUsage !== "object") {
+  const rawUsage = findUsageFields(message);
+  if (!rawUsage) {
     return undefined;
   }
 
@@ -95,10 +123,25 @@ export function extractCacheMissBillingObservation(
   const cacheCreationTokens = numericField(
     rawUsage.cache_creation_input_tokens,
   );
-  const outputTokens = numericField(rawUsage.output_tokens);
-  const uncachedInputTokens = inputTokens + (cacheCreationTokens ?? 0);
 
-  if (inputTokens + (cacheReadTokens ?? 0) + (cacheCreationTokens ?? 0) === 0) {
+  /**
+   * The two providers count `input_tokens` differently, so normalize before
+   * comparing anything. Codex follows the OpenAI convention where cached reads
+   * are a *subset* of the reported input (verified against a rollout showing
+   * `input_tokens: 109340, cached_input_tokens: 108288`). Claude reports the
+   * three classes disjointly, so its prompt total is their sum.
+   */
+  const totalContextTokens =
+    provider === "codex"
+      ? Math.max(inputTokens, cacheReadTokens ?? 0)
+      : inputTokens + (cacheReadTokens ?? 0) + (cacheCreationTokens ?? 0);
+  const uncachedInputTokens = Math.max(
+    0,
+    totalContextTokens - (cacheReadTokens ?? 0),
+  );
+  const outputTokens = numericField(rawUsage.output_tokens);
+
+  if (totalContextTokens === 0) {
     return undefined;
   }
 
@@ -109,6 +152,7 @@ export function extractCacheMissBillingObservation(
       ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
       ...(cacheCreationTokens !== undefined ? { cacheCreationTokens } : {}),
       ...(outputTokens !== undefined ? { outputTokens } : {}),
+      totalContextTokens,
       uncachedInputTokens,
     },
   };
@@ -153,8 +197,10 @@ export class CacheMissBillingMonitor {
     const nowIso = new Date(nowMs).toISOString();
     const assistantUsageCountBefore = state.assistantUsageCount;
     const previousWarmAtMs = state.lastExpectedWarmAtMs;
+    const previousTotalContextTokens = state.lastTotalContextTokens;
     state.assistantUsageCount += 1;
     state.lastExpectedWarmAtMs = nowMs;
+    state.lastTotalContextTokens = observation.usage.totalContextTokens;
 
     const settings = normalizeCacheMissBillingSettings(
       this.options.getSettings?.(),
@@ -188,29 +234,67 @@ export class CacheMissBillingMonitor {
       return;
     }
     const expectedCacheSource = forkExpected ? "fork" : "warm-session";
+
+    /**
+     * A continuing turn is expected to pay for whatever was appended since the
+     * cached prefix — the user's message plus the previous assistant turn and
+     * its tool results. Total prompt growth measures that directly, in the
+     * provider's own tokens, with no tokenizer of our own. A fork's first turn
+     * appends nothing, so its expectation is zero; session boot has no
+     * previous turn to measure, so it has no expectation at all and can never
+     * be flagged.
+     */
+    const expectedNewContentTokens = forkExpected
+      ? 0
+      : previousTotalContextTokens === undefined
+        ? undefined
+        : Math.max(
+            0,
+            observation.usage.totalContextTokens - previousTotalContextTokens,
+          );
+    const wastedInputTokens =
+      expectedNewContentTokens === undefined
+        ? 0
+        : Math.max(
+            0,
+            observation.usage.uncachedInputTokens - expectedNewContentTokens,
+          );
+
     const expectedInputCost: ExpectedInputCostState = {
-      state: "expected-free",
-      expectedUncachedPrefixTokens: 0,
+      state: forkExpected ? "expected-free" : "expected-new-content",
+      ...(expectedNewContentTokens !== undefined
+        ? { expectedUncachedPrefixTokens: expectedNewContentTokens }
+        : {}),
       source: expectedCacheSource,
-      prefixByteIdentical: true,
       prefixBasis: forkExpected
         ? "provider-fork-byte-identical"
         : "same-session-prefix",
       freshEnough: true,
       providerFreshWindowMinutes,
     };
-    const cacheReadTokens = observation.usage.cacheReadTokens ?? 0;
-    const uncachedInputTokens = observation.usage.uncachedInputTokens;
-    const outcome: CacheMissBillingOutcome | null =
-      cacheReadTokens > 0 && uncachedInputTokens < settings.minimumInputTokens
+
+    /**
+     * Misses close behind the previous turn are recorded but never flagged:
+     * a provider-side shard or serving migration can drop a warm cache with no
+     * YA-visible cause, and the value of those observations is the shape of
+     * the inactivity distribution, not an alert.
+     */
+    const withinRecentActivity =
+      elapsedSinceExpectedCacheMs !== undefined &&
+      elapsedSinceExpectedCacheMs <= settings.recentActivityMinutes * 60_000;
+    const missed =
+      expectedNewContentTokens !== undefined &&
+      wastedInputTokens >= settings.minimumWastedTokens;
+    const outcome: CacheMissBillingOutcome | null = missed
+      ? "unexpected-recompute"
+      : this.shouldRecordHit(observation, elapsedSinceExpectedCacheMs, settings)
         ? "expected-cache-hit"
-        : cacheReadTokens === 0 &&
-            uncachedInputTokens >= settings.minimumInputTokens
-          ? "unexpected-recompute"
-          : null;
+        : null;
     if (!outcome) {
       return;
     }
+    const exception =
+      outcome === "unexpected-recompute" && !withinRecentActivity;
 
     const record: CacheMissBillingRecord = {
       id: randomUUID(),
@@ -233,10 +317,12 @@ export class CacheMissBillingMonitor {
           ? "warm-session-cache-hit"
           : "warm-session-cache-miss",
       outcome,
+      exception,
       ...(observation.messageId ? { messageId: observation.messageId } : {}),
       messageIndex: state.messageIndex,
       observedUsage: observation.usage,
       expectedInputCost,
+      wastedInputTokens,
       freshWindowMinutes: providerFreshWindowMinutes,
       ...(elapsedSinceExpectedCacheMs !== undefined
         ? { elapsedSinceExpectedCacheMs }
@@ -244,9 +330,24 @@ export class CacheMissBillingMonitor {
       expectedCacheSource,
     };
 
-    void this.record(
-      record,
-      settings.showToasts && outcome === "unexpected-recompute",
+    void this.record(record, settings.showToasts && exception);
+  }
+
+  /**
+   * Clean hits are the denominator of the inactivity distribution, but writing
+   * one per turn would rewrite session metadata on every assistant message for
+   * no analytic gain: back-to-back turns are never at risk. Record a hit only
+   * once the gap is long enough that keeping the cache was in question.
+   */
+  private shouldRecordHit(
+    observation: CacheMissBillingObservation,
+    elapsedSinceExpectedCacheMs: number | undefined,
+    settings: Required<CacheMissBillingSettings>,
+  ): boolean {
+    if ((observation.usage.cacheReadTokens ?? 0) <= 0) return false;
+    if (elapsedSinceExpectedCacheMs === undefined) return false;
+    return (
+      elapsedSinceExpectedCacheMs >= settings.recentActivityMinutes * 60_000
     );
   }
 

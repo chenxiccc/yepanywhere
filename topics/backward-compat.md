@@ -7,6 +7,15 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-17 `cacheMissBilling.minimumInputTokens` — dropped and replaced by
+`minimumWastedTokens`, which counts only the excess over a turn's expected new
+content rather than raw uncached input. The old key measured a quantity the
+corrected contract no longer treats as a defect, so carrying its value forward
+would preserve a wrong threshold under a right-sounding name. A persisted
+`minimumInputTokens` is ignored and the new default (10,000) applies; nothing
+depended on the old value, since the feature had never recorded an event. Also
+new: `recentActivityMinutes`, absent-means-default at 10.
+
 2026-08-15 `claudeSteerBackgroundBash` expressions — keep the persisted
 `allowRegex` / `denyRegex` fields and whole-command matching, but evaluate the
 documented regular-expression subset with a linear-time engine. Reject

@@ -67,9 +67,12 @@ displaced. Any weighting YA applies belongs in configuration read at runtime,
 never as a constant compiled into a display component; prices change without
 notice and a stale hardcoded table is worse than showing raw classes.
 
-`packages/server/src/services/CacheMissBillingMonitor.ts` already watches the
-read/creation ratio for billing anomalies and is the natural place to share a
-classifier with.
+`packages/server/src/services/CacheMissBillingMonitor.ts` already normalizes
+these classes per provider and watches them for cache re-reads, and is the
+natural place to share a classifier with. Its normalization — including the
+fact that Codex counts cached reads *inside* `input_tokens` while Claude does
+not — is documented in [cache miss accounting](cache-miss-accounting.md);
+a ledger that sums the classes naively across providers will be wrong.
 
 ## What the gateway adds, and what it does not
 
