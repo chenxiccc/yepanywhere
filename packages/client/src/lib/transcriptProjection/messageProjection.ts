@@ -1,3 +1,7 @@
+import {
+  isInjectedContinuationPrompt,
+  isSyntheticNoResponseTurn,
+} from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../../types";
 import type {
   RenderItem,
@@ -294,6 +298,27 @@ function processMessage(
   diagnostics?: MessageProjectionDiagnostics,
 ): void {
   const msgId = getMessageId(msg);
+
+  // Claude Code restarts a session whose process is gone by injecting a
+  // "Continue from where you left off." meta prompt and answering it with a
+  // zero-token placeholder. Neither is a real turn, so rendering them as a user
+  // bubble followed by an assistant reply invents an exchange that never
+  // happened. Drop the injected prompt; show the placeholder as the one system
+  // notice that says what actually occurred.
+  if (isInjectedContinuationPrompt(msg)) {
+    return;
+  }
+  if (isSyntheticNoResponseTurn(msg)) {
+    items.push({
+      type: "system",
+      id: msgId,
+      subtype: "no_model_turn",
+      content: "Session continued without running a turn",
+      sourceMessages: [msg],
+      isSubagent: msg.isSubagent,
+    });
+    return;
+  }
 
   // Handle provider/runtime error entries as visible system messages.
   if (msg.type === "error") {

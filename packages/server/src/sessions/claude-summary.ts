@@ -8,6 +8,7 @@ import {
   getModelContextWindow,
   isCompactBoundary,
   isIdeMetadata,
+  isSyntheticNoResponseTurn,
   stripIdeMetadata,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
@@ -265,8 +266,10 @@ export function addEntryToState(
   const usage = getAssistantUsage(entry);
   const compactionPreTokens = getCompactionPreTokens(entry);
   const awaySummaryExcerpt = systemAwaySummaryExcerpt(entry);
+  // A synthetic no-response placeholder is assistant-shaped but no model
+  // produced it, so it must not become the session's "last agent turn" excerpt.
   const assistantParts =
-    entry.type === "assistant"
+    entry.type === "assistant" && !isSyntheticNoResponseTurn(entry)
       ? assistantContentParts(
           (entry as { message?: { content?: unknown } }).message?.content,
         )

@@ -2916,4 +2916,88 @@ describe("compileTranscriptProjection", () => {
       expect(items[0]?.type).toBe("user_prompt");
     });
   });
+
+  describe("harness session continuation", () => {
+    // Claude Code restarts a session whose process is gone by injecting this
+    // meta prompt and answering it with a zero-token placeholder. Rendering the
+    // pair as a user bubble plus an assistant reply shows an exchange that
+    // never happened; both collapse into one system notice instead.
+    const continuationPair = (): Message[] => [
+      {
+        uuid: "aaaaaaaa-0000-0000-0000-000000000001",
+        type: "user",
+        isMeta: true,
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text: "Continue from where you left off." },
+          ],
+        },
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        uuid: "aaaaaaaa-0000-0000-0000-000000000002",
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "<synthetic>",
+          content: [{ type: "text", text: "No response requested." }],
+        },
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    it("collapses the injected prompt and its placeholder into one notice", () => {
+      const items = compileTranscriptProjection(continuationPair());
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "system",
+        subtype: "no_model_turn",
+        content: "Session continued without running a turn",
+      });
+    });
+
+    it("keeps a real assistant turn that happens to use the same words", () => {
+      const messages: Message[] = [
+        {
+          uuid: "aaaaaaaa-0000-0000-0000-000000000003",
+          type: "assistant",
+          message: {
+            role: "assistant",
+            model: "claude-opus-4-5",
+            content: [{ type: "text", text: "No response requested." }],
+          },
+          timestamp: "2024-01-01T00:00:02Z",
+        },
+      ];
+
+      const items = compileTranscriptProjection(messages);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]?.type).toBe("text");
+    });
+
+    it("keeps a user-typed message with the continuation wording", () => {
+      const messages: Message[] = [
+        {
+          uuid: "aaaaaaaa-0000-0000-0000-000000000004",
+          type: "user",
+          // Not isMeta: the user actually typed this.
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: "Continue from where you left off." },
+            ],
+          },
+          timestamp: "2024-01-01T00:00:03Z",
+        },
+      ];
+
+      const items = compileTranscriptProjection(messages);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]?.type).toBe("user_prompt");
+    });
+  });
 });

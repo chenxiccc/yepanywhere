@@ -32,7 +32,10 @@ read, without opening the session, both ends of the conversation:
 - **Where it is now** — the most recent regular agent turn (new).
 
 "Regular agent turn" = the last assistant message with visible prose. Skip
-pure tool-call turns, thinking-only turns, and `<synthetic>` error turns; if
+pure tool-call turns, thinking-only turns, and `<synthetic>` turns — entries
+Claude Code shapes like an assistant reply but no model produced, identified by
+`isSyntheticNoResponseTurn` (`packages/shared/src/claude-sdk-schema/guards.ts`).
+Quoting one reports words the agent never said and hides its real last turn. If
 the latest turn *ends* on a tool call with no trailing prose, fall back to the
 prior text block or a short tool label (see Content below).
 

@@ -29,6 +29,7 @@ import {
   getMessageContent,
   isCompactBoundary,
   isConversationEntry,
+  isSyntheticNoResponseTurn,
 } from "@yep-anywhere/shared";
 import {
   assistantContentParts,
@@ -747,7 +748,7 @@ export class ClaudeSessionReader implements ISessionReader {
         type?: string;
         subtype?: string;
         content?: unknown;
-        message?: { content?: unknown };
+        message?: { content?: unknown; model?: unknown };
       };
       try {
         entry = JSON.parse(line);
@@ -757,6 +758,9 @@ export class ClaudeSessionReader implements ISessionReader {
       const awaySummary = systemAwaySummaryExcerpt(entry);
       if (awaySummary) return awaySummary;
       if (entry.type !== "assistant") continue;
+      // No model produced this text, so quoting it would attribute a reply to
+      // the agent that it never gave.
+      if (isSyntheticNoResponseTurn(entry)) continue;
       const { text, toolName } = assistantContentParts(entry.message?.content);
       const excerpt = formatAgentExcerpt(text);
       if (excerpt) return excerpt;

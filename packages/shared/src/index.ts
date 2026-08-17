@@ -662,6 +662,8 @@ export {
   isCompactBoundary,
   getLogicalParentUuid,
   isConversationEntry,
+  isInjectedContinuationPrompt,
+  isSyntheticNoResponseTurn,
   getMessageContent,
 } from "./claude-sdk-schema/guards.js";
 

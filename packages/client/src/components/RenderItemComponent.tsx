@@ -993,6 +993,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         const isConfigAck = item.subtype === "config_ack";
         const isLocalCommand = item.subtype === "local_command";
         const isSubagentActivity = item.subtype === "subagent_activity";
+        const isNoModelTurn = item.subtype === "no_model_turn";
         const isHighlightedConfigAck =
           isConfigAck && item.configChanged !== false;
         const icon =
@@ -1004,7 +1005,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
                 ? "/"
                 : isSubagentActivity
                   ? "↳"
-                  : "⟳";
+                  : isNoModelTurn
+                    ? "∅"
+                    : "⟳";
         if (item.subtype === "compact_boundary" || isLocalCommand) {
           return <CollapsibleSystemMessage item={item} icon={icon} />;
         }

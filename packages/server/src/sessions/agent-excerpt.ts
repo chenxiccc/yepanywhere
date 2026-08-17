@@ -4,7 +4,11 @@
  * (the Claude summary/fast-scan and the provider-independent normalized-message
  * path) produces identical output. See topics/session-hovercard-recent-activity.md.
  */
-import { isIdeMetadata, stripIdeMetadata } from "@yep-anywhere/shared";
+import {
+  isIdeMetadata,
+  isSyntheticNoResponseTurn,
+  stripIdeMetadata,
+} from "@yep-anywhere/shared";
 import type { Message } from "../supervisor/types.js";
 
 // The excerpt keeps the last nonblank lines of the latest visible turn (where
@@ -140,6 +144,9 @@ export function extractLastAgentExcerpt(
     const isAssistant =
       m?.type === "assistant" || m?.message?.role === "assistant";
     if (!isAssistant) continue;
+    // No model produced this text, so quoting it would attribute a reply to
+    // the agent that it never gave.
+    if (isSyntheticNoResponseTurn(m)) continue;
     const { text, toolName } = assistantContentParts(m.message?.content);
     const excerpt = formatAgentExcerpt(text);
     if (excerpt) return excerpt;

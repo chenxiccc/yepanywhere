@@ -3,6 +3,8 @@ import {
   type ClaudeSessionEntry,
   ClaudeSessionEntrySchema,
   getLogicalParentUuid,
+  isInjectedContinuationPrompt,
+  isSyntheticNoResponseTurn,
 } from "../src/claude-sdk-schema/index.js";
 import { AskUserQuestionResultSchema } from "../src/claude-sdk-schema/tool/ToolResultSchemas.js";
 
@@ -200,5 +202,79 @@ describe("Claude SDK schema", () => {
     expect(getLogicalParentUuid(result.data as ClaudeSessionEntry)).toBe(
       "tail",
     );
+  });
+
+  describe("harness session-continuation entries", () => {
+    it("recognizes the injected continuation prompt", () => {
+      expect(
+        isInjectedContinuationPrompt({
+          type: "user",
+          isMeta: true,
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: "Continue from where you left off." },
+            ],
+          },
+        }),
+      ).toBe(true);
+    });
+
+    it("does not treat a user-typed continuation as injected", () => {
+      // Only the harness stamps isMeta; without it a user typed the words.
+      expect(
+        isInjectedContinuationPrompt({
+          type: "user",
+          message: {
+            role: "user",
+            content: "Continue from where you left off.",
+          },
+        }),
+      ).toBe(false);
+    });
+
+    it("recognizes the synthetic no-response placeholder", () => {
+      expect(
+        isSyntheticNoResponseTurn({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            model: "<synthetic>",
+            content: [{ type: "text", text: "No response requested." }],
+          },
+        }),
+      ).toBe(true);
+    });
+
+    it("requires the synthetic model, not just the wording", () => {
+      expect(
+        isSyntheticNoResponseTurn({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            model: "claude-opus-4-5",
+            content: [{ type: "text", text: "No response requested." }],
+          },
+        }),
+      ).toBe(false);
+    });
+
+    it("leaves other synthetic assistant entries alone", () => {
+      expect(
+        isSyntheticNoResponseTurn({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            model: "<synthetic>",
+            content: [{ type: "text", text: "Turn aborted by user." }],
+          },
+        }),
+      ).toBe(false);
+    });
+
+    it("ignores null and non-object input", () => {
+      expect(isInjectedContinuationPrompt(null)).toBe(false);
+      expect(isSyntheticNoResponseTurn(undefined)).toBe(false);
+    });
   });
 });

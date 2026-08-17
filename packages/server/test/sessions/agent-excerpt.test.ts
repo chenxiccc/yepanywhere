@@ -94,4 +94,37 @@ describe("extractLastAgentExcerpt (provider-independent)", () => {
     ];
     expect(extractLastAgentExcerpt(messages)).toBe("shipped it");
   });
+
+  it("skips the synthetic placeholder for a turn no model ran", () => {
+    // Claude Code writes this assistant-shaped entry when it restarts a dead
+    // session without calling the model. Quoting it would report "No response
+    // requested." as the agent's latest word, hiding the real last turn.
+    const messages: Message[] = [
+      assistant({
+        role: "assistant",
+        content: [
+          { type: "text", text: "API Error: The operation timed out." },
+        ],
+      }),
+      assistant({
+        role: "assistant",
+        model: "<synthetic>",
+        content: [{ type: "text", text: "No response requested." }],
+      }),
+    ];
+    expect(extractLastAgentExcerpt(messages)).toBe(
+      "API Error: The operation timed out.",
+    );
+  });
+
+  it("keeps a real turn whose text matches the placeholder wording", () => {
+    const messages: Message[] = [
+      assistant({
+        role: "assistant",
+        model: "claude-opus-4-5",
+        content: [{ type: "text", text: "No response requested." }],
+      }),
+    ];
+    expect(extractLastAgentExcerpt(messages)).toBe("No response requested.");
+  });
 });
