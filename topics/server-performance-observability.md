@@ -280,6 +280,13 @@ projection caches. The 2026-08-04 logs contain profuse Codex entry-cache misses
 even though the operator reports that Cache Billing has effectively never
 surfaced an outcome.
 
+That report was confirmed on 2026-08-17 and traced to two shape mismatches in
+`extractCacheMissBillingObservation`, which reject every real Claude and Codex
+message before classification; the expected-cost contract behind the classifier
+is separately wrong for window-extending turns. Details, corrected contract,
+and the cheap first fix are in
+[`gaps/cache-billing-records-nothing.md`](../gaps/cache-billing-records-nothing.md).
+
 A prompt-cache investigation needs stage counters rather than only final
 hit/miss records: usage-bearing provider message observed, expected-warm state
 entered, provider usage fields absent, threshold left the observation
