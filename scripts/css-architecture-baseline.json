@@ -5,8 +5,12 @@
       "reason": "Device stream video vocabulary produced by EmulatorStream."
     },
     "packages/client/src/styles/index.css": {
-      "maxLines": 16089,
+      "maxLines": 16083,
       "reason": "Legacy application shell plus global tokens, themes, and base rules."
+    },
+    "packages/client/src/styles/provider-colors.css": {
+      "maxLines": 38,
+      "reason": "Theme-dependent provider badge color tokens shared by every badge surface."
     },
     "packages/client/src/styles/renderers.css": {
       "maxLines": 6115,
@@ -17,6 +21,6 @@
       "reason": "Shared tool-row state and generated renderer composition."
     }
   },
-  "updated": "2026-08-16",
+  "updated": "2026-08-17",
   "note": "Chapter 11 containment baseline for authored non-module CSS under packages/client/src. Limits may only ratchet downward. New client stylesheets must be CSS Modules unless a reviewed generated-content or truly global exception is added here with a reason."
 }

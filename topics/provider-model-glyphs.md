@@ -62,6 +62,13 @@ Replace the unicode glyphs with 2–3 letter provider abbreviations rendered
 in `color: var(--provider-X)`. The color carries the brand; the text
 disambiguates within-color cases.
 
+Provider hues are theme-dependent. Dark and light themes keep the same
+provider identity but may shift lightness (and hue if needed) so badge
+text meets 4.5:1 contrast against that theme's `--bg-surface`. A single
+mid-gray for every provider is not the contract. Grok on dark themes is
+warm stone, not near-black: `#111827` on `#2f2f2f` is why `Gk 4.6` was
+highlightable but looked like only the thinking-colored status dot.
+
 | Provider       | Abbrev | Color var              | Notes |
 |----------------|--------|------------------------|-------|
 | `claude`       | `Cl`   | `--provider-claude`    | Anthropic orange |
