@@ -55,25 +55,43 @@ excluded from Grok top-level `listSessions` / `listSessionFiles`. Fork
 ## Presentation contract
 
 Provider child summaries are nested beneath the parent process on **Agents**.
-Session-list cards repeat the child descriptions, while compact sidebar rows
-show the child count as a number-only pill. Its tooltip begins with an explicit
-"N provider subagent(s)" label, followed by the child descriptions. The pill
-uses ordinary sidebar text sizing and retains a visible gap before the project
-label; neither glyph density nor title truncation may make the count or project
-name overlap. A read row uses a quiet grey pill; the existing session unread
-state strengthens its fill and weight, then viewing the session settles it
-again without a separate child-count acknowledgement state.
+Session-list cards repeat the child descriptions. A compact sidebar row keeps
+its number-only count pill and, only when children exist, adds a disclosure
+button. The outline is collapsed by default; expanding it renders child
+title/type links beneath the parent without navigating the parent row. The
+pill's tooltip begins with an explicit "N provider subagent(s)" label, followed
+by the child descriptions. The pill uses ordinary sidebar text sizing and
+retains a visible gap before the project label; neither glyph density nor title
+truncation may make the count or project name overlap. A read row uses a quiet
+grey pill; the existing session unread state strengthens its fill and weight,
+then viewing the session settles it again without a separate child-count
+acknowledgement state.
 
-The parent session header shows a count / recently-active / last-activity
-strip when any children exist. Recently-active means the parent process is
-`in-turn` and that child's transcript mtime is within the last three minutes.
-The compact sidebar pill still opens the parent session. Child rows on Agents
-and session-list cards, strip items, and the Task / spawn-agent "Open" control
-navigate to the read-only nested page
-`/projects/:projectId/sessions/:sessionId/agents/:agentId`. That page loads the
-existing `GET .../agents/:agentId` transcript and has no composer: Claude
-children have no SDK input channel. The parent YA session ID stays in the URL;
-the sidebar highlights that parent while the child page is open.
+The parent session header shows one compact control when children exist. It
+shows the total alone when none are recently active, or `active/total` when at
+least one is. Recently active means the parent process is `in-turn` and that
+child's transcript mtime is within the last three minutes. Existing process and
+session events refresh the summaries; a bounded client clock recalculates the
+age once per minute without polling provider transcripts or adding a server
+contract.
+
+Activating the header control opens the session's shared managed-detail window.
+A menu selects the child whose read-only transcript is shown, and an action
+opens that selected child in a new tab. The same session-level host, modal,
+composer controller, and open / parked / closed lifecycle used by file and tool
+activity viewers own the window. Parking preserves the mounted selector,
+loaded transcript, scroll position, and other local state; the header control or
+composer controller restores it, while close destroys it. The prior full-width
+strip between the session header and transcript is absent, so it cannot obscure
+older-message pagination.
+
+Child links on Agents, session-list cards, the compact sidebar outline, and the
+Task / spawn-agent "Open" control navigate to the read-only nested page
+`/projects/:projectId/sessions/:sessionId/agents/:agentId`. That page and the
+managed window share the existing `GET .../agents/:agentId` loader and transcript
+renderer. Neither has a composer: provider children have no YA input channel.
+The parent YA session ID stays in the URL; the sidebar highlights that parent
+while the child page is open.
 
 This is not optional YA-novel behavior under
 [vanilla-defaults](vanilla-defaults.md): it restores visibility for work the
@@ -154,16 +172,16 @@ per-parent readdir, but list reads must not parse child or parent JSONL.
 
 ## Other providers
 
-Claude is the first provider with strip + nested page + idle-list
-summaries. Codex child rollouts already feed those surfaces: list attach
-uses the accepted projection, session metadata and the nested agent page
-use a fresh listing plus `getAgentSession(childThreadId)`, and an
-unpublished cold miss stays distinct from a published empty projection.
-Optionally overlaying live `subagent_activity` text onto the strip while
-the parent is in-turn remains open. Grok nested child discovery is
-landed: parent `subagents/*/meta.json` feeds the existing strip / page /
-idle list, and child session dirs stay out of the top-level Grok list.
-TUI tasks-pane kill remains out of scope.
+Claude is the first provider with header control + managed detail + nested
+page + idle-list summaries. Codex child rollouts already feed those surfaces:
+list attach uses the accepted projection, session metadata and child detail use
+a fresh listing plus `getAgentSession(childThreadId)`, and an unpublished cold
+miss stays distinct from a published empty projection. Optionally overlaying
+live `subagent_activity` text onto child detail while the parent is in-turn
+remains open. Grok nested child discovery is landed: parent
+`subagents/*/meta.json` feeds the existing header / detail / page / idle-list
+surfaces, and child session dirs stay out of the top-level Grok list. TUI
+tasks-pane kill remains out of scope.
 
 OpenCode (including Copilot-via-OpenCode) stores task/subagent work as
 sibling `ses_*` rows with `session.parent_id` (and legacy file-tree

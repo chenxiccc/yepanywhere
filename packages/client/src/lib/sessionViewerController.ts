@@ -9,8 +9,8 @@ interface SessionViewerBase {
   onClose: () => void;
 }
 
-export interface ActivityViewerRegistration extends SessionViewerBase {
-  kind: "activity";
+export interface PanelViewerRegistration extends SessionViewerBase {
+  kind: "panel";
   title: ReactNode;
   content: ReactNode;
 }
@@ -22,7 +22,7 @@ export interface FileViewerRegistration extends SessionViewerBase {
 }
 
 export type SessionViewerRegistration =
-  | ActivityViewerRegistration
+  | PanelViewerRegistration
   | FileViewerRegistration;
 
 export type SessionViewerControllerState = SessionViewerRegistration & {

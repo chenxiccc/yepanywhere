@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
@@ -220,6 +220,9 @@ export function SessionListItem({
   );
   const [isEditing, setIsEditing] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [providerChildrenExpanded, setProviderChildrenExpanded] =
+    useState(false);
+  const providerChildrenOutlineId = useId();
   const [renameValue, setRenameValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [localTitle, setLocalTitle] = useState<string | undefined>(undefined);
@@ -556,6 +559,9 @@ export function SessionListItem({
     isBtwAside && "btw-aside-session",
     isSelected && "selected",
     isArchived && "archived",
+    mode === "compact" &&
+      providerChildren.length > 0 &&
+      styles.compactWithProviderChildren,
   ]
     .filter(Boolean)
     .join(" ");
@@ -577,6 +583,12 @@ export function SessionListItem({
       (child) => child.title || child.agentType || t("providerChildFallback"),
     ),
   ].join("\n");
+  const providerChildrenDisclosureLabel = t(
+    providerChildrenExpanded
+      ? "providerChildrenCollapse"
+      : "providerChildrenExpand",
+    { title: visibleTitle },
+  );
 
   const handleBtwBadgeClick = useCallback(
     (e: React.MouseEvent<HTMLSpanElement>) => {
@@ -692,6 +704,30 @@ export function SessionListItem({
           onClick={(e) => e.stopPropagation()}
           aria-label={`Select ${displayTitle}`}
         />
+      )}
+
+      {mode === "compact" && providerChildren.length > 0 && (
+        <button
+          type="button"
+          className={styles.providerChildrenDisclosure}
+          aria-label={providerChildrenDisclosureLabel}
+          aria-expanded={providerChildrenExpanded}
+          aria-controls={providerChildrenOutlineId}
+          onPointerEnter={(event) => {
+            event.stopPropagation();
+            clearPreview();
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            clearPreview();
+            setProviderChildrenExpanded((expanded) => !expanded);
+          }}
+        >
+          <svg viewBox="0 0 12 12" aria-hidden="true">
+            <path d="m4 2 4 4-4 4" />
+          </svg>
+        </button>
       )}
 
       {isEditing ? (
@@ -940,6 +976,68 @@ export function SessionListItem({
           className="session-list-item__menu"
         />
       )}
+
+      {mode === "compact" &&
+        providerChildren.length > 0 &&
+        providerChildrenExpanded && (
+          <ul
+            id={providerChildrenOutlineId}
+            className={styles.providerChildrenOutline}
+            aria-label={providerChildrenLabel}
+            onPointerEnter={(event) => {
+              event.stopPropagation();
+              clearPreview();
+            }}
+          >
+            {providerChildren.map((child) => {
+              const childTitle = providerChildTitle(
+                child,
+                t("providerChildFallback"),
+              );
+              return (
+                <li
+                  key={child.id}
+                  className={styles.providerChildrenOutlineItem}
+                >
+                  <Link
+                    to={providerChildSessionHref(
+                      basePath,
+                      projectId,
+                      sessionId,
+                      child.id,
+                    )}
+                    className={styles.providerChildrenOutlineLink}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (
+                        !event.metaKey &&
+                        !event.ctrlKey &&
+                        !event.shiftKey &&
+                        !event.altKey
+                      ) {
+                        onNavigate?.();
+                      }
+                    }}
+                    onAuxClick={(event) => event.stopPropagation()}
+                  >
+                    <span
+                      className={styles.providerChildrenTreeLine}
+                      aria-hidden
+                    />
+                    <span className={styles.providerChildrenOutlineTitle}>
+                      {childTitle}
+                    </span>
+                    {child.agentType && child.agentType !== childTitle && (
+                      <span className={styles.providerChildrenOutlineType}>
+                        {child.agentType}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
       {showShareModal &&
         (publicShareManagementAvailable ? (

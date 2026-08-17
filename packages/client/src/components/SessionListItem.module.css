@@ -28,3 +28,143 @@
 .providerChildLink {
   cursor: pointer;
 }
+
+.compactWithProviderChildren {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.compactWithProviderChildren .compactLink {
+  min-width: 0;
+}
+
+.compactWithProviderChildren :global(.session-list-item__menu) {
+  top: 0;
+  height: 34px;
+  transform: none;
+}
+
+.compactWithProviderChildren:global(.unread)::before {
+  top: 17px;
+}
+
+.providerChildrenDisclosure {
+  display: inline-flex;
+  width: 1.5rem;
+  min-height: 34px;
+  flex: 0 0 1.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.providerChildrenDisclosure:hover,
+.providerChildrenDisclosure:focus-visible,
+.providerChildrenDisclosure[aria-expanded="true"] {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.providerChildrenDisclosure:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.providerChildrenDisclosure svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition: transform 120ms ease;
+}
+
+.providerChildrenDisclosure[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.providerChildrenOutline {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 100%;
+  flex-direction: column;
+  gap: 1px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 0.75ch var(--space-1) calc(1.5rem + 1ch);
+  list-style: none;
+}
+
+.providerChildrenOutlineItem {
+  min-width: 0;
+}
+
+.providerChildrenOutlineLink {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.providerChildrenOutlineLink:hover,
+.providerChildrenOutlineLink:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.providerChildrenTreeLine {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  align-self: flex-start;
+  margin-top: 3px;
+  border-bottom: 1px solid var(--border-color);
+  border-left: 1px solid var(--border-color);
+}
+
+.providerChildrenOutlineTitle {
+  overflow: hidden;
+  min-width: 0;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.providerChildrenOutlineType {
+  overflow: hidden;
+  max-width: 42%;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+  .compactWithProviderChildren :global(.session-list-item__menu) {
+    height: 40px;
+  }
+
+  .compactWithProviderChildren:global(.unread)::before {
+    top: 20px;
+  }
+
+  .providerChildrenDisclosure {
+    min-height: 40px;
+  }
+}

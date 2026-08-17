@@ -1158,6 +1158,102 @@ describe("SessionListItem links", () => {
     expect(screen.getByText("yepanywhere")).toBeTruthy();
   });
 
+  it("discloses compact provider children without opening the parent", () => {
+    const onNavigate = vi.fn();
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={["/"]}>
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ul>
+                  <SessionListItem
+                    sessionId="session-parent"
+                    projectId="project-1"
+                    title="Parent session"
+                    provider="claude"
+                    mode="compact"
+                    onNavigate={onNavigate}
+                    providerChildren={[
+                      {
+                        id: "child-native-1",
+                        parentSessionId: "session-parent",
+                        title: "Audit the child-session API",
+                        agentType: "general-purpose",
+                        updatedAt: "2026-07-19T12:00:00.000Z",
+                      },
+                    ]}
+                  />
+                  <SessionListItem
+                    sessionId="session-empty"
+                    projectId="project-1"
+                    title="No subagents"
+                    provider="claude"
+                    mode="compact"
+                  />
+                </ul>
+              }
+            />
+            <Route
+              path="/projects/:projectId/sessions/:sessionId/agents/:agentId"
+              element={<div>opened compact child</div>}
+            />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const disclosure = screen.getByRole("button", {
+      name: "Show subagents for Parent session",
+    });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByRole("button", {
+        name: "Show subagents for No subagents",
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: /Audit the child-session API/ }),
+    ).toBeNull();
+
+    fireEvent.click(disclosure);
+    expect(screen.getByLabelText("location").textContent).toBe("/");
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByRole("button", {
+          name: "Hide subagents for Parent session",
+        })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(screen.getByText("general-purpose")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Hide subagents for Parent session",
+      }),
+    );
+    expect(
+      screen.queryByRole("link", { name: /Audit the child-session API/ }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Show subagents for Parent session",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("link", { name: /Audit the child-session API/ }),
+    );
+    expect(screen.getByText("opened compact child")).toBeTruthy();
+    expect(screen.getByLabelText("location").textContent).toBe(
+      "/projects/project-1/sessions/session-parent/agents/child-native-1",
+    );
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps compact session rows free of Resume actions", () => {
     render(
       <I18nProvider>

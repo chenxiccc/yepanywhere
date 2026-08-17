@@ -35,7 +35,7 @@ import {
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { BangCommandHandlers } from "../components/BangCommandDisplayObject";
-import { ActivityViewerProvider } from "../components/ActivityDetailModal";
+import { SessionViewerProvider } from "../components/SessionManagedViewer";
 import { buildBangEchoText, collectBangHistory } from "../lib/bangCommands";
 import { serverSupportsBangCommands } from "../lib/bangCommandAvailability";
 import { BtwAsidePane } from "../components/BtwAsidePane";
@@ -46,7 +46,7 @@ import { useStartNewSessionWithPrefillAction } from "../components/FileResourceA
 import { HostIdentityMarker } from "../components/HostIdentityMarker";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
-import { ProviderChildSessionStrip } from "../components/ProviderChildSessionStrip";
+import { ProviderChildSessionControl } from "../components/ProviderChildSessionControl";
 import type {
   FullPaneComposerControls,
   MessageSubmissionMetadata,
@@ -4941,6 +4941,13 @@ function SessionPageContent({
             </div>
           </div>
           <div className="session-header-right">
+            <ProviderChildSessionControl
+              projectId={projectId}
+              sessionId={actualSessionId}
+              basePath={basePath}
+              childrenFromSession={session?.providerChildren}
+              processState={processState}
+            />
             <ClientLogRecordingBadge inline />
             {showPublicShareIndicator && (
               <ViewerCountIndicator
@@ -5017,14 +5024,6 @@ function SessionPageContent({
           </div>
         </div>
       </header>
-
-      <ProviderChildSessionStrip
-        projectId={projectId}
-        sessionId={actualSessionId}
-        basePath={basePath}
-        childrenFromSession={session?.providerChildren}
-        processState={processState}
-      />
 
       {showHeartbeatModal && (
         <SessionHeartbeatModal
@@ -5237,8 +5236,8 @@ function SessionPageContent({
                 projectId={projectId}
                 sessionId={sessionId}
               >
-                <ActivityViewerProvider
-                  sessionId={sessionId}
+                <SessionViewerProvider
+                  sessionId={actualSessionId}
                   inactive={isDomLingerParked}
                 >
                   <MessageList
@@ -5340,7 +5339,7 @@ function SessionPageContent({
                     }
                     inert={isDomLingerParked}
                   />
-                </ActivityViewerProvider>
+                </SessionViewerProvider>
               </AgentContentProvider>
             </SessionMetadataProvider>
           )}

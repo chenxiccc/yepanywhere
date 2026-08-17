@@ -14,10 +14,8 @@ import {
   clearCurrentSessionViewer,
   useSessionViewerController,
 } from "../../lib/sessionViewerController";
-import {
-  ActivityDetailModal,
-  ActivityViewerProvider,
-} from "../ActivityDetailModal";
+import { ActivityDetailModal } from "../ActivityDetailModal";
+import { SessionViewerProvider } from "../SessionManagedViewer";
 
 function ViewerControllerProbe() {
   const viewer = useSessionViewerController();
@@ -53,7 +51,7 @@ function SessionHarness() {
         projectPath="/workspace"
         sessionId="session-1"
       >
-        <ActivityViewerProvider sessionId="session-1">
+        <SessionViewerProvider sessionId="session-1">
           <button type="button" onClick={() => setSourceMounted(false)}>
             Unmount source row
           </button>
@@ -67,7 +65,7 @@ function SessionHarness() {
             </ActivityDetailModal>
           )}
           <ViewerControllerProbe />
-        </ActivityViewerProvider>
+        </SessionViewerProvider>
       </SessionMetadataProvider>
     </I18nProvider>
   );
@@ -98,6 +96,37 @@ describe("ActivityDetailModal", () => {
     expect(screen.getByRole("button", { name: "Detail count 1" })).toBeTruthy();
   });
 
+  it("does not let a retained session host clear another session's detail", async () => {
+    render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId="project-1"
+          projectPath="/workspace"
+          sessionId="session-1"
+        >
+          <SessionViewerProvider sessionId="session-1">
+            <ActivityDetailModal
+              title="Active session detail"
+              label="Active session detail"
+              onClose={() => {}}
+            >
+              Active session content
+            </ActivityDetailModal>
+          </SessionViewerProvider>
+          <SessionViewerProvider sessionId="session-2" inactive>
+            Parked session content
+          </SessionViewerProvider>
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText("Active session content")).toBeTruthy();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Active session content")).toBeTruthy();
+  });
+
   it("dismisses the previous source when another activity replaces it", async () => {
     function ReplacementHarness() {
       const [firstOpen, setFirstOpen] = useState(true);
@@ -109,7 +138,7 @@ describe("ActivityDetailModal", () => {
             projectPath="/workspace"
             sessionId="session-1"
           >
-            <ActivityViewerProvider sessionId="session-1">
+            <SessionViewerProvider sessionId="session-1">
               <button type="button" onClick={() => setSecondOpen(true)}>
                 Open second
               </button>
@@ -132,7 +161,7 @@ describe("ActivityDetailModal", () => {
                   Second content
                 </ActivityDetailModal>
               )}
-            </ActivityViewerProvider>
+            </SessionViewerProvider>
           </SessionMetadataProvider>
         </I18nProvider>
       );

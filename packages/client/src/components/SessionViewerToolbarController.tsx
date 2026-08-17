@@ -140,13 +140,13 @@ export function SessionViewerToolbarController({
     ? t(
         controller.kind === "file"
           ? "fileViewerRestore"
-          : "activityViewerRestore",
+          : "sessionViewerRestore",
         { name: location },
       )
     : t(
         controller.kind === "file"
           ? "fileViewerMinimizeNamed"
-          : "activityViewerMinimizeNamed",
+          : "sessionViewerMinimizeNamed",
         { name: location },
       );
   const control = (
@@ -170,7 +170,7 @@ export function SessionViewerToolbarController({
       aria-label={t(
         controller.kind === "file"
           ? "fileViewerController"
-          : "activityViewerController",
+          : "sessionViewerController",
         { name: location },
       )}
     >
@@ -213,15 +213,11 @@ export function SessionViewerToolbarController({
         className={styles.close}
         onClick={controller.close}
         title={t(
-          controller.kind === "file"
-            ? "fileViewerClose"
-            : "activityViewerClose",
+          controller.kind === "file" ? "fileViewerClose" : "sessionViewerClose",
           { name: location },
         )}
         aria-label={t(
-          controller.kind === "file"
-            ? "fileViewerClose"
-            : "activityViewerClose",
+          controller.kind === "file" ? "fileViewerClose" : "sessionViewerClose",
           { name: location },
         )}
       >

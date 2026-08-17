@@ -41,8 +41,8 @@ message or tool row that opened it.
 Open ↔ parked transitions must reuse the same mounted viewer instance. They
 must not refetch or reconstruct the document merely to change presentation.
 Close may discard it. At most one managed viewer is controlled in a session at
-a time. This includes file viewers and the activity detail viewers described
-below. Opening another managed viewer closes the previous viewer and dismisses
+a time. This includes file viewers, tool activity details, and provider-child
+details. Opening another managed viewer closes the previous viewer and dismisses
 its still-mounted source deterministically.
 
 The capability is authenticated-session UI. Live and frozen public shares do
@@ -155,17 +155,20 @@ may coexist as redundant access points over one viewer state: drawer for
 document presence and the composer controller for fast toggle/close. Supporting
 both must not duplicate document state or let the two controls disagree.
 
-## Activity detail viewers
+## Managed detail viewers
 
-Expanded Bash/Ran, Edit, Write, Grep, Web, and WriteStdin details participate
-in the same `open`, `parked`, and `closed` state model and use the same composer
-controller. Their controller label describes the activity rather than a file;
-the file-only right-click copy-path action is not present.
+Expanded Bash/Ran, Edit, Write, Grep, Web, and WriteStdin details and the
+provider-child transcript selector participate in the same `open`, `parked`,
+and `closed` state model and use the same composer controller. Their controller
+label describes the detail rather than a file; the file-only right-click
+copy-path action is not present. Provider-child detail additionally retains its
+selected child and loaded transcript across parking, and its header count can
+restore the same viewer.
 
-The session owns one activity-view host beside the message list, inside the
-same session metadata and agent-content providers as the transcript. A tool row
-publishes its title and content to that host instead of owning the rendered
-modal subtree. Consequently:
+The session owns one managed-panel host beside the message list, inside the same
+session metadata and agent-content providers as the transcript. A tool row or
+session-level detail control publishes its title and content to that host
+instead of owning the rendered modal subtree. Consequently:
 
 - parking only hides the host presentation; it does not unmount the detail or
   reset its scroll, selection, render mode, or other local state;

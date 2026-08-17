@@ -677,10 +677,10 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     fileViewerMinimizeNamed: `Minimize file viewer: ${params?.name ?? ""}`,
     fileViewerRestore: `Restore file viewer: ${params?.name ?? ""}`,
     fileViewerClose: `Close file viewer: ${params?.name ?? ""}`,
-    activityViewerController: `Activity view: ${params?.name ?? ""}`,
-    activityViewerMinimizeNamed: `Minimize activity view: ${params?.name ?? ""}`,
-    activityViewerRestore: `Restore activity view: ${params?.name ?? ""}`,
-    activityViewerClose: `Close activity view: ${params?.name ?? ""}`,
+    sessionViewerController: `Detail view: ${params?.name ?? ""}`,
+    sessionViewerMinimizeNamed: `Minimize detail view: ${params?.name ?? ""}`,
+    sessionViewerRestore: `Restore detail view: ${params?.name ?? ""}`,
+    sessionViewerClose: `Close detail view: ${params?.name ?? ""}`,
   };
   return translations[key] ?? key;
 }) as MessageInputToolbarViewProps["t"];
@@ -5258,7 +5258,7 @@ describe("MessageInput", () => {
           close,
           content: "output",
           id: "activity-1",
-          kind: "activity",
+          kind: "panel",
           sessionId: "session-1",
           label: "Bash Command",
           briefLabel: "Bash",
@@ -5288,13 +5288,13 @@ describe("MessageInput", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Minimize activity view: Bash Command",
+        name: "Minimize detail view: Bash Command",
       }),
     );
     expect(minimize).toHaveBeenCalledTimes(1);
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Close activity view: Bash Command",
+        name: "Close detail view: Bash Command",
       }),
     );
     expect(close).toHaveBeenCalledTimes(1);
