@@ -403,7 +403,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     name: "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH",
     group: "Providers & features",
     description:
-      "Maximum subagent nesting depth passed to Claude Gateway launches. YA defaults gateway launches to 1 when unset.",
+      "Operator override for the maximum subagent nesting depth on Claude, Claude Gateway, and Claude Ollama launches. When set, it wins over the server-wide Subagent nesting limit setting (default 1).",
   },
   {
     name: "YA_BANG_ACLI_COMPLETERS",
