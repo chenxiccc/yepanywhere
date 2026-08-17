@@ -1730,7 +1730,7 @@ details[open] .collapsible__icon {
 /* Inline file link for interactive summary */
 .file-link-inline {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.5rem;
   background: transparent;
   border: none;

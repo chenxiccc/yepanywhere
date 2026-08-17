@@ -24,7 +24,12 @@ Examples:
 - composer controls (`message-input-toolbar`, `message-input-left`,
   `message-input-actions`, and their compact variants),
 - new session toolbar controls (`new-session-form-toolbar-left`, submit and
-  auxiliary buttons).
+  auxiliary buttons),
+- Edit/Read inline file summaries (`.file-link-inline` baseline-aligns the
+  filename with the muted "Added N lines" weight, without changing output
+  or fixed-font size tokens),
+- Explored Grep rows (the pattern summary must not add a top strut that
+  Read rows lack).
 
 ## Mobile hit targets
 

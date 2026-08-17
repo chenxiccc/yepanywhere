@@ -41,17 +41,19 @@
 .inlineSummary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: baseline;
+  align-items: center;
   gap: 0.22rem;
   width: 100%;
   min-width: 0;
   max-width: 100%;
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
+  line-height: 1.35;
 }
 
 .summaryPattern {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.18rem;
   min-width: 0;
   position: relative;
@@ -80,6 +82,7 @@
   padding: 0;
   color: inherit;
   font: inherit;
+  line-height: inherit;
   text-align: left;
   cursor: pointer;
 }
