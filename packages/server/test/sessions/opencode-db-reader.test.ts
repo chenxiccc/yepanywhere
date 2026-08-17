@@ -49,6 +49,13 @@ function buildDb(
     model: Record<string, unknown>;
     messages: MessageSpec[];
     omitTranscriptTables?: boolean;
+    extraSessions?: {
+      sessionId: string;
+      parentId?: string;
+      title: string;
+      agent?: string | null;
+      messages?: MessageSpec[];
+    }[];
   },
 ): void {
   const db = new (DatabaseSync as DatabaseSyncCtor)(dbPath);
@@ -56,21 +63,36 @@ function buildDb(
     "CREATE TABLE project (id TEXT PRIMARY KEY, worktree TEXT NOT NULL, time_created INTEGER, time_updated INTEGER)",
   );
   db.exec(
-    "CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT, model TEXT, time_created INTEGER, time_updated INTEGER)",
+    "CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, parent_id TEXT, title TEXT, agent TEXT, model TEXT, time_created INTEGER, time_updated INTEGER)",
   );
   db.prepare(
     "INSERT INTO project (id, worktree, time_created, time_updated) VALUES (?, ?, ?, ?)",
   ).run(PROJECT_HASH, opts.worktree, 1000, 5000);
-  db.prepare(
-    "INSERT INTO session (id, project_id, title, model, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(
+  const insertSession = db.prepare(
+    "INSERT INTO session (id, project_id, parent_id, title, agent, model, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  insertSession.run(
     opts.sessionId,
     PROJECT_HASH,
+    null,
     opts.title,
+    null,
     JSON.stringify(opts.model),
     1000,
     5000,
   );
+  for (const extra of opts.extraSessions ?? []) {
+    insertSession.run(
+      extra.sessionId,
+      PROJECT_HASH,
+      extra.parentId ?? null,
+      extra.title,
+      extra.agent ?? null,
+      JSON.stringify(opts.model),
+      2000,
+      6000,
+    );
+  }
 
   if (!opts.omitTranscriptTables) {
     db.exec(
@@ -86,13 +108,19 @@ function buildDb(
       "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)",
     );
     let t = 1000;
-    for (const m of opts.messages) {
-      insM.run(m.id, opts.sessionId, t, t, JSON.stringify(m.data));
-      for (const p of m.parts) {
-        insP.run(p.id, m.id, opts.sessionId, t, t, JSON.stringify(p.data));
+    const writeMessages = (sessionId: string, messages: MessageSpec[]) => {
+      for (const m of messages) {
+        insM.run(m.id, sessionId, t, t, JSON.stringify(m.data));
+        for (const p of m.parts) {
+          insP.run(p.id, m.id, sessionId, t, t, JSON.stringify(p.data));
+          t += 1;
+        }
         t += 1;
       }
-      t += 1;
+    };
+    writeMessages(opts.sessionId, opts.messages);
+    for (const extra of opts.extraSessions ?? []) {
+      writeMessages(extra.sessionId, extra.messages ?? []);
     }
   }
   db.close();
@@ -428,6 +456,95 @@ describe.skipIf(!DatabaseSync)(
         if (prev === undefined) delete process.env.OPENCODE_DB_READER;
         else process.env.OPENCODE_DB_READER = prev;
       }
+    });
+
+    it("nests parent_id child sessions under the parent and keeps them off the list", async () => {
+      const parentMessages: MessageSpec[] = [
+        ...richMessages,
+        {
+          id: "msg_task",
+          data: { role: "assistant", time: { created: 4000 } },
+          parts: [
+            {
+              id: "prt_task",
+              data: {
+                type: "tool",
+                tool: "task",
+                callID: "call_task_1",
+                state: {
+                  status: "completed",
+                  input: {
+                    description: "Explore the tree",
+                    subagent_type: "explore",
+                  },
+                  metadata: { sessionId: "ses_child" },
+                  output: "<task_metadata>\nsession_id: ses_child\n",
+                },
+              },
+            },
+          ],
+        },
+      ];
+      buildDb(databasePath, {
+        worktree: projectPath,
+        sessionId: "ses_parent",
+        title: "Parent session",
+        model: { id: "claude-opus-4.8", providerID: "github-copilot" },
+        messages: parentMessages,
+        extraSessions: [
+          {
+            sessionId: "ses_child",
+            parentId: "ses_parent",
+            title: "Explore the tree (@explore subagent)",
+            agent: "explore",
+            messages: [
+              {
+                id: "msg_child",
+                data: { role: "assistant", time: { created: 5000 } },
+                parts: [
+                  {
+                    id: "prt_child",
+                    data: { type: "text", text: "Child rollout" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const reader = await makeReader();
+      await expect(reader.listSessions(projectId)).resolves.toEqual([
+        expect.objectContaining({ id: "ses_parent" }),
+      ]);
+      await expect(reader.listSessionFiles("/unused")).resolves.toEqual([
+        {
+          sessionId: "ses_parent",
+          filePath: databasePath,
+          sharedFilePath: true,
+        },
+      ]);
+      await expect(
+        reader.listProviderChildSessions("ses_parent"),
+      ).resolves.toEqual([
+        {
+          id: "ses_child",
+          parentSessionId: "ses_parent",
+          title: "Explore the tree (@explore subagent)",
+          agentType: "explore",
+          updatedAt: new Date(6000).toISOString(),
+        },
+      ]);
+      await expect(reader.getAgentMappings("ses_parent")).resolves.toEqual([
+        { toolUseId: "call_task_1", agentId: "ses_child" },
+        { toolUseId: "prt_task", agentId: "ses_child" },
+      ]);
+      const agent = await reader.getAgentSession("ses_child", "ses_parent");
+      expect(agent?.status).toBe("completed");
+      expect(agent?.messages[0]).toMatchObject({
+        type: "assistant",
+        isSubagent: true,
+      });
     });
   },
 );

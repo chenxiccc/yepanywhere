@@ -288,6 +288,115 @@ describe("OpenCodeSessionReader", () => {
 
     await expect(reader.getSession("ses_cli", projectId)).resolves.toBeNull();
   });
+
+  it("nests file-tree parentID children under the parent session", async () => {
+    const storageDir = join(testDir, "storage");
+    const openCodeProjectId = "prj-file";
+    const parentId = "ses_file_parent";
+    const childId = "ses_file_child";
+    await mkdir(join(storageDir, "project"), { recursive: true });
+    await mkdir(join(storageDir, "session", openCodeProjectId), {
+      recursive: true,
+    });
+    await mkdir(join(storageDir, "message", parentId), { recursive: true });
+    await mkdir(join(storageDir, "message", childId), { recursive: true });
+    await mkdir(join(storageDir, "part", "msg_parent"), { recursive: true });
+    await mkdir(join(storageDir, "part", "msg_child"), { recursive: true });
+    await writeFile(
+      join(storageDir, "project", `${openCodeProjectId}.json`),
+      JSON.stringify({ id: openCodeProjectId, worktree: projectPath }),
+    );
+    await writeFile(
+      join(storageDir, "session", openCodeProjectId, `${parentId}.json`),
+      JSON.stringify({
+        id: parentId,
+        projectID: openCodeProjectId,
+        title: "Parent file session",
+        time: { created: 1_000, updated: 4_000 },
+      }),
+    );
+    await writeFile(
+      join(storageDir, "session", openCodeProjectId, `${childId}.json`),
+      JSON.stringify({
+        id: childId,
+        projectID: openCodeProjectId,
+        parentID: parentId,
+        title: "Review the tree (@build subagent)",
+        time: { created: 2_000, updated: 5_000 },
+      }),
+    );
+    await writeFile(
+      join(storageDir, "message", parentId, "msg_parent.json"),
+      JSON.stringify({
+        id: "msg_parent",
+        sessionID: parentId,
+        role: "user",
+        time: { created: 1_000 },
+      }),
+    );
+    await writeFile(
+      join(storageDir, "part", "msg_parent", "prt_task.json"),
+      JSON.stringify({
+        id: "prt_task",
+        type: "tool",
+        tool: "task",
+        callID: "call_file_task",
+        state: {
+          status: "completed",
+          metadata: { sessionId: childId },
+        },
+      }),
+    );
+    await writeFile(
+      join(storageDir, "message", childId, "msg_child.json"),
+      JSON.stringify({
+        id: "msg_child",
+        sessionID: childId,
+        role: "assistant",
+        time: { created: 2_000 },
+      }),
+    );
+    await writeFile(
+      join(storageDir, "part", "msg_child", "prt_text.json"),
+      JSON.stringify({
+        id: "prt_text",
+        type: "text",
+        text: "File child",
+      }),
+    );
+
+    const { OpenCodeSessionReader } = await import(
+      "../../src/sessions/opencode-reader.js"
+    );
+    const reader = new OpenCodeSessionReader({
+      storageDir,
+      databasePath,
+      opencodePath: "/fake/opencode",
+      projectPath,
+    });
+
+    const listed = await reader.listSessions(projectId);
+    expect(listed.map((session) => session.id)).toContain(parentId);
+    expect(listed.map((session) => session.id)).not.toContain(childId);
+    await expect(reader.listProviderChildSessions(parentId)).resolves.toEqual([
+      {
+        id: childId,
+        parentSessionId: parentId,
+        title: "Review the tree (@build subagent)",
+        agentType: "build",
+        updatedAt: new Date(5_000).toISOString(),
+      },
+    ]);
+    await expect(reader.getAgentMappings(parentId)).resolves.toEqual([
+      { toolUseId: "call_file_task", agentId: childId },
+      { toolUseId: "prt_task", agentId: childId },
+    ]);
+    const agent = await reader.getAgentSession(childId, parentId);
+    expect(agent?.messages[0]).toMatchObject({
+      type: "assistant",
+      isSubagent: true,
+    });
+  });
 });
 
 function makeExport(sessionId: string, directory: string) {

@@ -165,8 +165,11 @@ landed: parent `subagents/*/meta.json` feeds the existing strip / page /
 idle list, and child session dirs stay out of the top-level Grok list.
 TUI tasks-pane kill remains out of scope.
 
-Remaining first-party coverage is filed as gaps, one provider per file:
-
-- [Copilot event-shaped children](../gaps/copilot-subagent-summary-visibility.md)
-  — no first-class YA Copilot provider; SDK/CLI children are parent-stream
-  lifecycle events, not a sibling transcript tree.
+OpenCode (including Copilot-via-OpenCode) stores task/subagent work as
+sibling `ses_*` rows with `session.parent_id` (and legacy file-tree
+`parentID`). `OpenCodeSessionReader.listProviderChildSessions` lists those
+rows without walking messages. `getAgentMappings` maps parent `task`
+parts to the child id so Task Open works. `getAgentSession` replays the
+child's own messages. Child ids stay out of top-level OpenCode lists and
+the session catalog. There is still no first-class YA `copilot` provider;
+Architecture C live `subagent.started` events remain a later path.

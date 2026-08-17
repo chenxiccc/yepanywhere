@@ -277,7 +277,11 @@ spawning `opencode export` when a local read suffices; the DB still covers all
 enumerate from the `session` table when the DB has this worktree's project, and
 only fall back to `opencode session list` when it does not (pre-1.16 / no DB) —
 the CLI reads the same store in 1.16+, so unioning it would just re-spawn the
-subprocess for rows the DB already returned.
+subprocess for rows the DB already returned. Rows with `session.parent_id`
+(legacy file-tree `parentID`) are OpenCode task/subagent children: they are
+omitted from those top-level lists and exposed through
+`listProviderChildSessions` instead. See
+[provider-child-sessions.md](provider-child-sessions.md).
 
 **Global opt-out: `OPENCODE_DB_READER` (default on).** Set it to `0`/`false`/
 `off`/`no` and the reader never opens the DB and never imports `node:sqlite` —

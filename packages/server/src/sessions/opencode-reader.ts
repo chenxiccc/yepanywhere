@@ -13,17 +13,21 @@ import {
   type OpenCodeMessage,
   type OpenCodeSessionEntry,
   type OpenCodeStoredPart,
+  type ProviderChildSessionSummary,
   type UrlProjectId,
   getModelContextWindow,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
+import { encodeProjectId } from "../projects/paths.js";
 import type {
   ContextUsage,
   Message,
   SessionSummary,
 } from "../supervisor/types.js";
+import { normalizeSession } from "./normalization.js";
 import {
   OpenCodeDbReader,
+  type OpenCodeDbChildSessionRow,
   type OpenCodeDbSessionRow,
 } from "./opencode-db-reader.js";
 import type {
@@ -115,6 +119,8 @@ interface OpenCodeCliListSession {
   updated?: unknown;
   projectId?: unknown;
   projectID?: unknown;
+  parentID?: unknown;
+  parentId?: unknown;
 }
 
 // Shared across reader instances (one per project): the CLI list output is
@@ -408,11 +414,12 @@ export class OpenCodeSessionReader implements ISessionReader {
     // per-session; change detection runs through getSessionSummaryIfChanged,
     // which compares the row's time_updated + message count).
     const dbProjectId = await this.dbReader.getProjectId(this.projectPath);
+    const childIds = await this.collectProviderChildIds();
     if (dbProjectId) {
       for (const { id, timeUpdated } of await this.dbReader.listSessionRows(
         dbProjectId,
       )) {
-        if (seen.has(id)) continue;
+        if (seen.has(id) || childIds.has(id)) continue;
         if (
           options?.activeAfterMs !== undefined &&
           timeUpdated < options.activeAfterMs
@@ -440,6 +447,9 @@ export class OpenCodeSessionReader implements ISessionReader {
         for (const file of await readdir(sessionDir)) {
           if (!file.endsWith(".json")) continue;
           const sessionId = file.replace(".json", "");
+          if (seen.has(sessionId) || childIds.has(sessionId)) continue;
+          const stored = await this.readFileSessionJson(sessionId);
+          if (stored?.parentID) continue;
           out.push({ sessionId, filePath: join(sessionDir, file) });
           seen.add(sessionId);
         }
@@ -457,7 +467,9 @@ export class OpenCodeSessionReader implements ISessionReader {
       for (const session of cliSessions) {
         if (!this.cliListSessionBelongsToProject(session)) continue;
         const sessionId = String(session.id);
-        if (seen.has(sessionId)) continue;
+        if (seen.has(sessionId) || this.cliListSessionParentId(session)) {
+          continue;
+        }
         if (options?.activeAfterMs !== undefined) {
           const updatedAt = this.numberField(session.updated);
           if (updatedAt !== undefined && updatedAt < options.activeAfterMs) {
@@ -480,6 +492,101 @@ export class OpenCodeSessionReader implements ISessionReader {
     return `opencode::${this.projectPath}`;
   }
 
+  private async collectProviderChildIds(): Promise<Set<string>> {
+    const ids = new Set(await this.dbReader.listChildSessionIds());
+    const openCodeProjectId = await this.getOpenCodeProjectId();
+    if (!openCodeProjectId) return ids;
+    const sessionDir = join(this.storageDir, "session", openCodeProjectId);
+    try {
+      for (const file of await readdir(sessionDir)) {
+        if (!file.endsWith(".json")) continue;
+        const sessionId = file.replace(/\.json$/, "");
+        const stored = await this.readFileSessionJson(sessionId);
+        if (stored?.parentID) ids.add(sessionId);
+      }
+    } catch {
+      // Session dir missing/unreadable — DB ids still apply.
+    }
+    return ids;
+  }
+
+  private async listFileProviderChildSessions(
+    parentSessionId: string,
+  ): Promise<ProviderChildSessionSummary[]> {
+    const openCodeProjectId = await this.getOpenCodeProjectId();
+    if (!openCodeProjectId) return [];
+    const sessionDir = join(this.storageDir, "session", openCodeProjectId);
+    const children: ProviderChildSessionSummary[] = [];
+    try {
+      for (const file of await readdir(sessionDir)) {
+        if (!file.endsWith(".json")) continue;
+        const sessionId = file.replace(/\.json$/, "");
+        const stored = await this.readFileSessionJson(sessionId);
+        if (!stored || stored.parentID !== parentSessionId) continue;
+        children.push(
+          childSummaryFromFileSession(parentSessionId, sessionId, stored),
+        );
+      }
+    } catch {
+      return [];
+    }
+    return children;
+  }
+
+  private async listFileTaskChildMappings(
+    parentSessionId: string,
+  ): Promise<{ toolUseId: string; agentId: string }[]> {
+    const entries = await this.loadSessionMessages(parentSessionId);
+    const mappings: { toolUseId: string; agentId: string }[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      for (const part of entry.parts) {
+        if (part.tool !== "task") continue;
+        const agentId = childSessionIdFromStoredTaskPart(part);
+        if (!agentId) continue;
+        const toolUseIds = [part.callID, part.id].filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        );
+        for (const toolUseId of toolUseIds) {
+          const key = `${toolUseId}\0${agentId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          mappings.push({ toolUseId, agentId });
+        }
+      }
+    }
+    return mappings;
+  }
+
+  private async readFileSessionJson(
+    sessionId: string,
+  ): Promise<OpenCodeSessionJson | null> {
+    const openCodeProjectId = await this.getOpenCodeProjectId();
+    if (!openCodeProjectId) return null;
+    try {
+      const content = await readFile(
+        join(
+          this.storageDir,
+          "session",
+          openCodeProjectId,
+          `${sessionId}.json`,
+        ),
+        "utf-8",
+      );
+      return JSON.parse(content) as OpenCodeSessionJson;
+    } catch {
+      return null;
+    }
+  }
+
+  private cliListSessionParentId(
+    session: OpenCodeCliListSession,
+  ): string | undefined {
+    return (
+      this.stringField(session.parentID) ?? this.stringField(session.parentId)
+    );
+  }
+
   private async listFileSessions(
     projectId: UrlProjectId,
   ): Promise<SessionSummary[]> {
@@ -497,6 +604,8 @@ export class OpenCodeSessionReader implements ISessionReader {
 
       for (const file of jsonFiles) {
         const sessionId = file.replace(".json", "");
+        const stored = await this.readFileSessionJson(sessionId);
+        if (stored?.parentID) continue;
         const summary = await this.getFileSessionSummary(sessionId, projectId);
         if (summary) {
           summaries.push(summary);
@@ -793,8 +902,12 @@ export class OpenCodeSessionReader implements ISessionReader {
     if (!projectIdHash) return [];
 
     const rows = await this.dbReader.listSessionRows(projectIdHash);
+    const childIds = new Set(
+      await this.dbReader.listChildSessionIds(projectIdHash),
+    );
     const summaries: SessionSummary[] = [];
     for (const { id } of rows) {
+      if (childIds.has(id)) continue;
       const summary = await this.getDbSessionSummary(id, projectId);
       if (summary) summaries.push(summary);
     }
@@ -809,6 +922,7 @@ export class OpenCodeSessionReader implements ISessionReader {
 
     for (const session of sessions) {
       if (!this.cliListSessionBelongsToProject(session)) continue;
+      if (this.cliListSessionParentId(session)) continue;
       const summary = this.summaryFromCliListSession(session, projectId);
       if (summary) summaries.push(summary);
     }
@@ -1223,22 +1337,73 @@ export class OpenCodeSessionReader implements ISessionReader {
     return new Date(0).toISOString();
   }
 
-  /**
-   * OpenCode doesn't have agent sessions like Claude's Task tool.
-   * Return empty array.
-   */
-  async getAgentMappings(): Promise<{ toolUseId: string; agentId: string }[]> {
-    return [];
+  async listProviderChildSessions(
+    parentSessionId: string,
+  ): Promise<ProviderChildSessionSummary[]> {
+    const byId = new Map<string, ProviderChildSessionSummary>();
+    const projectIdHash = await this.dbReader.getProjectId(this.projectPath);
+    if (projectIdHash) {
+      for (const row of await this.dbReader.listChildSessionRows(
+        projectIdHash,
+        parentSessionId,
+      )) {
+        byId.set(row.id, childSummaryFromDbRow(parentSessionId, row));
+      }
+    }
+    for (const child of await this.listFileProviderChildSessions(
+      parentSessionId,
+    )) {
+      if (!byId.has(child.id)) byId.set(child.id, child);
+    }
+    return [...byId.values()].sort(
+      (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+    );
   }
 
-  /**
-   * OpenCode doesn't have agent sessions like Claude's Task tool.
-   * Return null.
-   */
+  async getAgentMappings(
+    parentSessionId?: string,
+  ): Promise<{ toolUseId: string; agentId: string }[]> {
+    if (!parentSessionId) return [];
+    const byToolUseId = new Map<string, string>();
+    for (const mapping of await this.dbReader.listTaskChildMappings(
+      parentSessionId,
+    )) {
+      byToolUseId.set(mapping.toolUseId, mapping.agentId);
+    }
+    for (const mapping of await this.listFileTaskChildMappings(
+      parentSessionId,
+    )) {
+      if (!byToolUseId.has(mapping.toolUseId)) {
+        byToolUseId.set(mapping.toolUseId, mapping.agentId);
+      }
+    }
+    return [...byToolUseId.entries()].map(([toolUseId, agentId]) => ({
+      toolUseId,
+      agentId,
+    }));
+  }
+
   async getAgentSession(
-    _agentId: string,
+    agentId: string,
+    parentSessionId?: string,
   ): Promise<{ messages: Message[]; status: string } | null> {
-    return null;
+    if (parentSessionId) {
+      const children = await this.listProviderChildSessions(parentSessionId);
+      if (!children.some((child) => child.id === agentId)) return null;
+    }
+    const loaded = await this.getSession(
+      agentId,
+      encodeProjectId(this.projectPath),
+    );
+    if (!loaded) return null;
+    const session = normalizeSession(loaded);
+    return {
+      messages: session.messages.map((message) => ({
+        ...message,
+        isSubagent: true,
+      })),
+      status: session.messages.length > 0 ? "completed" : "pending",
+    };
   }
 
   /**
@@ -1424,4 +1589,68 @@ export class OpenCodeSessionReader implements ISessionReader {
     if (!title) return null;
     return truncateSessionTitle(title) || null;
   }
+}
+
+function childSummaryFromDbRow(
+  parentSessionId: string,
+  row: OpenCodeDbChildSessionRow,
+): ProviderChildSessionSummary {
+  const title = row.title?.trim() || undefined;
+  const agentType =
+    row.agent?.trim() || agentTypeFromOpenCodeChildTitle(title) || undefined;
+  return {
+    id: row.id,
+    parentSessionId,
+    ...(title ? { title } : {}),
+    ...(agentType ? { agentType } : {}),
+    updatedAt: new Date(row.timeUpdated ?? 0).toISOString(),
+  };
+}
+
+function childSummaryFromFileSession(
+  parentSessionId: string,
+  sessionId: string,
+  session: OpenCodeSessionJson,
+): ProviderChildSessionSummary {
+  const title = session.title?.trim() || undefined;
+  const agentType = agentTypeFromOpenCodeChildTitle(title);
+  return {
+    id: session.id || sessionId,
+    parentSessionId,
+    ...(title ? { title } : {}),
+    ...(agentType ? { agentType } : {}),
+    updatedAt: new Date(
+      session.time?.updated ?? session.time?.created ?? 0,
+    ).toISOString(),
+  };
+}
+
+function agentTypeFromOpenCodeChildTitle(
+  title: string | undefined,
+): string | undefined {
+  const match = title?.match(/\(@([^\s)]+)\s+subagent\)\s*$/i);
+  return match?.[1];
+}
+
+function childSessionIdFromStoredTaskPart(
+  part: OpenCodeStoredPart,
+): string | undefined {
+  const metadata = asRecord(asRecord(part.state)?.metadata);
+  const fromMeta =
+    stringFromUnknown(metadata?.sessionId) ??
+    stringFromUnknown(metadata?.session_id);
+  if (fromMeta) return fromMeta;
+  const output = asRecord(part.state)?.output;
+  if (typeof output !== "string") return undefined;
+  return output.match(/session_id:\s*(ses_[A-Za-z0-9]+)/)?.[1];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

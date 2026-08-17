@@ -103,6 +103,15 @@ export interface OpenCodeDbCatalogRow {
   timeUpdated: number | null;
 }
 
+/** Child session keyed by `session.parent_id` (OpenCode task / subagent). */
+export interface OpenCodeDbChildSessionRow {
+  id: string;
+  parentId: string;
+  title: string | null;
+  agent: string | null;
+  timeUpdated: number | null;
+}
+
 interface DbRow {
   [column: string]: unknown;
 }
@@ -113,6 +122,8 @@ export class OpenCodeDbReader {
   private dbStamp: string | undefined;
   /** worktree -> project.id (or null when this worktree has no DB project). */
   private projectIdCache = new Map<string, string | null>();
+  /** Cached `session.parent_id` presence; reset when the handle reopens. */
+  private sessionParentIdColumn: boolean | undefined;
 
   constructor(private databasePath: string) {}
 
@@ -165,6 +176,7 @@ export class OpenCodeDbReader {
     }
     this.db = undefined;
     this.dbStamp = undefined;
+    this.sessionParentIdColumn = undefined;
   }
 
   /** project.id for a worktree path, cached. Null when no DB / no such project. */
@@ -285,6 +297,112 @@ export class OpenCodeDbReader {
         return out;
       })) ?? []
     );
+  }
+
+  /**
+   * Child `ses_*` rows for one parent. Empty when the schema predates
+   * `parent_id` or the parent has no children. Does not read message/part rows.
+   */
+  async listChildSessionRows(
+    projectId: string,
+    parentSessionId: string,
+  ): Promise<OpenCodeDbChildSessionRow[]> {
+    return (
+      (await this.run((db) => {
+        if (!this.sessionTableHasParentId(db)) return [];
+        const rows = db
+          .prepare(
+            "SELECT id, parent_id, title, agent, time_updated FROM session WHERE project_id = ? AND parent_id = ?",
+          )
+          .all(projectId, parentSessionId) as DbRow[];
+        return parseChildSessionRows(rows);
+      })) ?? []
+    );
+  }
+
+  /**
+   * Every child session id in the store. Used to keep `parent_id` rows out of
+   * top-level catalogs. Empty when `parent_id` is absent.
+   */
+  async listChildSessionIds(projectId?: string): Promise<string[]> {
+    return (
+      (await this.run((db) => {
+        if (!this.sessionTableHasParentId(db)) return [];
+        const rows = (
+          projectId
+            ? db
+                .prepare(
+                  "SELECT id FROM session WHERE project_id = ? AND parent_id IS NOT NULL AND parent_id != ''",
+                )
+                .all(projectId)
+            : db
+                .prepare(
+                  "SELECT id FROM session WHERE parent_id IS NOT NULL AND parent_id != ''",
+                )
+                .all()
+        ) as DbRow[];
+        const ids: string[] = [];
+        for (const row of rows) {
+          if (typeof row.id === "string") ids.push(row.id);
+        }
+        return ids;
+      })) ?? []
+    );
+  }
+
+  /**
+   * Parent `task` parts that name a child session. Session-detail only — list
+   * attach must not call this.
+   */
+  async listTaskChildMappings(
+    parentSessionId: string,
+  ): Promise<{ toolUseId: string; agentId: string }[]> {
+    return (
+      (await this.run((db) => {
+        let rows: DbRow[];
+        try {
+          rows = db
+            .prepare(
+              "SELECT id, data FROM part WHERE session_id = ? AND json_extract(data, '$.tool') = 'task'",
+            )
+            .all(parentSessionId) as DbRow[];
+        } catch {
+          rows = db
+            .prepare("SELECT id, data FROM part WHERE session_id = ?")
+            .all(parentSessionId) as DbRow[];
+        }
+        const mappings: { toolUseId: string; agentId: string }[] = [];
+        const seen = new Set<string>();
+        for (const row of rows) {
+          const part = parseJson(row.data);
+          if (part?.tool !== "task") continue;
+          const agentId = childSessionIdFromTaskPart(part);
+          if (!agentId) continue;
+          const toolUseIds = [stringOrNull(part.callID), stringOrNull(row.id)];
+          for (const toolUseId of toolUseIds) {
+            if (!toolUseId) continue;
+            const key = `${toolUseId}\0${agentId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            mappings.push({ toolUseId, agentId });
+          }
+        }
+        return mappings;
+      })) ?? []
+    );
+  }
+
+  private sessionTableHasParentId(db: SqliteDatabase): boolean {
+    if (this.sessionParentIdColumn !== undefined) {
+      return this.sessionParentIdColumn;
+    }
+    try {
+      const cols = db.prepare("PRAGMA table_info(session)").all() as DbRow[];
+      this.sessionParentIdColumn = cols.some((col) => col.name === "parent_id");
+    } catch {
+      this.sessionParentIdColumn = false;
+    }
+    return this.sessionParentIdColumn;
   }
 
   /** First user message's first text part — the title fallback. */
@@ -434,6 +552,48 @@ function parseModel(value: unknown): OpenCodeDbSessionRow["model"] {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function parseChildSessionRows(rows: DbRow[]): OpenCodeDbChildSessionRow[] {
+  const out: OpenCodeDbChildSessionRow[] = [];
+  for (const row of rows) {
+    if (typeof row.id !== "string") continue;
+    if (typeof row.parent_id !== "string" || row.parent_id.length === 0) {
+      continue;
+    }
+    out.push({
+      id: row.id,
+      parentId: row.parent_id,
+      title: typeof row.title === "string" ? row.title : null,
+      agent: typeof row.agent === "string" ? row.agent : null,
+      timeUpdated: numberOrNull(row.time_updated),
+    });
+  }
+  return out;
+}
+
+function childSessionIdFromTaskPart(
+  part: Record<string, unknown>,
+): string | null {
+  const state =
+    part.state && typeof part.state === "object" && !Array.isArray(part.state)
+      ? (part.state as Record<string, unknown>)
+      : undefined;
+  const metadata =
+    state?.metadata &&
+    typeof state.metadata === "object" &&
+    !Array.isArray(state.metadata)
+      ? (state.metadata as Record<string, unknown>)
+      : undefined;
+  const fromMeta =
+    stringOrNull(metadata?.sessionId) ?? stringOrNull(metadata?.session_id);
+  if (fromMeta) return fromMeta;
+  const output = typeof state?.output === "string" ? state.output : "";
+  return output.match(/session_id:\s*(ses_[A-Za-z0-9]+)/)?.[1] ?? null;
 }
 
 /** Parse `message.data` and inject the column-only id/sessionID. */

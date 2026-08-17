@@ -35,6 +35,7 @@ interface OpenCodeProjectJson {
 interface OpenCodeSessionJson {
   id?: unknown;
   title?: unknown;
+  parentID?: unknown;
   time?: { created?: unknown; updated?: unknown };
 }
 
@@ -71,11 +72,13 @@ export class OpenCodeSessionCatalogAdapter
     let skippedByMode = 0;
     let newestMs = 0;
 
+    const childIds = new Set(await this.dbReader.listChildSessionIds());
     const dbRows = await this.dbReader.listAllSessionRows();
     for (const row of dbRows) {
       context.signal.throwIfAborted();
       const updatedAtMs = row.timeUpdated ?? row.timeCreated;
       if (updatedAtMs === null || updatedAtMs === undefined) continue;
+      if (childIds.has(row.id)) continue;
       if (!isWithinScanMode(context.mode, updatedAtMs)) {
         skippedByMode += 1;
         continue;
@@ -141,7 +144,7 @@ export class OpenCodeSessionCatalogAdapter
           continue;
         }
         const sessionId = asString(session.id) ?? file.replace(/\.json$/, "");
-        if (rows.has(sessionId)) continue;
+        if (rows.has(sessionId) || asString(session.parentID)) continue;
 
         const updatedAtMs =
           asEpochMs(session.time?.updated) ??

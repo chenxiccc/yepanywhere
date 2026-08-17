@@ -390,4 +390,27 @@ describe("OpenCodeSessionCatalogAdapter", () => {
     expect(rows).toEqual([]);
     expect(metrics.skippedByMode).toBe(1);
   });
+
+  it("omits file-tree sessions that name a parentID", async () => {
+    const storageDir = await seedOpenCode();
+    await writeJson(
+      join(storageDir, "session", "prj-alpha", "ses-child.json"),
+      {
+        id: "ses-child",
+        parentID: "ses-legacy",
+        title: "Explore (@explore subagent)",
+        time: {
+          created: Date.parse("2026-05-03T00:00:00.000Z"),
+          updated: Date.parse("2026-05-04T00:00:00.000Z"),
+        },
+      },
+    );
+    const { rows } = await collect(
+      new OpenCodeSessionCatalogAdapter({
+        storageDir,
+        databasePath: join(root, "absent.db"),
+      }),
+    );
+    expect(rows.map((row) => row.sessionId)).toEqual(["ses-legacy"]);
+  });
 });
