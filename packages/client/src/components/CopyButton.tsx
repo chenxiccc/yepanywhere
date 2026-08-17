@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { writeClipboardText } from "../lib/clipboard";
+import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 
 /**
  * A small copy-to-clipboard button used by the source-control copy affordances
  * (branch name, commit hash, file path — topic: source-review-to-session). Shows
  * a transient check on success and stops click propagation so it can sit inside
- * a clickable row without also selecting the row.
+ * a clickable row without also selecting the row. A value resolver supports
+ * content that must be loaded after the user clicks.
  */
 export function CopyButton({
   value,
@@ -14,7 +15,7 @@ export function CopyButton({
   disabled = false,
   icon = "copy",
 }: {
-  value: string;
+  value: string | (() => Promise<string>);
   /** Tooltip + accessible label (e.g. "Copy branch name"). */
   title: string;
   className?: string;
@@ -22,6 +23,7 @@ export function CopyButton({
   icon?: "copy" | "path" | "content";
 }) {
   const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
 
   useEffect(() => {
     if (!copied) return;
@@ -35,10 +37,16 @@ export function CopyButton({
       className={`copy-button ${copied ? "copied" : ""} ${className ?? ""}`}
       title={title}
       aria-label={title}
-      disabled={disabled}
+      disabled={disabled || copying}
       onClick={async (event) => {
         event.stopPropagation();
-        if (await writeClipboardText(value)) setCopied(true);
+        setCopying(true);
+        const success =
+          typeof value === "function"
+            ? await writeClipboardTextLater(value())
+            : await writeClipboardText(value);
+        setCopying(false);
+        if (success) setCopied(true);
       }}
     >
       {copied ? (

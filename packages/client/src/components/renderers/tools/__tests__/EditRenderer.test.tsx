@@ -51,6 +51,20 @@ const renderContext = {
   isStreaming: false,
   theme: "dark" as const,
 };
+
+function rect(top: number): DOMRect {
+  return {
+    bottom: top + 10,
+    height: 10,
+    left: 0,
+    right: 10,
+    top,
+    width: 10,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  };
+}
 if (!editRenderer.renderCollapsedPreview) {
   throw new Error("Edit renderer must provide collapsed preview");
 }
@@ -1047,12 +1061,18 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(pathLink.getAttribute("href")).toBe(
       "/projects/project-1/file?path=research%2Fprogress-2026-05-18.md&line=1&lineEnd=13",
     );
+    const copyPath = screen.getByRole("button", { name: "Copy path" });
+    expect(copyPath.closest(".modal-header-actions")).not.toBeNull();
+    expect(modal?.querySelector(".file-path-copy")).toBeNull();
     const modalToggle = modal?.querySelector(
       ".fixed-font-render-toggle__button",
     );
     expect(modalToggle).toBeTruthy();
 
     fireEvent.click(modalToggle as Element);
+    expect(modal?.querySelector(".line-hunk")?.textContent).toContain(
+      "@@ -1,0 +1,13 @@",
+    );
     expect(container.textContent).toContain("Recent MT Adapter Progress");
   });
 
@@ -1298,6 +1318,24 @@ describe("EditRenderer collapsed preview fallback", () => {
     const toggle = await screen.findByRole("button", {
       name: "Show full context",
     });
+    const scrollRoot = document.querySelector<HTMLElement>(".modal-content");
+    if (!scrollRoot) throw new Error("Expected modal scroll root");
+    scrollRoot.scrollTop = 40;
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        if (this === scrollRoot) return rect(20);
+        if (
+          this instanceof Element &&
+          (this.classList.contains("line-inserted") ||
+            this.classList.contains("fixed-font-diff-added"))
+        ) {
+          return rect(
+            document.body.textContent?.includes("Show diff only") ? 140 : 80,
+          );
+        }
+        return rect(0);
+      });
     fireEvent.click(toggle);
 
     await waitFor(() => {
@@ -1313,6 +1351,8 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(
       await screen.findByRole("button", { name: "Show diff only" }),
     ).toBeDefined();
+    expect(scrollRoot.scrollTop).toBe(100);
+    rectSpy.mockRestore();
   });
 
   it("shows the current file without diff markers when the edit cannot be located", async () => {

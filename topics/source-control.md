@@ -236,6 +236,12 @@ live working-tree refresh changes the diff while full context is open, YA
 invalidates and reloads that projection. An older request resolving later
 cannot overwrite the newer projection.
 
+A diff-only/full-context switch preserves the first changed row's current
+viewport offset rather than centering that row. Source Control and session Edit
+details share both this scroll-anchor primitive and the unified diff renderer,
+so the hunk remains visually stationary while surrounding source and the
+scrollbar appear.
+
 A live working-tree refresh preserves the user's selected Diff/Markdown
 Preview mode and maintains the viewed position on a best-effort basis. Until
 the aligned source-marker projection exists, preserving the relative scrollbar
@@ -254,10 +260,13 @@ A current client also suppresses binary-looking structured patch text returned
 by an older server. Large-content, long-line, and highlighted-HTML limits remain
 independent reasons to omit a text preview.
 
-Markdown Preview must remain a rendered projection of those same diff rows,
-not replace them with the complete new document. Its source-line identities,
-incremental rendering boundary, and cross-representation scroll contract live
-in [aligned Markdown diffs](aligned-markdown-diffs.md).
+Markdown Preview follows the explicit diff/full-context scope. Diff-only uses
+the same approximate diff-aware rich-text projection as session Edit details,
+including added/removed/context lanes. Full context renders the complete
+post-change document and may sacrifice changed-block emphasis for a faithful
+whole-file render. Copy content follows that same scope. Exact source-line
+identities, aligned blocks, and the cross-representation scroll contract live in
+[aligned Markdown diffs](aligned-markdown-diffs.md).
 
 The wide diff pane keeps filename, path, view controls, hunk navigation, and
 file actions in one toolbar row when they fit. A narrow pane or phone modal may

@@ -26,6 +26,7 @@ export interface ModalAnchorRect {
 
 interface ModalProps {
   title: ReactNode;
+  actions?: ReactNode;
   children: ReactNode;
   onClose: () => void;
   onMinimize?: () => void;
@@ -122,6 +123,7 @@ export function useModalBackGesture(
  */
 export function Modal({
   title,
+  actions,
   children,
   onClose,
   onMinimize,
@@ -272,7 +274,17 @@ export function Modal({
       >
         <div className="modal-header">
           <span className="modal-title">{title}</span>
-          <span style={{ display: "flex" }}>
+          <span
+            className="modal-header-actions"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.375rem",
+              marginLeft: "auto",
+              flexShrink: 0,
+            }}
+          >
+            {actions}
             {onMinimize && (
               <button
                 type="button"

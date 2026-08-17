@@ -7,6 +7,7 @@ import { Modal } from "./ui/Modal";
 
 interface ActivityDetailModalProps {
   title: ReactNode;
+  actions?: ReactNode;
   label: string;
   briefLabel?: string;
   children: ReactNode;
@@ -19,6 +20,7 @@ interface ActivityDetailModalProps {
  */
 export function ActivityDetailModal({
   title,
+  actions,
   label,
   briefLabel,
   children,
@@ -28,7 +30,7 @@ export function ActivityDetailModal({
 
   if (!sessionId) {
     return (
-      <Modal title={title} onClose={onClose}>
+      <Modal title={title} actions={actions} onClose={onClose}>
         {children}
       </Modal>
     );
@@ -38,6 +40,7 @@ export function ActivityDetailModal({
     <SessionManagedPanel
       sessionId={sessionId}
       title={title}
+      actions={actions}
       label={label}
       briefLabel={briefLabel}
       onClose={onClose}

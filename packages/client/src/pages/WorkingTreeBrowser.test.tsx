@@ -796,17 +796,41 @@ describe("WorkingTreeBrowser", () => {
       getGitDiff
         .mockResolvedValueOnce({
           diffHtml: "<pre><code>+dirty</code></pre>",
-          structuredPatch: [],
+          structuredPatch: [
+            {
+              oldStart: 1,
+              oldLines: 0,
+              newStart: 1,
+              newLines: 1,
+              lines: ["+first rendered dirty file"],
+            },
+          ],
           markdownHtml: "<p>first rendered dirty file</p>",
         })
         .mockResolvedValueOnce({
           diffHtml: "<pre><code>+dirty again</code></pre>",
-          structuredPatch: [],
+          structuredPatch: [
+            {
+              oldStart: 1,
+              oldLines: 0,
+              newStart: 1,
+              newLines: 1,
+              lines: ["+second rendered dirty file"],
+            },
+          ],
           markdownHtml: "<p>second rendered dirty file</p>",
         })
         .mockResolvedValueOnce({
           diffHtml: "<pre><code>+dirty once more</code></pre>",
-          structuredPatch: [],
+          structuredPatch: [
+            {
+              oldStart: 1,
+              oldLines: 0,
+              newStart: 1,
+              newLines: 1,
+              lines: ["+third rendered dirty file"],
+            },
+          ],
           markdownHtml: "<p>third rendered dirty file</p>",
         });
       listReviewComments.mockResolvedValue({

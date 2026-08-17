@@ -199,6 +199,13 @@ falls back to a `_rawPatch` (`RawPatchPreview`) parsed from the V4A text via
 collapsed preview, expand-to-modal, "show full context", and copy-post-change
 affordances regardless of backend.
 
+Read and Edit are **file-backed details by composition**, not a viewer class
+hierarchy. A Read path enters the canonical `FileViewer`. An expanded Edit
+composes the shared managed-detail lifecycle with `FilePathLink` for canonical
+file identity and its context menu, plus the shared source-header path and
+version-control actions. Its source projection uses Source Control's
+`UnifiedDiff`; provider-specific normalization remains outside that component.
+
 ### Edit-block full-context toggle
 
 The full-diff modal offers **Show full context** whenever the session has a
@@ -214,6 +221,12 @@ project and a file path. Default remains the hunk-only view.
 - Grok and pi leave `originalFile` empty, so they take the current-file path.
   No new server capability: the client uses existing `GET /files` and
   `POST /diff/expand`.
+- Switching projections preserves the first changed row's existing offset from
+  the real scroll root. The first change therefore keeps the hunk view's few
+  context lines above it instead of being geometrically centered; full context
+  primarily adds surrounding content and a scrollbar. Source and fixed-font
+  rendered Edit projections share this rule. A markerless current-file fallback
+  has no changed row to anchor.
 
 ## Initiation — where the edit format comes from
 

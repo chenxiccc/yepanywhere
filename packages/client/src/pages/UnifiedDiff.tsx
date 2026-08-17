@@ -7,6 +7,9 @@ type UnifiedRow =
   | { type: "header"; text: string }
   | { type: "line"; flatIndex: number; text: string };
 
+export const CHANGED_DIFF_LINE_SELECTOR =
+  ".line-deleted, .line-inserted, .diff-removed, .diff-added, .fixed-font-diff-removed, .fixed-font-diff-added";
+
 export const UnifiedDiff = memo(function UnifiedDiff({
   diffHtml,
   structuredPatch,

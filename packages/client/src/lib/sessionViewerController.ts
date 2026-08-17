@@ -12,6 +12,7 @@ interface SessionViewerBase {
 export interface PanelViewerRegistration extends SessionViewerBase {
   kind: "panel";
   title: ReactNode;
+  actions?: ReactNode;
   content: ReactNode;
 }
 

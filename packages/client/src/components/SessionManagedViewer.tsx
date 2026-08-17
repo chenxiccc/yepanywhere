@@ -17,6 +17,7 @@ interface SessionManagedPanelProps {
   viewerId?: string;
   sessionId: string;
   title: ReactNode;
+  actions?: ReactNode;
   label: string;
   briefLabel?: string;
   children: ReactNode;
@@ -34,6 +35,7 @@ export function SessionManagedPanel({
   viewerId: suppliedViewerId,
   sessionId,
   title,
+  actions,
   label,
   briefLabel,
   children,
@@ -58,6 +60,7 @@ export function SessionManagedPanel({
       kind: "panel",
       sessionId,
       title,
+      actions,
       label,
       briefLabel,
       content: children,
@@ -65,7 +68,7 @@ export function SessionManagedPanel({
         if (mountedRef.current) onCloseRef.current();
       },
     });
-  }, [briefLabel, children, label, sessionId, title, viewerId]);
+  }, [actions, briefLabel, children, label, sessionId, title, viewerId]);
 
   return null;
 }
@@ -124,6 +127,7 @@ export function SessionManagedPanelHost({
   return (
     <Modal
       title={panel.title}
+      actions={panel.actions}
       onClose={panel.close}
       onMinimize={panel.minimize}
       minimized={panel.minimized || inactive}

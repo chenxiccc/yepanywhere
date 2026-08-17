@@ -113,7 +113,10 @@ function getProjectPath(projectId: string): string | null {
   }
 }
 
-function getProjectViewerFilePath(projectId: string, filePath: string): string {
+export function getProjectViewerFilePath(
+  projectId: string,
+  filePath: string,
+): string {
   const projectPath = getProjectPath(projectId);
   const projectRelativePath = getProjectRelativePath(filePath, projectPath);
   if (projectRelativePath !== null) {

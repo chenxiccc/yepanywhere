@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +13,12 @@ import { useSchemaValidationContext } from "../../../contexts/SchemaValidationCo
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useExpandedDiff } from "../../../hooks/useExpandedDiff";
 import { useVisibilityAwareTextTooltip } from "../../../hooks/useTooltipAppearance";
+import { useI18n } from "../../../i18n";
+import {
+  captureScrollPositionAnchor,
+  restoreScrollPositionAnchor,
+  type ScrollPositionAnchor,
+} from "../../../lib/scrollAnchor";
 import {
   classifyToolError,
   getErrorClassSuffix,
@@ -21,8 +28,13 @@ import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { ActivityDetailModal } from "../../ActivityDetailModal";
-import { FilePathLink, FileVersionControlLinks } from "../../FilePathLink";
+import {
+  FilePathLink,
+  FileVersionControlLinks,
+  getProjectViewerFilePath,
+} from "../../FilePathLink";
 import { SchemaWarning } from "../../SchemaWarning";
+import { SourceFileHeaderActions } from "../../SourceFileHeaderActions";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
 import {
   FixedFontMathToggle,
@@ -35,6 +47,10 @@ import {
   restoreDiffSelection,
 } from "./editSelectionTransfer";
 import { getOutputTailTooltip } from "./outputPreview";
+import {
+  CHANGED_DIFF_LINE_SELECTOR,
+  UnifiedDiff,
+} from "../../../pages/UnifiedDiff";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
 
 const MAX_VISIBLE_LINES = 12;
@@ -853,6 +869,7 @@ function DiffModalContent({
   const projectPath = sessionMetadata?.projectPath ?? null;
   const [showFullContext, setShowFullContext] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const pendingScrollAnchorRef = useRef<ScrollPositionAnchor | null>(null);
   useRestoreDiffSelection(contentRef, selection);
 
   const canExpandContext = Boolean(
@@ -871,6 +888,13 @@ function DiffModalContent({
     if (!showFullContext && !result) {
       await fetchExpandedDiff();
     }
+    const content = contentRef.current;
+    const scrollRoot =
+      content?.closest<HTMLElement>(".modal-content") ?? content;
+    pendingScrollAnchorRef.current = captureScrollPositionAnchor(
+      scrollRoot,
+      content?.querySelector(CHANGED_DIFF_LINE_SELECTOR) ?? null,
+    );
     setShowFullContext(!showFullContext);
   }, [canExpandContext, showFullContext, result, fetchExpandedDiff]);
 
@@ -879,19 +903,16 @@ function DiffModalContent({
   const fullContextFile =
     showFullContext && result?.kind === "file" ? result : null;
 
-  // Scroll to the first changed line when showing a full-file diff
-  useEffect(() => {
-    if (fullContextDiff && contentRef.current) {
-      requestAnimationFrame(() => {
-        const firstChange = contentRef.current?.querySelector(
-          ".line-deleted, .line-inserted",
-        );
-        if (firstChange) {
-          firstChange.scrollIntoView({ block: "center", behavior: "instant" });
-        }
-      });
-    }
-  }, [fullContextDiff]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: projection changes trigger restoring the ref-held DOM anchor
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    if (!anchor) return;
+    pendingScrollAnchorRef.current = null;
+    restoreScrollPositionAnchor(
+      anchor,
+      contentRef.current?.querySelector(CHANGED_DIFF_LINE_SELECTOR) ?? null,
+    );
+  }, [fullContextDiff, showFullContext]);
 
   const displayHtml = fullContextDiff?.diffHtml ?? diffHtml;
   const displayPatch = fullContextDiff?.structuredPatch ?? structuredPatch;
@@ -912,6 +933,8 @@ function DiffModalContent({
             displayText={displayPath}
             lineNumber={fileLineRange?.lineNumber}
             lineEnd={fileLineRange?.lineEnd}
+            showCopyButton={false}
+            showVersionControlLinks={false}
           />
         ) : (
           <span className="diff-context-path">{displayPath}</span>
@@ -951,11 +974,10 @@ function DiffModalContent({
           baseFilePath={displayPath}
           initialMode={selection?.renderMode}
           sourceView={
-            displayHtml ? (
-              <HighlightedDiff diffHtml={displayHtml} />
-            ) : (
-              <DiffLines lines={displayPatch.flatMap((h) => h.lines)} />
-            )
+            <UnifiedDiff
+              diffHtml={displayHtml ?? ""}
+              structuredPatch={displayPatch}
+            />
           }
         />
       )}
@@ -983,6 +1005,8 @@ function EditModalTitle({
         displayText={text}
         lineNumber={lineRange?.lineNumber}
         lineEnd={lineRange?.lineEnd}
+        showCopyButton={false}
+        showVersionControlLinks={false}
       />
     );
   }
@@ -991,6 +1015,54 @@ function EditModalTitle({
     <span className="file-path" title={filePath}>
       {text}
     </span>
+  );
+}
+
+function EditDetailModal({
+  filePath,
+  displayText,
+  lineRange,
+  label,
+  children,
+  onClose,
+}: {
+  filePath: string;
+  displayText?: string;
+  lineRange?: FileLineRange;
+  label: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const sessionMetadata = useOptionalSessionMetadata();
+  const { t } = useI18n();
+  const projectId = sessionMetadata?.projectId;
+  const viewerPath =
+    projectId && filePath
+      ? getProjectViewerFilePath(projectId, filePath)
+      : filePath;
+  const actions =
+    projectId && filePath ? (
+      <>
+        <FileVersionControlLinks projectId={projectId} filePath={filePath} />
+        <SourceFileHeaderActions path={viewerPath} t={t} />
+      </>
+    ) : undefined;
+
+  return (
+    <ActivityDetailModal
+      title={
+        <EditModalTitle
+          filePath={filePath}
+          displayText={displayText}
+          lineRange={lineRange}
+        />
+      }
+      actions={actions}
+      label={label}
+      onClose={onClose}
+    >
+      {children}
+    </ActivityDetailModal>
   );
 }
 
@@ -1139,14 +1211,10 @@ function EditCollapsedPreview({
           )}
         </div>
         {isModalOpen && hasProposedDiff && (
-          <ActivityDetailModal
-            title={
-              <EditModalTitle
-                filePath={filePath}
-                displayText={fileName}
-                lineRange={fileLineRange}
-              />
-            }
+          <EditDetailModal
+            filePath={filePath}
+            displayText={fileName}
+            lineRange={fileLineRange}
             label={fileName}
             onClose={handleClose}
           >
@@ -1158,7 +1226,7 @@ function EditCollapsedPreview({
               newString={newString}
               selection={modalSelection}
             />
-          </ActivityDetailModal>
+          </EditDetailModal>
         )}
       </>
     );
@@ -1190,10 +1258,9 @@ function EditCollapsedPreview({
             </DiffTapTarget>
           </div>
           {isModalOpen && (
-            <ActivityDetailModal
-              title={
-                <EditModalTitle filePath={filePath} displayText={fileName} />
-              }
+            <EditDetailModal
+              filePath={filePath}
+              displayText={fileName}
               label={fileName}
               onClose={handleClose}
             >
@@ -1202,7 +1269,7 @@ function EditCollapsedPreview({
                 baseFilePath={filePath}
                 selection={modalSelection}
               />
-            </ActivityDetailModal>
+            </EditDetailModal>
           )}
         </>
       );
@@ -1248,14 +1315,10 @@ function EditCollapsedPreview({
         </DiffTapTarget>
       </div>
       {isModalOpen && (
-        <ActivityDetailModal
-          title={
-            <EditModalTitle
-              filePath={filePath}
-              displayText={fileName}
-              lineRange={fileLineRange}
-            />
-          }
+        <EditDetailModal
+          filePath={filePath}
+          displayText={fileName}
+          lineRange={fileLineRange}
           label={fileName}
           onClose={handleClose}
         >
@@ -1268,7 +1331,7 @@ function EditCollapsedPreview({
             originalFile={originalFile}
             selection={modalSelection}
           />
-        </ActivityDetailModal>
+        </EditDetailModal>
       )}
     </>
   );
@@ -1358,10 +1421,9 @@ function EditInteractiveSummary({
           <SourceControlEditLink filePath={filePath} />
         </span>
         {showModal && (
-          <ActivityDetailModal
-            title={
-              <EditModalTitle filePath={filePath} displayText={fileName} />
-            }
+          <EditDetailModal
+            filePath={filePath}
+            displayText={fileName}
             label={fileName}
             onClose={() => setShowModal(false)}
           >
@@ -1385,7 +1447,7 @@ function EditInteractiveSummary({
                 )}
               </div>
             </div>
-          </ActivityDetailModal>
+          </EditDetailModal>
         )}
       </>
     );
@@ -1414,14 +1476,10 @@ function EditInteractiveSummary({
         <SourceControlEditLink filePath={filePath} />
       </span>
       {showModal && (
-        <ActivityDetailModal
-          title={
-            <EditModalTitle
-              filePath={filePath}
-              displayText={fileName}
-              lineRange={fileLineRange}
-            />
-          }
+        <EditDetailModal
+          filePath={filePath}
+          displayText={fileName}
+          lineRange={fileLineRange}
           label={fileName}
           onClose={() => setShowModal(false)}
         >
@@ -1433,7 +1491,7 @@ function EditInteractiveSummary({
             newString={newString}
             originalFile={originalFile}
           />
-        </ActivityDetailModal>
+        </EditDetailModal>
       )}
     </>
   );
@@ -1607,14 +1665,10 @@ function EditToolResult({
           )}
         </div>
         {showModal && hasProposedDiff && inputWithAugment && (
-          <ActivityDetailModal
-            title={
-              <EditModalTitle
-                filePath={filePath}
-                displayText={fileName}
-                lineRange={fileLineRange}
-              />
-            }
+          <EditDetailModal
+            filePath={filePath}
+            displayText={fileName}
+            lineRange={fileLineRange}
             label={fileName}
             onClose={handleClose}
           >
@@ -1626,7 +1680,7 @@ function EditToolResult({
               newString={inputWithAugment.new_string}
               selection={modalSelection}
             />
-          </ActivityDetailModal>
+          </EditDetailModal>
         )}
       </>
     );
@@ -1700,14 +1754,10 @@ function EditToolResult({
         </DiffTapTarget>
       </div>
       {showModal && (
-        <ActivityDetailModal
-          title={
-            <EditModalTitle
-              filePath={result.filePath}
-              displayText={getFileName(result.filePath)}
-              lineRange={getPatchFileLineRange(result.structuredPatch)}
-            />
-          }
+        <EditDetailModal
+          filePath={result.filePath}
+          displayText={getFileName(result.filePath)}
+          lineRange={getPatchFileLineRange(result.structuredPatch)}
           label={getFileName(result.filePath)}
           onClose={handleClose}
         >
@@ -1719,7 +1769,7 @@ function EditToolResult({
             originalFile={result.originalFile}
             selection={modalSelection}
           />
-        </ActivityDetailModal>
+        </EditDetailModal>
       )}
     </>
   );

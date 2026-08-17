@@ -58,6 +58,7 @@ function SessionHarness() {
           {sourceMounted && open && (
             <ActivityDetailModal
               title="Bash Command"
+              actions={<button type="button">Copy detail path</button>}
               label="Bash Command"
               onClose={() => setOpen(false)}
             >
@@ -77,9 +78,35 @@ describe("ActivityDetailModal", () => {
     cleanup();
   });
 
+  it("renders header actions without a session viewer host", () => {
+    render(
+      <I18nProvider>
+        <ActivityDetailModal
+          title="File detail"
+          actions={<button type="button">Copy file path</button>}
+          label="File detail"
+          onClose={() => {}}
+        >
+          File content
+        </ActivityDetailModal>
+      </I18nProvider>,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Copy file path" })
+        .closest(".modal-header-actions"),
+    ).not.toBeNull();
+  });
+
   it("keeps one mounted detail subtree across parking and source removal", async () => {
     render(<SessionHarness />);
 
+    expect(
+      (await screen.findByRole("button", { name: "Copy detail path" })).closest(
+        ".modal-header-actions",
+      ),
+    ).not.toBeNull();
     fireEvent.click(
       await screen.findByRole("button", { name: "Detail count 0" }),
     );
@@ -94,6 +121,9 @@ describe("ActivityDetailModal", () => {
 
     expect(await screen.findByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Detail count 1" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Copy detail path" }),
+    ).toBeTruthy();
   });
 
   it("does not let a retained session host clear another session's detail", async () => {

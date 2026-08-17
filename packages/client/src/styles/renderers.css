@@ -4914,10 +4914,6 @@ pre.code-highlighter-plain,
   font-size: inherit;
 }
 
-/* Note: When "Show full context" is clicked in the diff modal, JS automatically
-   scrolls to the first .line-deleted or .line-inserted element. This uses
-   scrollIntoView({ block: "center" }) in EditRenderer.tsx. */
-
 /* Source-review commenting over a diff (topic: source-review-to-session). */
 .diff-modal-content {
   position: relative;
@@ -5281,7 +5277,7 @@ pre.code-highlighter-plain,
 }
 
 /* Copy affordance shared by status bar, commit rows, file rows. */
-.copy-button {
+.copy-button:not(.diff-context-toggle) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5293,7 +5289,7 @@ pre.code-highlighter-plain,
   cursor: pointer;
 }
 
-.copy-button:hover {
+.copy-button:not(.diff-context-toggle):hover {
   color: var(--text-primary, #e6edf3);
   background: var(--bg-hover, rgba(255, 255, 255, 0.06));
 }

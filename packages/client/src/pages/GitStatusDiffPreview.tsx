@@ -19,18 +19,48 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
+import { CopyButton } from "../components/CopyButton";
 import { MarkdownPreview } from "../components/MarkdownPreview";
+import { renderFixedFontRichContent } from "../components/ui/FixedFontMathToggle";
 import { Modal } from "../components/ui/Modal";
 import { useDiffViewMode } from "../hooks/useDiffViewMode";
 import { isEditableKeyboardTarget } from "../hooks/useSourceKeyboard";
 import { type DiffViewMode, resolveDiffViewMode } from "../lib/diffSideBySide";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
+import {
+  captureScrollPositionAnchor,
+  restoreScrollPositionAnchor,
+  type ScrollPositionAnchor,
+} from "../lib/scrollAnchor";
 import { DiffCommentController } from "./DiffCommentLayer";
 import { SideBySideDiff } from "./SideBySideDiff";
-import { UnifiedDiff } from "./UnifiedDiff";
+import { CHANGED_DIFF_LINE_SELECTOR, UnifiedDiff } from "./UnifiedDiff";
 import type { MessageKey, TranslationFn } from "../i18n";
 
 const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
+
+function getDiffSourceText(hunks: PatchHunk[]): string {
+  return hunks.flatMap((hunk) => hunk.lines).join("\n");
+}
+
+function getPostChangeText(hunks: PatchHunk[]): string | null {
+  if (hunks.length === 0) return null;
+  return hunks
+    .map((hunk) =>
+      hunk.lines
+        .filter((line) => line.startsWith(" ") || line.startsWith("+"))
+        .map((line) => line.slice(1))
+        .join("\n"),
+    )
+    .join("\n");
+}
+
+function getDiffScrollRoot(content: HTMLElement): HTMLElement {
+  return (
+    content.closest<HTMLElement>(".git-diff-preview-body, .modal-content") ??
+    content
+  );
+}
 
 export interface GitDiffViewState {
   showFullContext?: boolean;
@@ -676,6 +706,7 @@ function GitDiffContent({
     () => retainedDiffView?.showMarkdownPreview ?? false,
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const pendingScrollAnchorRef = useRef<ScrollPositionAnchor | null>(null);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
     null,
   );
@@ -731,10 +762,54 @@ function GitDiffContent({
   }, [viewMode, setViewMode]);
 
   const isMarkdown = isMarkdownLikeFile(file.path);
-  const markdownHtml =
-    fullContextResult?.markdownHtml || diffResult.markdownHtml;
-  const hasMarkdownPreview = isMarkdown && !!markdownHtml;
+  const diffOnlyRendered = useMemo(
+    () =>
+      isMarkdown
+        ? renderFixedFontRichContent(
+            getDiffSourceText(diffResult.structuredPatch),
+            {
+              diffAware: true,
+              baseFilePath: file.path,
+              projectId,
+            },
+          )
+        : null,
+    [diffResult.structuredPatch, file.path, isMarkdown, projectId],
+  );
+  const fullContextText = useMemo(
+    () =>
+      fullContextResult
+        ? getPostChangeText(fullContextResult.structuredPatch)
+        : null,
+    [fullContextResult],
+  );
+  const fullContextRendered = useMemo(
+    () =>
+      !isMarkdown || fullContextText === null || fullContextResult?.markdownHtml
+        ? null
+        : renderFixedFontRichContent(fullContextText, {
+            baseFilePath: file.path,
+            projectId,
+          }),
+    [
+      file.path,
+      fullContextResult?.markdownHtml,
+      fullContextText,
+      isMarkdown,
+      projectId,
+    ],
+  );
+  const fullContextRenderedHtml =
+    fullContextResult?.markdownHtml || fullContextRendered?.html;
+  const hasMarkdownPreview =
+    isMarkdown &&
+    (!!diffResult.markdownHtml ||
+      diffOnlyRendered?.changed === true ||
+      fullContextRendered?.changed === true);
   const showingMarkdownPreview = showMarkdownPreview && hasMarkdownPreview;
+  const renderedPreviewHtml = showFullContext
+    ? fullContextRenderedHtml
+    : diffOnlyRendered?.html;
 
   const retainDiffView = useCallback(
     (view: GitDiffViewState) => {
@@ -743,78 +818,88 @@ function GitDiffContent({
     [fileKey, onRetainDiffView],
   );
 
-  const loadFullContext = useCallback(async () => {
-    if (fullContextResult || contextLoading) {
-      return true;
-    }
-    const revisionKey = fullContextRevisionKey;
-    setFullContextLoad((current) =>
-      current.revisionKey === revisionKey
-        ? { ...current, loading: true, error: null }
-        : {
-            revisionKey,
-            result: null,
-            loading: true,
-            error: null,
-          },
-    );
-    try {
-      const result = await fetchDiffForSource(
-        projectId,
-        file,
-        sourceFromPrimitives(
-          sourceKind,
-          sourceBaseSha,
-          sourceHeadSha,
-          sourceFileDiffMode,
-        ),
-        true,
-        ignoreWhitespace,
-      );
-      setFullContextLoad((current) =>
-        current.revisionKey === revisionKey
-          ? { revisionKey, result, loading: false, error: null }
-          : current,
-      );
-      return true;
-    } catch (err) {
-      if (ignoreWhitespace || sourceKind === "comparison") {
-        onProjectionRequestFailure?.();
+  const loadFullContext =
+    useCallback(async (): Promise<GitDiffResult | null> => {
+      if (fullContextResult) {
+        return fullContextResult;
       }
-      const message =
-        err instanceof Error ? err.message : t("gitStatusLoadContextFailed");
+      if (contextLoading) {
+        return null;
+      }
+      const revisionKey = fullContextRevisionKey;
       setFullContextLoad((current) =>
         current.revisionKey === revisionKey
-          ? {
+          ? { ...current, loading: true, error: null }
+          : {
               revisionKey,
               result: null,
-              loading: false,
-              error: message,
-            }
-          : current,
+              loading: true,
+              error: null,
+            },
       );
-      return false;
-    }
-  }, [
-    fullContextResult,
-    contextLoading,
-    fullContextRevisionKey,
-    projectId,
-    file,
-    sourceKind,
-    sourceBaseSha,
-    sourceHeadSha,
-    sourceFileDiffMode,
-    ignoreWhitespace,
-    onProjectionRequestFailure,
-    t,
-  ]);
+      try {
+        const result = await fetchDiffForSource(
+          projectId,
+          file,
+          sourceFromPrimitives(
+            sourceKind,
+            sourceBaseSha,
+            sourceHeadSha,
+            sourceFileDiffMode,
+          ),
+          true,
+          ignoreWhitespace,
+        );
+        setFullContextLoad((current) =>
+          current.revisionKey === revisionKey
+            ? { revisionKey, result, loading: false, error: null }
+            : current,
+        );
+        return result;
+      } catch (err) {
+        if (ignoreWhitespace || sourceKind === "comparison") {
+          onProjectionRequestFailure?.();
+        }
+        const message =
+          err instanceof Error ? err.message : t("gitStatusLoadContextFailed");
+        setFullContextLoad((current) =>
+          current.revisionKey === revisionKey
+            ? {
+                revisionKey,
+                result: null,
+                loading: false,
+                error: message,
+              }
+            : current,
+        );
+        return null;
+      }
+    }, [
+      fullContextResult,
+      contextLoading,
+      fullContextRevisionKey,
+      projectId,
+      file,
+      sourceKind,
+      sourceBaseSha,
+      sourceHeadSha,
+      sourceFileDiffMode,
+      ignoreWhitespace,
+      onProjectionRequestFailure,
+      t,
+    ]);
 
   const handleToggleContext = useCallback(async () => {
     const nextShowFullContext = !showFullContext;
     if (nextShowFullContext && !(await loadFullContext())) {
       return;
     }
+    const content = contentRef.current;
+    const scrollRoot = content ? getDiffScrollRoot(content) : null;
+    pendingScrollAnchorRef.current = captureScrollPositionAnchor(
+      scrollRoot,
+      content?.querySelector(CHANGED_DIFF_LINE_SELECTOR) ?? null,
+    );
     setShowFullContext(nextShowFullContext);
     retainDiffView({ showFullContext: nextShowFullContext });
   }, [loadFullContext, retainDiffView, showFullContext]);
@@ -825,24 +910,32 @@ function GitDiffContent({
     retainDiffView({ showMarkdownPreview: nextShowMarkdownPreview });
   }, [retainDiffView, showMarkdownPreview]);
 
+  const resolveCopyContent = useCallback(async () => {
+    const result = showFullContext
+      ? (fullContextResult ?? (await loadFullContext()))
+      : diffResult;
+    const content = result ? getPostChangeText(result.structuredPatch) : null;
+    if (content === null) {
+      throw new Error("Diff content is unavailable");
+    }
+    return content;
+  }, [diffResult, fullContextResult, loadFullContext, showFullContext]);
+
   useEffect(() => {
     if (showFullContext && !fullContextResult && !contextLoading) {
       void loadFullContext();
     }
   }, [contextLoading, fullContextResult, loadFullContext, showFullContext]);
 
-  // Scroll to first changed line when showing full context
-  useEffect(() => {
-    if (showFullContext && fullContextResult && contentRef.current) {
-      requestAnimationFrame(() => {
-        const firstChange = contentRef.current?.querySelector(
-          ".line-deleted, .line-inserted",
-        );
-        if (firstChange) {
-          firstChange.scrollIntoView({ block: "center", behavior: "instant" });
-        }
-      });
-    }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: projection changes trigger restoring the ref-held DOM anchor
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    if (!anchor) return;
+    pendingScrollAnchorRef.current = null;
+    restoreScrollPositionAnchor(
+      anchor,
+      contentRef.current?.querySelector(CHANGED_DIFF_LINE_SELECTOR) ?? null,
+    );
   }, [showFullContext, fullContextResult]);
 
   const displayResult =
@@ -883,8 +976,7 @@ function GitDiffContent({
       );
       return;
     }
-    const scrollRoot =
-      content.closest<HTMLElement>(".git-diff-preview-body") ?? content;
+    const scrollRoot = getDiffScrollRoot(content);
     const threshold = scrollRoot.getBoundingClientRect().top + 52;
     let index = 0;
     for (let i = 0; i < hunks.length; i++) {
@@ -924,8 +1016,7 @@ function GitDiffContent({
   useEffect(() => {
     const content = contentRef.current;
     if (!content) return;
-    const scrollRoot =
-      content.closest<HTMLElement>(".git-diff-preview-body") ?? content;
+    const scrollRoot = getDiffScrollRoot(content);
     // Coalesce to one measurement per frame: the update queries every rendered
     // hunk's rect, which is too much work to repeat per scroll event.
     let frame = requestAnimationFrame(updateHunkPosition);
@@ -1036,33 +1127,42 @@ function GitDiffContent({
           <MarkdownModeIcon showDiff={showingMarkdownPreview} />
         </button>
       )}
-      {!showingMarkdownPreview && (
-        <button
-          type="button"
-          className={`diff-context-toggle diff-toolbar-icon-button ${
-            showFullContext ? "active" : ""
-          }`}
-          onClick={handleToggleContext}
-          disabled={contextLoading}
-          title={
-            contextLoading
-              ? t("gitStatusLoading")
-              : showFullContext
-                ? t("gitStatusDiffOnly")
-                : t("gitStatusFullContext")
-          }
-          aria-label={
-            contextLoading
-              ? t("gitStatusLoading")
-              : showFullContext
-                ? t("gitStatusDiffOnly")
-                : t("gitStatusFullContext")
-          }
-          aria-pressed={showFullContext}
-        >
-          <ContextModeIcon expanded={showFullContext} />
-        </button>
-      )}
+      <button
+        type="button"
+        className={`diff-context-toggle diff-toolbar-icon-button ${
+          showFullContext ? "active" : ""
+        }`}
+        onClick={handleToggleContext}
+        disabled={contextLoading}
+        title={
+          contextLoading
+            ? t("gitStatusLoading")
+            : showFullContext
+              ? t("gitStatusDiffOnly")
+              : t("gitStatusFullContext")
+        }
+        aria-label={
+          contextLoading
+            ? t("gitStatusLoading")
+            : showFullContext
+              ? t("gitStatusDiffOnly")
+              : t("gitStatusFullContext")
+        }
+        aria-pressed={showFullContext}
+      >
+        <ContextModeIcon expanded={showFullContext} />
+      </button>
+      <CopyButton
+        value={resolveCopyContent}
+        title={t("fileViewerCopyContent")}
+        className="diff-context-toggle diff-toolbar-icon-button"
+        disabled={
+          contextLoading ||
+          !!previewSkipped ||
+          displayResult.structuredPatch.length === 0
+        }
+        icon="content"
+      />
       {!showingMarkdownPreview && (
         <button
           type="button"
@@ -1136,8 +1236,8 @@ function GitDiffContent({
         className="diff-modal-content source-diff-pane diff-gutter-aligned"
         ref={mountContent}
       >
-        {showingMarkdownPreview && markdownHtml ? (
-          <MarkdownPreview html={markdownHtml} sourcePath={file.path} />
+        {showingMarkdownPreview && renderedPreviewHtml ? (
+          <MarkdownPreview html={renderedPreviewHtml} sourcePath={file.path} />
         ) : previewSkipped ? (
           <GitDiffPreviewSkippedState
             file={file}

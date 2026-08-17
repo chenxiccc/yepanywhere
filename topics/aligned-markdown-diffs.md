@@ -5,24 +5,29 @@
 
 Topic: `aligned-markdown-diffs`
 
-Status: Parser foundation implemented. YA now renders Markdown with
-markdown-it 15 and exposes its source-line token maps, but Source Control still
-replaces a Markdown diff with a whole-document preview. The aligned projection
-and shared scroll identity described here remain proposed.
+Status: Parser foundation and the approximate session-Edit projection are
+implemented. Source Control now uses that diff-aware rich-text renderer for its
+diff-only Preview and renders the complete post-change document when Full
+context is selected. Explicit patch-line identities, aligned side-by-side
+blocks, and cross-representation scroll identity remain proposed.
 
 ## Problem and invariant
 
-Source Control currently returns `GitDiffResult.markdownHtml` by rendering the
-entire new file in `buildGitDiffResultFromBytes`. `GitDiffContent` then replaces
-`UnifiedDiff` or `SideBySideDiff` with one `MarkdownPreview`. The replacement has
-no `data-diff-line` identities and no old-side representation. The toggle also
-retains only a relative scrollbar position, so a changed document can still
-land on unrelated content after the DOM changes shape. <!-- verified: 2026-08-10 -->
+Source Control now feeds diff-only patch rows through the same approximate
+`renderFixedFontRichContent(..., { diffAware: true })` path used by session Edit
+details. Those rendered rows distinguish additions, removals, and context, but
+they do not carry `data-diff-line` identities and do not align side-by-side
+blocks. Full-context Preview deliberately renders the complete post-change
+document from `GitDiffResult.markdownHtml`; it prioritizes a faithful whole-file
+render over retaining changed-block highlighting. Cross-representation toggles
+still lack logical source markers, so a changed document can land on unrelated
+content after the DOM changes shape. <!-- verified: 2026-08-17 -->
 
-That behavior violates the representation invariant: **switching between raw
-and rendered diff views must preserve the same Git projection and logical
-source location**. Preview is a view of the diff, not a request to discard the
-diff and show the current document.
+The representation invariant is scope-sensitive: **Diff-only Preview preserves
+the selected Git hunks, while Full-context Preview preserves the complete
+post-change file; switching representations preserves the corresponding logical
+source location.** The scope toggle is explicit, and Copy content follows the
+same selected scope.
 
 Session Edit panels already demonstrate the useful baseline. Markdown-like
 targets pass their structured patch through the diff-aware rich-text path in
@@ -33,11 +38,13 @@ but it preserves more of the diff than Source Control's whole-file preview.
 
 ## Observable contract
 
-- Preview renders the selected working-tree, commit, or comparison diff. It
-  never silently changes that projection to the complete new document.
-- Removed and added content remain distinguishable. Context shared by both
-  sides is represented once in unified mode and on both sides in side-by-side
-  mode.
+- Diff-only Preview renders the selected working-tree, commit, or comparison
+  hunks. Full-context Preview renders the complete post-change document; the
+  explicit scope toggle changes both rendering and Copy content behavior.
+- Removed and added content remain distinguishable in diff-only Preview. Full
+  context may omit removed rows and changed-block emphasis so the resulting
+  document renders faithfully. Context shared by both sides is represented once
+  in unified mode and on both sides in side-by-side mode.
 - Every rendered unit carries its source side, inclusive source-line span, and
   the corresponding flat `structuredPatch` line identities. Review anchors and
   hunk navigation continue to derive from `structuredPatch`, never from
@@ -294,10 +301,11 @@ semantic block.
 
 1. **Completed foundation:** replace Marked with markdown-it, retain safe YA
    rendering behavior, and prove source-line maps plus performance budgets.
-2. Extract and reuse the session diff-aware renderer with explicit patch-line
-   identities.
-3. Replace whole-document Markdown Preview in `GitDiffContent`; add logical
-   scroll-anchor restoration and keep hunk/comment behavior mounted.
+2. **Approximate baseline implemented:** reuse the session diff-aware renderer
+   for diff-only Source Control Preview; Full context keeps the deliberate
+   complete post-change render.
+3. Add explicit patch-line identities, logical scroll-anchor restoration, and
+   mounted hunk/comment behavior to both source and rendered projections.
 4. Add incremental source spans to `BlockDetector` and the Markdown projection
    result, preserving the current safe renderer.
 5. Add aligned tables and other multi-line constructs one kind at a time,
