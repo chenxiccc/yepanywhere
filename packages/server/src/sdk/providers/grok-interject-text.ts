@@ -14,7 +14,7 @@ const INTERJECT_SUFFIX =
 
 export function unwrapGrokInterjectText(text: string): string {
   const prefix = text.match(INTERJECT_PREFIX);
-  if (!prefix || prefix.index !== 0) return text;
+  if (prefix?.index !== 0) return text;
   const suffix = text.match(INTERJECT_SUFFIX);
   if (!suffix) return text;
   const start = prefix[0].length;
