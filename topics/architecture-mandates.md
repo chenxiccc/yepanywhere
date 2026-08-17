@@ -12,11 +12,13 @@ See also:
 
 ## Resource Quiescence
 
-An idle provider session with no active client tab must never create unbounded
-or repeating server work. Closed tabs must release server subscriptions, file
-watchers, poll timers, retry timers, client-owned heartbeats, and queued
-catch-up work. A provider process may remain recoverable or queryable, but it
-must not spin merely because a prior UI view existed.
+An idle provider session with no active view of that session must never create
+unbounded or repeating server work. Interest in another session or a global app
+activity stream is not ownership of its provider process. Closed tabs must
+release server subscriptions, file watchers, poll timers, retry timers,
+client-owned heartbeats, and queued catch-up work. A provider process may
+remain recoverable or queryable, but it must not spin merely because a prior UI
+view existed.
 
 The resource owner for every recurring server action must be explicit:
 
@@ -61,6 +63,8 @@ per-caller retry herds.
   and clear timers.
 - Idle sessions do not schedule per-session server work without a live owner or
   a bounded recovery reason.
+- Idle process retention is keyed to viewers of that session; global app
+  presence and unrelated session viewers cannot renew its deadline.
 - Session-detail reads for incremental refreshes reuse cached parse state or
   have instrumentation proving the remaining work is bounded enough.
 - Client-side reconnect and catch-up logic cannot create overlapping request

@@ -1,12 +1,11 @@
 type ViewerPresenceListener = (hasViewers: boolean) => void;
 
 /**
- * Server-generation-wide session viewer presence.
+ * Viewer presence for one provider process.
  *
- * An app activity or live-session stream retains every idle provider process.
- * The registry only publishes first-viewer and last-viewer transitions so
- * each Process can suspend or restart its own idle grace without tracking
- * tabs.
+ * Mounted live-session streams retain their own idle provider process. The
+ * registry publishes first-viewer and last-viewer transitions so that Process
+ * can suspend or restart its idle grace without tracking individual tabs.
  */
 export class SessionViewerPresence {
   private viewerCount = 0;

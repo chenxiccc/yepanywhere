@@ -553,20 +553,18 @@ blocks resume, reactivation, and configuration replacement. A later explicit
 abort may retry verification; only its verified success emits completion and
 releases the registry entry.
 
-Viewer presence is server-global rather than session-local. Every mounted app
-activity stream holds a viewer lease, so a tab viewing a historical session
-still protects every live provider process. Mounted live-session streams also
-hold leases across transient activity-stream reconnects, independently of
-whether they request live provider deltas. A mounted background browser tab
-counts; browser document visibility is not a termination signal. The first
-global viewer cancels all pending idle deadlines. After the last global viewer
-leaves, each eligible idle process receives a fresh full grace period; a
-process that becomes idle later receives its full grace from that idle
-transition. Thus any visit or open session tab refreshes the dead-man switch
-for all sessions.
+Viewer presence is session-local. A mounted live-session stream holds a lease
+only for its own provider process, independently of whether it requests live
+provider deltas. Multiple tabs viewing the same session are reference-counted;
+a mounted background tab still counts because browser document visibility is
+not a termination signal. Opening that session cancels its pending idle
+deadline. After its last viewer leaves, an eligible idle process receives a
+fresh full grace; a process that becomes idle later receives its full grace
+from that idle transition. Global app activity streams and views of other
+sessions do not renew the deadline.
 
-Both reload-safe hosts retain the global first/last-viewer transition with
-their runtime entries. Each process's `ProcessViewerLifecycle` owns one
+Both reload-safe hosts retain each runtime's own first/last-viewer transition.
+Each process's `ProcessViewerLifecycle` owns one
 latest-desired-state publisher alongside its viewer lease and idle deadline. A
 provider callback completes only after its host accepts that exact state,
 failed writes retry with bounded exponential backoff, and a newer transition
@@ -581,11 +579,12 @@ The lifecycle owner reports idle expiry through one `onIdleReap` boundary.
 verification; the lifecycle owner keeps the ownership fence raised until that
 verification succeeds.
 
-Reattach returns the existing no-viewer anchor to the replacement `Process`;
+Reattach returns that runtime's existing no-viewer anchor to the replacement
+`Process`;
 claiming a runtime or losing its controller preserves the viewer-absence
 evidence. The replacement generation re-establishes idle eligibility from its
 attached provider state, so the best-effort idle grace may restart across
-reload. A real viewer reconnect still refreshes every idle runtime.
+reload. A real viewer reconnect refreshes only that session's runtime.
 
 ### Configurable idle-reap courtesy
 

@@ -26,12 +26,12 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   session as idle for automatic work. Synthetic heartbeat turns may also run as
   explicit steering-capable doubt probes after their quiet period, but that is
   a heartbeat-specific contract rather than a general idle claim.
-- An open browser tab is a server-global resource-retention lease, not
-  liveness evidence. Its app activity stream, plus live-session streams across
-  activity reconnects, suspends idle reaping for every provider process.
-  Active and waiting-input sessions are presumed live and have no
-  viewer-absence kill deadline; only `verified-idle` without another retention
-  owner is eligible for the configured idle grace.
+- A mounted live-session stream is a session-local resource-retention lease,
+  not liveness evidence. It suspends idle reaping only for that provider
+  process; global app activity and views of other sessions do not. Active and
+  waiting-input sessions are presumed live and have no viewer-absence kill
+  deadline; only `verified-idle` without another retention owner is eligible
+  for the configured idle grace.
 - An idle grace owns one absolute deadline. Delays longer than Node can arm in
   one timer are scheduled in safe chunks against that unchanged deadline; a
   chunk firing is not grace expiry. Live timeout changes replace the deadline
@@ -139,10 +139,11 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   generate a provider interrupt. If an interrupt is observed after one of those
   paths, YA should treat the correlation as a high-priority causality bug while
   still surfacing the interrupt boundary immediately.
-- A viewer opening any session cancels every pending idle teardown. When the
-  final session viewer leaves, eligible idle sessions receive a fresh full
-  grace. Provider traffic and process liveness do not make an active session
-  idle, while explicit retention continues to block idle teardown.
+- A viewer opening a session cancels that process's pending idle teardown.
+  When the final viewer of that session leaves, its eligible idle process
+  receives a fresh full grace. Other session views, provider traffic, and
+  process liveness do not extend the deadline, while explicit retention
+  continues to block idle teardown.
 - Server restart or hot reload that tears down the provider owner is not passive
   browser refresh. Treat it as owner-loss liveness evidence first, then decide
   whether the process can be safely resumed or must be shown as interrupted.

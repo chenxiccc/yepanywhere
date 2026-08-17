@@ -6,7 +6,6 @@ import {
   createMockIterator,
 } from "./process.test-support.js";
 import type { SDKMessage, UrlProjectId } from "./process.test-support.js";
-import { SessionViewerPresence } from "../src/supervisor/SessionViewerPresence.js";
 
 describe("Process", () => {
   describe("idle lifecycle", () => {
@@ -397,45 +396,52 @@ describe("Process", () => {
       }
     });
 
-    it("a viewer on one session suspends idle reaping for all sessions", async () => {
+    it("a viewer suspends only that session's idle reap", async () => {
       vi.useFakeTimers();
       try {
-        const viewerPresence = new SessionViewerPresence();
-        const idleController = createControllableIterator();
-        const activeController = createControllableIterator();
-        const idleAbort = vi.fn();
-        const activeAbort = vi.fn();
-        const idleProcess = new Process(idleController.iterator, {
+        const viewedController = createControllableIterator();
+        const unviewedController = createControllableIterator();
+        const viewedAbort = vi.fn(() => {
+          viewedController.finish();
+        });
+        const unviewedAbort = vi.fn(() => {
+          unviewedController.finish();
+        });
+        const viewedProcess = new Process(viewedController.iterator, {
           projectPath: "/test",
           projectId: "proj-1" as UrlProjectId,
-          sessionId: "idle-session",
+          sessionId: "viewed-session",
           provider: "claude",
           initialState: "idle",
           idleTimeoutMs: 20,
-          abortFn: idleAbort,
-          viewerPresence,
+          abortFn: viewedAbort,
         });
-        const activeProcess = new Process(activeController.iterator, {
+        new Process(unviewedController.iterator, {
           projectPath: "/test",
           projectId: "proj-1" as UrlProjectId,
-          sessionId: "active-session",
+          sessionId: "unviewed-session",
           provider: "claude",
+          initialState: "idle",
           idleTimeoutMs: 20,
-          abortFn: activeAbort,
-          viewerPresence,
+          abortFn: unviewedAbort,
         });
 
-        const releaseViewer = activeProcess.registerViewer();
-        await vi.advanceTimersByTimeAsync(100);
-        expect(idleAbort).not.toHaveBeenCalled();
+        const releaseViewer = viewedProcess.registerViewer();
+        await vi.advanceTimersByTimeAsync(19);
+        expect(viewedAbort).not.toHaveBeenCalled();
+        expect(unviewedAbort).not.toHaveBeenCalled();
 
+        await vi.advanceTimersByTimeAsync(1);
+        expect(unviewedAbort).toHaveBeenCalledOnce();
+        expect(viewedAbort).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(100);
+        expect(viewedAbort).not.toHaveBeenCalled();
         releaseViewer();
         await vi.advanceTimersByTimeAsync(19);
-        expect(idleAbort).not.toHaveBeenCalled();
+        expect(viewedAbort).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(1);
-        expect(idleAbort).toHaveBeenCalledOnce();
-        expect(activeAbort).not.toHaveBeenCalled();
-        expect(idleProcess.hasViewers()).toBe(false);
+        expect(viewedAbort).toHaveBeenCalledOnce();
       } finally {
         vi.useRealTimers();
       }

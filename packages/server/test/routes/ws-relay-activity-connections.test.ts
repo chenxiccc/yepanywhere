@@ -3,8 +3,10 @@ import {
   cleanupSubscriptions,
   createConnectionState,
   handleActivitySubscribe,
+  handleSubscribe,
 } from "../../src/routes/ws-relay-handlers.js";
 import { ConnectedBrowsersService } from "../../src/services/ConnectedBrowsersService.js";
+import type { Supervisor } from "../../src/supervisor/Supervisor.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
 
 describe("WebSocket activity browser-tab tracking", () => {
@@ -49,12 +51,18 @@ describe("WebSocket activity browser-tab tracking", () => {
     expect(eventBus.subscriberCount).toBe(0);
   });
 
-  it("holds global viewer presence for an open browser activity stream", () => {
+  it("does not acquire provider ownership for an activity stream", () => {
     const subscriptions = new Map<string, () => void>();
-    const releaseViewerPresence = vi.fn();
-    const registerViewerPresence = vi.fn(() => releaseViewerPresence);
+    const supervisor = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("activity subscription accessed Supervisor");
+        },
+      },
+    ) as Supervisor;
 
-    handleActivitySubscribe(
+    handleSubscribe(
       subscriptions,
       {
         type: "subscribe",
@@ -62,16 +70,14 @@ describe("WebSocket activity browser-tab tracking", () => {
         channel: "activity",
       },
       vi.fn(),
+      supervisor,
+      undefined,
       eventBus,
       createConnectionState(),
-      undefined,
-      undefined,
-      undefined,
-      registerViewerPresence,
     );
 
-    expect(registerViewerPresence).toHaveBeenCalledOnce();
+    expect(eventBus.subscriberCount).toBe(1);
     cleanupSubscriptions(subscriptions);
-    expect(releaseViewerPresence).toHaveBeenCalledOnce();
+    expect(eventBus.subscriberCount).toBe(0);
   });
 });

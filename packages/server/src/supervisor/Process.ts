@@ -50,7 +50,6 @@ import {
   ProcessViewerLifecycle,
   type ProcessViewerLifecycleOptions,
 } from "./ProcessViewerLifecycle.js";
-import type { SessionViewerPresence } from "./SessionViewerPresence.js";
 import type {
   AgentProvider,
   PromptCacheRefreshResult,
@@ -747,8 +746,6 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   isProcessAlive?: () => boolean;
   /** Return true when an idle process should stay owned for an explicit feature. */
   shouldRetainIdleProcess?: (sessionId: string) => boolean;
-  /** Server-generation-wide viewer registry shared by every Process. */
-  viewerPresence?: SessionViewerPresence;
   /** Terminal provider incident retained by Supervisor across process reaping. */
   initialProviderRuntimeStatus?: ProviderRuntimeStatus;
   /** Actively query provider/session status when passive evidence is stale. */
@@ -1124,7 +1121,6 @@ export class Process {
       startedAt: this.startedAt,
       initialState: this._state,
       idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
-      viewerPresence: options.viewerPresence,
       shouldRetainIdleProcess: options.shouldRetainIdleProcess,
       hasPromptCacheKeepaliveLease: () =>
         this.hasPromptCacheKeepaliveLease() && !this.isAutomationPausedFn(),

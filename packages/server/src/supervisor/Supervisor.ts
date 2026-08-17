@@ -84,7 +84,6 @@ import {
   thinkingConfigsEqual,
 } from "./SessionActivationCoordinator.js";
 import { HeartbeatSweepScheduler, earliestDueAt } from "./heartbeatSchedule.js";
-import { SessionViewerPresence } from "./SessionViewerPresence.js";
 import {
   type QueuedRequestInfo,
   type QueuedResponse,
@@ -587,7 +586,6 @@ export class Supervisor {
   private sdk: ClaudeSDK | null;
   private realSdk: RealClaudeSDKInterface | null;
   private idleTimeoutMs: number;
-  private readonly viewerPresence = new SessionViewerPresence();
   private defaultPermissionMode: PermissionMode;
   private eventBus?: EventBus;
   private maxWorkers: number;
@@ -1171,7 +1169,6 @@ export class Supervisor {
       sessionId: tempSessionId,
       initialState: "idle",
       idleTimeoutMs: this.idleTimeoutMs,
-      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -1786,7 +1783,6 @@ export class Supervisor {
       projectId,
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
-      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -1998,7 +1994,6 @@ export class Supervisor {
       sessionId: tempSessionId,
       initialState: "idle",
       idleTimeoutMs: this.idleTimeoutMs,
-      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -2210,7 +2205,6 @@ export class Supervisor {
       projectId,
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
-      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -2346,7 +2340,6 @@ export class Supervisor {
       projectId,
       sessionId,
       idleTimeoutMs: this.idleTimeoutMs,
-      viewerPresence: this.viewerPresence,
       permissionMode: effectiveMode,
       provider: "claude", // Legacy mock SDK simulates Claude
       model: modelSettings?.model,
@@ -3471,10 +3464,6 @@ export class Supervisor {
 
   getIdleTimeoutMs(): number {
     return this.idleTimeoutMs;
-  }
-
-  registerViewerPresence(): () => void {
-    return this.viewerPresence.registerViewer();
   }
 
   updateIdleTimeoutMs(idleTimeoutMs: number): void {

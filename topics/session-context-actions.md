@@ -26,11 +26,13 @@ Nothing semantically owned by the conversation is discarded by
 inactivity; what dies is the *process* and the *cache warmth*.
 
 - YA may reap a verified-idle, unretained provider process after the
-  server-wide `idleReapHours` grace (default 24 hours). Any mounted session tab
-  suspends idle reaping for every process; active and waiting-input sessions
-  have no viewer-absence deadline. Negative hours disable idle reaping. Until
-  the setting is first saved, legacy `IDLE_TIMEOUT` seconds remain
-  authoritative (`DEFAULT_IDLE_TIMEOUT_MS`/`DEFAULT_IDLE_TIMEOUT_SECONDS` in
+  server-wide `idleReapHours` grace (default 24 hours). A mounted view of that
+  session suspends its own process's deadline; global app activity and views of
+  other sessions do not. The final viewer release or a later verified-idle
+  transition starts a fresh full grace. Active and waiting-input sessions have
+  no viewer-absence deadline. Negative hours disable idle reaping. Until the
+  setting is first saved, legacy `IDLE_TIMEOUT` seconds remain authoritative
+  (`DEFAULT_IDLE_TIMEOUT_MS`/`DEFAULT_IDLE_TIMEOUT_SECONDS` in
   `packages/server/src/defaults.ts`, env parsing in `config.ts`). The supervisor
   `Process` tracks an actual expiry as an intentional idle reap, distinct from
   a crash.

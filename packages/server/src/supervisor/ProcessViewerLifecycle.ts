@@ -25,7 +25,6 @@ export interface ProcessViewerLifecycleOptions {
   startedAt: Date;
   initialState: ProcessState;
   idleTimeoutMs: number;
-  viewerPresence?: SessionViewerPresence;
   shouldRetainIdleProcess?: (sessionId: string) => boolean;
   hasPromptCacheKeepaliveLease: () => boolean;
   getProviderRetention: () => ProviderRetentionSnapshot;
@@ -65,7 +64,7 @@ export class ProcessViewerLifecycle {
   constructor(private readonly options: ProcessViewerLifecycleOptions) {
     this.state = options.initialState;
     this.idleTimeoutMs = options.idleTimeoutMs;
-    this.viewerPresence = options.viewerPresence ?? new SessionViewerPresence();
+    this.viewerPresence = new SessionViewerPresence();
     this.unviewedSince = this.viewerPresence.hasViewers()
       ? null
       : options.startedAt;
