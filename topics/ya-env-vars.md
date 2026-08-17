@@ -94,22 +94,28 @@ set legacy value supplies it, and every listed legacy key is deleted.
 - **`YA_*` / `YEP_ANYWHERE_*` — legacy compatibility aliases.** Normalize to
   `YEP_*` at startup, with canonical values winning, then remove the aliases
   from `process.env`.
-- **`AGENT_*` — addressed to the agent, not to YA.** Launch facts the agent
-  itself reads (`AGENT_LAUNCHER`, `AGENT_LAUNCH_*`). Deliberately outside the
-  product prefix, because the shared child filter strips `YEP_*`/`YA_*` as YA's
-  own configuration; see § Child launch markers.
+- **`AGENT_*` — addressed to the agent or launcher-independent tooling, not to
+  YA.** Launch and session facts the agent consumes (`AGENT_LAUNCHER`,
+  `AGENT_LAUNCH_*`, session capabilities). Deliberately outside the product
+  prefix, because the shared child filter strips inherited `YEP_*`/`YA_*` as
+  YA's own configuration. Explicitly injected `YEP_*` child-session outputs are
+  compatibility aliases tracked for migration in
+  `gaps/agent-facing-env-markers.md`, not naming precedent; see § Child launch
+  markers.
 - **Unprefixed** (`PORT`, `VOICE_INPUT`, `ENABLED_PROVIDERS`, `LOG_*`,
   `WHISPER_*`, …) — historical YA config that predates the product prefix.
   This migration does not rename them merely to maximize prefix coverage.
 
 ## Child launch markers
 
-Launch markers are addressed to the agent, so they carry no product prefix:
-`filterEnvForChildProcess` drops inherited `YEP_*` on the way into a provider
-child, so a `YEP_`-named marker would reach the worker and vanish one process
-later. They live in the unprefixed `AGENT_` namespace instead, which needs no
-allowlist exception and keeps the "`YEP_*`/`YA_*` is YA's own configuration"
-rule intact.
+Canonical launch/session outputs are addressed to the agent, so they carry no
+product prefix: `filterEnvForChildProcess` drops inherited `YEP_*` on the way
+into a provider child, and an unprefixed `AGENT_*` value needs no allowlist
+exception. Current wake, browser-debug, Gateway-route, and Copilot-backend
+outputs are explicit post-filter exceptions under legacy `YEP_*` names. Their
+behavior below is current truth; `gaps/agent-facing-env-markers.md` owns the
+reader-first migration rather than treating the exceptions as a new naming
+rule.
 
 `AGENT_LAUNCHER=yepanywhere` says which launcher started the session, and
 selects the launcher-scoped agent instruction file. `AGENT_LAUNCH_HARNESS`
@@ -127,8 +133,9 @@ environments. These are trusted child-session outputs, not operator inputs.
 have it at launch, while a new session receives it later through the session
 environment bridge.
 
-`YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN` are YA-owned outputs for a
-supervised provider session, not operator inputs. The URL is an opaque,
+`YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN` are current compatibility
+outputs for canonical `AGENT_SESSION_WAKE_URL` and
+`AGENT_SESSION_WAKE_TOKEN`, not operator inputs. The URL is an opaque,
 session-specific POST target; the bearer token authorizes only that session's
 wake route. Both are published beside `AGENTCTL_SESSION_ID` after the canonical
 session id is known and remain inert while wake delivery is disabled. The token
@@ -136,18 +143,25 @@ must never be logged. A YA server launched from such a child shell strips both
 markers during config load; they are parent-session capabilities, not config
 to relay into the new server's provider children.
 
-`YEP_CLAUDE_GATEWAY=1` is a YA-owned output marker injected into both the
-Claude SDK flag-settings environment and the spawned child environment for
-`claude-gateway` launches. It distinguishes that provider route from regular
-Claude without guessing from `ANTHROPIC_BASE_URL`; it does not identify which
-Anthropic-compatible gateway implementation serves the endpoint and is not an
-operator setting.
+`YEP_BROWSER_DEBUG_AGENT_URL` and `YEP_BROWSER_DEBUG_CALLER_TOKEN` are current
+compatibility outputs for `AGENT_BROWSER_DEBUG_BROKER_URL` and
+`AGENT_BROWSER_DEBUG_CALLER_TOKEN`. The shared filter explicitly retains the
+legacy pair and the late bridge can republish it to a retained local worker.
+The token is one factor of the browser-diagnostics grant and must never be
+logged or persisted.
 
-`YEP_COPILOT_API=1` is the narrower implementation marker. YA injects it only
-after the configured gateway's `/v1/models` response explicitly advertises
-`X-Copilot-API: 1`, and clears the learned identity when the Gateway URL
-changes. Model names, ports, vendors, and generic endpoint compatibility never
-imply it.
+`YEP_CLAUDE_GATEWAY=1` is the current compatibility output for
+`AGENT_LAUNCH_ROUTE=claude-gateway`, injected into both the Claude SDK
+flag-settings environment and the spawned child environment. It distinguishes
+that provider route from regular Claude without guessing from
+`ANTHROPIC_BASE_URL`; it does not identify which Anthropic-compatible gateway
+implementation serves the endpoint and is not an operator setting.
+
+`YEP_COPILOT_API=1` is the current compatibility output for the narrower
+`AGENT_LAUNCH_BACKEND=copilot-api` fact. YA injects it only after the configured
+gateway's `/v1/models` response explicitly advertises `X-Copilot-API: 1`, and
+clears the learned identity when the Gateway URL changes. Model names, ports,
+vendors, and generic endpoint compatibility never imply it.
 
 Gateway launches also inject `CLAUDE_CODE_*` narrowings that are not YA
 variables but are decided by YA per launch (`gatewayEnvironment()` in

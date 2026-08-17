@@ -39,10 +39,11 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
   session's launch as this one's. Model and effort markers describe the initial
   launch only; the later session-id bridge remains separate because new
   canonical YA ids are not known at process creation.
-- A marker the agent is meant to read must not be named `YEP_*` or `YA_*`. The
-  shared child filter strips those prefixes as YA's own configuration, so such a
-  marker survives only to the worker and is gone by the time the agent binary
-  starts. Publish agent-facing markers under the unprefixed `AGENT_` namespace.
+- Publish agent-facing markers under the unprefixed `AGENT_` namespace. The
+  shared child filter strips arbitrary inherited `YEP_*` / `YA_*` values as YA
+  configuration; current wake, browser-debug, Gateway-route, and Copilot-backend
+  outputs survive only as explicit compatibility exceptions. They are migration
+  debt tracked in `gaps/agent-facing-env-markers.md`, not naming precedent.
 
 ## Shell-startup contracts
 
@@ -64,10 +65,11 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
   defaults.
 - The local `agentctl` bridge preserves an existing `BASH_ENV` through
   `YEP_ORIGINAL_BASH_ENV`, then sources YA's atomically updated session-env
-  file. That file publishes `AGENTCTL_SESSION_ID` plus session-scoped outputs
-  such as `YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN`. Tests must cover
-  chaining, quoting, and initially known resume ids without depending on the
-  developer's own bridge.
+  file. That file publishes `AGENTCTL_SESSION_ID` plus session-scoped outputs.
+  Current builds use the legacy `YEP_*` wake and browser-debug pairs; the
+  reader-first migration to canonical `AGENT_*` pairs is tracked in
+  `gaps/agent-facing-env-markers.md`. Tests must cover chaining, quoting, and
+  initially known resume ids without depending on the developer's own bridge.
 
 ## Hermetic-test contracts
 
