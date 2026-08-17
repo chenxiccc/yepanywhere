@@ -437,13 +437,29 @@ describe("Codex subagent sessions", () => {
       projectPath: PROJECT_PATH,
     });
 
-    expect(reader.listAcceptedProviderChildSessions(parentId)).toEqual([]);
+    expect(reader.listAcceptedProviderChildSessions(parentId)).toBeUndefined();
     await expect(
       reader.listProviderChildSessions(parentId),
     ).resolves.toHaveLength(1);
     expect(reader.listAcceptedProviderChildSessions(parentId)).toEqual([
       expect.objectContaining({ id: childId, parentSessionId: parentId }),
     ]);
+  });
+
+  it("keeps unpublished cold misses distinct from a published empty projection", async () => {
+    const now = "2026-06-25T12:00:00.000Z";
+    const parentId = "published-empty-parent";
+    await writeRollout(sessionsDir, parentId, [sessionMeta(parentId, now)]);
+    const reader = new CodexSessionReader({
+      sessionsDir,
+      projectPath: PROJECT_PATH,
+    });
+
+    expect(reader.listAcceptedProviderChildSessions(parentId)).toBeUndefined();
+    await expect(reader.listProviderChildSessions(parentId)).resolves.toEqual(
+      [],
+    );
+    expect(reader.listAcceptedProviderChildSessions(parentId)).toEqual([]);
   });
 
   it("does not expose child rollouts as standalone Codex projects", async () => {

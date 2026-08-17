@@ -1116,7 +1116,7 @@ export class CodexSessionReader implements ISessionReader {
 
   listAcceptedProviderChildSessions(
     parentSessionId: string,
-  ): ProviderChildSessionSummary[] {
+  ): ProviderChildSessionSummary[] | undefined {
     const key = this.getProviderChildProjectionKey(parentSessionId);
     this.providerChildProjectionKeys.add(key);
     const projection = codexProviderChildProjections.getAccepted(key);
@@ -1145,6 +1145,7 @@ export class CodexSessionReader implements ISessionReader {
         );
       },
     );
+    if (!projection) return undefined;
     return this.materializeProviderChildSessions(parentSessionId, projection);
   }
 

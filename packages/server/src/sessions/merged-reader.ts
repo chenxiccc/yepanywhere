@@ -176,16 +176,19 @@ export class MergedSessionReader implements ISessionReader {
     parentSessionId: string,
   ): ProviderChildSessionSummary[] | undefined {
     const byId = new Map<string, ProviderChildSessionSummary>();
+    let sawAccepted = false;
     for (const reader of this.readers) {
       if (!reader.listProviderChildSessions) continue;
+      if (!reader.listAcceptedProviderChildSessions) return undefined;
       const children =
-        reader.listAcceptedProviderChildSessions?.(parentSessionId);
-      if (children === undefined) return undefined;
+        reader.listAcceptedProviderChildSessions(parentSessionId);
+      if (children === undefined) continue;
+      sawAccepted = true;
       for (const child of children) {
         if (!byId.has(child.id)) byId.set(child.id, child);
       }
     }
-    return [...byId.values()];
+    return sawAccepted ? [...byId.values()] : undefined;
   }
 
   async getSessionFilePath(sessionId: string): Promise<string | null> {

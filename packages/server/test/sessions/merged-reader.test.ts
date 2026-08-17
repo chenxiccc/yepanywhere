@@ -50,6 +50,34 @@ describe("MergedSessionReader provider child freshness", () => {
 
     expect(reader.listAcceptedProviderChildSessions("parent")).toBeUndefined();
   });
+
+  it("skips an unpublished cold root and keeps a published sibling", () => {
+    const published = vi.fn(() => [
+      {
+        id: "child-1",
+        parentSessionId: "parent",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      },
+    ]);
+    const reader = new MergedSessionReader([
+      childReader({ accepted: vi.fn(() => undefined) }),
+      childReader({ accepted: published }),
+    ]);
+
+    expect(reader.listAcceptedProviderChildSessions("parent")).toEqual([
+      expect.objectContaining({ id: "child-1" }),
+    ]);
+    expect(published).toHaveBeenCalledWith("parent");
+  });
+
+  it("stays unpublished when every child-capable root is still cold", () => {
+    const reader = new MergedSessionReader([
+      childReader({ accepted: vi.fn(() => undefined) }),
+      childReader({ accepted: vi.fn(() => undefined) }),
+    ]);
+
+    expect(reader.listAcceptedProviderChildSessions("parent")).toBeUndefined();
+  });
 });
 
 describe("MergedSessionReader launch settings recovery", () => {

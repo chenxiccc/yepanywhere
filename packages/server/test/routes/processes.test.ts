@@ -466,6 +466,41 @@ describe("Processes Routes", () => {
     expect(listProviderChildSessions).not.toHaveBeenCalled();
   });
 
+  it("does not treat a Codex cold miss as permission to parse", async () => {
+    const project = createProject();
+    const process = createProcessInfo();
+    const summary = createSummary();
+    const listAcceptedProviderChildSessions = vi.fn(() => undefined);
+    const listProviderChildSessions = vi.fn(async () => {
+      throw new Error("fresh child discovery must not block process rows");
+    });
+    const routes = createProcessesRoutes({
+      supervisor: {
+        getProcessInfoList: vi.fn(() => [process]),
+      } as unknown as Supervisor,
+      scanner: {
+        getProject: vi.fn(async () => project),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => summary),
+            listAcceptedProviderChildSessions,
+            listProviderChildSessions,
+          }) as unknown as ISessionReader,
+      ),
+    });
+
+    const response = await routes.request("/");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      processes: [{ sessionId: "sess-1" }],
+    });
+    expect(listAcceptedProviderChildSessions).toHaveBeenCalledWith("sess-1");
+    expect(listProviderChildSessions).not.toHaveBeenCalled();
+  });
+
   it("prefers persisted custom titles over generated session titles", async () => {
     const project = createProject();
     const process = createProcessInfo();

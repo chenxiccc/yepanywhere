@@ -104,11 +104,12 @@ replace accepted state for another source version. The retained projections
 share an 8 MiB process-wide byte budget.
 
 The process-list route consumes the latest accepted projection and starts
-refresh in the background. A cold projection therefore omits child enrichment
-from that response instead of delaying the basic process row; a later snapshot
-attaches it after publication. Direct reader callers retain fresh-by-default
-semantics, retry one source race, and fall back to the last accepted projection
-if the source keeps changing.
+refresh in the background. An unpublished cold miss returns `undefined` and
+omits child enrichment; a published empty projection returns `[]`. Neither
+value may start a parent-rollout parse. A later snapshot attaches children
+after publication. Direct reader callers retain fresh-by-default semantics,
+retry one source race, and fall back to the last accepted projection if the
+source keeps changing.
 
 This replaces the prior violation: `createProcessesRoutes` enriched every
 active and recently terminated row by awaiting
@@ -154,15 +155,18 @@ per-parent readdir, but list reads must not parse child or parent JSONL.
 ## Other providers
 
 Claude is the first provider with strip + nested page + idle-list
-summaries. Remaining first-party coverage is filed as gaps, one provider
-per file:
+summaries. Codex child rollouts already feed those surfaces: list attach
+uses the accepted projection, session metadata and the nested agent page
+use a fresh listing plus `getAgentSession(childThreadId)`, and an
+unpublished cold miss stays distinct from a published empty projection.
+Optionally overlaying live `subagent_activity` text onto the strip while
+the parent is in-turn remains open. Grok nested child discovery is
+landed: parent `subagents/*/meta.json` feeds the existing strip / page /
+idle list, and child session dirs stay out of the top-level Grok list.
+TUI tasks-pane kill remains out of scope.
 
-- [Codex idle/cold list and live activity](../gaps/codex-subagent-summary-visibility.md)
-  — reader + child rollouts already exist; first list walk after restart
-  can still omit children, and `subagent_activity` is not on the strip.
-- Grok nested child discovery is landed: parent `subagents/*/meta.json`
-  feeds the existing strip / page / idle list, and child session dirs stay
-  out of the top-level Grok list. TUI tasks-pane kill remains out of scope.
+Remaining first-party coverage is filed as gaps, one provider per file:
+
 - [Copilot event-shaped children](../gaps/copilot-subagent-summary-visibility.md)
   — no first-class YA Copilot provider; SDK/CLI children are parent-stream
   lifecycle events, not a sibling transcript tree.

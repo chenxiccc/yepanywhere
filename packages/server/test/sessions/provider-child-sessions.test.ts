@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import {
   attachProviderChildSessions,
   resolveProviderChildSessions,
@@ -40,6 +41,20 @@ describe("resolveProviderChildSessions", () => {
     await expect(
       resolveProviderChildSessions(reader, "sess-1", "accepted-or-cheap"),
     ).resolves.toBeUndefined();
+    expect(reader.listProviderChildSessions).not.toHaveBeenCalled();
+  });
+
+  it("returns a published empty projection without starting a fresh parse", async () => {
+    const reader = {
+      listAcceptedProviderChildSessions: vi.fn(() => []),
+      listProviderChildSessions: vi.fn(async () => {
+        throw new Error("fresh listing should not run");
+      }),
+    };
+
+    await expect(
+      resolveProviderChildSessions(reader, "sess-1", "accepted-or-cheap"),
+    ).resolves.toEqual([]);
     expect(reader.listProviderChildSessions).not.toHaveBeenCalled();
   });
 
@@ -87,5 +102,50 @@ describe("attachProviderChildSessions", () => {
 
     expect(attached[0]?.providerChildren).toEqual([child]);
     expect(attached[1]?.providerChildren).toBeUndefined();
+  });
+
+  it("attaches Codex children after the accepted projection publishes", async () => {
+    const project: Project = {
+      id: toUrlProjectId("/tmp/project"),
+      path: "/tmp/project",
+      name: "project",
+      sessionCount: 1,
+      sessionDir: "/tmp/codex-sessions",
+      activeOwnedCount: 0,
+      activeExternalCount: 0,
+      lastActivity: null,
+      provider: "codex",
+    };
+    let accepted: (typeof child)[] | undefined;
+    const reader = {
+      listAcceptedProviderChildSessions: vi.fn(() => accepted),
+      listProviderChildSessions: vi.fn(async () => {
+        throw new Error("list attach must not cold-parse Codex children");
+      }),
+    } as unknown as ISessionReader;
+    const deps = {
+      readerFactory: () => reader,
+      codexSessionsDir: "/tmp/codex-sessions",
+      codexReaderFactory: () => reader as unknown as CodexSessionReader,
+    };
+    const sessions = [{ id: "sess-1", provider: "codex" as const }];
+
+    const cold = await attachProviderChildSessions(
+      sessions,
+      project,
+      deps,
+      "accepted-or-cheap",
+    );
+    expect(cold[0]?.providerChildren).toBeUndefined();
+
+    accepted = [child];
+    const published = await attachProviderChildSessions(
+      sessions,
+      project,
+      deps,
+      "accepted-or-cheap",
+    );
+    expect(published[0]?.providerChildren).toEqual([child]);
+    expect(reader.listProviderChildSessions).not.toHaveBeenCalled();
   });
 });

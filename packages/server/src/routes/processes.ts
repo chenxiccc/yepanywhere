@@ -16,6 +16,7 @@ import type { SessionMetadataService } from "../metadata/SessionMetadataService.
 import type { ProjectScanner } from "../projects/scanner.js";
 import { getProvider } from "../sdk/providers/index.js";
 import type { ResumeExemptionResult } from "../sessions/resume-exemption.js";
+import { resolveProviderChildSessions } from "../sessions/provider-child-sessions.js";
 import type { ISessionReader } from "../sessions/types.js";
 import { getSessionSandboxSettingsError } from "../session-sandbox.js";
 import {
@@ -135,12 +136,11 @@ async function enrichProcessInfo(
       enriched.contextUsage = summary.contextUsage;
     }
 
-    const acceptedProviderChildren = reader.listAcceptedProviderChildSessions?.(
+    const providerChildren = await resolveProviderChildSessions(
+      reader,
       process.sessionId,
+      "accepted-or-cheap",
     );
-    const providerChildren =
-      acceptedProviderChildren ??
-      (await reader.listProviderChildSessions?.(process.sessionId));
     if (providerChildren?.length) {
       enriched.providerChildren = providerChildren;
     }
