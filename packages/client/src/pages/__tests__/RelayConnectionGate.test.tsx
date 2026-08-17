@@ -127,6 +127,7 @@ function TestRoutes() {
     <MemoryRouter initialEntries={["/-/relay/macbook/document"]}>
       <RouteSwitchControl />
       <Routes>
+        <Route path="/login" element={<div>Host picker</div>} />
         <Route path="/login/relay" element={<div>Relay login</div>} />
         <Route path="/-/relay/:relayUsername" element={<RelayConnectionGate />}>
           <Route path="document" element={<CachedDocument />} />
@@ -310,6 +311,19 @@ describe("RelayConnectionGate", () => {
     ).toBeTruthy();
     expect(documentMounts).toBe(1);
     expect(documentUnmounts).toBe(0);
+  });
+
+  it("opens the host picker after an intentional Switch Host disconnect", () => {
+    testState.remote = {
+      ...testState.remote,
+      connection: null,
+      isIntentionalDisconnect: true,
+    };
+
+    render(<TestRoutes />);
+
+    expect(screen.getByText("Host picker")).toBeTruthy();
+    expect(testState.connectViaRelay).not.toHaveBeenCalled();
   });
 
   it("still sends post-connect authentication failures to login", async () => {

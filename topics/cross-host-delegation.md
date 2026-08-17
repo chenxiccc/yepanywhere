@@ -104,16 +104,15 @@ rather than changing the existing host switcher:
 - when enabled, the Open action stays inside that setting's card rather than
   appearing as a separate option;
 - the sidebar **Switch Host** action disconnects the current source and performs
-  a cache-busted document load of the host picker, so an installed web app both
-  changes hosts and refreshes its client bundle at that already-destructive
-  boundary. An updated service worker claims already-open older clients without
-  navigating them, and treats the next host-picker navigation as a network
-  reload even when that old client's Switch Host action predates the cache-bust
-  parameter. Chrome "Add to Home screen" / app shortcuts pin the page URL at
-  install time; a shortcut created on a session route can take `/login` out of
-  that window's scope, while the same Switch Host action stays in-scope when
-  the app was installed from the site root. The host picker and `/-/monitor`
-  otherwise retain their existing behavior; and
+  a cache-busted reload of the current document, then a client-side open of
+  the host picker. Reloading `/login` directly can leave a Chrome shortcut
+  whose start URL is a session route. The current-document reload stays in
+  that window's scope, a sessionStorage mark skips auto-reconnect, and the
+  fresh client opens `/login` in-app. An updated service worker claims
+  already-open older clients without navigating them, and treats a navigation
+  that carries the cache-bust parameter as a network reload even when that
+  old client's Switch Host action predates the current handler. The host
+  picker and `/-/monitor` otherwise retain their existing behavior; and
 - browser-saved hosts do not appear on the new page because they are
   browser-origin state rather than server-owned delegation state.
 

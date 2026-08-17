@@ -16,6 +16,7 @@ import {
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
+import { SWITCH_HOST_RELOAD_STORAGE_KEY } from "../../lib/switchHostReload";
 import { Sidebar } from "../Sidebar";
 
 const {
@@ -391,6 +392,7 @@ describe("Sidebar collapsed toggle", () => {
 
   afterEach(() => {
     cleanup();
+    sessionStorage.removeItem(SWITCH_HOST_RELOAD_STORAGE_KEY);
     vi.unstubAllGlobals();
   });
 
@@ -475,8 +477,9 @@ describe("Sidebar collapsed toggle", () => {
 
       expect(disconnect).toHaveBeenCalledOnce();
       expect(replace).toHaveBeenCalledOnce();
+      expect(sessionStorage.getItem(SWITCH_HOST_RELOAD_STORAGE_KEY)).toBe("1");
       const reloadUrl = new URL(String(replace.mock.calls[0]?.[0]));
-      expect(reloadUrl.pathname).toBe("/login");
+      expect(reloadUrl.pathname).toBe("/remote/current/session");
       expect(reloadUrl.searchParams.get("__ya_reload")).toMatch(/^\d+$/);
     } finally {
       Object.defineProperty(window, "location", {

@@ -44,6 +44,7 @@ import {
   resolveSourceKeyForSavedHost,
 } from "../lib/sourceIdentity";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
+import { consumeSwitchHostReload } from "../lib/switchHostReload";
 
 /** Stored credentials for auto-reconnect */
 interface StoredCredentials {
@@ -310,13 +311,14 @@ function getSecureSourceTransport(
 export function RemoteConnectionProvider({ children }: Props) {
   // Load stored credentials synchronously to determine initial state
   const initialStored = loadStoredCredentials();
+  const [switchHostReload] = useState(() => consumeSwitchHostReload());
 
   const [connection, setConnection] = useState<SecureConnection | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   // Initialize isAutoResuming to true if we have a stored session to resume
   // This prevents a flash of the login form before auto-resume starts
   const [isAutoResuming, setIsAutoResuming] = useState(
-    () => !!initialStored?.session,
+    () => !switchHostReload && !!initialStored?.session,
   );
   const [error, setError] = useState<string | null>(null);
   const [autoResumeError, setAutoResumeError] =
@@ -347,9 +349,12 @@ export function RemoteConnectionProvider({ children }: Props) {
     setCurrentDirectUrlState(url);
   }, []);
   // Track if we've attempted auto-resume (to prevent repeated attempts)
-  const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
+  const [autoResumeAttempted, setAutoResumeAttempted] = useState(
+    () => switchHostReload,
+  );
   // Track intentional disconnect (to prevent auto-redirect back to host after Switch Host)
-  const [isIntentionalDisconnect, setIsIntentionalDisconnect] = useState(false);
+  const [isIntentionalDisconnect, setIsIntentionalDisconnect] =
+    useState(switchHostReload);
   const activeSecureTransportRef = useRef<SecureSourceTransport | null>(null);
   const activeTransportStatusUnsubscribeRef = useRef<(() => void) | null>(null);
   const connectionRef = useRef<SecureConnection | null>(connection);

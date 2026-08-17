@@ -24,7 +24,9 @@ import { useHostAwakeStatus } from "../../hooks/useHostAwakeStatus";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import { buildFrontendReloadUrl } from "../../lib/frontendReload";
 import { getHostById } from "../../lib/hostStorage";
+import { markSwitchHostReload } from "../../lib/switchHostReload";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { HideInSettingsSearch } from "./SettingsSearchContext";
@@ -381,10 +383,12 @@ export function RemoteAccessSettings() {
     poll: publicSharesEnabled,
   });
 
-  // Handle switching hosts - disconnect and go to host picker
   const handleSwitchHost = () => {
     remoteConnection?.disconnect();
-    navigate("/login");
+    markSwitchHostReload();
+    window.location.replace(
+      buildFrontendReloadUrl(window.location.href, String(Date.now())),
+    );
   };
 
   const defaultYaClientBaseUrl =

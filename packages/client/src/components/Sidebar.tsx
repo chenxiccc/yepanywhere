@@ -27,9 +27,9 @@ import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { useToastContext } from "../contexts/ToastContext";
-import { toBrowserAppHref } from "../lib/appHref";
 import { bangHistoryViewEnabled } from "../lib/bangCommandAvailability";
 import { buildFrontendReloadUrl } from "../lib/frontendReload";
+import { markSwitchHostReload } from "../lib/switchHostReload";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordToGlobalSessionItem } from "../lib/sessionCollectionRecords";
@@ -605,12 +605,13 @@ export function Sidebar({
     };
   }, [isResizing, onResize, onResizeEnd]);
 
-  // Handle switching hosts - disconnect and go to host picker
+  // Disconnect, cache-bust this document, then open the host picker after
+  // reload. Reloading /login can leave a session-pinned installed window.
   const handleSwitchHost = () => {
     remoteConnection?.disconnect();
-    const loginUrl = new URL(toBrowserAppHref("/login"), window.location.href);
+    markSwitchHostReload();
     window.location.replace(
-      buildFrontendReloadUrl(loginUrl, String(Date.now())),
+      buildFrontendReloadUrl(window.location.href, String(Date.now())),
     );
   };
 

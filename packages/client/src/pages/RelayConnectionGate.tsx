@@ -330,6 +330,10 @@ export function RelayConnectionGate() {
     }
   };
 
+  if (isIntentionalDisconnect) {
+    return <Navigate to="/login" replace />;
+  }
+
   if (state === "no_host" || state === "no_session") {
     return <Navigate to={relayLoginTarget} replace />;
   }
