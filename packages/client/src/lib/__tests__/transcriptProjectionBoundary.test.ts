@@ -17,7 +17,7 @@ const sourceDirectories = [
   resolve(process.cwd(), "../server/test"),
 ];
 const canonicalWebConsumerFiles = [
-  "src/components/renderers/tools/TaskRenderer.tsx",
+  "src/components/renderers/tools/TaskNestedContent.tsx",
   "src/lib/sessionDetail/renderItems.ts",
   "src/pages/SessionPage.tsx",
 ];
