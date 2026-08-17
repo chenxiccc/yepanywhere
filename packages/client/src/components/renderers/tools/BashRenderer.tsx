@@ -31,6 +31,7 @@ import {
 } from "../../ui/FixedFontMathToggle";
 import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
 import type { RenderContext } from "../types";
+import { NestedHarnessLaunchLink } from "./NestedHarnessLaunchLink";
 import {
   getHiddenOutputLineCount,
   getOutputTailTooltip,
@@ -179,6 +180,7 @@ function BashModalContent({
             </code>
           </pre>
         </div>
+        <NestedHarnessLaunchLink command={command} />
       </div>
       {stdout && (
         <div className="bash-modal-section">
@@ -304,6 +306,7 @@ function BashToolUse({ input }: { input: BashInput }) {
           />
         </code>
       </pre>
+      <NestedHarnessLaunchLink command={command} />
       {needsCollapse && (
         <button
           type="button"
@@ -416,6 +419,7 @@ function BashToolResult({
               />
             </code>
           </pre>
+          <NestedHarnessLaunchLink command={command} />
         </div>
       )}
       {result?.interrupted && (

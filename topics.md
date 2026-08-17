@@ -318,3 +318,5 @@
   cache-correct prior-generation asset delivery.
 - ui-control-alignment - Shared baseline and metric policy for compact rows.
 - attachment-storage - YA-managed attachment location and viewer access.
+- nested-harness-launch - Linking a shell-launched second harness process to
+  the session it writes, read from the launching command.

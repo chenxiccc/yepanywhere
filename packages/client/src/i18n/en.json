@@ -2611,6 +2611,8 @@
   "providerChildrenCollapse": "Hide subagents for {title}",
   "providerChildActivityAge": "last activity {age} ago",
   "providerChildOpen": "Open",
+  "nestedHarnessLaunchLabel": "Nested session",
+  "nestedHarnessLaunchTitle": "Open the session this command runs",
   "providerChildViewerTitle": "Subagents",
   "providerChildViewerBriefLabel": "Subagents",
   "providerChildSelector": "Choose a subagent",

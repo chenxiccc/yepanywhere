@@ -296,6 +296,11 @@ export {
   type SkillInvocationMatch,
 } from "./skill-invocations.js";
 export {
+  detectNestedHarnessLaunch,
+  type NestedHarnessLaunch,
+  type NestedHarnessName,
+} from "./nested-harness-launch.js";
+export {
   ALL_PROVIDERS,
   ALL_PERMISSION_MODES,
   CODEX_REASONING_SUMMARIES,

@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
+import { I18nProvider } from "../../../../i18n";
 import { UI_KEYS } from "../../../../lib/storageKeys";
 import { bashRenderer } from "../BashRenderer";
 import type { BashResult } from "../types";
@@ -49,14 +51,16 @@ describe("BashRenderer", () => {
       "Chunk ID: ff710e\nWall time: 0.0518 seconds\nProcess exited with code 0\nOutput:\nplain\n\u001b[32mgreen bold\u001b[0m\n";
 
     const { container } = render(
-      <div>
-        {bashRenderer.renderCollapsedPreview?.(
-          { command: "printf '...'" },
-          output as unknown as BashResult,
-          false,
-          renderContext,
-        )}
-      </div>,
+      <MemoryRouter>
+        <I18nProvider>
+          {bashRenderer.renderCollapsedPreview?.(
+            { command: "printf '...'" },
+            output as unknown as BashResult,
+            false,
+            renderContext,
+          )}
+        </I18nProvider>
+      </MemoryRouter>,
     );
 
     expect(container.textContent).not.toContain("Chunk ID:");
@@ -249,23 +253,27 @@ describe("BashRenderer", () => {
     ].join("\n");
 
     render(
-      <SessionMetadataProvider
-        projectId="project-1"
-        projectPath="/repo"
-        sessionId="session-1"
-      >
-        {bashRenderer.renderToolResult(
-          {
-            stdout: output,
-            stderr: "",
-            interrupted: false,
-            isImage: false,
-          },
-          false,
-          renderContext,
-          { command: "git diff -- research/conditioned-diversity.md" },
-        )}
-      </SessionMetadataProvider>,
+      <MemoryRouter>
+        <I18nProvider>
+          <SessionMetadataProvider
+            projectId="project-1"
+            projectPath="/repo"
+            sessionId="session-1"
+          >
+            {bashRenderer.renderToolResult(
+              {
+                stdout: output,
+                stderr: "",
+                interrupted: false,
+                isImage: false,
+              },
+              false,
+              renderContext,
+              { command: "git diff -- research/conditioned-diversity.md" },
+            )}
+          </SessionMetadataProvider>
+        </I18nProvider>
+      </MemoryRouter>,
     );
 
     const link = screen.getByRole("link", { name: "decode" });
@@ -275,5 +283,45 @@ describe("BashRenderer", () => {
     expect(link.getAttribute("href")).toContain(
       "/projects/project-1/file?path=untracked%2Fpilot.meta.md",
     );
+  });
+});
+
+describe("BashRenderer nested harness launch link", () => {
+  const CHILD = "28dad9a6-9c40-4d90-af7e-84d0ed4db9a4";
+
+  function renderCommand(command: string) {
+    return render(
+      <MemoryRouter>
+        <I18nProvider>
+          <SessionMetadataProvider
+            projectId="project-1"
+            projectPath="/repo"
+            sessionId="9f073ea3-fc47-459e-bf7b-46e04fd5a094"
+          >
+            {bashRenderer.renderToolUse?.({ command }, renderContext)}
+          </SessionMetadataProvider>
+        </I18nProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  afterEach(cleanup);
+
+  it("links a backgrounded resume to the session it runs", () => {
+    renderCommand(
+      `claude --resume ${CHILD} --model claude-opus-5 --print < tasks/intake.md`,
+    );
+
+    const link = screen.getByRole("link", { name: /Nested session/ });
+    expect(link.getAttribute("href")).toBe(
+      `/projects/project-1/sessions/${CHILD}`,
+    );
+    expect(link.textContent).toContain("28dad9a6");
+  });
+
+  it("leaves an ordinary command alone", () => {
+    renderCommand("rg -n 'claude --resume' packages/server/src");
+
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
