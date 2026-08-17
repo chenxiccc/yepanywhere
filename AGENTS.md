@@ -174,9 +174,10 @@ user-visible feature that is not configurable default-off.
 ## UI Tweak Visual Verification
 
 By default, any UI tweak or layout/control-placement request ends with rendered
-browser captures of the final result at 1920×1080 and a phone width (375×812),
-inspected by the agent against the request before claiming completion;
-in-progress captures are optional.
+browser captures of the final result at 1000×600 and a phone width (375×812),
+inspected by the agent against the request before claiming completion. Read and
+inspect the captures sequentially, one image at a time; never batch image reads.
+In-progress captures are optional.
 
 Run final captures against a fresh dev-server process started from the current
 worktree; do not reuse an already-running server. Use an unused port and, when

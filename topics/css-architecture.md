@@ -469,8 +469,8 @@ After editing:
    local class names are not public selectors.
 5. Run `pnpm css:check`, `pnpm lint`, `pnpm typecheck`, and
    `pnpm console:scan`.
-6. Capture and inspect final browser screenshots at 1920×1080 and 375×812 when
-   the migration affects rendered UI.
+6. Capture and inspect final browser screenshots at 1000×600 and 375×812 when
+   the migration affects rendered UI. Read and inspect one image at a time.
 7. Run `pnpm css:check --record` and verify that only the intended legacy
    ceilings moved downward.
 

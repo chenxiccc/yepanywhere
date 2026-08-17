@@ -1,9 +1,9 @@
 # UI Testing
 
 > Browser-first visual QA is the default for client UI changes: capture
-> and inspect the result at 1920×1080 and a phone width (375×812), unless
-> the user explicitly takes ownership of visual verification or asks to
-> skip screenshots or visual validation.
+> and inspect the result at 1000×600 and a phone width (375×812), one image
+> at a time, unless the user explicitly takes ownership of visual verification
+> or asks to skip screenshots or visual validation.
 
 Topic: ui-testing
 
@@ -17,12 +17,13 @@ request, and archived where a human can review them. In-progress captures are
 optional while implementing (worthwhile at milestones); final-result captures
 are required when visual verification remains agent-owned.
 
-Inspection is the point: open each capture and check spacing, flow,
-and control placement against the request — "route loaded, nav
-visible" is not enough. Captures exist to catch the agent's own wrong
-spatial/aesthetic guess; models routinely one-shot UI that is
-functional but mis-spaced with misplaced controls (instituted
-2026-07-26 after a commit-browser build landed exactly that way).
+Inspection is the point: read and inspect captures sequentially, one image per
+tool call, and finish the notes for one before reading the next. Never batch
+multiple images into one read. Check spacing, flow, and control placement against
+the request — "route loaded, nav visible" is not enough. Captures exist to catch
+the agent's own wrong spatial/aesthetic guess; models routinely one-shot UI that
+is functional but mis-spaced with misplaced controls (instituted 2026-07-26 after
+a commit-browser build landed exactly that way).
 
 ## User-owned visual verification
 
@@ -61,9 +62,11 @@ build. When there is no explicit handoff, use the default capture workflow.
    inputs; setting them only on the later screenshot command has no effect.
 3. Navigate to the affected view (page, panel, or control).
 4. Take screenshots at:
-   - desktop width `1920x1080`,
-   - narrow mobile width (`375x812` or equivalent).
-5. Visually inspect each screenshot and confirm:
+   - desktop width exactly `1000x600`,
+   - narrow mobile width exactly `375x812`.
+   Read and inspect the desktop image alone and finish its notes before reading
+   the mobile image. Never pass multiple images to one image-reading call.
+5. For each screenshot, confirm:
    - the requested change is present and correctly placed,
    - control rows and their descriptive text are grouped together,
    - active control state is visually clear,
@@ -103,7 +106,7 @@ pnpm --filter @yep-anywhere/client exec playwright screenshot \
   --ignore-https-errors \
   --block-service-workers \
   --wait-for-timeout 500 \
-  --viewport-size "1920,1080" \
+  --viewport-size "1000,600" \
   https://localhost:3400/ \
   "$ARTIFACT_DIR/desktop.png"
 pnpm --filter @yep-anywhere/client exec playwright screenshot \
@@ -114,6 +117,9 @@ pnpm --filter @yep-anywhere/client exec playwright screenshot \
   https://localhost:3400/ \
   "$ARTIFACT_DIR/mobile.png"
 ```
+
+Read and inspect `desktop.png` alone and finish its notes before making a
+separate image-read call for `mobile.png`.
 
 For multi-step flows, add or run a focused `@playwright/test` case under
 `packages/client/e2e/`. If Playwright itself is unavailable, use another
@@ -139,8 +145,8 @@ Complete either the agent-owned or user-owned branch.
 - [ ] Preset buttons remain clickable and clearly indicate the current
       selection.
 - [ ] Layout works at the mobile width without horizontal overflow.
-- [ ] Screenshots at 1920×1080 and a phone width were captured,
-      inspected by the agent, and cited for human review.
+- [ ] Screenshots at 1000×600 and 375×812 were captured, read one image at a
+      time, inspected by the agent, and cited for human review.
 
 ### User-owned visual verification
 
