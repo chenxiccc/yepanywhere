@@ -148,6 +148,8 @@ export interface ServerSettings {
   claudeGatewayStartCommand?: string;
   /** Whether Claude Gateway launches deny Claude Code's Agent tool. */
   claudeGatewayDisableAgent: boolean;
+  /** Whether Claude Gateway launches remove Claude Code's plan-mode tools. */
+  claudeGatewayDisablePlanMode: boolean;
   /** YA launch override for supported providers' native subagent nesting. */
   subagentMaxDepth: SubagentMaxDepth;
   /** Ollama server URL for claude-ollama provider (default: http://localhost:11434) */
@@ -258,6 +260,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   lifecycleWebhookDryRun: true,
   grokBuildUseXaiApiKey: false,
   claudeGatewayDisableAgent: true,
+  claudeGatewayDisablePlanMode: true,
   subagentMaxDepth: DEFAULT_SUBAGENT_MAX_DEPTH,
   codexReasoningSummary: DEFAULT_CODEX_REASONING_SUMMARY,
   codexUpdatePolicy: "notify",
@@ -429,6 +432,10 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     typeof settings.claudeGatewayDisableAgent === "boolean"
       ? settings.claudeGatewayDisableAgent
       : DEFAULT_SERVER_SETTINGS.claudeGatewayDisableAgent;
+  normalized.claudeGatewayDisablePlanMode =
+    typeof settings.claudeGatewayDisablePlanMode === "boolean"
+      ? settings.claudeGatewayDisablePlanMode
+      : DEFAULT_SERVER_SETTINGS.claudeGatewayDisablePlanMode;
   normalized.subagentMaxDepth = isSubagentMaxDepth(settings.subagentMaxDepth)
     ? settings.subagentMaxDepth
     : DEFAULT_SUBAGENT_MAX_DEPTH;

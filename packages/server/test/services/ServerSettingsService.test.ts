@@ -32,6 +32,14 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("claudeGatewayDisableAgent")).toBe(true);
   });
 
+  it("removes Claude Gateway plan-mode tools by default", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("claudeGatewayDisablePlanMode")).toBe(true);
+  });
+
   it("defaults subagent nesting to one level and preserves explicit unset", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();
@@ -449,6 +457,35 @@ describe("ServerSettingsService", () => {
     await service.initialize();
 
     expect(service.getSetting("claudeGatewayDisableAgent")).toBe(true);
+  });
+
+  it("persists an opt-out from the Claude Gateway plan-mode exclusion", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+    await service.updateSettings({ claudeGatewayDisablePlanMode: false });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+
+    expect(reloaded.getSetting("claudeGatewayDisablePlanMode")).toBe(false);
+  });
+
+  it("defaults malformed persisted Gateway plan-mode exclusion values", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          claudeGatewayDisablePlanMode: "false",
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("claudeGatewayDisablePlanMode")).toBe(true);
   });
 
   it("drops malformed persisted Claude Gateway start commands", async () => {

@@ -119,10 +119,10 @@ UI should state directly.
 - **Providers → Idle harness lifetime.** Sets how long an idle provider harness
   with no viewer and no feature-owned retention may remain in memory. Running
   and waiting sessions are outside this timer; `-1` disables idle reaping.
-- **Providers → Claude Gateway.** Gateway URL, optional start command, and Agent
-  denial policy are nested in the Claude Gateway provider card. URL and command
-  edits require explicit confirmation because they control provider launch;
-  Save or Enter submits both fields together.
+- **Providers → Claude Gateway.** Gateway URL, optional start command, Agent
+  denial policy, and plan-mode exclusion are nested in the Claude Gateway
+  provider card. URL and command edits require explicit confirmation because
+  they control provider launch; Save or Enter submits both fields together.
 - **Providers → Codex reasoning summaries.** The server-persisted Codex app-server
   mode is one of `auto`, `concise`, `detailed`, or `none`, displayed as Automatic,
   Concise, Detailed, and Off. Automatic preserves YA's previous fixed behavior.

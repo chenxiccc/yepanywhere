@@ -85,6 +85,13 @@ provider configuration files. Authorized by graehl on 2026-08-16 as a
 deliberate quota-protection exception. See [claude](claude.md),
 [codex-sessions](codex-sessions.md), and [grok](grok.md).
 
+Claude Gateway's **Disable plan mode** setting defaults on. Gateway-routed
+copilot-api models can otherwise drift into Claude Code's plan workflow, so YA
+removes only `EnterPlanMode` and `ExitPlanMode` from the Agent SDK launch.
+Regular Claude and task tracking remain unchanged, the setting is explicitly
+opt-outable, and a stored false stays authoritative. Authorized by graehl on
+2026-08-17 as a deliberate Gateway reliability exception. See [claude](claude.md).
+
 [source-review-to-session](source-review-to-session.md) defaults review
 history and outcome visibility on for new installs. A review is already an
 explicit user action; the default makes its submitted history and eventual

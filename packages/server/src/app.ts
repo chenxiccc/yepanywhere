@@ -506,6 +506,9 @@ export function createApp(options: AppOptions): AppResult {
       claudeGatewayDisableAgent: options.serverSettingsService?.getSetting(
         "claudeGatewayDisableAgent",
       ),
+      claudeGatewayDisablePlanMode: options.serverSettingsService?.getSetting(
+        "claudeGatewayDisablePlanMode",
+      ),
       subagentMaxDepth: getConfiguredSubagentMaxDepth(),
       ollamaUrl: options.serverSettingsService?.getSetting("ollamaUrl"),
       ollamaSystemPrompt:

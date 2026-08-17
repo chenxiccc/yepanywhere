@@ -267,6 +267,9 @@ class ProviderRuntimeWorker {
     ClaudeGatewayProvider.setGatewayDisableAgent(
       config.claudeGatewayDisableAgent ?? true,
     );
+    ClaudeGatewayProvider.setGatewayDisablePlanMode(
+      config.claudeGatewayDisablePlanMode ?? true,
+    );
     ClaudeOllamaProvider.setOllamaUrl(config.ollamaUrl);
     ClaudeOllamaProvider.setSystemPrompt(config.ollamaSystemPrompt);
     ClaudeOllamaProvider.setUseFullSystemPrompt(
@@ -281,6 +284,7 @@ class ProviderRuntimeWorker {
         url: config.claudeGatewayUrl,
         startCommand: config.claudeGatewayStartCommand,
         disableAgent: config.claudeGatewayDisableAgent ?? true,
+        disablePlanMode: config.claudeGatewayDisablePlanMode ?? true,
       });
     }
   }

@@ -1856,6 +1856,8 @@ export interface ServerSettings {
   claudeGatewayStartCommand?: string;
   /** Whether Claude Gateway launches deny Claude Code's Agent tool */
   claudeGatewayDisableAgent?: boolean;
+  /** Whether Claude Gateway launches remove Claude Code's plan-mode tools */
+  claudeGatewayDisablePlanMode?: boolean;
   /** YA launch override for supported providers' subagent nesting depth. */
   subagentMaxDepth?: number | null;
   /** Ollama server URL for claude-ollama provider */

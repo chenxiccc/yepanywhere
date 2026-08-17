@@ -877,6 +877,31 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on claude-gateway-disable-agent.",
     },
   },
+  claudeGatewayDisablePlanMode: {
+    id: CAPABILITY_ID_ALLOCATIONS.claudeGatewayDisablePlanMode.id,
+    name: "claude-gateway-disable-plan-mode",
+    kind: "transitional",
+    area: "providers",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server can persist whether Claude Gateway launches remove Claude Code's plan-mode tools from model context.",
+    clientFallback:
+      "Hide the Gateway plan-mode setting and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.claudeGatewayDisablePlanMode"],
+      responseFields: ["settings.claudeGatewayDisablePlanMode"],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-11-17",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the Gateway plan-mode setting.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on claude-gateway-disable-plan-mode.",
+    },
+  },
   providerSubscriptionUsage: {
     id: CAPABILITY_ID_ALLOCATIONS.providerSubscriptionUsage.id,
     name: "provider-subscription-usage",
@@ -1593,6 +1618,9 @@ export const CLAUDE_GATEWAY_AUTOSTART_CAPABILITY =
 
 export const CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY =
   SERVER_CAPABILITIES.claudeGatewayDisableAgent.name;
+
+export const CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY =
+  SERVER_CAPABILITIES.claudeGatewayDisablePlanMode.name;
 
 export const PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY =
   SERVER_CAPABILITIES.providerSubscriptionUsage.name;

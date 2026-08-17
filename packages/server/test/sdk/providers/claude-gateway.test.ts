@@ -18,6 +18,10 @@ class ExposedClaudeGatewayProvider extends ClaudeGatewayProvider {
   getLaunchEnvironment(model?: string) {
     return this.getEnv(model);
   }
+
+  getLaunchToolOptions(model?: string) {
+    return this.getDisallowedToolOptions(model);
+  }
 }
 
 describe("ClaudeGatewayProvider", () => {
@@ -25,6 +29,7 @@ describe("ClaudeGatewayProvider", () => {
     ClaudeGatewayProvider.setGatewayUrl(undefined);
     ClaudeGatewayProvider.setGatewayStartCommand(undefined);
     ClaudeGatewayProvider.setGatewayDisableAgent(true);
+    ClaudeGatewayProvider.setGatewayDisablePlanMode(true);
     ClaudeGatewayProvider.forgetGatewayCatalog();
     ClaudeOllamaProvider.setOllamaUrl(undefined);
     configureProviderRuntime({ isClaudeOllamaVisible: () => false });
@@ -350,6 +355,24 @@ describe("ClaudeGatewayProvider", () => {
     expect(provider.getLaunchSettings("kimi-k2.7-code")).not.toHaveProperty(
       "permissions",
     );
+  });
+
+  it("removes only plan-mode tools from Gateway model context", () => {
+    const provider = new ExposedClaudeGatewayProvider();
+
+    expect(provider.getLaunchToolOptions("gpt-5.6-sol")).toEqual({
+      disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+    });
+    expect(provider.getLaunchToolOptions().disallowedTools).not.toContain(
+      "TaskCreate",
+    );
+  });
+
+  it("can leave plan mode available for Gateway launches", () => {
+    ClaudeGatewayProvider.setGatewayDisablePlanMode(false);
+    const provider = new ExposedClaudeGatewayProvider();
+
+    expect(provider.getLaunchToolOptions("gpt-5.6-sol")).toEqual({});
   });
 
   it("keeps an explicit subagent spawn depth chosen by the operator", () => {

@@ -19,6 +19,10 @@ class ExposedClaudeProvider extends ClaudeProvider {
   getLaunchEnvironment() {
     return this.getEnv();
   }
+
+  getLaunchToolOptions() {
+    return this.getDisallowedToolOptions();
+  }
 }
 
 describe("normalizeClaudeLaunchModel", () => {
@@ -116,6 +120,14 @@ describe("Claude subagent nesting launch environment", () => {
         process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = previous;
       }
     }
+  });
+});
+
+describe("Claude tool availability", () => {
+  it("leaves plan-mode tools available for regular Claude", () => {
+    const provider = new ExposedClaudeProvider();
+
+    expect(provider.getLaunchToolOptions()).toEqual({});
   });
 });
 

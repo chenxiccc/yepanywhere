@@ -148,6 +148,13 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   files. The server-wide **Disable Agent tool** setting may omit YA's rule for
   processes started or resumed afterward; it does not override a deny from
   Claude's user, project, or local settings.
+  Claude Gateway also removes `EnterPlanMode` and `ExitPlanMode` from model
+  context by default through the Agent SDK's `disallowedTools` launch option.
+  The server-wide **Disable plan mode** setting may omit that list for processes
+  started or resumed afterward. It does not remove `TaskCreate` or any other
+  task-tracking tool, affect regular Claude, or rewrite copilot-api HTTP
+  requests. Already-running Gateway processes retain their launch configuration
+  until they restart or resume.
   `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is retained deliberately, but
   it is a privacy/traffic choice and not a token or quota saver, and it has a
   cost worth knowing: it puts the CLI in essential-traffic mode, which

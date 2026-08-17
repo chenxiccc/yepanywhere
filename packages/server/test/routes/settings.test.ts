@@ -46,6 +46,7 @@ describe("Settings Routes", () => {
       codexReasoningSummary: "auto",
       codexReloadSafeSessions: false,
       claudeGatewayDisableAgent: true,
+      claudeGatewayDisablePlanMode: true,
       subagentMaxDepth: 1,
     };
 
@@ -995,6 +996,7 @@ describe("Settings Routes", () => {
         url: "http://localhost:4141",
         startCommand: undefined,
         disableAgent: true,
+        disablePlanMode: true,
       });
     });
 
@@ -1025,6 +1027,7 @@ describe("Settings Routes", () => {
         url: "http://localhost:4141",
         startCommand: "HOST=localhost gateway start",
         disableAgent: true,
+        disablePlanMode: true,
       });
     });
 
@@ -1049,6 +1052,7 @@ describe("Settings Routes", () => {
         url: undefined,
         startCommand: undefined,
         disableAgent: false,
+        disablePlanMode: true,
       });
     });
 
@@ -1063,6 +1067,49 @@ describe("Settings Routes", () => {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ claudeGatewayDisableAgent }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+      },
+    );
+
+    it("persists and applies the Claude Gateway plan-mode exclusion live", async () => {
+      const onClaudeGatewaySettingsChanged = vi.fn();
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        onClaudeGatewaySettingsChanged,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeGatewayDisablePlanMode: false }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        claudeGatewayDisablePlanMode: false,
+      });
+      expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
+        url: undefined,
+        startCommand: undefined,
+        disableAgent: true,
+        disablePlanMode: false,
+      });
+    });
+
+    it.each([null, "false", 0])(
+      "rejects invalid Claude Gateway plan-mode exclusion %p",
+      async (claudeGatewayDisablePlanMode) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ claudeGatewayDisablePlanMode }),
         });
 
         expect(response.status).toBe(400);
@@ -1138,6 +1185,7 @@ describe("Settings Routes", () => {
         url: undefined,
         startCommand: undefined,
         disableAgent: true,
+        disablePlanMode: true,
       });
     });
 

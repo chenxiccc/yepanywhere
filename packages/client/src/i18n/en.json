@@ -2078,6 +2078,8 @@
   "providersClaudeGatewayIsolationHint": "Applied only to YA sessions launched through Claude Gateway. Regular Claude sessions and manual Claude TUIs keep their current routing.",
   "providersClaudeGatewayDisableAgentTitle": "Disable Agent tool",
   "providersClaudeGatewayDisableAgentDescription": "Pass Claude Code a deny rule for the Agent tool in Claude Gateway sessions, preventing built-in and custom subagent delegation. Takes effect when a Gateway process starts or resumes; regular Claude is unchanged. Turning this off stops YA from adding the rule, but other Claude settings may still deny the tool.",
+  "providersClaudeGatewayDisablePlanModeTitle": "Disable plan mode",
+  "providersClaudeGatewayDisablePlanModeDescription": "Remove EnterPlanMode and ExitPlanMode from Claude Gateway model context while leaving TaskCreate and other task-tracking tools available. Takes effect when a Gateway process starts or resumes; already-running Gateway processes must restart or resume. Regular Claude is unchanged. Turning this off stops YA from removing the plan-mode tools.",
   "providersClaudeOllamaDeprecationNotice": "Use Claude Gateway instead. ClaudeOllama will be removed in a future release.",
   "providersClaudeOllamaDeprecationDismissAria": "Dismiss ClaudeOllama deprecation notice",
   "providersAdditionalModelsTitle": "Additional models",

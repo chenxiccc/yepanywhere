@@ -13,6 +13,7 @@ import {
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
+  CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
@@ -564,6 +565,11 @@ describe("ProvidersSettings additional models", () => {
         name: "providersClaudeGatewayDisableAgentTitle",
       }),
     ).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", {
+        name: "providersClaudeGatewayDisablePlanModeTitle",
+      }),
+    ).toBeNull();
   });
 
   it("defaults the capability-gated Gateway Agent denial on", () => {
@@ -582,6 +588,26 @@ describe("ProvidersSettings additional models", () => {
 
     expect(mockUpdateSetting).toHaveBeenCalledWith(
       "claudeGatewayDisableAgent",
+      false,
+    );
+  });
+
+  it("defaults the capability-gated Gateway plan-mode exclusion on", () => {
+    versionState.capabilities = [
+      CLAUDE_GATEWAY_CAPABILITY,
+      CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+    ];
+    render(<ProvidersSettings />);
+
+    const checkbox = screen.getByRole("checkbox", {
+      name: "providersClaudeGatewayDisablePlanModeTitle",
+    });
+    expect(checkbox).toHaveProperty("checked", true);
+
+    fireEvent.click(checkbox);
+
+    expect(mockUpdateSetting).toHaveBeenCalledWith(
+      "claudeGatewayDisablePlanMode",
       false,
     );
   });

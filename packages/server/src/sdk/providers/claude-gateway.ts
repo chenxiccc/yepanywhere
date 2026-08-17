@@ -71,6 +71,7 @@ interface GatewayCatalogSnapshot {
 const AUTO_COMPACT_WINDOW_MIN = 100_000;
 const AUTO_COMPACT_WINDOW_MAX = 1_000_000;
 const COPILOT_API_IDENTITY_HEADER = "x-copilot-api";
+const CLAUDE_GATEWAY_PLAN_MODE_TOOLS = ["EnterPlanMode", "ExitPlanMode"];
 
 export function gatewayAutoCompactWindow(
   promptWindow: number | undefined,
@@ -272,6 +273,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   private static gatewayUrl: string | undefined;
   private static gatewayStartCommand: string | undefined;
   private static gatewayDisableAgent = true;
+  private static gatewayDisablePlanMode = true;
   private static configurationGeneration = 0;
   /**
    * The last successful catalog and the exact endpoint that supplied it.
@@ -306,10 +308,15 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     ClaudeGatewayProvider.gatewayDisableAgent = disableAgent;
   }
 
+  static setGatewayDisablePlanMode(disablePlanMode: boolean): void {
+    ClaudeGatewayProvider.gatewayDisablePlanMode = disablePlanMode;
+  }
+
   static async configureGateway(options: {
     url?: string;
     startCommand?: string;
     disableAgent?: boolean;
+    disablePlanMode?: boolean;
   }): Promise<void> {
     if (
       ClaudeGatewayProvider.gatewayUrl !== options.url ||
@@ -320,6 +327,8 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     ClaudeGatewayProvider.gatewayUrl = options.url;
     ClaudeGatewayProvider.gatewayStartCommand = options.startCommand;
     ClaudeGatewayProvider.gatewayDisableAgent = options.disableAgent ?? true;
+    ClaudeGatewayProvider.gatewayDisablePlanMode =
+      options.disablePlanMode ?? true;
     await claudeGatewayLauncher.configure(options);
   }
 
@@ -467,6 +476,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
       isCopilotApi: currentSnapshot?.isCopilotApi ?? false,
       metadata: model ? currentSnapshot?.launchMetadata.get(model) : undefined,
     };
+  }
+
+  protected override getDisallowedTools(_model?: string): string[] | undefined {
+    return ClaudeGatewayProvider.gatewayDisablePlanMode
+      ? [...CLAUDE_GATEWAY_PLAN_MODE_TOOLS]
+      : undefined;
   }
 
   protected override getSettings(model?: string): Settings | undefined {

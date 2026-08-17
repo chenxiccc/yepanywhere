@@ -74,6 +74,15 @@ field. The permanent capability is version-implied from `0.7.1` and owns ID 35.
 Without it, the client hides the Codex reasoning-summary row and sends no field.
 Existing capability meanings and older capable behavior remain unchanged.
 
+`claude-gateway-disable-plan-mode` owns
+`settings.claudeGatewayDisablePlanMode` on `GET /api/settings` and
+`PUT /api/settings`. The ordinary optional-feature corpus is `v0.7.0`
+(2026-07-25) and `v0.6.2` (2026-07-11); no other stable server release fell in
+the preceding 14 days as of 2026-08-17. Both lack the field. The transitional
+capability is version-implied from `0.7.1` and owns ID 36. Without it, the
+client hides the Gateway plan-mode row and sends no field. Existing Gateway and
+Agent-denial capability meanings and older capable behavior remain unchanged.
+
 `serverHasCapability` accepts release implication, encoding-1 IDs, and both
 legacy representations. This union keeps old installed servers usable without
 making a new capability depend on its textual name.
@@ -235,9 +244,10 @@ the same ledger:
 | 33 | server | 0.7.1 | `synthetic-done-command` |
 | 34 | server | 0.7.1 | `subagent-max-depth-setting` |
 | 35 | server | 0.7.1 | `codex-reasoning-summary-setting` |
+| 36 | server | 0.7.1 | `claude-gateway-disable-plan-mode` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 36; retired rows stay in the ledger as reserved IDs.
+ID 37; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

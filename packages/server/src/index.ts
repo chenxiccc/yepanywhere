@@ -756,6 +756,9 @@ async function startServer() {
     url: serverSettingsService.getSetting("claudeGatewayUrl"),
     startCommand: serverSettingsService.getSetting("claudeGatewayStartCommand"),
     disableAgent: serverSettingsService.getSetting("claudeGatewayDisableAgent"),
+    disablePlanMode: serverSettingsService.getSetting(
+      "claudeGatewayDisablePlanMode",
+    ),
   });
   const savedOllamaUrl = serverSettingsService.getSetting("ollamaUrl");
   const savedOllamaSystemPrompt =

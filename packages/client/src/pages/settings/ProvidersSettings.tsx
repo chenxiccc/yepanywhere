@@ -12,6 +12,7 @@ import {
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
+  CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
   CODEX_REASONING_SUMMARIES,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEFAULT_CODEX_REASONING_SUMMARY,
@@ -1006,33 +1007,36 @@ function ClaudeGatewaySettings({
   );
 }
 
-function ClaudeGatewayDisableAgentSetting() {
-  const { t } = useI18n();
+type ClaudeGatewayToggleSettingProps = {
+  id: string;
+  setting: "claudeGatewayDisableAgent" | "claudeGatewayDisablePlanMode";
+  title: string;
+  description: string;
+};
+
+function ClaudeGatewayToggleSetting({
+  id,
+  setting,
+  title,
+  description,
+}: ClaudeGatewayToggleSettingProps) {
   const { settings, updateSetting } = useServerSettings();
-  const disabled = settings?.claudeGatewayDisableAgent ?? true;
+  const enabled = settings?.[setting] ?? true;
 
   return (
-    <div
-      id="provider-claude-gateway-disable-agent"
-      className="settings-subsection"
-    >
+    <div id={id} className="settings-subsection">
       <label>
         <input
           type="checkbox"
-          checked={disabled}
-          aria-label={t("providersClaudeGatewayDisableAgentTitle")}
+          checked={enabled}
+          aria-label={title}
           onChange={(event) =>
-            void updateSetting(
-              "claudeGatewayDisableAgent",
-              event.target.checked,
-            )
+            void updateSetting(setting, event.target.checked)
           }
         />{" "}
-        <strong>{t("providersClaudeGatewayDisableAgentTitle")}</strong>
+        <strong>{title}</strong>
       </label>
-      <p className="settings-hint">
-        {t("providersClaudeGatewayDisableAgentDescription")}
-      </p>
+      <p className="settings-hint">{description}</p>
     </div>
   );
 }
@@ -1374,6 +1378,10 @@ export function ProvidersSettings() {
     version,
     CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   );
+  const supportsClaudeGatewayDisablePlanMode = serverHasCapability(
+    version,
+    CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+  );
   const supportsIdleReapHours = serverHasCapability(
     version,
     IDLE_REAP_HOURS_SETTING_CAPABILITY,
@@ -1556,6 +1564,7 @@ export function ProvidersSettings() {
                       "start command",
                       "autostart",
                       "disable agent",
+                      "disable plan mode",
                     ]
                   : undefined
               }
@@ -1627,7 +1636,26 @@ export function ProvidersSettings() {
                           supportsAutostart={supportsClaudeGatewayAutostart}
                         />
                         {supportsClaudeGatewayDisableAgent && (
-                          <ClaudeGatewayDisableAgentSetting />
+                          <ClaudeGatewayToggleSetting
+                            id="provider-claude-gateway-disable-agent"
+                            setting="claudeGatewayDisableAgent"
+                            title={t("providersClaudeGatewayDisableAgentTitle")}
+                            description={t(
+                              "providersClaudeGatewayDisableAgentDescription",
+                            )}
+                          />
+                        )}
+                        {supportsClaudeGatewayDisablePlanMode && (
+                          <ClaudeGatewayToggleSetting
+                            id="provider-claude-gateway-disable-plan-mode"
+                            setting="claudeGatewayDisablePlanMode"
+                            title={t(
+                              "providersClaudeGatewayDisablePlanModeTitle",
+                            )}
+                            description={t(
+                              "providersClaudeGatewayDisablePlanModeDescription",
+                            )}
+                          />
                         )}
                       </>
                     )}

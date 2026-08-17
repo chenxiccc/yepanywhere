@@ -21,6 +21,7 @@ import {
   type SDKMessage as AgentSDKMessage,
   type Query,
   type CanUseTool as SDKCanUseTool,
+  type Options,
   type SessionStore,
   type SessionStoreEntry,
   type Settings,
@@ -1259,6 +1260,18 @@ export class ClaudeProvider implements AgentProvider {
     return undefined;
   }
 
+  /** Built-in tools removed from this Claude launch before model context. */
+  protected getDisallowedTools(_model?: string): string[] | undefined {
+    return undefined;
+  }
+
+  protected getDisallowedToolOptions(
+    model?: string,
+  ): Pick<Options, "disallowedTools"> {
+    const disallowedTools = this.getDisallowedTools(model);
+    return disallowedTools ? { disallowedTools } : {};
+  }
+
   /**
    * Normalize a live SDK model catalog and update this provider instance only.
    * Gateway subclasses may replace the SDK's built-in-plus-gateway catalog
@@ -1321,6 +1334,7 @@ export class ClaudeProvider implements AgentProvider {
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
           env: this.getEnv(),
           settings: this.getSettings(),
+          ...this.getDisallowedToolOptions(),
         },
       });
 
@@ -1464,6 +1478,7 @@ export class ClaudeProvider implements AgentProvider {
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
           env: this.getEnv(helperModel),
           settings: this.getSettings(helperModel),
+          ...this.getDisallowedToolOptions(helperModel),
           model: helperModel,
           maxTurns: 1,
           systemPrompt:
@@ -1544,6 +1559,7 @@ export class ClaudeProvider implements AgentProvider {
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
           env: this.getEnv(request.model),
           settings: this.getSettings(request.model),
+          ...this.getDisallowedToolOptions(request.model),
           model: normalizeClaudeLaunchModel(request.model),
           resume: request.generatorSessionId,
           maxTurns: 1,
@@ -1711,6 +1727,7 @@ export class ClaudeProvider implements AgentProvider {
           pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable,
           env: options.env,
           settings: this.getSettings(options.model),
+          ...this.getDisallowedToolOptions(options.model),
           spawnClaudeCodeProcess,
         },
       });
@@ -2093,6 +2110,7 @@ export class ClaudeProvider implements AgentProvider {
           // Filter env to exclude npm_*, yep-anywhere specific, and other irrelevant vars
           env: claudeEnv,
           settings: this.getSettings(options.model),
+          ...this.getDisallowedToolOptions(options.model),
           hooks: {
             Stop: [
               {

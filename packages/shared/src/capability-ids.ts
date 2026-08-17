@@ -234,6 +234,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "codex-reasoning-summary-setting",
     introducedIn: "0.7.1",
   },
+  claudeGatewayDisablePlanMode: {
+    id: 36,
+    direction: "server",
+    name: "claude-gateway-disable-plan-mode",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

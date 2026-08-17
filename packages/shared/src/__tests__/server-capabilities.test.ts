@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CAPABILITY_ID_ALLOCATIONS,
   CAPABILITY_ID_ENCODING_VERSION,
+  CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
@@ -81,6 +82,19 @@ describe("server capability advertisements", () => {
       ),
     ).toBe(false);
     expect(CAPABILITY_ID_ALLOCATIONS.codexReasoningSummarySetting.id).toBe(35);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.0" },
+        CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(CAPABILITY_ID_ALLOCATIONS.claudeGatewayDisablePlanMode.id).toBe(36);
   });
 
   it("lets a negative bit override an otherwise implied capability", () => {

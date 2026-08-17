@@ -120,6 +120,7 @@ export interface ProviderRuntimeSnapshot {
   claudeGatewayUrl?: string;
   claudeGatewayStartCommand?: string;
   claudeGatewayDisableAgent?: boolean;
+  claudeGatewayDisablePlanMode?: boolean;
   subagentMaxDepth?: SubagentMaxDepth;
   ollamaUrl?: string;
   ollamaSystemPrompt?: string;
