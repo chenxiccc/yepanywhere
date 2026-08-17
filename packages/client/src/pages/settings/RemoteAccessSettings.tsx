@@ -650,6 +650,12 @@ export function RemoteAccessSettings() {
             </div>
           </SettingsItem>
           {hostIdentityItem}
+          {currentHost?.relayUrl && (
+            <SettingsItem
+              label={t("remoteAccessRelayUrlTitle")}
+              description={currentHost.relayUrl}
+            />
+          )}
           <SettingsItem
             label={t("remoteAccessLogoutTitle")}
             description={t("remoteAccessLogoutDescription")}

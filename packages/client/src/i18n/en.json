@@ -1999,6 +1999,7 @@
   "remoteAccessConnectedTitle": "Remote Access",
   "remoteAccessConnectedDescription": "You are connected to a remote server via relay.",
   "remoteAccessCurrentHostTitle": "Current Host",
+  "remoteAccessRelayUrlTitle": "Relay",
   "hostIdentityTitle": "Host Marker",
   "hostIdentityDescription": "Choose an emoji that identifies this host in connected headers and browser tabs.",
   "hostIdentityPresetsAria": "Host marker presets",

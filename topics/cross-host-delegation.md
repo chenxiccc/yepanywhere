@@ -109,8 +109,11 @@ rather than changing the existing host switcher:
   boundary. An updated service worker claims already-open older clients without
   navigating them, and treats the next host-picker navigation as a network
   reload even when that old client's Switch Host action predates the cache-bust
-  parameter. The host picker and `/-/monitor` otherwise retain their existing
-  behavior; and
+  parameter. Chrome "Add to Home screen" / app shortcuts pin the page URL at
+  install time; a shortcut created on a session route can take `/login` out of
+  that window's scope, while the same Switch Host action stays in-scope when
+  the app was installed from the site root. The host picker and `/-/monitor`
+  otherwise retain their existing behavior; and
 - browser-saved hosts do not appear on the new page because they are
   browser-origin state rather than server-owned delegation state.
 
