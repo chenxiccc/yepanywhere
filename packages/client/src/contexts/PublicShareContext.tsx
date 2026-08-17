@@ -77,12 +77,21 @@ function decodeURIComponentSafe(value: string): string | null {
   }
 }
 
+function isLikelyManagedAttachmentPath(filePath: string): boolean {
+  return /(?:^|[\\/])projects\/[a-f0-9]{32}\/attachments(?:[\\/]|$)/i.test(
+    filePath,
+  );
+}
+
 export function normalizePublicShareFilePath(
   filePath: string,
   projectId: string | null,
 ): { lineNumber?: number; path: string } | null {
   const parsed = parseLineColumn(filePath);
   const parsedPath = normalizePathSeparators(parsed.path);
+  if (isLikelyManagedAttachmentPath(parsedPath)) {
+    return { lineNumber: parsed.line, path: parsedPath };
+  }
   const projectRoot = getProjectRoot(projectId);
   const projectRelativePath = getProjectRelativePath(parsedPath, projectRoot);
   if (projectRelativePath === ".") {

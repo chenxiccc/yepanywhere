@@ -44,6 +44,11 @@ interface FileAccessDeps {
   tempPaths: string[];
   /** null = no env override (use the persisted/default settings). */
   envPaths: string[] | null;
+  /**
+   * App-data project namespace (`{dataDir}/projects`). Always readable so
+   * YA-managed attachments stay viewable even when the uploads toggle is off.
+   */
+  appDataProjectsDir?: string;
 }
 
 let deps: FileAccessDeps | null = null;
@@ -105,10 +110,15 @@ export function isFileAccessEnvPinned(): boolean {
  */
 export function getAllowedFilePaths(): string[] {
   if (!deps) return [];
+  const appDataProjects = deps.appDataProjectsDir
+    ? [deps.appDataProjectsDir]
+    : [];
   if (deps.envPaths != null) {
-    return Array.from(new Set([deps.uploadsDir, ...deps.envPaths]));
+    return Array.from(
+      new Set([deps.uploadsDir, ...appDataProjects, ...deps.envPaths]),
+    );
   }
-  const out: string[] = [];
+  const out: string[] = [...appDataProjects];
   if (current.uploads) out.push(deps.uploadsDir);
   if (current.temp) out.push(...deps.tempPaths);
   if (current.home) out.push(deps.homeDir);

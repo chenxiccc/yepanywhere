@@ -939,6 +939,56 @@ describe("public share public routes", () => {
     );
   });
 
+  it("authorizes mentioned app-data attachments on live shares", async () => {
+    const projectRoot = path.join(testDir, "project");
+    const dataDir = path.join(testDir, "data");
+    const publicProjectId = toUrlProjectId(projectRoot);
+    const attachmentPath = path.join(
+      dataDir,
+      "projects",
+      "0123456789abcdef0123456789abcdef",
+      "attachments",
+      "session-a",
+      "photo.png",
+    );
+    await fs.mkdir(path.dirname(attachmentPath), { recursive: true });
+    await fs.writeFile(attachmentPath, "png-bytes");
+    const session = makeSession({
+      projectId: publicProjectId,
+      messages: [makeAssistantMessage(`Read ${attachmentPath}`)],
+    });
+    const { secret } = await service.createShare({
+      mode: "live",
+      title: "Live",
+      source: { projectId: publicProjectId, sessionId: "session-1" },
+    });
+    const fetchProjectFile = vi.fn(
+      async () =>
+        new Response("png-bytes", {
+          headers: { "Content-Type": "image/png" },
+        }),
+    );
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => session),
+      getPublicSharesEnabled: () => true,
+      fetchProjectFile,
+      dataDir,
+    });
+
+    const response = await app.request(
+      `/${secret}/files/raw?path=${encodeURIComponent(attachmentPath)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchProjectFile).toHaveBeenCalledWith(
+      publicProjectId,
+      attachmentPath.replaceAll("\\", "/"),
+      { download: false, highlight: false, raw: true },
+    );
+    expect(await response.text()).toBe("png-bytes");
+  });
+
   it("does not serve unmentioned project files through a share", async () => {
     const projectRoot = path.join(testDir, "project");
     const publicProjectId = toUrlProjectId(projectRoot);

@@ -148,6 +148,20 @@ Reading a legacy attachment never authorizes creating, refreshing, migrating,
 or excluding that directory. The public response does not expose a new broad
 filesystem read capability merely because physical storage moved.
 
+Authenticated file viewers treat
+`<data-dir>/projects/<project-key>/attachments/` as always readable, even
+when the uploads file-access toggle is off. That path is YA-managed
+attachment storage, not an arbitrary extra folder. A `Read` of an
+attachment therefore opens in the same file viewer as a project file
+instead of returning `400 Invalid file path`.
+
+Public shares, frozen or live, may open the same attachment only when that
+exact path appears in the share body. The viewer uses the existing
+share-scoped file route and bearer secret; the client keeps
+attachment-shaped `~/` or absolute paths as the share `path` instead of
+dropping them as outside-project. The share still does not grant
+`/etc/passwd` or other app-data files just because they were mentioned.
+
 ## Retention And Cleanup
 
 Attachment retention and cleanup remain incomplete. Central storage makes a

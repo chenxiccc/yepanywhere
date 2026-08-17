@@ -13,6 +13,10 @@ import type { FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../setup/create-app.js";
 import { canonicalizeProjectPath } from "../../src/projects/paths.js";
+import {
+  initFileAccess,
+  updateFileAccess,
+} from "../../src/middleware/file-access.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";
 
@@ -554,6 +558,48 @@ describe("Files API", () => {
       expect(res.status).toBe(400);
       const json = (await res.json()) as { error: string };
       expect(json.error).toBe("Invalid file path");
+    });
+
+    it("serves an app-data project attachment path", async () => {
+      const dataDir = join(testDir, "data");
+      const attachmentDir = join(
+        dataDir,
+        "projects",
+        "0123456789abcdef0123456789abcdef",
+        "attachments",
+        "session-a",
+      );
+      const attachmentFile = join(attachmentDir, "photo.png");
+      await mkdir(attachmentDir, { recursive: true });
+      await writeFile(attachmentFile, "png-bytes");
+      initFileAccess({
+        uploadsDir: join(dataDir, "uploads"),
+        homeDir: "/home/me",
+        tempPaths: [],
+        envPaths: null,
+        appDataProjectsDir: join(dataDir, "projects"),
+      });
+      updateFileAccess({
+        projects: true,
+        uploads: false,
+        temp: false,
+        home: false,
+        custom: [],
+      });
+
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=${encodeURIComponent(attachmentFile)}`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.metadata.mimeType).toBe("image/png");
+      expect(json.metadata.isText).toBe(false);
     });
 
     it.skipIf(process.platform === "win32")(

@@ -316,3 +316,5 @@
 - mobile-session-startup-stability - A monotonic hosted session shell,
   selected-route parallel acquisition, coherent session-core chunking, and
   cache-correct prior-generation asset delivery.
+- ui-control-alignment - Shared baseline and metric policy for compact rows.
+- attachment-storage - YA-managed attachment location and viewer access.

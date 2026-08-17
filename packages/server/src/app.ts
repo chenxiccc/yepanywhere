@@ -94,6 +94,7 @@ import { createDevRoutes } from "./routes/dev.js";
 import { createDesktopBootstrapRoutes } from "./routes/desktop-bootstrap.js";
 import { createDeviceRoutes } from "./routes/devices.js";
 import { createFilesRoutes } from "./routes/files.js";
+import { canonicalizeManagedAttachmentPath } from "./uploads/attachmentAccess.js";
 import { createBangCommandsRoutes } from "./routes/bang-commands.js";
 import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitBrowseRoutes } from "./routes/git-browse.js";
@@ -2372,11 +2373,23 @@ export function createApp(options: AppOptions): AppResult {
       }
       const route = fileOptions.raw ? "files/raw" : "files";
       const projectRoot = fileOptions.projectRoot ?? decodeProjectId(projectId);
+      const attachmentPath = canonicalizeManagedAttachmentPath(
+        filePath,
+        effectiveDataDir,
+      );
       const shareFiles = createFilesRoutes({
         scanner: {
           getProject: async () => ({ path: projectRoot }),
         } as unknown as ProjectScanner,
-        strictProjectFileAccess: true,
+        ...(attachmentPath
+          ? {
+              allowedPaths: () => [
+                join(effectiveDataDir, "projects"),
+                join(effectiveDataDir, "uploads"),
+              ],
+              includeProjects: () => false,
+            }
+          : { strictProjectFileAccess: true }),
       });
       return await shareFiles.request(`/${projectId}/${route}?${searchParams}`);
     };
@@ -2388,6 +2401,7 @@ export function createApp(options: AppOptions): AppResult {
       loadSessionUpdatedAt: loadPublicShareSessionUpdatedAt,
       loadSessionSummary: loadPublicShareSessionSummary,
       fetchProjectFile: fetchPublicShareProjectFile,
+      dataDir: effectiveDataDir,
       getRelayConfig: () =>
         options.remoteAccessService?.getRelayConfig() ?? null,
       getPublicSharesEnabled: () =>

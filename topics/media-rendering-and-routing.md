@@ -94,8 +94,12 @@ and the route it pulls from.
   that the image `<img src>` used the raw URL directly and 404'd in relay mode.
   Authenticated rendered local-file links also converge here whenever an
   active session project exists, including allowed absolute files outside that
-  project. The project supplies viewer/glossary context; the shared file-access
-  allow-set remains the authorization boundary.
+  project. App-data project attachments
+  (`<data-dir>/projects/<key>/attachments/`) stay in that allow-set even when
+  the uploads toggle is off. Public-share viewers use the share-scoped file
+  route and only open attachments named in that share. The project supplies
+  viewer/glossary context; the shared file-access allow-set remains the
+  authorization boundary.
 - **Local media modal (rendered-text media links)** — click an image/video link
   *inside* rendered Markdown/HTML and a modal shows it. `useLocalResourceClick`
   → `LocalMediaModal` → `/api/local-image`. Relay-safe.

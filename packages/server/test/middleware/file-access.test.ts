@@ -17,12 +17,17 @@ describe("file-access policy state", () => {
       homeDir: "/home/me",
       tempPaths: ["/tmp"],
       envPaths: null,
+      appDataProjectsDir: "/data/projects",
     });
     updateFileAccess(undefined);
   });
 
   it("defaults to projects + uploads + temp, no home/custom", () => {
-    expect(getAllowedFilePaths().sort()).toEqual(["/data/uploads", "/tmp"]);
+    expect(getAllowedFilePaths().sort()).toEqual([
+      "/data/projects",
+      "/data/uploads",
+      "/tmp",
+    ]);
     expect(shouldIncludeProjects()).toBe(true);
     expect(isFileAccessEnvPinned()).toBe(false);
   });
@@ -41,6 +46,7 @@ describe("file-access policy state", () => {
     expect(set).toContain("/mnt/data");
     expect(set).not.toContain("/data/uploads");
     expect(set).not.toContain("/tmp");
+    expect(set).toContain("/data/projects");
   });
 
   it("expands ~ using the home path separator style", () => {
@@ -65,6 +71,17 @@ describe("file-access policy state", () => {
     ]);
   });
 
+  it("keeps app-data project attachments readable when uploads are off", () => {
+    updateFileAccess({
+      projects: true,
+      uploads: false,
+      temp: false,
+      home: false,
+      custom: [],
+    });
+    expect(getAllowedFilePaths()).toEqual(["/data/projects"]);
+  });
+
   it("gates scanned projects off", () => {
     updateFileAccess({ ...DEFAULT_FILE_ACCESS, projects: false });
     expect(shouldIncludeProjects()).toBe(false);
@@ -76,6 +93,7 @@ describe("file-access policy state", () => {
       homeDir: "/home/me",
       tempPaths: ["/tmp"],
       envPaths: ["/srv/pinned"],
+      appDataProjectsDir: "/data/projects",
     });
     // These settings should be ignored while env-pinned.
     updateFileAccess({
@@ -87,6 +105,7 @@ describe("file-access policy state", () => {
     });
     expect(isFileAccessEnvPinned()).toBe(true);
     expect(getAllowedFilePaths().sort()).toEqual([
+      "/data/projects",
       "/data/uploads",
       "/srv/pinned",
     ]);

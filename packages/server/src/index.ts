@@ -748,6 +748,7 @@ async function startServer() {
     homeDir: os.homedir(),
     tempPaths: config.fileAccessTempPaths,
     envPaths: config.fileAccessEnvPaths,
+    appDataProjectsDir: path.join(config.dataDir, "projects"),
   });
   updateFileAccess(serverSettingsService.getSetting("fileAccess"));
 

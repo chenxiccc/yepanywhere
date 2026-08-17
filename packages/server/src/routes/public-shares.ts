@@ -38,6 +38,7 @@ import {
   serializeLegacyJsonValue,
   serializeLegacyPublicShareResponse,
 } from "./public-share-json-stream.js";
+import { canonicalizeManagedAttachmentPath } from "../uploads/attachmentAccess.js";
 import {
   buildPublicShareViewerUrl,
   getDefaultPublicShareViewerBaseUrl,
@@ -94,6 +95,8 @@ export interface PublicSharePublicRoutesDeps {
       viewMode?: "full" | "range";
     },
   ) => Promise<Response>;
+  /** YA data directory; used to authorize app-data attachment paths. */
+  dataDir?: string;
 }
 
 export interface PublicShareRoutesDeps extends PublicSharePublicRoutesDeps {
@@ -388,8 +391,18 @@ function isPathInsideDirectory(filePath: string, directory: string): boolean {
 function normalizePublicShareProjectFilePath(
   rawPath: string,
   projectRoot: string,
+  dataDir?: string,
 ): string | null {
   const { path: parsedPath } = parseLineColumn(rawPath);
+  if (dataDir) {
+    const attachmentPath = canonicalizeManagedAttachmentPath(
+      parsedPath,
+      dataDir,
+    );
+    if (attachmentPath) {
+      return attachmentPath.replaceAll("\\", "/");
+    }
+  }
   const flavor = getSharePathFlavor(projectRoot);
   const normalizedRoot = resolveSharePath(projectRoot, "", flavor);
 
@@ -479,17 +492,29 @@ function sanitizePathToken(value: string): string {
 function normalizeMentionedProjectFilePath(
   rawPath: string,
   projectRoot: string,
+  dataDir?: string,
 ): string | null {
   const sanitized = sanitizePathToken(rawPath);
   return sanitized
-    ? normalizePublicShareProjectFilePath(sanitized, projectRoot)
+    ? normalizePublicShareProjectFilePath(sanitized, projectRoot, dataDir)
     : null;
+}
+
+function looksLikeAbsoluteOrHomePath(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith("~/") ||
+    trimmed.startsWith("~\\") ||
+    trimmed.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(trimmed)
+  );
 }
 
 function collectPublicShareMentionedProjectFiles(
   session: AppSession,
   projectRoot: string,
   projectId: UrlProjectId,
+  dataDir?: string,
 ): Set<string> {
   const files = new Set<string>();
   const flavor = getSharePathFlavor(projectRoot);
@@ -512,7 +537,11 @@ function collectPublicShareMentionedProjectFiles(
     if (!rawPath) {
       return;
     }
-    const normalized = normalizeMentionedProjectFilePath(rawPath, projectRoot);
+    const normalized = normalizeMentionedProjectFilePath(
+      rawPath,
+      projectRoot,
+      dataDir,
+    );
     if (normalized) {
       files.add(normalized);
     }
@@ -523,6 +552,9 @@ function collectPublicShareMentionedProjectFiles(
     const textVariants =
       decoded && decoded !== value ? [value, decoded] : [value];
     for (const text of textVariants) {
+      if (looksLikeAbsoluteOrHomePath(text)) {
+        addPath(text);
+      }
       for (const match of text.matchAll(rootPattern)) {
         addPath(match[0] ?? null);
       }
@@ -672,6 +704,7 @@ async function publicShareSessionMentionsRenderAsset(
   relativePath: string,
   projectRoot: string,
   projectId: UrlProjectId,
+  dataDir?: string,
 ): Promise<boolean> {
   if (
     !hasPublicShareExtension(relativePath, PUBLIC_SHARE_RENDER_ASSET_EXTENSIONS)
@@ -680,7 +713,12 @@ async function publicShareSessionMentionsRenderAsset(
   }
 
   const sourcePaths = Array.from(
-    collectPublicShareMentionedProjectFiles(session, projectRoot, projectId),
+    collectPublicShareMentionedProjectFiles(
+      session,
+      projectRoot,
+      projectId,
+      dataDir,
+    ),
   ).filter((sourcePath) =>
     hasPublicShareExtension(sourcePath, PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS),
   );
@@ -714,6 +752,7 @@ function buildDirectPublicSharePresentation(
   session: AppSession,
   projectRoot: string,
   projectId: UrlProjectId,
+  dataDir?: string,
 ): { version: 1; authorizedPaths: string[] } {
   return {
     version: 1,
@@ -722,6 +761,7 @@ function buildDirectPublicSharePresentation(
         session,
         projectRoot,
         projectId,
+        dataDir,
       ),
     ].sort(),
   };
@@ -766,9 +806,15 @@ export async function buildPublicSharePresentation(
   session: AppSession,
   projectRoot: string,
   projectId: UrlProjectId,
+  dataDir?: string,
 ): Promise<{ version: 1; authorizedPaths: string[] }> {
   return await extendPublicSharePresentationFromProjectRoot(
-    buildDirectPublicSharePresentation(session, projectRoot, projectId),
+    buildDirectPublicSharePresentation(
+      session,
+      projectRoot,
+      projectId,
+      dataDir,
+    ),
     projectRoot,
     projectId,
   );
@@ -839,6 +885,7 @@ async function servePublicShareProjectFile(
   const relativePath = normalizePublicShareProjectFilePath(
     rawPath,
     projectRoot,
+    deps.dataDir,
   );
   if (!relativePath) {
     return c.json({ error: "Invalid file path" }, 400);
@@ -861,6 +908,7 @@ async function servePublicShareProjectFile(
         shareResponse.session,
         projectRoot,
         record.source.projectId,
+        deps.dataDir,
       );
       authorized =
         directPresentation.authorizedPaths.includes(relativePath) ||
@@ -869,6 +917,7 @@ async function servePublicShareProjectFile(
           relativePath,
           projectRoot,
           record.source.projectId,
+          deps.dataDir,
         ));
     }
   }
@@ -895,10 +944,12 @@ async function servePublicShareProjectFile(
     fileOptions.viewMode = "range";
   }
 
-  const frozenProjectRoot = await deps.publicShareService.getFrozenProjectRoot(
-    record,
-    viewerId,
-  );
+  const attachmentPath = deps.dataDir
+    ? canonicalizeManagedAttachmentPath(relativePath, deps.dataDir)
+    : null;
+  const frozenProjectRoot = attachmentPath
+    ? undefined
+    : await deps.publicShareService.getFrozenProjectRoot(record, viewerId);
   const response = await deps.fetchProjectFile(
     record.source.projectId,
     relativePath,
@@ -997,7 +1048,7 @@ function getSessionParams(
 export async function captureCompletePublicShare(
   deps: Pick<
     PublicShareRoutesDeps,
-    "loadCompleteSession" | "publicShareService"
+    "loadCompleteSession" | "publicShareService" | "dataDir"
   >,
   projectId: UrlProjectId,
   sessionId: string,
@@ -1012,6 +1063,7 @@ export async function captureCompletePublicShare(
     capture.snapshot,
     projectRoot,
     projectId,
+    deps.dataDir,
   );
   return {
     ...capture,
