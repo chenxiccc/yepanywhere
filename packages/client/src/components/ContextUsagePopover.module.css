@@ -1,0 +1,41 @@
+/* Token-accounting section of the context-usage popover. The popover shell
+   and the subscription-quota rows remain global (`.context-subscription-*`). */
+
+.tokenUsage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-color);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.row dt,
+.row dd {
+  margin: 0;
+}
+
+.row dd {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}

@@ -7,10 +7,15 @@
 
 Topic: session-usage-accounting
 
-Status: **proposal, not implemented** as of 2026-08-06. The provider-side facts
-below were verified against a live copilot-api gateway and the Claude Code
-2.1.220 transcript schema on that date; the aggregation service and every
-client surface are still unbuilt.
+Status: **proposal, mostly not implemented** as of 2026-08-17. The
+provider-side facts below were verified against a live copilot-api gateway and
+the Claude Code 2.1.220 transcript schema on 2026-08-06. The aggregation
+service — burn rate, session total, main/subagent split — is still unbuilt.
+One piece of the client surface now ships: the context indicator's left-click
+popover lists the *last turn's* reported classes (context total, cache read,
+cache write, output) from the `ContextUsage` the session summary already
+carries, in `packages/client/src/components/ContextUsagePopover.tsx`. That is
+a single-turn readout, not a ledger, and it applies no price weighting.
 
 Related topics: [provider subscription usage](provider-subscription-usage.md)
 (the account-quota view this sits beside),
@@ -117,8 +122,10 @@ normalizes. A gateway burn rate must not be presented as spend.
 The context indicator's left-click dialog already opens the applicable
 subscription windows (see
 [provider subscription usage](provider-subscription-usage.md) § Client
-surfaces; right-click / long-press stays the compact-threshold editor). This
-proposal adds to that dialog, beside "% quota remaining":
+surfaces; right-click / long-press stays the compact-threshold editor) and,
+since 2026-08-17, the last turn's raw token classes. It now opens for sessions
+with no subscription windows at all, since those still report token classes.
+This proposal adds to that dialog, beside "% quota remaining":
 
 - **Burn (10 min)** — read and write rates, main and subagent.
 - **Session total** — the same split, cumulative.

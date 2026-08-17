@@ -84,6 +84,58 @@ describe("ContextThresholdQuickEdit", () => {
     expect(screen.getByText("Fable · 7d window")).toBeTruthy();
   });
 
+  it("shows provider-reported cache accounting for the last turn", () => {
+    render(
+      <I18nProvider>
+        <ContextThresholdQuickEdit
+          provider="claude"
+          model="fable"
+          usage={{
+            inputTokens: 104_966,
+            contextWindow: 1_000_000,
+            percentage: 10,
+            outputTokens: 333,
+            cacheReadTokens: 103_341,
+            cacheCreationTokens: 1_623,
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Context 10%/ }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("Read from cache");
+    expect(dialog.textContent).toContain("103,341");
+    expect(dialog.textContent).toContain("Written to cache");
+    expect(dialog.textContent).toContain("1,623");
+    expect(dialog.textContent).toContain("104,966");
+  });
+
+  it("omits the token section when no cache or output counts are reported", () => {
+    render(
+      <I18nProvider>
+        <ContextThresholdQuickEdit
+          provider="claude"
+          model="fable"
+          usage={{
+            inputTokens: 50_000,
+            contextWindow: 1_000_000,
+            percentage: 5,
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Subscription usage 100% used/ }),
+    );
+
+    expect(screen.getByRole("dialog").textContent).not.toContain(
+      "Read from cache",
+    );
+  });
+
   it("preserves right-click access to compact threshold editing", () => {
     render(
       <I18nProvider>
