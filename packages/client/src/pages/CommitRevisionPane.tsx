@@ -1,5 +1,5 @@
 import type { GitRecentCommit, GitStatusInfo } from "@yep-anywhere/shared";
-import { type RefObject, useCallback } from "react";
+import { type MouseEvent, type RefObject, useCallback } from "react";
 import {
   SourceRowMenuTrigger,
   sourceRowMenuSurface,
@@ -41,6 +41,7 @@ export function CommitRevisionPane({
   onSearchQueryChange,
   onSearchIndexRequested,
   onOpenRevision,
+  revisionHref,
   onFocusRevision,
   onLoadMore,
   onMarkReadTo,
@@ -72,6 +73,7 @@ export function CommitRevisionPane({
   onSearchQueryChange: (query: string) => void;
   onSearchIndexRequested: () => void;
   onOpenRevision: (key: string) => void;
+  revisionHref: (key: string) => string;
   onFocusRevision: (key: string) => void;
   onLoadMore: () => void;
   onMarkReadTo: (authorDate: string) => void;
@@ -151,6 +153,11 @@ export function CommitRevisionPane({
   const workingTreeFileCount = status
     ? new Set(status.files.map((file) => file.path)).size
     : 0;
+  const workingTreeMenuActions = revisionMenuActions(WORKING_TREE_KEY);
+  const workingTreeTargetProps = revisionMenu.targetProps(
+    workingTreeMenuActions,
+    () => onOpenRevision(WORKING_TREE_KEY),
+  );
   return (
     <>
       <div className="commit-list-column">
@@ -206,23 +213,25 @@ export function CommitRevisionPane({
                 <li
                   className={`commit-list-row commit-list-working-tree ${sourceRowMenuSurface}`}
                 >
-                  <button
-                    type="button"
-                    className={`commit-list-item unread ${
+                  <a
+                    className={`commit-list-item ${styles.link} unread ${
                       workingTreeClean ? "" : styles.dirty
                     } ${selectedIsWorkingTree ? "selected" : ""} ${
                       !workingTreeClean && selectedIsWorkingTree
                         ? styles.dirtySelected
                         : ""
                     }`}
+                    href={revisionHref(WORKING_TREE_KEY)}
                     data-source-list-item
                     onFocus={() => {
                       if (isWideScreen) onFocusRevision(WORKING_TREE_KEY);
                     }}
-                    {...revisionMenu.targetProps(
-                      revisionMenuActions(WORKING_TREE_KEY),
-                      () => onOpenRevision(WORKING_TREE_KEY),
-                    )}
+                    {...workingTreeTargetProps}
+                    onClick={(event) => {
+                      if (isModifiedLinkActivation(event)) return;
+                      event.preventDefault();
+                      workingTreeTargetProps.onClick();
+                    }}
                   >
                     <span className="commit-subject-row">
                       <span className="commit-subject">
@@ -260,9 +269,9 @@ export function CommitRevisionPane({
                         </>
                       )}
                     </span>
-                  </button>
+                  </a>
                   <SourceRowMenuTrigger
-                    actions={revisionMenuActions(WORKING_TREE_KEY)}
+                    actions={workingTreeMenuActions}
                     label={t("sourceMoreActions")}
                     onOpen={revisionMenu.openFromButton}
                   />
@@ -271,23 +280,29 @@ export function CommitRevisionPane({
               {displayedCommits.map((commit) => {
                 const commentCount = commentCountBySha.get(commit.hash) ?? 0;
                 const menuActions = revisionMenuActions(commit.hash, commit);
+                const targetProps = revisionMenu.targetProps(menuActions, () =>
+                  onOpenRevision(commit.hash),
+                );
                 return (
                   <li
                     key={commit.hash}
                     className={`commit-list-row ${sourceRowMenuSurface}`}
                   >
-                    <button
-                      type="button"
-                      className={`commit-list-item ${
+                    <a
+                      className={`commit-list-item ${styles.link} ${
                         selectedKey === commit.hash ? "selected" : ""
                       } ${isRead(commit.authorDate) ? "read" : "unread"}`}
+                      href={revisionHref(commit.hash)}
                       data-source-list-item
                       onFocus={() => {
                         if (isWideScreen) onFocusRevision(commit.hash);
                       }}
-                      {...revisionMenu.targetProps(menuActions, () =>
-                        onOpenRevision(commit.hash),
-                      )}
+                      {...targetProps}
+                      onClick={(event) => {
+                        if (isModifiedLinkActivation(event)) return;
+                        event.preventDefault();
+                        targetProps.onClick();
+                      }}
                     >
                       <span className="commit-subject-row">
                         <span className="commit-subject" title={commit.subject}>
@@ -313,7 +328,7 @@ export function CommitRevisionPane({
                           {formatCommitDate(commit.authorDate)}
                         </span>
                       </span>
-                    </button>
+                    </a>
                     <SourceRowMenuTrigger
                       actions={menuActions}
                       label={t("sourceMoreActions")}
@@ -338,6 +353,18 @@ export function CommitRevisionPane({
       </div>
       {revisionMenu.menu}
     </>
+  );
+}
+
+function isModifiedLinkActivation(
+  event: MouseEvent<HTMLAnchorElement>,
+): boolean {
+  return (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
   );
 }
 

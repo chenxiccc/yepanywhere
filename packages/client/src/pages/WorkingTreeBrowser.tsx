@@ -1,6 +1,7 @@
 import type {
   GitFileChange,
   GitStatusInfo,
+  GitUntrackedFileListResult,
   GitUntrackedFolderInfo,
   ReviewSiteStateSummary,
 } from "@yep-anywhere/shared";
@@ -180,6 +181,8 @@ export function WorkingTreeBrowser({
   projectId,
   status,
   isWideScreen,
+  supportsUntrackedCache = false,
+  untrackedFiles = null,
   initialWorkingTreePath,
   embeddedInHistory = false,
   onBackToRevisions,
@@ -196,6 +199,8 @@ export function WorkingTreeBrowser({
   projectId: string;
   status: GitStatusInfo;
   isWideScreen: boolean;
+  supportsUntrackedCache?: boolean;
+  untrackedFiles?: GitUntrackedFileListResult | null;
   /** One-shot deep link to a dirty file from a session Edit block. */
   initialWorkingTreePath?: string;
   /** Let Commits place these same files/diff in its revision-detail columns. */
@@ -224,6 +229,15 @@ export function WorkingTreeBrowser({
   const [untrackedFolderExpansion, setUntrackedFolderExpansion] = useState<
     Record<string, boolean>
   >({});
+  const [loadingUntrackedFolders, setLoadingUntrackedFolders] = useState<
+    ReadonlySet<string>
+  >(new Set());
+  const [untrackedSearch, setUntrackedSearch] =
+    useState<GitUntrackedFileListResult | null>(null);
+  const [untrackedSearchLoading, setUntrackedSearchLoading] = useState(false);
+  const [untrackedCacheError, setUntrackedCacheError] = useState(false);
+  const folderRequestsRef = useRef(new Set<string>());
+  const searchRequestRef = useRef(0);
   const [fileQuery, setFileQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [commentEditorOpen, setCommentEditorOpen] = useState(false);
@@ -262,6 +276,10 @@ export function WorkingTreeBrowser({
     let cancelled = false;
     setExpandedUntrackedFolders({});
     setUntrackedFolderExpansion({});
+    if (supportsUntrackedCache) {
+      setUntrackedFolderScan({ loaded: 0, total: 0 });
+      return undefined;
+    }
     const paths = untrackedFolderKey ? untrackedFolderKey.split("\0") : [];
     setUntrackedFolderScan({ loaded: 0, total: paths.length });
     if (paths.length === 0) return undefined;
@@ -327,16 +345,117 @@ export function WorkingTreeBrowser({
       cancelled = true;
       if (flushHandle !== null) clearTimeout(flushHandle);
     };
-  }, [projectId, untrackedFolderKey]);
+  }, [projectId, supportsUntrackedCache, untrackedFolderKey]);
+
+  const cachedFolderCounts = useMemo(
+    () =>
+      new Map(
+        (untrackedFiles?.folders ?? []).map(({ path, count }) => [path, count]),
+      ),
+    [untrackedFiles?.folders],
+  );
+
+  const loadUntrackedFolder = useCallback(
+    async (path: string) => {
+      if (folderRequestsRef.current.has(path)) return;
+      folderRequestsRef.current.add(path);
+      setLoadingUntrackedFolders(new Set(folderRequestsRef.current));
+      setUntrackedCacheError(false);
+      try {
+        const result = await api.listGitUntrackedFiles(projectId, { path });
+        setExpandedUntrackedFolders((current) => ({
+          ...current,
+          [path]: {
+            path,
+            files: result.files,
+            ...(result.lastEditors ? { lastEditors: result.lastEditors } : {}),
+            truncated: result.truncated,
+            limit: result.limit,
+          },
+        }));
+      } catch {
+        setUntrackedCacheError(true);
+      } finally {
+        folderRequestsRef.current.delete(path);
+        setLoadingUntrackedFolders(new Set(folderRequestsRef.current));
+      }
+    },
+    [projectId],
+  );
+
+  useEffect(() => {
+    if (!supportsUntrackedCache) return;
+    for (const [path, count] of cachedFolderCounts) {
+      if (
+        count <= UNTRACKED_GROUP_COLLAPSE_THRESHOLD &&
+        untrackedFolderExpansion[path] !== false &&
+        !expandedUntrackedFolders[path]
+      ) {
+        void loadUntrackedFolder(path);
+      }
+    }
+  }, [
+    cachedFolderCounts,
+    expandedUntrackedFolders,
+    loadUntrackedFolder,
+    supportsUntrackedCache,
+    untrackedFolderExpansion,
+  ]);
+
+  useEffect(() => {
+    searchRequestRef.current += 1;
+    const requestId = searchRequestRef.current;
+    const query = fileQuery.trim();
+    if (!supportsUntrackedCache || query === "") {
+      setUntrackedSearch(null);
+      setUntrackedSearchLoading(false);
+      return undefined;
+    }
+
+    setUntrackedSearchLoading(true);
+    setUntrackedCacheError(false);
+    const timer = setTimeout(() => {
+      void api
+        .listGitUntrackedFiles(projectId, { q: query })
+        .then((result) => {
+          if (requestId === searchRequestRef.current) {
+            setUntrackedSearch(result);
+          }
+        })
+        .catch(() => {
+          if (requestId === searchRequestRef.current) {
+            setUntrackedSearch(null);
+            setUntrackedCacheError(true);
+          }
+        })
+        .finally(() => {
+          if (requestId === searchRequestRef.current) {
+            setUntrackedSearchLoading(false);
+          }
+        });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [fileQuery, projectId, supportsUntrackedCache]);
 
   const previousRowsRef = useRef<{
     statusFiles: GitFileChange[];
     byPath: Map<string, WorktreeFileChange>;
   } | null>(null);
   const currentFiles = useMemo(() => {
-    const merged = mergeWorkingTreeFiles(
-      expandUntrackedFolders(status.files, expandedUntrackedFolders),
-    );
+    const cachedSearchFiles = (untrackedSearch?.files ?? []).map((path) => ({
+      path,
+      status: "?",
+      staged: false,
+      linesAdded: null,
+      linesDeleted: null,
+      ...(untrackedSearch?.lastEditors?.[path]
+        ? { lastEditor: untrackedSearch.lastEditors[path] }
+        : {}),
+    }));
+    const merged = mergeWorkingTreeFiles([
+      ...expandUntrackedFolders(status.files, expandedUntrackedFolders),
+      ...cachedSearchFiles,
+    ]);
     // Untracked-folder expansions arrive in batches and rebuild every row,
     // including the rows they did not touch. A row's object identity is the
     // signal the diff pane refetches on, so handing out a fresh-but-equal
@@ -359,7 +478,7 @@ export function WorkingTreeBrowser({
     });
     previousRowsRef.current = { statusFiles: status.files, byPath };
     return rows;
-  }, [expandedUntrackedFolders, status.files]);
+  }, [expandedUntrackedFolders, status.files, untrackedSearch]);
   useEffect(() => {
     if (!selectedPath) return;
     const selected = currentFiles.find((file) => file.path === selectedPath);
@@ -392,11 +511,13 @@ export function WorkingTreeBrowser({
         statusFiles: status.files,
         files,
         folders: expandedUntrackedFolders,
+        folderCounts: cachedFolderCounts,
         folderExpansion: untrackedFolderExpansion,
         matchingPaths,
         query: fileQuery,
       }),
     [
+      cachedFolderCounts,
       expandedUntrackedFolders,
       fileQuery,
       files,
@@ -499,13 +620,21 @@ export function WorkingTreeBrowser({
   }, [siteStates]);
 
   const toggleUntrackedFolder = useCallback(
-    (path: string, expanded: boolean) => {
+    (path: string, expanded: boolean, loaded: boolean) => {
+      if (supportsUntrackedCache && !loaded) {
+        setUntrackedFolderExpansion((current) => ({
+          ...current,
+          [path]: true,
+        }));
+        void loadUntrackedFolder(path);
+        return;
+      }
       setUntrackedFolderExpansion((current) => ({
         ...current,
         [path]: !expanded,
       }));
     },
-    [],
+    [loadUntrackedFolder, supportsUntrackedCache],
   );
 
   const handleFileClick = useCallback(
@@ -703,6 +832,30 @@ export function WorkingTreeBrowser({
                 })}
               </span>
             )}
+            {supportsUntrackedCache && untrackedFiles?.truncated && (
+              <span className={styles.scanProgress} role="status">
+                {t("sourceUntrackedCacheBounded", {
+                  count: untrackedFiles.total,
+                })}
+              </span>
+            )}
+            {untrackedSearchLoading && (
+              <span className={styles.scanProgress} role="status">
+                {t("sourceUntrackedSearchLoading")}
+              </span>
+            )}
+            {untrackedSearch?.truncated && (
+              <span className={styles.scanProgress} role="status">
+                {t("sourceUntrackedSearchTruncated", {
+                  count: untrackedSearch.files.length,
+                })}
+              </span>
+            )}
+            {untrackedCacheError && (
+              <span className={styles.scanProgress} role="status">
+                {t("sourceUntrackedCacheError")}
+              </span>
+            )}
             <ChangesetFileFilter
               query={fileQuery}
               onQueryChange={setFileQuery}
@@ -720,41 +873,63 @@ export function WorkingTreeBrowser({
                       path={entry.path}
                       type="button"
                       className="commit-file-item"
-                      disabled={!entry.info || entry.info.files.length === 0}
-                      aria-expanded={entry.info ? entry.expanded : undefined}
-                      aria-label={t(
-                        entry.info
+                      disabled={
+                        loadingUntrackedFolders.has(entry.path) ||
+                        (!supportsUntrackedCache && !entry.info) ||
+                        (supportsUntrackedCache
+                          ? (cachedFolderCounts.get(entry.path) ?? 0) === 0
+                          : !entry.info || entry.info.files.length === 0)
+                      }
+                      aria-expanded={
+                        supportsUntrackedCache || entry.info
                           ? entry.expanded
+                          : undefined
+                      }
+                      aria-label={t(
+                        loadingUntrackedFolders.has(entry.path) ||
+                          (!supportsUntrackedCache && !entry.info)
+                          ? "sourceLoadingUntrackedFolder"
+                          : entry.expanded
                             ? "sourceCollapseUntrackedFolder"
-                            : "sourceExpandUntrackedFolder"
-                          : "sourceLoadingUntrackedFolder",
+                            : "sourceExpandUntrackedFolder",
                         { path: entry.path },
                       )}
                       data-source-list-item
                       onClick={() =>
-                        toggleUntrackedFolder(entry.path, entry.expanded)
+                        toggleUntrackedFolder(
+                          entry.path,
+                          entry.expanded,
+                          entry.info !== undefined,
+                        )
                       }
                     >
                       <span className={styles.disclosure} aria-hidden="true">
-                        {entry.info ? (entry.expanded ? "−" : "+") : "…"}
+                        {loadingUntrackedFolders.has(entry.path) ||
+                        (!supportsUntrackedCache && !entry.info)
+                          ? "…"
+                          : entry.expanded
+                            ? "−"
+                            : "+"}
                       </span>
                       <SourceFileStatusBadge status="?" t={t} />
                       <SourceFilePath query={fileQuery}>
                         {entry.path}
                       </SourceFilePath>
-                      {entry.info && (
+                      {(cachedFolderCounts.get(entry.path) ??
+                        entry.info?.files.length) !== undefined && (
                         <span
                           className={styles.folderCount}
                           title={
-                            entry.info.truncated
+                            entry.info?.truncated
                               ? t("sourceUntrackedFolderTruncated", {
                                   count: entry.info.files.length,
                                 })
                               : undefined
                           }
                         >
-                          {entry.info.files.length}
-                          {entry.info.truncated ? "+" : ""}
+                          {cachedFolderCounts.get(entry.path) ??
+                            entry.info?.files.length}
+                          {entry.info?.truncated ? "+" : ""}
                         </span>
                       )}
                     </SourceFileRowButton>
@@ -824,6 +999,7 @@ function buildWorktreeListEntries({
   statusFiles,
   files,
   folders,
+  folderCounts,
   folderExpansion,
   matchingPaths,
   query,
@@ -831,6 +1007,7 @@ function buildWorktreeListEntries({
   statusFiles: GitFileChange[];
   files: WorktreeFileChange[];
   folders: Record<string, GitUntrackedFolderInfo>;
+  folderCounts: ReadonlyMap<string, number>;
   folderExpansion: Record<string, boolean>;
   matchingPaths: ReadonlySet<string>;
   query: string;
@@ -870,10 +1047,12 @@ function buildWorktreeListEntries({
       if (normalizedQuery && !folderMatches && matchingChildren.length === 0) {
         continue;
       }
+      const descendantCount =
+        folderCounts.get(statusFile.path) ?? info?.files.length;
       const userExpanded =
         folderExpansion[statusFile.path] ??
-        (info
-          ? info.files.length <= UNTRACKED_GROUP_COLLAPSE_THRESHOLD
+        (descendantCount !== undefined
+          ? descendantCount <= UNTRACKED_GROUP_COLLAPSE_THRESHOLD
           : false);
       const expanded = normalizedQuery
         ? matchingChildren.length > 0

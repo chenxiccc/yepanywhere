@@ -17,6 +17,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -25,6 +26,7 @@ import {
   GIT_STATUS_PULL_CAPABILITY,
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+  GIT_WORKING_TREE_FILES_CAPABILITY,
 } from "@yep-anywhere/shared";
 import selectorStyles from "../../components/ProjectSelector.module.css";
 import { setSourceControlCleanLandingPreference } from "../../hooks/useSourceControlCleanLanding";
@@ -61,9 +63,28 @@ vi.mock("../../api/client", () => ({
 }));
 
 vi.mock("../CommitBrowser", () => ({
-  CommitBrowser: (props: { initialPath?: string; initialSha?: string }) => {
+  CommitBrowser: (props: {
+    initialPath?: string;
+    initialSha?: string;
+    showRevisionPane?: boolean;
+    onBrowseHistory?: () => void;
+    onSelectRevision?: (sha: string | null) => void;
+  }) => {
     mocks.renderCommitBrowser(props);
-    return <div data-testid="commit-browser">commit-history</div>;
+    return (
+      <div data-testid="commit-browser">
+        commit-history
+        <button type="button" onClick={props.onBrowseHistory}>
+          sourceCommitHistory
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onSelectRevision?.("next-sha")}
+        >
+          select-next-revision
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -325,8 +346,10 @@ beforeEach(() => {
         GIT_SOURCE_REVIEW_CAPABILITY,
         GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
         GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+        GIT_INCOMING_COMMITS_CAPABILITY,
         GIT_STATUS_ENHANCED_CAPABILITY,
         GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+        GIT_WORKING_TREE_FILES_CAPABILITY,
       ],
     },
     loading: false,
@@ -362,6 +385,7 @@ describe("GitStatusPage source header", () => {
     ).toHaveLength(1);
     expect(header.querySelector('[role="tablist"]')).not.toBeNull();
     expect(header.querySelectorAll('[role="tab"]')).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "→ origin/main" })).toBeDefined();
 
     const actions = header.querySelector(
       '[data-source-actions-placement="fallback"]',
@@ -728,8 +752,15 @@ describe("GitStatusPage source header", () => {
     renderPage("/git-status?projectId=project-a&tab=files&bf=src%2Fx.ts");
 
     expect(await screen.findByTestId("blame-browser")).toBeDefined();
+    expect(
+      screen.getByRole("tab", { name: "sourceTabWorkingTree" }),
+    ).toBeDefined();
     expect(mocks.renderBlameBrowser).toHaveBeenLastCalledWith(
-      expect.objectContaining({ initialPath: "src/x.ts" }),
+      expect.objectContaining({
+        initialPath: "src/x.ts",
+        status: expect.objectContaining({ branch: "main" }),
+        supportsWorkingTreeFiles: true,
+      }),
     );
 
     fireEvent.click(screen.getByText("open-blame-commit"));
@@ -741,7 +772,10 @@ describe("GitStatusPage source header", () => {
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
-      expect.objectContaining({ initialSha: "b".repeat(40) }),
+      expect.objectContaining({
+        initialSha: "b".repeat(40),
+        showRevisionPane: false,
+      }),
     );
   });
 
@@ -755,7 +789,52 @@ describe("GitStatusPage source header", () => {
       expect.objectContaining({
         initialSha: "abc123",
         initialPath: "src/x.ts",
+        showRevisionPane: false,
       }),
+    );
+  });
+
+  it("opens a focused commit's selector without losing the revision", async () => {
+    renderPage("/git-status?projectId=project-a&rev=abc123");
+    await screen.findByTestId("commit-browser");
+
+    fireEvent.click(screen.getByText("sourceCommitHistory"));
+
+    await waitFor(() =>
+      expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          initialSha: "abc123",
+          showRevisionPane: true,
+        }),
+      ),
+    );
+    expect(screen.getByTestId("test-location").textContent).toContain(
+      "history=1",
+    );
+    expect(screen.getByTestId("test-location").textContent).toContain(
+      "rev=abc123",
+    );
+  });
+
+  it("keeps history selected when a revision row opens in place", async () => {
+    renderPage("/git-status?projectId=project-a&history=1");
+    await screen.findByTestId("commit-browser");
+
+    fireEvent.click(screen.getByText("select-next-revision"));
+
+    await waitFor(() =>
+      expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          initialSha: "next-sha",
+          showRevisionPane: true,
+        }),
+      ),
+    );
+    expect(screen.getByTestId("test-location").textContent).toContain(
+      "history=1",
+    );
+    expect(screen.getByTestId("test-location").textContent).toContain(
+      "rev=next-sha",
     );
   });
 

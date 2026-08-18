@@ -1,6 +1,9 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GitStatusInfo } from "@yep-anywhere/shared";
+import type {
+  GitStatusInfo,
+  GitUntrackedFileListResult,
+} from "@yep-anywhere/shared";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
@@ -14,6 +17,7 @@ interface Deferred<T> {
 
 const mocks = vi.hoisted(() => ({
   getGitStatus: vi.fn(),
+  listGitUntrackedFiles: vi.fn(),
   isRemoteClient: vi.fn(() => false),
   remoteState: {
     connection: null as { connection: object | null } | null,
@@ -23,6 +27,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({
   api: {
     getGitStatus: mocks.getGitStatus,
+    listGitUntrackedFiles: mocks.listGitUntrackedFiles,
   },
 }));
 
@@ -73,6 +78,7 @@ beforeEach(() => {
   resetClientSummaryStoreForTests();
   resetRouteRetentionForTests();
   mocks.getGitStatus.mockReset();
+  mocks.listGitUntrackedFiles.mockReset();
   mocks.isRemoteClient.mockReset();
   mocks.isRemoteClient.mockReturnValue(false);
   mocks.remoteState.connection = null;
@@ -168,5 +174,113 @@ describe("useGitStatus", () => {
       await vi.advanceTimersByTimeAsync(20_000);
     });
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges the capability-gated untracked cache into tracked-only status", async () => {
+    const tracked = gitStatus([
+      {
+        path: "src/tracked.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    mocks.getGitStatus.mockResolvedValue(tracked);
+    mocks.listGitUntrackedFiles.mockResolvedValue({
+      files: ["root.txt"],
+      folders: [{ path: "generated/", count: 20 }],
+      total: 21,
+      refreshedAt: "2026-08-18T00:00:00.000Z",
+      truncated: false,
+      limit: 500,
+    });
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", {
+        poll: false,
+        useUntrackedCache: true,
+      }),
+    );
+    await settle();
+
+    expect(mocks.getGitStatus).toHaveBeenCalledWith("project-a", {
+      useUntrackedCache: true,
+    });
+    expect(mocks.listGitUntrackedFiles).toHaveBeenCalledWith("project-a");
+    expect(rendered.result.current.loading).toBe(false);
+    expect(rendered.result.current.gitStatus?.files).toEqual([
+      tracked.files[0],
+      {
+        path: "root.txt",
+        status: "?",
+        staged: false,
+        linesAdded: null,
+        linesDeleted: null,
+      },
+      {
+        path: "generated/",
+        status: "?",
+        staged: false,
+        linesAdded: null,
+        linesDeleted: null,
+      },
+    ]);
+  });
+
+  it("shares an in-flight untracked cache request across polling ticks", async () => {
+    mocks.getGitStatus.mockResolvedValue(gitStatus([]));
+    const untracked = deferred<GitUntrackedFileListResult>();
+    mocks.listGitUntrackedFiles.mockReturnValue(untracked.promise);
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", { useUntrackedCache: true }),
+    );
+    await settle();
+    expect(mocks.listGitUntrackedFiles).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(mocks.listGitUntrackedFiles).toHaveBeenCalledTimes(1);
+
+    untracked.resolve({
+      files: ["root.txt"],
+      folders: [],
+      total: 1,
+      refreshedAt: "2026-08-18T00:00:00.000Z",
+      truncated: false,
+      limit: 500,
+    });
+    await settle();
+
+    expect(rendered.result.current.gitStatus?.files).toEqual([
+      {
+        path: "root.txt",
+        status: "?",
+        staged: false,
+        linesAdded: null,
+        linesDeleted: null,
+      },
+    ]);
+  });
+
+  it("does not request the untracked cache for a non-Git project", async () => {
+    mocks.getGitStatus.mockResolvedValue({
+      ...gitStatus([]),
+      isGitRepo: false,
+    });
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", {
+        poll: false,
+        useUntrackedCache: true,
+      }),
+    );
+    await settle();
+
+    expect(rendered.result.current.gitStatus?.isGitRepo).toBe(false);
+    expect(rendered.result.current.loading).toBe(false);
+    expect(mocks.listGitUntrackedFiles).not.toHaveBeenCalled();
   });
 });

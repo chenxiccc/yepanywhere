@@ -99,8 +99,10 @@ import { createBangCommandsRoutes } from "./routes/bang-commands.js";
 import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitBrowseRoutes } from "./routes/git-browse.js";
 import { createGitFileProjectionRoutes } from "./routes/git-file-projections.js";
+import { createGitIncomingCommitsRoutes } from "./routes/git-incoming-commits.js";
 import { createGitProjectionRoutes } from "./routes/git-projections.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
+import { createGitWorkingTreeFilesRoutes } from "./routes/git-working-tree-files.js";
 import { createGlossaryArtifactRoutes } from "./routes/glossary-artifacts.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { createReviewCommentsRoutes } from "./routes/review-comments.js";
@@ -1924,6 +1926,17 @@ export function createApp(options: AppOptions): AppResult {
     "/api/projects",
     createGitBrowseRoutes({ scanner, storagePolicy: projectStoragePolicy }),
   );
+
+  // Current-content inventory and last-fetched incoming history.
+  app.route(
+    "/api/projects",
+    createGitWorkingTreeFilesRoutes({
+      scanner,
+      dataDir: effectiveDataDir,
+      dirtyFileEditorService: options.dirtyFileEditorService,
+    }),
+  );
+  app.route("/api/projects", createGitIncomingCommitsRoutes({ scanner }));
 
   // Optional Source Control diff projections.
   app.route("/api/projects", createGitProjectionRoutes({ scanner }));

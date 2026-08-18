@@ -7,6 +7,7 @@ import type { PatchHunk } from "./types.js";
 export {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
+  GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -98,6 +99,16 @@ export interface GitCommitListResult {
   hasMore: boolean;
 }
 
+/** Commits observed on the upstream tracking ref but not local HEAD. */
+export interface GitIncomingCommitListResult {
+  upstream: string;
+  headSha: string;
+  upstreamSha: string;
+  commits: GitRecentCommit[];
+  truncated: boolean;
+  limit: number;
+}
+
 /**
  * Complete commit order for the on-demand browser search index. Metadata is
  * intentionally small; changed-line text is fetched in bounded batches.
@@ -165,6 +176,23 @@ export interface GitFileListResult {
   truncated: boolean;
 }
 
+/** A file currently present in the working tree. */
+export interface GitWorkingTreeFile {
+  /** Repo-relative path. */
+  path: string;
+  /** False for untracked files; true for files known to the index. */
+  tracked: boolean;
+}
+
+/** Bounded current-content inventory for the Working Tree browser. */
+export interface GitWorkingTreeFileListResult {
+  files: GitWorkingTreeFile[];
+  /** True when the inventory contains more paths than this response. */
+  truncated: boolean;
+  /** Effective response bound. */
+  limit: number;
+}
+
 /** Rudimentary commit-delta / filename search results. */
 export interface GitSearchResult {
   /** Matching file paths (filename search). */
@@ -186,6 +214,31 @@ export interface GitUntrackedFolderInfo {
   truncated: boolean;
   /** Maximum number of files returned before truncation */
   limit: number;
+}
+
+export interface GitUntrackedFolderSummary {
+  /** Top-level compact directory path, with trailing slash. */
+  path: string;
+  /** Cached descendant count before any response bound. */
+  count: number;
+}
+
+/** A bounded view over the persistent non-ignored untracked-path cache. */
+export interface GitUntrackedFileListResult {
+  /** File paths for a root, folder, or search query. */
+  files: string[];
+  /** Top-level groups, populated only by an unfiltered root request. */
+  folders: GitUntrackedFolderSummary[];
+  /** Complete cached file count before query and response bounds. */
+  total: number;
+  /** Last complete filesystem reconciliation time. */
+  refreshedAt: string;
+  /** True when either the cache or this response hit its safety bound. */
+  truncated: boolean;
+  /** Effective file/group response bound. */
+  limit: number;
+  /** Last-editor attribution for returned file paths that have it. */
+  lastEditors?: Record<string, GitFileEditor>;
 }
 
 export type GitDiffPreviewSkippedReason =

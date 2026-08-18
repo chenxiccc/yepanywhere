@@ -178,7 +178,9 @@ describe("api git facade", () => {
 
   it("preserves git endpoint paths and methods", async () => {
     await api.getGitStatus("project-a");
+    await api.getGitStatus("project-a", { useUntrackedCache: true });
     await api.getGitUntrackedFolder("project-a", "src/a b.ts");
+    await api.listGitUntrackedFiles("project-a", { q: "needle path" });
     await api.checkGitRemote("project-a");
     await api.getGitIntegrationOptions("project-a");
     await api.pullGit("project-a");
@@ -208,7 +210,17 @@ describe("api git facade", () => {
     ).toEqual([
       { url: "/api/projects/project-a/git", method: "GET", body: undefined },
       {
+        url: "/api/projects/project-a/git?untracked=cache",
+        method: "GET",
+        body: undefined,
+      },
+      {
         url: "/api/projects/project-a/git/untracked-folder?path=src%2Fa%20b.ts",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/git/untracked-files?q=needle+path",
         method: "GET",
         body: undefined,
       },

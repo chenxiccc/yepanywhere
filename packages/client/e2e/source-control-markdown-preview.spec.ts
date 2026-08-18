@@ -32,6 +32,7 @@ async function openQuartoPreview(page: Page, baseURL: string) {
   await dismissOnboardingIfVisible(page);
   await page.getByText("report.qmd", { exact: true }).first().click();
   await page.getByRole("button", { name: "Preview" }).click();
+  await page.getByRole("button", { name: "Full context" }).click();
   await expect(
     page.getByRole("heading", { name: "Updated Quarto report" }),
   ).toBeVisible();

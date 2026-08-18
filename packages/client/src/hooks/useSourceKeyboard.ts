@@ -4,13 +4,12 @@ import {
   useEffect,
 } from "react";
 
-const SOURCE_LIST_ITEM_SELECTOR =
-  "button[data-source-list-item]:not(:disabled)";
+const SOURCE_LIST_ITEM_SELECTOR = "[data-source-list-item]:not(:disabled)";
 
 /**
  * Keep arrow traversal attached to the list that owns the rows. Enter remains
- * the button's native activation path, so keyboard and pointer open the same
- * detail transition.
+ * the row control's native activation path, so keyboard and pointer open the
+ * same detail transition.
  */
 export function handleSourceListKeyDown(
   event: ReactKeyboardEvent<HTMLElement>,
@@ -19,14 +18,14 @@ export function handleSourceListKeyDown(
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
   const items = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+    event.currentTarget.querySelectorAll<HTMLElement>(
       SOURCE_LIST_ITEM_SELECTOR,
     ),
   );
   if (items.length === 0) return;
 
   const focused = document.activeElement;
-  const currentIndex = items.indexOf(focused as HTMLButtonElement);
+  const currentIndex = items.indexOf(focused as HTMLElement);
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const nextIndex =
     currentIndex < 0

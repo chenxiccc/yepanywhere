@@ -1,3 +1,7 @@
+.link {
+  text-decoration: none;
+}
+
 .dirty {
   border-left: 2px solid var(--warning-color);
   background: color-mix(in srgb, var(--warning-color) 6%, transparent);

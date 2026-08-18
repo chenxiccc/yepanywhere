@@ -246,6 +246,18 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "synthetic-archive-command",
     introducedIn: "0.7.1",
   },
+  gitWorkingTreeFiles: {
+    id: 38,
+    direction: "server",
+    name: "git-working-tree-files",
+    introducedIn: "0.7.1",
+  },
+  gitIncomingCommits: {
+    id: 39,
+    direction: "server",
+    name: "git-incoming-commits",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

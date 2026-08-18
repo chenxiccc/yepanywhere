@@ -287,6 +287,34 @@ describe("git-status routes", () => {
     });
   });
 
+  it("omits Git untracked enumeration for cache-backed status", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, "README.md"), "edited\n");
+    await writeFile(join(repoDir, "untracked.txt"), "untracked\n");
+    const reconciliations: Array<{ authoritative?: boolean }> = [];
+    const dirtyFileEditorService = {
+      reconcileGitStatus: (
+        _projectPath: string,
+        status: GitStatusInfo,
+        options: { authoritative?: boolean },
+      ) => {
+        reconciliations.push(options);
+        return status;
+      },
+    } as DirtyFileEditorService;
+    const { projectId, routes } = createRoutesForProject(
+      repoDir,
+      dirtyFileEditorService,
+    );
+
+    const response = await routes.request(`/${projectId}/git?untracked=cache`);
+    const body = (await response.json()) as GitStatusInfo;
+
+    expect(response.status).toBe(200);
+    expect(body.files.map((file) => file.path)).toEqual(["README.md"]);
+    expect(reconciliations).toEqual([{ authoritative: false }]);
+  });
+
   it("round-trips non-ASCII untracked folder paths", async () => {
     const repoDir = await createRepoWithUpstream();
     await mkdir(join(repoDir, "fö"), { recursive: true });

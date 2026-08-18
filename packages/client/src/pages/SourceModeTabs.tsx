@@ -14,6 +14,7 @@ export function SourceModeTabs({
   tab,
   tabs,
   counts,
+  fileTabLabelKey,
   onSelect,
   variant = "header",
   t,
@@ -22,6 +23,7 @@ export function SourceModeTabs({
   tabs: readonly SourceTab[];
   /** Optional per-tab count chip (e.g. pending review comments). */
   counts?: Partial<Record<SourceTab, number>>;
+  fileTabLabelKey?: MessageKey;
   onSelect: (tab: SourceTab) => void;
   /**
    * `header` sits inline at the top-right of a wide page header. `stacked` is
@@ -48,7 +50,11 @@ export function SourceModeTabs({
             className={`${styles.tab} ${tab === key ? styles.active : ""}`.trimEnd()}
             onClick={() => onSelect(key)}
           >
-            {t(sourceTabLabelKey(key))}
+            {t(
+              key === "files" && fileTabLabelKey
+                ? fileTabLabelKey
+                : sourceTabLabelKey(key),
+            )}
             {typeof count === "number" && count > 0 && (
               <span className={styles.count}>{count}</span>
             )}

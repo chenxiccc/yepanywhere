@@ -2,9 +2,11 @@ import type {
   GitIntegrationOptionReason,
   GitIntegrationOptionsResult,
   GitStatusInfo,
+  GitUntrackedFileListResult,
 } from "@yep-anywhere/shared";
 import {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -13,6 +15,7 @@ import {
   GIT_STATUS_PULL_CAPABILITY,
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+  GIT_WORKING_TREE_FILES_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
@@ -185,11 +188,13 @@ function SourceHeaderTabs({
   status,
   pendingCount,
   reviewsEnabled,
+  supportsWorkingTreeFiles,
   t,
 }: {
   status: GitStatusInfo;
   pendingCount: number;
   reviewsEnabled: boolean;
+  supportsWorkingTreeFiles: boolean;
   t: TranslationFn;
 }) {
   const { tab, setTab } = useSourceTab(reviewsEnabled);
@@ -200,6 +205,9 @@ function SourceHeaderTabs({
       tabs={reviewsEnabled ? SOURCE_TABS_WITH_REVIEWS : SOURCE_TABS}
       variant="stacked"
       counts={{ changes: changedFileCount, comments: pendingCount }}
+      fileTabLabelKey={
+        supportsWorkingTreeFiles ? "sourceTabWorkingTree" : undefined
+      }
       onSelect={setTab}
       t={t}
     />
@@ -210,6 +218,7 @@ function SourceHeaderActions({
   status,
   pendingCount,
   reviewsEnabled,
+  supportsWorkingTreeFiles,
   gitActions,
   isWideScreen,
   onComments,
@@ -218,6 +227,7 @@ function SourceHeaderActions({
   status: GitStatusInfo;
   pendingCount: number;
   reviewsEnabled: boolean;
+  supportsWorkingTreeFiles: boolean;
   gitActions: GitActionState;
   isWideScreen: boolean;
   onComments: () => void;
@@ -300,6 +310,7 @@ function SourceHeaderActions({
           status={status}
           pendingCount={pendingCount}
           reviewsEnabled={reviewsEnabled}
+          supportsWorkingTreeFiles={supportsWorkingTreeFiles}
           t={t}
         />
       </div>
@@ -599,6 +610,14 @@ export function GitStatusPage() {
     version,
     GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   );
+  const supportsWorkingTreeFiles = serverHasCapability(
+    version,
+    GIT_WORKING_TREE_FILES_CAPABILITY,
+  );
+  const supportsIncomingCommits = serverHasCapability(
+    version,
+    GIT_INCOMING_COMMITS_CAPABILITY,
+  );
   const supportsRemoteCheck = serverHasCapability(
     version,
     GIT_STATUS_REMOTE_CHECK_CAPABILITY,
@@ -609,8 +628,9 @@ export function GitStatusPage() {
     version,
     GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   );
-  const { gitStatus, loading, error, refetch } = useGitStatus(
+  const { gitStatus, untrackedFiles, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
+    { useUntrackedCache: supportsWorkingTreeFiles },
   );
   const reviewComments = useProjectReviewComments(
     supportsSourceReview ? effectiveProjectId : undefined,
@@ -708,6 +728,8 @@ export function GitStatusPage() {
               {gitStatus?.isGitRepo && (
                 <RepoStatusBar
                   status={gitStatus}
+                  projectId={effectiveProjectId}
+                  supportsIncomingCommits={supportsIncomingCommits}
                   className="source-header-repo-status"
                   onSelectChanges={
                     supportsSourceReview
@@ -731,6 +753,7 @@ export function GitStatusPage() {
               status={gitStatus}
               pendingCount={reviewComments.pending.length}
               reviewsEnabled={reviewsEnabled}
+              supportsWorkingTreeFiles={supportsWorkingTreeFiles}
               gitActions={gitActions}
               isWideScreen={isWideScreen}
               onComments={() => setHeaderTab("comments")}
@@ -769,6 +792,8 @@ export function GitStatusPage() {
                   projectId={effectiveProjectId}
                   isWideScreen={isWideScreen}
                   supportsProjections={supportsSourceReviewProjections}
+                  supportsWorkingTreeFiles={supportsWorkingTreeFiles}
+                  untrackedFiles={untrackedFiles}
                   supportsLastEditor={supportsLastEditor}
                   gitActions={gitActions}
                   reviewComments={reviewComments}
@@ -830,6 +855,8 @@ function GitStatusContent({
   projectId,
   isWideScreen,
   supportsProjections,
+  supportsWorkingTreeFiles,
+  untrackedFiles,
   supportsLastEditor,
   gitActions,
   reviewComments,
@@ -843,6 +870,8 @@ function GitStatusContent({
   projectId: string;
   isWideScreen: boolean;
   supportsProjections: boolean;
+  supportsWorkingTreeFiles: boolean;
+  untrackedFiles: GitUntrackedFileListResult | null;
   supportsLastEditor: boolean;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
@@ -866,8 +895,8 @@ function GitStatusContent({
     tab === "changes" &&
     (searchParams.get("history") === "1" ||
       searchParams.get("tab") === "commits" ||
-      commitSha !== undefined ||
-      (status.isClean &&
+      (commitSha === undefined &&
+        status.isClean &&
         worktreeFile === undefined &&
         sourceControlCleanLanding === "latest-commit"));
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
@@ -932,12 +961,36 @@ function GitStatusContent({
     },
     [location.state, setSearchParams],
   );
+  const focusedRevisionHref = useCallback(
+    (sha: string | null) => {
+      const params = new URLSearchParams(searchParams);
+      params.set("projectId", projectId);
+      for (const key of SOURCE_SELECTION_PARAMS) params.delete(key);
+      if (sha) params.set("rev", sha);
+      return toBrowserAppHref(`${basePath}/git-status?${params.toString()}`);
+    },
+    [basePath, projectId, searchParams],
+  );
+  const handleSelectRevision = useCallback(
+    (sha: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          for (const key of SOURCE_SELECTION_PARAMS) params.delete(key);
+          if (historyOpen) params.set("history", "1");
+          if (sha) params.set("rev", sha);
+          return params;
+        },
+        { state: location.state },
+      );
+    },
+    [historyOpen, location.state, setSearchParams],
+  );
   const handleBrowseHistory = useCallback(() => {
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
         params.delete("tab");
-        params.delete("rev");
         params.set("history", "1");
         return params;
       },
@@ -952,11 +1005,13 @@ function GitStatusContent({
           ? createPortal(projectionNotice, document.body)
           : projectionNotice)}
 
-      {tab === "changes" && !historyOpen ? (
+      {tab === "changes" && !historyOpen && !commitSha ? (
         <WorkingTreeBrowser
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
+          supportsUntrackedCache={supportsWorkingTreeFiles}
+          untrackedFiles={untrackedFiles}
           initialWorkingTreePath={worktreeFile}
           onBrowseHistory={handleBrowseHistory}
           onBlameFile={handleBlameFile}
@@ -972,8 +1027,14 @@ function GitStatusContent({
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
+          supportsUntrackedCache={supportsWorkingTreeFiles}
+          untrackedFiles={untrackedFiles}
           initialSha={commitSha}
           initialPath={commitFile}
+          showRevisionPane={historyOpen}
+          revisionHref={focusedRevisionHref}
+          onSelectRevision={handleSelectRevision}
+          onBrowseHistory={handleBrowseHistory}
           onBlameFile={handleBlameFile}
           captureReviewProjections={reviewsEnabled}
           supportsProjections={supportsProjections}
@@ -1005,6 +1066,8 @@ function GitStatusContent({
           projectId={projectId}
           isWideScreen={isWideScreen}
           initialPath={blameFile}
+          status={status}
+          supportsWorkingTreeFiles={supportsWorkingTreeFiles}
           onOpenCommit={handleOpenCommit}
           captureReviewProjections={reviewsEnabled}
           t={t}

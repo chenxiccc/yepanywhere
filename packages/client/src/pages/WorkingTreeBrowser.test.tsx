@@ -25,6 +25,7 @@ vi.mock("../i18n", async (orig) => ({
 
 const getGitDiff = vi.fn();
 const getGitUntrackedFolder = vi.fn();
+const listGitUntrackedFiles = vi.fn();
 const listReviewComments = vi.fn();
 const addReviewComment = vi.fn();
 vi.mock("../api/client", () => ({
@@ -32,6 +33,8 @@ vi.mock("../api/client", () => ({
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
     getGitUntrackedFolder: (...args: unknown[]) =>
       getGitUntrackedFolder(...args),
+    listGitUntrackedFiles: (...args: unknown[]) =>
+      listGitUntrackedFiles(...args),
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
     addReviewComment: (...args: unknown[]) => addReviewComment(...args),
   },
@@ -404,6 +407,158 @@ describe("WorkingTreeBrowser", () => {
 
     fireEvent.change(input, { target: { value: "" } });
     expect(screen.queryByText("needle-bootstrap.json")).toBeNull();
+  });
+
+  it("loads a cached large folder only when expanded", async () => {
+    listGitUntrackedFiles.mockResolvedValue({
+      files: Array.from(
+        { length: 12 },
+        (_, index) => `generated/file-${String(index).padStart(2, "0")}.ts`,
+      ),
+      folders: [],
+      total: 12,
+      refreshedAt: "2026-08-18T00:00:00.000Z",
+      truncated: false,
+      limit: 500,
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const detailedT = (key: string, vars?: Record<string, string | number>) =>
+      vars ? `${key} ${JSON.stringify(vars)}` : key;
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "generated/",
+                status: "?",
+                staged: false,
+                linesAdded: null,
+                linesDeleted: null,
+              },
+            ],
+          }}
+          isWideScreen={false}
+          supportsUntrackedCache
+          untrackedFiles={{
+            files: [],
+            folders: [{ path: "generated/", count: 12 }],
+            total: 12,
+            refreshedAt: "2026-08-18T00:00:00.000Z",
+            truncated: false,
+            limit: 500,
+          }}
+          t={detailedT}
+        />
+      </MemoryRouter>,
+    );
+
+    const expand = await screen.findByRole("button", {
+      name: 'sourceExpandUntrackedFolder {"path":"generated/"}',
+    });
+    expect(listGitUntrackedFiles).not.toHaveBeenCalled();
+    expect(getGitUntrackedFolder).not.toHaveBeenCalled();
+
+    fireEvent.click(expand);
+
+    await waitFor(() =>
+      expect(listGitUntrackedFiles).toHaveBeenCalledWith("p1", {
+        path: "generated/",
+      }),
+    );
+    expect(await screen.findByText("file-00.ts")).toBeDefined();
+    expect(getGitUntrackedFolder).not.toHaveBeenCalled();
+  });
+
+  it("searches cached children without realizing their folder", async () => {
+    listGitUntrackedFiles.mockResolvedValue({
+      files: ["generated/needle-bootstrap.json"],
+      folders: [],
+      total: 20,
+      refreshedAt: "2026-08-18T00:00:00.000Z",
+      truncated: true,
+      limit: 500,
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "generated/",
+                status: "?",
+                staged: false,
+                linesAdded: null,
+                linesDeleted: null,
+              },
+            ],
+          }}
+          isWideScreen={false}
+          supportsUntrackedCache
+          untrackedFiles={{
+            files: [],
+            folders: [{ path: "generated/", count: 20 }],
+            total: 20,
+            refreshedAt: "2026-08-18T00:00:00.000Z",
+            truncated: false,
+            limit: 500,
+          }}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "sourceFilterFiles" }));
+    const input = screen.getByPlaceholderText("sourceFilterFiles");
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    await waitFor(() =>
+      expect(listGitUntrackedFiles).toHaveBeenCalledWith("p1", { q: "needle" }),
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-source-path="generated/needle-bootstrap.json"]',
+        ),
+      ).not.toBeNull(),
+    );
+    expect(screen.getByText("sourceUntrackedSearchTruncated")).toBeDefined();
+    expect(getGitUntrackedFolder).not.toHaveBeenCalled();
+    expect(listGitUntrackedFiles).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(input, { target: { value: "" } });
+    await waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-source-path="generated/needle-bootstrap.json"]',
+        ),
+      ).toBeNull(),
+    );
   });
 
   it("expands many untracked folders without refetching the open diff", async () => {

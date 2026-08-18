@@ -647,8 +647,8 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    const first = (await screen.findByText("first commit")).closest("button");
-    const second = screen.getByText("older commit").closest("button");
+    const first = (await screen.findByText("first commit")).closest("a");
+    const second = screen.getByText("older commit").closest("a");
     expect(first).not.toBeNull();
     expect(second).not.toBeNull();
     act(() => {
@@ -663,6 +663,42 @@ describe("CommitBrowser", () => {
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", older));
   });
 
+  it("gives revision rows focused URLs while selecting plain clicks in place", async () => {
+    primeApis();
+    const onSelectRevision = vi.fn();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          status={dirtyStatus()}
+          isWideScreen={true}
+          revisionHref={(sha) =>
+            sha ? `/git-status?rev=${sha}` : "/git-status"
+          }
+          onSelectRevision={onSelectRevision}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    const row = (await screen.findByText("first commit")).closest("a")!;
+    expect(row.getAttribute("href")).toBe(`/git-status?rev=${SHA}`);
+    expect(
+      document
+        .querySelector(".commit-list-working-tree .commit-list-item")
+        ?.getAttribute("href"),
+    ).toBe("/git-status");
+
+    fireEvent(row, new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    expect(onSelectRevision).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    expect(onSelectRevision).toHaveBeenCalledWith(SHA);
+    await waitFor(() => expect(getGitCommitDiff).toHaveBeenCalled());
+  });
+
   it("opens revision actions by context key or right-click", async () => {
     primeApis();
     render(
@@ -671,7 +707,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    const row = (await screen.findByText("first commit")).closest("button")!;
+    const row = (await screen.findByText("first commit")).closest("a")!;
     const shortcutHelp = screen.getByRole("button", {
       name: "sourceShortcutHelp",
     });
@@ -779,6 +815,34 @@ describe("CommitBrowser", () => {
     expect(anchor.revision).toEqual({ kind: "sha", sha: SHA });
     expect(anchor.side).toBe("new");
     expect(anchor.newLine).toBe(1);
+  });
+
+  it("keeps a focused commit free of the revision sidebar", async () => {
+    primeApis();
+    const onBrowseHistory = vi.fn();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          initialSha={SHA}
+          showRevisionPane={false}
+          onBrowseHistory={onBrowseHistory}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("first commit")).toBeDefined();
+    expect(screen.queryByPlaceholderText("sourceSearchCommits")).toBeNull();
+    expect(
+      screen.queryAllByRole("separator", { name: "sourceResizeRevisionPane" }),
+    ).toHaveLength(0);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceCommitHistory" }),
+    );
+    expect(onBrowseHistory).toHaveBeenCalledOnce();
   });
 
   it("drills from any mobile commit into files and back to the list", async () => {

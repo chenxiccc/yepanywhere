@@ -8,6 +8,7 @@ import type {
   GitFileListResult,
   GitFileDiffMode,
   GitFileProjectionManifest,
+  GitIncomingCommitListResult,
   GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
@@ -15,23 +16,48 @@ import type {
   GitRevisionComparison,
   GitSearchResult,
   GitStatusInfo,
+  GitUntrackedFileListResult,
   GitUntrackedFolderInfo,
+  GitWorkingTreeFileListResult,
 } from "@yep-anywhere/shared";
 import { fetchJSON } from "./sourceApiFetch";
 
 export const gitApi = {
-  getGitStatus: (projectId: string) =>
-    fetchJSON<GitStatusInfo>(`/projects/${projectId}/git`),
+  getGitStatus: (
+    projectId: string,
+    options: { useUntrackedCache?: boolean } = {},
+  ) =>
+    fetchJSON<GitStatusInfo>(
+      `/projects/${projectId}/git${options.useUntrackedCache ? "?untracked=cache" : ""}`,
+    ),
 
   getGitUntrackedFolder: (projectId: string, path: string) =>
     fetchJSON<GitUntrackedFolderInfo>(
       `/projects/${projectId}/git/untracked-folder?path=${encodeURIComponent(path)}`,
     ),
 
+  listGitUntrackedFiles: (
+    projectId: string,
+    params: { path?: string; q?: string } = {},
+  ) => {
+    const query = new URLSearchParams();
+    if (params.path) query.set("path", params.path);
+    if (params.q) query.set("q", params.q);
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return fetchJSON<GitUntrackedFileListResult>(
+      `/projects/${projectId}/git/untracked-files${suffix}`,
+    );
+  },
+
   checkGitRemote: (projectId: string) =>
     fetchJSON<GitRemoteCheckResult>(`/projects/${projectId}/git/check-remote`, {
       method: "POST",
     }),
+
+  getGitIncomingCommits: (projectId: string) =>
+    fetchJSON<GitIncomingCommitListResult>(
+      `/projects/${projectId}/git/incoming-commits`,
+    ),
 
   getGitIntegrationOptions: (projectId: string) =>
     fetchJSON<GitIntegrationOptionsResult>(
@@ -178,6 +204,11 @@ export const gitApi = {
       `/projects/${projectId}/git/files${suffix}`,
     );
   },
+
+  listGitWorkingTreeFiles: (projectId: string) =>
+    fetchJSON<GitWorkingTreeFileListResult>(
+      `/projects/${projectId}/git/working-tree-files`,
+    ),
 
   searchGit: (
     projectId: string,

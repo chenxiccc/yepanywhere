@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
+  ResizableSourceColumns,
   calculateSourceAutoFilesWidth,
   calculateSourceFilesMaxWidth,
 } from "./ResizableSourceColumns";
@@ -79,5 +81,42 @@ describe("Source Control file-pane resize bound", () => {
         filesMax: 781,
       }),
     ).toBe(260);
+  });
+
+  it("fully hides and restores the commit selector's previous width", () => {
+    const rendered = render(
+      <ResizableSourceColumns
+        layout="history"
+        className="commit-browser-columns"
+        t={(key) => key}
+      >
+        <div className="commit-list-column">commits</div>
+        <div>files</div>
+        <div>detail</div>
+      </ResizableSourceColumns>,
+    );
+    const root = rendered.container.querySelector<HTMLElement>(
+      ".commit-browser-columns",
+    )!;
+    const handle = screen.getAllByRole("separator", {
+      name: "sourceResizeRevisionPane",
+    })[0]!;
+
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(root.style.getPropertyValue("--source-revision-column-width")).toBe(
+      "316px",
+    );
+
+    fireEvent.click(handle);
+    expect(root.style.getPropertyValue("--source-revision-column-width")).toBe(
+      "0px",
+    );
+    expect(handle.getAttribute("title")).toBe("sourceShowRevisionPane");
+
+    fireEvent.click(handle);
+    expect(root.style.getPropertyValue("--source-revision-column-width")).toBe(
+      "316px",
+    );
+    expect(handle.getAttribute("title")).toBe("sourceHideRevisionPane");
   });
 });

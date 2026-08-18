@@ -350,6 +350,9 @@ export type {
   GitFileChange,
   GitFileDiffMode,
   GitFileProjectionManifest,
+  GitIncomingCommitListResult,
+  GitWorkingTreeFile,
+  GitWorkingTreeFileListResult,
   GitIntegrationOptionReason,
   GitIntegrationOptionsResult,
   GitIntegrationOptionsStatus,
@@ -362,7 +365,9 @@ export type {
   GitRemoteCheckResult,
   GitRemoteCheckStatus,
   GitStatusInfo,
+  GitUntrackedFileListResult,
   GitUntrackedFolderInfo,
+  GitUntrackedFolderSummary,
 } from "./git-status.js";
 
 export type {
@@ -509,6 +514,8 @@ export {
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
+  GIT_INCOMING_COMMITS_CAPABILITY,
+  GIT_WORKING_TREE_FILES_CAPABILITY,
   GLOSSARY_TOOLTIPS_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,

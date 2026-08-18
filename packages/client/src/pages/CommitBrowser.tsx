@@ -1,4 +1,8 @@
-import type { GitCommitDetail, GitStatusInfo } from "@yep-anywhere/shared";
+import type {
+  GitCommitDetail,
+  GitStatusInfo,
+  GitUntrackedFileListResult,
+} from "@yep-anywhere/shared";
 import {
   useCallback,
   useEffect,
@@ -22,7 +26,10 @@ import {
   type GitDiffPreviewHandle,
 } from "./GitStatusDiffPreview";
 import { CommitRevisionPane } from "./CommitRevisionPane";
-import { useCommitBrowserModel } from "./useCommitBrowserModel";
+import {
+  useCommitBrowserModel,
+  WORKING_TREE_KEY,
+} from "./useCommitBrowserModel";
 import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
 import type { TranslationFn } from "../i18n";
 
@@ -37,8 +44,14 @@ export function CommitBrowser({
   projectId,
   status,
   isWideScreen,
+  supportsUntrackedCache = false,
+  untrackedFiles = null,
   initialSha,
   initialPath,
+  showRevisionPane = true,
+  revisionHref = () => "#",
+  onSelectRevision,
+  onBrowseHistory,
   onBlameFile,
   captureReviewProjections = false,
   supportsProjections = false,
@@ -52,10 +65,20 @@ export function CommitBrowser({
   /** Supplies the pinned Working tree revision without a second git model. */
   status?: GitStatusInfo;
   isWideScreen: boolean;
+  supportsUntrackedCache?: boolean;
+  untrackedFiles?: GitUntrackedFileListResult | null;
   /** Direct commit selection, e.g. from an asynchronously populated blame hash. */
   initialSha?: string;
   /** Direct file selection within the initial commit. */
   initialPath?: string;
+  /** Whether the commit selector is part of this view. */
+  showRevisionPane?: boolean;
+  /** Focused URL for a commit, or for the Working tree when passed null. */
+  revisionHref?: (sha: string | null) => string;
+  /** Keep current-tab selection and URL state aligned. */
+  onSelectRevision?: (sha: string | null) => void;
+  /** Open the commit selector around the focused revision. */
+  onBrowseHistory?: () => void;
   /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
   onBlameFile?: (path: string) => void;
   captureReviewProjections?: boolean;
@@ -179,8 +202,9 @@ export function CommitBrowser({
         mobileListScrollTopRef.current = scroller?.scrollTop ?? 0;
       }
       setSelectedKey(key);
+      onSelectRevision?.(key === WORKING_TREE_KEY ? null : key);
     },
-    [isWideScreen, setSelectedKey],
+    [isWideScreen, onSelectRevision, setSelectedKey],
   );
 
   // Selected-file actions, shown in the diff pane header (the file banner)
@@ -274,10 +298,11 @@ export function CommitBrowser({
     <div className="commit-browser" ref={browserRef}>
       <ResizableSourceColumns
         layout="history"
+        revisionPaneVisible={showRevisionPane}
         className="commit-browser-columns"
         t={t}
       >
-        {(isWideScreen || !selectedKey) && (
+        {showRevisionPane && (isWideScreen || !selectedKey) ? (
           <CommitRevisionPane
             status={status}
             isWideScreen={isWideScreen}
@@ -303,6 +328,9 @@ export function CommitBrowser({
             onSearchQueryChange={setSearchQuery}
             onSearchIndexRequested={() => setSearchIndexRequested(true)}
             onOpenRevision={openRevision}
+            revisionHref={(key) =>
+              revisionHref(key === WORKING_TREE_KEY ? null : key)
+            }
             onFocusRevision={setSelectedKey}
             onLoadMore={() => {
               void loadMore();
@@ -311,15 +339,25 @@ export function CommitBrowser({
             onMarkUnreadSince={readState.markUnreadSince}
             t={t}
           />
-        )}
+        ) : !showRevisionPane ? (
+          <div className="commit-list-column" aria-hidden="true" />
+        ) : null}
 
         {selectedIsWorkingTree && status && (
           <WorkingTreeBrowser
             projectId={projectId}
             status={status}
             isWideScreen={isWideScreen}
+            supportsUntrackedCache={supportsUntrackedCache}
+            untrackedFiles={untrackedFiles}
             embeddedInHistory
-            onBackToRevisions={!isWideScreen ? handleMobileBack : undefined}
+            onBackToRevisions={
+              !showRevisionPane
+                ? onBrowseHistory
+                : !isWideScreen
+                  ? handleMobileBack
+                  : undefined
+            }
             revisionNavigation={
               <RevisionJump
                 newerKey={newerKey}
@@ -361,7 +399,13 @@ export function CommitBrowser({
                 t={t}
               />
             }
-            onBack={!isWideScreen ? handleMobileBack : undefined}
+            onBack={
+              !showRevisionPane
+                ? onBrowseHistory
+                : !isWideScreen
+                  ? handleMobileBack
+                  : undefined
+            }
             onToggleComparison={toggleComparison}
             onShowMessage={() => setMessageView(true)}
             onFocusFile={(file) => {

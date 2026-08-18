@@ -691,6 +691,71 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace self-hosted servers, and the exact cumulative projection has no safe older-server request fallback.",
     },
   },
+  gitWorkingTreeFiles: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeFiles.id,
+    name: "git-working-tree-files",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server exposes current-content inventory plus a persistent, searchable non-ignored untracked cache outside the project.",
+    clientFallback:
+      "Keep the tracked-only Files browser and legacy compact untracked expansion, making no working-tree or cache request.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/git/working-tree-files",
+        "GET /api/projects/:projectId/git/untracked-files",
+      ],
+      routeModules: ["packages/server/src/routes/git-working-tree-files.ts"],
+      responseFields: [
+        "gitWorkingTreeFiles.files[].path",
+        "gitWorkingTreeFiles.files[].tracked",
+        "gitWorkingTreeFiles.truncated",
+        "gitWorkingTreeFiles.limit",
+        "gitUntrackedFiles.files",
+        "gitUntrackedFiles.folders",
+        "gitUntrackedFiles.total",
+        "gitUntrackedFiles.refreshedAt",
+        "gitUntrackedFiles.truncated",
+        "gitUntrackedFiles.limit",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers expose only tracked paths, so the hosted client must not infer an incomplete current-content inventory from that route.",
+    },
+  },
+  gitIncomingCommits: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitIncomingCommits.id,
+    name: "git-incoming-commits",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server lists commits on the configured upstream tracking ref but not local HEAD without contacting the remote.",
+    clientFallback:
+      "Keep the upstream name as inert status text and make no incoming-commit request.",
+    serverContract: {
+      routes: ["GET /api/projects/:projectId/git/incoming-commits"],
+      routeModules: ["packages/server/src/routes/git-incoming-commits.ts"],
+      responseFields: [
+        "gitIncomingCommits.upstream",
+        "gitIncomingCommits.headSha",
+        "gitIncomingCommits.upstreamSha",
+        "gitIncomingCommits.commits",
+        "gitIncomingCommits.truncated",
+        "gitIncomingCommits.limit",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers have no read-only incoming-commit preview, and the client must not trigger an unsupported request or hidden fetch.",
+    },
+  },
   approvalAuditLog: {
     name: "approvalAuditLog",
     kind: "permanent",
@@ -1619,6 +1684,10 @@ export const GIT_DIRTY_FILE_EDITOR_CAPABILITY =
   SERVER_CAPABILITIES.gitDirtyFileEditor.name;
 export const GIT_FILE_DIFF_PROJECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitFileDiffProjections.name;
+export const GIT_WORKING_TREE_FILES_CAPABILITY =
+  SERVER_CAPABILITIES.gitWorkingTreeFiles.name;
+export const GIT_INCOMING_COMMITS_CAPABILITY =
+  SERVER_CAPABILITIES.gitIncomingCommits.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReview.name;
 export const GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY =

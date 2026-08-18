@@ -6,6 +6,8 @@ import {
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
+  GIT_INCOMING_COMMITS_CAPABILITY,
+  GIT_WORKING_TREE_FILES_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PROVIDER_HOST_CONTROL_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
@@ -95,6 +97,32 @@ describe("server capability advertisements", () => {
       ),
     ).toBe(false);
     expect(CAPABILITY_ID_ALLOCATIONS.claudeGatewayDisablePlanMode.id).toBe(36);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        GIT_WORKING_TREE_FILES_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.0" },
+        GIT_WORKING_TREE_FILES_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeFiles.id).toBe(38);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        GIT_INCOMING_COMMITS_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.0" },
+        GIT_INCOMING_COMMITS_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(CAPABILITY_ID_ALLOCATIONS.gitIncomingCommits.id).toBe(39);
   });
 
   it("lets a negative bit override an otherwise implied capability", () => {

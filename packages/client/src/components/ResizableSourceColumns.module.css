@@ -1,0 +1,13 @@
+.revisionsHidden > :global(.commit-list-column) {
+  visibility: hidden;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.handleGlyph {
+  margin: 0;
+}
+
+.handleGlyph::before {
+  content: "‹›";
+}

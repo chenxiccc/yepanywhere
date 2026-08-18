@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { GitStatusInfo } from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -17,15 +18,23 @@ vi.mock("react-router-dom", async (orig) => ({
 vi.mock("../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => "",
 }));
+vi.mock("../i18n", async (orig) => ({
+  ...(await orig<typeof import("../i18n")>()),
+  useI18n: () => ({ t: (key: string) => key }),
+}));
 
 const listGitFiles = vi.fn();
+const listGitWorkingTreeFiles = vi.fn();
 const getGitBlame = vi.fn();
 const getFile = vi.fn();
 const listReviewComments = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     listGitFiles: (...args: unknown[]) => listGitFiles(...args),
+    listGitWorkingTreeFiles: (...args: unknown[]) =>
+      listGitWorkingTreeFiles(...args),
     getFile: (...args: unknown[]) => getFile(...args),
+    getFileRawUrl: () => "/raw/file",
     getGitBlame: (...args: unknown[]) => getGitBlame(...args),
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
   },
@@ -147,5 +156,110 @@ describe("BlameBrowser", () => {
       ).not.toBeNull(),
     );
     expect(screen.queryByText("sourceFilesTruncated")).toBeNull();
+  });
+
+  it("browses current dirty and unchanged content behind the new capability", async () => {
+    const groupedCleanFiles = Array.from(
+      { length: 12 },
+      (_, index) =>
+        `packages/client/file-${index.toString().padStart(3, "0")}.ts`,
+    );
+    listGitWorkingTreeFiles.mockResolvedValue({
+      files: [
+        { path: "README.md", tracked: true },
+        { path: "notes/new.txt", tracked: false },
+        ...groupedCleanFiles.map((path) => ({ path, tracked: true })),
+        { path: "src/live.ts", tracked: true },
+      ],
+      truncated: false,
+      limit: 50_000,
+    });
+    getFile.mockImplementation((_projectId: string, path: string) =>
+      Promise.resolve({
+        metadata: {
+          path,
+          size: path.length,
+          mimeType: "text/plain",
+          isText: true,
+        },
+        content: `contents:${path}`,
+        rawUrl: `/raw/${path}`,
+      }),
+    );
+    getGitBlame.mockResolvedValue({
+      path: "README.md",
+      rev: "HEAD",
+      lines: [],
+      truncated: false,
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const status: GitStatusInfo = {
+      isGitRepo: true,
+      branch: "main",
+      upstream: "origin/main",
+      ahead: 0,
+      behind: 0,
+      isClean: false,
+      files: [
+        {
+          path: "src/live.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+      ],
+    };
+
+    render(
+      <MemoryRouter>
+        <BlameBrowser
+          projectId="p1"
+          isWideScreen={true}
+          status={status}
+          supportsWorkingTreeFiles
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(listGitWorkingTreeFiles).toHaveBeenCalledWith("p1"),
+    );
+    expect(listGitFiles).not.toHaveBeenCalled();
+    expect(screen.getByText("sourceUnchangedFiles")).toBeDefined();
+    expect(
+      document.querySelector('[data-source-path="file-000.ts"]'),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceExpandPathGroup" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceExpandPathGroup" }),
+    );
+    expect(
+      document.querySelector('[data-source-path="file-000.ts"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByText("README.md"));
+    await waitFor(() =>
+      expect(
+        getFile.mock.calls.some(
+          ([projectId, path]) => projectId === "p1" && path === "README.md",
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByText("contents:README.md")).toBeDefined();
+    expect(getGitBlame).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "sourceViewBlame" }));
+    await waitFor(() =>
+      expect(getGitBlame).toHaveBeenCalledWith("p1", "README.md"),
+    );
   });
 });

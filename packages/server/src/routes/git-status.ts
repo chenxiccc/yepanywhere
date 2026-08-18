@@ -117,10 +117,14 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     deps.dirtyFileEditorService?.reconcileGitStatus(projectPath, status, {
       authoritative,
     }) ?? status;
-  const getGitStatusWithRemoteCheckTime = async (projectPath: string) =>
+  const getGitStatusWithRemoteCheckTime = async (
+    projectPath: string,
+    includeUntracked = true,
+  ) =>
     enrichStatus(
       projectPath,
-      await readGitStatusWithRemoteCheckTime(projectPath),
+      await readGitStatusWithRemoteCheckTime(projectPath, includeUntracked),
+      includeUntracked,
     );
   const getGitStatusSnapshot = async (projectPath: string) => {
     const snapshot = await readGitStatusSnapshot(projectPath);
@@ -142,7 +146,10 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
 
     try {
-      const result = await getGitStatusWithRemoteCheckTime(project.path);
+      const result = await getGitStatusWithRemoteCheckTime(
+        project.path,
+        c.req.query("untracked") !== "cache",
+      );
       return c.json(result);
     } catch (err) {
       if (isNotGitRepoError(err)) {
@@ -840,8 +847,13 @@ async function getCheckedRemoteAt(projectPath: string): Promise<string | null> {
 
 async function readGitStatusWithRemoteCheckTime(
   projectPath: string,
+  includeUntracked = true,
 ): Promise<GitStatusInfo> {
-  return getGitStatus(projectPath, await getCheckedRemoteAt(projectPath));
+  return getGitStatus(
+    projectPath,
+    await getCheckedRemoteAt(projectPath),
+    includeUntracked,
+  );
 }
 
 async function readGitStatusSnapshot(
@@ -1242,6 +1254,7 @@ function statusChar(xy: string | undefined, index: 0 | 1): string | null {
 async function getGitStatus(
   projectPath: string,
   checkedRemoteAt: string | null,
+  includeUntracked = true,
 ): Promise<GitStatusInfo> {
   // Run local read-only commands in parallel.
   const [statusResult, numstatUnstaged, numstatStaged, logResult] =
@@ -1251,6 +1264,7 @@ async function getGitStatus(
         "status",
         "--porcelain=v2",
         "--branch",
+        ...(includeUntracked ? [] : ["--untracked-files=no"]),
       ]),
       runGit(projectPath, [
         ...GIT_DECODE_PATHS_ARGS,

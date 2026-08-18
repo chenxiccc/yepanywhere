@@ -9,11 +9,12 @@ import {
   useState,
 } from "react";
 import type { TranslationFn } from "../i18n";
+import styles from "./ResizableSourceColumns.module.css";
 
 export type SourceColumnLayout = "history" | "files";
 type Boundary = "revisions" | "files";
 
-const REVISION_MIN = 240;
+const REVISION_MIN = 0;
 const REVISION_MAX = 420;
 const FILES_MIN = 220;
 const DEFAULT_FILES_WIDTH = 380;
@@ -100,6 +101,7 @@ export function calculateSourceAutoFilesWidth({
 export function ResizableSourceColumns({
   layout,
   enabled = true,
+  revisionPaneVisible = true,
   initialFilesWidth,
   naturalDetailWidth,
   className,
@@ -108,6 +110,8 @@ export function ResizableSourceColumns({
 }: {
   layout: SourceColumnLayout;
   enabled?: boolean;
+  /** Keep the revision track structurally present but fully hidden. */
+  revisionPaneVisible?: boolean;
   initialFilesWidth?: number;
   naturalDetailWidth?: number;
   className: string;
@@ -115,33 +119,47 @@ export function ResizableSourceColumns({
   t: TranslationFn;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const previousRevisionPaneVisibleRef = useRef(revisionPaneVisible);
+  const lastRevisionWidthRef = useRef(300);
+  const dragMovedRef = useRef(false);
+  const ignoreNextClickRef = useRef(false);
   const defaultFilesWidth =
     initialFilesWidth ?? (layout === "history" ? 340 : DEFAULT_FILES_WIDTH);
   const [widths, setWidths] = useState<Widths>(() => ({
     revisions: 300,
     files: defaultFilesWidth,
   }));
+  const [revisionsCollapsed, setRevisionsCollapsed] = useState(
+    !revisionPaneVisible,
+  );
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [layoutMetrics, setLayoutMetrics] = useState<LayoutMetrics | null>(
     null,
   );
+  const revisionWidth = revisionsCollapsed ? 0 : widths.revisions;
   const filesMax = layoutMetrics
     ? calculateSourceFilesMaxWidth({
         layout,
         containerWidth: layoutMetrics.containerWidth,
-        revisionWidth: widths.revisions,
+        revisionWidth,
         gapWidth: layoutMetrics.gapWidth,
         handleWidth: layoutMetrics.handleWidth,
       })
     : undefined;
+
+  useEffect(() => {
+    if (previousRevisionPaneVisibleRef.current === revisionPaneVisible) return;
+    previousRevisionPaneVisibleRef.current = revisionPaneVisible;
+    setRevisionsCollapsed(!revisionPaneVisible);
+  }, [revisionPaneVisible]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
 
     const measure = () => {
-      const styles = getComputedStyle(root);
-      const parsedGap = Number.parseFloat(styles.columnGap);
+      const computedStyle = getComputedStyle(root);
+      const parsedGap = Number.parseFloat(computedStyle.columnGap);
       const handle = root.querySelector<HTMLElement>(
         ".source-pane-splitter-handle",
       );
@@ -204,27 +222,34 @@ export function ResizableSourceColumns({
     if (!dragging) return;
     const handlePointerMove = (event: globalThis.PointerEvent) => {
       const delta = event.clientX - dragging.startX;
-      setWidths(
-        dragging.boundary === "revisions"
-          ? {
-              ...dragging.startWidths,
-              revisions: clamp(
-                dragging.startWidths.revisions + delta,
-                REVISION_MIN,
-                REVISION_MAX,
-              ),
-            }
-          : {
-              ...dragging.startWidths,
-              files: clamp(
-                dragging.startWidths.files + delta,
-                FILES_MIN,
-                filesMax ?? dragging.startWidths.files,
-              ),
-            },
-      );
+      if (Math.abs(delta) > 3) dragMovedRef.current = true;
+      if (dragging.boundary === "revisions") {
+        const revisions = clamp(
+          dragging.startWidths.revisions + delta,
+          REVISION_MIN,
+          REVISION_MAX,
+        );
+        if (revisions > 0) lastRevisionWidthRef.current = revisions;
+        setRevisionsCollapsed(revisions === 0);
+        setWidths({ ...dragging.startWidths, revisions });
+        return;
+      }
+      setWidths({
+        ...dragging.startWidths,
+        files: clamp(
+          dragging.startWidths.files + delta,
+          FILES_MIN,
+          filesMax ?? dragging.startWidths.files,
+        ),
+      });
     };
-    const handlePointerUp = () => setDragging(null);
+    const handlePointerUp = () => {
+      ignoreNextClickRef.current = dragMovedRef.current;
+      window.setTimeout(() => {
+        ignoreNextClickRef.current = false;
+      }, 0);
+      setDragging(null);
+    };
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp, { once: true });
     window.addEventListener("pointercancel", handlePointerUp, { once: true });
@@ -238,31 +263,60 @@ export function ResizableSourceColumns({
   }, [dragging, filesMax]);
 
   const setBoundaryWidth = (boundary: Boundary, next: number) => {
-    setWidths((current) => ({
-      ...current,
-      [boundary]: clamp(
-        next,
-        boundary === "revisions" ? REVISION_MIN : FILES_MIN,
-        boundary === "revisions" ? REVISION_MAX : (filesMax ?? current.files),
-      ),
-    }));
+    const value = clamp(
+      next,
+      boundary === "revisions" ? REVISION_MIN : FILES_MIN,
+      boundary === "revisions" ? REVISION_MAX : (filesMax ?? widths.files),
+    );
+    if (boundary === "revisions") {
+      if (value > 0) lastRevisionWidthRef.current = value;
+      setRevisionsCollapsed(value === 0);
+    }
+    setWidths((current) => ({ ...current, [boundary]: value }));
   };
 
   const startDrag = (event: PointerEvent<HTMLElement>, boundary: Boundary) => {
     if (event.button !== 0) return;
     event.preventDefault();
+    dragMovedRef.current = false;
     setDragging({
       boundary,
       startX: event.clientX,
-      startWidths: widths,
+      startWidths:
+        boundary === "revisions"
+          ? { ...widths, revisions: revisionWidth }
+          : widths,
     });
+  };
+
+  const toggleRevisionPane = () => {
+    if (ignoreNextClickRef.current) {
+      ignoreNextClickRef.current = false;
+      return;
+    }
+    if (revisionWidth === 0) {
+      const revisions = lastRevisionWidthRef.current;
+      setWidths((current) => ({ ...current, revisions }));
+      setRevisionsCollapsed(false);
+      return;
+    }
+    lastRevisionWidthRef.current = revisionWidth;
+    setRevisionsCollapsed(true);
   };
 
   const handleKeyDown = (
     event: KeyboardEvent<HTMLElement>,
     boundary: Boundary,
   ) => {
-    const current = widths[boundary];
+    if (
+      boundary === "revisions" &&
+      (event.key === "Enter" || event.key === " ")
+    ) {
+      event.preventDefault();
+      toggleRevisionPane();
+      return;
+    }
+    const current = boundary === "revisions" ? revisionWidth : widths.files;
     const min = boundary === "revisions" ? REVISION_MIN : FILES_MIN;
     const max = boundary === "revisions" ? REVISION_MAX : (filesMax ?? current);
     const next =
@@ -281,14 +335,24 @@ export function ResizableSourceColumns({
   };
 
   const style = {
-    "--source-revision-column-width": `${widths.revisions}px`,
+    "--source-revision-column-width": `${revisionWidth}px`,
     "--source-files-column-width": `${widths.files}px`,
   } as CSSProperties;
   const boundaries: Boundary[] =
-    layout === "history" ? ["revisions", "files"] : ["files"];
+    layout === "history" && revisionPaneVisible
+      ? ["revisions", "files"]
+      : ["files"];
 
   return (
-    <div ref={rootRef} className={className} style={style}>
+    <div
+      ref={rootRef}
+      className={`${className} ${
+        layout === "history" && revisionWidth === 0
+          ? styles.revisionsHidden
+          : ""
+      }`.trimEnd()}
+      style={style}
+    >
       {children}
       {enabled &&
         boundaries.map((boundary) => (
@@ -300,10 +364,9 @@ export function ResizableSourceColumns({
           >
             <span className="source-pane-splitter-guide" aria-hidden="true" />
             {(["top", "bottom"] as const).map((edge) => (
-              <span
+              <hr
                 key={edge}
-                className={`source-pane-splitter-handle ${edge}`}
-                role="separator"
+                className={`source-pane-splitter-handle ${styles.handleGlyph} ${edge}`}
                 aria-label={t(
                   boundary === "revisions"
                     ? "sourceResizeRevisionPane"
@@ -316,13 +379,25 @@ export function ResizableSourceColumns({
                 aria-valuemax={
                   boundary === "revisions" ? REVISION_MAX : filesMax
                 }
-                aria-valuenow={widths[boundary]}
+                aria-valuenow={
+                  boundary === "revisions" ? revisionWidth : widths.files
+                }
+                title={
+                  boundary === "revisions"
+                    ? t(
+                        revisionWidth === 0
+                          ? "sourceShowRevisionPane"
+                          : "sourceHideRevisionPane",
+                      )
+                    : undefined
+                }
                 tabIndex={0}
                 onPointerDown={(event) => startDrag(event, boundary)}
+                onClick={
+                  boundary === "revisions" ? toggleRevisionPane : undefined
+                }
                 onKeyDown={(event) => handleKeyDown(event, boundary)}
-              >
-                <span aria-hidden="true">‹›</span>
-              </span>
+              />
             ))}
           </div>
         ))}

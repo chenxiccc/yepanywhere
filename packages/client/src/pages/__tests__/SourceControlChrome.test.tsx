@@ -1,17 +1,32 @@
 // @vitest-environment jsdom
 
 import type { GitStatusInfo } from "@yep-anywhere/shared";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SourceRowMenuTrigger,
   sourceRowMenuSurface,
 } from "../../components/SourceContextMenu";
+import { I18nProvider } from "../../i18n";
 import menuStyles from "../../components/SourceContextMenu.module.css";
 import { RepoStatusBar } from "../RepoStatusBar";
 import repoStyles from "../RepoStatusBar.module.css";
 import { SourceModeTabs, type SourceTab } from "../SourceModeTabs";
 import tabStyles from "../SourceModeTabs.module.css";
+
+const apiMocks = vi.hoisted(() => ({
+  getGitIncomingCommits: vi.fn(),
+}));
+
+vi.mock("../../api/client", () => ({
+  api: apiMocks,
+}));
 
 const t = ((key: string) => key) as never;
 
@@ -30,7 +45,10 @@ function gitStatus(overrides: Partial<GitStatusInfo> = {}): GitStatusInfo {
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 describe("RepoStatusBar", () => {
   it("takes caller placement through className without exposing its own classes", () => {
@@ -140,6 +158,62 @@ describe("RepoStatusBar", () => {
     expect(
       screen.getByRole("button", { name: "sourceCopyCommitHash" }),
     ).toBeDefined();
+  });
+
+  it("loads last-checked incoming commits only after opening the upstream preview", async () => {
+    apiMocks.getGitIncomingCommits.mockResolvedValue({
+      upstream: "origin/main",
+      headSha: "1111111111111111111111111111111111111111",
+      upstreamSha: "2222222222222222222222222222222222222222",
+      commits: [
+        {
+          hash: "2222222222222222222222222222222222222222",
+          shortHash: "2222222",
+          subject: "Incoming change",
+          authorName: "Contributor",
+          authorDate: "2026-08-18T00:00:00Z",
+        },
+      ],
+      truncated: false,
+      limit: 100,
+    });
+    const { rerender } = render(
+      <RepoStatusBar status={gitStatus()} projectId="p1" t={t} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "→ origin/main" })).toBeNull();
+    expect(apiMocks.getGitIncomingCommits).not.toHaveBeenCalled();
+
+    rerender(
+      <I18nProvider>
+        <RepoStatusBar
+          status={gitStatus()}
+          projectId="p1"
+          supportsIncomingCommits
+          t={t}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "→ origin/main" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Incoming change")).toBeDefined();
+    });
+    expect(apiMocks.getGitIncomingCommits).toHaveBeenCalledOnce();
+    expect(apiMocks.getGitIncomingCommits).toHaveBeenCalledWith("p1");
+    expect(screen.getByText("sourceIncomingCommitsDescription")).toBeDefined();
+    const expectedDate = new Date("2026-08-18T00:00:00Z").toLocaleString(
+      undefined,
+      {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      },
+    );
+    expect(screen.getByText(`Contributor · ${expectedDate}`)).toBeDefined();
+    expect(screen.queryByText(/2026-08-18T00:00:00Z/)).toBeNull();
   });
 
   it("offers the dirty badge as a button only when it can open Changes", () => {
