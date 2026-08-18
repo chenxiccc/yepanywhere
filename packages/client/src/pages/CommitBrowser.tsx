@@ -55,6 +55,7 @@ export function CommitBrowser({
   onBlameFile,
   captureReviewProjections = false,
   supportsProjections = false,
+  supportsInclusiveToHead = false,
   supportsLastEditor = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace = NOOP,
@@ -83,6 +84,7 @@ export function CommitBrowser({
   onBlameFile?: (path: string) => void;
   captureReviewProjections?: boolean;
   supportsProjections?: boolean;
+  supportsInclusiveToHead?: boolean;
   supportsLastEditor?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
@@ -126,6 +128,7 @@ export function CommitBrowser({
     compareToHead,
     loadingComparison,
     toggleComparison,
+    openDirectComparison,
     handleProjectionRequestFailure,
     messageView,
     setMessageView,
@@ -139,7 +142,7 @@ export function CommitBrowser({
     isWideScreen,
     initialSha,
     initialPath,
-    supportsProjections,
+    supportsInclusiveToHead,
     onProjectionUnavailable,
     t,
   });
@@ -387,6 +390,7 @@ export function CommitBrowser({
             loading={loadingDetail || (compareToHead && loadingComparison)}
             detailError={detailError}
             compareToHead={compareToHead}
+            supportsInclusiveToHead={supportsInclusiveToHead}
             isWideScreen={isWideScreen}
             messageView={messageView}
             selectedFiles={selectedFiles}
@@ -409,6 +413,9 @@ export function CommitBrowser({
                   : undefined
             }
             onToggleComparison={toggleComparison}
+            onCompareFileToHead={
+              supportsProjections ? openDirectComparison : undefined
+            }
             onShowMessage={() => setMessageView(true)}
             onFocusFile={(file) => {
               setSelectedPath(file.path);

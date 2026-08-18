@@ -232,19 +232,25 @@ describe("BlameBrowser", () => {
     );
     expect(listGitFiles).not.toHaveBeenCalled();
     expect(screen.getByText("sourceUnchangedFiles")).toBeDefined();
-    expect(
-      document.querySelector('[data-source-path="file-000.ts"]'),
-    ).toBeNull();
+    await waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-source-path="packages/client/file-000.ts"]',
+        ),
+      ).not.toBeNull(),
+    );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "sourceExpandPathGroup" }),
+      screen.getByRole("button", { name: "sourceCollapsePathGroup" }),
     );
+    expect(
+      document.querySelector(
+        '[data-source-path="packages/client/file-000.ts"]',
+      ),
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "sourceExpandPathGroup" }),
     );
-    expect(
-      document.querySelector('[data-source-path="file-000.ts"]'),
-    ).not.toBeNull();
 
     fireEvent.click(screen.getByText("README.md"));
     await waitFor(() =>

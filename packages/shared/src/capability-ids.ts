@@ -258,6 +258,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "git-incoming-commits",
     introducedIn: "0.7.1",
   },
+  gitInclusiveToHead: {
+    id: 40,
+    direction: "server",
+    name: "git-inclusive-to-head",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

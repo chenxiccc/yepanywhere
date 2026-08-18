@@ -6,6 +6,7 @@ import {
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
+  GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
@@ -232,6 +233,18 @@ describe("server capability advertisements", () => {
         PROJECT_SESSION_DEFAULTS_CAPABILITY,
       ),
     ).toBe(true);
+  });
+
+  it("assigns inclusive To HEAD to permanent capability ID 40", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.gitInclusiveToHead.id).toBe(40);
+    const advertisement = encodeVersionedServerCapabilities(
+      [GIT_INCLUSIVE_TO_HEAD_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 2 ** 8]],
+    });
   });
 
   it("encodes selective share freeze in the second capability word", () => {

@@ -6,6 +6,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
@@ -610,6 +611,10 @@ export function GitStatusPage() {
     version,
     GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   );
+  const supportsInclusiveToHead = serverHasCapability(
+    version,
+    GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
+  );
   const supportsWorkingTreeFiles = serverHasCapability(
     version,
     GIT_WORKING_TREE_FILES_CAPABILITY,
@@ -792,6 +797,7 @@ export function GitStatusPage() {
                   projectId={effectiveProjectId}
                   isWideScreen={isWideScreen}
                   supportsProjections={supportsSourceReviewProjections}
+                  supportsInclusiveToHead={supportsInclusiveToHead}
                   supportsWorkingTreeFiles={supportsWorkingTreeFiles}
                   untrackedFiles={untrackedFiles}
                   supportsLastEditor={supportsLastEditor}
@@ -855,6 +861,7 @@ function GitStatusContent({
   projectId,
   isWideScreen,
   supportsProjections,
+  supportsInclusiveToHead,
   supportsWorkingTreeFiles,
   untrackedFiles,
   supportsLastEditor,
@@ -870,6 +877,7 @@ function GitStatusContent({
   projectId: string;
   isWideScreen: boolean;
   supportsProjections: boolean;
+  supportsInclusiveToHead: boolean;
   supportsWorkingTreeFiles: boolean;
   untrackedFiles: GitUntrackedFileListResult | null;
   supportsLastEditor: boolean;
@@ -1038,6 +1046,7 @@ function GitStatusContent({
           onBlameFile={handleBlameFile}
           captureReviewProjections={reviewsEnabled}
           supportsProjections={supportsProjections}
+          supportsInclusiveToHead={supportsInclusiveToHead}
           supportsLastEditor={supportsLastEditor}
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}

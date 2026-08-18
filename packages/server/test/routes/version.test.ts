@@ -9,6 +9,7 @@ import {
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GLOSSARY_TOOLTIPS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
@@ -108,6 +109,7 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(
       GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
     );
+    expect(getServerCapabilities()).toContain(GIT_INCLUSIVE_TO_HEAD_CAPABILITY);
   });
 
   it("advertises sandbox status but only advertises use when preflight passes", () => {

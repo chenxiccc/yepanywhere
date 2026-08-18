@@ -9,6 +9,11 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { FileViewer } from "../components/FileViewer";
+import {
+  SourceFileOutline,
+  SourceFileSectionDivider,
+  type SourceOutlinePathProps,
+} from "../components/SourceFileOutline";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
 import {
   SourceFilePath,
@@ -143,13 +148,17 @@ export function BlameBrowser({
     for (const file of status?.files ?? []) dirty.set(file.path, file.status);
     return dirty;
   }, [status?.files]);
-  const changedFiles = useMemo(
+  const trackedChangedFiles = useMemo(
     () =>
       filtered.filter((path) => {
         const file = workingTreeFileByPath.get(path);
-        return file ? !file.tracked || dirtyStatusByPath.has(path) : false;
+        return file?.tracked && dirtyStatusByPath.has(path);
       }),
     [dirtyStatusByPath, filtered, workingTreeFileByPath],
+  );
+  const untrackedFiles = useMemo(
+    () => filtered.filter((path) => !workingTreeFileByPath.get(path)?.tracked),
+    [filtered, workingTreeFileByPath],
   );
   const unchangedFiles = useMemo(
     () =>
@@ -202,7 +211,11 @@ export function BlameBrowser({
     naturalDetailMeasurement?.path === selectedPath
       ? naturalDetailMeasurement.width
       : undefined;
-  const renderFileRow = (file: string, visiblePath = file): ReactNode => {
+  const renderFileRow = (
+    file: string,
+    visiblePath = file,
+    pathProps?: SourceOutlinePathProps,
+  ): ReactNode => {
     const count = pathCommentCount.get(file) ?? 0;
     const menuActions = fileMenuActions(file);
     const inventoryEntry = workingTreeFileByPath.get(file);
@@ -225,7 +238,9 @@ export function BlameBrowser({
             setSelectedPath(file);
           })}
         >
-          <SourceFilePath query={query}>{visiblePath}</SourceFilePath>
+          <SourceFilePath {...pathProps} query={query} fullPath={file}>
+            {visiblePath}
+          </SourceFilePath>
           {fileStatus && <SourceFileStatusBadge status={fileStatus} t={t} />}
           {count > 0 && (
             <span
@@ -281,9 +296,11 @@ export function BlameBrowser({
             <div className="git-status-empty">{t("sourceNoFiles")}</div>
           ) : supportsWorkingTreeFiles ? (
             <WorkingTreeFileList
-              changedFiles={changedFiles}
+              trackedChangedFiles={trackedChangedFiles}
+              untrackedFiles={untrackedFiles}
               unchangedFiles={unchangedFiles}
-              searching={query.trim().length > 0}
+              scopeKey={projectId}
+              query={query}
               truncated={inventoryTruncated}
               renderFile={renderFileRow}
               t={t}
@@ -353,162 +370,80 @@ export function BlameBrowser({
   );
 }
 
-const PATH_GROUP_THRESHOLD = 10;
-
 function WorkingTreeFileList({
-  changedFiles,
+  trackedChangedFiles,
+  untrackedFiles,
   unchangedFiles,
-  searching,
+  scopeKey,
+  query,
   truncated,
   renderFile,
   t,
 }: {
-  changedFiles: string[];
+  trackedChangedFiles: string[];
+  untrackedFiles: string[];
   unchangedFiles: string[];
-  searching: boolean;
+  scopeKey: string;
+  query: string;
   truncated: boolean;
-  renderFile: (path: string, visiblePath?: string) => ReactNode;
+  renderFile: (
+    path: string,
+    visiblePath?: string,
+    pathProps?: SourceOutlinePathProps,
+  ) => ReactNode;
   t: TranslationFn;
 }) {
+  const searching = query.trim().length > 0;
+  const renderOutline = (files: string[], section: string) => (
+    <SourceFileOutline
+      className="blame-file-list"
+      items={files.map((path) => ({
+        id: path,
+        path,
+        displayPath: path,
+        value: path,
+      }))}
+      scopeKey={`${scopeKey}:${section}`}
+      query={query}
+      renderFile={(item, visiblePath, pathProps) =>
+        renderFile(item.value, visiblePath, pathProps)
+      }
+      t={t}
+    />
+  );
+
   return (
-    <div className={styles.inventory}>
-      {changedFiles.length > 0 && (
-        <WorkingTreeFileOutline
-          files={changedFiles}
-          searching={searching}
-          renderFile={renderFile}
-          t={t}
-        />
+    // biome-ignore lint/a11y/noStaticElementInteractions: delegates arrow traversal across the sectioned file lists to their nested controls
+    <div className={styles.inventory} onKeyDown={handleSourceListKeyDown}>
+      {trackedChangedFiles.length > 0 &&
+        renderOutline(trackedChangedFiles, "tracked-changes")}
+      {untrackedFiles.length > 0 && (
+        <>
+          <SourceFileSectionDivider>
+            {t("sourceUntrackedFiles")}
+          </SourceFileSectionDivider>
+          {renderOutline(untrackedFiles, "untracked")}
+        </>
       )}
       {unchangedFiles.length > 0 && (
         <>
-          <div className={styles.unchangedDivider}>
-            <span>{t("sourceUnchangedFiles")}</span>
-          </div>
-          <WorkingTreeFileOutline
-            files={unchangedFiles}
-            searching={searching}
-            renderFile={renderFile}
-            t={t}
-          />
+          <SourceFileSectionDivider>
+            {t("sourceUnchangedFiles")}
+          </SourceFileSectionDivider>
+          {renderOutline(unchangedFiles, "unchanged")}
         </>
       )}
       {truncated && !searching && (
         <div className={styles.truncated} role="status">
           {t("sourceWorkingTreeFilesTruncated", {
-            count: changedFiles.length + unchangedFiles.length,
+            count:
+              trackedChangedFiles.length +
+              untrackedFiles.length +
+              unchangedFiles.length,
           })}
         </div>
       )}
     </div>
-  );
-}
-
-function WorkingTreeFileOutline({
-  files,
-  searching,
-  renderFile,
-  t,
-  prefix = "",
-}: {
-  files: string[];
-  searching: boolean;
-  renderFile: (path: string, visiblePath?: string) => ReactNode;
-  t: TranslationFn;
-  prefix?: string;
-}) {
-  if (searching) {
-    return (
-      <ul className="blame-file-list" onKeyDown={handleSourceListKeyDown}>
-        {files.map((file) => renderFile(file))}
-      </ul>
-    );
-  }
-
-  const directFiles: string[] = [];
-  const directories = new Map<string, string[]>();
-  for (const file of files) {
-    const rest = file.slice(prefix.length);
-    const slash = rest.indexOf("/");
-    if (slash < 0) {
-      directFiles.push(file);
-      continue;
-    }
-    const directory = rest.slice(0, slash + 1);
-    const grouped = directories.get(directory);
-    if (grouped) grouped.push(file);
-    else directories.set(directory, [file]);
-  }
-
-  return (
-    <ul className="blame-file-list" onKeyDown={handleSourceListKeyDown}>
-      {directFiles.map((file) =>
-        renderFile(file, prefix ? file.slice(prefix.length) : file),
-      )}
-      {Array.from(directories, ([directory, descendants]) => {
-        const groupPrefix = `${prefix}${directory}`;
-        if (descendants.length <= PATH_GROUP_THRESHOLD) {
-          return descendants.map((file) =>
-            renderFile(file, prefix ? file.slice(prefix.length) : file),
-          );
-        }
-        return (
-          <WorkingTreePathGroup
-            key={groupPrefix}
-            path={groupPrefix}
-            files={descendants}
-            renderFile={renderFile}
-            t={t}
-          />
-        );
-      })}
-    </ul>
-  );
-}
-
-function WorkingTreePathGroup({
-  path,
-  files,
-  renderFile,
-  t,
-}: {
-  path: string;
-  files: string[];
-  renderFile: (path: string, visiblePath?: string) => ReactNode;
-  t: TranslationFn;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const label = t(
-    expanded ? "sourceCollapsePathGroup" : "sourceExpandPathGroup",
-    { path, count: files.length },
-  );
-  return (
-    <li className={styles.pathGroup}>
-      <button
-        type="button"
-        className={styles.pathGroupButton}
-        data-source-list-item
-        aria-expanded={expanded}
-        aria-label={label}
-        title={label}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <span className={styles.disclosure} aria-hidden="true">
-          {expanded ? "▾" : "▸"}
-        </span>
-        <span className={styles.pathGroupLabel}>{path}</span>
-        <span className={styles.pathGroupCount}>{files.length}</span>
-      </button>
-      {expanded && (
-        <WorkingTreeFileOutline
-          files={files}
-          searching={false}
-          renderFile={renderFile}
-          t={t}
-          prefix={path}
-        />
-      )}
-    </li>
   );
 }
 

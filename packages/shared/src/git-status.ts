@@ -7,6 +7,7 @@ import type { PatchHunk } from "./types.js";
 export {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
+  GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
@@ -75,6 +76,18 @@ export interface GitRevisionComparison {
   /** Resolved full SHA of HEAD when the comparison was created. */
   headSha: string;
   /** Files whose content differs between the two revisions. */
+  files: GitFileChange[];
+}
+
+/** Inclusive selected-commit-through-HEAD comparison with pinned endpoints. */
+export interface GitInclusiveRevisionComparison {
+  /** Resolved full SHA of the selected commit included in the range. */
+  selectedSha: string;
+  /** Selected commit's first parent, or Git's empty tree for a root commit. */
+  baseSha: string;
+  /** Resolved full SHA of HEAD when the comparison was created. */
+  headSha: string;
+  /** Net files changed by the inclusive range. */
   files: GitFileChange[];
 }
 

@@ -1,0 +1,99 @@
+.outline {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group {
+  min-width: 0;
+  list-style: none;
+}
+
+.groupButton {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.groupButton:hover,
+.groupButton:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.disclosure {
+  width: 12px;
+  flex: 0 0 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.groupLabel {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupStatuses {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  align-items: center;
+}
+
+.groupCount {
+  min-width: 22px;
+  padding: 1px 5px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+}
+
+.children {
+  margin: 0 0 0 0.95rem;
+  padding: 0 0 0 0.45rem;
+  list-style: none;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.sectionDivider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 8px 6px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.sectionDivider::before,
+.sectionDivider::after {
+  height: 1px;
+  flex: 1;
+  content: "";
+  background: var(--border-subtle);
+}
+
+.sectionDivider::before {
+  flex: 0 0 12px;
+}

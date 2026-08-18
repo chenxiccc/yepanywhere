@@ -35,9 +35,13 @@ export function SourceFileRowButton({
 export function SourceFilePath({
   children,
   query,
+  fullPath,
   className,
   ...spanProps
-}: HTMLAttributes<HTMLSpanElement> & { query?: string }) {
+}: HTMLAttributes<HTMLSpanElement> & {
+  query?: string;
+  fullPath?: string;
+}) {
   const text = typeof children === "string" ? children : null;
   const pathClassName = [
     styles.path,
@@ -59,7 +63,7 @@ export function SourceFilePath({
     <SearchMatchText
       {...spanProps}
       className={pathClassName}
-      data-source-path={text}
+      data-source-path={fullPath ?? text}
       text={text}
       query={query}
       wrapMatchOnNarrow

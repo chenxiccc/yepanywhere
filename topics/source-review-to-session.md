@@ -1037,16 +1037,16 @@ inside commit search reveals the shortcut card on hover, focus, or click/tap
 without adding a toolbar row; both the trigger and card are absent at phone
 width, where every action has a touch path. — Implemented 2026-07-28.
 
-A cumulative **selected revision → HEAD** comparison is a toggleable mode, not
-arbitrary range selection: the selected commit is the fixed base and the
-current HEAD tree is the fixed tip, so one control works on desktop and touch
-without introducing selection-range state. The server resolves and returns
-both endpoint SHAs with the file list; every file diff then uses those pinned
-SHAs, so a later HEAD move cannot mix two comparisons. Selecting HEAD produces
-an empty comparison. Merge commits use their resulting tree as the base, not
-an invented first-parent commit range or merge-base projection. Comments cite
-the endpoint containing the clicked line: old-side anchors use the selected
-base SHA and new-side anchors use the pinned HEAD SHA. — Revised 2026-07-28.
+Inclusive **To HEAD** is a toggleable mode, not arbitrary range selection: the
+selected commit is included by fixing its first parent as the base (or Git's
+empty tree for a root commit) and current HEAD as the tip. The server resolves
+and returns the selected SHA plus both endpoints with the file list; every file
+diff then uses those pinned endpoints, so a later HEAD move cannot mix two
+comparisons. Merge commits use their first parent as the squash-style base.
+Comments cite the endpoint containing the clicked line: old-side anchors use
+the fixed base SHA and new-side anchors use the pinned HEAD SHA. Direct
+selected-tree-to-HEAD remains a separately labelled per-file action. — Revised
+2026-08-18.
 
 — First slice implemented 2026-07-27; remaining options researched against
 GitHub Desktop
@@ -1071,13 +1071,16 @@ advertisements. It explains that commit history, file browsing, and source
 review require a server update. It does not mount a new browse/review component
 or call one of its routes.
 
-Ignore whitespace and selected-revision-to-HEAD comparison require the
-transitional `git-source-review-projections` capability. Without it, their
-controls make no projection request, remain off, and show a dismissible
-update-or-restart-server notice; ordinary Source Control continues to work.
-If a server advertises the capability but a projection request fails, the
-client returns to the ordinary diff and shows the same notice. It never leaves
-a projection control active over ordinary or stale content. On phone layouts,
+Ignore whitespace and direct selected-tree-to-HEAD per-file comparison require
+the transitional `git-source-review-projections` capability. Inclusive **To
+HEAD** separately requires permanent `git-inclusive-to-head`; without it, the
+inclusive control is hidden and makes no range request. Without the older
+projection capability, direct/whitespace controls make no projection request,
+remain off, and show a dismissible update-or-restart-server notice; ordinary
+Source Control continues to work. If a server advertises the applicable
+capability but a projection request fails, the client returns to the ordinary
+diff and shows the same notice. It never leaves a projection control active
+over ordinary or stale content. On phone layouts,
 the notice is portaled above the full-screen diff as a dismissible bottom
 banner rather than being hidden behind it.
 

@@ -99,6 +99,7 @@ import { createBangCommandsRoutes } from "./routes/bang-commands.js";
 import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitBrowseRoutes } from "./routes/git-browse.js";
 import { createGitFileProjectionRoutes } from "./routes/git-file-projections.js";
+import { createGitInclusiveToHeadRoutes } from "./routes/git-inclusive-to-head.js";
 import { createGitIncomingCommitsRoutes } from "./routes/git-incoming-commits.js";
 import { createGitProjectionRoutes } from "./routes/git-projections.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
@@ -1940,6 +1941,7 @@ export function createApp(options: AppOptions): AppResult {
 
   // Optional Source Control diff projections.
   app.route("/api/projects", createGitProjectionRoutes({ scanner }));
+  app.route("/api/projects", createGitInclusiveToHeadRoutes({ scanner }));
 
   // Exact worktree projections shared by file links and file viewers.
   app.route("/api/projects", createGitFileProjectionRoutes({ scanner }));

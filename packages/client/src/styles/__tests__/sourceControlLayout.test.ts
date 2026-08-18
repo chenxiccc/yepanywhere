@@ -29,6 +29,10 @@ const sourceFileRowStylesheetUrl = new URL(
   "../../components/SourceFileRow.module.css",
   import.meta.url,
 );
+const searchMatchTextStylesheetUrl = new URL(
+  "../../components/SearchMatchText.module.css",
+  import.meta.url,
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -282,12 +286,14 @@ describe("Source Control workbench layout CSS contract", () => {
   });
 
   it("uses the full desktop row width while keeping path matches visible", async () => {
-    const [menuCss, pathCss, indexCss, rendererCss] = await Promise.all([
-      readFile(sourceContextMenuStylesheetUrl, "utf8"),
-      readFile(sourceFileRowStylesheetUrl, "utf8"),
-      readFile(indexStylesheetUrl, "utf8"),
-      readFile(rendererStylesheetUrl, "utf8"),
-    ]);
+    const [menuCss, pathCss, matchCss, indexCss, rendererCss] =
+      await Promise.all([
+        readFile(sourceContextMenuStylesheetUrl, "utf8"),
+        readFile(sourceFileRowStylesheetUrl, "utf8"),
+        readFile(searchMatchTextStylesheetUrl, "utf8"),
+        readFile(indexStylesheetUrl, "utf8"),
+        readFile(rendererStylesheetUrl, "utf8"),
+      ]);
     const rowSurface = getLastRuleDeclarations(menuCss, ".rowSurface");
     const desktopTrigger = getRuleDeclarationsContaining(
       menuCss,
@@ -301,7 +307,7 @@ describe("Source Control workbench layout CSS contract", () => {
       "flex: 1 1 auto",
     );
     const matchedPath = getLastRuleDeclarations(pathCss, ".pathWithMatch");
-    const match = getLastRuleDeclarations(pathCss, ".match");
+    const match = getLastRuleDeclarations(matchCss, ".match");
 
     expect(rowSurface).toMatch(/position:\s*relative\s*;/);
     expect(desktopTrigger).toMatch(/position:\s*absolute\s*;/);

@@ -17,7 +17,13 @@ import {
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { ChangesetFileFilter } from "../components/ChangesetFileFilter";
+import { FileViewer } from "../components/FileViewer";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
+import {
+  SourceFileOutline,
+  SourceFileSectionDivider,
+  type SourceOutlinePathProps,
+} from "../components/SourceFileOutline";
 import { SourceFileHeaderActions } from "../components/SourceFileHeaderActions";
 import {
   SourceFilePath,
@@ -42,6 +48,7 @@ import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
+import { Modal } from "../components/ui/Modal";
 import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
 import styles from "./WorkingTreeBrowser.module.css";
 import {
@@ -92,6 +99,7 @@ type WorktreeListEntry =
 const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
   file,
   displayPath = sourceFileDisplayPath(file),
+  pathProps,
   query,
   selected,
   commentCount,
@@ -105,6 +113,7 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
 }: {
   file: WorktreeFileChange;
   displayPath?: string;
+  pathProps?: SourceOutlinePathProps;
   query: string;
   selected: boolean;
   commentCount: number;
@@ -118,13 +127,12 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
 }) {
   const isFolder = file.path.endsWith("/");
   const menuActions = menuActionsForFile(file);
-  const tooltipPath =
-    displayPath === sourceFileDisplayPath(file) ? displayPath : file.path;
+  const fullDisplayPath = sourceFileDisplayPath(file);
 
   return (
     <li className={`commit-file-row ${sourceRowMenuSurface}`}>
       <SourceFileRowButton
-        path={tooltipPath}
+        path={fullDisplayPath}
         type="button"
         className={`commit-file-item ${selected ? "selected" : ""}`}
         disabled={isFolder}
@@ -140,7 +148,9 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
       >
         <SourceFileStatusBadge status={file.status} t={t} />
         <WorktreeStateMarker state={file.worktreeState} t={t} />
-        <SourceFilePath query={query}>{displayPath}</SourceFilePath>
+        <SourceFilePath {...pathProps} query={query} fullPath={fullDisplayPath}>
+          {displayPath}
+        </SourceFilePath>
         {(file.linesAdded !== null || file.linesDeleted !== null) && (
           <span className="git-line-counts">
             {file.linesAdded ? (
@@ -273,9 +283,14 @@ export function WorkingTreeBrowser({
   );
 
   useEffect(() => {
-    let cancelled = false;
     setExpandedUntrackedFolders({});
     setUntrackedFolderExpansion({});
+    setLoadingUntrackedFolders(new Set());
+    folderRequestsRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     if (supportsUntrackedCache) {
       setUntrackedFolderScan({ loaded: 0, total: 0 });
       return undefined;
@@ -526,14 +541,72 @@ export function WorkingTreeBrowser({
       untrackedFolderExpansion,
     ],
   );
+  const trackedListEntries = useMemo(
+    () =>
+      listEntries.filter(
+        (entry) =>
+          entry.kind === "file" && entry.file.worktreeState !== "untracked",
+      ),
+    [listEntries],
+  );
+  const untrackedListEntries = useMemo(
+    () =>
+      listEntries.filter(
+        (entry) =>
+          entry.kind === "folder" || entry.file.worktreeState === "untracked",
+      ),
+    [listEntries],
+  );
+  const trackedOutlineItems = useMemo(
+    () =>
+      trackedListEntries.flatMap((entry) =>
+        entry.kind === "file"
+          ? [
+              {
+                id: entry.file.path,
+                path: entry.file.path,
+                displayPath: sourceFileDisplayPath(entry.file),
+                statuses: [entry.file.status],
+                value: entry.file,
+              },
+            ]
+          : [],
+      ),
+    [trackedListEntries],
+  );
+  const untrackedOutlineItems = useMemo(
+    () =>
+      untrackedListEntries.flatMap((entry) =>
+        entry.kind === "file"
+          ? [
+              {
+                id: entry.file.path,
+                path: entry.file.path,
+                displayPath: sourceFileDisplayPath(entry.file),
+                statuses: [entry.file.status],
+                value: entry.file,
+              },
+            ]
+          : [],
+      ),
+    [untrackedListEntries],
+  );
+  const untrackedFolderEntries = useMemo(
+    () =>
+      untrackedListEntries.filter(
+        (entry): entry is Extract<WorktreeListEntry, { kind: "folder" }> =>
+          entry.kind === "folder",
+      ),
+    [untrackedListEntries],
+  );
   const visiblePreviewableFiles = useMemo(
     () =>
-      listEntries.flatMap((entry) =>
+      [...trackedListEntries, ...untrackedListEntries].flatMap((entry) =>
         entry.kind === "file"
           ? [entry.file]
           : entry.children.map((child) => child.file),
       ),
-    [listEntries],
+    [trackedListEntries, untrackedListEntries],
   );
   const selectedFile =
     previewableFiles.find((file) => file.path === selectedPath) ?? null;
@@ -711,17 +784,22 @@ export function WorkingTreeBrowser({
       t={t}
     />
   ) : null;
-  const renderFileRow = ({
-    file,
-    displayPath,
-  }: {
-    file: WorktreeFileChange;
-    displayPath: string;
-  }) => (
+  const renderFileRow = (
+    {
+      file,
+      displayPath,
+    }: {
+      file: WorktreeFileChange;
+      displayPath: string;
+    },
+    visiblePath = displayPath,
+    pathProps?: SourceOutlinePathProps,
+  ) => (
     <WorkingTreeFileRow
       key={file.path}
       file={file}
-      displayPath={displayPath}
+      displayPath={visiblePath}
+      pathProps={pathProps}
       query={fileQuery}
       selected={selectedPath === file.path}
       commentCount={fileCommentCount.get(file.path) ?? 0}
@@ -862,95 +940,208 @@ export function WorkingTreeBrowser({
               t={t}
             />
           </div>
-          <ul className="commit-file-list" onKeyDown={handleSourceListKeyDown}>
-            {listEntries.map((entry) =>
-              entry.kind === "file" ? (
-                renderFileRow(entry)
-              ) : (
-                <li key={entry.path} className={styles.folderGroup}>
-                  <div className={styles.folderHeader}>
-                    <SourceFileRowButton
-                      path={entry.path}
-                      type="button"
-                      className="commit-file-item"
-                      disabled={
-                        loadingUntrackedFolders.has(entry.path) ||
-                        (!supportsUntrackedCache && !entry.info) ||
-                        (supportsUntrackedCache
-                          ? (cachedFolderCounts.get(entry.path) ?? 0) === 0
-                          : !entry.info || entry.info.files.length === 0)
-                      }
-                      aria-expanded={
-                        supportsUntrackedCache || entry.info
-                          ? entry.expanded
-                          : undefined
-                      }
-                      aria-label={t(
-                        loadingUntrackedFolders.has(entry.path) ||
-                          (!supportsUntrackedCache && !entry.info)
-                          ? "sourceLoadingUntrackedFolder"
-                          : entry.expanded
-                            ? "sourceCollapseUntrackedFolder"
-                            : "sourceExpandUntrackedFolder",
-                        { path: entry.path },
-                      )}
-                      data-source-list-item
-                      onClick={() =>
-                        toggleUntrackedFolder(
-                          entry.path,
-                          entry.expanded,
-                          entry.info !== undefined,
-                        )
-                      }
-                    >
-                      <span className={styles.disclosure} aria-hidden="true">
-                        {loadingUntrackedFolders.has(entry.path) ||
-                        (!supportsUntrackedCache && !entry.info)
-                          ? "…"
-                          : entry.expanded
-                            ? "−"
-                            : "+"}
-                      </span>
-                      <SourceFileStatusBadge status="?" t={t} />
-                      <SourceFilePath query={fileQuery}>
-                        {entry.path}
-                      </SourceFilePath>
-                      {(cachedFolderCounts.get(entry.path) ??
-                        entry.info?.files.length) !== undefined && (
-                        <span
-                          className={styles.folderCount}
-                          title={
-                            entry.info?.truncated
-                              ? t("sourceUntrackedFolderTruncated", {
-                                  count: entry.info.files.length,
-                                })
-                              : undefined
-                          }
-                        >
-                          {cachedFolderCounts.get(entry.path) ??
-                            entry.info?.files.length}
-                          {entry.info?.truncated ? "+" : ""}
-                        </span>
-                      )}
-                    </SourceFileRowButton>
-                  </div>
-                  {entry.children.length > 0 && (
-                    <ul className={styles.folderChildren}>
-                      {entry.children.map(renderFileRow)}
-                    </ul>
-                  )}
-                </li>
-              ),
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: delegates arrow traversal across tracked, untracked, and folder rows to their nested controls */}
+          <div onKeyDown={handleSourceListKeyDown}>
+            {trackedOutlineItems.length > 0 && (
+              <SourceFileOutline
+                className="commit-file-list"
+                items={trackedOutlineItems}
+                scopeKey={`${projectId}:working-tree:tracked`}
+                query={fileQuery}
+                renderFile={(item, visiblePath, pathProps) =>
+                  renderFileRow(
+                    { file: item.value, displayPath: item.displayPath },
+                    visiblePath,
+                    pathProps,
+                  )
+                }
+                t={t}
+              />
             )}
-          </ul>
+            {untrackedListEntries.length > 0 && (
+              <>
+                <SourceFileSectionDivider>
+                  {t("sourceUntrackedFiles")}
+                </SourceFileSectionDivider>
+                {untrackedOutlineItems.length > 0 && (
+                  <SourceFileOutline
+                    className="commit-file-list"
+                    items={untrackedOutlineItems}
+                    scopeKey={`${projectId}:working-tree:untracked`}
+                    query={fileQuery}
+                    renderFile={(item, visiblePath, pathProps) =>
+                      renderFileRow(
+                        { file: item.value, displayPath: item.displayPath },
+                        visiblePath,
+                        pathProps,
+                      )
+                    }
+                    t={t}
+                  />
+                )}
+                {untrackedFolderEntries.length > 0 && (
+                  <ul className="commit-file-list">
+                    {untrackedFolderEntries.map((entry) => (
+                      <li key={entry.path} className={styles.folderGroup}>
+                        <div className={styles.folderHeader}>
+                          <SourceFileRowButton
+                            path={entry.path}
+                            type="button"
+                            className="commit-file-item"
+                            disabled={
+                              loadingUntrackedFolders.has(entry.path) ||
+                              (!supportsUntrackedCache && !entry.info) ||
+                              (supportsUntrackedCache
+                                ? (cachedFolderCounts.get(entry.path) ?? 0) ===
+                                  0
+                                : !entry.info || entry.info.files.length === 0)
+                            }
+                            aria-expanded={
+                              supportsUntrackedCache || entry.info
+                                ? entry.expanded
+                                : undefined
+                            }
+                            aria-label={t(
+                              loadingUntrackedFolders.has(entry.path) ||
+                                (!supportsUntrackedCache && !entry.info)
+                                ? "sourceLoadingUntrackedFolder"
+                                : entry.expanded
+                                  ? "sourceCollapseUntrackedFolder"
+                                  : "sourceExpandUntrackedFolder",
+                              { path: entry.path },
+                            )}
+                            data-source-list-item
+                            onClick={() =>
+                              toggleUntrackedFolder(
+                                entry.path,
+                                entry.expanded,
+                                entry.info !== undefined,
+                              )
+                            }
+                          >
+                            <span
+                              className={styles.disclosure}
+                              aria-hidden="true"
+                            >
+                              {loadingUntrackedFolders.has(entry.path) ||
+                              (!supportsUntrackedCache && !entry.info)
+                                ? "…"
+                                : entry.expanded
+                                  ? "−"
+                                  : "+"}
+                            </span>
+                            <SourceFileStatusBadge status="?" t={t} />
+                            <SourceFilePath
+                              query={fileQuery}
+                              fullPath={entry.path}
+                            >
+                              {entry.path}
+                            </SourceFilePath>
+                            {(cachedFolderCounts.get(entry.path) ??
+                              entry.info?.files.length) !== undefined && (
+                              <span
+                                className={styles.folderCount}
+                                title={
+                                  entry.info?.truncated
+                                    ? t("sourceUntrackedFolderTruncated", {
+                                        count: entry.info.files.length,
+                                      })
+                                    : undefined
+                                }
+                              >
+                                {cachedFolderCounts.get(entry.path) ??
+                                  entry.info?.files.length}
+                                {entry.info?.truncated ? "+" : ""}
+                              </span>
+                            )}
+                          </SourceFileRowButton>
+                        </div>
+                        {entry.children.length > 0 && (
+                          <SourceFileOutline
+                            className={styles.folderChildren}
+                            items={entry.children.map((child) => ({
+                              id: child.file.path,
+                              path: child.displayPath,
+                              displayPath: child.displayPath,
+                              statuses: [child.file.status],
+                              value: child.file,
+                            }))}
+                            scopeKey={`${projectId}:working-tree:${entry.path}`}
+                            query={fileQuery}
+                            renderFile={(item, visiblePath, pathProps) =>
+                              renderFileRow(
+                                {
+                                  file: item.value,
+                                  displayPath: item.displayPath,
+                                },
+                                visiblePath,
+                                pathProps,
+                              )
+                            }
+                            t={t}
+                          />
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
           {listEntries.length === 0 && (
             <div className="git-status-empty">{t("sourceNoMatches")}</div>
           )}
         </div>
 
-        {isWideScreen && selectedFile && (
-          <GitDiffPreview
-            ref={diffPreviewRef}
+        {isWideScreen &&
+          selectedFile &&
+          (selectedFile.worktreeState === "untracked" ? (
+            <section className={styles.currentContent}>
+              {fileActions && (
+                <div className={styles.currentContentActions}>
+                  {fileActions}
+                </div>
+              )}
+              <FileViewer projectId={projectId} filePath={selectedFile.path} />
+            </section>
+          ) : (
+            <GitDiffPreview
+              ref={diffPreviewRef}
+              file={selectedFile}
+              fileKey={selectedFile.path}
+              projectId={projectId}
+              source={WORKING_TREE_SOURCE}
+              retainedScrollRatio={retainedScrollRatio}
+              retainedDiffView={retainedDiffView}
+              onRetainScrollRatio={retainScrollRatio}
+              onRetainDiffView={retainDiffView}
+              headerActions={fileActions}
+              onCommentEditorOpenChange={setCommentEditorOpen}
+              captureReviewProjections={captureReviewProjections}
+              ignoreWhitespace={ignoreWhitespace}
+              onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+              onProjectionRequestFailure={onProjectionRequestFailure}
+              t={t}
+            />
+          ))}
+      </ResizableSourceColumns>
+      {fileMenu.menu}
+
+      {!isWideScreen &&
+        selectedFile &&
+        (selectedFile.worktreeState === "untracked" ? (
+          <Modal
+            title={selectedFile.path}
+            onClose={() => setSelectedPath(null)}
+            closeOnBackGesture
+          >
+            {fileActions && (
+              <div className={styles.currentContentActions}>{fileActions}</div>
+            )}
+            <FileViewer projectId={projectId} filePath={selectedFile.path} />
+          </Modal>
+        ) : (
+          <GitDiffModal
             file={selectedFile}
             fileKey={selectedFile.path}
             projectId={projectId}
@@ -966,31 +1157,9 @@ export function WorkingTreeBrowser({
             onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
             onProjectionRequestFailure={onProjectionRequestFailure}
             t={t}
+            onClose={() => setSelectedPath(null)}
           />
-        )}
-      </ResizableSourceColumns>
-      {fileMenu.menu}
-
-      {!isWideScreen && selectedFile && (
-        <GitDiffModal
-          file={selectedFile}
-          fileKey={selectedFile.path}
-          projectId={projectId}
-          source={WORKING_TREE_SOURCE}
-          retainedScrollRatio={retainedScrollRatio}
-          retainedDiffView={retainedDiffView}
-          onRetainScrollRatio={retainScrollRatio}
-          onRetainDiffView={retainDiffView}
-          headerActions={fileActions}
-          onCommentEditorOpenChange={setCommentEditorOpen}
-          captureReviewProjections={captureReviewProjections}
-          ignoreWhitespace={ignoreWhitespace}
-          onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
-          onProjectionRequestFailure={onProjectionRequestFailure}
-          t={t}
-          onClose={() => setSelectedPath(null)}
-        />
-      )}
+        ))}
     </div>
   );
 }

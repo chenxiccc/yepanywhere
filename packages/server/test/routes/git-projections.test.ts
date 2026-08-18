@@ -5,11 +5,14 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import {
   type GitDiffResult,
+  type GitInclusiveRevisionComparison,
   type GitRevisionComparison,
   toUrlProjectId,
 } from "@yep-anywhere/shared";
+import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
+import { createGitInclusiveToHeadRoutes } from "../../src/routes/git-inclusive-to-head.js";
 import { createGitProjectionRoutes } from "../../src/routes/git-projections.js";
 import type { Project } from "../../src/supervisor/types.js";
 
@@ -28,16 +31,17 @@ function createRoutesForProject(projectPath: string) {
     lastActivity: null,
     provider: "claude",
   };
-  return {
-    projectId,
-    routes: createGitProjectionRoutes({
-      scanner: {
-        async getProject(id: string) {
-          return id === projectId ? project : null;
-        },
-      } as unknown as ProjectScanner,
-    }),
+  const deps = {
+    scanner: {
+      async getProject(id: string) {
+        return id === projectId ? project : null;
+      },
+    } as unknown as ProjectScanner,
   };
+  const routes = new Hono();
+  routes.route("/", createGitProjectionRoutes(deps));
+  routes.route("/", createGitInclusiveToHeadRoutes(deps));
+  return { projectId, routes };
 }
 
 describe("git projection routes", () => {
@@ -98,6 +102,65 @@ describe("git projection routes", () => {
       linesAdded: 1,
       linesDeleted: 0,
     });
+  });
+
+  it("includes the selected commit by comparing its first parent through HEAD", async () => {
+    await writeFile(join(dir, "after.ts"), "added after selection\n");
+    const laterHeadSha = await commitAll("after selected commit");
+    const { projectId, routes } = createRoutesForProject(dir);
+    const response = await routes.request(
+      `/${projectId}/git/range-to-head/${headSha}`,
+    );
+    const body = (await response.json()) as GitInclusiveRevisionComparison;
+
+    expect(response.status).toBe(200);
+    expect(body.selectedSha).toBe(headSha);
+    expect(body.baseSha).toBe(firstSha);
+    expect(body.headSha).toBe(laterHeadSha);
+    expect(body.files.map((file) => file.path)).toEqual([
+      "after.ts",
+      "app.ts",
+      "later.ts",
+    ]);
+  });
+
+  it("uses the empty tree to include a selected root commit", async () => {
+    const { projectId, routes } = createRoutesForProject(dir);
+    const comparisonResponse = await routes.request(
+      `/${projectId}/git/range-to-head/${firstSha}`,
+    );
+    const comparison =
+      (await comparisonResponse.json()) as GitInclusiveRevisionComparison;
+
+    expect(comparisonResponse.status).toBe(200);
+    expect(comparison.selectedSha).toBe(firstSha);
+    expect(comparison.baseSha).toBe("4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+    expect(comparison.files).toContainEqual({
+      path: "app.ts",
+      status: "A",
+      staged: false,
+      linesAdded: 2,
+      linesDeleted: 0,
+    });
+
+    const diffResponse = await routes.request(
+      `/${projectId}/git/range-to-head-diff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseSha: comparison.baseSha,
+          headSha: comparison.headSha,
+          path: "app.ts",
+          status: "A",
+        }),
+      },
+    );
+    const diff = (await diffResponse.json()) as GitDiffResult;
+    expect(diffResponse.status).toBe(200);
+    expect(diff.structuredPatch.flatMap((hunk) => hunk.lines)).toContain(
+      "+keep changed",
+    );
   });
 
   it("renders one file between the exact supplied revisions", async () => {

@@ -9,10 +9,12 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { ChangesetFileFilter } from "../components/ChangesetFileFilter";
 import { CopyButton } from "../components/CopyButton";
+import { SourceFileOutline } from "../components/SourceFileOutline";
 import {
   SourceFilePath,
   SourceFileRowButton,
@@ -50,6 +52,7 @@ export function CommitFilesPane({
   loading,
   detailError,
   compareToHead,
+  supportsInclusiveToHead,
   isWideScreen,
   messageView,
   selectedFiles,
@@ -59,6 +62,7 @@ export function CommitFilesPane({
   revisionNavigation,
   onBack,
   onToggleComparison,
+  onCompareFileToHead,
   onShowMessage,
   onFocusFile,
   onFilteredSelectionChange,
@@ -75,6 +79,7 @@ export function CommitFilesPane({
   loading: boolean;
   detailError: string | null;
   compareToHead: boolean;
+  supportsInclusiveToHead: boolean;
   isWideScreen: boolean;
   messageView: boolean;
   selectedFiles: GitFileChange[];
@@ -84,6 +89,7 @@ export function CommitFilesPane({
   revisionNavigation: ReactNode;
   onBack?: () => void;
   onToggleComparison: () => void;
+  onCompareFileToHead?: (file: GitFileChange) => void;
   onShowMessage: () => void;
   onFocusFile: (file: GitFileChange) => void;
   onFilteredSelectionChange: (file: GitFileChange | null) => void;
@@ -96,6 +102,17 @@ export function CommitFilesPane({
   const [fileQuery, setFileQuery] = useState("");
   const fileMenu = useSourceContextMenu(t);
   const filteredFiles = useChangesetFileFilter(selectedFiles, fileQuery);
+  const outlineItems = useMemo(
+    () =>
+      filteredFiles.map((file) => ({
+        id: file.path,
+        path: file.path,
+        displayPath: sourceFileDisplayPath(file),
+        statuses: [file.status],
+        value: file,
+      })),
+    [filteredFiles],
+  );
 
   useEffect(() => {
     if (!isWideScreen) return;
@@ -120,6 +137,14 @@ export function CommitFilesPane({
         void writeClipboardText(file.path);
       },
     },
+    ...(onCompareFileToHead
+      ? [
+          {
+            label: t("sourceCompareFileTreeToHead"),
+            onSelect: () => onCompareFileToHead(file),
+          },
+        ]
+      : []),
     ...(onBlameFile
       ? [
           {
@@ -167,17 +192,19 @@ export function CommitFilesPane({
               {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
             </span>
           </span>
-          <button
-            type="button"
-            className={`source-detail-action source-compare-toggle ${
-              compareToHead ? "active" : ""
-            }`}
-            title={t("sourceCompareToHeadDescription")}
-            aria-pressed={compareToHead}
-            onClick={onToggleComparison}
-          >
-            {t("sourceCompareToHead")}
-          </button>
+          {supportsInclusiveToHead && (
+            <button
+              type="button"
+              className={`source-detail-action source-compare-toggle ${
+                compareToHead ? "active" : ""
+              }`}
+              title={t("sourceCompareToHeadDescription")}
+              aria-pressed={compareToHead}
+              onClick={onToggleComparison}
+            >
+              {t("sourceCompareToHead")}
+            </button>
+          )}
           <CopyButton
             value={selectedSha}
             title={t("sourceCopyCommitHash")}
@@ -249,22 +276,24 @@ export function CommitFilesPane({
                   : t("sourceShowFullMessage")}
               </div>
             )}
-            <ul
+            <SourceFileOutline
               className="commit-file-list"
+              items={outlineItems}
+              scopeKey={`${selectedSha}:${compareToHead ? "to-head" : "commit"}`}
+              query={fileQuery}
               onKeyDown={handleSourceListKeyDown}
-            >
-              {filteredFiles.map((file) => {
+              renderFile={(item, visiblePath, pathProps) => {
+                const file = item.value;
                 const count = fileCommentCount.get(file.path) ?? 0;
                 const isFolder = file.path.endsWith("/");
                 const menuActions = fileMenuActions(file);
-                const displayPath = sourceFileDisplayPath(file);
                 return (
                   <li
                     key={file.path}
                     className={`commit-file-row ${sourceRowMenuSurface}`}
                   >
                     <SourceFileRowButton
-                      path={displayPath}
+                      path={item.displayPath}
                       type="button"
                       className={`commit-file-item ${
                         selectedPath === file.path ? "selected" : ""
@@ -279,8 +308,12 @@ export function CommitFilesPane({
                       })}
                     >
                       <SourceFileStatusBadge status={file.status} t={t} />
-                      <SourceFilePath query={fileQuery}>
-                        {displayPath}
+                      <SourceFilePath
+                        {...pathProps}
+                        query={fileQuery}
+                        fullPath={item.displayPath}
+                      >
+                        {visiblePath}
                       </SourceFilePath>
                       {(file.linesAdded !== null ||
                         file.linesDeleted !== null) && (
@@ -319,8 +352,9 @@ export function CommitFilesPane({
                     )}
                   </li>
                 );
-              })}
-            </ul>
+              }}
+              t={t}
+            />
             {selectedFiles.length === 0 && (
               <div className="git-status-empty">
                 {compareToHead

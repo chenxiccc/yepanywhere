@@ -656,6 +656,45 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on git-source-review-projections.",
     },
   },
+  gitInclusiveToHead: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitInclusiveToHead.id,
+    name: "git-inclusive-to-head",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server compares an inclusive selected-commit range from the selected commit's first parent, or the empty tree for a root commit, through pinned HEAD.",
+    clientFallback:
+      "Hide inclusive To HEAD and make no range request; retain separately gated direct per-file selected-tree-to-HEAD comparison.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/git/range-to-head/:sha",
+        "POST /api/projects/:projectId/git/range-to-head-diff",
+      ],
+      routeModules: ["packages/server/src/routes/git-inclusive-to-head.ts"],
+      requestFields: [
+        "gitInclusiveComparisonDiff.baseSha",
+        "gitInclusiveComparisonDiff.headSha",
+        "gitInclusiveComparisonDiff.path",
+        "gitInclusiveComparisonDiff.status",
+        "gitInclusiveComparisonDiff.origPath",
+        "gitInclusiveComparisonDiff.fullContext",
+        "gitInclusiveComparisonDiff.ignoreWhitespace",
+      ],
+      responseFields: [
+        "gitInclusiveRevisionComparison.selectedSha",
+        "gitInclusiveRevisionComparison.baseSha",
+        "gitInclusiveRevisionComparison.headSha",
+        "gitInclusiveRevisionComparison.files",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "The existing projection capability permanently means direct selected-tree-to-HEAD comparison, and older servers have no inclusive-range route.",
+    },
+  },
   gitFileDiffProjections: {
     id: CAPABILITY_ID_ALLOCATIONS.gitFileDiffProjections.id,
     name: "git-file-diff-projections",
@@ -1694,6 +1733,8 @@ export const GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReviewSubmissions.name;
 export const GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReviewProjections.name;
+export const GIT_INCLUSIVE_TO_HEAD_CAPABILITY =
+  SERVER_CAPABILITIES.gitInclusiveToHead.name;
 
 export const APPROVAL_AUDIT_LOG_CAPABILITY =
   SERVER_CAPABILITIES.approvalAuditLog.name;

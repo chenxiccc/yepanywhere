@@ -9,6 +9,7 @@ import type {
   GitFileDiffMode,
   GitFileProjectionManifest,
   GitIncomingCommitListResult,
+  GitInclusiveRevisionComparison,
   GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
@@ -146,6 +147,11 @@ export const gitApi = {
       `/projects/${projectId}/git/compare/${encodeURIComponent(sha)}`,
     ),
 
+  getGitInclusiveComparison: (projectId: string, sha: string) =>
+    fetchJSON<GitInclusiveRevisionComparison>(
+      `/projects/${projectId}/git/range-to-head/${encodeURIComponent(sha)}`,
+    ),
+
   getGitComparisonDiff: (
     projectId: string,
     params: {
@@ -159,6 +165,23 @@ export const gitApi = {
     },
   ) =>
     fetchJSON<GitDiffResult>(`/projects/${projectId}/git/compare-diff`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
+  getGitInclusiveComparisonDiff: (
+    projectId: string,
+    params: {
+      baseSha: string;
+      headSha: string;
+      path: string;
+      status: string;
+      origPath?: string;
+      fullContext?: boolean;
+      ignoreWhitespace?: boolean;
+    },
+  ) =>
+    fetchJSON<GitDiffResult>(`/projects/${projectId}/git/range-to-head-diff`, {
       method: "POST",
       body: JSON.stringify(params),
     }),

@@ -210,14 +210,30 @@ Without that capability, the client keeps the released bounded
 covers only children that legacy enumeration has returned.
 
 Working-tree changes, commit revisions, and Files use one shared file-row/path
-treatment. A case-insensitive search match is highlighted and held visible: the
-leading prefix yields from its start and the suffix consumes the remaining live
-row width. A truncated path exposes its full value from the actual row
-hover/focus target in both Native and Themed tooltip modes; a nested `title`
-that happens to work in only one mode is not sufficient. Desktop row menus
-overlay the trailing edge instead of reserving permanent path width. Touch
-layouts keep the menu target in flow and preserve more path identity in the row
-itself rather than depending on hover.
+treatment and one path-compression outline. Filtering and semantic sectioning
+happen first; grouping is independent inside each resulting section. The
+outline factors the longest useful shared parent into a heading, and a measured
+path that would otherwise truncate may form a one-child group. Expanded rows
+omit the heading prefix while their tooltip, copy target, menu actions,
+accessibility name, and `data-source-path` retain the complete canonical path.
+A collapsed group renders every distinct Git status represented by its children
+rather than choosing one status for a mixed group.
+
+Initial disclosure uses the list's available row budget: groups expand in order
+while their immediate children fit. A later explicit expand or collapse choice
+wins through corpus refreshes and resizes. Width-driven one-child groups may
+appear or disappear as the pane changes width without erasing that choice.
+Search renders the filtered complete paths directly, so grouping never hides a
+match.
+
+A case-insensitive search match is highlighted and held visible: the leading
+prefix yields from its start and the suffix consumes the remaining live row
+width. A truncated path exposes its full value from the actual row hover/focus
+target in both Native and Themed tooltip modes; a nested `title` that happens to
+work in only one mode is not sufficient. Desktop row menus overlay the trailing
+edge instead of reserving permanent path width. Touch layouts keep the menu
+target in flow and preserve more path identity in the row itself rather than
+depending on hover.
 
 ### Current-content inventory and untracked cache
 
@@ -225,11 +241,14 @@ The Working Tree browser uses
 `GET /api/projects/:projectId/git/working-tree-files` only on explicit entry or
 refresh, never on the five-second status poll. Its complete corpus combines
 present indexed paths with cached non-ignored untracked paths and subtracts
-tracked deletions. Dirty and untracked paths come first; **Tracked, unchanged**
-separates the remaining tracked paths. Shared path-prefix groups become
-expandable when a prefix has more than ten descendants. Search spans the
-returned corpus without changing group disclosure state, and any server safety
-bound is an explicit truncation state rather than a claim of completeness.
+tracked deletions. Tracked changes come first, **Untracked** separates live-only
+files, and **Tracked, unchanged** separates the remaining tracked paths. The
+Working tree revision in Changes uses the first two sections only: tracked rows
+open HEAD-to-filesystem diffs, while untracked rows open live contents through
+`FileViewer`. Every section uses the shared outline described above. Search
+spans the returned corpus without changing group disclosure state, and any
+server safety bound is an explicit truncation state rather than a claim of
+completeness.
 
 Selecting a path renders its live contents through the shared `FileViewer`,
 including clean and untracked files. Tracked files may switch to Blame; an
@@ -243,7 +262,11 @@ The same capability owns
 `GET /api/projects/:projectId/git?untracked=cache`. Cache-backed polling asks Git
 for tracked/staged state with untracked enumeration disabled, then merges the
 retained untracked snapshot. One root request is shared in flight, so a polling
-tick cannot overlap it.
+tick cannot overlap it. Background replacement retains the current file corpus,
+selected row, mounted detail, scroll/view state, and explicit folder/outline
+disclosures until replacement data is ready. A changed compact-folder corpus
+adds or removes available groups without resetting choices for groups that
+remain.
 
 The project-keyed cache lives below the configured YA data directory under
 `indexes/git-untracked/`; browsing does not create `.yep`, edit Git excludes, or
@@ -306,14 +329,22 @@ Find, or the address bar.
 
 Unified/Split and full-context controls stay in the diff pane. Ignore
 whitespace is an independent projection of the active working-tree, commit, or
-selected-revision-to-HEAD diff. Selected revision → HEAD uses a fixed selected
-tree as base and a pinned HEAD SHA as tip; every file request stays on those
+revision-range diff. **To HEAD** is inclusive: an ordinary selected commit uses
+its first parent as the fixed base, a selected root uses Git's empty tree, and
+the server pins current HEAD as the tip. The returned list therefore contains
+the net squash-style change from the selected commit through HEAD, including
+paths first added by the selected commit. Every per-file request stays on those
 returned endpoints so a later HEAD move cannot mix comparisons.
 
+Direct selected-tree-to-HEAD remains a different, clearly labelled per-file
+context-menu action. It retains the established direct-comparison route and
+capability semantics rather than overloading **To HEAD**.
+
 A comparison comment cites the endpoint that contains the clicked projection:
-an old-side line anchors to the fixed base SHA and a new-side line anchors to
-the pinned tip SHA. An ordinary one-commit diff uses that commit SHA for both
-sides; a working-tree diff remains uncommitted. Rendered diff lines are
+an old-side line anchors to the fixed base SHA (or has no old lines for the
+empty tree) and a new-side line anchors to the pinned tip SHA. An ordinary
+one-commit diff uses that commit SHA for both sides; a working-tree diff remains
+uncommitted. Rendered diff lines are
 interactive on their first visible frame—first-click commenting and hunk keys
 do not depend on a later passive effect. Pending-comment tint uses revision,
 side, and line identity so similarly numbered lines in another projection do
@@ -612,9 +643,17 @@ Changes/Files/Comments browser, including commit history inside Changes, as
 well as the review endpoints. An
 older server with only `git-status-enhanced` receives the basic status,
 working-tree diff, and independently advertised Check/Pull/Push shell; the
-client makes no unsupported browse/review requests. Ignore whitespace and
-selected-revision-to-HEAD comparison remain gated by
-`git-source-review-projections`.
+client makes no unsupported browse/review requests. Ignore whitespace and the
+direct selected-tree-to-HEAD per-file action remain gated by the unchanged
+`git-source-review-projections` meaning.
+
+Inclusive **To HEAD** is separately owned by permanent capability ID 40,
+`git-inclusive-to-head`, and its `range-to-head` list/diff routes. The release
+corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0` lacks both the prior direct
+routes and the inclusive routes. Without ID 40, the client hides inclusive
+**To HEAD** and makes no range request; an independently available direct action
+continues to use only the prior capability and routes. Existing capability
+meanings and older capable behavior remain unchanged.
 
 `git-working-tree-files` (permanent ID 38, version-implied from `0.7.1`) owns the
 working-tree inventory, persistent untracked-cache route family, and

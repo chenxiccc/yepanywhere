@@ -124,6 +124,7 @@ export type GitDiffSource =
   | { kind: "working-tree-history" }
   | { kind: "commit"; sha: string }
   | { kind: "comparison"; baseSha: string; headSha: string }
+  | { kind: "inclusive-comparison"; baseSha: string; headSha: string }
   | { kind: "file-projection"; mode: GitFileDiffMode };
 
 const WORKTREE_SOURCE: GitDiffSource = { kind: "worktree" };
@@ -154,8 +155,8 @@ function sourceFromPrimitives(
 ): GitDiffSource {
   return kind === "commit"
     ? { kind: "commit", sha: baseSha }
-    : kind === "comparison"
-      ? { kind: "comparison", baseSha, headSha }
+    : kind === "comparison" || kind === "inclusive-comparison"
+      ? { kind, baseSha, headSha }
       : kind === "file-projection"
         ? { kind: "file-projection", mode: fileDiffMode }
         : kind === "working-tree-history"
@@ -180,8 +181,12 @@ function fetchDiffForSource(
       ...(ignoreWhitespace ? { ignoreWhitespace: true } : {}),
     });
   }
-  if (source.kind === "comparison") {
-    return api.getGitComparisonDiff(projectId, {
+  if (source.kind === "comparison" || source.kind === "inclusive-comparison") {
+    const getDiff =
+      source.kind === "inclusive-comparison"
+        ? api.getGitInclusiveComparisonDiff
+        : api.getGitComparisonDiff;
+    return getDiff(projectId, {
       baseSha: source.baseSha,
       headSha: source.headSha,
       path: file.path,
@@ -226,7 +231,7 @@ function commentRevisionsForSource(source: GitDiffSource):
     };
     return { old: revision, new: revision };
   }
-  if (source.kind === "comparison") {
+  if (source.kind === "comparison" || source.kind === "inclusive-comparison") {
     return {
       old: { kind: "sha", sha: source.baseSha },
       new: { kind: "sha", sha: source.headSha },
@@ -445,10 +450,13 @@ export function GitDiffBody({
   const sourceBaseSha =
     source.kind === "commit"
       ? source.sha
-      : source.kind === "comparison"
+      : source.kind === "comparison" || source.kind === "inclusive-comparison"
         ? source.baseSha
         : "";
-  const sourceHeadSha = source.kind === "comparison" ? source.headSha : "";
+  const sourceHeadSha =
+    source.kind === "comparison" || source.kind === "inclusive-comparison"
+      ? source.headSha
+      : "";
   const sourceFileDiffMode =
     source.kind === "file-projection" ? source.mode : "worktree";
   const requestKey = JSON.stringify([
@@ -558,7 +566,11 @@ export function GitDiffBody({
       })
       .catch((err) => {
         if (!cancelled) {
-          if (ignoreWhitespace || sourceKind === "comparison") {
+          if (
+            ignoreWhitespace ||
+            sourceKind === "comparison" ||
+            sourceKind === "inclusive-comparison"
+          ) {
             onProjectionRequestFailure?.();
           }
           const message = err.message || t("gitStatusLoadDiffFailed");
@@ -720,10 +732,13 @@ function GitDiffContent({
   const sourceBaseSha =
     source.kind === "commit"
       ? source.sha
-      : source.kind === "comparison"
+      : source.kind === "comparison" || source.kind === "inclusive-comparison"
         ? source.baseSha
         : "";
-  const sourceHeadSha = source.kind === "comparison" ? source.headSha : "";
+  const sourceHeadSha =
+    source.kind === "comparison" || source.kind === "inclusive-comparison"
+      ? source.headSha
+      : "";
   const sourceFileDiffMode =
     source.kind === "file-projection" ? source.mode : "worktree";
   const commentRevisions = useMemo(
@@ -857,7 +872,11 @@ function GitDiffContent({
         );
         return result;
       } catch (err) {
-        if (ignoreWhitespace || sourceKind === "comparison") {
+        if (
+          ignoreWhitespace ||
+          sourceKind === "comparison" ||
+          sourceKind === "inclusive-comparison"
+        ) {
           onProjectionRequestFailure?.();
         }
         const message =

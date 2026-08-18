@@ -25,6 +25,8 @@ const getGitCommit = vi.fn();
 const getGitCommitDiff = vi.fn();
 const getGitComparison = vi.fn();
 const getGitComparisonDiff = vi.fn();
+const getGitInclusiveComparison = vi.fn();
+const getGitInclusiveComparisonDiff = vi.fn();
 const getGitDiff = vi.fn();
 const getGitUntrackedFolder = vi.fn();
 const getGitCommitSearchManifest = vi.fn();
@@ -38,6 +40,10 @@ vi.mock("../api/client", () => ({
     getGitCommitDiff: (...args: unknown[]) => getGitCommitDiff(...args),
     getGitComparison: (...args: unknown[]) => getGitComparison(...args),
     getGitComparisonDiff: (...args: unknown[]) => getGitComparisonDiff(...args),
+    getGitInclusiveComparison: (...args: unknown[]) =>
+      getGitInclusiveComparison(...args),
+    getGitInclusiveComparisonDiff: (...args: unknown[]) =>
+      getGitInclusiveComparisonDiff(...args),
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
     getGitUntrackedFolder: (...args: unknown[]) =>
       getGitUntrackedFolder(...args),
@@ -152,11 +158,40 @@ function primeApis() {
     headSha: HEAD_SHA,
     files: [
       {
+        path: "src/x.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 2,
+        linesDeleted: 1,
+      },
+    ],
+  });
+  getGitInclusiveComparison.mockResolvedValue({
+    selectedSha: SHA,
+    baseSha: DIRECT_SHA,
+    headSha: HEAD_SHA,
+    files: [
+      {
         path: "src/cumulative.ts",
         status: "M",
         staged: false,
         linesAdded: 2,
         linesDeleted: 1,
+      },
+    ],
+  });
+  getGitInclusiveComparisonDiff.mockResolvedValue({
+    diffHtml:
+      `<pre class="shiki"><code>` +
+      `<span class="line line-inserted" data-diff-line="0">+inclusive</span>` +
+      `</code></pre>`,
+    structuredPatch: [
+      {
+        oldStart: 1,
+        oldLines: 0,
+        newStart: 1,
+        newLines: 1,
+        lines: ["+inclusive"],
       },
     ],
   });
@@ -247,12 +282,17 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/linked.ts");
     await waitFor(() =>
       expect(
-        document.querySelector(".commit-file-item.selected")?.textContent,
-      ).toContain("src/linked.ts"),
+        document.querySelector('[data-source-path="src/linked.ts"]'),
+      ).not.toBeNull(),
     );
+    expect(
+      document
+        .querySelector(".commit-file-item.selected")
+        ?.querySelector("[data-source-path]")
+        ?.getAttribute("data-source-path"),
+    ).toBe("src/linked.ts");
     await waitFor(() =>
       expect(getGitCommitDiff).toHaveBeenCalledWith(
         "p1",
@@ -291,7 +331,7 @@ describe("CommitBrowser", () => {
     ).toContain("ccccccc");
   });
 
-  it("toggles a direct selected-revision-to-HEAD comparison", async () => {
+  it("toggles an inclusive selected-commit-through-HEAD comparison", async () => {
     primeApis();
     render(
       <MemoryRouter>
@@ -299,6 +339,7 @@ describe("CommitBrowser", () => {
           projectId="p1"
           isWideScreen={true}
           supportsProjections
+          supportsInclusiveToHead
           t={t}
         />
       </MemoryRouter>,
@@ -310,12 +351,12 @@ describe("CommitBrowser", () => {
     );
 
     expect(await screen.findByText("src/cumulative.ts")).toBeDefined();
-    expect(getGitComparison).toHaveBeenCalledWith("p1", SHA);
+    expect(getGitInclusiveComparison).toHaveBeenCalledWith("p1", SHA);
     await waitFor(() =>
-      expect(getGitComparisonDiff).toHaveBeenCalledWith(
+      expect(getGitInclusiveComparisonDiff).toHaveBeenCalledWith(
         "p1",
         expect.objectContaining({
-          baseSha: SHA,
+          baseSha: DIRECT_SHA,
           headSha: HEAD_SHA,
           path: "src/cumulative.ts",
           status: "M",
@@ -329,33 +370,69 @@ describe("CommitBrowser", () => {
     ).toBe("true");
   });
 
-  it("makes no comparison request when the server lacks the projection", async () => {
+  it("keeps direct selected-tree comparison as a labelled per-file action", async () => {
     primeApis();
-    const onProjectionUnavailable = vi.fn();
     render(
       <MemoryRouter>
         <CommitBrowser
           projectId="p1"
           isWideScreen={true}
-          onProjectionUnavailable={onProjectionUnavailable}
+          supportsProjections
+          supportsInclusiveToHead
           t={t}
         />
       </MemoryRouter>,
     );
 
     await screen.findByText("src/x.ts");
+    const filePath = document.querySelector('[data-source-path="src/x.ts"]');
+    const fileButton = filePath?.closest("button");
+    expect(fileButton).not.toBeNull();
+    fireEvent.contextMenu(fileButton as HTMLButtonElement, {
+      clientX: 20,
+      clientY: 20,
+    });
     fireEvent.click(
-      screen.getByRole("button", { name: "sourceCompareToHead" }),
+      await screen.findByRole("menuitem", {
+        name: "sourceCompareFileTreeToHead",
+      }),
     );
 
-    expect(onProjectionUnavailable).toHaveBeenCalled();
-    expect(getGitComparison).not.toHaveBeenCalled();
-    expect(getGitComparisonDiff).not.toHaveBeenCalled();
+    expect(getGitComparison).toHaveBeenCalledWith("p1", SHA);
+    await waitFor(() =>
+      expect(getGitComparisonDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+          baseSha: SHA,
+          headSha: HEAD_SHA,
+          path: "src/x.ts",
+        }),
+      ),
+    );
+    expect(getGitInclusiveComparison).not.toHaveBeenCalled();
+  });
+
+  it("hides inclusive comparison when the server lacks its capability", async () => {
+    primeApis();
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/x.ts");
+    expect(
+      screen.queryByRole("button", { name: "sourceCompareToHead" }),
+    ).toBeNull();
+    expect(getGitInclusiveComparison).not.toHaveBeenCalled();
+    expect(getGitInclusiveComparisonDiff).not.toHaveBeenCalled();
   });
 
   it("returns to the ordinary commit diff when a projection request fails", async () => {
     primeApis();
-    getGitComparison.mockRejectedValueOnce(new Error("server is stale"));
+    getGitInclusiveComparison.mockRejectedValueOnce(
+      new Error("server is stale"),
+    );
     const onProjectionUnavailable = vi.fn();
     render(
       <MemoryRouter>
@@ -363,6 +440,7 @@ describe("CommitBrowser", () => {
           projectId="p1"
           isWideScreen={true}
           supportsProjections
+          supportsInclusiveToHead
           onProjectionUnavailable={onProjectionUnavailable}
           t={t}
         />
@@ -381,6 +459,44 @@ describe("CommitBrowser", () => {
         .getByRole("button", { name: "sourceCompareToHead" })
         .getAttribute("aria-pressed"),
     ).toBe("false");
+  });
+
+  it("returns to the commit diff when a direct per-file projection fails", async () => {
+    primeApis();
+    getGitComparisonDiff.mockRejectedValueOnce(new Error("server is stale"));
+    const onProjectionUnavailable = vi.fn();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          supportsProjections
+          supportsInclusiveToHead
+          onProjectionUnavailable={onProjectionUnavailable}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/x.ts");
+    await waitFor(() => expect(getGitCommitDiff).toHaveBeenCalled());
+    getGitCommitDiff.mockClear();
+    const filePath = document.querySelector('[data-source-path="src/x.ts"]');
+    const fileButton = filePath?.closest("button");
+    expect(fileButton).not.toBeNull();
+    fireEvent.contextMenu(fileButton as HTMLButtonElement, {
+      clientX: 20,
+      clientY: 20,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "sourceCompareFileTreeToHead",
+      }),
+    );
+
+    await waitFor(() => expect(onProjectionUnavailable).toHaveBeenCalled());
+    await waitFor(() => expect(getGitCommitDiff).toHaveBeenCalled());
+    expect(getGitInclusiveComparison).not.toHaveBeenCalled();
   });
 
   it("requests the whitespace projection for the active commit diff", async () => {

@@ -79,6 +79,15 @@ open. Releases `0.6.2` and `0.7.0` lack the route. Without the permanent
 capability, upstream remains inert and the client sends no incoming-commit
 request. It is version-implied from `0.7.1` and owns ID 39.
 
+`git-inclusive-to-head` owns inclusive selected-commit-through-pinned-HEAD list
+and per-file diff routes. The core corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and
+`v0.7.0` lacks them. Without permanent ID 40, the client hides inclusive **To
+HEAD** and sends no range request. The existing
+`git-source-review-projections` capability retains its direct
+selected-tree-to-HEAD and ignore-whitespace meaning; a separately available
+direct per-file action continues to use only those older routes. It is
+version-implied from `0.7.1`.
+
 `codex-reasoning-summary-setting` owns `settings.codexReasoningSummary` on
 `GET /api/settings` and `PUT /api/settings`. The ordinary optional-feature
 corpus was `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other stable
@@ -273,9 +282,10 @@ the same ledger:
 | 37 | server | 0.7.1 | `synthetic-archive-command` |
 | 38 | server | 0.7.1 | `git-working-tree-files` |
 | 39 | server | 0.7.1 | `git-incoming-commits` |
+| 40 | server | 0.7.1 | `git-inclusive-to-head` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 40; retired rows stay in the ledger as reserved IDs.
+ID 41; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

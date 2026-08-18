@@ -193,7 +193,15 @@ describe("api git facade", () => {
       ignoreWhitespace: true,
     });
     await api.getGitComparison("project-a", "abc123");
+    await api.getGitInclusiveComparison("project-a", "abc123");
     await api.getGitComparisonDiff("project-a", {
+      baseSha: "abc123",
+      headSha: "def456",
+      path: "src/a.ts",
+      status: "modified",
+      ignoreWhitespace: true,
+    });
+    await api.getGitInclusiveComparisonDiff("project-a", {
       baseSha: "abc123",
       headSha: "def456",
       path: "src/a.ts",
@@ -261,7 +269,23 @@ describe("api git facade", () => {
         body: undefined,
       },
       {
+        url: "/api/projects/project-a/git/range-to-head/abc123",
+        method: "GET",
+        body: undefined,
+      },
+      {
         url: "/api/projects/project-a/git/compare-diff",
+        method: "POST",
+        body: JSON.stringify({
+          baseSha: "abc123",
+          headSha: "def456",
+          path: "src/a.ts",
+          status: "modified",
+          ignoreWhitespace: true,
+        }),
+      },
+      {
+        url: "/api/projects/project-a/git/range-to-head-diff",
         method: "POST",
         body: JSON.stringify({
           baseSha: "abc123",
