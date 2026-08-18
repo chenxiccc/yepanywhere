@@ -425,7 +425,11 @@ export default async function globalSetup() {
   mkdirSync(sourceControlProjectPath, { recursive: true });
   writeFileSync(
     join(sourceControlProjectPath, "README.md"),
-    "# Source Control browser fixture\n",
+    [
+      "# Source Control browser fixture",
+      "prefix/that/is/intentionally/long/enough/to/be/truncated/while/searching/ZebraNeedle/and/a/long/trailing/suffix/for/the/source/control/result",
+      "",
+    ].join("\n"),
   );
   execFileSync("git", ["init", "--initial-branch=main"], {
     cwd: sourceControlProjectPath,

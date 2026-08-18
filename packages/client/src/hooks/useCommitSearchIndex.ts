@@ -1,7 +1,9 @@
-import type { GitRecentCommit } from "@yep-anywhere/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
-import { CommitSearchIndex } from "../lib/commitSearchIndex";
+import {
+  CommitSearchIndex,
+  type CommitSearchResult,
+} from "../lib/commitSearchIndex";
 
 const SEARCH_RECORD_BATCH_SIZE = 20;
 
@@ -17,7 +19,7 @@ interface CommitSearchCacheEntry {
 const commitSearchCache = new Map<string, CommitSearchCacheEntry>();
 
 export interface CommitSearchIndexState {
-  results: GitRecentCommit[];
+  results: CommitSearchResult[];
   indexing: boolean;
   indexedCount: number;
   totalCount: number;

@@ -3,9 +3,34 @@ import type {
   GitRecentCommit,
 } from "@yep-anywhere/shared";
 
+export type CommitSearchMatchField =
+  | "subject"
+  | "author"
+  | "shortHash"
+  | "hash"
+  | "date"
+  | "change";
+
+export interface CommitSearchMatch {
+  field: CommitSearchMatchField;
+  text: string;
+}
+
+export interface CommitSearchResult {
+  commit: GitRecentCommit;
+  match: CommitSearchMatch;
+}
+
+interface SearchValue {
+  field: Exclude<CommitSearchMatchField, "change">;
+  text: string;
+  lower: string;
+}
+
 interface SearchDocument {
   commit: GitRecentCommit;
-  metadataLower: string;
+  metadata: SearchValue[];
+  deltaText: string;
   deltaLower: string;
 }
 
@@ -27,15 +52,14 @@ export class CommitSearchIndex {
         commit.hash,
         {
           commit,
-          metadataLower: [
-            commit.hash,
-            commit.shortHash,
-            commit.subject,
-            commit.authorName,
-            commit.authorDate,
-          ]
-            .join("\n")
-            .toLowerCase(),
+          metadata: [
+            searchValue("subject", commit.subject),
+            searchValue("author", commit.authorName),
+            searchValue("shortHash", commit.shortHash),
+            searchValue("hash", commit.hash),
+            searchValue("date", commit.authorDate),
+          ],
+          deltaText: "",
           deltaLower: "",
         },
       ]),
@@ -47,15 +71,16 @@ export class CommitSearchIndex {
     for (const record of records) {
       const document = this.documents.get(record.hash);
       if (!document) continue;
+      document.deltaText = record.deltaText;
       document.deltaLower = record.deltaText.toLowerCase();
       for (const [query, matches] of this.queryCache) {
-        if (matchesDocument(document, query)) matches.add(record.hash);
+        if (findDocumentMatch(document, query)) matches.add(record.hash);
         else matches.delete(record.hash);
       }
     }
   }
 
-  search(rawQuery: string): GitRecentCommit[] {
+  search(rawQuery: string): CommitSearchResult[] {
     const query = rawQuery.trim().toLowerCase();
     if (!query) return [];
 
@@ -66,16 +91,18 @@ export class CommitSearchIndex {
       for (const hash of this.order) {
         if (prefixMatches && !prefixMatches.has(hash)) continue;
         const document = this.documents.get(hash);
-        if (document && matchesDocument(document, query)) matches.add(hash);
+        if (document && findDocumentMatch(document, query)) matches.add(hash);
       }
       this.queryCache.set(query, matches);
     }
 
-    const results: GitRecentCommit[] = [];
+    const results: CommitSearchResult[] = [];
     for (const hash of this.order) {
       if (!matches.has(hash)) continue;
-      const commit = this.documents.get(hash)?.commit;
-      if (commit) results.push(commit);
+      const document = this.documents.get(hash);
+      if (!document) continue;
+      const match = findDocumentMatch(document, query);
+      if (match) results.push({ commit: document.commit, match });
     }
     return results;
   }
@@ -89,9 +116,27 @@ export class CommitSearchIndex {
   }
 }
 
-function matchesDocument(document: SearchDocument, query: string): boolean {
-  return (
-    document.metadataLower.includes(query) ||
-    document.deltaLower.includes(query)
-  );
+function searchValue(field: SearchValue["field"], text: string): SearchValue {
+  return { field, text, lower: text.toLowerCase() };
+}
+
+function findDocumentMatch(
+  document: SearchDocument,
+  query: string,
+): CommitSearchMatch | null {
+  for (const value of document.metadata) {
+    if (value.lower.includes(query)) {
+      return { field: value.field, text: value.text };
+    }
+  }
+
+  const start = document.deltaLower.indexOf(query);
+  if (start < 0) return null;
+  const lineStart = document.deltaText.lastIndexOf("\n", start - 1) + 1;
+  const nextNewline = document.deltaText.indexOf("\n", start + query.length);
+  const lineEnd = nextNewline < 0 ? document.deltaText.length : nextNewline;
+  return {
+    field: "change",
+    text: document.deltaText.slice(lineStart, lineEnd),
+  };
 }

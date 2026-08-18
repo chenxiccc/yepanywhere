@@ -9,6 +9,8 @@ const sourceControlProjectPath = join(
 );
 const projectId = Buffer.from(sourceControlProjectPath).toString("base64url");
 const cleanLandingKey = "yep-anywhere-source-control-clean-landing";
+const longSearchLine =
+  "prefix/that/is/intentionally/long/enough/to/be/truncated/while/searching/ZebraNeedle/and/a/long/trailing/suffix/for/the/source/control/result";
 
 test.use({ serviceWorkers: "block" });
 
@@ -103,3 +105,67 @@ test("clean Changes landing and latest-commit preference stay distinct", async (
   await expect(page.getByText("No uncommitted changes")).toBeVisible();
   await capture(page, "source-control-clean-mobile-375x812.png");
 });
+
+test("commit search keeps the matching preview text visible", async ({
+  page,
+  baseURL,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await openSourceControl(page, baseURL);
+  await page.getByRole("button", { name: "Commit history" }).click();
+  await expect(page).toHaveURL(/(?:\?|&)history=1/);
+
+  const search = page.getByPlaceholder("Search commit changes…");
+  await expect(search).toBeVisible();
+  await search.fill("Z");
+  await expect(page.getByText("Z", { exact: true })).toHaveCount(1);
+  await search.fill("ZebraNeedle");
+
+  const match = page.getByText("ZebraNeedle", { exact: true });
+  const context = match.locator("..");
+  await expect(match).toHaveText("ZebraNeedle");
+  await expect(context).toHaveText(longSearchLine);
+  await expect(context).toHaveAttribute("data-tooltip", longSearchLine);
+  await expectMatchInsidePreview(context, match);
+  await capture(page, "source-control-search-desktop-1000x600.png");
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  const historyParent = page.getByRole("button", { name: "Commit history" });
+  if (await historyParent.isVisible()) await historyParent.click();
+  await expect(context).toBeVisible();
+  await expectMatchInsidePreview(context, match);
+  await capture(page, "source-control-search-mobile-375x812.png");
+});
+
+async function expectMatchInsidePreview(
+  preview: ReturnType<Page["locator"]>,
+  match: ReturnType<Page["locator"]>,
+) {
+  const previewBox = await preview.boundingBox();
+  const matchBox = await match.boundingBox();
+  expect(previewBox).not.toBeNull();
+  expect(matchBox).not.toBeNull();
+  if (!previewBox || !matchBox) return;
+  expect(matchBox.x).toBeGreaterThanOrEqual(previewBox.x - 0.5);
+  expect(matchBox.x + matchBox.width).toBeLessThanOrEqual(
+    previewBox.x + previewBox.width + 0.5,
+  );
+  await expect
+    .poll(() =>
+      preview.evaluate((element) =>
+        Array.from(element.children).some((child) => {
+          const measurement = child.cloneNode(true) as HTMLElement;
+          measurement.style.position = "fixed";
+          measurement.style.visibility = "hidden";
+          measurement.style.width = "max-content";
+          measurement.style.maxWidth = "none";
+          measurement.style.flex = "none";
+          document.body.append(measurement);
+          const naturalWidth = measurement.getBoundingClientRect().width;
+          measurement.remove();
+          return naturalWidth > child.getBoundingClientRect().width + 0.5;
+        }),
+      ),
+    )
+    .toBe(true);
+}

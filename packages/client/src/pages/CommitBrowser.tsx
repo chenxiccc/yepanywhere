@@ -109,6 +109,7 @@ export function CommitBrowser({
     setSearchIndexRequested,
     searchActive,
     searchIndex,
+    commitSearchMatches,
     selectedKey,
     setSelectedKey,
     selectedIsWorkingTree,
@@ -315,6 +316,7 @@ export function CommitBrowser({
             searchError={searchIndex.error}
             searchActive={searchActive}
             displayedCommits={displayedCommits}
+            commitSearchMatches={commitSearchMatches}
             displayedKeys={displayedKeys}
             selectedKey={selectedKey}
             selectedIsWorkingTree={selectedIsWorkingTree}

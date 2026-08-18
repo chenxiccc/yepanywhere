@@ -6,9 +6,12 @@ import {
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
+import { SearchMatchText } from "../components/SearchMatchText";
 import { SourceShortcutHelp } from "../components/SourceShortcutHelp";
 import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import { writeClipboardText } from "../lib/clipboard";
+import type { CommitSearchMatch } from "../lib/commitSearchIndex";
+import { findTextMatch } from "../lib/searchMatch";
 import type { TranslationFn } from "../i18n";
 import { WORKING_TREE_KEY } from "./useCommitBrowserModel";
 import styles from "./CommitRevisionPane.module.css";
@@ -29,6 +32,7 @@ export function CommitRevisionPane({
   searchError,
   searchActive,
   displayedCommits,
+  commitSearchMatches,
   selectedKey,
   selectedIsWorkingTree,
   showWorkingTreeRevision,
@@ -60,6 +64,7 @@ export function CommitRevisionPane({
   searchError: string | null;
   searchActive: boolean;
   displayedCommits: GitRecentCommit[];
+  commitSearchMatches: ReadonlyMap<string, CommitSearchMatch>;
   displayedKeys: string[];
   selectedKey: string | null;
   selectedIsWorkingTree: boolean;
@@ -283,6 +288,13 @@ export function CommitRevisionPane({
                 const targetProps = revisionMenu.targetProps(menuActions, () =>
                   onOpenRevision(commit.hash),
                 );
+                const match = commitSearchMatches.get(commit.hash);
+                const formattedDate = formatCommitDate(commit.authorDate);
+                const matchContext = getCommitMatchContext(
+                  match,
+                  searchQuery,
+                  formattedDate,
+                );
                 return (
                   <li
                     key={commit.hash}
@@ -305,9 +317,14 @@ export function CommitRevisionPane({
                       }}
                     >
                       <span className="commit-subject-row">
-                        <span className="commit-subject" title={commit.subject}>
-                          {commit.subject}
-                        </span>
+                        <SearchMatchText
+                          className="commit-subject"
+                          text={commit.subject}
+                          query={
+                            match?.field === "subject" ? searchQuery : undefined
+                          }
+                          title={commit.subject}
+                        />
                         {commentCount > 0 && (
                           <span
                             className="source-comment-badge"
@@ -320,14 +337,41 @@ export function CommitRevisionPane({
                         )}
                       </span>
                       <span className="commit-meta">
-                        <span className="commit-hash">{commit.shortHash}</span>
-                        <span className="commit-author">
-                          {commit.authorName}
-                        </span>
-                        <span className="commit-date">
-                          {formatCommitDate(commit.authorDate)}
-                        </span>
+                        <SearchMatchText
+                          className="commit-hash"
+                          text={commit.shortHash}
+                          query={
+                            match?.field === "shortHash"
+                              ? searchQuery
+                              : undefined
+                          }
+                        />
+                        <SearchMatchText
+                          className="commit-author"
+                          text={commit.authorName}
+                          query={
+                            match?.field === "author" ? searchQuery : undefined
+                          }
+                        />
+                        <SearchMatchText
+                          className="commit-date"
+                          text={formattedDate}
+                          query={
+                            match?.field === "date" &&
+                            findTextMatch(formattedDate, searchQuery)
+                              ? searchQuery
+                              : undefined
+                          }
+                        />
                       </span>
+                      {matchContext && (
+                        <SearchMatchText
+                          className={styles.matchContext}
+                          text={matchContext}
+                          query={searchQuery}
+                          title={matchContext}
+                        />
+                      )}
                     </a>
                     <SourceRowMenuTrigger
                       actions={menuActions}
@@ -366,6 +410,19 @@ function isModifiedLinkActivation(
     event.shiftKey ||
     event.altKey
   );
+}
+
+function getCommitMatchContext(
+  match: CommitSearchMatch | undefined,
+  query: string,
+  formattedDate: string,
+): string | null {
+  if (!match) return null;
+  if (match.field === "change" || match.field === "hash") return match.text;
+  if (match.field === "date" && !findTextMatch(formattedDate, query)) {
+    return match.text;
+  }
+  return null;
 }
 
 function formatCommitDate(iso: string): string {

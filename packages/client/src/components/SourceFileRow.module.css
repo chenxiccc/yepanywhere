@@ -14,36 +14,6 @@
   text-overflow: clip;
 }
 
-.matchPrefix,
-.matchSuffix {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.matchPrefix {
-  flex: 0 1 auto;
-  direction: rtl;
-  text-align: left;
-  unicode-bidi: plaintext;
-}
-
-.match {
-  flex: 0 0 auto;
-  color: inherit;
-  background: color-mix(
-    in srgb,
-    var(--color-warning, #d29922) 42%,
-    transparent
-  );
-  border-radius: 2px;
-}
-
-.matchSuffix {
-  flex: 1 1 auto;
-}
-
 @media (max-width: 600px) {
   .path {
     display: -webkit-box;
@@ -55,14 +25,6 @@
 
   .pathWithMatch {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-  }
-
-  .matchPrefix,
-  .matchSuffix {
-    overflow: visible;
-    white-space: normal;
   }
 }
 

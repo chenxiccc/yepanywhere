@@ -66,7 +66,20 @@ export function useCommitBrowserModel({
     searchQuery,
     searchIndexRequested,
   );
-  const searchedOrRecentCommits = searchActive ? searchIndex.results : commits;
+
+  useEffect(() => {
+    if (!isWideScreen && searchQuery.trim().length > 0) setSelectedKey(null);
+  }, [isWideScreen, searchQuery]);
+  const searchedOrRecentCommits = searchActive
+    ? searchIndex.results.map((result) => result.commit)
+    : commits;
+  const commitSearchMatches = useMemo(
+    () =>
+      new Map(
+        searchIndex.results.map((result) => [result.commit.hash, result.match]),
+      ),
+    [searchIndex.results],
+  );
   const selectedIsWorkingTree = selectedKey === WORKING_TREE_KEY;
   const selectedSha =
     selectedKey && !selectedIsWorkingTree ? selectedKey : null;
@@ -134,7 +147,9 @@ export function useCommitBrowserModel({
   // the same on phone so it reaches the useful newest commit instead of an
   // empty state. Explicit and user-selected revisions remain authoritative.
   useEffect(() => {
-    if ((!isWideScreen && !status?.isClean) || !defaultKey) return;
+    if (searchActive || (!isWideScreen && !status?.isClean) || !defaultKey) {
+      return;
+    }
     setSelectedKey((current) =>
       current &&
       (displayedKeys.includes(current) ||
@@ -142,7 +157,14 @@ export function useCommitBrowserModel({
         ? current
         : defaultKey,
     );
-  }, [defaultKey, displayedKeys, initialSha, isWideScreen, status?.isClean]);
+  }, [
+    defaultKey,
+    displayedKeys,
+    initialSha,
+    isWideScreen,
+    searchActive,
+    status?.isClean,
+  ]);
 
   const loadMore = useCallback(async () => {
     try {
@@ -321,6 +343,7 @@ export function useCommitBrowserModel({
     setSearchIndexRequested,
     searchActive,
     searchIndex,
+    commitSearchMatches,
     selectedKey,
     setSelectedKey,
     selectedIsWorkingTree,

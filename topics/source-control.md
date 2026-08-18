@@ -415,13 +415,28 @@ Source Control capability meanings do not expand.
 
 ## Search and compatibility
 
+Every Source Control filter activates on the first non-whitespace character.
+Filename filters, commit-message and metadata search, and indexed changed-path
+or changed-text search share one case-insensitive match projection. It preserves
+source casing, keeps the matched substring highlighted, and independently
+shrinks leading and trailing context with ellipses so narrow rows do not hide
+the match. The complete original value or changed line remains available from
+the result's tooltip.
+
+Commit search preserves why each result matched: subject, author, short or full
+hash, date, changed path, or changed line. The row renders that exact field or
+line instead of returning an unexplained matching commit. On phone layouts, an
+active query keeps the revision list visible until the user explicitly opens a
+result; clean-tree default selection cannot replace it with Working tree
+detail.
+
 Working Tree search owns the complete returned current-content corpus; rendering
 or path-prefix collapse must not become a search-coverage limit. Commit-delta
 search builds an on-demand client corpus from lightweight history plus bounded
 changed-path/line batches. Once a commit corpus is present, typing performs no
 network request and starts no Git process. Browser-lifetime reuse is
-implemented; IndexedDB reuse across browser restarts remains optional future
-work. Focused completions and rendered match-context tooltips remain pending.
+implemented; IndexedDB reuse across browser restarts and focused completions
+remain optional future work.
 
 Working Tree starts the ordinary project-file request independently of optional
 blame. Readable content renders as soon as the file request returns and never

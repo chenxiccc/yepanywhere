@@ -2,6 +2,8 @@ import type { ReviewSiteStateSummary } from "@yep-anywhere/shared";
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import type { MessageKey, TranslationFn } from "../i18n";
+import { findTextMatch } from "../lib/searchMatch";
+import { SearchMatchText } from "./SearchMatchText";
 import styles from "./SourceFileRow.module.css";
 
 type SourceFileRowButtonProps = Omit<
@@ -37,54 +39,32 @@ export function SourceFilePath({
   ...spanProps
 }: HTMLAttributes<HTMLSpanElement> & { query?: string }) {
   const text = typeof children === "string" ? children : null;
-  const match = text ? findPathMatch(text, query) : null;
   const pathClassName = [
     styles.path,
-    match ? styles.pathWithMatch : "",
+    text && findTextMatch(text, query) ? styles.pathWithMatch : "",
     className,
   ]
     .filter(Boolean)
     .join(" ");
 
-  if (!text || !match) {
+  if (!text) {
     return (
-      <span
-        {...spanProps}
-        className={pathClassName}
-        data-source-path={text ?? undefined}
-      >
+      <span {...spanProps} className={pathClassName}>
         {children}
       </span>
     );
   }
 
   return (
-    <span {...spanProps} className={pathClassName} data-source-path={text}>
-      {match.prefix && (
-        <span className={styles.matchPrefix}>{match.prefix}</span>
-      )}
-      <mark className={styles.match}>{match.text}</mark>
-      {match.suffix && (
-        <span className={styles.matchSuffix}>{match.suffix}</span>
-      )}
-    </span>
+    <SearchMatchText
+      {...spanProps}
+      className={pathClassName}
+      data-source-path={text}
+      text={text}
+      query={query}
+      wrapMatchOnNarrow
+    />
   );
-}
-
-function findPathMatch(
-  path: string,
-  rawQuery: string | undefined,
-): { prefix: string; text: string; suffix: string } | null {
-  const query = rawQuery?.trim();
-  if (!query) return null;
-  const start = path.toLowerCase().indexOf(query.toLowerCase());
-  if (start < 0) return null;
-  const end = start + query.length;
-  return {
-    prefix: path.slice(0, start),
-    text: path.slice(start, end),
-    suffix: path.slice(end),
-  };
 }
 
 const STATUS_LABEL_KEYS: Record<string, MessageKey> = {

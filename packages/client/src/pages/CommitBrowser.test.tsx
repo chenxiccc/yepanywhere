@@ -588,6 +588,61 @@ describe("CommitBrowser", () => {
     expect(document.querySelector(".commit-revisions-column")).toBeNull();
   });
 
+  it("keeps clean mobile commit search in the revision list", async () => {
+    primeApis();
+    getGitCommitSearchManifest.mockResolvedValue({
+      head: SHA,
+      commits: [
+        {
+          hash: SHA,
+          shortHash: "aaaaaaa",
+          subject: "first commit",
+          authorName: "Dev",
+          authorDate: "2026-07-26T00:00:00Z",
+        },
+      ],
+    });
+    getGitCommitSearchRecords.mockResolvedValue({
+      records: [{ hash: SHA, deltaText: "" }],
+    });
+    const historyBack = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => {});
+
+    try {
+      render(
+        <MemoryRouter>
+          <CommitBrowser
+            projectId="p1"
+            status={cleanStatus()}
+            isWideScreen={false}
+            t={t}
+          />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
+      fireEvent.click(
+        screen.getByRole("button", { name: "sourceCommitHistory" }),
+      );
+      expect(historyBack).toHaveBeenCalled();
+      act(() => {
+        window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      });
+
+      const search = await screen.findByPlaceholderText("sourceSearchCommits");
+      fireEvent.change(search, { target: { value: "f" } });
+
+      const highlighted = await screen.findByText("f", { exact: true });
+      expect(highlighted.tagName).toBe("MARK");
+      expect(screen.getByPlaceholderText("sourceSearchCommits")).toBeDefined();
+      expect(screen.queryByTestId("working-tree-browser")).toBeNull();
+    } finally {
+      historyBack.mockRestore();
+      window.history.replaceState(null, "");
+    }
+  });
+
   it("falls back to Working tree when a clean repository has no commits", async () => {
     primeApis();
     getGitCommits.mockResolvedValue({ commits: [], hasMore: false });
@@ -955,7 +1010,7 @@ describe("CommitBrowser", () => {
       {
         hash: OTHER,
         shortHash: "ccccccc",
-        subject: "touched needle",
+        subject: "deep change",
         authorName: "Dev",
         authorDate: "2026-07-19T00:00:00Z",
       },
@@ -968,7 +1023,7 @@ describe("CommitBrowser", () => {
       (_projectId: string, shas: string[]) => ({
         records: shas.map((hash) => ({
           hash,
-          deltaText: hash === OTHER ? "src/deep.ts\nneedle" : "",
+          deltaText: hash === OTHER ? "src/deep.ts\nmatching Needle text" : "",
         })),
       }),
     );
@@ -987,7 +1042,12 @@ describe("CommitBrowser", () => {
       target: { value: "needle" },
     });
 
-    await screen.findByText("touched needle");
+    await screen.findByText("deep change");
+    const highlightedChange = screen.getByText("Needle");
+    expect(highlightedChange.tagName).toBe("MARK");
+    expect(highlightedChange.parentElement?.textContent).toBe(
+      "matching Needle text",
+    );
     expect(screen.queryByText("first commit")).toBeNull();
     expect(getGitCommitSearchManifest).toHaveBeenCalledWith("p1");
     expect(getGitCommitSearchRecords).toHaveBeenCalled();
@@ -1023,7 +1083,8 @@ describe("CommitBrowser", () => {
       target: { value: "needle" },
     });
 
-    await screen.findByText("touched needle");
+    await screen.findByTitle("touched needle");
+    expect(screen.getByText("needle").tagName).toBe("MARK");
   });
 
   it("jumps to the older commit via the commit-jump selector", async () => {
