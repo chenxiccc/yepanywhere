@@ -65,12 +65,19 @@ describe("ProviderChildSessionPage", () => {
     expect(
       screen.getByText("Read-only. This subagent has no input channel."),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Back to parent session" }),
-    ).toHaveProperty(
+    const heading = screen.getByRole("heading", {
+      level: 1,
+      name: "Search the repo",
+    });
+    const parentLink = screen.getByRole("link", {
+      name: "Back to parent session",
+    });
+    expect(parentLink).toHaveProperty(
       "href",
       expect.stringContaining("/projects/proj-1/sessions/sess-1"),
     );
+    expect(heading.closest("header")).not.toBeNull();
+    expect(parentLink.closest("header")).toBe(heading.closest("header"));
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 });

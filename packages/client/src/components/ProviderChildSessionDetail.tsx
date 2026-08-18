@@ -12,6 +12,7 @@ interface ProviderChildSessionDetailProps {
   agentId: string;
   fallbackTitle?: string;
   actions?: ReactNode;
+  headingLevel?: 1 | 2;
 }
 
 export function ProviderChildSessionDetail({
@@ -20,6 +21,7 @@ export function ProviderChildSessionDetail({
   agentId,
   fallbackTitle,
   actions,
+  headingLevel = 2,
 }: ProviderChildSessionDetailProps) {
   const { t } = useI18n();
   const [content, setContent] = useState<AgentSession | null>(null);
@@ -59,12 +61,13 @@ export function ProviderChildSessionDetail({
     content?.agentType ||
     fallbackTitle ||
     t("providerChildFallback");
+  const Heading = headingLevel === 1 ? "h1" : "h2";
 
   return (
     <section className={styles.root}>
       <header className={styles.header}>
-        <div className={styles.heading}>
-          <h2 className={styles.title}>{title}</h2>
+        <div className={styles.identity}>
+          <Heading className={styles.title}>{title}</Heading>
           <div className={styles.meta}>
             {content?.agentType && content.agentType !== title && (
               <span>{content.agentType}</span>
@@ -88,8 +91,8 @@ export function ProviderChildSessionDetail({
               </span>
             )}
           </div>
-          <p className={styles.readonly}>{t("providerChildPageReadOnly")}</p>
         </div>
+        <p className={styles.readonly}>{t("providerChildPageReadOnly")}</p>
         {actions && <div className={styles.actions}>{actions}</div>}
       </header>
       <div className={styles.content}>

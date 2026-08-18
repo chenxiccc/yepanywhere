@@ -106,7 +106,12 @@ Task / spawn-agent "Open" control navigate to the read-only nested page
 managed window share the existing `GET .../agents/:agentId` loader and transcript
 renderer. Neither has a composer: provider children have no YA input channel.
 The parent YA session ID stays in the URL; the sidebar highlights that parent
-while the child page is open.
+while the child page is open. The nested page composes its parent-session link
+into the shared child title area rather than reserving a page-only header. That
+title area stacks identity, read-only context, and actions when its own container
+is narrow, then uses columns when the detail itself is wide; the full-page and
+managed-window presentations therefore preserve the same information without
+paying for the same vertical prelude at every width.
 
 This is not optional YA-novel behavior under
 [vanilla-defaults](vanilla-defaults.md): it restores visibility for work the

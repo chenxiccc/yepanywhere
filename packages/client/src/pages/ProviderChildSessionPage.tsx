@@ -25,17 +25,18 @@ export function ProviderChildSessionPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <Link className={styles.back} to={parentHref}>
-          {t("providerChildPageBack")}
-        </Link>
-      </header>
       <main className={styles.main}>
         <ProviderChildSessionDetail
           key={agentId}
           projectId={projectId}
           sessionId={sessionId}
           agentId={agentId}
+          headingLevel={1}
+          actions={
+            <Link className={styles.parentLink} to={parentHref}>
+              {t("providerChildPageBack")}
+            </Link>
+          }
         />
       </main>
     </div>

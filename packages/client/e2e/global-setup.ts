@@ -175,6 +175,62 @@ export default async function globalSetup() {
   );
   console.log(`[E2E] Created mock session at ${sessionFile}`);
 
+  const providerChildSessionId = "provider-child-layout-001";
+  writeFileSync(
+    join(mockSessionDir, `${providerChildSessionId}.jsonl`),
+    mockMessages.map((message) => JSON.stringify(message)).join("\n"),
+  );
+  const providerChildDir = join(
+    mockSessionDir,
+    providerChildSessionId,
+    "subagents",
+  );
+  mkdirSync(providerChildDir, { recursive: true });
+  writeFileSync(
+    join(providerChildDir, "agent-layout-child.jsonl"),
+    [
+      {
+        type: "user",
+        uuid: "provider-child-user-1",
+        agentId: "layout-child",
+        isSidechain: true,
+        sessionId: providerChildSessionId,
+        message: { content: "Inspect the provider child layout." },
+      },
+      {
+        type: "assistant",
+        uuid: "provider-child-assistant-1",
+        parentUuid: "provider-child-user-1",
+        agentId: "layout-child",
+        isSidechain: true,
+        message: {
+          content: [
+            {
+              type: "text",
+              text: "The compact title layout keeps the transcript visible.",
+            },
+          ],
+        },
+      },
+      {
+        type: "result",
+        uuid: "provider-child-result-1",
+        parentUuid: "provider-child-assistant-1",
+      },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
+  );
+  writeFileSync(
+    join(providerChildDir, "agent-layout-child.meta.json"),
+    JSON.stringify({
+      agentType: "Explore",
+      description: "Inspect the provider child layout",
+      spawnDepth: 1,
+    }),
+  );
+  console.log("[E2E] Created provider child layout session");
+
   for (const speechSessionId of [
     "speech-caret-001",
     "speech-caret-002",
