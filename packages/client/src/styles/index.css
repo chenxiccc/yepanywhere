@@ -328,6 +328,13 @@
   --project-queue-new-session-action-bg: #5b21b6;
 
   /* Semantic Colors */
+  /* Selection/emphasis accent. The color names were used across the client but
+     never defined, so browsers dropped bare accent declarations. They alias
+     each theme's primary; the literals cover first paint before the theme
+     attribute lands. */
+  --accent-color: var(--primary-color, #3b82f6);
+  --accent-primary: var(--primary-color, #3b82f6);
+  --accent-contrast: #0b1220;
   --thinking-color: var(--app-claude-orange);
   /* Maximum-contrast tooltip polarity for dark and default themes. */
   --tooltip-background: #ffffff;
@@ -507,6 +514,7 @@
   --attention-color: #4daafc;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
+  --accent-contrast: #0b1220;
   --bg-diff-added: color-mix(in srgb, var(--success-color) 7%, transparent);
   --bg-diff-removed: color-mix(in srgb, var(--error-color) 7%, transparent);
   --bg-diff-gutter-added: color-mix(
@@ -593,6 +601,7 @@
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
+  --accent-contrast: #0b1220;
   --bg-diff-added: color-mix(in srgb, var(--success-color) 7%, transparent);
   --bg-diff-removed: color-mix(in srgb, var(--error-color) 7%, transparent);
   --bg-diff-gutter-added: color-mix(
@@ -681,6 +690,7 @@
   --attention-color: #0066cc;
   --focus-border: #0066cc;
   --primary-color: #2563eb;
+  --accent-contrast: #ffffff;
   --tooltip-background: #000000;
   --tooltip-foreground: #ffffff;
   --tooltip-border: #ffffff;
@@ -759,6 +769,7 @@
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
+  --accent-contrast: #0b1220;
   --bg-diff-added: color-mix(in srgb, var(--success-color) 7%, transparent);
   --bg-diff-removed: color-mix(in srgb, var(--error-color) 7%, transparent);
   --bg-diff-gutter-added: color-mix(
@@ -840,6 +851,7 @@
     --attention-color: #0066cc;
     --focus-border: #0066cc;
     --primary-color: #2563eb;
+    --accent-contrast: #ffffff;
     --tooltip-background: #000000;
     --tooltip-foreground: #ffffff;
     --tooltip-border: #ffffff;
@@ -7390,15 +7402,11 @@ a.sidebar-nav-item {
 
 /* Compacting state - animated indicator */
 .system-message-compacting {
-  border-left-color: var(--accent-primary, #3b82f6);
+  border-left-color: var(--accent-primary);
   background: linear-gradient(
     90deg,
     var(--bg-tertiary, #2a2a2a) 0%,
-    color-mix(
-        in srgb,
-        var(--accent-primary, #3b82f6) 10%,
-        var(--bg-tertiary, #2a2a2a)
-      )
+    color-mix(in srgb, var(--accent-primary) 10%, var(--bg-tertiary, #2a2a2a))
       50%,
     var(--bg-tertiary, #2a2a2a) 100%
   );
@@ -7517,7 +7525,7 @@ a.sidebar-nav-item {
 }
 
 .task-notification-progress {
-  border-left-color: var(--accent-primary, #3b82f6);
+  border-left-color: var(--accent-primary);
 }
 
 .task-notification-completed {
@@ -9179,39 +9187,6 @@ a.sidebar-nav-item {
   margin-top: var(--space-1);
 }
 
-.settings-warning-box {
-  background: color-mix(
-    in srgb,
-    var(--warning-color, #f59e0b) 15%,
-    transparent
-  );
-  border: 1px solid var(--warning-color, #f59e0b);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.settings-warning-box strong {
-  display: block;
-  color: var(--warning-color, #f59e0b);
-  margin-bottom: var(--space-2);
-}
-
-.settings-warning-box p {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-}
-
-.settings-warning-box p:last-child {
-  margin-bottom: 0;
-}
-
-.settings-warning-box a {
-  color: var(--link-color);
-  text-decoration: underline;
-}
-
 .provider-deprecation-notice {
   display: flex;
   align-items: center;
@@ -9298,8 +9273,8 @@ a.sidebar-nav-item {
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background-color: var(--accent-color, #3b82f6);
-  border-color: var(--accent-color, #3b82f6);
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
 }
 
 .toggle-switch input:checked + .toggle-slider::before {

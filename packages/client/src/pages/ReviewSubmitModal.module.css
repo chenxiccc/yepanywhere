@@ -111,8 +111,8 @@
 
 .go {
   padding: var(--space-1, 4px) var(--space-3, 12px);
-  color: var(--accent-contrast, #06120a);
-  background: var(--accent-color, #3fb950);
+  color: var(--accent-contrast);
+  background: var(--accent-color);
   border: none;
   border-radius: var(--radius-sm, 4px);
 }

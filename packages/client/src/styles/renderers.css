@@ -4922,22 +4922,14 @@ pre.code-highlighter-plain,
 /* A line that already carries a pending review comment. */
 .highlighted-diff .line.has-review-comment,
 .diff-content > .has-review-comment {
-  box-shadow: inset 3px 0 0 0 var(--accent-color, #3fb950);
-  background-color: color-mix(
-    in srgb,
-    var(--accent-color, #3fb950) 12%,
-    transparent
-  );
+  box-shadow: inset 3px 0 0 0 var(--accent-color);
+  background-color: color-mix(in srgb, var(--accent-color) 12%, transparent);
 }
 
 /* Hint that diff lines are clickable to comment. */
 .highlighted-diff .line[data-diff-line]:hover,
 .diff-content > [data-diff-line]:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--accent-color, #3fb950) 8%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--accent-color) 8%, transparent);
   cursor: text;
 }
 

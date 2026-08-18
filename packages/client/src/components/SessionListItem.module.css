@@ -78,9 +78,7 @@
 }
 
 .providerChildrenDisclosure:focus-visible {
-  /* --accent-primary is never defined; without the fallback the whole
-     outline declaration is invalid and the focus ring disappears. */
-  outline: 2px solid var(--accent-primary, #3b82f6);
+  outline: 2px solid var(--accent-primary);
   outline-offset: -2px;
 }
 
