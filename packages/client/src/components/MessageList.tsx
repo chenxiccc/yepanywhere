@@ -2834,12 +2834,27 @@ export const MessageList = memo(function MessageList({
     if (!content || !container) return;
 
     const atBottom = isAtScrollBottom(container, content);
+    if (shouldAutoScrollRef.current) {
+      // Follow is explicit intent, not a conclusion inferred from one geometry
+      // sample. Layout can grow between a bottom write and its scroll event;
+      // keep that transaction pinned unless a deliberate gesture cancels it.
+      if (!atBottom) {
+        scrollToBottom(container);
+      } else {
+        thinkingDeltaFollowAllowedRef.current = true;
+        setNewOutputBelowVisible(false);
+        setIsScrolledToBottom(true);
+        reportFollowingBottom(true);
+      }
+      scheduleSettledScrollState();
+      return;
+    }
+
     shouldAutoScrollRef.current = atBottom;
     thinkingDeltaFollowAllowedRef.current = atBottom;
     if (atBottom) {
       setNewOutputBelowVisible(false);
-    }
-    if (!atBottom) {
+    } else {
       clearForcedCurrentScrollTimers();
     }
     setIsScrolledToBottom(atBottom);
@@ -2849,6 +2864,7 @@ export const MessageList = memo(function MessageList({
     clearForcedCurrentScrollTimers,
     reportFollowingBottom,
     scheduleSettledScrollState,
+    scrollToBottom,
   ]);
 
   // Attach scroll listener to parent container
@@ -3252,8 +3268,8 @@ export const MessageList = memo(function MessageList({
   ]);
 
   const handleFollowClick = useCallback(() => {
-    onFollowCurrent?.();
     scrollToCurrent();
+    onFollowCurrent?.();
   }, [onFollowCurrent, scrollToCurrent]);
 
   const followButtonTarget =

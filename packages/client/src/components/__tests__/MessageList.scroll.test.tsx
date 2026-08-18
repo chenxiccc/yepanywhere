@@ -977,6 +977,21 @@ describe("MessageList scroll and follow", () => {
       configurable: true,
       value: 500,
     });
+    const messageList = container.querySelector<HTMLElement>(".message-list");
+    const lastLine = messageList?.lastElementChild as HTMLElement | null;
+    expect(lastLine).toBeTruthy();
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
+      bottom: 500,
+    } as DOMRect);
+    vi.spyOn(
+      lastLine as HTMLElement,
+      "getBoundingClientRect",
+    ).mockImplementation(
+      () =>
+        ({
+          bottom: scrollHeight - container.scrollTop,
+        }) as DOMRect,
+    );
     const scrollTo = vi.fn((options: ScrollToOptions) => {
       container.scrollTop = Number(options.top ?? 0);
     });
@@ -986,18 +1001,34 @@ describe("MessageList scroll and follow", () => {
     const followButton = await screen.findByRole("button", {
       name: "Follow latest session output",
     });
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
     vi.useFakeTimers();
     fireEvent.click(followButton);
     expect(scrollTo).not.toHaveBeenCalled();
     expect(container.scrollTop).toBe(500);
 
+    act(() => {
+      for (const callback of animationFrames.splice(0)) {
+        callback(0);
+      }
+    });
     scrollHeight = 1400;
+    fireEvent.scroll(container);
     act(() => {
       vi.advanceTimersByTime(120);
     });
 
     expect(scrollTo).not.toHaveBeenCalled();
     expect(container.scrollTop).toBe(900);
+    expect(
+      screen.queryByRole("button", {
+        name: "Follow latest session output",
+      }),
+    ).toBeNull();
     composerTarget.remove();
   });
 

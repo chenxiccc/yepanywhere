@@ -138,6 +138,12 @@ Consequences:
   near-bottom geometry; they only continue an already-following viewport.
   Programmatic-scroll release still uses the near-bottom check to confirm
   explicit bottom commands.
+- **Explicit Follow intent** — activating Follow sets `shouldAutoScrollRef`
+  before restoring composer geometry. While that intent is active, a scroll
+  event whose geometry has temporarily fallen behind transcript growth re-pins
+  rather than canceling follow. Only the deliberate wheel, touch, scrollbar, or
+  keyboard movement handlers release an active follower; ordinary bottom
+  geometry can still acquire follow when it was already off.
 - **`RENDERING_PERFORMANCE.md` "Transcript Layout Stability"** is the
   kzahel-side statement of the invariant (no timers/visibility/stream-status
   effects changing historical row height; tidy only via explicit user control).
@@ -223,25 +229,17 @@ Ordered roughly by reader impact.
    reduces `ResizeObserver` re-pins. This only masks the yank (and over-reserve
    would itself shift layout, hence the cap); the latch above is the real fix.
    Same reserve-to-avoid-shift idea as predictive-scroll placeholder heights.
-2. **Follow falls behind and drops under fast burst output.** *Observed:* with
-   follow engaged and assistant content arriving rapidly (many rows / fast
-   flushes in quick succession), the view fails to keep up and then *loses*
-   follow entirely — it stops re-pinning and the "Follow" button appears,
-   needing a manual click to recover. *Suspected mechanism (not instrumented):*
-   during a burst, a `scroll` event reaches `handleScroll` while content has
-   grown but `scrollTop` has not yet been re-pinned — either a genuine
-   non-programmatic event or a programmatic one whose `isProgrammaticScrollRef`
-   window was already released by its `requestAnimationFrame` — so
-   `isAtScrollBottom` reads false for that frame and latches
-   `shouldAutoScrollRef = false`. The `ResizeObserver` re-pin and the
-   scroll-handler at-bottom check race on every flush; under fast bursts the
-   handler can win, so a single transient "not at bottom" frame during catch-up
-   turns follow off. Related to #1 (same re-pin/at-bottom machinery) but the
-   failure is *under*-following, not over-following. *Fix direction:* during an
-   active catch-up, evaluate at-bottom against the *intended* tail (treat an
-   in-flight programmatic re-pin as authoritative) and/or debounce the
-   follow-cancel so one transient not-at-bottom frame cannot latch off; the #1
-   latch (hold follow until a *deliberate* user scroll) also covers this.
+2. **Fast-burst Follow cancellation — fixed 2026-08-18.** The reported
+   double-click behavior reproduced when transcript height grew after Follow's
+   programmatic-scroll release but before a catch-up write. The resulting
+   scroll event sampled the stale geometry, overwrote the explicit
+   `shouldAutoScrollRef` intent with false, canceled the remaining catch-up
+   timers, and surfaced Follow again. Follow now enters the regime before its
+   composer-restore side effect, and `handleScroll` treats active intent as
+   authoritative until a deliberate movement handler releases it. The focused
+   regression advances the programmatic release, grows the transcript, emits
+   the racing scroll event, and requires the same activation to re-pin and keep
+   Follow hidden.
 3. **Send lands short; the live thinking indicator is clipped after submit.**
    *Observed, streaming-on (screenshot 2026-06-16):* right after the user
    submits, the view scrolls *most* of the way down but stops a fraction short —

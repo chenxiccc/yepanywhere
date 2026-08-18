@@ -39,12 +39,13 @@ least that path.
 This proves delivery and persistence for the reported steer, but it does not
 identify whether the pre-reload live view removed the row from client data or
 only lost its viewport position. The update-driven disappearance most directly
-matches the stale persisted-tail replacement fixed by `4feffd93`; the
+matches the stale persisted-tail replacement fixed by `4feffd93`. The former
 fast-burst follow race in
 [`topics/scrollback-view-stability.md`](../topics/scrollback-view-stability.md)
-can leave the row in the DOM but move it above the visible tail. Treat a repeat
-on the reloaded client as new evidence; ordinary-rate behavior alone does not
-exercise the burst race.
+could also leave the row in the DOM but above the visible tail; sticky explicit
+Follow intent fixed that race on 2026-08-18. Treat a repeat on the reloaded
+client as new evidence and first determine whether follow intent was already
+active or was deliberately released.
 
 ## Evidence to collect on recurrence
 
