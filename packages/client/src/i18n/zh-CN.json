@@ -1185,8 +1185,6 @@
   "sourceReviewSubmitToNew": "提交到新会话",
   "sourceReviewCommentPlaceholder": "评论此行…",
   "sourceReviewSubmitQueued": "已排队——服务器正忙，评论仍在等待提交。",
-  "sourceReviewReview": "审查（{count}）",
-  "sourceReviewStart": "审查",
   "sourceReviewSubmitTitle": "提交审查",
   "sourceReviewNoPending": "没有待提交的评论。",
   "sourceReviewStale": "上下文已失效",

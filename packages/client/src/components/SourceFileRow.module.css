@@ -1,3 +1,71 @@
+.path {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pathWithMatch {
+  display: flex;
+  text-overflow: clip;
+}
+
+.matchPrefix,
+.matchSuffix {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matchPrefix {
+  flex: 0 1 auto;
+  direction: rtl;
+  text-align: left;
+  unicode-bidi: plaintext;
+}
+
+.match {
+  flex: 0 0 auto;
+  color: inherit;
+  background: color-mix(
+    in srgb,
+    var(--color-warning, #d29922) 42%,
+    transparent
+  );
+  border-radius: 2px;
+}
+
+.matchSuffix {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 600px) {
+  .path {
+    display: -webkit-box;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .pathWithMatch {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  .matchPrefix,
+  .matchSuffix {
+    overflow: visible;
+    white-space: normal;
+  }
+}
+
 .reviewStates {
   display: inline-flex;
   flex: 0 0 auto;

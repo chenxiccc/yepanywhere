@@ -32,13 +32,59 @@ export function SourceFileRowButton({
 
 export function SourceFilePath({
   children,
+  query,
+  className,
   ...spanProps
-}: HTMLAttributes<HTMLSpanElement>) {
+}: HTMLAttributes<HTMLSpanElement> & { query?: string }) {
+  const text = typeof children === "string" ? children : null;
+  const match = text ? findPathMatch(text, query) : null;
+  const pathClassName = [
+    styles.path,
+    match ? styles.pathWithMatch : "",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!text || !match) {
+    return (
+      <span
+        {...spanProps}
+        className={pathClassName}
+        data-source-path={text ?? undefined}
+      >
+        {children}
+      </span>
+    );
+  }
+
   return (
-    <span {...spanProps} className="git-file-path">
-      {children}
+    <span {...spanProps} className={pathClassName} data-source-path={text}>
+      {match.prefix && (
+        <span className={styles.matchPrefix}>{match.prefix}</span>
+      )}
+      <mark className={styles.match}>{match.text}</mark>
+      {match.suffix && (
+        <span className={styles.matchSuffix}>{match.suffix}</span>
+      )}
     </span>
   );
+}
+
+function findPathMatch(
+  path: string,
+  rawQuery: string | undefined,
+): { prefix: string; text: string; suffix: string } | null {
+  const query = rawQuery?.trim();
+  if (!query) return null;
+  const start = path.toLowerCase().indexOf(query.toLowerCase());
+  if (start < 0) return null;
+  const end = start + query.length;
+  return {
+    prefix: path.slice(0, start),
+    text: path.slice(start, end),
+    suffix: path.slice(end),
+  };
 }
 
 const STATUS_LABEL_KEYS: Record<string, MessageKey> = {

@@ -42,6 +42,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
 import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
+import styles from "./WorkingTreeBrowser.module.css";
 import {
   GitDiffModal,
   GitDiffPreview,
@@ -66,11 +67,31 @@ const UNTRACKED_FOLDER_CONCURRENCY = 4;
 
 /** How long arriving expansions accumulate before one list re-render. */
 const FOLDER_FLUSH_MS = 100;
+const UNTRACKED_GROUP_COLLAPSE_THRESHOLD = 10;
 
 const EMPTY_REVIEW_STATES: ReviewSiteStateSummary[] = [];
 
+type WorktreeListEntry =
+  | {
+      kind: "file";
+      file: WorktreeFileChange;
+      displayPath: string;
+    }
+  | {
+      kind: "folder";
+      path: string;
+      info?: GitUntrackedFolderInfo;
+      expanded: boolean;
+      children: Array<{
+        file: WorktreeFileChange;
+        displayPath: string;
+      }>;
+    };
+
 const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
   file,
+  displayPath = sourceFileDisplayPath(file),
+  query,
   selected,
   commentCount,
   reviewStates,
@@ -82,6 +103,8 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
   t,
 }: {
   file: WorktreeFileChange;
+  displayPath?: string;
+  query: string;
   selected: boolean;
   commentCount: number;
   reviewStates: ReviewSiteStateSummary[];
@@ -94,12 +117,13 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
 }) {
   const isFolder = file.path.endsWith("/");
   const menuActions = menuActionsForFile(file);
-  const displayPath = sourceFileDisplayPath(file);
+  const tooltipPath =
+    displayPath === sourceFileDisplayPath(file) ? displayPath : file.path;
 
   return (
     <li className={`commit-file-row ${sourceRowMenuSurface}`}>
       <SourceFileRowButton
-        path={displayPath}
+        path={tooltipPath}
         type="button"
         className={`commit-file-item ${selected ? "selected" : ""}`}
         disabled={isFolder}
@@ -115,7 +139,7 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
       >
         <SourceFileStatusBadge status={file.status} t={t} />
         <WorktreeStateMarker state={file.worktreeState} t={t} />
-        <SourceFilePath>{displayPath}</SourceFilePath>
+        <SourceFilePath query={query}>{displayPath}</SourceFilePath>
         {(file.linesAdded !== null || file.linesDeleted !== null) && (
           <span className="git-line-counts">
             {file.linesAdded ? (
@@ -193,6 +217,13 @@ export function WorkingTreeBrowser({
   const [expandedUntrackedFolders, setExpandedUntrackedFolders] = useState<
     Record<string, GitUntrackedFolderInfo>
   >({});
+  const [untrackedFolderScan, setUntrackedFolderScan] = useState({
+    loaded: 0,
+    total: 0,
+  });
+  const [untrackedFolderExpansion, setUntrackedFolderExpansion] = useState<
+    Record<string, boolean>
+  >({});
   const [fileQuery, setFileQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [commentEditorOpen, setCommentEditorOpen] = useState(false);
@@ -230,7 +261,9 @@ export function WorkingTreeBrowser({
   useEffect(() => {
     let cancelled = false;
     setExpandedUntrackedFolders({});
+    setUntrackedFolderExpansion({});
     const paths = untrackedFolderKey ? untrackedFolderKey.split("\0") : [];
+    setUntrackedFolderScan({ loaded: 0, total: paths.length });
     if (paths.length === 0) return undefined;
 
     // Each expansion is a separate `git status --untracked-files=all` on the
@@ -239,21 +272,26 @@ export function WorkingTreeBrowser({
     // never occupies the whole per-host connection budget: the foreground
     // status and the selected file's diff must not queue behind it.
     let nextPath = 0;
+    let completed = 0;
     const arrived: Record<string, GitUntrackedFolderInfo> = {};
     let flushHandle: ReturnType<typeof setTimeout> | null = null;
 
-    // Coalesce arrivals: one state update per folder would re-render the whole
-    // changed-file list once per request.
+    // Coalesce arrivals and progress: one state update per folder would rerender
+    // the whole changed-file list once per request.
     const flush = () => {
       flushHandle = null;
       if (cancelled) return;
       const batch = { ...arrived };
       for (const key of Object.keys(arrived)) delete arrived[key];
-      setExpandedUntrackedFolders((current) => ({ ...current, ...batch }));
+      if (Object.keys(batch).length > 0) {
+        setExpandedUntrackedFolders((current) => ({ ...current, ...batch }));
+      }
+      setUntrackedFolderScan({ loaded: completed, total: paths.length });
     };
     const scheduleFlush = () => {
-      if (flushHandle === null)
+      if (flushHandle === null) {
         flushHandle = setTimeout(flush, FOLDER_FLUSH_MS);
+      }
     };
 
     const runNext = async (): Promise<void> => {
@@ -264,9 +302,13 @@ export function WorkingTreeBrowser({
           const info = await api.getGitUntrackedFolder(projectId, path);
           if (cancelled) return;
           arrived[path] = info;
-          scheduleFlush();
         } catch {
           // Keep the compact folder row visible; it stays non-previewable.
+        } finally {
+          if (!cancelled) {
+            completed += 1;
+            scheduleFlush();
+          }
         }
       }
     };
@@ -275,7 +317,11 @@ export function WorkingTreeBrowser({
       { length: Math.min(UNTRACKED_FOLDER_CONCURRENCY, paths.length) },
       runNext,
     );
-    void Promise.all(workers);
+    void Promise.all(workers).then(() => {
+      if (cancelled) return;
+      if (flushHandle !== null) clearTimeout(flushHandle);
+      flush();
+    });
 
     return () => {
       cancelled = true;
@@ -335,10 +381,38 @@ export function WorkingTreeBrowser({
     () => files.filter((file) => !file.path.endsWith("/")),
     [files],
   );
-  const filteredFiles = useChangesetFileFilter(files, fileQuery);
+  const matchingFiles = useChangesetFileFilter(files, fileQuery);
+  const matchingPaths = useMemo(
+    () => new Set(matchingFiles.map((file) => file.path)),
+    [matchingFiles],
+  );
+  const listEntries = useMemo(
+    () =>
+      buildWorktreeListEntries({
+        statusFiles: status.files,
+        files,
+        folders: expandedUntrackedFolders,
+        folderExpansion: untrackedFolderExpansion,
+        matchingPaths,
+        query: fileQuery,
+      }),
+    [
+      expandedUntrackedFolders,
+      fileQuery,
+      files,
+      matchingPaths,
+      status.files,
+      untrackedFolderExpansion,
+    ],
+  );
   const visiblePreviewableFiles = useMemo(
-    () => filteredFiles.filter((file) => !file.path.endsWith("/")),
-    [filteredFiles],
+    () =>
+      listEntries.flatMap((entry) =>
+        entry.kind === "file"
+          ? [entry.file]
+          : entry.children.map((child) => child.file),
+      ),
+    [listEntries],
   );
   const selectedFile =
     previewableFiles.find((file) => file.path === selectedPath) ?? null;
@@ -367,13 +441,25 @@ export function WorkingTreeBrowser({
     }
     setAppliedWorkingTreeLink(workingTreeLinkToken);
     setSelectedPath(linkedFile.path);
-  }, [linkedFile, shouldApplyWorkingTreeLink, workingTreeLinkToken]);
+    const linkedFolder = Object.entries(expandedUntrackedFolders).find(
+      ([, info]) => info.files.includes(linkedFile.path),
+    )?.[0];
+    if (linkedFolder) {
+      setUntrackedFolderExpansion((current) => ({
+        ...current,
+        [linkedFolder]: true,
+      }));
+    }
+  }, [
+    expandedUntrackedFolders,
+    linkedFile,
+    shouldApplyWorkingTreeLink,
+    workingTreeLinkToken,
+  ]);
 
   useEffect(() => {
     if (shouldApplyWorkingTreeLink) return;
-    const selectionCandidates = fileQuery.trim()
-      ? visiblePreviewableFiles
-      : previewableFiles;
+    const selectionCandidates = visiblePreviewableFiles;
     const nextPath =
       selectedPath &&
       selectionCandidates.some((file) => file.path === selectedPath)
@@ -386,8 +472,6 @@ export function WorkingTreeBrowser({
     }
   }, [
     isWideScreen,
-    fileQuery,
-    previewableFiles,
     selectedPath,
     shouldApplyWorkingTreeLink,
     visiblePreviewableFiles,
@@ -413,6 +497,16 @@ export function WorkingTreeBrowser({
     }
     return states;
   }, [siteStates]);
+
+  const toggleUntrackedFolder = useCallback(
+    (path: string, expanded: boolean) => {
+      setUntrackedFolderExpansion((current) => ({
+        ...current,
+        [path]: !expanded,
+      }));
+    },
+    [],
+  );
 
   const handleFileClick = useCallback(
     (file: WorktreeFileChange, selected: boolean) => {
@@ -488,6 +582,29 @@ export function WorkingTreeBrowser({
       t={t}
     />
   ) : null;
+  const renderFileRow = ({
+    file,
+    displayPath,
+  }: {
+    file: WorktreeFileChange;
+    displayPath: string;
+  }) => (
+    <WorkingTreeFileRow
+      key={file.path}
+      file={file}
+      displayPath={displayPath}
+      query={fileQuery}
+      selected={selectedPath === file.path}
+      commentCount={fileCommentCount.get(file.path) ?? 0}
+      reviewStates={reviewStatesByPath.get(file.path) ?? EMPTY_REVIEW_STATES}
+      isWideScreen={isWideScreen}
+      menuActionsForFile={fileMenuActions}
+      menuTargetProps={fileMenu.targetProps}
+      onOpenMenu={fileMenu.openFromButton}
+      onActivateFile={handleFileClick}
+      t={t}
+    />
+  );
 
   const hasRetainedEditorTarget = commentEditorOpen && selectedFile !== null;
   const rootClassName = `working-tree-browser ${
@@ -578,6 +695,14 @@ export function WorkingTreeBrowser({
                 </span>
               </>
             )}
+            {untrackedFolderScan.total > 0 && (
+              <span className={styles.scanProgress} role="status">
+                {t("sourceUntrackedFolderScanProgress", {
+                  loaded: untrackedFolderScan.loaded,
+                  total: untrackedFolderScan.total,
+                })}
+              </span>
+            )}
             <ChangesetFileFilter
               query={fileQuery}
               onQueryChange={setFileQuery}
@@ -585,25 +710,65 @@ export function WorkingTreeBrowser({
             />
           </div>
           <ul className="commit-file-list" onKeyDown={handleSourceListKeyDown}>
-            {filteredFiles.map((file) => (
-              <WorkingTreeFileRow
-                key={file.path}
-                file={file}
-                selected={selectedPath === file.path}
-                commentCount={fileCommentCount.get(file.path) ?? 0}
-                reviewStates={
-                  reviewStatesByPath.get(file.path) ?? EMPTY_REVIEW_STATES
-                }
-                isWideScreen={isWideScreen}
-                menuActionsForFile={fileMenuActions}
-                menuTargetProps={fileMenu.targetProps}
-                onOpenMenu={fileMenu.openFromButton}
-                onActivateFile={handleFileClick}
-                t={t}
-              />
-            ))}
+            {listEntries.map((entry) =>
+              entry.kind === "file" ? (
+                renderFileRow(entry)
+              ) : (
+                <li key={entry.path} className={styles.folderGroup}>
+                  <div className={styles.folderHeader}>
+                    <SourceFileRowButton
+                      path={entry.path}
+                      type="button"
+                      className="commit-file-item"
+                      disabled={!entry.info || entry.info.files.length === 0}
+                      aria-expanded={entry.info ? entry.expanded : undefined}
+                      aria-label={t(
+                        entry.info
+                          ? entry.expanded
+                            ? "sourceCollapseUntrackedFolder"
+                            : "sourceExpandUntrackedFolder"
+                          : "sourceLoadingUntrackedFolder",
+                        { path: entry.path },
+                      )}
+                      data-source-list-item
+                      onClick={() =>
+                        toggleUntrackedFolder(entry.path, entry.expanded)
+                      }
+                    >
+                      <span className={styles.disclosure} aria-hidden="true">
+                        {entry.info ? (entry.expanded ? "−" : "+") : "…"}
+                      </span>
+                      <SourceFileStatusBadge status="?" t={t} />
+                      <SourceFilePath query={fileQuery}>
+                        {entry.path}
+                      </SourceFilePath>
+                      {entry.info && (
+                        <span
+                          className={styles.folderCount}
+                          title={
+                            entry.info.truncated
+                              ? t("sourceUntrackedFolderTruncated", {
+                                  count: entry.info.files.length,
+                                })
+                              : undefined
+                          }
+                        >
+                          {entry.info.files.length}
+                          {entry.info.truncated ? "+" : ""}
+                        </span>
+                      )}
+                    </SourceFileRowButton>
+                  </div>
+                  {entry.children.length > 0 && (
+                    <ul className={styles.folderChildren}>
+                      {entry.children.map(renderFileRow)}
+                    </ul>
+                  )}
+                </li>
+              ),
+            )}
           </ul>
-          {filteredFiles.length === 0 && (
+          {listEntries.length === 0 && (
             <div className="git-status-empty">{t("sourceNoMatches")}</div>
           )}
         </div>
@@ -653,6 +818,102 @@ export function WorkingTreeBrowser({
       )}
     </div>
   );
+}
+
+function buildWorktreeListEntries({
+  statusFiles,
+  files,
+  folders,
+  folderExpansion,
+  matchingPaths,
+  query,
+}: {
+  statusFiles: GitFileChange[];
+  files: WorktreeFileChange[];
+  folders: Record<string, GitUntrackedFolderInfo>;
+  folderExpansion: Record<string, boolean>;
+  matchingPaths: ReadonlySet<string>;
+  query: string;
+}): WorktreeListEntry[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  const emitted = new Set<string>();
+  const entries: WorktreeListEntry[] = [];
+
+  for (const statusFile of statusFiles) {
+    const isCompactUntrackedFolder =
+      statusFile.status === "?" && statusFile.path.endsWith("/");
+    if (isCompactUntrackedFolder) {
+      const info = folders[statusFile.path];
+      const allChildren =
+        info?.files.flatMap((path) => {
+          emitted.add(path);
+          const file = byPath.get(path);
+          return file
+            ? [
+                {
+                  file,
+                  displayPath: path.startsWith(statusFile.path)
+                    ? path.slice(statusFile.path.length)
+                    : path,
+                },
+              ]
+            : [];
+        }) ?? [];
+      const matchingChildren = normalizedQuery
+        ? allChildren.filter(({ file }) => matchingPaths.has(file.path))
+        : allChildren;
+      const folderMatches = statusFile.path
+        .toLowerCase()
+        .includes(normalizedQuery);
+      emitted.add(statusFile.path);
+      if (normalizedQuery && !folderMatches && matchingChildren.length === 0) {
+        continue;
+      }
+      const userExpanded =
+        folderExpansion[statusFile.path] ??
+        (info
+          ? info.files.length <= UNTRACKED_GROUP_COLLAPSE_THRESHOLD
+          : false);
+      const expanded = normalizedQuery
+        ? matchingChildren.length > 0
+        : userExpanded;
+      entries.push({
+        kind: "folder",
+        path: statusFile.path,
+        ...(info ? { info } : {}),
+        expanded,
+        children: normalizedQuery
+          ? matchingChildren
+          : expanded
+            ? allChildren
+            : [],
+      });
+      continue;
+    }
+
+    const file = byPath.get(statusFile.path);
+    if (!file || emitted.has(file.path)) continue;
+    emitted.add(file.path);
+    if (normalizedQuery && !matchingPaths.has(file.path)) continue;
+    entries.push({
+      kind: "file",
+      file,
+      displayPath: sourceFileDisplayPath(file),
+    });
+  }
+
+  for (const file of files) {
+    if (emitted.has(file.path) || file.path.endsWith("/")) continue;
+    if (normalizedQuery && !matchingPaths.has(file.path)) continue;
+    entries.push({
+      kind: "file",
+      file,
+      displayPath: sourceFileDisplayPath(file),
+    });
+  }
+
+  return entries;
 }
 
 function expandUntrackedFolders(

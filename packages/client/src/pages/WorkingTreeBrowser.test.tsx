@@ -165,9 +165,7 @@ describe("WorkingTreeBrowser", () => {
     ).toBe("sourceWorktreePartialDescription");
     expect(screen.queryByText("sourceWorktreeUnstaged")).toBeNull();
     expect(screen.queryByText("sourceWorktreeUntracked")).toBeNull();
-    expect(
-      document.querySelectorAll(".commit-file-item .git-file-path"),
-    ).toHaveLength(1);
+    expect(document.querySelectorAll(".commit-file-item")).toHaveLength(1);
     const row = document.querySelector(".commit-file-item");
     expect(row?.getAttribute("data-tooltip")).toBe("src/dirty.ts");
     expect(
@@ -319,6 +317,95 @@ describe("WorkingTreeBrowser", () => {
     );
   });
 
+  it("groups large untracked folders and reveals matching loaded children", async () => {
+    const files = Array.from(
+      { length: 11 },
+      (_, index) => `generated/file-${String(index).padStart(2, "0")}.ts`,
+    );
+    files.push("generated/needle-bootstrap.json");
+    getGitUntrackedFolder.mockResolvedValue({
+      path: "generated/",
+      files,
+      truncated: false,
+      limit: 500,
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const detailedT = (key: string, vars?: Record<string, string | number>) =>
+      vars ? `${key} ${JSON.stringify(vars)}` : key;
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "generated/",
+                status: "?",
+                staged: false,
+                linesAdded: null,
+                linesDeleted: null,
+              },
+            ],
+          }}
+          isWideScreen={false}
+          t={detailedT}
+        />
+      </MemoryRouter>,
+    );
+
+    const expand = await screen.findByRole("button", {
+      name: 'sourceExpandUntrackedFolder {"path":"generated/"}',
+    });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("file-00.ts")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe(
+      'sourceUntrackedFolderScanProgress {"loaded":1,"total":1}',
+    );
+
+    fireEvent.click(expand);
+    expect(await screen.findByText("file-00.ts")).toBeDefined();
+    expect(
+      document.querySelector('[data-tooltip="generated/file-00.ts"]'),
+    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: 'sourceCollapseUntrackedFolder {"path":"generated/"}',
+      }),
+    );
+    expect(screen.queryByText("file-00.ts")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "sourceFilterFiles" }));
+    const input = screen.getByPlaceholderText("sourceFilterFiles");
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-source-path="needle-bootstrap.json"]'),
+      ).not.toBeNull(),
+    );
+    expect(
+      screen
+        .getByRole("button", {
+          name: 'sourceCollapseUntrackedFolder {"path":"generated/"}',
+        })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.queryByText("needle-bootstrap.json")).toBeNull();
+  });
+
   it("expands many untracked folders without refetching the open diff", async () => {
     const folders = Array.from({ length: 40 }, (_, i) => `gen${i}/`);
     getGitDiff.mockResolvedValue({ diffHtml: "", structuredPatch: [] });
@@ -386,7 +473,9 @@ describe("WorkingTreeBrowser", () => {
       expect(getGitUntrackedFolder).toHaveBeenCalledTimes(folders.length),
     );
     await waitFor(() =>
-      expect(screen.getByText("gen39/child.ts")).toBeTruthy(),
+      expect(
+        document.querySelector('[data-tooltip="gen39/child.ts"]'),
+      ).not.toBeNull(),
     );
 
     // The selected file never changed, so its diff was requested exactly once.
@@ -578,7 +667,9 @@ describe("WorkingTreeBrowser", () => {
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "keep" } });
 
-    expect(screen.getByText("src/keep.ts")).toBeDefined();
+    expect(
+      document.querySelector('[data-source-path="src/keep.ts"]'),
+    ).not.toBeNull();
     expect(screen.queryByText("scratch/drop.txt")).toBeNull();
     fireEvent.change(input, { target: { value: "missing" } });
     expect(screen.getByText("sourceNoMatches")).toBeDefined();

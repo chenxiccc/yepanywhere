@@ -117,7 +117,7 @@ function useSourceTab(reviewsEnabled = false): {
           if (next !== "reviews") params.delete("submission");
           return params;
         },
-        { replace: true, state: location.state },
+        { state: location.state },
       );
     },
     [location.state, setSearchParams],
@@ -155,15 +155,141 @@ function SourceHeaderTabs({
   );
 }
 
+function SourceHeaderActions({
+  status,
+  pendingCount,
+  reviewsEnabled,
+  gitActions,
+  isWideScreen,
+  onComments,
+  t,
+}: {
+  status: GitStatusInfo;
+  pendingCount: number;
+  reviewsEnabled: boolean;
+  gitActions: GitActionState;
+  isWideScreen: boolean;
+  onComments: () => void;
+  t: TranslationFn;
+}) {
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [fitsTitleRow, setFitsTitleRow] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!isWideScreen) {
+      setFitsTitleRow(false);
+      return undefined;
+    }
+    const controls = controlsRef.current;
+    const tabs = tabsRef.current;
+    const header = controls?.closest<HTMLElement>(".session-header-inner");
+    const identity = header?.querySelector<HTMLElement>(".session-header-left");
+    const actionGroup = controls?.querySelector<HTMLElement>(
+      "[data-source-action-group]",
+    );
+    const tabList = tabs?.querySelector<HTMLElement>('[role="tablist"]');
+    if (
+      !controls ||
+      !tabs ||
+      !header ||
+      !identity ||
+      !actionGroup ||
+      !tabList
+    ) {
+      return undefined;
+    }
+
+    const update = () => {
+      const headerStyle = getComputedStyle(header);
+      const available =
+        header.clientWidth -
+        cssPixels(headerStyle.paddingLeft) -
+        cssPixels(headerStyle.paddingRight);
+      const gap = cssPixels(headerStyle.columnGap);
+      if (available <= 0) {
+        setFitsTitleRow(false);
+        return;
+      }
+      const demand =
+        horizontalContentWidth(identity) +
+        horizontalContentWidth(actionGroup) +
+        horizontalContentWidth(tabList) +
+        2 * gap;
+      setFitsTitleRow(demand <= available + 0.5);
+    };
+
+    update();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    observer.observe(identity);
+    observer.observe(actionGroup);
+    observer.observe(tabList);
+    return () => observer.disconnect();
+  }, [isWideScreen]);
+
+  return (
+    <>
+      <div
+        ref={controlsRef}
+        className={`${styles.headerControls} ${
+          fitsTitleRow ? styles.titleRow : styles.fallbackRow
+        }`}
+        data-source-actions-placement={fitsTitleRow ? "title" : "fallback"}
+      >
+        <SourceHeaderControls
+          gitActions={gitActions}
+          onComments={onComments}
+          t={t}
+        />
+      </div>
+      <div ref={tabsRef} className={styles.headerTabs}>
+        <SourceHeaderTabs
+          status={status}
+          pendingCount={pendingCount}
+          reviewsEnabled={reviewsEnabled}
+          t={t}
+        />
+      </div>
+    </>
+  );
+}
+
+function horizontalContentWidth(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  const children = Array.from(element.children).filter(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement &&
+      getComputedStyle(child).display !== "none",
+  );
+  const childrenWidth = children.reduce(
+    (total, child) =>
+      total + Math.max(child.getBoundingClientRect().width, child.scrollWidth),
+    0,
+  );
+  return (
+    childrenWidth +
+    Math.max(0, children.length - 1) * cssPixels(style.columnGap) +
+    cssPixels(style.paddingLeft) +
+    cssPixels(style.paddingRight) +
+    cssPixels(style.borderLeftWidth) +
+    cssPixels(style.borderRightWidth)
+  );
+}
+
+function cssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function SourceHeaderControls({
   gitActions,
-  pendingCount,
-  onReview,
+  onComments,
   t,
 }: {
   gitActions: GitActionState;
-  pendingCount?: number;
-  onReview?: () => void;
+  onComments?: () => void;
   t: TranslationFn;
 }) {
   const nowMs = useRelativeNow();
@@ -171,7 +297,7 @@ function SourceHeaderControls({
     time: formatRemoteCheckTime(gitActions.checkedRemoteAt, nowMs, t),
   });
   return (
-    <div className="repo-status-action-group">
+    <div className={styles.actionGroup} data-source-action-group>
       {gitActions.supportsPull && (
         <SourceActionButton
           action="pull"
@@ -209,20 +335,18 @@ function SourceHeaderControls({
               ? `${gitActions.checkFeedback} · ${remoteTitle}`
               : remoteTitle
           }
-          className="git-status-check-remote"
+          className={styles.checkRemote}
           onClick={gitActions.handleCheckRemote}
           disabled={gitActions.isRunning}
         />
       )}
-      {onReview && pendingCount !== undefined && (
+      {onComments && (
         <button
           type="button"
           className="git-status-action-button review-tray-button"
-          onClick={onReview}
+          onClick={onComments}
         >
-          {pendingCount > 0
-            ? t("sourceReviewReview", { count: pendingCount })
-            : t("sourceReviewStart")}
+          {t("sourceCommentsAction")}
         </button>
       )}
     </div>
@@ -296,7 +420,7 @@ function SourceActionButton({
           <SourceActionGlyph action={action} />
         )}
       </span>
-      <span className="git-status-action-label">{label}</span>
+      <span className={styles.actionLabel}>{label}</span>
     </button>
   );
 }
@@ -546,10 +670,13 @@ export function GitStatusPage() {
         isSidebarCollapsed={isSidebarCollapsed}
         actions={
           supportsSourceReview && effectiveProjectId && gitStatus?.isGitRepo ? (
-            <SourceHeaderTabs
+            <SourceHeaderActions
               status={gitStatus}
               pendingCount={reviewComments.pending.length}
               reviewsEnabled={reviewsEnabled}
+              gitActions={gitActions}
+              isWideScreen={isWideScreen}
+              onComments={() => setHeaderTab("comments")}
               t={t}
             />
           ) : undefined
@@ -627,7 +754,9 @@ function GitStatusCompatibilityContent({
 }) {
   return (
     <div className="git-status git-status-compatibility">
-      <div className="source-control-action-row">
+      <div
+        className={`source-control-action-row ${styles.compatibilityActions}`}
+      >
         <SourceHeaderControls gitActions={gitActions} t={t} />
       </div>
       <GitActionNotices gitActions={gitActions} t={t} />
@@ -670,7 +799,7 @@ function GitStatusContent({
   const location = useLocation();
   const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { tab, setTab } = useSourceTab(reviewsEnabled);
+  const { tab } = useSourceTab(reviewsEnabled);
   const blameFile = searchParams.get("bf") ?? undefined;
   const commitSha = searchParams.get("rev") ?? undefined;
   const commitFile = searchParams.get("commitFile") ?? undefined;
@@ -760,20 +889,6 @@ function GitStatusContent({
   }, [location.state, setSearchParams]);
   return (
     <div className="git-status">
-      <div className="source-control-toolbar">
-        <div className="source-control-action-row">
-          <SourceHeaderControls
-            gitActions={gitActions}
-            pendingCount={reviewComments.pending.length}
-            onReview={() => {
-              if (reviewComments.pending.length > 0) onOpenReview();
-              else setTab("comments");
-            }}
-            t={t}
-          />
-        </div>
-      </div>
-
       <GitActionNotices gitActions={gitActions} t={t} />
       {projectionNotice &&
         (projectionNoticeNeedsPortal

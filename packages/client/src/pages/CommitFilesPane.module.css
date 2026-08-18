@@ -1,0 +1,36 @@
+.body {
+  display: block;
+  width: 100%;
+  margin: 0 0 var(--space-2, 8px);
+  padding: 8px;
+  color: var(--text-secondary, #8b949e);
+  font-family: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  white-space: pre-wrap;
+  user-select: text;
+  background: var(--bg-secondary);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.body:hover {
+  color: var(--text-primary, #e6edf3);
+}
+
+.body:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent-color));
+  outline-offset: -2px;
+}
+
+.selected {
+  background: var(--bg-selected, rgba(56, 139, 253, 0.15));
+  border-color: var(--border-subtle, #21262d);
+}
+
+.mobile {
+  padding-block: 6px;
+  color: var(--text-secondary, #8b949e);
+  white-space: normal;
+}

@@ -46,6 +46,23 @@ describe("SourceFileRow", () => {
     expect(row.getAttribute("title")).toBeNull();
   });
 
+  it("highlights a case-insensitive path match while preserving full identity", () => {
+    render(
+      <SourceFilePath query="BOOTSTRAP">
+        runs/aim/pii-handout-fresh7/bootstrap-v2.json
+      </SourceFilePath>,
+    );
+
+    const path = document.querySelector(
+      '[data-source-path="runs/aim/pii-handout-fresh7/bootstrap-v2.json"]',
+    );
+    if (!path) throw new Error("Highlighted source path is missing");
+    expect(path.querySelector("mark")?.textContent).toBe("bootstrap");
+    expect(path.textContent).toBe(
+      "runs/aim/pii-handout-fresh7/bootstrap-v2.json",
+    );
+  });
+
   it("expands a compact git status code", () => {
     render(<SourceFileStatusBadge status="M" t={t} />);
 

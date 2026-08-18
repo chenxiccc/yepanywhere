@@ -1,7 +1,19 @@
 import type { GitStatusInfo } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
@@ -195,6 +207,22 @@ function status(): GitStatusInfo {
   };
 }
 
+function NavigationProbe() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <div data-testid="test-location">
+        {location.pathname}
+        {location.search}
+      </div>
+      <button type="button" onClick={() => navigate(-1)}>
+        testBrowserBack
+      </button>
+    </>
+  );
+}
+
 function renderPage(
   initialEntry:
     | string
@@ -203,11 +231,27 @@ function renderPage(
         search: string;
         state: unknown;
       } = "/git-status?projectId=project-a",
+  precedingEntry?: string,
 ) {
+  const initialEntries = precedingEntry
+    ? [precedingEntry, initialEntry]
+    : [initialEntry];
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter
+      initialEntries={initialEntries}
+      initialIndex={initialEntries.length - 1}
+    >
       <Routes>
-        <Route path="/git-status" element={<GitStatusPage />} />
+        <Route
+          path="/git-status"
+          element={
+            <>
+              <GitStatusPage />
+              <NavigationProbe />
+            </>
+          }
+        />
+        <Route path="/previous" element={<div>previous-page</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -305,7 +349,7 @@ beforeEach(() => {
 });
 
 describe("GitStatusPage source header", () => {
-  it("keeps identity and tabs in the header with actions in their own row", async () => {
+  it("keeps identity, tabs, and fallback repository actions in the header", async () => {
     renderPage();
     await screen.findByTestId("working-tree-browser");
     await waitFor(() =>
@@ -318,18 +362,188 @@ describe("GitStatusPage source header", () => {
     ).toHaveLength(1);
     expect(header.querySelector('[role="tablist"]')).not.toBeNull();
     expect(header.querySelectorAll('[role="tab"]')).toHaveLength(3);
-    expect(header.querySelector(".review-tray-button")).toBeNull();
 
-    const actionRow = document.querySelector(
-      ".source-control-action-row",
+    const actions = header.querySelector(
+      '[data-source-actions-placement="fallback"]',
     ) as HTMLElement;
-    expect(actionRow).not.toBeNull();
-    expect(
-      actionRow.querySelector(".review-tray-button")?.textContent,
-    ).toContain("sourceReviewStart");
+    expect(actions).not.toBeNull();
+    expect(actions.querySelector(".review-tray-button")?.textContent).toContain(
+      "sourceCommentsAction",
+    );
+    expect(document.querySelector(".source-control-action-row")).toBeNull();
     expect(
       document.querySelector('.git-status > [data-testid="repo-status-bar"]'),
     ).toBeNull();
+  });
+
+  it("uses the title row only while the rendered repository actions fit", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
+          GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_STATUS_PULL_CAPABILITY,
+          GIT_STATUS_PUSH_CAPABILITY,
+          GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+
+    let headerWidth = 900;
+    let notifyResize: (() => void) | undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          notifyResize = () => callback([], this as unknown as ResizeObserver);
+        }
+
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+
+    const widthOf = (element: HTMLElement) => {
+      const parent = element.parentElement;
+      if (parent?.matches("[data-source-action-group]")) return 80;
+      if (parent?.getAttribute("role") === "tablist") return 72;
+      if (parent?.classList.contains("session-header-left")) return 96;
+      return 0;
+    };
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains("session-header-inner")
+          ? headerWidth
+          : widthOf(this);
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return widthOf(this);
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const width = widthOf(this);
+        return {
+          bottom: 20,
+          height: 20,
+          left: 0,
+          right: width,
+          top: 0,
+          width,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      },
+    );
+
+    try {
+      renderPage();
+      await screen.findByTestId("working-tree-browser");
+      const header = document.querySelector(".session-header") as HTMLElement;
+      expect(
+        header.querySelector('[data-source-actions-placement="title"]'),
+      ).not.toBeNull();
+      expect(
+        header.querySelectorAll("[data-source-action-group] > button"),
+      ).toHaveLength(4);
+
+      headerWidth = 360;
+      act(() => notifyResize?.());
+
+      expect(
+        header.querySelector('[data-source-actions-placement="fallback"]'),
+      ).not.toBeNull();
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("opens Comments even with pending drafts and preserves mode history", async () => {
+    mocks.listReviewComments.mockResolvedValue({
+      comments: [
+        {
+          id: "comment-1",
+          status: "pending",
+          text: "why?",
+          createdAt: "2026-07-26T00:00:00Z",
+          anchor: {
+            path: "a.ts",
+            revision: { kind: "sha", sha: "a".repeat(40) },
+            side: "new",
+            oldLine: null,
+            newLine: 1,
+            snippet: "",
+          },
+        },
+      ],
+      batches: [],
+      pendingCount: 1,
+    });
+    renderPage();
+
+    await screen.findByTestId("working-tree-browser");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "sourceCommentsAction" }),
+    );
+
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabComments/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "testBrowserBack" }));
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabChanges/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("returns from Reviews to the preceding Source Control mode", async () => {
+    mocks.serverSettings.sourceReviewSubmissionsEnabled = true;
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    renderPage();
+
+    await screen.findByTestId("working-tree-browser");
+    fireEvent.click(screen.getByRole("tab", { name: "sourceTabReviews" }));
+    expect(await screen.findByText("sourceReviewNoSubmissions")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "testBrowserBack" }));
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+  });
+
+  it("backs out of Source Control from a directly linked mode", async () => {
+    renderPage("/git-status?projectId=project-a&tab=comments", "/previous");
+
+    expect(
+      (
+        await screen.findByRole("tab", { name: /sourceTabComments/ })
+      ).getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "testBrowserBack" }));
+
+    expect(await screen.findByText("previous-page")).toBeDefined();
   });
 
   it("lands on Changes and keeps its URL as the default", async () => {
@@ -650,7 +864,10 @@ describe("GitStatusPage source header", () => {
     expect(header.querySelector('[role="tablist"]')).not.toBeNull();
     expect(document.querySelectorAll('[role="tablist"]')).toHaveLength(1);
     expect(document.querySelector(".source-control-mobile-tabs")).toBeNull();
-    expect(document.querySelector(".source-control-action-row")).not.toBeNull();
+    expect(
+      header.querySelector('[data-source-actions-placement="fallback"]'),
+    ).not.toBeNull();
+    expect(document.querySelector(".source-control-action-row")).toBeNull();
   });
 
   it("keeps the source-header hooks on a modular project selector", async () => {

@@ -4,55 +4,28 @@ The Changes / Working tree surface is hard to use once the dirty set is
 large and mostly untracked. The items below are the open product and
 implementation gaps. Current intended behavior still lives in
 [Source Control](../topics/source-control.md); several items would change
-that contract (header action-row placement, `?rev=` implying history,
-untracked expansion via `git status`). Related existing gap:
+that contract (`?rev=` implying history and untracked expansion outside Git
+status). Related existing gap:
 [Source Control polling visibility](source-control-polling-visibility.md).
 
 Observed 2026-08-17 on a Working tree with 11 898 changed paths, almost all
 untracked under `runs/aim/pii-handout-fresh7-…`.
 
-Old 0–10 handles from the first draft map as:
-
-| Old | Now |
-| --- | --- |
-| 0 | [6 — Commit history affordance](#6--commit-history-affordance) |
-| 1 | [1 — Cluster untracked files by directory](#1--cluster-untracked-files-by-directory) |
-| 2 | [2 — Cache untracked listing without Git enumeration](#2--cache-untracked-listing-without-git-enumeration) |
-| 3 | [3 — Highlight and reveal the path match](#3--highlight-and-reveal-the-path-match) |
-| 4 | [4 — Apply search as files are discovered](#4--apply-search-as-files-are-discovered) |
-| 5 | [5 — Ellipsis to the live pane width](#5--ellipsis-to-the-live-pane-width) |
-| 6 | [7 — Selectable commit message](#7--selectable-commit-message) |
-| 7 | [9 — Title-row repository actions](#9--title-row-repository-actions) and [10 — Comments control](#10--comments-control) |
-| 8 | [11 — Back leaves Comments](#11--back-leaves-comments) |
-| 9 | [12 — Branch opens HEAD](#12--branch-opens-head) and [13 — Upstream opens incoming commits](#13--upstream-opens-incoming-commits) |
-| 10 | [8 — Middle-click focused commit tab](#8--middle-click-focused-commit-tab) |
+The client-only presentation and navigation tranche is now part of the durable
+[Source Control](../topics/source-control.md) contract. This gap retains only
+the unfinished inventory/cache work, current-content browser, and commit/branch
+navigation that require new contracts or URL semantics.
 
 ## Working tree files
-
-### 1 — Cluster untracked files by directory
-
-Untracked rows are a flat list of full paths. After folder expansion, 11k
-near-identical prefixes hide the distinctive filename. Group by common parent
-prefix. A group with more than 10 children starts outline-collapsed and uses
-the usual `+` / `−` control. Expanded children show only the path after that
-shared parent, not the repeated prefix.
-
-Tracked dirty rows (`M` / `A` / `D` / `R` / `partial`) stay a flat per-path
-list unless a later pass proves they need the same grouping. The `?` status
-code remains the untracked marker; do not bring back the long **untracked**
-word on every row.
-
-Collapsed groups are the UI that makes deferred listing in
-[2](#2--cache-untracked-listing-without-git-enumeration) possible: do not
-realize 11k child rows until the group is opened or search needs them.
 
 ### 2 — Cache untracked listing without Git enumeration
 
 Today the client expands every compact `dir/` from `git status` through
 `GET /git/untracked-folder`, and each call is `git status --untracked-files=all`
 on that directory (`WorkingTreeBrowser` `UNTRACKED_FOLDER_CONCURRENCY = 4`;
-server `packages/server/src/routes/git-status.ts`). A large untracked tree
-becomes hundreds of Git processes and a fully flattened list.
+server `packages/server/src/routes/git-status.ts`). The presentation groups
+returned children, but a large untracked tree still becomes hundreds of Git
+processes and loads every child.
 
 Replace that expansion path:
 
@@ -70,7 +43,7 @@ Replace that expansion path:
   cached path at most once per hour; do not `stat` the whole cache on every
   Working tree render or 5s poll.
 - Directory children load only when their group is expanded or search
-  requires them ([1](#1--cluster-untracked-files-by-directory)).
+  requires them; the grouped client presentation is already in place.
 
 **Gitignore is the crux.** A raw `HEAD` vs filesystem walk will surface
 `node_modules/`, build output, and other excluded trees. The listing must
@@ -90,87 +63,19 @@ calls it, follow the Source Control compatibility review in
 Without the gate, keep today's compact `dir/` rows and do not issue the new
 request.
 
-### 3 — Highlight and reveal the path match
+### 4 — Search unrealized children
 
-`useChangesetFileFilter` / `FileSearchIndex` already match the query against
-the full display path. `SourceFilePath` then renders the path as plain text
-with CSS `text-overflow: ellipsis`, which always keeps the *start* of the
-path. A hit in the truncated tail is invisible. The query `hand` happens to
-sit in the visible `pii-handout-…` prefix; a hit in `…-bootstrap-v2.json`
-does not.
+The current client reports loaded/total compact-directory progress and applies
+the active query to every child received from the existing bounded enumeration.
+It reveals matching children without overwriting a group's collapse state.
 
-Highlight the matched span. If that span sits outside the visible ellipsis
-window, shift the visible window so the match is shown (keep a leading `…`
-when the directory prefix is clipped). Same treatment in commit and Files
-rows that share `SourceFilePath`.
-
-### 4 — Apply search as files are discovered
-
-The filter already reruns when `files` changes, so a path that appears from
-an expansion and matches the current query is included. That is not obvious
-in the UI:
-
-- There is no “still scanning / N directories remaining” signal, so it is
-  unclear whether the list is complete.
-- Compact or collapsed directory rows do not search their unrealized
-  children. A query can miss thousands of files that exist only in the
-  untracked cache or on disk under a closed group.
-
-Once [1](#1--cluster-untracked-files-by-directory) and
-[2](#2--cache-untracked-listing-without-git-enumeration) land, a non-empty
+The remaining gap begins at children the server has not returned. Once
+[2](#2--cache-untracked-listing-without-git-enumeration) lands, a non-empty
 query must match cached/unrealized children and either reveal the matching
-groups or list the matching suffixes without forcing every sibling to
-expand. New cache arrivals must pass through the same filter before they
-appear.
-
-### 5 — Ellipsis to the live pane width
-
-`.git-file-path` is `flex: 1; min-width: 0; overflow: hidden; text-overflow:
-ellipsis`. In the 2026-08-17 capture the visible path still dies well before
-the files-pane content edge, leaving empty row pixels while the distinctive
-suffix is gone.
-
-Likely contributors, in order to check:
-
-- The files column default is 380px (`DEFAULT_FILES_WIDTH` in
-  `ResizableSourceColumns.tsx`) even when the workbench is much wider and
-  the detail track is empty or unused.
-- Each row is `[path button | menu trigger]`. The trigger can reserve
-  trailing space the path never uses.
-- A sibling or max-width that keeps the path from actually consuming
-  `flex: 1`.
-
-Measure against the live files-pane content box, not a character budget or
-the default column width. After [1](#1--cluster-untracked-files-by-directory),
-most visible labels are short suffixes and this matters less — still fix the
-shared row so a long ungrouped path uses the pane it sits in.
+groups or list matching suffixes without forcing every sibling to expand. New
+cache arrivals must pass through the same filter before they appear.
 
 ## Commit view
-
-### 6 — Commit history affordance
-
-`CommitHistoryParentLink` is a real button
-(`packages/client/src/pages/CommitHistoryParentLink.tsx`) but
-`.source-history-parent-link` paints it as muted secondary text on a full-width
-bar (`packages/client/src/styles/renderers.css`). It reads as a section label,
-not an action.
-
-Give it a link-like hover (accent/underline) or the same filled-button
-treatment as Pull / Push. Keyboard and click already work.
-
-### 7 — Selectable commit message
-
-The selected commit's message preview is a `<button class="commit-body">`
-that calls `onShowMessage` (`CommitFilesPane.tsx`). Platform buttons do not
-allow drag-select. Highlight/copy therefore opens the full message projection,
-which *does* allow selection.
-
-Keep click-to-open for the verbatim message view. Completing a text
-selection must not treat the mouse-up as that click — the same rule already
-used on blame lines in `topics/source-control.md` (*click without a
-selection starts a comment; a completed selection does not*). Make the
-preview selectable (`user-select: text`) or stop using a button as the
-text container.
 
 ### 8 — Middle-click focused commit tab
 
@@ -202,57 +107,6 @@ focused view; add `history=1` only when the sidebar is the point.
 The Working tree row in the history list should middle-click to the
 focused Working tree URL (the Dirty-badge view). Regular left-click in
 the current tab still selects in place and keeps the sidebar.
-
-## Header and Review
-
-### 9 — Title-row repository actions
-
-Pull, Push, Check remote, and the comments control currently occupy their
-own row (`.source-control-action-row`). The top identity row (project,
-branch, upstream, Dirty/Clean, mode tabs) often has unused space between
-the identity cluster and the Changes / Files / Pending Comments / Reviews
-tabs. `topics/source-control.md` § Header hierarchy currently *requires*
-that second row at every width.
-
-When the topmost title row has leftover space, place those actions in
-that middle gap instead of adding a row. Same wrap rule as the mode tabs:
-browser-computed from intrinsic widths, not a viewport breakpoint. If they
-do not fit, keep today's action row. Do not let branch names, badges, or
-action feedback shove the group around.
-
-### 10 — Comments control
-
-The control label is **Review** / **Review (N)** (`sourceReviewStart`,
-`sourceReviewReview`). With no drafts it `setTab("comments")` and the
-Comments mode shows **No pending comments.** With drafts it opens the
-submit modal and skips the list.
-
-That is not a “start a review” verb. It is access to the drafted
-accumulator (and, when nonempty, a shortcut past the list into submit).
-The mode tab for that accumulator is already **Pending Comments**;
-submitted history is **Reviews**.
-
-Rename the control to **Comments** or **Review comments**. Always open the
-Comments mode. Leave submit on that pane (it already has `onSubmit`). The
-tab's existing count chip is enough when drafts exist. Do not keep the
-zero-vs-nonzero dual target.
-
-### 11 — Back leaves Comments
-
-The Dirty badge already returns to standalone Working tree
-(`onSelectChanges` → `setTab("changes")`). Browser / in-app Back does not.
-
-`useSourceTab` writes `tab` with `replace: true`
-(`GitStatusPage.tsx`). Changes → Comments / Reviews therefore does not
-push a history entry, so Back skips the Source Control mode change and
-leaves the page or stays put.
-
-Push a history entry when the Source Control mode changes. Back from
-Comments or Reviews should restore the previous Source Control mode
-(usually Working tree). A deep link that *lands* on `?tab=comments`
-should still Back off the Source Control page. Phone commit-detail
-`pushState` (`useMobileCommitDetailHistory`) is a separate stack and
-must keep working.
 
 ## Identity bar
 
@@ -287,26 +141,93 @@ data it already has. Same compatibility gate as
 [2](#2--cache-untracked-listing-without-git-enumeration). Land
 [12](#12--branch-opens-head) first.
 
-## Suggested implementation order
+## Current-content browser
 
-Cheap, current contracts: [6](#6--commit-history-affordance),
-[3](#3--highlight-and-reveal-the-path-match),
-[5](#5--ellipsis-to-the-live-pane-width),
-[7](#7--selectable-commit-message),
-[10](#10--comments-control),
-[11](#11--back-leaves-comments).
+### 14 — Working Tree current contents
 
-Needs a URL or layout-contract edit: [9](#9--title-row-repository-actions),
-[12](#12--branch-opens-head),
-[8](#8--middle-click-focused-commit-tab).
+Source Control has no focused view of the filesystem's current contents. The
+Changes landing shows only dirty tracked paths and untracked paths, while Files
+lists only `git ls-files` tracked paths and makes blame its primary detail. A
+read-only **Working Tree** browser should include clean tracked files, indexed
+new files, and non-ignored untracked files that currently exist. A tracked path
+deleted from the filesystem has no current contents and stays in Changes rather
+than appearing as an openable file.
 
-Needs a new untracked model and likely a capability:
-[1](#1--cluster-untracked-files-by-directory) +
-[2](#2--cache-untracked-listing-without-git-enumeration), then
-[4](#4--apply-search-as-files-are-discovered) against that model.
+Evolve the existing Files surface rather than add a parallel file manager:
 
-[13](#13--upstream-opens-incoming-commits) is a new surface; land
-[12](#12--branch-opens-head) first.
+- Keep the stable `?tab=files` URL key. The visible mode may become **Working
+  Tree** without breaking existing links.
+- Use the shared `FileViewer` as the primary current-content detail so this
+  surface inherits the same source/preview controls, large-file handling, copy
+  behavior, and exact Git projections as session Read links and standalone file
+  pages.
+- Keep blame as an optional provenance/review projection for tracked files. An
+  untracked file remains fully viewable without manufacturing blame state.
+- Keep `UnifiedDiff` as the common diff renderer for Source Control and session
+  Edit details. Do not create a file/diff viewer hierarchy merely to put both
+  projections in this browser; composition is the existing contract.
+
+Do not broaden `GET /git/files`, whose released meaning is tracked files. Add a
+new permanent capability and endpoint, tentatively
+`git-working-tree-files` and
+`GET /api/projects/:projectId/git/working-tree-files`. Without the capability,
+a new client retains today's tracked-only Files view and makes no unsupported
+request. Before implementation, run the Source Control compatibility review and
+obtain approval for the release corpus, endpoint, capability, and fallback.
+
+The first endpoint need not wait for a persistent all-path index. On explicit
+entry or refresh, a constant number of bounded Git reads can combine indexed
+and non-ignored untracked files and subtract tracked deletions. This inventory
+must not join the five-second status poll. Measure it on the motivating 11,898-
+path repository before treating it as acceptable, return an honest truncation
+state at any safety bound, and keep search local only after the returned corpus
+is complete.
+
+The project-path-link cache is not this inventory. It deliberately answers a
+few exact existence questions on demand, includes ignored paths when asked, and
+has no completion operation. Working Tree needs a complete non-ignored corpus.
+The two facilities may later share watcher invalidation signals, but not
+completeness or visibility semantics.
+
+## Remaining implementation sequence
+
+### Add the current-content Working Tree view
+
+Implement [14](#14--working-tree-current-contents) in two separable changes:
+
+1. Add the capability-gated server inventory contract and tests for clean
+   tracked files, indexed additions, untracked files, ignored files, tracked
+   deletions, Unicode paths, bounds, and optional-lock behavior.
+2. Adapt the existing Files browser to that inventory and shared `FileViewer`,
+   retaining its local path search and an optional tracked-file blame
+   projection.
+
+This is the first server-dependent phase and waits for the required
+compatibility approval. It writes no project state; any future persistent cache
+belongs in the YA data directory under the project-directory-storage contract.
+
+### Settle the all-path cache tradeoffs separately
+
+Leave [2](#2--cache-untracked-listing-without-git-enumeration) and complete
+unrealized-child behavior in [4](#4--search-unrealized-children) for a separate
+design. It must settle watcher coverage and fallback, process and memory bounds,
+persistence, ignored-prefix correctness, and the different
+freshness/completeness needs of Source Control versus project-path links.
+
+The URL and identity-bar changes remain separate as well: land
+[12](#12--branch-opens-head) before [8](#8--middle-click-focused-commit-tab),
+then add [13](#13--upstream-opens-incoming-commits) once its incoming-commit
+surface and compatibility contract are approved.
+
+### Verification for each rendered phase
+
+Add focused component/navigation tests, run client focused tests plus root
+lint, format check, typecheck, and the applicable CSS/i18n/console checks. For
+rendered changes, inspect fresh isolated-server captures at 1000×600 and
+375×812 sequentially. The current-content endpoint additionally needs a timed
+contrast on the motivating large repository; report inventory time separately
+from React rendering and never treat an incomplete corpus as a completed
+search.
 
 Found 2026-08-17 while reviewing Source Control Working tree on a large
 untracked corpus.

@@ -5235,45 +5235,10 @@ pre.code-highlighter-plain,
   border-bottom: 1px solid var(--border-color);
 }
 
-.repo-status-action-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.source-control-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2, 8px);
-}
-
 .source-control-action-row {
   display: flex;
   min-width: 0;
   align-items: center;
-}
-
-.source-control-action-row .repo-status-action-group {
-  width: 100%;
-}
-
-.source-control-action-row .review-tray-button {
-  margin-left: auto;
-}
-
-@media (max-width: 759px) {
-  .source-control-action-row .repo-status-action-group > button {
-    padding-inline: 6px;
-  }
-
-  /* Only the longest label yields when the row is tight. */
-  .source-control-action-row .git-status-check-remote,
-  .source-control-action-row .git-status-check-remote .git-status-action-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
 
 /* Copy affordance shared by status bar, commit rows, file rows. */
@@ -5539,27 +5504,6 @@ pre.code-highlighter-plain,
   border-radius: 999px;
 }
 
-.source-history-parent-link {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: var(--space-2, 8px);
-  padding: 7px 10px;
-  color: var(--text-secondary, #8b949e);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle, #21262d);
-  border-radius: 6px;
-  font-size: 0.82rem;
-  text-align: left;
-  cursor: pointer;
-}
-
-.source-history-parent-link:hover {
-  color: var(--text-primary, #e6edf3);
-  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
-}
-
 .source-detail-action {
   padding: 2px 8px;
   font-size: 0.75rem;
@@ -5806,40 +5750,6 @@ pre.code-highlighter-plain,
   cursor: default;
 }
 
-/* Compact commit body — likely manual prose wraps are folded in the display
-   projection, then this pane wraps them to its own width. Click opens the
-   verbatim message view (with exact time) in the detail pane. */
-.commit-body {
-  display: block;
-  width: 100%;
-  margin: 0 0 var(--space-2, 8px);
-  padding: 8px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  text-align: left;
-  white-space: pre-wrap;
-  color: var(--text-secondary, #8b949e);
-  background: var(--bg-secondary);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.commit-body:hover {
-  color: var(--text-primary, #e6edf3);
-}
-
-.commit-body.selected {
-  border-color: var(--border-subtle, #21262d);
-  background: var(--bg-selected, rgba(56, 139, 253, 0.15));
-}
-
-.commit-body-mobile {
-  padding-block: 6px;
-  color: var(--text-secondary, #8b949e);
-  white-space: normal;
-}
-
 .commit-message-time {
   margin-left: auto;
   flex-shrink: 0;
@@ -6026,11 +5936,9 @@ pre.code-highlighter-plain,
     padding: 0;
   }
 
-  /* Touch has no hover title recovery. Let long source identities use a
+  /* Touch has no hover title recovery. Let long commit subjects use a
      second line instead of clipping them at an arbitrary character. */
-  .commit-subject,
-  .commit-file-item .git-file-path,
-  .blame-file-item .git-file-path {
+  .commit-subject {
     display: -webkit-box;
     overflow: hidden;
     overflow-wrap: anywhere;

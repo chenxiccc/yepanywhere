@@ -17,6 +17,18 @@ const gitStatusPageStylesheetUrl = new URL(
   "../../pages/GitStatusPage.module.css",
   import.meta.url,
 );
+const commitHistoryParentLinkStylesheetUrl = new URL(
+  "../../pages/CommitHistoryParentLink.module.css",
+  import.meta.url,
+);
+const sourceContextMenuStylesheetUrl = new URL(
+  "../../components/SourceContextMenu.module.css",
+  import.meta.url,
+);
+const sourceFileRowStylesheetUrl = new URL(
+  "../../components/SourceFileRow.module.css",
+  import.meta.url,
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -137,17 +149,23 @@ describe("Source Control workbench layout CSS contract", () => {
   });
 
   it("keeps frequent repository actions left-anchored and width-stable", async () => {
-    const [indexCss, rendererCss] = await Promise.all([
+    const [indexCss, pageCss] = await Promise.all([
       readFile(indexStylesheetUrl, "utf8"),
-      readFile(rendererStylesheetUrl, "utf8"),
+      readFile(gitStatusPageStylesheetUrl, "utf8"),
     ]);
-    const actionGroup = getLastRuleDeclarations(
-      rendererCss,
-      ".source-control-action-row .repo-status-action-group",
+    const actionGroup = getRuleDeclarationsContaining(
+      pageCss,
+      ".actionGroup",
+      "display: inline-flex",
+    );
+    const fallback = getRuleDeclarationsContaining(
+      pageCss,
+      ".headerControls.fallbackRow .actionGroup,\n.compatibilityActions .actionGroup",
+      "width",
     );
     const review = getLastRuleDeclarations(
-      rendererCss,
-      ".source-control-action-row .review-tray-button",
+      pageCss,
+      ".headerControls.fallbackRow :global(.review-tray-button)",
     );
     const indicator = getRuleDeclarationsContaining(
       indexCss,
@@ -165,7 +183,9 @@ describe("Source Control workbench layout CSS contract", () => {
       "max-width",
     );
 
-    expect(actionGroup).toMatch(/width:\s*100%\s*;/);
+    expect(actionGroup).toMatch(/display:\s*inline-flex\s*;/);
+    expect(actionGroup).toMatch(/flex-shrink:\s*0\s*;/);
+    expect(fallback).toMatch(/width:\s*100%\s*;/);
     expect(review).toMatch(/margin-left:\s*auto\s*;/);
     expect(indicator).toMatch(/width:\s*0\.75rem\s*;/);
     expect(indicator).toMatch(/flex:\s*0\s+0\s+0\.75rem\s*;/);
@@ -175,10 +195,8 @@ describe("Source Control workbench layout CSS contract", () => {
     );
   });
 
-  it("wraps header navigation from intrinsic content demand", async () => {
+  it("places repository actions by measured demand with a full-row fallback", async () => {
     const css = await readFile(gitStatusPageStylesheetUrl, "utf8");
-    // Placement follows rendered width, so no viewport threshold decides
-    // whether identity and mode navigation share the header row.
     const header = getLastRuleDeclarations(
       css,
       ".sourceHeader :global(.session-header-inner)",
@@ -191,18 +209,42 @@ describe("Source Control workbench layout CSS contract", () => {
       css,
       ".sourceHeader :global(.session-header-actions)",
     );
+    const titleActions = getLastRuleDeclarations(
+      css,
+      ".headerControls.titleRow",
+    );
+    const tabs = getRuleDeclarationsContaining(css, ".headerTabs", "order: 2");
+    const fallbackActions = getLastRuleDeclarations(
+      css,
+      ".headerControls.fallbackRow",
+    );
+    const fallbackTabs = getLastRuleDeclarations(
+      css,
+      ".headerControls.fallbackRow + .headerTabs",
+    );
 
     expect(header).toMatch(/flex-wrap:\s*wrap\s*;/);
-    expect(identity).toMatch(/flex:\s*1\s+1\s+max-content\s*;/);
-    expect(actions).toMatch(/flex:\s*1\s+0\s+max-content\s*;/);
-    expect(actions).toMatch(/max-width:\s*100%\s*;/);
+    expect(identity).toMatch(/flex:\s*0\s+1\s+auto\s*;/);
+    expect(actions).toMatch(/display:\s*contents\s*;/);
+    expect(titleActions).toMatch(/order:\s*1\s*;/);
+    expect(tabs).toMatch(/order:\s*2\s*;/);
+    expect(tabs).toMatch(/margin-left:\s*auto\s*;/);
+    expect(fallbackActions).toMatch(/flex:\s*1\s+0\s+100%\s*;/);
+    expect(fallbackActions).toMatch(/order:\s*2\s*;/);
+    expect(fallbackTabs).toMatch(/order:\s*1\s*;/);
   });
 
   it("keeps the unified Changes revision control usable at phone width", async () => {
-    const [indexCss, rendererCss, sourceModeTabsCss] = await Promise.all([
+    const [
+      indexCss,
+      sourceModeTabsCss,
+      commitHistoryParentLinkCss,
+      gitStatusPageCss,
+    ] = await Promise.all([
       readFile(indexStylesheetUrl, "utf8"),
-      readFile(rendererStylesheetUrl, "utf8"),
       readFile(sourceModeTabsStylesheetUrl, "utf8"),
+      readFile(commitHistoryParentLinkStylesheetUrl, "utf8"),
+      readFile(gitStatusPageStylesheetUrl, "utf8"),
     ]);
     // `SourceModeTabs` owns the stacked phone layout as a module variant; the
     // page only chooses it with `variant="stacked"`.
@@ -211,37 +253,65 @@ describe("Source Control workbench layout CSS contract", () => {
       ".tabs.stacked",
     );
     const historyParentLink = getLastRuleDeclarations(
-      rendererCss,
-      ".source-history-parent-link",
+      commitHistoryParentLinkCss,
+      ".link",
     );
     const cleanLanding = getLastRuleDeclarations(
       indexCss,
       ".working-tree-clean-landing",
     );
-    // The action row keeps every button at its label width; only the longest
-    // label gives up space, so no track may stretch to absorb the slack.
-    const actionGroupRules = [
-      ...rendererCss.matchAll(
-        /\.source-control-action-row \.repo-status-action-group\s*\{([^}]*)\}/g,
-      ),
-    ].map((match) => match[1] ?? "");
-    const checkRemote = getLastRuleDeclarations(
-      rendererCss,
-      ".source-control-action-row .git-status-check-remote .git-status-action-label",
+    const actionGroup = getLastRuleDeclarations(
+      gitStatusPageCss,
+      ".actionGroup",
+    );
+    const checkRemote = getRuleDeclarationsContaining(
+      gitStatusPageCss,
+      ".headerControls.fallbackRow .checkRemote .actionLabel",
+      "text-overflow",
     );
 
     expect(mobileTabs).toMatch(/grid-auto-columns:\s*minmax\(0,\s*1fr\)\s*;/);
     expect(mobileTabs).toMatch(/grid-auto-flow:\s*column\s*;/);
-    expect(actionGroupRules.length).toBeGreaterThan(0);
-    for (const rule of actionGroupRules) {
-      expect(rule).not.toMatch(/1fr/);
-    }
+    expect(actionGroup).not.toMatch(/1fr/);
     expect(checkRemote).toMatch(/min-width:\s*0\s*;/);
     expect(checkRemote).toMatch(/text-overflow:\s*ellipsis\s*;/);
-    expect(historyParentLink).toMatch(/display:\s*flex\s*;/);
-    expect(historyParentLink).toMatch(/width:\s*100%\s*;/);
+    expect(historyParentLink).toMatch(/display:\s*inline-flex\s*;/);
+    expect(historyParentLink).not.toMatch(/width:\s*100%\s*;/);
     expect(cleanLanding).toMatch(/min-height:\s*min\(24rem,\s*48vh\)\s*;/);
     expect(cleanLanding).not.toMatch(/max-width:/);
+  });
+
+  it("uses the full desktop row width while keeping path matches visible", async () => {
+    const [menuCss, pathCss, indexCss, rendererCss] = await Promise.all([
+      readFile(sourceContextMenuStylesheetUrl, "utf8"),
+      readFile(sourceFileRowStylesheetUrl, "utf8"),
+      readFile(indexStylesheetUrl, "utf8"),
+      readFile(rendererStylesheetUrl, "utf8"),
+    ]);
+    const rowSurface = getLastRuleDeclarations(menuCss, ".rowSurface");
+    const desktopTrigger = getRuleDeclarationsContaining(
+      menuCss,
+      ".trigger",
+      "position: absolute",
+    );
+    const mobileTrigger = getLastRuleDeclarations(menuCss, ".trigger");
+    const path = getRuleDeclarationsContaining(
+      pathCss,
+      ".path",
+      "flex: 1 1 auto",
+    );
+    const matchedPath = getLastRuleDeclarations(pathCss, ".pathWithMatch");
+    const match = getLastRuleDeclarations(pathCss, ".match");
+
+    expect(rowSurface).toMatch(/position:\s*relative\s*;/);
+    expect(desktopTrigger).toMatch(/position:\s*absolute\s*;/);
+    expect(desktopTrigger).toMatch(/inset-inline-end:\s*0\s*;/);
+    expect(mobileTrigger).toMatch(/position:\s*static\s*;/);
+    expect(path).toMatch(/flex:\s*1\s+1\s+auto\s*;/);
+    expect(matchedPath).toMatch(/display:\s*flex\s*;/);
+    expect(match).toMatch(/flex:\s*0\s+0\s+auto\s*;/);
+    expect(indexCss).not.toContain(".git-file-path");
+    expect(rendererCss).not.toContain(".git-file-path");
   });
 
   it("prioritizes the filename and uses compact diff controls", async () => {

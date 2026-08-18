@@ -1,5 +1,12 @@
+.rowSurface {
+  position: relative;
+}
+
 .trigger {
-  flex: 0 0 28px;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 28px;
   align-self: stretch;
   min-height: 28px;
   padding: 0;
@@ -86,7 +93,9 @@
 /* Touch rows have no hover, so the trigger stays visible and grows its target. */
 @media (max-width: 600px) {
   .trigger {
-    flex-basis: 36px;
+    position: static;
+    width: auto;
+    flex: 0 0 36px;
     opacity: 1;
   }
 }

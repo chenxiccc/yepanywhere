@@ -141,7 +141,11 @@ describe("BlameBrowser", () => {
       target: { value: "file-649" },
     });
 
-    expect(await screen.findByText(tail)).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-source-path="${tail}"]`),
+      ).not.toBeNull(),
+    );
     expect(screen.queryByText("sourceFilesTruncated")).toBeNull();
   });
 });

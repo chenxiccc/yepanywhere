@@ -447,17 +447,41 @@ describe("CommitBrowser", () => {
     await waitFor(() =>
       expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
     );
+    getGitCommitDiff.mockResolvedValueOnce({
+      diffHtml:
+        `<pre class="shiki"><code>` +
+        `<span class="line line-inserted" data-diff-line="0">+keep</span>` +
+        `</code></pre>`,
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 0,
+          newStart: 1,
+          newLines: 1,
+          lines: ["+keep"],
+        },
+      ],
+    });
     fireEvent.click(screen.getByRole("button", { name: "sourceFilterFiles" }));
     fireEvent.change(screen.getByPlaceholderText("sourceFilterFiles"), {
       target: { value: "legacy" },
     });
 
-    expect(screen.getByText("legacy/original.ts → src/keep.ts")).toBeDefined();
+    expect(
+      document.querySelector(
+        '[data-source-path="legacy/original.ts → src/keep.ts"]',
+      ),
+    ).not.toBeNull();
     expect(screen.queryByText("test/drop.test.ts")).toBeNull();
     await waitFor(() =>
       expect(getGitCommitDiff).toHaveBeenCalledWith(
         "p1",
         expect.objectContaining({ path: "src/keep.ts" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('[data-diff-line="0"]')?.textContent).toBe(
+        "+keep",
       ),
     );
   });
@@ -1062,14 +1086,54 @@ describe("CommitBrowser", () => {
 
     const compactBody = await screen.findByTitle("sourceShowFullMessage");
     expect(compactBody.textContent).toBe(`first commit\n\n${first} ${second}`);
-    fireEvent.click(compactBody);
-    await waitFor(() =>
-      expect(document.querySelector(".commit-message-full")).not.toBeNull(),
-    );
-    expect(document.querySelector(".commit-message-full")?.textContent).toBe(
-      `first commit\n\n${first}\n${second}`,
-    );
+    const getSelection = vi
+      .spyOn(window, "getSelection")
+      .mockReturnValue({ isCollapsed: false } as Selection);
+    try {
+      fireEvent.click(compactBody);
+      expect(document.querySelector(".commit-message-full")).toBeNull();
+
+      getSelection.mockReturnValue(null);
+      fireEvent.click(compactBody);
+      await waitFor(() =>
+        expect(document.querySelector(".commit-message-full")).not.toBeNull(),
+      );
+      expect(document.querySelector(".commit-message-full")?.textContent).toBe(
+        `first commit\n\n${first}\n${second}`,
+      );
+    } finally {
+      getSelection.mockRestore();
+    }
   });
+
+  it.each(["Enter", " "])(
+    "opens the commit message card with the %j key",
+    async (key) => {
+      primeApis();
+      getGitCommit.mockResolvedValue({
+        hash: SHA,
+        shortHash: "aaaaaaa",
+        subject: "first commit",
+        authorName: "Dev",
+        authorDate: "2026-07-26T00:00:00Z",
+        body: "message body",
+        files: [],
+      });
+      render(
+        <MemoryRouter>
+          <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+        </MemoryRouter>,
+      );
+
+      fireEvent.keyDown(await screen.findByTitle("sourceShowFullMessage"), {
+        key,
+      });
+
+      await waitFor(() =>
+        expect(document.querySelector(".commit-message-full")).not.toBeNull(),
+      );
+    },
+  );
 
   it("bridges a commit file to its blame view via onBlameFile", async () => {
     primeApis();

@@ -193,7 +193,7 @@ export function BlameBrowser({
                         setSelectedPath(file);
                       })}
                     >
-                      <SourceFilePath>{file}</SourceFilePath>
+                      <SourceFilePath query={query}>{file}</SourceFilePath>
                       {count > 0 && (
                         <span
                           className="source-comment-badge"

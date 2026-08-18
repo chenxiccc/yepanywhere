@@ -59,6 +59,12 @@ phone widths; a dirty repository renders its changed files. The browser-local
 instead of the default **Working tree status** landing. If the repository has
 no commits, the clean Working tree confirmation remains the fallback.
 
+A user-selected mode pushes a browser-history entry. Back from Pending Comments
+or Reviews therefore restores the preceding Source Control mode; a direct entry
+at `?tab=comments` still backs out of Source Control rather than inventing an
+internal predecessor. Phone commit-detail history remains a separate nested
+interaction.
+
 The preference applies only when navigation did not already identify an
 explicit source target. The detail-level **‹ Commit history** parent link,
 legacy `?tab=commits` URL, and `?history=1` open history inside Changes; a
@@ -83,27 +89,30 @@ the standalone Working tree landing.
 
 ## Header hierarchy
 
-The Source Control header keeps repository identity and repository operations
-in separate visual bands. Project selection, branch, upstream, ahead/behind
-state, and the Clean/Dirty badge form the identity band. When the available
-header width fits the complete mode selector, Changes/Files/Pending
-Comments/Reviews occupies the trailing top-right space without displacing that
-identity.
-Constrained layouts move the same tabs to their own full-width row.
-One selector serves every viewport: the placement is browser-computed from the
-rendered intrinsic widths of a wrapping header row, not chosen by a
-viewport-width threshold. A narrow-screen rule only compacts the tab styling
-once the row has wrapped.
+Project selection, branch, upstream, ahead/behind state, and the Clean/Dirty
+badge form the Source Control identity cluster. Changes/Files/Pending
+Comments/Reviews is the trailing mode selector. Pull, Push, Check remote, and
+Comments form one repository-action group in that fixed order.
 
-Pull, Push, and Check remote form a second, left-anchored action row in that
-fixed order at every viewport width. Review remains independently anchored at
-the trailing edge. Branch names, upstream names, count badges, action progress,
-and action outcomes must not move the Pull/Push/Check group. Their visible
-labels stay constant while a leading action glyph changes in place to present
-progress and brief success/warning state. Full action feedback remains visible
-below the action row. The project selector retains its intrinsic width, up to
-its desktop cap, before branch and upstream text yield space; ordinary short
-project names must not truncate while unused header space remains.
+On a wide layout, repository actions occupy the title row between identity and
+the trailing modes only when the rendered intrinsic widths of all three groups
+fit. A `ResizeObserver`-backed measurement responds to identity, capability,
+count, and viewport changes; a viewport breakpoint does not infer that fit.
+When they do not fit, identity and modes retain the upper row and repository
+actions take a full-width fallback row below it. Constrained layouts give the
+mode selector and repository actions full-width rows. The same control
+instances move between placements rather than being duplicated.
+
+Comments always opens Pending Comments, including when drafts exist; submission
+remains on that pane. In the full-width fallback, Comments stays at the trailing
+edge while Pull, Push, and Check remote remain left-anchored. Branch names,
+upstream names, count badges, action progress, and action outcomes must not move
+the Pull/Push/Check group. Their visible labels stay constant while a leading
+action glyph changes in place to present progress and brief success/warning
+state. Full action feedback remains visible below the header. The project
+selector retains its intrinsic width, up to its desktop cap, before branch and
+upstream text yield space; ordinary short project names must not truncate while
+unused header space remains.
 
 A successful fast-forward Pull reports the number of commits by which the
 local branch advanced, or **Already up to date** when `HEAD` did not move. A
@@ -164,12 +173,25 @@ plus additional unstaged changes, use the explicit short label **partial**
 rather than the opaque `±`; its tooltip says “Partially staged: staged changes
 plus additional unstaged changes.”
 
+Compact untracked directories remain outline groups as their existing bounded
+background scan returns children. A group with more than ten loaded children
+starts collapsed; smaller groups start expanded. Expanded child labels omit the
+shared parent while the row tooltip and action identity retain the canonical
+full path. The scan reports loaded/total directory progress, and search reveals
+matching children already received without overwriting a user's collapsed
+state. Clearing the query restores that state. Unloaded children remain outside
+search coverage until the current server enumeration returns them; the progress
+signal is the visible completeness boundary.
+
 Working-tree changes, commit revisions, and Files use one shared file-row/path
-treatment. A truncated
-path exposes its full value from the actual row hover/focus target in both
-Native and Themed tooltip modes; a nested `title` that happens to work in only
-one mode is not sufficient. Touch layouts preserve more path identity in the
-row itself rather than depending on hover.
+treatment. A case-insensitive search match is highlighted and held visible: the
+leading prefix yields from its start and the suffix consumes the remaining live
+row width. A truncated path exposes its full value from the actual row
+hover/focus target in both Native and Themed tooltip modes; a nested `title`
+that happens to work in only one mode is not sufficient. Desktop row menus
+overlay the trailing edge instead of reserving permanent path width. Touch
+layouts keep the menu target in flow and preserve more path identity in the row
+itself rather than depending on hover.
 
 ### Diff gutter
 
@@ -207,8 +229,11 @@ menu with focus return and keyboard traversal.
 When the selected commit has a body, its message card begins with the complete,
 wrapping subject even though the detail banner retains its compact ellipsized
 copy. The subject is preserved verbatim; only likely manual prose wrapping in
-the commit body is folded to the pane width. Phone detail keeps the full subject
-above its compact full-message action.
+the commit body is folded to the pane width. Its text is selectable; mouse
+activation opens the verbatim message only when the release did not complete a
+selection, while Enter and Space remain keyboard activation. Phone detail keeps
+the full subject above its compact full-message action. **‹ Commit history** is
+styled as an actionable parent link rather than a full-width section label.
 
 Source lists support Up/Down selection, Enter drill-in, Escape return, and `/`
 to focus search when focus is outside an editor. Diff navigation supports
@@ -282,10 +307,12 @@ button is outlined when off and accent-filled when pressed; the selected state
 must not depend on interpreting the glyph or a subtle tint.
 
 Each commit and working-tree changed-file pane exposes one compact file-filter
-disclosure. Opening its magnifier expands a path search across the pane's
-complete current file corpus, including expanded untracked files and both sides
-of a rename. Filtering is case-insensitive and local after the corpus is
-present. On wide layouts, the first visible file becomes the detail when the
+disclosure. Opening its magnifier expands a case-insensitive local path search
+across the pane's current corpus, including both sides of a rename and every
+untracked child returned so far by folder enumeration. New arrivals pass through
+the active query. The loaded/total scan signal discloses when Working tree
+coverage is incomplete; searching unloaded children awaits a future inventory
+contract. On wide layouts, the first visible file becomes the detail when the
 prior selection no longer matches; no match leaves an explicit empty result.
 
 ### File-viewer projections
