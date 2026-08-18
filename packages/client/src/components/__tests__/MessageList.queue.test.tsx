@@ -44,14 +44,14 @@ describe("MessageList queue rows", () => {
     expect(onCancelDeferred).toHaveBeenCalledWith("temp-queued");
   });
 
-  it("renders a queued YA command without provider-queue actions", () => {
+  it("renders queued /archive through the shared done lane without provider-queue actions", () => {
     render(
       <MessageList
         messages={[]}
         deferredMessages={[
           {
             tempId: "ya-done-queued",
-            content: "/done",
+            content: "/archive",
             timestamp: "2026-08-16T10:00:00.000Z",
             kind: "ya-command",
             yaCommand: "done",
@@ -64,6 +64,7 @@ describe("MessageList queue rows", () => {
       />,
     );
 
+    expect(screen.getByText("/archive")).toBeTruthy();
     expect(screen.getByText("Queued (after current turn)")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit queued message" })).toBe(
       null,

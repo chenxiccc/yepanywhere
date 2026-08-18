@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionMetadataService } from "../../src/metadata/index.js";
-import type { Process } from "../../src/supervisor/Process.js";
+import type {
+  PendingYaCommand,
+  Process,
+} from "../../src/supervisor/Process.js";
 import { SessionDoneCoordinator } from "../../src/supervisor/SessionDoneCoordinator.js";
 
 function coordinatorProcess(overrides: Partial<Process> = {}): Process {
-  const pending: Array<{ tempId: string; timestamp: string }> = [];
+  const pending: PendingYaCommand[] = [];
   return {
     sessionId: "session-1",
     id: "process-1",
@@ -13,30 +16,47 @@ function coordinatorProcess(overrides: Partial<Process> = {}): Process {
     userTurnVersion: 1,
     isRetainingProviderWork: () => false,
     hasPendingYaCommand: () => pending.length > 0,
-    getPendingYaCommand: () =>
-      pending[0]
-        ? {
-            command: "done",
-            tempId: pending[0].tempId,
-            timestamp: pending[0].timestamp,
-            userTurnVersion: 1,
-            completionStarted: false,
-          }
-        : undefined,
-    queueYaCommand: () => {
-      const entry = {
+    getPendingYaCommand: () => pending[0],
+    queueYaCommand: (
+      _command: Parameters<Process["queueYaCommand"]>[0],
+      options: Parameters<Process["queueYaCommand"]>[1],
+    ) => {
+      const existing = pending[0];
+      if (existing) {
+        existing.content = options?.content ?? "/done";
+        return existing;
+      }
+      const entry: PendingYaCommand = {
+        command: "done",
+        content: options?.content ?? "/done",
         tempId: "ya-done-queued",
         timestamp: "2026-08-16T10:00:00.000Z",
-      };
-      pending.push(entry);
-      return {
-        command: "done",
-        ...entry,
         userTurnVersion: 1,
         completionStarted: false,
       };
+      pending.push(entry);
+      return entry;
+    },
+    beginPendingYaCommandCompletion: () => {
+      const entry = pending[0];
+      if (!entry || entry.completionStarted) return undefined;
+      entry.completionStarted = true;
+      return entry;
+    },
+    releasePendingYaCommandCompletion: (tempId: string) => {
+      const entry = pending.find((candidate) => candidate.tempId === tempId);
+      if (entry) entry.completionStarted = false;
+    },
+    completePendingYaCommand: (tempId: string) => {
+      const index = pending.findIndex(
+        (entry) => entry.tempId === tempId && entry.completionStarted,
+      );
+      if (index === -1) return false;
+      pending.splice(index, 1);
+      return true;
     },
     pauseRecapsUntilUserTurn: vi.fn(),
+    resumeRecapsAfterUserTurn: vi.fn(),
     handleAutomationPauseChanged: vi.fn(),
     ...overrides,
   } as unknown as Process;
@@ -78,6 +98,136 @@ describe("SessionDoneCoordinator", () => {
     expect(order[0]).toBe("persist");
     expect(order).toContain("queue");
     expect(process.hasPendingYaCommand("done")).toBe(true);
+  });
+
+  it("archives durably before projecting a live-turn /archive", async () => {
+    const process = coordinatorProcess();
+    const updateMetadata = vi.fn(async () => {});
+    const queueYaCommand = vi.fn(process.queueYaCommand);
+    process.queueYaCommand = queueYaCommand;
+    const state = new SessionDoneCoordinator({
+      sessionMetadataService: {
+        getMetadata: () => undefined,
+        updateMetadata,
+      } as unknown as SessionMetadataService,
+      getProcessForSession: () => process,
+      cancelInFlightForkedRecap: () => {},
+      requestHeartbeatSweep: () => {},
+    });
+
+    const result = await state.requestSessionDone("session-1", "/archive");
+
+    expect(updateMetadata).toHaveBeenCalledWith("session-1", {
+      automationPausedUntilUserTurn: true,
+      archived: true,
+    });
+    expect(queueYaCommand).toHaveBeenCalledWith("done", {
+      content: "/archive",
+    });
+    expect(result).toMatchObject({
+      queued: true,
+      message: { content: "/archive" },
+    });
+  });
+
+  it("upgrades one queued done boundary to /archive without a second lane", async () => {
+    const process = coordinatorProcess();
+    const state = new SessionDoneCoordinator({
+      sessionMetadataService: {
+        getMetadata: () => undefined,
+        updateMetadata: async () => {},
+      } as unknown as SessionMetadataService,
+      getProcessForSession: () => process,
+      cancelInFlightForkedRecap: () => {},
+      requestHeartbeatSweep: () => {},
+    });
+
+    const done = await state.requestSessionDone("session-1", "/done");
+    const archive = await state.requestSessionDone("session-1", "/archive");
+    const laterDone = await state.requestSessionDone("session-1", "/done");
+
+    expect(done.message.content).toBe("/done");
+    expect(archive.message).toMatchObject({
+      uuid: done.message.uuid,
+      content: "/archive",
+    });
+    expect(laterDone.message).toMatchObject({
+      uuid: done.message.uuid,
+      content: "/archive",
+    });
+  });
+
+  it("serializes an archive request behind queued-boundary finalization", async () => {
+    const process = coordinatorProcess();
+    let releaseFirstWrite: () => void = () => {};
+    const firstWrite = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    const recordSyntheticDone = vi.fn(
+      async (_sessionId: string, message: { content: string }) => {
+        if (message.content === "/done") {
+          await firstWrite;
+        }
+      },
+    );
+    const state = new SessionDoneCoordinator({
+      sessionMetadataService: {
+        getMetadata: () => undefined,
+        updateMetadata: async () => {},
+        recordSyntheticDone,
+      } as unknown as SessionMetadataService,
+      getProcessForSession: () => process,
+      cancelInFlightForkedRecap: () => {},
+      requestHeartbeatSweep: () => {},
+    });
+    await state.requestSessionDone("session-1", "/done");
+    (process as unknown as { state: { type: "idle" } }).state = {
+      type: "idle",
+    };
+
+    const finalize = state.finalizePendingDone(process);
+    await vi.waitFor(() => expect(recordSyntheticDone).toHaveBeenCalledOnce());
+    const archive = state.requestSessionDone("session-1", "/archive");
+    await Promise.resolve();
+    expect(recordSyntheticDone).toHaveBeenCalledOnce();
+
+    releaseFirstWrite();
+    await expect(finalize).resolves.toMatchObject({ content: "/done" });
+    await expect(archive).resolves.toMatchObject({
+      queued: false,
+      message: { content: "/archive" },
+    });
+    expect(
+      recordSyntheticDone.mock.calls.map((call) => call[1].content),
+    ).toEqual(["/done", "/archive"]);
+  });
+
+  it("persists idle /archive and the automation pause atomically", async () => {
+    const recordSyntheticDone = vi.fn(async () => {});
+    const state = new SessionDoneCoordinator({
+      sessionMetadataService: {
+        getMetadata: () => undefined,
+        recordSyntheticDone,
+      } as unknown as SessionMetadataService,
+      getProcessForSession: () => undefined,
+      cancelInFlightForkedRecap: () => {},
+      requestHeartbeatSweep: () => {},
+    });
+
+    const result = await state.requestSessionDone("session-1", "/archive");
+
+    expect(recordSyntheticDone).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        content: "/archive",
+        message: { role: "user", content: "/archive" },
+      }),
+      { archived: true },
+    );
+    expect(result).toMatchObject({
+      queued: false,
+      message: { content: "/archive" },
+    });
   });
 
   it("does not queue /done when the pause cannot be persisted", async () => {

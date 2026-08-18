@@ -9,6 +9,8 @@ export const CLIENT_SLASH_COMMANDS = [
   "run",
   "btw",
   "done",
+  "archive",
+  "title",
   "model",
 ] as const;
 
@@ -32,6 +34,98 @@ export type ComposerDoneTarget =
   | "synthetic-session"
   | "provider";
 
+export type ComposerSessionOperation =
+  | { kind: "provider" }
+  | { kind: "focused-aside"; command: "done"; argument: string }
+  | { kind: "session-boundary"; command: "done" | "archive" }
+  | { kind: "title"; title: string | null }
+  | {
+      kind: "blocked";
+      command: "archive" | "title";
+      message: string;
+    };
+
+export function resolveComposerSessionOperation({
+  text,
+  routesToFocusedAside,
+  syntheticDoneEnabled,
+  syntheticDoneSupported,
+  syntheticArchiveSupported,
+  hasAttachments,
+}: {
+  text: string;
+  routesToFocusedAside: boolean;
+  syntheticDoneEnabled: boolean;
+  syntheticDoneSupported: boolean;
+  syntheticArchiveSupported: boolean;
+  hasAttachments: boolean;
+}): ComposerSessionOperation {
+  const parsed = parseComposerSlashCommand(text);
+  if (parsed?.kind !== "custom") {
+    return { kind: "provider" };
+  }
+
+  if (parsed.command === "done") {
+    if (routesToFocusedAside) {
+      return {
+        kind: "focused-aside",
+        command: "done",
+        argument: parsed.argument,
+      };
+    }
+    if (syntheticDoneEnabled && !parsed.argument.trim() && !hasAttachments) {
+      return { kind: "session-boundary", command: "done" };
+    }
+    return { kind: "provider" };
+  }
+
+  if (parsed.command === "archive") {
+    if (routesToFocusedAside) {
+      return {
+        kind: "blocked",
+        command: "archive",
+        message:
+          "/archive is unavailable while the composer targets a /btw aside.",
+      };
+    }
+    if (parsed.argument.trim() || hasAttachments) {
+      return {
+        kind: "blocked",
+        command: "archive",
+        message: "Use /archive by itself without attachments.",
+      };
+    }
+    if (syntheticArchiveSupported) {
+      return { kind: "session-boundary", command: "archive" };
+    }
+    if (syntheticDoneSupported) {
+      return { kind: "session-boundary", command: "done" };
+    }
+    return { kind: "provider" };
+  }
+
+  if (parsed.command === "title") {
+    if (routesToFocusedAside) {
+      return {
+        kind: "blocked",
+        command: "title",
+        message:
+          "/title is unavailable while the composer targets a /btw aside.",
+      };
+    }
+    if (hasAttachments) {
+      return {
+        kind: "blocked",
+        command: "title",
+        message: "Remove attachments before using /title.",
+      };
+    }
+    return { kind: "title", title: parsed.argument.trim() || null };
+  }
+
+  return { kind: "provider" };
+}
+
 export function resolveComposerDoneTarget({
   text,
   routesToFocusedAside,
@@ -43,10 +137,18 @@ export function resolveComposerDoneTarget({
   syntheticDoneEnabled: boolean;
   hasAttachments: boolean;
 }): ComposerDoneTarget {
-  if (routesToFocusedAside) {
+  const operation = resolveComposerSessionOperation({
+    text,
+    routesToFocusedAside,
+    syntheticDoneEnabled,
+    syntheticDoneSupported: syntheticDoneEnabled,
+    syntheticArchiveSupported: false,
+    hasAttachments,
+  });
+  if (operation.kind === "focused-aside") {
     return "focused-aside";
   }
-  if (syntheticDoneEnabled && text.trim() === "/done" && !hasAttachments) {
+  if (operation.kind === "session-boundary") {
     return "synthetic-session";
   }
   return "provider";
@@ -57,6 +159,8 @@ const COMMAND_DISPLAY: Record<string, { label: string; shortcut: string }> = {
   run: { label: "run exactly", shortcut: "/r" },
   btw: { label: "btw aside", shortcut: "/b" },
   done: { label: "done with aside", shortcut: "/d" },
+  archive: { label: "archive session", shortcut: "/archive" },
+  title: { label: "title session", shortcut: "/title" },
   model: { label: "model", shortcut: "/m" },
 };
 
@@ -135,6 +239,12 @@ export function parseComposerSlashCommand(
   }
   if (command === "d" || command === "done") {
     return { kind: "custom", command: "done", argument };
+  }
+  if (command === "archive") {
+    return { kind: "custom", command: "archive", argument };
+  }
+  if (command === "title") {
+    return { kind: "custom", command: "title", argument };
   }
   if (command === "compact") {
     return { kind: "custom", command, argument };

@@ -15,6 +15,8 @@ import type {
 import {
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
+  SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY,
+  SYNTHETIC_DONE_COMMAND_CAPABILITY,
   getCanonicalInvocationToken,
   isClaudeProviderName,
   serverHasCapability,
@@ -207,6 +209,7 @@ import {
   createClientSlashCommand,
   normalizeSlashCommandForMatch,
   resolveComposerDoneTarget,
+  resolveComposerSessionOperation,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
@@ -450,6 +453,14 @@ function SessionPageContent({
   const { version: versionInfo } = useVersion();
   const { presence: toolbarPresence } = useSessionToolbarPresence();
   const syntheticDoneEnabled = toolbarPresence.syntheticDone !== "off";
+  const supportsSyntheticDone = serverHasCapability(
+    versionInfo,
+    SYNTHETIC_DONE_COMMAND_CAPABILITY,
+  );
+  const supportsSyntheticArchive = serverHasCapability(
+    versionInfo,
+    SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY,
+  );
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const supportsProjectSessionDefaults = serverHasCapability(
     versionInfo,
@@ -1937,6 +1948,31 @@ function SessionPageContent({
 
     const slashTurn = resolveComposerSlashTurn(text);
     if (slashTurn.kind === "custom") {
+      const sessionOperation = resolveComposerSessionOperation({
+        text,
+        routesToFocusedAside: false,
+        syntheticDoneEnabled,
+        syntheticDoneSupported: supportsSyntheticDone,
+        syntheticArchiveSupported: supportsSyntheticArchive,
+        hasAttachments:
+          attachmentsRef.current.length > 0 ||
+          pendingUploadsRef.current.size > 0,
+      });
+      if (sessionOperation.kind === "blocked") {
+        draftControlsRef.current?.setDraft(text);
+        showToast(sessionOperation.message, "error");
+        return null;
+      }
+      if (sessionOperation.kind === "session-boundary") {
+        endCorrectionForLocalCommand();
+        void handleSyntheticSessionBoundary(sessionOperation.command);
+        return null;
+      }
+      if (sessionOperation.kind === "title") {
+        endCorrectionForLocalCommand();
+        void handleLocalTitleCommand(sessionOperation.title);
+        return null;
+      }
       if (slashTurn.command === "btw" && !supportsBtwAsides) {
         draftControlsRef.current?.setDraft(text);
         showToast(
@@ -1944,25 +1980,6 @@ function SessionPageContent({
           "error",
         );
         return null;
-      }
-      if (slashTurn.command === "done") {
-        const doneTarget = resolveComposerDoneTarget({
-          text,
-          routesToFocusedAside: false,
-          syntheticDoneEnabled,
-          hasAttachments:
-            attachmentsRef.current.length > 0 ||
-            pendingUploadsRef.current.size > 0,
-        });
-        if (doneTarget === "provider") {
-          const outgoingText = outgoingTextFor(text);
-          return outgoingText ? { outgoingText } : null;
-        }
-        if (doneTarget === "synthetic-session") {
-          endCorrectionForLocalCommand();
-          void handleSyntheticDone();
-          return null;
-        }
       }
       if (handleCustomCommand(slashTurn.command, slashTurn.argument)) {
         endCorrectionForLocalCommand();
@@ -2077,25 +2094,48 @@ function SessionPageContent({
     [setComposerAttachments, t, updatePendingMessage],
   );
 
-  const handleSyntheticDone = useCallback(async () => {
-    try {
-      const result = await api.markSessionDone(actualSessionId);
-      // The composer cleared `/done` optimistically but kept the localStorage
-      // recovery copy. Without this the text is restored on remount and the
-      // session keeps a "Draft" badge for a command it already consumed.
-      draftControlsRef.current?.confirmInputClear();
-      if (result.deferredMessages) {
-        setDeferredMessages(result.deferredMessages);
+  const handleSyntheticSessionBoundary = useCallback(
+    async (command: "done" | "archive") => {
+      try {
+        const result =
+          command === "archive"
+            ? await api.archiveSession(actualSessionId)
+            : await api.markSessionDone(actualSessionId);
+        // The composer cleared the command optimistically but kept the
+        // localStorage recovery copy. Without this the text is restored on
+        // remount and the session keeps a "Draft" badge for a command it
+        // already consumed.
+        draftControlsRef.current?.confirmInputClear();
+        if (command === "archive") {
+          setLocalIsArchived(true);
+          activityBus.emitLocal("session-metadata-changed", {
+            type: "session-metadata-changed",
+            sessionId: actualSessionId,
+            archived: true,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        if (result.deferredMessages) {
+          setDeferredMessages(result.deferredMessages);
+        }
+        if (result.queued !== true) {
+          await fetchNewMessages();
+        }
+        setScrollTrigger((previous) => previous + 1);
+      } catch {
+        draftControlsRef.current?.restoreFromStorage();
+        showToast(
+          t(
+            command === "archive"
+              ? "syntheticArchiveFailed"
+              : "syntheticDoneFailed",
+          ),
+          "error",
+        );
       }
-      if (result.queued !== true) {
-        await fetchNewMessages();
-      }
-      setScrollTrigger((previous) => previous + 1);
-    } catch {
-      draftControlsRef.current?.restoreFromStorage();
-      showToast(t("syntheticDoneFailed"), "error");
-    }
-  }, [actualSessionId, fetchNewMessages, setDeferredMessages, showToast, t]);
+    },
+    [actualSessionId, fetchNewMessages, setDeferredMessages, showToast, t],
+  );
 
   const closeFocusedBtwAside = useCallback(
     (argument = "") => {
@@ -2131,11 +2171,11 @@ function SessionPageContent({
       return;
     }
     if (target === "synthetic-session") {
-      void handleSyntheticDone();
+      void handleSyntheticSessionBoundary("done");
     }
   }, [
     closeFocusedBtwAside,
-    handleSyntheticDone,
+    handleSyntheticSessionBoundary,
     mainComposerForAside,
     syntheticDoneEnabled,
   ]);
@@ -3428,17 +3468,32 @@ function SessionPageContent({
   );
 
   const handleFocusedBtwSend = useCallback(
-    (text: string) => {
+    (text: string, source: "main" | "pane" = "main") => {
       if (!focusedBtwAside) {
         void handleSendRef.current(text);
         return;
       }
-      const slashTurn = resolveComposerSlashTurn(text);
+      const sessionOperation = resolveComposerSessionOperation({
+        text,
+        routesToFocusedAside: true,
+        syntheticDoneEnabled,
+        syntheticDoneSupported: supportsSyntheticDone,
+        syntheticArchiveSupported: supportsSyntheticArchive,
+        hasAttachments: false,
+      });
       if (
-        slashTurn.kind === "custom" &&
-        slashTurn.command === "done" &&
-        closeFocusedBtwAside(slashTurn.argument)
+        sessionOperation.kind === "focused-aside" &&
+        closeFocusedBtwAside(sessionOperation.argument)
       ) {
+        return;
+      }
+      if (sessionOperation.kind === "blocked") {
+        if (source === "pane") {
+          setAsideDraft(text);
+        } else {
+          draftControlsRef.current?.setDraft(text);
+        }
+        showToast(sessionOperation.message, "error");
         return;
       }
       void runBtwAsideTurn(
@@ -3447,7 +3502,16 @@ function SessionPageContent({
         focusedBtwAside.status === "draft" && !focusedBtwAside.sessionId,
       );
     },
-    [closeFocusedBtwAside, focusedBtwAside, runBtwAsideTurn],
+    [
+      closeFocusedBtwAside,
+      focusedBtwAside,
+      runBtwAsideTurn,
+      setAsideDraft,
+      showToast,
+      supportsSyntheticArchive,
+      supportsSyntheticDone,
+      syntheticDoneEnabled,
+    ],
   );
 
   const applyMotherComposerTransfer = useCallback(
@@ -4096,12 +4160,12 @@ function SessionPageContent({
     };
   };
 
-  const saveTitleValue = async (nextTitle: string) => {
+  const saveTitleValue = async (nextTitle: string): Promise<boolean> => {
     const trimmed = nextTitle.trim();
-    if (!trimmed || isRenaming) return;
+    if (!trimmed || isRenaming) return false;
     if (trimmed === displayTitle) {
       handleCancelEditingTitle();
-      return;
+      return true;
     }
 
     invalidateGeneratedRetitle();
@@ -4120,9 +4184,11 @@ function SessionPageContent({
       setTitleEditMode("manual");
       setRenameValue("");
       showToast(t("sessionRenamed"), "success");
+      return true;
     } catch (err) {
       console.error("Failed to rename session:", err);
       showToast(t("sessionRenameFailed"), "error");
+      return false;
     } finally {
       setIsRenaming(false);
       isSavingTitleRef.current = false;
@@ -4207,6 +4273,25 @@ function SessionPageContent({
 
   const handleGenerateAndApplyTitle = () => {
     handleStartRetitleTitle({ applyWhenReady: true });
+  };
+
+  const handleLocalTitleCommand = async (title: string | null) => {
+    if (title !== null) {
+      const saved = await saveTitleValue(title);
+      if (saved) {
+        draftControlsRef.current?.confirmInputClear();
+      } else {
+        draftControlsRef.current?.restoreFromStorage();
+      }
+      return;
+    }
+
+    handleGenerateAndApplyTitle();
+    if (supportsForkFromTurn) {
+      draftControlsRef.current?.confirmInputClear();
+    } else {
+      draftControlsRef.current?.restoreFromStorage();
+    }
   };
 
   const handleCancelEditingTitle = () => {
@@ -5357,7 +5442,7 @@ function SessionPageContent({
             draft={asideDraft}
             composerRef={asideComposerRef}
             onDraftChange={setAsideDraft}
-            onSendFollowup={handleFocusedBtwSend}
+            onSendFollowup={(text) => handleFocusedBtwSend(text, "pane")}
             onHide={() => setBtwSidePaneCollapsed(true)}
             onDone={(argument) => handleCustomCommand("done", argument)}
             onStop={() => void handleStopBtwAside(focusedBtwAside.id)}
@@ -5486,7 +5571,7 @@ function SessionPageContent({
               <MessageInput
                 onSend={
                   mainComposerForAside
-                    ? handleFocusedBtwSend
+                    ? (text) => handleFocusedBtwSend(text, "main")
                     : primaryComposerAction === "steer"
                       ? handleSend
                       : shouldDeferMessages

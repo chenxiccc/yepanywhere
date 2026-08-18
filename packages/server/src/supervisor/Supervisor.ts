@@ -11,6 +11,7 @@ import {
   type SessionLivenessProbeStatus,
   type SessionLivenessSnapshot,
   type SessionSandboxLevel,
+  type SyntheticSessionBoundaryCommand,
   type UrlProjectId,
   type WorkstreamId,
   truncateSessionTitle,
@@ -3045,8 +3046,11 @@ export class Supervisor {
     return this.sessionDone.isAutomationPausedUntilUserTurn(sessionId);
   }
 
-  async requestSessionDone(sessionId: string): Promise<SessionDoneResult> {
-    return this.sessionDone.requestSessionDone(sessionId);
+  async requestSessionDone(
+    sessionId: string,
+    command: SyntheticSessionBoundaryCommand = "/done",
+  ): Promise<SessionDoneResult> {
+    return this.sessionDone.requestSessionDone(sessionId, command);
   }
 
   private async finalizePendingDone(

@@ -137,6 +137,25 @@ started by the navigation gesture; manual **Rename** from the session menu
 stays the typed-edit path. The button only renders for providers that advertise
 transcript forks (`supportsForkFromTurn`).
 
+## Typed `/title`
+
+The Mother-session composer also exposes `/title` as a YA-local operation. It
+never sends command text to the provider:
+
+- `/title <text>` immediately trims and persists `<text>` through the existing
+  session-metadata title route. The composer recovery copy is cleared after the
+  save succeeds and restored when it fails.
+- Bare `/title` immediately starts the same token-using one-shot
+  generate-and-apply flow as the dedicated header button. Starting the helper
+  consumes the command; generation or save failures remain visible in the
+  existing retitle surface.
+- The command is blocked with its draft restored when attachments are present
+  or when the composer currently targets a `/btw` aside. It does not become
+  aside input or provider text.
+
+Title operations are immediate-only. They do not use the turn-boundary command
+lane or imply a generic persisted scheduler for later UI operations.
+
 ## Helper Model Notes
 
 The first helper can use the same temporary-fork strategy as
@@ -163,3 +182,5 @@ retitle-only helper configuration.
 - Stopped mixed-provider sessions use the provider found by transcript readers,
   wake the source session before the helper fork, and do not race a concurrent
   normal send into a second resume.
+- `/title <text>` persists no provider turn, while bare `/title` starts the
+  existing generated-and-apply helper. Neither command reaches a focused aside.

@@ -145,6 +145,19 @@ describe("Process", () => {
           }),
         ]),
       );
+      const archive = process.queueYaCommand("done", { content: "/archive" });
+      expect(archive).toBe(pending);
+      expect(process.getDeferredQueueSummary()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            tempId: pending.tempId,
+            content: "/archive",
+            kind: "ya-command",
+            yaCommand: "done",
+            status: "queued",
+          }),
+        ]),
+      );
 
       controller.push({
         type: "result",
@@ -160,7 +173,10 @@ describe("Process", () => {
         text: "ordinary queued work",
       });
       expect(
-        push.mock.calls.some(([message]) => message.text === "/done"),
+        push.mock.calls.some(
+          ([message]) =>
+            message.text === "/done" || message.text === "/archive",
+        ),
       ).toBe(false);
       expect(queueEvents).toEqual(
         expect.arrayContaining([

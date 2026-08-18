@@ -240,6 +240,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "claude-gateway-disable-plan-mode",
     introducedIn: "0.7.1",
   },
+  syntheticArchiveCommand: {
+    id: 37,
+    direction: "server",
+    name: "synthetic-archive-command",
+    introducedIn: "0.7.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

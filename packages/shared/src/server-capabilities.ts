@@ -1365,6 +1365,28 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace installed servers, and older servers neither persist the overlay nor enforce the automation pause.",
     },
   },
+  syntheticArchiveCommand: {
+    id: CAPABILITY_ID_ALLOCATIONS.syntheticArchiveCommand.id,
+    name: "synthetic-archive-command",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.7.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server archives a session and applies the same durable, non-interrupting session boundary as /done while preserving /archive in the queued and transcript projections.",
+    clientFallback:
+      "Translate typed /archive to the established synthetic /done operation before queue projection and make no archive request.",
+    serverContract: {
+      routes: ["POST /api/sessions/:sessionId/archive"],
+      routeModules: ["packages/server/src/routes/session-archive.ts"],
+      responseFields: ["message", "paused"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers cannot atomically archive with the durable session boundary, but can preserve the user's done intent through the established /done route.",
+    },
+  },
   projectQueueNewSessionShortcutSetting: {
     name: "project-queue-new-session-shortcut-setting",
     kind: "permanent",
@@ -1577,6 +1599,8 @@ export const SIDEBAR_SESSION_RESUME_CAPABILITY =
   SERVER_CAPABILITIES.sidebarSessionResume.name;
 export const SYNTHETIC_DONE_COMMAND_CAPABILITY =
   SERVER_CAPABILITIES.syntheticDoneCommand.name;
+export const SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY =
+  SERVER_CAPABILITIES.syntheticArchiveCommand.name;
 export const PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.projectQueueNewSessionShortcutSetting.name;
 

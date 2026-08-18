@@ -12,6 +12,7 @@ import type {
   SessionQueuedMessageSummary,
   SessionQueuedYaCommand,
   SessionSandboxEnforcement,
+  SyntheticSessionBoundaryCommand,
   SessionWakeReason,
   SessionWakeReasonSnapshot,
   SlashCommand,
@@ -104,6 +105,7 @@ type DeferredQueueEntry = {
 };
 export type PendingYaCommand = {
   command: SessionQueuedYaCommand;
+  content: SyntheticSessionBoundaryCommand;
   tempId: string;
   timestamp: string;
   userTurnVersion: number;
@@ -3545,17 +3547,32 @@ export class Process {
    */
   queueYaCommand(
     command: SessionQueuedYaCommand,
-    options?: { tempId?: string; timestamp?: string },
+    options?: {
+      content?: SyntheticSessionBoundaryCommand;
+      tempId?: string;
+      timestamp?: string;
+    },
   ): PendingYaCommand {
+    const content: SyntheticSessionBoundaryCommand =
+      options?.content ?? `/${command}`;
     const existing = this.pendingYaCommands.find(
       (entry) => entry.command === command,
     );
     if (existing) {
+      if (existing.content !== content) {
+        existing.content = content;
+        this.emitDeferredQueueChange(
+          "queued",
+          existing.tempId,
+          existing.command,
+        );
+      }
       return existing;
     }
 
     const entry: PendingYaCommand = {
       command,
+      content,
       tempId: options?.tempId ?? `ya-${command}-${randomUUID()}`,
       timestamp: options?.timestamp ?? new Date().toISOString(),
       userTurnVersion: this._userTurnVersion,
@@ -3737,7 +3754,7 @@ export class Process {
     });
     const yaCommands = this.pendingYaCommands.map((entry) => ({
       tempId: entry.tempId,
-      content: `/${entry.command}`,
+      content: entry.content,
       timestamp: entry.timestamp,
       kind: "ya-command" as const,
       yaCommand: entry.command,

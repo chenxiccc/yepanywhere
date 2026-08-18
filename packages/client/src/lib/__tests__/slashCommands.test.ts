@@ -6,6 +6,7 @@ import {
   normalizeSlashCommandForMatch,
   parseComposerSlashCommand,
   resolveComposerDoneTarget,
+  resolveComposerSessionOperation,
   resolveComposerSlashTurn,
 } from "../slashCommands";
 
@@ -64,6 +65,84 @@ describe("slashCommands", () => {
       kind: "custom",
       command: "done",
       argument: "",
+    });
+  });
+
+  it("resolves local archive and title operations without provider ingress", () => {
+    const resolve = (
+      text: string,
+      overrides: Partial<
+        Parameters<typeof resolveComposerSessionOperation>[0]
+      > = {},
+    ) =>
+      resolveComposerSessionOperation({
+        text,
+        routesToFocusedAside: false,
+        syntheticDoneEnabled: true,
+        syntheticDoneSupported: true,
+        syntheticArchiveSupported: true,
+        hasAttachments: false,
+        ...overrides,
+      });
+
+    expect(parseComposerSlashCommand("/archive")).toEqual({
+      kind: "custom",
+      command: "archive",
+      argument: "",
+    });
+    expect(parseComposerSlashCommand("/title A concise title")).toEqual({
+      kind: "custom",
+      command: "title",
+      argument: "A concise title",
+    });
+    expect(resolve("/archive")).toEqual({
+      kind: "session-boundary",
+      command: "archive",
+    });
+    expect(resolve("/archive", { syntheticArchiveSupported: false })).toEqual({
+      kind: "session-boundary",
+      command: "done",
+    });
+    expect(
+      resolve("/archive", {
+        syntheticArchiveSupported: false,
+        syntheticDoneSupported: false,
+      }),
+    ).toEqual({ kind: "provider" });
+    expect(resolve("/archive later")).toMatchObject({
+      kind: "blocked",
+      command: "archive",
+    });
+    expect(resolve("/title A concise title")).toEqual({
+      kind: "title",
+      title: "A concise title",
+    });
+    expect(resolve("/title")).toEqual({ kind: "title", title: null });
+  });
+
+  it("keeps Mother-session operations out of focused asides", () => {
+    const resolve = (text: string) =>
+      resolveComposerSessionOperation({
+        text,
+        routesToFocusedAside: true,
+        syntheticDoneEnabled: true,
+        syntheticDoneSupported: true,
+        syntheticArchiveSupported: true,
+        hasAttachments: false,
+      });
+
+    expect(resolve("/archive")).toMatchObject({
+      kind: "blocked",
+      command: "archive",
+    });
+    expect(resolve("/title New title")).toMatchObject({
+      kind: "blocked",
+      command: "title",
+    });
+    expect(resolve("/done report back")).toEqual({
+      kind: "focused-aside",
+      command: "done",
+      argument: "report back",
     });
   });
 
@@ -148,6 +227,16 @@ describe("slashCommands", () => {
       shortcut: "/b",
       rest: "tw aside",
       label: "/btw aside",
+    });
+    expect(getSlashCommandMenuParts("archive")).toEqual({
+      shortcut: "/archive",
+      rest: " session",
+      label: "/archive session",
+    });
+    expect(getSlashCommandMenuParts("title")).toEqual({
+      shortcut: "/title",
+      rest: " session",
+      label: "/title session",
     });
     expect(getSlashCommandMenuParts("model")).toEqual({
       shortcut: "/m",

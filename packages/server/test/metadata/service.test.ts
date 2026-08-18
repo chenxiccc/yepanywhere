@@ -817,6 +817,30 @@ describe("SessionMetadataService", () => {
       ).toBeUndefined();
       expect(reloaded.getSyntheticDoneMessages("session-1")).toEqual([message]);
     });
+
+    it("persists archive with the boundary row in one mutation", async () => {
+      await service.initialize();
+      const message = {
+        type: "user" as const,
+        content: "/archive" as const,
+        message: { role: "user" as const, content: "/archive" as const },
+        timestamp: "2026-08-17T12:00:00.000Z",
+        uuid: "archive-1",
+        id: "archive-1",
+        isSynthetic: true as const,
+        yaSyntheticSource: "done" as const,
+      };
+
+      await service.recordSyntheticDone("session-1", message, {
+        archived: true,
+      });
+
+      expect(service.getMetadata("session-1")).toMatchObject({
+        syntheticDoneMessages: [message],
+        automationPausedUntilUserTurn: true,
+        isArchived: true,
+      });
+    });
   });
 
   describe("clearSession", () => {

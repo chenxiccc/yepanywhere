@@ -989,6 +989,7 @@
   "sessionHeartbeatTitle": "Session Nudge",
   "syntheticDoneToolbarTitle": "Mark done without sending a turn",
   "syntheticDoneFailed": "Could not mark this session done",
+  "syntheticArchiveFailed": "Could not archive this session",
   "sessionHeartbeatEnabledTitle": "Inactivity Nudge",
   "sessionHeartbeatEnabledDescription": "Keep idle sessions moving by sending a synthetic nudge.",
   "sessionHeartbeatAfterTitle": "Idle Minutes Override",

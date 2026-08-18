@@ -83,6 +83,18 @@ capability is version-implied from `0.7.1` and owns ID 36. Without it, the
 client hides the Gateway plan-mode row and sends no field. Existing Gateway and
 Agent-denial capability meanings and older capable behavior remain unchanged.
 
+`synthetic-archive-command` owns
+`POST /api/sessions/:sessionId/archive`, the atomic archive-plus-automation-pause
+mutation, and `/archive` queued/transcript projections. The ordinary
+optional-feature corpus is `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11);
+both lack the route. The permanent capability is version-implied from `0.7.1`
+and owns ID 37. Without it, a client connected to a server that advertises
+`synthetic-done-command` calls only the established bodyless `/done` route and
+canonicalizes every visible projection to `/done`; it makes no archive request.
+Without either capability, the existing provider-command fallback remains.
+The already-advertised done capability and older capable behavior remain
+unchanged.
+
 `serverHasCapability` accepts release implication, encoding-1 IDs, and both
 legacy representations. This union keeps old installed servers usable without
 making a new capability depend on its textual name.
@@ -245,9 +257,10 @@ the same ledger:
 | 34 | server | 0.7.1 | `subagent-max-depth-setting` |
 | 35 | server | 0.7.1 | `codex-reasoning-summary-setting` |
 | 36 | server | 0.7.1 | `claude-gateway-disable-plan-mode` |
+| 37 | server | 0.7.1 | `synthetic-archive-command` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 37; retired rows stay in the ledger as reserved IDs.
+ID 38; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

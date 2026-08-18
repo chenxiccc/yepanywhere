@@ -45,6 +45,15 @@ as the runtime skills directory.
   by the tag; YA must never reinterpret arbitrary deferred slash-shaped text by
   content, because the same name may belong to a provider or user skill. The
   boundary consumes the tagged control locally and sends no provider turn.
+  `/done` and `/archive` deliberately share one semantic done lane while
+  carrying distinct visible command text; this keeps Project Queue and
+  automation-pause behavior unified instead of creating another scheduler.
+- Immediate YA session operations use the same typed composer resolver but do
+  not enter that lane. `/title <text>` saves metadata immediately and bare
+  `/title` starts the existing generated-retitle helper. A local operation that
+  cannot safely consume the current composer state, such as title with an
+  attachment or either Mother-only operation in an aside-routed composer, fails
+  visibly and remains recoverable rather than becoming provider text.
 - Emulated commands should preserve the user's argument text verbatim except
   for the declared template substitution. Parsing inside the command belongs to
   the skill/provider behavior, not to the generic rewrite layer.
@@ -116,3 +125,6 @@ recap/goal implementation.
   being sent to the provider as plain prompt text.
 - Provider-native local output reaches both a live subscriber and the replay
   buffer, while the provider receives no user/model turn.
+- Supported `/archive` projects `/archive`; an archive-incapable but done-capable
+  server projects `/done` without receiving an archive request. `/title` is
+  handled locally and never reaches a provider or focused aside.

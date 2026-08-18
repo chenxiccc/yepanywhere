@@ -137,6 +137,7 @@ import {
 } from "./routes/server-admin.js";
 import { createEnvSettingsRoutes } from "./routes/env-settings.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
+import { createSessionArchiveRoutes } from "./routes/session-archive.js";
 import { createSessionDoneRoutes } from "./routes/session-done.js";
 import { createSessionIndexRoutes } from "./routes/session-index.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
@@ -1748,6 +1749,15 @@ export function createApp(options: AppOptions): AppResult {
       supervisor,
       sessionMetadataService: options.sessionMetadataService,
       sessionQueuePersistenceService: options.sessionQueuePersistenceService,
+    }),
+  );
+  app.route(
+    "/api/sessions",
+    createSessionArchiveRoutes({
+      supervisor,
+      sessionMetadataService: options.sessionMetadataService,
+      sessionQueuePersistenceService: options.sessionQueuePersistenceService,
+      eventBus: options.eventBus,
     }),
   );
   app.route(

@@ -224,65 +224,77 @@ compact command on an idle process, show the `Compacting` busy state
 per [provider-state-machine](provider-state-machine.md), and surface
 failure without retry loops.
 
-## Synthetic done
+## Synthetic done and archive
 
-YA's optional `/done` command is a local session boundary, not a provider
-command. When enabled, an exact attachment-free `/done` submission or its
-toolbar button persists a synthetic user row in YA metadata, marks the session
-read, and sends no provider turn. The row is merged into session history by
+YA's optional `/done` command and typed `/archive` command are local session
+boundaries, not provider commands. When enabled, an exact attachment-free
+submission persists a synthetic user row in YA metadata, marks the session
+read, and sends no provider turn. `/archive` additionally archives the session
+in the same metadata mutation. The row is merged into session history by
 timestamp without mutating the provider transcript, so it remains visible on a
 later visit.
 
 During an active turn (including provider-retained background work), the action
 first persists `automationPausedUntilUserTurn` and then appears in the
-canonical queued-message projection as a `ya-command` `/done` chip. The chip is
-a separate Process-local control lane: it never enters the deferred, patient,
-direct, or provider queues and does not interrupt the current turn. The pause
-is session metadata, so a restart or reap before idle finalize still leaves the
-session done until a later real user turn. At the first unretained idle
-boundary, YA records the durable synthetic row before removing the chip; only
-then may already-accepted ordinary queued turns resume their normal delivery. A
-failed pause persist fails the request without queuing a chip. A later
-synthetic-row or read-state failure leaves the already-persisted pause in force
-and the command visibly queued for an explicit retry, and still sends no
+canonical queued-message projection as a `ya-command` chip. `/archive` persists
+archive and pause together before the chip appears. The same Process-local done
+lane owns both actions, but its visible content is `/done` or `/archive`; there
+is no second scheduler or provider queue. It never enters the deferred,
+patient, direct, or provider queues and does not interrupt the current turn.
+The pause and archive state are session metadata, so a restart or reap before
+idle finalize preserves the requested effect. At the first unretained idle
+boundary, YA records the matching durable synthetic row before removing the
+chip; only then may already-accepted ordinary queued turns resume their normal
+delivery. A failed metadata persist fails the request without queuing a chip. A
+later synthetic-row or read-state failure leaves the already-persisted state in
+force and the command visibly queued for an explicit retry, and still sends no
 provider input.
 
-The same durable action pauses YA-driven provider work until a later real user
-turn. It blocks automatic compaction, recaps (including forked and cold
+Both durable boundaries pause YA-driven provider work until a later real user
+turn. They block automatic compaction, recaps (including forked and cold
 recaps), heartbeat/session-wake turns, prompt-cache keepalive, patient queue
-promotion, and automatic Project Queue revival for that session. It does not
+promotion, and automatic Project Queue revival for that session. They do not
 interrupt current provider work, retract already accepted turns, or block
 message-less Activate. A real user Send clears the pause; automatically sourced
 heartbeat, wake, and Project Queue messages do not. If that real Send is
-accepted while `/done` is still queued, its later intent wins after the done row
-commits, so the already-accepted user turn does not leave automation paused.
+accepted while either boundary is still queued, its later intent wins after the
+synthetic row commits, so the already-accepted user turn does not leave
+automation paused.
 
-`/done` is consumed on submit, including while it sits queued. The composer
-clears the text optimistically and the settled request drops the localStorage
-recovery copy, so the session shows no "Draft" badge and a later visit does not
-restore a literal `/done` the command already consumed; a failed request
-restores it for retry. The aside-closing variant clears the same way.
+`/done` and `/archive` are consumed on submit, including while they sit queued.
+The composer clears the text optimistically and the settled request drops the
+localStorage recovery copy, so the session shows no "Draft" badge and a later
+visit does not restore a command already consumed; a failed request restores it
+for retry. The aside-closing `/done` variant clears the same way. `/archive` is
+a Mother-session operation and fails visibly instead of reaching a focused
+`/btw` aside.
 
-Because the user has declared the session finished, a queued `/done` also stops
-that session from blocking Project Queue promotion for its project, even while
-the agent completes a final action. See
+Because the user has declared the session finished, either queued boundary also
+stops that session from blocking Project Queue promotion for its project, even
+while the agent completes a final action. See
 [project-queue](project-queue.md) § Project Idle Predicate.
 
-The feature is server-capability gated (`synthetic-done-command`) and defaults
-to `off`, preserving provider-owned `/done` skills. `hidden` enables typed
-local `/done` without a toolbar button; the ordinary narrowing tiers enable the
-command and show the circle-check button. `/done` follows its composer: an
-aside-routed composer closes that aside, while the Mother composer keeps this
-synthetic session behavior even when a side pane is open. With the setting Off,
-Mother passes `/done` through to the provider.
+The `/done` feature is server-capability gated (`synthetic-done-command`) and
+defaults to `off`, preserving provider-owned `/done` skills. `hidden` enables
+typed local `/done` without a toolbar button; the ordinary narrowing tiers
+enable the command and show the circle-check button. `/done` follows its
+composer: an aside-routed composer closes that aside, while the Mother composer
+keeps this synthetic session behavior even when a side pane is open. With the
+setting Off, Mother passes `/done` through to the provider.
 
-Compatibility: stable `v0.7.0` and `v0.6.2` lack the complete
-`synthetic-done-command` route and capability, so current clients hide the
-surface and make no request. A source-ahead server with the original immediate
-route may omit the additive `queued` and `deferredMessages` response fields;
-the client treats both as optional and retains the immediate local-done
-behavior. The capability's existing meaning and request contract do not
-change, and no new request is made to an older server.
+`/archive` has its own permanent `synthetic-archive-command` capability and
+route because older done-capable servers cannot atomically archive with the
+boundary. When that capability is absent but `synthetic-done-command` is
+present, the client immediately canonicalizes exact typed `/archive` to the
+ordinary `/done` operation: the queued chip and durable row both read `/done`,
+and no archive request is made. When neither capability is present, the
+existing provider-command fallback remains. Stable `v0.7.0` and `v0.6.2` lack
+the archive capability and route; neither existing capability's meaning is
+broadened.
+
+A source-ahead server with the original immediate done route may omit the
+additive `queued` and `deferredMessages` response fields; the client treats both
+as optional and retains the immediate local-done behavior.
 
 ## Action set
 
@@ -297,6 +309,7 @@ configurable per [session-ui-customization](session-ui-customization.md):
 | Handoff to agent | Existing restart-handoff with provider/model picker | all |
 | Compact now | Queue advertised compact command; busy state | claude, codex |
 | Done | YA-only transcript overlay plus durable automation pause | all |
+| Archive | Done boundary plus atomic session archive | all |
 
 The fork point lives in the inline menu on each real user prompt; the right-side
 turn rail is an accelerator for the same actions. Remaining questions are

@@ -341,6 +341,7 @@ export class SessionMetadataService {
   async recordSyntheticDone(
     sessionId: string,
     message: DurableSyntheticDoneMessage,
+    options?: { archived?: boolean },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
       const existing = metadata.syntheticDoneMessages ?? [];
@@ -357,6 +358,7 @@ export class SessionMetadataService {
           -MAX_SYNTHETIC_DONE_MESSAGES_PER_SESSION,
         ),
         automationPausedUntilUserTurn: true,
+        ...(options?.archived ? { isArchived: true } : {}),
       };
     });
     await this.save();

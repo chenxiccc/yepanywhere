@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { DurableSyntheticDoneMessage } from "@yep-anywhere/shared";
+import type {
+  DurableSyntheticDoneMessage,
+  SyntheticSessionBoundaryCommand,
+} from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
@@ -22,11 +25,12 @@ export interface SessionDoneCoordinatorOptions {
 export function syntheticDoneMessage(
   uuid: string,
   timestamp: string,
+  command: SyntheticSessionBoundaryCommand = "/done",
 ): DurableSyntheticDoneMessage {
   return {
     type: "user",
-    content: "/done",
-    message: { role: "user", content: "/done" },
+    content: command,
+    message: { role: "user", content: command },
     timestamp,
     uuid,
     id: uuid,
@@ -36,11 +40,14 @@ export function syntheticDoneMessage(
 }
 
 /**
- * Owns `/done` request, durable automation pause, and idle finalize.
- * Process still holds the Process-local `ya-command` chip and idle-boundary
- * hold; this coordinator is the persist/resume policy those chips sit under.
+ * Owns `/done` and `/archive` requests, durable automation pause, and idle
+ * finalize. Process still holds the Process-local `ya-command` chip and
+ * idle-boundary hold; this coordinator is the persist/resume policy those
+ * chips sit under.
  */
 export class SessionDoneCoordinator {
+  private readonly sessionOperationTails = new Map<string, Promise<void>>();
+
   constructor(private readonly options: SessionDoneCoordinatorOptions) {}
 
   isAutomationPausedUntilUserTurn(sessionId: string): boolean {
@@ -53,10 +60,25 @@ export class SessionDoneCoordinator {
     );
   }
 
-  async requestSessionDone(sessionId: string): Promise<SessionDoneResult> {
+  async requestSessionDone(
+    sessionId: string,
+    command: SyntheticSessionBoundaryCommand = "/done",
+  ): Promise<SessionDoneResult> {
+    return this.runSessionOperation(sessionId, () =>
+      this.requestSessionDoneLocked(sessionId, command),
+    );
+  }
+
+  private async requestSessionDoneLocked(
+    sessionId: string,
+    command: SyntheticSessionBoundaryCommand,
+  ): Promise<SessionDoneResult> {
     const metadata = this.requireMetadata();
     const process = this.options.getProcessForSession(sessionId);
     const existing = process?.getPendingYaCommand("done");
+    const archive = command === "/archive";
+    const pendingCommand =
+      existing?.content === "/archive" ? "/archive" : command;
     const hasActiveTurn =
       process !== undefined &&
       (process.state.type === "in-turn" ||
@@ -64,19 +86,25 @@ export class SessionDoneCoordinator {
         process.isRetainingProviderWork());
 
     if (process && (existing || hasActiveTurn)) {
-      await this.persistAutomationPause(sessionId);
-      const pending = existing ?? process.queueYaCommand("done");
+      await this.persistAutomationPause(sessionId, archive);
+      const pending = process.queueYaCommand("done", {
+        content: pendingCommand,
+      });
       this.pauseLiveProcess(process);
 
       if (process.state.type === "idle" && !process.isRetainingProviderWork()) {
-        const completed = await this.finalizePendingDone(process);
+        const completed = await this.finalizePendingDoneLocked(process);
         if (completed) {
           return { message: completed, paused: true, queued: false };
         }
       }
 
       return {
-        message: syntheticDoneMessage(pending.tempId, pending.timestamp),
+        message: syntheticDoneMessage(
+          pending.tempId,
+          pending.timestamp,
+          pending.content === "/archive" ? "/archive" : "/done",
+        ),
         paused: true,
         queued: true,
       };
@@ -84,8 +112,14 @@ export class SessionDoneCoordinator {
 
     const timestamp = new Date().toISOString();
     const uuid = `ya-done-${randomUUID()}`;
-    const message = syntheticDoneMessage(uuid, timestamp);
-    await metadata.recordSyntheticDone(sessionId, message);
+    const message = syntheticDoneMessage(uuid, timestamp, command);
+    if (archive) {
+      await metadata.recordSyntheticDone(sessionId, message, {
+        archived: true,
+      });
+    } else {
+      await metadata.recordSyntheticDone(sessionId, message);
+    }
     if (process) {
       this.pauseLiveProcess(process);
     } else {
@@ -102,6 +136,14 @@ export class SessionDoneCoordinator {
   async finalizePendingDone(
     process: Process,
   ): Promise<DurableSyntheticDoneMessage | null> {
+    return this.runSessionOperation(process.sessionId, () =>
+      this.finalizePendingDoneLocked(process),
+    );
+  }
+
+  private async finalizePendingDoneLocked(
+    process: Process,
+  ): Promise<DurableSyntheticDoneMessage | null> {
     const pending = process.beginPendingYaCommandCompletion("done");
     if (!pending) {
       return null;
@@ -114,9 +156,16 @@ export class SessionDoneCoordinator {
     }
 
     const timestamp = new Date().toISOString();
-    const message = syntheticDoneMessage(pending.tempId, timestamp);
+    const command = pending.content === "/archive" ? "/archive" : "/done";
+    const message = syntheticDoneMessage(pending.tempId, timestamp, command);
     try {
-      await metadata.recordSyntheticDone(process.sessionId, message);
+      if (command === "/archive") {
+        await metadata.recordSyntheticDone(process.sessionId, message, {
+          archived: true,
+        });
+      } else {
+        await metadata.recordSyntheticDone(process.sessionId, message);
+      }
       this.pauseLiveProcess(process);
       await this.options.notificationService?.markSeen(
         process.sessionId,
@@ -185,6 +234,30 @@ export class SessionDoneCoordinator {
       });
   }
 
+  private async runSessionOperation<T>(
+    sessionId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous =
+      this.sessionOperationTails.get(sessionId) ?? Promise.resolve();
+    let release: () => void = () => {};
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => current);
+    this.sessionOperationTails.set(sessionId, tail);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.sessionOperationTails.get(sessionId) === tail) {
+        this.sessionOperationTails.delete(sessionId);
+      }
+    }
+  }
+
   private requireMetadata(): SessionMetadataService {
     const metadata = this.options.sessionMetadataService;
     if (!metadata) {
@@ -193,9 +266,13 @@ export class SessionDoneCoordinator {
     return metadata;
   }
 
-  private async persistAutomationPause(sessionId: string): Promise<void> {
+  private async persistAutomationPause(
+    sessionId: string,
+    archived: boolean,
+  ): Promise<void> {
     await this.requireMetadata().updateMetadata(sessionId, {
       automationPausedUntilUserTurn: true,
+      ...(archived ? { archived: true } : {}),
     });
   }
 
