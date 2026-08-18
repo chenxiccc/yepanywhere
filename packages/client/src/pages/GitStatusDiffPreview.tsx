@@ -488,6 +488,25 @@ export function GitDiffBody({
           error: null,
         };
   const { result: diffResult, loading, error } = currentLoad;
+  const liveDiffViewRef = useRef<{
+    fileKey: string;
+    view: GitDiffViewState | undefined;
+  }>({ fileKey, view: retainedDiffView });
+  if (liveDiffViewRef.current.fileKey !== fileKey) {
+    liveDiffViewRef.current = { fileKey, view: retainedDiffView };
+  }
+  const retainLiveDiffView = useCallback(
+    (retainedFileKey: string, view: GitDiffViewState) => {
+      if (liveDiffViewRef.current.fileKey === retainedFileKey) {
+        liveDiffViewRef.current.view = {
+          ...liveDiffViewRef.current.view,
+          ...view,
+        };
+      }
+      onRetainDiffView?.(retainedFileKey, view);
+    },
+    [onRetainDiffView],
+  );
   const visibleDiffResultRef = useRef(diffResult);
   const pendingScrollRef = useRef<{
     fileKey: string;
@@ -630,8 +649,8 @@ export function GitDiffBody({
             projectId={projectId}
             source={source}
             diffResult={diffResult}
-            retainedDiffView={retainedDiffView}
-            onRetainDiffView={onRetainDiffView}
+            retainedDiffView={liveDiffViewRef.current.view}
+            onRetainDiffView={retainLiveDiffView}
             paneHeader={paneHeader}
             onHunkNavigationChange={onHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}

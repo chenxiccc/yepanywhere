@@ -380,11 +380,14 @@ so the hunk remains visually stationary while surrounding source and the
 scrollbar appear.
 
 A live working-tree refresh preserves the user's selected Diff/Markdown
-Preview mode and maintains the viewed position on a best-effort basis. Until
-the aligned source-marker projection exists, preserving the relative scrollbar
-position is sufficient. If one refreshed response cannot supply Markdown
-preview content, YA temporarily shows the source diff without clearing the
-user's preview choice; preview resumes when a later response can render it.
+Preview mode and maintains the viewed position on a best-effort basis. A
+projection change may remount the rendered detail while its replacement loads;
+the remount starts from the latest explicit per-file view choice, not the
+retention snapshot from before the click. Until the aligned source-marker
+projection exists, preserving the relative scrollbar position is sufficient.
+If one refreshed response cannot supply Markdown preview content, YA
+temporarily shows the source diff without clearing the user's preview choice;
+preview resumes when a later response can render it.
 
 Source Control presents a text diff only when the exact Git projection is not
 classified as binary and both file versions are safe UTF-8 text. Git attributes

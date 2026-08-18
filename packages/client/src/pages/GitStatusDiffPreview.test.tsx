@@ -6,6 +6,7 @@ import {
   MARKDOWN_LIKE_FILE_EXTENSIONS,
 } from "@yep-anywhere/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -215,6 +216,55 @@ describe("GitDiffBody", () => {
 
     rendered.rerender(view({ ...markdownFile, linesAdded: 3 }));
     expect(await screen.findByText("third diff")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "gitStatusDiff" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("keeps a later Preview choice through a delayed projection reset", async () => {
+    const markdownFile: GitFileChange = {
+      ...FILE,
+      path: "notes/report.qmd",
+    };
+    let resolveProjectedDiff: (value: GitDiffResult) => void = () => {};
+    const projectedDiff = new Promise<GitDiffResult>((resolve) => {
+      resolveProjectedDiff = resolve;
+    });
+    getGitDiff
+      .mockResolvedValueOnce(result("# Initial report"))
+      .mockReturnValueOnce(projectedDiff);
+
+    const view = (ignoreWhitespace: boolean) => (
+      <MemoryRouter>
+        <GitDiffBody
+          file={markdownFile}
+          fileKey="notes/report.qmd"
+          projectId="p1"
+          ignoreWhitespace={ignoreWhitespace}
+          t={t}
+        />
+      </MemoryRouter>
+    );
+    const rendered = render(view(false));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPreview" }),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "gitStatusDiff" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    rendered.rerender(view(true));
+    await screen.findByText("gitStatusLoadingDiff");
+    await act(async () => {
+      resolveProjectedDiff(result("# Projected report"));
+      await projectedDiff;
+    });
+
+    expect(await screen.findByText("Projected report")).toBeTruthy();
     expect(
       screen
         .getByRole("button", { name: "gitStatusDiff" })
