@@ -1100,12 +1100,20 @@ function GitDiffContent({
             ignoreWhitespace ? "active" : ""
           }`}
           onClick={onToggleIgnoreWhitespace}
-          title={t("gitStatusIgnoreWhitespace")}
-          aria-label={t("gitStatusIgnoreWhitespace")}
+          title={
+            ignoreWhitespace
+              ? t("gitStatusIgnoreWhitespaceActive")
+              : t("gitStatusIgnoreWhitespace")
+          }
+          aria-label={
+            ignoreWhitespace
+              ? t("gitStatusIgnoreWhitespaceActive")
+              : t("gitStatusIgnoreWhitespace")
+          }
           aria-pressed={ignoreWhitespace}
         >
           <span className="diff-whitespace-glyph" aria-hidden="true">
-            ␣
+            _+
           </span>
         </button>
       )}

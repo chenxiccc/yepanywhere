@@ -371,7 +371,7 @@ describe("GitDiffBody", () => {
     expect(
       screen.getByRole("button", { name: "gitStatusIgnoreWhitespace" })
         .textContent,
-    ).toBe("␣");
+    ).toBe("_+");
     expect(
       screen.getByRole("button", { name: "gitStatusFullContext" }).textContent,
     ).toBe("");
@@ -385,6 +385,37 @@ describe("GitDiffBody", () => {
         "1/1",
       ),
     );
+  });
+
+  it("describes the active whitespace projection", async () => {
+    getGitDiff.mockResolvedValue(result("compact"));
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <GitDiffBody
+          file={FILE}
+          fileKey="src/example.ts:false"
+          projectId="p1"
+          ignoreWhitespace
+          onToggleIgnoreWhitespace={() => {}}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("compact");
+    const toggle = screen.getByRole("button", {
+      name: "gitStatusIgnoreWhitespaceActive",
+    });
+    expect(toggle.getAttribute("title")).toBe(
+      "gitStatusIgnoreWhitespaceActive",
+    );
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("renders the server binary-file omission state", async () => {

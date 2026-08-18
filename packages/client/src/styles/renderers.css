@@ -5151,8 +5151,8 @@ pre.code-highlighter-plain,
 
 .diff-whitespace-glyph {
   font-family: var(--font-mono, monospace);
-  font-size: 1rem;
-  transform: translateY(-1px);
+  font-size: 0.78rem;
+  letter-spacing: -0.08em;
 }
 
 .git-diff-pane-toolbar .git-diff-preview-header-actions {

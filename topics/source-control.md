@@ -311,9 +311,9 @@ keeps its rightmost segment next to the filename. Toolbar actions use compact
 glyphs with complete hover and accessible names; hunk position uses the
 language-neutral `current/total` form.
 
-Ignore whitespace uses the conventional open-box space glyph `␣`. Its compact
-button is outlined when off and accent-filled when pressed; the selected state
-must not depend on interpreting the glyph or a subtle tint.
+Ignore whitespace uses the compact `_+` glyph. Its tooltip reads **Ignore
+whitespace changes** when off and **Ignoring whitespace — click to include it**
+when pressed; the selected state must not depend on a subtle tint.
 
 Each commit and working-tree changed-file pane exposes one compact file-filter
 disclosure. Opening its magnifier expands a case-insensitive local path search
