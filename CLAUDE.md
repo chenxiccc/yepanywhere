@@ -142,14 +142,16 @@ Immediately fall back to YA's installed Playwright dependency.
 For a one-shot screenshot of the live local server:
 
 ```bash
-mkdir -p .artifacts/ui-testing
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+ARTIFACT_DIR="$REPO_ROOT/.artifacts/ui-testing"
+mkdir -p "$ARTIFACT_DIR"
 pnpm --filter @yep-anywhere/client exec playwright screenshot \
   --ignore-https-errors \
   --block-service-workers \
   --wait-for-timeout 500 \
   --viewport-size "1000,600" \
   https://localhost:3400/ \
-  .artifacts/ui-testing/ya-desktop.png
+  "$ARTIFACT_DIR/ya-desktop.png"
 ```
 
 Use `--viewport-size "375,812"` for a mobile-width capture. For multi-step

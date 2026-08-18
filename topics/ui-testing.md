@@ -100,7 +100,8 @@ pnpm dev
 Once that server is ready, capture from another shell:
 
 ```bash
-ARTIFACT_DIR=".artifacts/ui-testing/$(date +%F)-topic"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+ARTIFACT_DIR="$REPO_ROOT/.artifacts/ui-testing/$(date +%F)-topic"
 mkdir -p "$ARTIFACT_DIR"
 pnpm --filter @yep-anywhere/client exec playwright screenshot \
   --ignore-https-errors \
