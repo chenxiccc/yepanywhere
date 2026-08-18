@@ -40,8 +40,10 @@ The navigation surface has these modes:
   normal landing at every repository state. A browser-local preference may
   instead select the newest commit when the repository is clean; Working tree
   remains available as a pinned revision.
-- **Files** searches tracked paths and opens file content immediately, then
-  enriches its blame column asynchronously when provenance becomes available.
+- **Working Tree** keeps the stable `?tab=files` URL while browsing current
+  filesystem contents: dirty files, indexed additions, non-ignored untracked
+  files, and tracked unchanged files. Current content is primary; blame is an
+  optional tracked-file projection.
 - **Pending Comments** is the unsubmitted accumulator owned by
   [Source Review → New Session](source-review-to-session.md). Its stable URL
   key remains `comments`, preserving existing `?tab=comments` links.
@@ -66,9 +68,11 @@ internal predecessor. Phone commit-detail history remains a separate nested
 interaction.
 
 The preference applies only when navigation did not already identify an
-explicit source target. The detail-level **‹ Commit history** parent link,
-legacy `?tab=commits` URL, and `?history=1` open history inside Changes; a
-`?rev=<sha>` deep link selects its commit. A working-tree file link adds
+explicit source target. A bare `?rev=<sha>` is a focused commit: files and diff
+without the revision sidebar. `?history=1&rev=<sha>` opens history with that
+commit selected; `?history=1` opens history with Working tree selected. The
+detail-level **‹ Commit history** parent link and legacy `?tab=commits` URL open
+history inside Changes. A working-tree file link adds
 `?worktreeFile=<path>`; a committed-file link combines `?rev=<sha>` with
 `?commitFile=<path>`. Both select the named file's diff as soon as its corpus is
 available, including the phone drill-in flow.
@@ -112,6 +116,13 @@ control stays beside the name: the name click navigates, the icon copies. A
 server without the Source Control browser leaves the name inert rather than
 linking to a view it cannot render.
 
+When the server advertises `git-incoming-commits`, the upstream name opens the
+commits reachable from the configured tracking ref but not local `HEAD`. The
+server resolves both range endpoints before reading the log, and opening the
+preview never fetches: it shows only what the last **Check remote** observed.
+Without the capability, upstream remains inert text and the client sends no
+incoming-commit request.
+
 Comments always opens Pending Comments, including when drafts exist; submission
 remains on that pane. In the full-width fallback, Comments stays at the trailing
 edge while Pull, Push, and Check remote remain left-anchored. Branch names,
@@ -150,9 +161,11 @@ using normal page and full-screen-modal scrolling.
 
 Changes exposes revision/files and files/diff boundaries while history is
 open, and exposes its direct files/detail boundary for the default Working
-tree. Files exposes its files/detail boundary. Matching top and bottom handles
-resize the same boundary, remain keyboard-operable, and stay absent from phone
-layout.
+tree. Working Tree exposes its files/detail boundary. Matching top and bottom
+handles resize the same boundary, remain keyboard-operable, and stay absent
+from phone layout. Clicking either revision splitter handle alternates between
+zero width and the exact last nonzero revision width; the hidden selector leaves
+no minimum-width strip.
 
 The changed-files pane has no arbitrary fixed maximum such as 500 px. It may
 grow until the inter-pane gap and splitter handles would cease to remain fully
@@ -182,15 +195,19 @@ plus additional unstaged changes, use the explicit short label **partial**
 rather than the opaque `±`; its tooltip says “Partially staged: staged changes
 plus additional unstaged changes.”
 
-Compact untracked directories remain outline groups as their existing bounded
-background scan returns children. A group with more than ten loaded children
-starts collapsed; smaller groups start expanded. Expanded child labels omit the
-shared parent while the row tooltip and action identity retain the canonical
-full path. The scan reports loaded/total directory progress, and search reveals
-matching children already received without overwriting a user's collapsed
-state. Clearing the query restores that state. Unloaded children remain outside
-search coverage until the current server enumeration returns them; the progress
-signal is the visible completeness boundary.
+With `git-working-tree-files`, compact untracked directories are backed by the
+server's persistent non-ignored path cache. A group with more than ten
+descendants starts collapsed and loads its children only on expansion; a
+smaller group may load and expand immediately. Expanded child labels omit the
+shared parent while row tooltips and action identity retain the canonical full
+path. A debounced query searches cached paths that the client has not realized,
+shows matching paths without overwriting disclosure state, and removes
+search-only rows when cleared. Loading, truncation, and cache failures remain
+visible.
+
+Without that capability, the client keeps the released bounded
+`/git/untracked-folder` enrichment. It does not call the cache routes, and search
+covers only children that legacy enumeration has returned.
 
 Working-tree changes, commit revisions, and Files use one shared file-row/path
 treatment. A case-insensitive search match is highlighted and held visible: the
@@ -201,6 +218,43 @@ that happens to work in only one mode is not sufficient. Desktop row menus
 overlay the trailing edge instead of reserving permanent path width. Touch
 layouts keep the menu target in flow and preserve more path identity in the row
 itself rather than depending on hover.
+
+### Current-content inventory and untracked cache
+
+The Working Tree browser uses
+`GET /api/projects/:projectId/git/working-tree-files` only on explicit entry or
+refresh, never on the five-second status poll. Its complete corpus combines
+present indexed paths with cached non-ignored untracked paths and subtracts
+tracked deletions. Dirty and untracked paths come first; **Tracked, unchanged**
+separates the remaining tracked paths. Shared path-prefix groups become
+expandable when a prefix has more than ten descendants. Search spans the
+returned corpus without changing group disclosure state, and any server safety
+bound is an explicit truncation state rather than a claim of completeness.
+
+Selecting a path renders its live contents through the shared `FileViewer`,
+including clean and untracked files. Tracked files may switch to Blame; an
+untracked file stays in Contents and never receives invented provenance. A
+server without `git-working-tree-files` retains the tracked-only Files corpus,
+content-plus-blame behavior, and stable `?tab=files` URL while making no
+working-tree inventory request.
+
+The same capability owns
+`GET /api/projects/:projectId/git/untracked-files` and cache-backed status via
+`GET /api/projects/:projectId/git?untracked=cache`. Cache-backed polling asks Git
+for tracked/staged state with untracked enumeration disabled, then merges the
+retained untracked snapshot. One root request is shared in flight, so a polling
+tick cannot overlap it.
+
+The project-keyed cache lives below the configured YA data directory under
+`indexes/git-untracked/`; browsing does not create `.yep`, edit Git excludes, or
+otherwise write selected-project state. Git remains authoritative for
+`.gitignore`, `.git/info/exclude`, and the user's global excludes. Cached HEAD
+and index sets remove newly committed or staged paths immediately and force
+reconciliation when those sets change. Full filesystem reconciliation defaults
+to hourly; a stale selected path is checked at most hourly, and a root query
+does not stat every nested child. Persisted paths must remain canonical
+repository-relative paths, bounds and truncation are explicit, and concurrent
+refresh callers share one refresh.
 
 ### Diff gutter
 
@@ -316,13 +370,13 @@ whitespace changes** when off and **Ignoring whitespace — click to include it*
 when pressed; the selected state must not depend on a subtle tint.
 
 Each commit and working-tree changed-file pane exposes one compact file-filter
-disclosure. Opening its magnifier expands a case-insensitive local path search
-across the pane's current corpus, including both sides of a rename and every
-untracked child returned so far by folder enumeration. New arrivals pass through
-the active query. The loaded/total scan signal discloses when Working tree
-coverage is incomplete; searching unloaded children awaits a future inventory
-contract. On wide layouts, the first visible file becomes the detail when the
-prior selection no longer matches; no match leaves an explicit empty result.
+disclosure. Opening its magnifier expands a case-insensitive path search across
+the pane's current corpus, including both sides of a rename. On a capable
+server, the Working tree query also searches cached untracked children not yet
+loaded into an expanded group; legacy servers retain returned-child-only
+coverage. New arrivals pass through the active query. On wide layouts, the first
+visible file becomes the detail when the prior selection no longer matches; no
+match leaves an explicit empty result.
 
 ### File-viewer projections
 
@@ -361,22 +415,19 @@ Source Control capability meanings do not expand.
 
 ## Search and compatibility
 
-Files search owns the complete tracked-path corpus up to the explicit 10,000
-file bound; rendering may window results but must not turn that window into a
-search-coverage limit. Commit-delta search builds an on-demand client corpus
-from lightweight history plus bounded changed-path/line batches. Once a corpus
-is present, typing performs no network request and starts no git process.
-Browser-lifetime reuse is implemented; IndexedDB reuse across browser restarts
-remains optional future work. Focused completions and rendered match-context
-tooltips remain pending.
+Working Tree search owns the complete returned current-content corpus; rendering
+or path-prefix collapse must not become a search-coverage limit. Commit-delta
+search builds an on-demand client corpus from lightweight history plus bounded
+changed-path/line batches. Once a commit corpus is present, typing performs no
+network request and starts no Git process. Browser-lifetime reuse is
+implemented; IndexedDB reuse across browser restarts remains optional future
+work. Focused completions and rendered match-context tooltips remain pending.
 
-Files starts its ordinary project-file request and blame request independently.
-Readable content renders as soon as the file request returns; the view never
-holds it behind `git blame`. Until blame resolves, the gutter shows inert
-placeholders and line commenting waits for a provenance anchor. Blame then
-fills commit-hash links in place and may add highlighting without resetting the
-file selection or scroll context. Failure to load blame leaves readable content
-visible with a provenance warning.
+Working Tree starts the ordinary project-file request independently of optional
+blame. Readable content renders as soon as the file request returns and never
+waits for `git blame`. Blame then fills commit-hash links in place and may add
+highlighting without resetting the file selection or scroll context. Failure to
+load blame leaves readable content visible with a provenance warning.
 
 A committed hash opens that exact revision in Commits, including a revision
 outside the recent page. Its tooltip shows the full SHA, author/date when
@@ -524,13 +575,13 @@ Entering Changes and selecting a file must cost what that one file's diff
 costs. Two client-side rules keep it there, both of which a large working tree
 otherwise breaks:
 
-**Background enrichment yields to the foreground.** Compact untracked
-directories expand through one server request each, and each of those is a
-`git status --untracked-files=all` over that directory. A repository with
-hundreds of untracked directories therefore has hundreds of them to run, so the
-sweep is bounded well below the browser's per-host connection budget and its
-arrivals are coalesced into periodic list updates. The status request and the
-selected file's diff must never queue behind it.
+**Background enrichment yields to the foreground.** A capable server answers
+compact directory expansion and search from its retained untracked cache rather
+than launching one Git status per directory. A legacy server keeps the bounded
+`git status --untracked-files=all` folder path; that sweep stays below the
+browser's per-host connection budget and coalesces arrivals into periodic list
+updates. Neither path may queue status or the selected file's diff behind
+background enrichment.
 
 **A changed-file row's object identity changes only when its state changes.**
 The diff pane reloads when its `file` prop changes identity — that is how a
@@ -548,7 +599,15 @@ older server with only `git-status-enhanced` receives the basic status,
 working-tree diff, and independently advertised Check/Pull/Push shell; the
 client makes no unsupported browse/review requests. Ignore whitespace and
 selected-revision-to-HEAD comparison remain gated by
-`git-source-review-projections`. See
+`git-source-review-projections`.
+
+`git-working-tree-files` (permanent ID 38, version-implied from `0.7.1`) owns the
+working-tree inventory, persistent untracked-cache route family, and
+cache-backed status request described above. Its absence preserves tracked-only
+Files plus legacy compact untracked expansion and sends none of those requests.
+`git-incoming-commits` (permanent ID 39, version-implied from `0.7.1`) owns the
+local tracking-ref preview; its absence keeps upstream inert. Neither broadens a
+previously advertised Source Control capability. See
 [server capabilities](server-capabilities.md) and
 [`063-source-control-hosted-compatibility.md`](../docs/tactical/063-source-control-hosted-compatibility.md).
 

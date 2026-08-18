@@ -66,6 +66,19 @@ request; it does not reuse `git-source-review-projections`, whose advertised
 meaning predates these routes. The capability is permanent and
 version-implied from `0.7.1`.
 
+`git-working-tree-files` owns the current-content inventory, persistent
+untracked-cache route, and cache-backed status request. Releases `0.6.2` and
+`0.7.0` have none of them. Without the permanent capability, the client retains
+tracked-only Files plus legacy compact untracked expansion and sends no
+working-tree or cache request. It is version-implied from `0.7.1` and owns ID
+38.
+
+`git-incoming-commits` owns the read-only local `HEAD..<upstream>` preview. The
+server reads the tracking ref left by the last remote check and never fetches on
+open. Releases `0.6.2` and `0.7.0` lack the route. Without the permanent
+capability, upstream remains inert and the client sends no incoming-commit
+request. It is version-implied from `0.7.1` and owns ID 39.
+
 `codex-reasoning-summary-setting` owns `settings.codexReasoningSummary` on
 `GET /api/settings` and `PUT /api/settings`. The ordinary optional-feature
 corpus was `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other stable
@@ -258,9 +271,11 @@ the same ledger:
 | 35 | server | 0.7.1 | `codex-reasoning-summary-setting` |
 | 36 | server | 0.7.1 | `claude-gateway-disable-plan-mode` |
 | 37 | server | 0.7.1 | `synthetic-archive-command` |
+| 38 | server | 0.7.1 | `git-working-tree-files` |
+| 39 | server | 0.7.1 | `git-incoming-commits` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 38; retired rows stay in the ledger as reserved IDs.
+ID 40; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 
