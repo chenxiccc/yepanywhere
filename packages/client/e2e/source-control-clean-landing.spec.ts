@@ -34,6 +34,82 @@ async function capture(page: Page, name: string) {
   });
 }
 
+async function installPageAttention(
+  page: Page,
+  initial: { visibility: DocumentVisibilityState; focused: boolean } = {
+    visibility: "visible",
+    focused: true,
+  },
+) {
+  await page.addInitScript((startingAttention) => {
+    let visibility = startingAttention.visibility;
+    let focused = startingAttention.focused;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    Object.defineProperty(document, "hasFocus", {
+      configurable: true,
+      value: () => focused,
+    });
+    Object.defineProperty(window, "__setTestPageAttention", {
+      configurable: true,
+      value: (next: {
+        visibility: DocumentVisibilityState;
+        focused: boolean;
+      }) => {
+        const visibilityChanged = visibility !== next.visibility;
+        const focusChanged = focused !== next.focused;
+        visibility = next.visibility;
+        focused = next.focused;
+        if (visibilityChanged) {
+          document.dispatchEvent(new Event("visibilitychange"));
+        }
+        if (focusChanged) {
+          window.dispatchEvent(new Event(focused ? "focus" : "blur"));
+        }
+      },
+    });
+  }, initial);
+}
+
+async function setPageAttention(
+  page: Page,
+  visibility: DocumentVisibilityState,
+  focused: boolean,
+) {
+  await page.evaluate(
+    ({ nextVisibility, nextFocused }) => {
+      (
+        window as typeof window & {
+          __setTestPageAttention: (next: {
+            visibility: DocumentVisibilityState;
+            focused: boolean;
+          }) => void;
+        }
+      ).__setTestPageAttention({
+        visibility: nextVisibility,
+        focused: nextFocused,
+      });
+    },
+    { nextVisibility: visibility, nextFocused: focused },
+  );
+}
+
+function countGitStatusRequests(page: Page) {
+  let count = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname === `/api/projects/${projectId}/git`
+    ) {
+      count += 1;
+    }
+  });
+  return () => count;
+}
+
 async function openSourceControl(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/git-status?projectId=${projectId}`);
   await dismissOnboardingIfVisible(page);
@@ -158,6 +234,73 @@ test("clean Changes landing and latest-commit preference stay distinct", async (
   ).toBeVisible();
   await expect(page.getByText("No uncommitted changes")).toBeVisible();
   await capture(page, "source-control-clean-mobile-375x812.png");
+});
+
+test("status refresh follows route and page attention", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await installPageAttention(page);
+  await page.clock.install();
+  const statusRequests = countGitStatusRequests(page);
+  await openSourceControl(page, baseURL);
+  await expect.poll(statusRequests).toBeGreaterThan(0);
+
+  await page.clock.fastForward(1_000);
+  const initialRequests = statusRequests();
+  await page.clock.fastForward(10_000);
+  expect(statusRequests()).toBe(initialRequests);
+  await page.clock.fastForward(25_000);
+  await expect.poll(statusRequests).toBeGreaterThan(initialRequests);
+
+  await page.evaluate(() => {
+    history.pushState(null, "", "/sessions");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page).toHaveURL(/\/sessions$/);
+  const requestsAfterLeaving = statusRequests();
+  await page.clock.fastForward(60_000);
+  expect(statusRequests()).toBe(requestsAfterLeaving);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/git-status\?/);
+  await expect(
+    page.getByText("Working tree clean", { exact: true }),
+  ).toBeVisible();
+  await page.clock.fastForward(31_000);
+  await expect.poll(statusRequests).toBeGreaterThan(requestsAfterLeaving);
+  const requestsAfterReturning = statusRequests();
+
+  await setPageAttention(page, "hidden", false);
+  await page.clock.fastForward(60_000);
+  expect(statusRequests()).toBe(requestsAfterReturning);
+
+  await setPageAttention(page, "visible", false);
+  await page.clock.fastForward(60_000);
+  expect(statusRequests()).toBe(requestsAfterReturning);
+
+  await setPageAttention(page, "visible", true);
+  await expect.poll(statusRequests).toBe(requestsAfterReturning + 1);
+
+  const backgroundPage = await context.newPage();
+  await backgroundPage.setViewportSize({ width: 1000, height: 600 });
+  await installPageAttention(backgroundPage, {
+    visibility: "hidden",
+    focused: false,
+  });
+  await backgroundPage.clock.install();
+  const backgroundRequests = countGitStatusRequests(backgroundPage);
+  await openSourceControl(backgroundPage, baseURL);
+  await expect.poll(backgroundRequests).toBeGreaterThan(0);
+  const initialBackgroundRequests = backgroundRequests();
+
+  await backgroundPage.clock.fastForward(60_000);
+  expect(backgroundRequests()).toBe(initialBackgroundRequests);
+  await setPageAttention(backgroundPage, "visible", true);
+  await expect.poll(backgroundRequests).toBe(initialBackgroundRequests + 1);
+  await backgroundPage.close();
 });
 
 test("commit search keeps the matching preview text visible", async ({

@@ -13,6 +13,7 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { activityBus } from "../lib/activityBus";
 import {
   createClientQueryKey,
   ensureClientQuery,
@@ -31,7 +32,8 @@ import {
   type RouteRetentionKeyInput,
 } from "../lib/routeRetention";
 
-const POLL_INTERVAL_MS = 5000;
+const SAFETY_REFRESH_INTERVAL_MS = 30_000;
+const ACTIVITY_REFRESH_DELAY_MS = 750;
 const GIT_STATUS_STALE_MS = 5000;
 const GIT_STATUS_TTL_MS = 60 * 1000;
 
@@ -296,49 +298,110 @@ export function useGitStatus(
     });
   }, [fetchUntrackedFiles, statusSnapshot?.isGitRepo]);
 
-  // Poll while visible.
   useEffect(() => {
     if (!projectId || !ready || options.poll === false) return;
 
-    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let eligible = false;
+    let eligibilityInitialized = false;
+    let safetyRefreshId: ReturnType<typeof setInterval> | null = null;
+    let activityRefreshId: ReturnType<typeof setTimeout> | null = null;
 
     const refreshInBackground = () => {
       void fetchStatus({ force: true, background: true });
       void fetchUntrackedFiles({ background: true });
     };
 
-    const startPolling = () => {
-      if (intervalId) return;
-      intervalId = setInterval(refreshInBackground, POLL_INTERVAL_MS);
-    };
-
-    const stopPolling = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
+    const stopSafetyRefresh = () => {
+      if (safetyRefreshId) {
+        clearInterval(safetyRefreshId);
+        safetyRefreshId = null;
       }
     };
 
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
+    const startSafetyRefresh = () => {
+      if (safetyRefreshId) return;
+      safetyRefreshId = setInterval(
+        refreshInBackground,
+        SAFETY_REFRESH_INTERVAL_MS,
+      );
+    };
+
+    const cancelActivityRefresh = () => {
+      if (activityRefreshId) {
+        clearTimeout(activityRefreshId);
+        activityRefreshId = null;
+      }
+    };
+
+    const restartSafetyRefresh = () => {
+      stopSafetyRefresh();
+      if (eligible) startSafetyRefresh();
+    };
+
+    const scheduleActivityRefresh = () => {
+      if (!eligible) return;
+      cancelActivityRefresh();
+      activityRefreshId = setTimeout(() => {
+        activityRefreshId = null;
         refreshInBackground();
-        startPolling();
+        restartSafetyRefresh();
+      }, ACTIVITY_REFRESH_DELAY_MS);
+    };
+
+    const updateEligibility = () => {
+      const nextEligible =
+        document.visibilityState === "visible" && document.hasFocus();
+      if (eligibilityInitialized && nextEligible === eligible) return;
+      const shouldRefresh = eligibilityInitialized && nextEligible;
+      eligibilityInitialized = true;
+      eligible = nextEligible;
+      if (eligible) {
+        if (shouldRefresh) refreshInBackground();
+        startSafetyRefresh();
       } else {
-        stopPolling();
+        stopSafetyRefresh();
+        cancelActivityRefresh();
       }
     };
 
-    if (document.visibilityState === "visible") {
-      startPolling();
-    }
+    const unsubscribeProcessState = activityBus.onSource(
+      sourceKey,
+      "process-state-changed",
+      (event) => {
+        if (event.projectId === projectId && event.activity !== "in-turn") {
+          scheduleActivityRefresh();
+        }
+      },
+    );
+    const unsubscribeReconnect = activityBus.onSource(
+      sourceKey,
+      "reconnect",
+      scheduleActivityRefresh,
+    );
 
-    document.addEventListener("visibilitychange", handleVisibility);
+    updateEligibility();
+    document.addEventListener("visibilitychange", updateEligibility);
+    window.addEventListener("focus", updateEligibility);
+    window.addEventListener("blur", updateEligibility);
 
     return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibility);
+      eligible = false;
+      stopSafetyRefresh();
+      cancelActivityRefresh();
+      unsubscribeProcessState();
+      unsubscribeReconnect();
+      document.removeEventListener("visibilitychange", updateEligibility);
+      window.removeEventListener("focus", updateEligibility);
+      window.removeEventListener("blur", updateEligibility);
     };
-  }, [fetchStatus, fetchUntrackedFiles, options.poll, projectId, ready]);
+  }, [
+    fetchStatus,
+    fetchUntrackedFiles,
+    options.poll,
+    projectId,
+    ready,
+    sourceKey,
+  ]);
 
   const refetch = useCallback(async () => {
     await Promise.all([

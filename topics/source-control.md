@@ -268,6 +268,24 @@ disclosures until replacement data is ready. A changed compact-folder corpus
 adds or removes available groups without resetting choices for groups that
 remain.
 
+The route-mounted status owner refreshes early when a managed process in the
+selected project reaches idle or waiting-for-input, coalescing completion events
+for 750 ms. Git actions also refresh explicitly. External editors, human Git
+commands, and other unobserved writers produce no YA activity event, so a
+30-second safety refresh remains while the Source Control document is both
+`visible` and focused. Leaving the route tears down that timer, its activity
+subscriptions, and any queued event refresh. A hidden tab, commonly including a
+minimized window, and an unfocused browser window do no periodic Git work; the
+next focus/visibility restoration refreshes immediately.
+
+Browser attention signals are deliberately coarser than pixels. The Page
+Visibility API does not report whether a visible window is covered or whether
+Source Control is scrolled outside the viewport, while focus may pause a visible
+side-by-side window that the user is passively reading. The immediate refresh on
+focus accepts that stale passive view in exchange for stopping repository work
+from an open but unattended window. Multiple tabs own independent route
+lifecycles; hidden or unfocused tabs do not multiply the safety cadence.
+
 The project-keyed cache lives below the configured YA data directory under
 `indexes/git-untracked/`; browsing does not create `.yep`, edit Git excludes, or
 otherwise write selected-project state. Git remains authoritative for

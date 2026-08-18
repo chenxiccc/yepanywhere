@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   getGitStatus: vi.fn(),
   listGitUntrackedFiles: vi.fn(),
   isRemoteClient: vi.fn(() => false),
+  onActivitySource: vi.fn(),
+  activityListeners: new Map<string, Set<(data: unknown) => void>>(),
+  visibilityState: "visible" as DocumentVisibilityState,
+  hasFocus: true,
   remoteState: {
     connection: null as { connection: object | null } | null,
   },
@@ -28,6 +32,12 @@ vi.mock("../../api/client", () => ({
   api: {
     getGitStatus: mocks.getGitStatus,
     listGitUntrackedFiles: mocks.listGitUntrackedFiles,
+  },
+}));
+
+vi.mock("../../lib/activityBus", () => ({
+  activityBus: {
+    onSource: mocks.onActivitySource,
   },
 }));
 
@@ -63,6 +73,12 @@ function gitStatus(files: GitStatusInfo["files"]): GitStatusInfo {
   };
 }
 
+function emitActivity(eventType: string, data: unknown) {
+  for (const listener of mocks.activityListeners.get(eventType) ?? []) {
+    listener(data);
+  }
+}
+
 async function settle() {
   await act(async () => {
     await Promise.resolve();
@@ -81,6 +97,29 @@ beforeEach(() => {
   mocks.listGitUntrackedFiles.mockReset();
   mocks.isRemoteClient.mockReset();
   mocks.isRemoteClient.mockReturnValue(false);
+  mocks.onActivitySource.mockReset();
+  mocks.activityListeners.clear();
+  mocks.onActivitySource.mockImplementation(
+    (
+      _sourceKey: string,
+      eventType: string,
+      listener: (data: unknown) => void,
+    ) => {
+      let listeners = mocks.activityListeners.get(eventType);
+      if (!listeners) {
+        listeners = new Set();
+        mocks.activityListeners.set(eventType, listeners);
+      }
+      listeners.add(listener);
+      return () => listeners?.delete(listener);
+    },
+  );
+  mocks.visibilityState = "visible";
+  mocks.hasFocus = true;
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(
+    () => mocks.visibilityState,
+  );
+  vi.spyOn(document, "hasFocus").mockImplementation(() => mocks.hasFocus);
   mocks.remoteState.connection = null;
 });
 
@@ -89,6 +128,7 @@ afterEach(() => {
   resetClientQueryControllerForTests();
   resetClientSummaryStoreForTests();
   resetRouteRetentionForTests();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -176,6 +216,115 @@ describe("useGitStatus", () => {
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
   });
 
+  it("uses a focused 30-second safety refresh", async () => {
+    mocks.getGitStatus.mockResolvedValue(gitStatus([]));
+
+    renderHook(() => useGitStatus("project-a"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_999);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops refreshes while hidden or unfocused and refreshes on return", async () => {
+    mocks.getGitStatus.mockResolvedValue(gitStatus([]));
+    const rendered = renderHook(() => useGitStatus("project-a"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    mocks.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    mocks.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+
+    mocks.hasFocus = false;
+    window.dispatchEvent(new Event("blur"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+
+    mocks.hasFocus = true;
+    window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(3);
+
+    rendered.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it("coalesces project completion events into an early refresh", async () => {
+    mocks.getGitStatus.mockResolvedValue(gitStatus([]));
+
+    renderHook(() => useGitStatus("project-a"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    emitActivity("process-state-changed", {
+      type: "process-state-changed",
+      sessionId: "session-a",
+      projectId: "project-a",
+      activity: "in-turn",
+      timestamp: "2026-08-18T00:00:00.000Z",
+    });
+    emitActivity("process-state-changed", {
+      type: "process-state-changed",
+      sessionId: "session-b",
+      projectId: "project-b",
+      activity: "idle",
+      timestamp: "2026-08-18T00:00:00.000Z",
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    for (const activity of ["waiting-input", "idle"] as const) {
+      emitActivity("process-state-changed", {
+        type: "process-state-changed",
+        sessionId: "session-a",
+        projectId: "project-a",
+        activity,
+        timestamp: "2026-08-18T00:00:01.000Z",
+      });
+    }
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(749);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_999);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(3);
+  });
+
   it("merges the capability-gated untracked cache into tracked-only status", async () => {
     const tracked = gitStatus([
       {
@@ -240,7 +389,7 @@ describe("useGitStatus", () => {
     expect(mocks.listGitUntrackedFiles).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(mocks.listGitUntrackedFiles).toHaveBeenCalledTimes(1);
 
