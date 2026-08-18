@@ -11,18 +11,33 @@ import styles from "./RepoStatusBar.module.css";
 export function RepoStatusBar({
   status,
   onSelectChanges,
+  headCommitHref,
+  onOpenHeadCommit,
   className,
   t,
 }: {
   status: GitStatusInfo;
   /** Make a dirty badge open the working-tree Changes mode. */
   onSelectChanges?: () => void;
+  /** Standalone URL of the branch tip's commit view, for new-tab opening. */
+  headCommitHref?: string;
+  /** In-page navigation to that same commit, for plain left-click. */
+  onOpenHeadCommit?: () => void;
   /** Caller-supplied placement class for the header region that holds the bar. */
   className?: string;
   t: TranslationFn;
 }) {
   const outOfSync = status.ahead > 0 || status.behind > 0;
   const warn = !status.isClean || outOfSync;
+  // Detached HEAD has no branch name but still has a tip, so the copy control
+  // and the commit link both fall back to that SHA.
+  const headCommit = status.recentCommits?.[0];
+  const branchLabel = status.branch ?? t("gitStatusDetachedHead");
+  const copyValue = status.branch ?? headCommit?.hash;
+  const opensHeadCommit =
+    headCommit !== undefined &&
+    headCommitHref !== undefined &&
+    onOpenHeadCommit !== undefined;
 
   return (
     <div
@@ -53,13 +68,36 @@ export function RepoStatusBar({
           <circle cx="6" cy="18" r="3" />
           <path d="M18 9a9 9 0 0 1-9 9" />
         </svg>
-        <span className={styles.branchName}>
-          {status.branch ?? t("gitStatusDetachedHead")}
-        </span>
-        {status.branch && (
+        {opensHeadCommit ? (
+          <a
+            className={`${styles.branchName} ${styles.branchLink}`}
+            href={headCommitHref}
+            title={t("sourceOpenHeadCommit", { commit: headCommit.shortHash })}
+            onClick={(event) => {
+              if (
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              ) {
+                return;
+              }
+              event.preventDefault();
+              onOpenHeadCommit();
+            }}
+          >
+            {branchLabel}
+          </a>
+        ) : (
+          <span className={styles.branchName}>{branchLabel}</span>
+        )}
+        {copyValue && (
           <CopyButton
-            value={status.branch}
-            title={t("sourceCopyBranch")}
+            value={copyValue}
+            title={
+              status.branch ? t("sourceCopyBranch") : t("sourceCopyCommitHash")
+            }
             className={styles.copyButton}
           />
         )}

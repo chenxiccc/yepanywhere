@@ -103,6 +103,15 @@ actions take a full-width fallback row below it. Constrained layouts give the
 mode selector and repository actions full-width rows. The same control
 instances move between placements rather than being duplicated.
 
+The branch name in the identity cluster is navigation to the commit that branch
+points at — `recentCommits[0]`, the current `HEAD` tip. It is a real anchor with
+a standalone `?rev=<sha>` URL, so middle-click, modifier-click, and “open in new
+tab” work, while plain left-click stays in the current tab. A detached `HEAD`
+keeps its detached label and still opens and copies that tip SHA. The copy
+control stays beside the name: the name click navigates, the icon copies. A
+server without the Source Control browser leaves the name inert rather than
+linking to a view it cannot render.
+
 Comments always opens Pending Comments, including when drafts exist; submission
 remains on that pane. In the full-width fallback, Comments stays at the trailing
 edge while Pull, Push, and Check remote remain left-anchored. Branch names,

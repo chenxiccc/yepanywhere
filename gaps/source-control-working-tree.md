@@ -110,21 +110,6 @@ the current tab still selects in place and keeps the sidebar.
 
 ## Identity bar
 
-### 12 — Branch opens HEAD
-
-`RepoStatusBar` renders the branch name as inert text plus a copy
-control.
-
-Clicking the local branch (e.g. `main`) opens the `HEAD` commit the same
-way a focused commit view does — files and diff for `HEAD`, not the
-Working tree. `GitStatusInfo.recentCommits[0]` is the current `HEAD` tip
-when present; detached `HEAD` still has a tip SHA even when `branch` is
-null (copy/click should use the SHA, and the copy control already needs a
-non-branch value in that case).
-
-Keep the copy control on the branch name; the name click is navigation,
-the icon is copy.
-
 ### 13 — Upstream opens incoming commits
 
 The upstream (`→ graehl/main`) is inert text. Clicking it should open a
@@ -138,8 +123,7 @@ check observed.
 
 The incoming-commit list is new API if the client cannot derive it from
 data it already has. Same compatibility gate as
-[2](#2--cache-untracked-listing-without-git-enumeration). Land
-[12](#12--branch-opens-head) first.
+[2](#2--cache-untracked-listing-without-git-enumeration).
 
 ## Current-content browser
 
@@ -215,9 +199,9 @@ persistence, ignored-prefix correctness, and the different
 freshness/completeness needs of Source Control versus project-path links.
 
 The URL and identity-bar changes remain separate as well: land
-[12](#12--branch-opens-head) before [8](#8--middle-click-focused-commit-tab),
-then add [13](#13--upstream-opens-incoming-commits) once its incoming-commit
-surface and compatibility contract are approved.
+[8](#8--middle-click-focused-commit-tab), then add
+[13](#13--upstream-opens-incoming-commits) once its incoming-commit surface and
+compatibility contract are approved.
 
 ### Verification for each rendered phase
 

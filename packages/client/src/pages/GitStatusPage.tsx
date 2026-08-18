@@ -60,6 +60,7 @@ import {
 import { useVersion } from "../hooks/useVersion";
 import { type TranslationFn, useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import { toBrowserAppHref } from "../lib/appHref";
 import {
   type ClientSummarySourceKey,
   useClientSummarySourceKey,
@@ -84,6 +85,17 @@ const SOURCE_TABS_WITH_REVIEWS: readonly SourceTab[] = [
   ...SOURCE_TABS,
   "reviews",
 ];
+
+/** URL keys that name a selection inside a mode, cleared when the mode changes. */
+const SOURCE_SELECTION_PARAMS = [
+  "tab",
+  "history",
+  "rev",
+  "commitFile",
+  "worktreeFile",
+  "bf",
+  "submission",
+] as const;
 
 /**
  * Source-mode tab state, derived from the `?tab=` URL param. Shared by the
@@ -123,6 +135,45 @@ function useSourceTab(reviewsEnabled = false): {
     [location.state, setSearchParams],
   );
   return { tab, setTab };
+}
+
+/**
+ * Navigation from the identity header's branch name to the commit that branch
+ * points at. The href is a real standalone URL so middle-click and "open in new
+ * tab" work; plain left-click stays in this tab through the router.
+ */
+function useHeadCommitLink(
+  projectId: string | undefined,
+  status: GitStatusInfo | null | undefined,
+  enabled: boolean,
+): { headCommitHref?: string; onOpenHeadCommit?: () => void } {
+  const basePath = useRemoteBasePath();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const headSha = status?.recentCommits?.[0]?.hash;
+  const active = enabled && headSha !== undefined && projectId !== undefined;
+  const headCommitHref = useMemo(() => {
+    if (!active) return undefined;
+    const params = new URLSearchParams(searchParams);
+    params.set("projectId", projectId);
+    for (const key of SOURCE_SELECTION_PARAMS) params.delete(key);
+    params.set("rev", headSha);
+    return toBrowserAppHref(`${basePath}/git-status?${params.toString()}`);
+  }, [active, basePath, headSha, projectId, searchParams]);
+  const onOpenHeadCommit = useCallback(() => {
+    if (!active) return;
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        for (const key of SOURCE_SELECTION_PARAMS) params.delete(key);
+        params.set("rev", headSha);
+        return params;
+      },
+      { state: location.state },
+    );
+  }, [active, headSha, location.state, setSearchParams]);
+  if (!active) return {};
+  return { headCommitHref, onOpenHeadCommit };
 }
 
 /**
@@ -564,6 +615,11 @@ export function GitStatusPage() {
   const reviewComments = useProjectReviewComments(
     supportsSourceReview ? effectiveProjectId : undefined,
   );
+  const headCommitLink = useHeadCommitLink(
+    effectiveProjectId,
+    gitStatus,
+    supportsSourceReview,
+  );
   const { defaultSession: routeDefaultSession } = useMemo(
     () => parseSourceControlNavigationState(location.state),
     [location.state],
@@ -658,6 +714,7 @@ export function GitStatusPage() {
                       ? () => setHeaderTab("changes")
                       : undefined
                   }
+                  {...headCommitLink}
                   t={t}
                 />
               )}

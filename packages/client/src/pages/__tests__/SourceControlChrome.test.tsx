@@ -76,6 +76,72 @@ describe("RepoStatusBar", () => {
     expect(copy.classList.contains(repoStyles.copyButton as string)).toBe(true);
   });
 
+  it("opens the branch tip as a real link that left-clicks in place", () => {
+    const onOpenHeadCommit = vi.fn();
+    render(
+      <RepoStatusBar
+        status={gitStatus({
+          recentCommits: [
+            {
+              hash: "0123456789abcdef0123456789abcdef01234567",
+              shortHash: "0123456",
+              subject: "Latest",
+              authorName: "graehl",
+              authorDate: "2026-08-18T00:00:00Z",
+            },
+          ],
+        })}
+        headCommitHref="/git-status?projectId=p1&rev=0123456789abcdef0123456789abcdef01234567"
+        onOpenHeadCommit={onOpenHeadCommit}
+        t={t}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "main" });
+    expect(link.getAttribute("href")).toContain(
+      "rev=0123456789abcdef0123456789abcdef01234567",
+    );
+
+    fireEvent.click(link, { button: 0 });
+    expect(onOpenHeadCommit).toHaveBeenCalledTimes(1);
+
+    // A modifier click belongs to the browser: the app must not intercept it.
+    // jsdom would then try the real navigation, so swallow only that default.
+    const swallowNavigation = (event: Event) => event.preventDefault();
+    document.addEventListener("click", swallowNavigation);
+    fireEvent.click(link, { button: 0, ctrlKey: true });
+    document.removeEventListener("click", swallowNavigation);
+    expect(onOpenHeadCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the branch inert without a commit target, and copies a detached tip", () => {
+    const { rerender } = render(<RepoStatusBar status={gitStatus()} t={t} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("main")).toBeDefined();
+
+    rerender(
+      <RepoStatusBar
+        status={gitStatus({
+          branch: null,
+          recentCommits: [
+            {
+              hash: "fedcba9876543210fedcba9876543210fedcba98",
+              shortHash: "fedcba9",
+              subject: "Detached",
+              authorName: "graehl",
+              authorDate: "2026-08-18T00:00:00Z",
+            },
+          ],
+        })}
+        t={t}
+      />,
+    );
+    expect(screen.getByText("gitStatusDetachedHead")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "sourceCopyCommitHash" }),
+    ).toBeDefined();
+  });
+
   it("offers the dirty badge as a button only when it can open Changes", () => {
     const onSelectChanges = vi.fn();
     const dirty = gitStatus({ isClean: false });

@@ -1477,6 +1477,7 @@
   "sourceCopyCommitHash": "Copy commit hash",
   "sourceCopyCommitSubject": "Copy commit subject",
   "sourceOpenCommit": "Open commit",
+  "sourceOpenHeadCommit": "Open the current commit {commit}",
   "sourceCopyRevisionLabel": "Copy revision label",
   "sourceCopyPath": "Copy path",
   "sourceOpenLastEditorSession": "Open the last editing session",

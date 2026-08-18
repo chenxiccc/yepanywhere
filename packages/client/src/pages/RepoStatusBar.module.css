@@ -64,6 +64,18 @@
   white-space: nowrap;
 }
 
+/* The branch name is navigation to its tip commit; the adjacent icon copies. */
+.branchLink {
+  color: var(--text-primary, #e6edf3);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.branchLink:hover,
+.branchLink:focus-visible {
+  text-decoration: underline;
+}
+
 .upstream,
 .sync {
   color: var(--text-secondary, #8b949e);
