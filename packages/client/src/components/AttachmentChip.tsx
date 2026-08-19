@@ -1,14 +1,28 @@
 import { planThumbnail, toUrlProjectId } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useRemoteImage } from "../hooks/useRemoteImage";
 import { loadCachedAttachmentPreview } from "../lib/attachmentPreviewCache";
+import {
+  type AttachmentHoverBox,
+  placeAttachmentHoverPreview,
+} from "../lib/attachmentHoverPreview";
 import { Modal } from "./ui/Modal";
+import styles from "./AttachmentChip.module.css";
 
 // Brief linger before a hover surfaces the full-size preview, so passing the
 // cursor over a chip on the way elsewhere does not flash the overlay.
-const HOVER_PREVIEW_LINGER_MS = 450;
+export const HOVER_PREVIEW_LINGER_MS = 450;
+
+const ATTACHMENT_FILENAME_ID = /^([0-9a-f-]{36})_/i;
 
 export interface AttachmentChipProps {
   attachmentId?: string;
@@ -67,6 +81,15 @@ export function formatAttachmentName(name: string): string {
   return `${trimmed.slice(0, ATTACHMENT_NAME_SOFT_LIMIT).replace(/[ -_]+$/u, "")}...`;
 }
 
+export function getAttachmentIdFromPersistedPath(
+  filePath: string | undefined,
+): string | null {
+  if (!filePath) return null;
+  const filename = filePath.split(/[\\/]/).pop() ?? "";
+  const match = ATTACHMENT_FILENAME_ID.exec(filename);
+  return match?.[1] ?? null;
+}
+
 export function getPersistedAttachmentUploadUrl(
   filePath: string | undefined,
   projectId?: string,
@@ -81,7 +104,7 @@ export function getPersistedAttachmentUploadUrl(
   const projectSegment = parts[parts.length - 3];
 
   if (!filename || !pathSessionId || !projectSegment) return null;
-  if (!/^[0-9a-f-]{36}_/.test(filename)) return null;
+  if (!ATTACHMENT_FILENAME_ID.test(filename)) return null;
 
   // The persisted path names the physical session directory the file was
   // materialized into, which can differ from the logical session id the
@@ -167,7 +190,7 @@ function useCachedAttachmentImage(
       };
     }
 
-    if (!path) {
+    if (!path && !attachmentId) {
       setLoading(false);
       setRemoteEnabled(false);
       return () => {
@@ -255,18 +278,18 @@ function NonImageAttachmentChip({
   onRemove,
 }: AttachmentChipProps) {
   return (
-    <span className="attachment-chip" title={`${mimeType}, ${sizeLabel}`}>
-      <span className="attachment-chip-icon" aria-hidden="true">
+    <span className={styles.chip} title={`${mimeType}, ${sizeLabel}`}>
+      <span className={styles.previewFallback} aria-hidden="true">
         📎
       </span>
-      <span className="attachment-name" title={path ?? originalName}>
+      <span className={styles.name} title={path ?? originalName}>
         {formatAttachmentName(originalName)}
       </span>
-      <span className="attachment-size">{sizeLabel}</span>
+      <span className={styles.size}>{sizeLabel}</span>
       {onRemove && (
         <button
           type="button"
-          className="attachment-remove"
+          className={styles.remove}
           onClick={onRemove}
           aria-label={`Remove ${originalName}`}
         >
@@ -293,8 +316,12 @@ function ImageAttachmentChip({
   const routeProjectId = projectId ?? sessionMetadata?.projectId;
   const [showModal, setShowModal] = useState(false);
   const [showHoverPreview, setShowHoverPreview] = useState(false);
+  const [hoverBox, setHoverBox] = useState<AttachmentHoverBox | null>(null);
   const hoverTimerRef = useRef<number | null>(null);
-  const cacheKey = attachmentId ?? path ?? originalName;
+  const chipButtonRef = useRef<HTMLButtonElement>(null);
+  const hoverImageRef = useRef<HTMLImageElement>(null);
+  const derivedAttachmentId = getAttachmentIdFromPersistedPath(path);
+  const cacheKey = attachmentId ?? derivedAttachmentId ?? path ?? originalName;
   const {
     previewUrl: imagePreviewUrl,
     fullUrl,
@@ -330,7 +357,49 @@ function ImageAttachmentChip({
   const handleHoverEnd = () => {
     clearHoverTimer();
     setShowHoverPreview(false);
+    setHoverBox(null);
   };
+
+  const updateHoverPlacement = useCallback(() => {
+    const anchor = chipButtonRef.current?.getBoundingClientRect();
+    if (!anchor) return;
+    const hoverImage = hoverImageRef.current;
+    const width =
+      imageWidth ??
+      (hoverImage && hoverImage.naturalWidth > 0
+        ? hoverImage.naturalWidth
+        : null);
+    const height =
+      imageHeight ??
+      (hoverImage && hoverImage.naturalHeight > 0
+        ? hoverImage.naturalHeight
+        : null);
+    if (!width || !height) return;
+    setHoverBox(
+      placeAttachmentHoverPreview({
+        anchor: {
+          top: anchor.top,
+          left: anchor.left,
+          width: anchor.width,
+          height: anchor.height,
+        },
+        imageWidth: width,
+        imageHeight: height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
+    );
+  }, [imageHeight, imageWidth]);
+
+  useLayoutEffect(() => {
+    if (!showHoverPreview || !fullUrl) return;
+    updateHoverPlacement();
+    window.addEventListener("resize", updateHoverPlacement);
+    return () => {
+      window.removeEventListener("resize", updateHoverPlacement);
+    };
+  }, [fullUrl, showHoverPreview, updateHoverPlacement]);
+
   const previewPlan =
     previewWidth && previewHeight
       ? { width: previewWidth, height: previewHeight }
@@ -346,13 +415,11 @@ function ImageAttachmentChip({
 
   return (
     <>
-      <div
-        className="attachment-chip attachment-chip-image"
-        title={`${mimeType}, ${sizeLabel}`}
-      >
+      <div className={`${styles.chip} ${styles.imageChip}`}>
         <button
+          ref={chipButtonRef}
           type="button"
-          className="attachment-chip-main"
+          className={styles.main}
           onClick={() => {
             handleHoverEnd();
             setShowModal(true);
@@ -364,25 +431,25 @@ function ImageAttachmentChip({
           title={`${mimeType}, ${sizeLabel}`}
         >
           <span
-            className="attachment-preview"
+            className={styles.preview}
             aria-hidden="true"
             style={previewStyle}
           >
             {imagePreviewUrl ? (
               <img src={imagePreviewUrl} alt="" />
             ) : (
-              <span className="attachment-preview-fallback">📎</span>
+              <span className={styles.previewFallback}>📎</span>
             )}
           </span>
-          <span className="attachment-name" title={path ?? originalName}>
+          <span className={styles.name} title={path ?? originalName}>
             {formatAttachmentName(originalName)}
           </span>
-          <span className="attachment-size">{sizeLabel}</span>
+          <span className={styles.size}>{sizeLabel}</span>
         </button>
         {onRemove && (
           <button
             type="button"
-            className="attachment-remove"
+            className={styles.remove}
             onClick={onRemove}
             aria-label={`Remove ${originalName}`}
           >
@@ -394,8 +461,27 @@ function ImageAttachmentChip({
         !showModal &&
         fullUrl &&
         createPortal(
-          <div className="attachment-hover-preview" aria-hidden="true">
-            <img src={fullUrl} alt="" />
+          <div
+            className={styles.hoverPreview}
+            data-testid="attachment-hover-preview"
+            aria-hidden="true"
+            style={
+              hoverBox
+                ? {
+                    top: hoverBox.top,
+                    left: hoverBox.left,
+                    width: hoverBox.width,
+                    height: hoverBox.height,
+                  }
+                : { visibility: "hidden" }
+            }
+          >
+            <img
+              ref={hoverImageRef}
+              src={fullUrl}
+              alt=""
+              onLoad={updateHoverPlacement}
+            />
           </div>,
           document.body,
         )}

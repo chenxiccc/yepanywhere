@@ -35,6 +35,7 @@ interface CachedAttachmentPreview {
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+const memoryPreviews = new Map<string, CachedAttachmentPreview>();
 
 function isImageMimeType(mimeType: string): boolean {
   return mimeType.startsWith("image/");
@@ -156,6 +157,13 @@ async function evictOldestEntries(
   });
 }
 
+function rememberMemoryPreview(entry: CachedAttachmentPreview): void {
+  memoryPreviews.set(entry.attachmentId, entry);
+  if (entry.path && entry.path !== entry.attachmentId) {
+    memoryPreviews.set(entry.path, entry);
+  }
+}
+
 export async function storeUploadedAttachmentPreview(
   uploadedFile: UploadedFile,
   sourceFile: File,
@@ -169,27 +177,35 @@ export async function storeUploadedAttachmentPreview(
       ? planThumbnail(uploadedFile.width, uploadedFile.height)
       : undefined;
   const fullBlob = sourceFile.slice(0, sourceFile.size, sourceFile.type);
-  const thumbnail = await createThumbnailBlob(sourceFile);
-  const totalBytes = fullBlob.size + (thumbnail?.blob.size ?? 0);
-
-  const db = await getDatabase();
-  const cachedPreview: CachedAttachmentPreview = {
+  const now = Date.now();
+  const pendingPreview: CachedAttachmentPreview = {
     attachmentId: uploadedFile.id,
     path: uploadedFile.path,
     originalName: uploadedFile.originalName,
     mimeType: uploadedFile.mimeType,
     size: uploadedFile.size,
     thumbnailVariant: THUMBNAIL_CACHE_VARIANT,
-    thumbnailWidth:
-      thumbnail?.width ?? uploadDimensions?.width ?? THUMBNAIL_HEIGHT_PX,
-    thumbnailHeight:
-      thumbnail?.height ?? uploadDimensions?.height ?? THUMBNAIL_HEIGHT_PX,
-    thumbnailBlob: thumbnail?.blob,
+    thumbnailWidth: uploadDimensions?.width ?? THUMBNAIL_HEIGHT_PX,
+    thumbnailHeight: uploadDimensions?.height ?? THUMBNAIL_HEIGHT_PX,
     fullBlob,
+    totalBytes: fullBlob.size,
+    createdAt: now,
+    lastAccessedAt: now,
+  };
+  rememberMemoryPreview(pendingPreview);
+  const thumbnail = await createThumbnailBlob(sourceFile);
+  const totalBytes = fullBlob.size + (thumbnail?.blob.size ?? 0);
+
+  const db = await getDatabase();
+  const cachedPreview: CachedAttachmentPreview = {
+    ...pendingPreview,
+    thumbnailWidth: thumbnail?.width ?? pendingPreview.thumbnailWidth,
+    thumbnailHeight: thumbnail?.height ?? pendingPreview.thumbnailHeight,
+    thumbnailBlob: thumbnail?.blob,
     totalBytes,
-    createdAt: Date.now(),
     lastAccessedAt: Date.now(),
   };
+  rememberMemoryPreview(cachedPreview);
   await putEntryWithKey<CachedAttachmentPreview>(
     db,
     STORE_NAME,
@@ -210,6 +226,20 @@ export async function loadCachedAttachmentPreview(
   attachmentId: string,
   legacyPath?: string,
 ): Promise<CachedAttachmentPreview | null> {
+  const memoryEntry =
+    memoryPreviews.get(attachmentId) ??
+    (legacyPath && legacyPath !== attachmentId
+      ? memoryPreviews.get(legacyPath)
+      : undefined);
+  if (memoryEntry) {
+    const updated = {
+      ...memoryEntry,
+      lastAccessedAt: Date.now(),
+    };
+    rememberMemoryPreview(updated);
+    return updated;
+  }
+
   const db = await getDatabase();
   let entry = await getEntry<CachedAttachmentPreview>(
     db,
@@ -261,6 +291,7 @@ export async function loadCachedAttachmentPreview(
     ...entry,
     lastAccessedAt: Date.now(),
   };
+  rememberMemoryPreview(updated);
   await putEntryWithKey<CachedAttachmentPreview>(
     db,
     STORE_NAME,
@@ -273,6 +304,13 @@ export async function loadCachedAttachmentPreview(
 export async function deleteCachedAttachmentPreview(
   path: string,
 ): Promise<void> {
+  const memoryEntry = memoryPreviews.get(path);
+  if (memoryEntry) {
+    memoryPreviews.delete(memoryEntry.attachmentId);
+    if (memoryEntry.path) memoryPreviews.delete(memoryEntry.path);
+  } else {
+    memoryPreviews.delete(path);
+  }
   const db = await getDatabase();
   await deleteEntry(db, STORE_NAME, path);
 }

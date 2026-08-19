@@ -3980,11 +3980,24 @@ function SessionPageContent({
         })
           .then(
             (uploaded) => {
-              if (
-                !isComposerStagedAttachment(uploaded) &&
-                uploaded.mimeType.startsWith("image/")
-              ) {
-                void storeUploadedAttachmentPreview(uploaded, file).catch(
+              if (uploaded.mimeType.startsWith("image/")) {
+                const cachedFile = isComposerStagedAttachment(uploaded)
+                  ? {
+                      id: uploaded.id,
+                      originalName: uploaded.originalName,
+                      name: uploaded.name,
+                      path: uploaded.id,
+                      size: uploaded.size,
+                      mimeType: uploaded.mimeType,
+                      ...(uploaded.width !== undefined
+                        ? { width: uploaded.width }
+                        : {}),
+                      ...(uploaded.height !== undefined
+                        ? { height: uploaded.height }
+                        : {}),
+                    }
+                  : uploaded;
+                void storeUploadedAttachmentPreview(cachedFile, file).catch(
                   (err) => {
                     console.warn(
                       "[SessionPage] Failed to cache attachment preview:",

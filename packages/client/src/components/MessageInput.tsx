@@ -109,6 +109,7 @@ import type {
   ProviderRuntimeStatus,
 } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
+import chipStyles from "./AttachmentChip.module.css";
 import { FullPaneComposerToggle } from "./FullPaneComposerToggle";
 import {
   MessageInputToolbar,
@@ -3613,10 +3614,10 @@ export function MessageInput({
               {uploadProgress.map((progress) => (
                 <div
                   key={progress.fileId}
-                  className="attachment-chip uploading"
+                  className={`${chipStyles.chip} ${chipStyles.uploading}`}
                 >
-                  <span className="attachment-name">{progress.fileName}</span>
-                  <span className="attachment-progress">
+                  <span className={chipStyles.name}>{progress.fileName}</span>
+                  <span className={chipStyles.progress}>
                     {progress.percent}%
                   </span>
                 </div>

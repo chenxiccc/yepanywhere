@@ -206,19 +206,28 @@ full-screen viewer behavior are aligned without flattening those two roles.
 
 ### Composer and new-session
 
-- **Attachment chips** — image thumbnails on a sent user message and in the
-  composer's pending-attachment row. `components/AttachmentChip.tsx` via
-  `useRemoteImage` → `/api/projects/:id/sessions/:sid/upload/:filename`.
-  The project coordinate comes from logical session metadata because app-data
-  project keys are intentionally irreversible. The session coordinate comes
-  from the attachment path's physical directory, which remains stable when a
+- **Attachment chips** — image thumbnails on a sent user message, in the
+  composer's pending-attachment row, and on the new-session form's pending
+  files. `components/AttachmentChip.tsx` prefers a local object URL or the
+  in-memory/IndexedDB preview cache, including files just pasted or just
+  uploaded, and does not fetch from the server while those bytes are already
+  on the client. Remote fallback is `useRemoteImage` →
+  `/api/projects/:id/sessions/:sid/upload/:filename`. The project coordinate
+  comes from logical session metadata because app-data project keys are
+  intentionally irreversible. The session coordinate comes from the
+  attachment path's physical directory, which remains stable when a
   provisional or forked session id differs from the viewed session. Legacy
   `.attachments` and central-upload paths retain path-based fallback routing
   when no current session context exists. Rendered from `MessageInput.tsx`,
-  `MessageList.tsx`, and `blocks/UserPromptBlock.tsx`. Relay-safe.
-- **New-session pending file preview** — a thumbnail in the new-session form for
-  a file you've attached but not yet uploaded. `NewSessionForm.tsx`, using a
-  local `File` object URL (pre-upload). No network, always works.
+  `MessageList.tsx`, `NewSessionForm.tsx`, and `blocks/UserPromptBlock.tsx`.
+  Relay-safe.
+- **Anchored full-size hover preview** — after a brief linger
+  (`HOVER_PREVIEW_LINGER_MS = 450`), an image chip shows the full image
+  anchored to the thumbnail, scaled to the remaining viewport with a small
+  margin. Placement prefers below, then above, then left/right, and never
+  creates page scrollbars or crops the image. Touch keeps the click-to-modal
+  path; hover enlargement is a desktop affordance. Just-sent and
+  still-pending chips reuse the local preview bytes rather than fetching.
 
 ### Read-only shares
 
@@ -226,32 +235,6 @@ full-screen viewer behavior are aligned without flattening those two roles.
   the same `FileViewer`, but backed by a share-scoped source
   (`publicShareFileViewerSource.ts`) that fetches `/public-api/shares/:secret/
   files/raw` through the relay+secret path. Relay-safe.
-
-## Proposed refinement: anchored attachment hover preview
-
-Current state: image attachment chips already show a full-image hover preview
-after a brief linger (`AttachmentChip.tsx`, `HOVER_PREVIEW_LINGER_MS = 450`),
-but the preview is a centered, viewport-fixed overlay. It does not choose a
-direction from the thumbnail or avoid covering nearby context except by hiding
-when the click modal opens.
-
-Desired behavior for all image attachment thumbnails (composer, sent user
-turns, and parsed user-prompt blocks):
-
-- Keep the short hover delay so incidental cursor travel does not flash an
-  image.
-- Anchor the enlarged preview to the hovered thumbnail, not the center of the
-  viewport.
-- Choose the side with the most available space (prefer below/above when they
-  can show the image at useful size; otherwise left/right), and flip when the
-  first choice cannot fit.
-- Resize the preview to fit inside the viewport with a small margin while
-  preserving aspect ratio; never create page scrollbars or crop the image.
-- Fetch/display bytes through the existing attachment preview path
-  (`useCachedAttachmentImage` / `useRemoteImage`) so relay mode and cached
-  thumbnail/full-image behavior stay unchanged.
-- Leave touch behavior on the explicit click modal; hover-only enlargement is a
-  desktop affordance.
 
 ## Compact turn image galleries
 

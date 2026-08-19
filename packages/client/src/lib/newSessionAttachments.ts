@@ -47,6 +47,21 @@ export function getPendingFileSize(file: PendingFile): number {
   return isPendingLocalFile(file) ? file.file.size : file.size;
 }
 
+export function getPendingFileMimeType(file: PendingFile): string {
+  if (isPendingLocalFile(file)) {
+    return file.file.type || "application/octet-stream";
+  }
+  return file.mimeType;
+}
+
+export function getPendingFileImageDimensions(
+  file: PendingFile,
+): { width: number; height: number } | undefined {
+  if (!isPendingStagedFile(file)) return undefined;
+  if (file.width === undefined || file.height === undefined) return undefined;
+  return { width: file.width, height: file.height };
+}
+
 export function toPersistedStagedAttachmentRef(
   attachment: PendingStagedFile,
 ): StagedAttachmentRef {

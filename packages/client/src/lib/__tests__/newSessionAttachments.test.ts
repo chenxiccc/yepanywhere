@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   type PendingFile,
+  getPendingFileImageDimensions,
+  getPendingFileMimeType,
   getPendingFileName,
   getPendingFileSize,
   isPendingLocalFile,
@@ -14,7 +16,7 @@ describe("new session attachments", () => {
     const local = {
       kind: "local",
       id: "local-1",
-      file: { name: "local.png", size: 42 } as File,
+      file: { name: "local.png", size: 42, type: "image/png" } as File,
     } satisfies PendingFile;
     const staged = {
       kind: "staged",
@@ -34,6 +36,30 @@ describe("new session attachments", () => {
     expect(getPendingFileSize(local)).toBe(42);
     expect(getPendingFileName(staged)).toBe("staged.txt");
     expect(getPendingFileSize(staged)).toBe(84);
+    expect(getPendingFileMimeType(local)).toBe("image/png");
+    expect(getPendingFileMimeType(staged)).toBe("text/plain");
+    expect(getPendingFileImageDimensions(staged)).toBeUndefined();
+  });
+
+  it("exposes staged image dimensions for hover placement", () => {
+    const staged = {
+      kind: "staged",
+      id: "staged-image",
+      batchId: "batch-1",
+      originalName: "photo.png",
+      name: "photo.png",
+      size: 12,
+      mimeType: "image/png",
+      width: 759,
+      height: 668,
+      createdAt: "2026-07-06T10:00:00.000Z",
+      updatedAt: "2026-07-06T10:00:01.000Z",
+    } satisfies PendingFile;
+
+    expect(getPendingFileImageDimensions(staged)).toEqual({
+      width: 759,
+      height: 668,
+    });
   });
 
   it("strips pending-only staged attachment fields before persistence", () => {

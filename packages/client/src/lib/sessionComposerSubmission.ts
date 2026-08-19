@@ -241,11 +241,12 @@ export async function uploadComposerAttachmentFile({
     ...imageDimensionOptions(preparedImage.width, preparedImage.height),
   };
 
-  if (stagedBatchId) {
-    const previewUrl = uploadFile.type.startsWith("image/")
-      ? URL.createObjectURL(uploadFile)
-      : undefined;
-    try {
+  const previewUrl = uploadFile.type.startsWith("image/")
+    ? URL.createObjectURL(uploadFile)
+    : undefined;
+
+  try {
+    if (stagedBatchId) {
       const stagedRef = await sourceTransport.uploadStagedAttachment(
         uploadFile,
         {
@@ -257,18 +258,22 @@ export async function uploadComposerAttachmentFile({
         ...stagedRef,
         ...(previewUrl ? { previewUrl } : {}),
       } satisfies ComposerStagedAttachment;
-    } catch (err) {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-      throw err;
     }
-  }
 
-  return sourceTransport.upload(
-    projectId,
-    sessionId,
-    uploadFile,
-    uploadOptions,
-  );
+    const uploaded = await sourceTransport.upload(
+      projectId,
+      sessionId,
+      uploadFile,
+      uploadOptions,
+    );
+    return {
+      ...uploaded,
+      ...(previewUrl ? { previewUrl } : {}),
+    };
+  } catch (err) {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    throw err;
+  }
 }

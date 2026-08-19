@@ -84,6 +84,8 @@ import {
   type PendingLocalFile,
   type PendingStagedFile,
   type PendingUploadingFile,
+  getPendingFileImageDimensions,
+  getPendingFileMimeType,
   getPendingFileName,
   getPendingFileSize,
   isPendingLocalFile,
@@ -111,6 +113,7 @@ import {
 } from "../lib/newSessionProjects";
 import { getRecapModeDescription } from "../lib/recapModes";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
+import { storeUploadedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import type { DraftAttachmentState } from "../lib/draftEnvelope";
 import {
   deleteDraftAttachmentRef,
@@ -193,6 +196,7 @@ import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUs
 import { shortenPath } from "../lib/text";
 import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
+import { AttachmentChip } from "./AttachmentChip";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { FullPaneComposerToggle } from "./FullPaneComposerToggle";
 import { NewSessionProjectQueue } from "./NewSessionProjectQueue";
@@ -759,6 +763,25 @@ export function NewSessionForm({
                 : {}),
             },
           );
+          if (uploadFile.type.startsWith("image/")) {
+            void storeUploadedAttachmentPreview(
+              {
+                id: stagedRef.id,
+                originalName: file.name,
+                name: stagedRef.name,
+                path: stagedRef.id,
+                size: stagedRef.size,
+                mimeType: stagedRef.mimeType,
+                ...(stagedRef.width !== undefined
+                  ? { width: stagedRef.width }
+                  : {}),
+                ...(stagedRef.height !== undefined
+                  ? { height: stagedRef.height }
+                  : {}),
+              },
+              uploadFile,
+            ).catch(() => {});
+          }
           return {
             ...stagedRef,
             originalName: file.name,
@@ -3244,52 +3267,30 @@ export function NewSessionForm({
         </div>
       </div>
       {pendingFiles.length > 0 && (
-        <div className="pending-files-list">
+        <div className={styles.pendingFilesList}>
           {pendingFiles.map((pf) => {
             const progress = uploadProgress[pf.id];
             const fileName = getPendingFileName(pf);
             const fileSize = getPendingFileSize(pf);
+            const imageSize = getPendingFileImageDimensions(pf);
             return (
-              <div key={pf.id} className="pending-file-chip">
-                {pf.previewUrl && (
-                  <img
-                    src={pf.previewUrl}
-                    alt=""
-                    className="pending-file-preview"
-                  />
-                )}
-                <div className="pending-file-info">
-                  <span className="pending-file-name">{fileName}</span>
-                  <span className="pending-file-size">
-                    {progress
-                      ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
-                      : formatSize(fileSize)}
-                  </span>
-                </div>
-                {!isStarting && (
-                  <button
-                    type="button"
-                    className="pending-file-remove"
-                    onClick={() => handleRemoveFile(pf.id)}
-                    aria-label={t("newSessionRemoveFile", {
-                      name: fileName,
-                    })}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                )}
-              </div>
+              <AttachmentChip
+                key={pf.id}
+                attachmentId={pf.id}
+                originalName={fileName}
+                mimeType={getPendingFileMimeType(pf)}
+                sizeLabel={
+                  progress
+                    ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
+                    : formatSize(fileSize)
+                }
+                imageWidth={imageSize?.width}
+                imageHeight={imageSize?.height}
+                previewUrl={pf.previewUrl}
+                onRemove={
+                  isStarting ? undefined : () => handleRemoveFile(pf.id)
+                }
+              />
             );
           })}
         </div>

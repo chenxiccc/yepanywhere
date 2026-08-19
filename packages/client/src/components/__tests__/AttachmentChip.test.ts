@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import {
   formatAttachmentName,
+  getAttachmentIdFromPersistedPath,
   getPersistedAttachmentUploadUrl,
 } from "../AttachmentChip";
 
@@ -33,6 +34,14 @@ describe("getPersistedAttachmentUploadUrl", () => {
     ).toBe(
       `/api/projects/${encodeURIComponent(projectId)}/sessions/physical-session/upload/${filename}`,
     );
+  });
+
+  it("reads the attachment id from a persisted filename", () => {
+    expect(
+      getAttachmentIdFromPersistedPath(
+        `/home/graehl/.yep-anywhere/projects/abc/attachments/session/${filename}`,
+      ),
+    ).toBe("12345678-1234-1234-1234-123456789abc");
   });
 
   it("preserves a Windows project root for legacy path-based routing", () => {

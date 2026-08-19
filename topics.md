@@ -322,3 +322,5 @@
   the session it writes, read from the launching command.
 - isearch-jump - Ctrl+R/S Enter and click must land on the highlighted match
   after search unhides non-matching turns.
+- attachment-hover-preview - Anchored full-size image hover on attachment chips, using local bytes when just pasted or sent.
+- conversation-thinking-auto-hide - Conversation view fades thinking 5s after a completed turn with following text.

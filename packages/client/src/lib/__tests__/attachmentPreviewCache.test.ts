@@ -161,6 +161,13 @@ describe("attachment preview cache", () => {
     });
     expect(await getEntry(db, STORE_NAME, uploadedFile.path)).toBeNull();
     db.close();
+
+    const loadedByPath = await loadCachedAttachmentPreview(
+      uploadedFile.path,
+      uploadedFile.path,
+    );
+    expect(loadedByPath?.attachmentId).toBe(uploadedFile.id);
+    expect(loadedByPath?.path).toBe(uploadedFile.path);
   });
 
   it("migrates legacy path-keyed previews onto attachment ids", async () => {
