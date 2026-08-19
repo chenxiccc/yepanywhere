@@ -84,6 +84,20 @@
   min-height: var(--conversation-activity-reserved-height, 0);
 }
 
+.thinkingAutoHiding {
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  border-width: 0;
+  transition:
+    max-height 400ms ease,
+    opacity 280ms ease,
+    margin 400ms ease,
+    border-width 400ms ease;
+}
+
 /*
  * Compact chips are always expandable — outline them so the chevron affordance
  * is obvious even when the provider retained no summary body.

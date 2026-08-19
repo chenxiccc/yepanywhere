@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { CONVERSATION_ACTIVITY_RESERVE_HOLD_MS } from "../../lib/sessionDetail/activityHeightReserve";
 import type {
+  ConversationActivityItem,
   ConversationThinkingPreviewSlot,
   RenderItem,
 } from "../../types/renderItems";
@@ -445,5 +446,99 @@ describe("conversation activity height reserve", () => {
     rerender(renderActivity({ ...base, thinkingPreviews: [] }));
     stubRowMetrics(row, () => naturalHeightPx);
     expect(reservedHeight(row)).toBe("90px");
+  });
+});
+
+describe("conversation thinking auto-hide", () => {
+  beforeEach(() => {
+    observers = [];
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function renderCompleted(overrides: Partial<ConversationActivityItem> = {}) {
+    const base = conversationActivityItem() as ConversationActivityItem;
+    const item: ConversationActivityItem = {
+      ...base,
+      active: false,
+      hasFollowingConversationText: true,
+      endedAtMs: Date.now(),
+      thinkingPreviews: base.thinkingPreviews?.map((preview) => ({
+        ...preview,
+        status: "complete",
+      })),
+      ...overrides,
+    };
+    return render(
+      <I18nProvider>
+        <RenderItemComponent
+          item={item}
+          isStreaming={false}
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+        />
+      </I18nProvider>,
+    );
+  }
+
+  it("keeps thinking visible for 5s after a completed turn with following text", () => {
+    const { container } = renderCompleted();
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(4_999);
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).not.toBeNull();
+  });
+
+  it("hides thinking after the delay when conversation text followed it", () => {
+    const { container } = renderCompleted();
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeNull();
+    expect(
+      container.querySelector(".conversation-activity-summary"),
+    ).not.toBeNull();
+  });
+
+  it("starts compact for a turn that completed more than 5s ago", () => {
+    const { container } = renderCompleted({
+      endedAtMs: Date.now() - 60_000,
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeNull();
+  });
+
+  it("does not hide thinking when no conversation text followed it", () => {
+    const { container } = renderCompleted({
+      hasFollowingConversationText: false,
+      endedAtMs: Date.now() - 60_000,
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).not.toBeNull();
   });
 });

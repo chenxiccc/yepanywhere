@@ -502,6 +502,33 @@ describe("selectConversationThinkingPreviews", () => {
     expect(
       summary(projected).thinkingPreviews?.map((preview) => preview.id),
     ).toEqual(["latest"]);
+    expect(summary(projected).hasFollowingConversationText).toBe(false);
+  });
+
+  it("marks a completed turn whose authored text follows thinking", () => {
+    const projected = projectConversationView(
+      [
+        {
+          type: "thinking",
+          id: "thinking",
+          thinking: "Planning",
+          status: "complete",
+          sourceMessages: [],
+        },
+        {
+          type: "text",
+          id: "answer",
+          text: "Here is the result.",
+          sourceMessages: [],
+        },
+      ],
+      {
+        active: false,
+        nowMs: 1_000,
+      },
+    );
+
+    expect(summary(projected).hasFollowingConversationText).toBe(true);
   });
 
   it("omits dismissed preview slots without changing the source transcript", () => {

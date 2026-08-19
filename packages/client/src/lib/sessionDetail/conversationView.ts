@@ -106,6 +106,23 @@ export function isConversationViewActivity(item: RenderItem): boolean {
   );
 }
 
+export function groupHasFollowingConversationText(
+  items: readonly RenderItem[],
+): boolean {
+  let seenThinking = false;
+  for (const item of items) {
+    if (item.type === "thinking") {
+      seenThinking = true;
+      continue;
+    }
+    if (!seenThinking) continue;
+    if (item.type === "text" && item.text.trim().length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function getConversationViewActivityCount(item: RenderItem): number {
   if (item.type !== "tool_call") {
     return 1;
@@ -475,6 +492,10 @@ export function projectConversationView(
       thinkingPreviews:
         groupIndex === lastActivityGroupIndex && thinkingPreviews.length > 0
           ? thinkingPreviews
+          : undefined,
+      hasFollowingConversationText:
+        groupIndex === lastActivityGroupIndex && thinkingPreviews.length > 0
+          ? groupHasFollowingConversationText(group.items)
           : undefined,
       // Not gated on the turn still being active: a finished turn keeps the
       // activities that followed its last thought, which is the part the

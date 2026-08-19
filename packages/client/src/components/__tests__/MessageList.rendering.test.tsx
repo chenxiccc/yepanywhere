@@ -542,29 +542,10 @@ describe("MessageList rendering", () => {
     );
 
     expect(screen.getByText("Visible answer")).toBeTruthy();
-    expect(screen.getByText("private planning")).toBeTruthy();
-    expect(
-      container.querySelector(".conversation-thinking-preview"),
-    ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /Hide thinking transcript rows/,
-      }),
-    );
     expect(screen.queryByText("private planning")).toBeNull();
     expect(
       container.querySelector(".conversation-thinking-preview"),
     ).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /Show hidden thinking transcript rows/,
-      }),
-    );
-    expect(screen.getByText("private planning")).toBeTruthy();
-    expect(
-      container.querySelector(".conversation-thinking-preview"),
-    ).toBeTruthy();
     const summary = container.querySelector(
       ".conversation-activity-summary",
     ) as HTMLButtonElement | null;
@@ -979,7 +960,7 @@ describe("MessageList rendering", () => {
     );
 
     expect(screen.getByText("Visible answer")).toBeTruthy();
-    expect(screen.getByText("private planning")).toBeTruthy();
+    expect(screen.queryByText("private planning")).toBeNull();
     expect(
       document.querySelector(".conversation-activity-summary"),
     ).toBeTruthy();

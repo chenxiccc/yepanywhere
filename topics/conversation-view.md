@@ -121,7 +121,15 @@ provider-history rewrite and not deletion.
   keeps only its latest thinking block. While the next block streams, its
   immediately preceding completed block returns as the expanded previous
   preview, preserving live-turn context without leaving two completed cards
-  behind. A block restored by expanding its ordinary activity summary is not
+  behind. When that completed turn also has visible agent-authored
+  conversation text after the thinking, the thinking preview and the
+  thinking-height activity names fade out after
+  `CONVERSATION_THINKING_AUTO_HIDE_MS` (5s) and the activity row returns to
+  the compact summary. The delay is measured from turn completion: a turn
+  that finished more than 5s ago starts compact, with no flash of the
+  card. Live turns, and completed turns whose latest content is still
+  thinking, keep the preview. Turning thinking visibility back on restores
+  the preview even after auto-hide. A block restored by expanding its ordinary activity summary is not
   duplicated in the preview. Preview text participates in the projected search
   scope. The row packs the activity summary and available previews together
   whenever their measured target widths fit, then wraps whole cards when they

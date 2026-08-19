@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -38,6 +39,10 @@ import {
   type ThinkingPreviewWidthState,
   updateThinkingPreviewWidth,
 } from "../lib/sessionDetail/thinkingPreviewWidth";
+import {
+  CONVERSATION_THINKING_AUTO_HIDE_FADE_MS,
+  conversationThinkingAutoHideDelayMs,
+} from "../lib/sessionDetail/thinkingPreviewAutoHide";
 import { ThinkingText } from "./ThinkingText";
 import { MessageAge } from "./MessageAge";
 import {
@@ -355,6 +360,22 @@ function ConversationActivitySummary({
   const { t } = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
   const activityListRef = useRef<HTMLUListElement>(null);
+  const [autoHidePhase, setAutoHidePhase] = useState<
+    "visible" | "fading" | "hidden"
+  >(() =>
+    conversationThinkingAutoHideDelayMs({
+      active: item.active,
+      hasFollowingConversationText: Boolean(item.hasFollowingConversationText),
+      endedAtMs: item.endedAtMs,
+      nowMs: Date.now(),
+    }) === 0
+      ? "hidden"
+      : "visible",
+  );
+  const previousThinkingPreviewCountRef = useRef(
+    item.thinkingPreviews?.length ?? 0,
+  );
+  const skipThinkingAutoHideRef = useRef(false);
   // The recent-activity list is newest-first and clips its oldest (bottom) rows
   // when they exceed the thinking height. Mark it so the stylesheet can fade
   // that bottom edge — but only while it actually overflows, so a short list
@@ -490,6 +511,69 @@ function ConversationActivitySummary({
   useLayoutEffect(() => {
     syncActivityClip();
   }, [syncActivityClip, item.recentActivities]);
+  useEffect(() => {
+    const count = item.thinkingPreviews?.length ?? 0;
+    const previousCount = previousThinkingPreviewCountRef.current;
+    previousThinkingPreviewCountRef.current = count;
+    if (previousCount === 0 && count > 0) {
+      skipThinkingAutoHideRef.current = true;
+      setAutoHidePhase("visible");
+    }
+  }, [item.thinkingPreviews?.length]);
+  useEffect(() => {
+    if (skipThinkingAutoHideRef.current) return;
+    const delay = conversationThinkingAutoHideDelayMs({
+      active: item.active,
+      hasFollowingConversationText: Boolean(item.hasFollowingConversationText),
+      endedAtMs: item.endedAtMs,
+      nowMs: Date.now(),
+    });
+    if (delay === null) {
+      setAutoHidePhase("visible");
+      return;
+    }
+    if (delay === 0) {
+      setAutoHidePhase((phase) => (phase === "visible" ? "hidden" : phase));
+      return;
+    }
+    setAutoHidePhase("visible");
+    const start = window.setTimeout(() => {
+      setAutoHidePhase("fading");
+    }, delay);
+    return () => window.clearTimeout(start);
+  }, [item.active, item.endedAtMs, item.hasFollowingConversationText]);
+  useEffect(() => {
+    if (autoHidePhase !== "fading") return;
+    const finish = window.setTimeout(() => {
+      setAutoHidePhase("hidden");
+    }, CONVERSATION_THINKING_AUTO_HIDE_FADE_MS);
+    return () => window.clearTimeout(finish);
+  }, [autoHidePhase]);
+  useLayoutEffect(() => {
+    if (autoHidePhase === "visible") return;
+    const row = rowRef.current;
+    if (autoHidePhase === "fading" && row) {
+      for (const card of row.querySelectorAll<HTMLElement>(
+        ".conversation-thinking-preview",
+      )) {
+        if (!card.style.maxHeight) {
+          card.style.maxHeight = `${card.offsetHeight}px`;
+        }
+      }
+      const frame = window.requestAnimationFrame(() => {
+        for (const card of row.querySelectorAll<HTMLElement>(
+          ".conversation-thinking-preview",
+        )) {
+          card.style.maxHeight = "0px";
+        }
+      });
+      reserveRef.current.reserve = null;
+      syncHeightReserve();
+      return () => window.cancelAnimationFrame(frame);
+    }
+    reserveRef.current.reserve = null;
+    syncHeightReserve();
+  }, [autoHidePhase, syncHeightReserve]);
   const elapsedSeconds =
     item.startedAtMs !== null &&
     item.endedAtMs !== null &&
@@ -530,9 +614,13 @@ function ConversationActivitySummary({
       ? "conversationActivityCollapseTitle"
       : "conversationActivityExpandTitle",
   );
-  const hasExpandedThinkingPreview = item.thinkingPreviews?.some(
-    (preview) => !collapsedThinkingPreviewSlots.has(preview.slot),
-  );
+  const showThinkingPreviews = autoHidePhase !== "hidden";
+  const autoHidingThinking = autoHidePhase === "fading";
+  const hasExpandedThinkingPreview =
+    showThinkingPreviews &&
+    item.thinkingPreviews?.some(
+      (preview) => !collapsedThinkingPreviewSlots.has(preview.slot),
+    );
 
   return (
     <div
@@ -567,7 +655,9 @@ function ConversationActivitySummary({
         {hasExpandedThinkingPreview && item.recentActivities ? (
           <ul
             ref={activityListRef}
-            className="conversation-recent-activities"
+            className={`conversation-recent-activities${
+              autoHidingThinking ? ` ${styles.thinkingAutoHiding}` : ""
+            }`}
             aria-label={t("conversationRecentActivities")}
           >
             {item.recentActivities.map((activity, index) => (
@@ -579,16 +669,19 @@ function ConversationActivitySummary({
           </ul>
         ) : null}
       </div>
-      {item.thinkingPreviews?.map((preview) => (
-        <ConversationThinkingPreview
-          collapsed={collapsedThinkingPreviewSlots.has(preview.slot)}
-          key={preview.slot}
-          turnEndedAtMs={item.endedAtMs}
-          onDismiss={onDismissThinkingPreview}
-          onToggle={onToggleThinkingPreview}
-          preview={preview}
-        />
-      ))}
+      {showThinkingPreviews
+        ? item.thinkingPreviews?.map((preview) => (
+            <ConversationThinkingPreview
+              autoHiding={autoHidingThinking}
+              collapsed={collapsedThinkingPreviewSlots.has(preview.slot)}
+              key={preview.slot}
+              turnEndedAtMs={item.endedAtMs}
+              onDismiss={onDismissThinkingPreview}
+              onToggle={onToggleThinkingPreview}
+              preview={preview}
+            />
+          ))
+        : null}
     </div>
   );
 }
@@ -645,12 +738,14 @@ function formatThinkingPreviewAge(
 function ConversationThinkingPreview({
   preview,
   collapsed,
+  autoHiding,
   onToggle,
   onDismiss,
   turnEndedAtMs,
 }: {
   preview: ConversationThinkingPreviewData;
   collapsed: boolean;
+  autoHiding: boolean;
   onToggle?: (slot: ConversationThinkingPreviewSlot) => void;
   onDismiss?: (slot: ConversationThinkingPreviewSlot) => void;
   /** The turn's end, or the live clock while it runs. */
@@ -724,7 +819,9 @@ function ConversationThinkingPreview({
     <div
       className={`conversation-thinking-preview${
         preview.status === "streaming" ? " is-streaming" : ""
-      }${collapsed ? " is-collapsed" : ""}`}
+      }${collapsed ? " is-collapsed" : ""}${
+        autoHiding ? ` ${styles.thinkingAutoHiding}` : ""
+      }`}
       data-preview-slot={preview.slot}
       style={
         {
