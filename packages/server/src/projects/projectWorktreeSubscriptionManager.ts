@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import { lstat, opendir, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { lstat, opendir, readdir, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
   GitFileChange,
   GitWorkingTreeChange,
@@ -24,6 +24,25 @@ const DEFAULT_FALLBACK_POLL_MS = 30_000;
 const DEFAULT_MAX_RETAINED_PROJECTS = 32;
 const DEFAULT_FILE_LIMIT = 100_000;
 const MAX_BUFFER = 64 * 1024 * 1024;
+const GIT_METADATA_PLATFORM: NodeJS.Platform = "linux";
+
+const GIT_ROOT_METADATA_NAMES = new Set([
+  "HEAD",
+  "index",
+  "packed-refs",
+  "config",
+  "config.worktree",
+  "FETCH_HEAD",
+  "MERGE_HEAD",
+  "CHERRY_PICK_HEAD",
+  "REVERT_HEAD",
+  "BISECT_LOG",
+  "refs",
+  "info",
+  "rebase-merge",
+  "rebase-apply",
+  "reftable",
+]);
 
 interface Subscriber {
   coverage: GitWorktreeCoverage;
@@ -35,10 +54,36 @@ interface WatchedDirectory {
   watcher: fs.FSWatcher;
 }
 
+export interface GitMetadataPaths {
+  gitDir: string;
+  commonDir: string;
+  headRefPath: string | null;
+}
+
+type GitMetadataWatchScope =
+  | "root"
+  | "refs"
+  | "info"
+  | "operation"
+  | "reftable";
+
+interface GitMetadataWatchSpec {
+  path: string;
+  recursive: boolean;
+  scope: GitMetadataWatchScope;
+}
+
+interface WatchedGitMetadata extends WatchedDirectory {
+  spec: GitMetadataWatchSpec;
+}
+
+type ReconciliationMode = "full" | "fingerprint";
+
 export interface ProjectWorktreeScan {
   headSha: string | null;
   baseSha: string | null;
   files: Map<string, GitWorkingTreeFile>;
+  truncated?: boolean;
 }
 
 interface ProjectState {
@@ -53,7 +98,15 @@ interface ProjectState {
   watchers: Map<string, WatchedDirectory>;
   watchComplete: boolean;
   watchersNeedFullSync: boolean;
+  gitMetadata: GitMetadataPaths | null;
+  gitMetadataWatchers: Map<string, WatchedGitMetadata>;
+  gitMetadataWatchComplete: boolean;
+  gitMetadataProbeNeeded: boolean;
+  gitMetadataWatchSyncNeeded: boolean;
+  gitMetadataFingerprint: string | null;
+  fingerprintPromise: Promise<void> | null;
   initialized: boolean;
+  scanTruncated: boolean;
   activationPromise: Promise<void> | null;
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
@@ -66,6 +119,7 @@ interface ProjectState {
   debounceTimer: NodeJS.Timeout | null;
   deadlineTimer: NodeJS.Timeout | null;
   pollTimer: NodeJS.Timeout | null;
+  pollMode: ReconciliationMode | null;
   lastUsedAt: number;
 }
 
@@ -86,11 +140,15 @@ export interface ProjectWorktreeSubscriptionManagerOptions {
   fallbackPollMs?: number;
   maxRetainedProjects?: number;
   fileLimit?: number;
+  platform?: NodeJS.Platform;
   watchDirectory?: (
     path: string,
     listener: (eventType: string, filename: Buffer | string | null) => void,
     options: { recursive: boolean },
   ) => fs.FSWatcher;
+  resolveGitMetadata?: (
+    projectPath: string,
+  ) => Promise<GitMetadataPaths | null>;
   scanWorktree?: (
     projectPath: string,
     coverage: GitWorktreeCoverage,
@@ -158,12 +216,18 @@ export class ProjectWorktreeSubscriptionManager {
   private readonly fallbackPollMs: number;
   private readonly maxRetainedProjects: number;
   private readonly fileLimit: number;
+  private readonly platform: NodeJS.Platform;
   private readonly watchDirectory: NonNullable<
     ProjectWorktreeSubscriptionManagerOptions["watchDirectory"]
   >;
-  private readonly scanWorktree: NonNullable<
-    ProjectWorktreeSubscriptionManagerOptions["scanWorktree"]
+  private readonly resolveGitMetadata: NonNullable<
+    ProjectWorktreeSubscriptionManagerOptions["resolveGitMetadata"]
   >;
+  private readonly scanWorktree: (
+    projectPath: string,
+    coverage: GitWorktreeCoverage,
+    isGitRepository: boolean,
+  ) => Promise<ProjectWorktreeScan>;
   private readonly projects = new Map<string, ProjectState>();
   private nextSubscriberId = 1;
   private disposed = false;
@@ -184,6 +248,7 @@ export class ProjectWorktreeSubscriptionManager {
       options.maxRetainedProjects ?? DEFAULT_MAX_RETAINED_PROJECTS,
     );
     this.fileLimit = Math.max(1, options.fileLimit ?? DEFAULT_FILE_LIMIT);
+    this.platform = options.platform ?? process.platform;
     this.watchDirectory =
       options.watchDirectory ??
       ((path, listener, watchOptions) =>
@@ -192,7 +257,14 @@ export class ProjectWorktreeSubscriptionManager {
           { persistent: false, recursive: watchOptions.recursive },
           listener,
         ));
-    this.scanWorktree = options.scanWorktree ?? scanGitWorktree;
+    this.resolveGitMetadata = options.resolveGitMetadata ?? resolveGitMetadata;
+    const scanWorktree = options.scanWorktree;
+    this.scanWorktree = scanWorktree
+      ? (projectPath, coverage) => scanWorktree(projectPath, coverage)
+      : (projectPath, coverage, isGitRepository) =>
+          isGitRepository
+            ? scanGitWorktree(projectPath, coverage)
+            : scanFilesystemWorktree(projectPath, coverage, this.fileLimit);
   }
 
   subscribe(
@@ -231,7 +303,8 @@ export class ProjectWorktreeSubscriptionManager {
     for (const state of this.projects.values()) {
       if (state.subscribers.size > 0) activeProjects += 1;
       subscribers += state.subscribers.size;
-      watchedDirectories += state.watchers.size;
+      watchedDirectories +=
+        state.watchers.size + state.gitMetadataWatchers.size;
     }
     return {
       activeProjects,
@@ -327,7 +400,15 @@ export class ProjectWorktreeSubscriptionManager {
       watchers: new Map(),
       watchComplete: false,
       watchersNeedFullSync: true,
+      gitMetadata: null,
+      gitMetadataWatchers: new Map(),
+      gitMetadataWatchComplete: false,
+      gitMetadataProbeNeeded: true,
+      gitMetadataWatchSyncNeeded: true,
+      gitMetadataFingerprint: null,
+      fingerprintPromise: null,
       initialized: false,
+      scanTruncated: false,
       activationPromise: null,
       refreshPromise: null,
       refreshQueued: false,
@@ -340,6 +421,7 @@ export class ProjectWorktreeSubscriptionManager {
       debounceTimer: null,
       deadlineTimer: null,
       pollTimer: null,
+      pollMode: null,
       lastUsedAt: Date.now(),
     };
     this.projects.set(projectId, state);
@@ -456,11 +538,12 @@ export class ProjectWorktreeSubscriptionManager {
         { recursive: false },
       );
       watcher.on("error", (error) => {
+        watcher.close();
+        if (state.subscribers.size === 0) return;
         getLogger().warn(
           { directory, error, projectId: state.projectId },
           "WORKTREE_WATCH: directory watch failed; using bounded reconciliation",
         );
-        watcher.close();
         state.watchers.delete(directory);
         state.watchComplete = false;
         state.pendingWatchPaths.add(directory);
@@ -557,6 +640,147 @@ export class ProjectWorktreeSubscriptionManager {
     return { directories, complete };
   }
 
+  private async syncGitMetadataWatchers(state: ProjectState): Promise<void> {
+    if (state.gitMetadataProbeNeeded) {
+      const next = await this.resolveGitMetadata(state.projectPath);
+      state.gitMetadataProbeNeeded = false;
+      if (!sameGitMetadata(state.gitMetadata, next)) {
+        this.closeGitMetadataWatchers(state);
+        state.gitMetadata = next;
+        state.gitMetadataFingerprint = null;
+      }
+    }
+
+    state.gitMetadataWatchSyncNeeded = false;
+    if (this.platform !== GIT_METADATA_PLATFORM) {
+      this.closeGitMetadataWatchers(state);
+      state.gitMetadataWatchComplete = false;
+      return;
+    }
+    if (!state.gitMetadata) {
+      this.closeGitMetadataWatchers(state);
+      state.gitMetadataWatchComplete = true;
+      return;
+    }
+
+    const specs = await gitMetadataWatchSpecs(state.gitMetadata);
+    if (state.subscribers.size === 0) return;
+    const wanted = new Map(specs.map((spec) => [spec.path, spec]));
+    for (const [path, watched] of state.gitMetadataWatchers) {
+      const spec = wanted.get(path);
+      if (
+        spec &&
+        spec.recursive === watched.spec.recursive &&
+        spec.scope === watched.spec.scope
+      ) {
+        continue;
+      }
+      watched.watcher.close();
+      state.gitMetadataWatchers.delete(path);
+    }
+
+    let complete = true;
+    for (const spec of specs) {
+      if (state.gitMetadataWatchers.has(spec.path)) continue;
+      if (!this.attachGitMetadataWatcher(state, spec)) complete = false;
+    }
+    state.gitMetadataWatchComplete =
+      complete && state.gitMetadataWatchers.size === wanted.size;
+  }
+
+  private attachGitMetadataWatcher(
+    state: ProjectState,
+    spec: GitMetadataWatchSpec,
+  ): boolean {
+    try {
+      const watcher = this.watchDirectory(
+        spec.path,
+        (_eventType, filename) => {
+          this.onGitMetadataEvent(state, spec, filename);
+        },
+        { recursive: spec.recursive },
+      );
+      watcher.on("error", (error) => {
+        watcher.close();
+        if (state.subscribers.size === 0) return;
+        getLogger().warn(
+          { error, path: spec.path, projectId: state.projectId },
+          "WORKTREE_WATCH: Git metadata watch failed; using bounded reconciliation",
+        );
+        state.gitMetadataWatchers.delete(spec.path);
+        state.gitMetadataWatchComplete = false;
+        state.gitMetadataWatchSyncNeeded = true;
+        this.syncReconciliationPoll(state);
+        this.scheduleRefresh(state);
+      });
+      state.gitMetadataWatchers.set(spec.path, { watcher, spec });
+      return true;
+    } catch (error) {
+      state.gitMetadataWatchComplete = false;
+      getLogger().debug(
+        { error, path: spec.path, projectId: state.projectId },
+        "WORKTREE_WATCH: Git metadata directory not watchable; polling covers it",
+      );
+      return false;
+    }
+  }
+
+  private onGitMetadataEvent(
+    state: ProjectState,
+    spec: GitMetadataWatchSpec,
+    filename: Buffer | string | null,
+  ): void {
+    if (state.subscribers.size === 0) return;
+    const name = filename?.toString().replaceAll("\\", "/") ?? "";
+    if (name && ignoreGitMetadataEvent(name)) return;
+    if (spec.scope === "root" && name && !rootGitMetadataChanged(name)) return;
+    if (
+      spec.scope === "root" &&
+      (!name || gitMetadataWatchSetMayHaveChanged(name))
+    ) {
+      state.gitMetadataWatchComplete = false;
+      state.gitMetadataWatchSyncNeeded = true;
+      this.syncReconciliationPoll(state);
+    }
+    if (spec.scope === "root" && (!name || name === "HEAD")) {
+      state.gitMetadataProbeNeeded = true;
+    }
+    this.scheduleRefresh(state);
+  }
+
+  private closeGitMetadataWatchers(state: ProjectState): void {
+    for (const watched of state.gitMetadataWatchers.values()) {
+      watched.watcher.close();
+    }
+    state.gitMetadataWatchers.clear();
+  }
+
+  private reconcileGitMetadataFingerprint(state: ProjectState): void {
+    if (state.fingerprintPromise || !state.gitMetadata) return;
+    state.fingerprintPromise = readGitMetadataFingerprint(state.gitMetadata)
+      .then(async (fingerprint) => {
+        if (
+          state.subscribers.size > 0 &&
+          fingerprint !== state.gitMetadataFingerprint
+        ) {
+          state.gitMetadataProbeNeeded = true;
+          state.gitMetadataWatchSyncNeeded = true;
+          await this.refresh(state, true);
+        }
+      })
+      .catch((error) => {
+        state.gitMetadataWatchComplete = false;
+        this.syncReconciliationPoll(state);
+        getLogger().warn(
+          { error, projectId: state.projectId },
+          "WORKTREE_WATCH: Git metadata fingerprint failed; using bounded reconciliation",
+        );
+      })
+      .finally(() => {
+        state.fingerprintPromise = null;
+      });
+  }
+
   private onFilesystemEvent(
     state: ProjectState,
     directory: string,
@@ -566,6 +790,12 @@ export class ProjectWorktreeSubscriptionManager {
     if (state.subscribers.size === 0) return;
     const relativeName = filename?.toString().replaceAll("\\", "/") ?? "";
     const path = [directory, relativeName].filter(Boolean).join("/");
+    if (path === ".git") {
+      state.gitMetadataProbeNeeded = true;
+      state.gitMetadataWatchSyncNeeded = true;
+      this.scheduleRefresh(state);
+      return;
+    }
     if (path && isDotGitPath(path)) return;
     state.pendingPaths.add(path);
     if (eventType === "rename" && path) {
@@ -624,16 +854,36 @@ export class ProjectWorktreeSubscriptionManager {
   ): Promise<void> {
     do {
       state.refreshQueued = false;
+      if (state.gitMetadataProbeNeeded || state.gitMetadataWatchSyncNeeded) {
+        await this.syncGitMetadataWatchers(state);
+        this.syncReconciliationPoll(state);
+      }
       const coverage = unionCoverage(state.subscribers.values());
       const pendingPaths = new Set(state.pendingPaths);
       state.pendingPaths.clear();
+      const fingerprintBefore = state.gitMetadata
+        ? await readGitMetadataFingerprint(state.gitMetadata)
+        : null;
       let scan: ProjectWorktreeScan;
       try {
-        scan = await this.scanWorktree(state.projectPath, coverage);
+        scan = await this.scanWorktree(
+          state.projectPath,
+          coverage,
+          state.gitMetadata !== null,
+        );
       } catch (error) {
         for (const path of pendingPaths) state.pendingPaths.add(path);
         throw error;
       }
+      const fingerprintAfter = state.gitMetadata
+        ? await readGitMetadataFingerprint(state.gitMetadata)
+        : null;
+      if (fingerprintBefore !== fingerprintAfter) {
+        state.gitMetadataProbeNeeded = true;
+        state.gitMetadataWatchSyncNeeded = true;
+        state.refreshQueued = true;
+      }
+      state.gitMetadataFingerprint = fingerprintAfter;
       if (state.subscribers.size === 0) return;
       const { files, changes } = diffFiles(
         state.files,
@@ -645,6 +895,7 @@ export class ProjectWorktreeSubscriptionManager {
       state.files = files;
       state.headSha = scan.headSha;
       state.baseSha = scan.baseSha;
+      state.scanTruncated = scan.truncated === true;
       state.initialized = true;
       if (changes.length > 0 || endpointsChanged) {
         state.sequence += 1;
@@ -675,7 +926,7 @@ export class ProjectWorktreeSubscriptionManager {
       headSha: state.headSha,
       baseSha: state.baseSha,
       files: files.slice(0, this.fileLimit),
-      truncated: files.length > this.fileLimit,
+      truncated: state.scanTruncated || files.length > this.fileLimit,
       timestamp: new Date().toISOString(),
     };
   }
@@ -706,8 +957,28 @@ export class ProjectWorktreeSubscriptionManager {
   }
 
   private syncReconciliationPoll(state: ProjectState): void {
-    if (state.pollTimer) return;
+    const watchesAreTruth =
+      this.platform === GIT_METADATA_PLATFORM &&
+      state.watchComplete &&
+      state.gitMetadataWatchComplete;
+    const mode: ReconciliationMode | null = watchesAreTruth
+      ? state.gitMetadata
+        ? "fingerprint"
+        : null
+      : "full";
+    if (state.pollMode === mode) return;
+    if (state.pollTimer) clearInterval(state.pollTimer);
+    state.pollTimer = null;
+    state.pollMode = mode;
+    if (!mode) return;
+
     state.pollTimer = setInterval(() => {
+      if (state.pollMode === "fingerprint") {
+        this.reconcileGitMetadataFingerprint(state);
+        return;
+      }
+      state.gitMetadataProbeNeeded = true;
+      state.gitMetadataWatchSyncNeeded = true;
       void this.refresh(state, true).catch((error) => {
         getLogger().warn(
           { error, projectId: state.projectId },
@@ -721,12 +992,14 @@ export class ProjectWorktreeSubscriptionManager {
   private deactivate(state: ProjectState): void {
     for (const watched of state.watchers.values()) watched.watcher.close();
     state.watchers.clear();
+    this.closeGitMetadataWatchers(state);
     if (state.debounceTimer) clearTimeout(state.debounceTimer);
     if (state.deadlineTimer) clearTimeout(state.deadlineTimer);
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.debounceTimer = null;
     state.deadlineTimer = null;
     state.pollTimer = null;
+    state.pollMode = null;
     state.pendingPaths.clear();
     state.pendingWatchPaths.clear();
     state.watchSyncQueued = false;
@@ -734,6 +1007,10 @@ export class ProjectWorktreeSubscriptionManager {
     state.watchSyncFull = false;
     state.watchComplete = false;
     state.watchersNeedFullSync = true;
+    state.gitMetadataWatchComplete = false;
+    state.gitMetadataProbeNeeded = true;
+    state.gitMetadataWatchSyncNeeded = true;
+    state.gitMetadataFingerprint = null;
   }
 
   private evictInactiveProjects(): void {
@@ -838,6 +1115,260 @@ function sameChange(
       left.lastEditor?.sessionId === right.lastEditor?.sessionId &&
       left.lastEditor?.observedAt === right.lastEditor?.observedAt,
   );
+}
+
+function sameGitMetadata(
+  left: GitMetadataPaths | null,
+  right: GitMetadataPaths | null,
+): boolean {
+  return (
+    left === right ||
+    Boolean(
+      left &&
+        right &&
+        left.gitDir === right.gitDir &&
+        left.commonDir === right.commonDir &&
+        left.headRefPath === right.headRefPath,
+    )
+  );
+}
+
+async function resolveGitMetadata(
+  projectPath: string,
+): Promise<GitMetadataPaths | null> {
+  let gitDirOutput: string;
+  try {
+    ({ stdout: gitDirOutput } = await runGit(projectPath, [
+      "rev-parse",
+      "--absolute-git-dir",
+    ]));
+  } catch (error) {
+    if (isNotGitRepositoryError(error)) return null;
+    throw error;
+  }
+
+  const gitDir = gitDirOutput.trim();
+  if (!gitDir) throw new Error("Git returned an empty administrative path");
+  const { stdout: commonDirOutput } = await runGit(projectPath, [
+    "rev-parse",
+    "--git-common-dir",
+  ]);
+  const commonDir = resolve(projectPath, commonDirOutput.trim());
+  const headRefPath = await resolveHeadRefPath(projectPath);
+  return { gitDir, commonDir, headRefPath };
+}
+
+async function resolveHeadRefPath(projectPath: string): Promise<string | null> {
+  let headRef: string;
+  try {
+    const { stdout } = await runGit(projectPath, [
+      "symbolic-ref",
+      "--quiet",
+      "HEAD",
+    ]);
+    headRef = stdout.trim();
+  } catch (error) {
+    if (gitExitCode(error) === 1) return null;
+    throw error;
+  }
+  if (!headRef) return null;
+  const { stdout } = await runGit(projectPath, [
+    "rev-parse",
+    "--git-path",
+    headRef,
+  ]);
+  return resolve(projectPath, stdout.trim());
+}
+
+function gitExitCode(error: unknown): string | number | undefined {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return undefined;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "number" || typeof code === "string"
+    ? code
+    : undefined;
+}
+
+function isNotGitRepositoryError(error: unknown): boolean {
+  if (
+    !error ||
+    typeof error !== "object" ||
+    gitExitCode(error) !== 128 ||
+    !("stderr" in error)
+  ) {
+    return false;
+  }
+  return String(error.stderr).toLowerCase().includes("not a git repository");
+}
+
+async function gitMetadataWatchSpecs(
+  metadata: GitMetadataPaths,
+): Promise<GitMetadataWatchSpec[]> {
+  const specs = new Map<string, GitMetadataWatchSpec>();
+  const add = (spec: GitMetadataWatchSpec) => {
+    if (!specs.has(spec.path)) specs.set(spec.path, spec);
+  };
+  add({ path: metadata.gitDir, recursive: false, scope: "root" });
+  add({ path: metadata.commonDir, recursive: false, scope: "root" });
+
+  const candidates: GitMetadataWatchSpec[] = [];
+  for (const root of new Set([metadata.gitDir, metadata.commonDir])) {
+    candidates.push(
+      { path: join(root, "refs"), recursive: true, scope: "refs" },
+      { path: join(root, "info"), recursive: false, scope: "info" },
+      { path: join(root, "reftable"), recursive: true, scope: "reftable" },
+    );
+  }
+  candidates.push(
+    {
+      path: join(metadata.gitDir, "rebase-merge"),
+      recursive: true,
+      scope: "operation",
+    },
+    {
+      path: join(metadata.gitDir, "rebase-apply"),
+      recursive: true,
+      scope: "operation",
+    },
+  );
+  for (const candidate of candidates) {
+    if (await isDirectory(candidate.path)) add(candidate);
+  }
+  return [...specs.values()];
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isDirectory();
+  } catch (error) {
+    if (isMissingPathError(error)) return false;
+    throw error;
+  }
+}
+
+function ignoreGitMetadataEvent(name: string): boolean {
+  const base = name.split("/").at(-1) ?? name;
+  return base.endsWith(".lock") || base.startsWith(".watchman-cookie-");
+}
+
+function rootGitMetadataChanged(name: string): boolean {
+  const rootName = name.split("/")[0] ?? name;
+  return (
+    GIT_ROOT_METADATA_NAMES.has(rootName) || rootName.startsWith("sharedindex.")
+  );
+}
+
+function gitMetadataWatchSetMayHaveChanged(name: string): boolean {
+  const rootName = name.split("/")[0] ?? name;
+  return (
+    rootName === "refs" ||
+    rootName === "info" ||
+    rootName === "rebase-merge" ||
+    rootName === "rebase-apply" ||
+    rootName === "reftable"
+  );
+}
+
+async function readGitMetadataFingerprint(
+  metadata: GitMetadataPaths,
+): Promise<string> {
+  const paths = new Set<string>([
+    metadata.gitDir,
+    metadata.commonDir,
+    join(metadata.gitDir, "HEAD"),
+    join(metadata.gitDir, "index"),
+    join(metadata.gitDir, "FETCH_HEAD"),
+    join(metadata.gitDir, "MERGE_HEAD"),
+    join(metadata.gitDir, "CHERRY_PICK_HEAD"),
+    join(metadata.gitDir, "REVERT_HEAD"),
+    join(metadata.gitDir, "BISECT_LOG"),
+    join(metadata.gitDir, "config.worktree"),
+    join(metadata.commonDir, "packed-refs"),
+    join(metadata.commonDir, "config"),
+    join(metadata.commonDir, "info", "exclude"),
+    join(metadata.commonDir, "reftable"),
+  ]);
+  if (metadata.headRefPath) {
+    paths.add(metadata.headRefPath);
+    paths.add(dirname(metadata.headRefPath));
+  }
+  return (
+    await Promise.all([...paths].sort(comparePaths).map(pathFingerprint))
+  ).join("\n");
+}
+
+async function pathFingerprint(path: string): Promise<string> {
+  try {
+    const value = await lstat(path);
+    return `${path}\0${value.dev}:${value.ino}:${value.size}:${value.mtimeMs}:${value.ctimeMs}`;
+  } catch (error) {
+    if (isMissingPathError(error)) return `${path}\0missing`;
+    throw error;
+  }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+async function scanFilesystemWorktree(
+  projectPath: string,
+  coverage: GitWorktreeCoverage,
+  fileLimit: number,
+): Promise<ProjectWorktreeScan> {
+  if (!coverage.untracked) {
+    return { headSha: null, baseSha: null, files: new Map() };
+  }
+
+  const files = new Map<string, GitWorkingTreeFile>();
+  const pending = [{ absolute: projectPath, relative: "" }];
+  let truncated = false;
+  while (pending.length > 0 && !truncated) {
+    const current = pending.pop();
+    if (!current) break;
+    const entries = await readdir(current.absolute, { withFileTypes: true });
+    entries.sort((left, right) => comparePaths(left.name, right.name));
+    const directories: Array<{ absolute: string; relative: string }> = [];
+    for (const entry of entries) {
+      if (entry.name === ".git") continue;
+      const path = current.relative
+        ? `${current.relative}/${entry.name}`
+        : entry.name;
+      if (entry.isDirectory()) {
+        directories.push({
+          absolute: join(current.absolute, entry.name),
+          relative: path,
+        });
+        continue;
+      }
+      if (files.size >= fileLimit) {
+        truncated = true;
+        break;
+      }
+      const change: GitWorkingTreeChange = {
+        status: "?",
+        staged: false,
+        linesAdded: null,
+        linesDeleted: null,
+      };
+      files.set(path, {
+        path,
+        tracked: false,
+        kind: "untracked",
+        present: true,
+        worktreeChanges: [change],
+        cumulativeChange: change,
+      });
+    }
+    for (let index = directories.length - 1; index >= 0; index -= 1) {
+      const directory = directories[index];
+      if (directory) pending.push(directory);
+    }
+  }
+  return { headSha: null, baseSha: null, files, truncated };
 }
 
 async function scanGitWorktree(
@@ -1013,4 +1544,10 @@ async function resolveCommit(
   }
 }
 
-export { ALL_COVERAGE, diffFiles, scanGitWorktree };
+export {
+  ALL_COVERAGE,
+  diffFiles,
+  resolveGitMetadata,
+  scanFilesystemWorktree,
+  scanGitWorktree,
+};

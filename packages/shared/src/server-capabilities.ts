@@ -774,7 +774,7 @@ export const SERVER_CAPABILITIES = {
     introducedIn: "0.7.2",
     advertisement: { kind: "version-implied" },
     description:
-      "Server maintains one project-keyed, lease-owned Working Tree snapshot with requested tracked, untracked, and ignored coverage, embedded dirty and cumulative Git facts, and sequenced live deltas.",
+      "Server maintains one project-keyed, lease-owned Working Tree snapshot with requested tracked, untracked, and ignored coverage, filesystem-only inventory outside Git repositories, embedded Git facts when available, and sequenced live deltas.",
     clientFallback:
       "Use the released static working-tree inventory and cache-backed status paths without section controls, ignored enumeration, or a worktree subscription.",
     serverContract: {

@@ -271,6 +271,14 @@ server without `git-working-tree-files` retains the tracked-only Files corpus,
 content-plus-blame behavior, and stable `?tab=files` URL while making no
 working-tree inventory request.
 
+When no Git repository exists, a server with `git-working-tree-sections` still
+shows Working Tree current contents. Ordinary filesystem files are untracked
+rows, `HEAD` and base endpoints are absent, and `.git` remains categorically
+excluded. The repository action and history surfaces stay absent. YA neither
+initializes Git nor offers an initialization control. A server without the live
+capability retains the released **Not a git repository** fallback and receives
+no worktree subscription.
+
 The same capability owns
 `GET /api/projects/:projectId/git/untracked-files` and cache-backed status via
 `GET /api/projects/:projectId/git?untracked=cache`. Cache-backed polling asks Git
@@ -346,10 +354,28 @@ non-recursively. Directory creation and removal update only that subtree's watch
 set. The initial root watcher is installed before the background directory
 walk, so watcher expansion cannot delay the first snapshot or starve a
 notification-triggered Git scan. `.git` and every descendant are absent from
-both traversal and watching. While a lease is active, bounded 30-second
-reconciliation observes index and `HEAD` changes that content watchers cannot
-see and also covers missing or failed content watches. Explicit YA Git actions
-may refresh those facts earlier.
+content traversal and watching.
+
+A Git repository adds a separate metadata watch set. YA resolves both the
+per-worktree administrative directory and the common Git directory rather than
+assuming `.git` is a directory or that linked worktrees share one metadata
+root. It watches each root non-recursively and watches existing refs, reftable,
+and rebase/am state directories recursively. The containing directories are the
+watch targets because Git atomically replaces `HEAD`, the index, and refs;
+lockfiles and watchman cookies are ignored. A relevant event starts the same
+coalesced worktree reconciliation used for content events. Reconciliations are
+serialized, and an event during a scan queues one follow-up rather than
+launching an overlapping Git scan.
+
+Once Linux content and metadata watches are complete, the 30-second safety tick
+fingerprints a bounded set of Git sentinels, including `HEAD`, the index, packed
+refs, the current symbolic ref, operation markers, config, and excludes. An
+unchanged tick runs no Git subprocess. Changed metadata triggers a full scan,
+and fingerprints before and after that scan force a follow-up if Git moved
+during observation. A missing or failed watch restores full 30-second
+reconciliation. macOS, Windows, and other platforms retain that full fallback
+because recursive watch truth is not assumed there. Explicit YA Git actions and
+watch events may refresh more frequently.
 
 A 150 ms quiet timer coalesces an ordinary burst. A separate five-second
 maximum deadline is pinned to the first unprocessed filesystem event; later
@@ -474,6 +500,13 @@ computation. Binary and malformed-text guards remain independent.
 
 ## Design decisions
 
+- **Watch Git's administrative directories and retain a bounded sentinel
+  fingerprint** (vs. watching replaceable file inodes or running Git on every
+  safety tick): directory events survive Git's atomic replacements, while the
+  cheap fingerprint catches a missed event without an unchanged Git subprocess.
+- **Show filesystem-only current contents without repository mutations** (vs.
+  adding a Git initialization action): projects remain inspectable outside Git
+  while Source Control keeps its established inspection-first product boundary.
 - **Use a complete bounded plain projection for large diffs** (vs. raising the
   highlighted-HTML/line-DOM limits or continuing to omit the preview): this keeps
   the useful source while bounding server expansion and browser nodes. On a

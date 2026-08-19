@@ -385,6 +385,8 @@ beforeEach(() => {
   });
   mocks.useMediaQuery.mockReturnValue(true);
   mocks.renderWorkingTreeBrowser.mockReset();
+  mocks.renderCommitBrowser.mockReset();
+  mocks.renderBlameBrowser.mockReset();
 });
 
 describe("GitStatusPage source header", () => {
@@ -1043,6 +1045,63 @@ describe("GitStatusPage source header", () => {
     ]) {
       expect(document.querySelector(`.${retired}`)).toBeNull();
     }
+  });
+});
+
+describe("GitStatusPage filesystem-only projects", () => {
+  beforeEach(() => {
+    mocks.useGitStatus.mockReturnValue({
+      gitStatus: {
+        ...status(),
+        isGitRepo: false,
+        branch: null,
+        upstream: null,
+        isClean: true,
+        files: [],
+      },
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  it("renders the live Working Tree without offering Git initialization", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByTestId("blame-browser")).toBeDefined();
+    expect(mocks.renderBlameBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        projectId: "project-a",
+        status: expect.objectContaining({ isGitRepo: false }),
+        supportsWorktreeSections: true,
+      }),
+    );
+    expect(screen.queryByText("gitStatusNotRepo")).toBeNull();
+    expect(screen.queryByRole("button", { name: /init/i })).toBeNull();
+  });
+
+  it("keeps the not-repository fallback for older servers", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: { capabilities: [GIT_STATUS_ENHANCED_CAPABILITY] },
+      loading: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("gitStatusNotRepo")).toBeDefined();
+    expect(screen.queryByTestId("blame-browser")).toBeNull();
   });
 });
 

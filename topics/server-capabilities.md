@@ -90,7 +90,8 @@ version-implied from `0.7.1`.
 
 `git-working-tree-sections` owns the lease-backed project snapshot and
 sequenced live-delta contract, including requested Tracked / Untracked /
-Ignored coverage, embedded dirty and cumulative Git facts, and the sectioned
+Ignored coverage, filesystem-only current contents outside Git repositories,
+embedded dirty and cumulative Git facts when available, and the sectioned
 static route used for explicit refresh or resynchronization. Subscribers to
 one project share the server snapshot, watcher set, and reconciliation owner.
 Without permanent ID 41, the client keeps the released static

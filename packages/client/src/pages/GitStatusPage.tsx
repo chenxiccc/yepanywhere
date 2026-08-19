@@ -882,6 +882,24 @@ export function GitStatusPage() {
             <div className="error">
               {t("gitStatusErrorPrefix")} {error.message}
             </div>
+          ) : gitStatus &&
+            !gitStatus.isGitRepo &&
+            effectiveProjectId &&
+            supportsWorkingTreeSections ? (
+            <GlossaryProjectBoundary projectId={effectiveProjectId}>
+              <ProjectWorktreePauseContext.Provider value={worktreePaused}>
+                <div className="git-status">
+                  <BlameBrowser
+                    projectId={effectiveProjectId}
+                    isWideScreen={isWideScreen}
+                    status={gitStatus}
+                    supportsWorkingTreeFiles={supportsWorkingTreeFiles}
+                    supportsWorktreeSections
+                    t={t}
+                  />
+                </div>
+              </ProjectWorktreePauseContext.Provider>
+            </GlossaryProjectBoundary>
           ) : gitStatus && !gitStatus.isGitRepo ? (
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
           ) : gitStatus && effectiveProjectId && supportsSourceReview ? (

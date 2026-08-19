@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { scanGitWorktree } from "../../src/projects/projectWorktreeSubscriptionManager.js";
+import {
+  resolveGitMetadata,
+  scanFilesystemWorktree,
+  scanGitWorktree,
+} from "../../src/projects/projectWorktreeSubscriptionManager.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -95,5 +99,62 @@ describe("scanGitWorktree", () => {
       present: true,
     });
     expect(withIgnored.files.has(".git/config")).toBe(false);
+  });
+
+  it("lists a bounded filesystem-only working tree without Git metadata", async () => {
+    await mkdir(join(repo, "notes", "nested"), { recursive: true });
+    await writeFile(join(repo, "notes", "nested", "idea.txt"), "idea\n");
+
+    const scan = await scanFilesystemWorktree(
+      repo,
+      { tracked: true, untracked: true, ignored: true },
+      100,
+    );
+
+    expect(scan.files.get("notes/nested/idea.txt")).toMatchObject({
+      tracked: false,
+      kind: "untracked",
+      present: true,
+      worktreeChanges: [{ status: "?", staged: false }],
+    });
+    expect(
+      [...scan.files.keys()].some((path) => path.startsWith(".git/")),
+    ).toBe(false);
+    expect(scan.truncated).toBe(false);
+
+    const bounded = await scanFilesystemWorktree(
+      repo,
+      { tracked: true, untracked: true, ignored: true },
+      1,
+    );
+    expect(bounded.files.size).toBe(1);
+    expect(bounded.truncated).toBe(true);
+
+    const withoutUntracked = await scanFilesystemWorktree(
+      repo,
+      { tracked: true, untracked: false, ignored: true },
+      100,
+    );
+    expect(withoutUntracked.files.size).toBe(0);
+  });
+
+  it("resolves separate per-worktree and common Git directories", async () => {
+    const linked = `${repo}-linked`;
+    try {
+      await runGit(repo, ["worktree", "add", "-b", "ya-linked", linked]);
+      const metadata = await resolveGitMetadata(linked);
+
+      expect(metadata).not.toBeNull();
+      expect(metadata?.gitDir).not.toBe(metadata?.commonDir);
+      expect(metadata?.commonDir).toBe(join(repo, ".git"));
+      expect(metadata?.headRefPath).toBe(
+        join(repo, ".git", "refs", "heads", "ya-linked"),
+      );
+
+      await runGit(linked, ["switch", "--detach"]);
+      expect((await resolveGitMetadata(linked))?.headRefPath).toBeNull();
+    } finally {
+      await rm(linked, { recursive: true });
+    }
   });
 });

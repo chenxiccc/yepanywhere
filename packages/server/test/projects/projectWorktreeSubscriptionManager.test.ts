@@ -434,7 +434,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     manager.dispose();
   });
 
-  it("keeps bounded reconciliation after filesystem watches are complete", async () => {
+  it("keeps bounded full reconciliation on platforms without Git metadata watches", async () => {
     const projectId = "project-a" as UrlProjectId;
     const watchListeners = new Map<
       string,
@@ -463,6 +463,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       debounceMs: 25,
       maxEventAgeMs: 100,
       fallbackPollMs: 1_000,
+      platform: "darwin",
       watchDirectory: (path, listener) => {
         if (failSrcWatch && path === join(projectPath, "src")) {
           throw new Error("watch unavailable");
@@ -500,7 +501,373 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     manager.dispose();
   });
 
-  it("reconciles index staging and commits without dot-git watches", async () => {
+  it("uses Linux Git metadata events without unchanged full scans", async () => {
+    const projectId = "project-linux-metadata" as UrlProjectId;
+    const gitDir = join(projectPath, ".git");
+    const headRefPath = join(gitDir, "refs", "heads", "main");
+    await mkdir(join(gitDir, "refs", "heads"), { recursive: true });
+    await writeFile(join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+    await writeFile(join(gitDir, "index"), "index-a\n");
+    await writeFile(headRefPath, "head-a\n");
+
+    const watchListeners = new Map<
+      string,
+      (eventType: string, filename: Buffer | string | null) => void
+    >();
+    let currentFile = file("pending.txt", "untracked");
+    let moveHeadDuringScan = false;
+    const scanWorktree = vi.fn(async () => {
+      if (moveHeadDuringScan) {
+        moveHeadDuringScan = false;
+        await writeFile(join(gitDir, "HEAD"), "ref: refs/heads/next\n");
+      }
+      return {
+        headSha: "head-a",
+        baseSha: "base-a",
+        files: mapFiles([currentFile]),
+      };
+    });
+    const resolveGitMetadata = vi.fn(async () => ({
+      gitDir,
+      commonDir: gitDir,
+      headRefPath,
+    }));
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-linux-metadata",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      debounceMs: 25,
+      maxEventAgeMs: 100,
+      fallbackPollMs: 1_000,
+      platform: "linux",
+      resolveGitMetadata,
+      watchDirectory: (path, listener) => {
+        watchListeners.set(path, listener);
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
+      scanWorktree,
+    });
+    const events: GitWorktreeSubscriptionEvent[] = [];
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      (event) => events.push(event),
+    );
+    await subscription.ready;
+    await vi.waitFor(() => expect(scanWorktree).toHaveBeenCalledTimes(2));
+    const initialScanCount = scanWorktree.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+    expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount);
+
+    watchListeners.get(gitDir)?.("rename", "index.lock");
+    await vi.advanceTimersByTimeAsync(25);
+    expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount);
+
+    currentFile = file("pending.txt", "tracked");
+    watchListeners.get(gitDir)?.("rename", "index");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() =>
+      expect(events.at(-1)).toMatchObject({
+        type: "git-worktree-delta",
+        changes: [
+          expect.objectContaining({
+            path: "pending.txt",
+            file: expect.objectContaining({ kind: "tracked" }),
+          }),
+        ],
+      }),
+    );
+    expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount + 1);
+
+    const resolvedBeforeHeadMove = resolveGitMetadata.mock.calls.length;
+    moveHeadDuringScan = true;
+    watchListeners.get(gitDir)?.("rename", "index");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount + 3),
+    );
+    expect(resolveGitMetadata.mock.calls.length).toBeGreaterThan(
+      resolvedBeforeHeadMove,
+    );
+
+    const scanCountBeforeFingerprintDrift = scanWorktree.mock.calls.length;
+    const resolvedBeforeFingerprintDrift = resolveGitMetadata.mock.calls.length;
+    await writeFile(join(gitDir, "index"), "index-b\n");
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(
+        scanCountBeforeFingerprintDrift + 1,
+      ),
+    );
+    expect(resolveGitMetadata.mock.calls.length).toBeGreaterThan(
+      resolvedBeforeFingerprintDrift,
+    );
+
+    subscription.release();
+    manager.dispose();
+  });
+
+  it("falls back to full polling when a Git metadata directory is not watchable", async () => {
+    const projectId = "project-metadata-fallback" as UrlProjectId;
+    const gitDir = join(projectPath, ".git");
+    const scanWorktree = vi.fn(async () => ({
+      headSha: "head-a",
+      baseSha: "base-a",
+      files: mapFiles([file("src/a.ts", "tracked")]),
+    }));
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-metadata-fallback",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      fallbackPollMs: 1_000,
+      platform: "linux",
+      resolveGitMetadata: vi.fn(async () => ({
+        gitDir,
+        commonDir: gitDir,
+        headRefPath: null,
+      })),
+      watchDirectory: (path) => {
+        if (path === gitDir) throw new Error("Git watch unavailable");
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
+      scanWorktree,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+    await vi.waitFor(() => expect(scanWorktree).toHaveBeenCalledTimes(2));
+    const initialScanCount = scanWorktree.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount + 1),
+    );
+
+    subscription.release();
+    manager.dispose();
+  });
+
+  it("watches linked-worktree and common Git metadata directories", async () => {
+    const projectId = "project-linked-metadata" as UrlProjectId;
+    const commonDir = join(projectPath, ".git", "common");
+    const gitDir = join(commonDir, "worktrees", "linked");
+    const headRefPath = join(commonDir, "refs", "heads", "linked");
+    await mkdir(join(commonDir, "refs", "heads"), { recursive: true });
+    await mkdir(join(gitDir, "rebase-merge"), { recursive: true });
+    await writeFile(headRefPath, "head-a\n");
+
+    const watchOptions = new Map<string, { recursive: boolean }>();
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-linked-metadata",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      platform: "linux",
+      resolveGitMetadata: vi.fn(async () => ({
+        gitDir,
+        commonDir,
+        headRefPath,
+      })),
+      watchDirectory: (path, _listener, options) => {
+        watchOptions.set(path, options);
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
+      scanWorktree: vi.fn(async () => ({
+        headSha: "head-a",
+        baseSha: "base-a",
+        files: new Map(),
+      })),
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+    await vi.waitFor(() => {
+      expect(watchOptions.get(gitDir)).toEqual({ recursive: false });
+      expect(watchOptions.get(commonDir)).toEqual({ recursive: false });
+      expect(watchOptions.get(join(commonDir, "refs"))).toEqual({
+        recursive: true,
+      });
+      expect(watchOptions.get(join(gitDir, "rebase-merge"))).toEqual({
+        recursive: true,
+      });
+    });
+
+    subscription.release();
+    manager.dispose();
+  });
+
+  it("serializes Git metadata reconciliation and queues one follow-up", async () => {
+    const projectId = "project-metadata-serialization" as UrlProjectId;
+    const gitDir = join(projectPath, ".git");
+    const watchListeners = new Map<
+      string,
+      (eventType: string, filename: Buffer | string | null) => void
+    >();
+    let blockNextScan = false;
+    let releaseScan: () => void = () => {};
+    const scanGate = new Promise<void>((resolve) => {
+      releaseScan = resolve;
+    });
+    let activeScans = 0;
+    let maxActiveScans = 0;
+    const scanWorktree = vi.fn(async () => {
+      activeScans += 1;
+      maxActiveScans = Math.max(maxActiveScans, activeScans);
+      try {
+        if (blockNextScan) {
+          blockNextScan = false;
+          await scanGate;
+        }
+        return {
+          headSha: "head-a",
+          baseSha: "base-a",
+          files: mapFiles([file("src/a.ts", "tracked")]),
+        };
+      } finally {
+        activeScans -= 1;
+      }
+    });
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-metadata-serialization",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      debounceMs: 25,
+      maxEventAgeMs: 100,
+      platform: "linux",
+      resolveGitMetadata: vi.fn(async () => ({
+        gitDir,
+        commonDir: gitDir,
+        headRefPath: null,
+      })),
+      watchDirectory: (path, listener) => {
+        watchListeners.set(path, listener);
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
+      scanWorktree,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+    await vi.waitFor(() => expect(scanWorktree).toHaveBeenCalledTimes(2));
+    const initialScanCount = scanWorktree.mock.calls.length;
+
+    blockNextScan = true;
+    watchListeners.get(gitDir)?.("rename", "index");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() => expect(activeScans).toBe(1));
+    watchListeners.get(gitDir)?.("rename", "HEAD");
+    await vi.advanceTimersByTimeAsync(25);
+    releaseScan();
+
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount + 2),
+    );
+    expect(maxActiveScans).toBe(1);
+
+    subscription.release();
+    manager.dispose();
+  });
+
+  it("publishes a filesystem-only Working Tree outside Git repositories", async () => {
+    const projectId = "project-filesystem-only" as UrlProjectId;
+    const events: GitWorktreeSubscriptionEvent[] = [];
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-filesystem-only",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      platform: "linux",
+      watchDirectory: () => new FakeWatcher() as unknown as fs.FSWatcher,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      (event) => events.push(event),
+    );
+
+    await subscription.ready;
+    expect(events[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      headSha: null,
+      baseSha: null,
+      files: [
+        expect.objectContaining({
+          path: "src/a.ts",
+          tracked: false,
+          kind: "untracked",
+          present: true,
+        }),
+      ],
+    });
+    expect(
+      events[0]?.type === "git-worktree-snapshot" &&
+        events[0].files.some((entry) => entry.path.startsWith(".git/")),
+    ).toBe(false);
+
+    subscription.release();
+    manager.dispose();
+  });
+
+  it("reconciles index staging and commits through metadata fingerprints", async () => {
     await rm(projectPath, { recursive: true });
     await mkdir(projectPath);
     await runGit(projectPath, ["init"]);
@@ -569,19 +936,30 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     await runGit(projectPath, ["commit", "-m", "Add pending"]);
     await vi.advanceTimersByTimeAsync(1_000);
     await vi.waitFor(() =>
-      expect(events.at(-1)).toMatchObject({
-        type: "git-worktree-delta",
-        changes: [
-          expect.objectContaining({
-            path: "pending.txt",
-            file: expect.not.objectContaining({
-              worktreeChanges: expect.anything(),
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "git-worktree-delta",
+          changes: expect.arrayContaining([
+            expect.objectContaining({
+              path: "pending.txt",
+              file: expect.not.objectContaining({
+                worktreeChanges: expect.anything(),
+              }),
             }),
-          }),
-        ],
-      }),
+          ]),
+        }),
+      ),
     );
-    expect(events.at(-1)?.generation.sequence).toBeGreaterThan(stagedSequence);
+    const committedEvent = events.find(
+      (event) =>
+        event.type === "git-worktree-delta" &&
+        event.changes.some(
+          (change) =>
+            change.path === "pending.txt" &&
+            change.file?.worktreeChanges === undefined,
+        ),
+    );
+    expect(committedEvent?.generation.sequence).toBeGreaterThan(stagedSequence);
 
     subscription.release();
     manager.dispose();
