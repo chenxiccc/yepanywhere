@@ -1517,6 +1517,7 @@ function SessionPageContent({
         owner: status.owner,
         processState,
         items: activityRenderItems,
+        messages,
         sessionLiveness,
         hasSessionUpdateStream,
         sessionUpdatesConnected,
@@ -1524,6 +1525,7 @@ function SessionPageContent({
     [
       activityRenderItems,
       hasSessionUpdateStream,
+      messages,
       processState,
       sessionLiveness,
       sessionUpdatesConnected,

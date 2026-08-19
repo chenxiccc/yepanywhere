@@ -73,8 +73,13 @@ provider-history rewrite and not deletion.
   YA does not infer failure from unconstrained summary prose.
 - Each assistant turn with condensed activity ends in one summary button. A
   completed summary reads like `4m · 17 activities hidden`; the live
-  edge reads like `Working 4m · 17 activities`. If source timestamps are
-  unavailable, the label keeps the activity count without inventing a time.
+  edge reads like `Working 4m · 17 activities`. A durable completion marker in
+  the latest turn—provider `turn_complete`, or a Stop-hook summary that did not
+  prevent continuation—ends stale coarse `in-turn` presentation. A marker from
+  an older turn does not apply after a newer user prompt, and explicitly
+  provider-retained background work remains active after turn completion. If
+  source timestamps are unavailable, the label keeps the activity count without
+  inventing a time.
   Durations below 10 seconds retain one decimal place; durations from 10
   seconds onward use whole seconds (or the existing compact minute/hour form).
   Its disclosure triangle stays legible at the compact text size and is

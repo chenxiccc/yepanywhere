@@ -6,12 +6,15 @@ import { getSessionActivityUiState } from "../sessionActivityUi";
 
 const sourceMessages: Message[] = [];
 
-function user(id: string): RenderItem {
+function user(
+  id: string,
+  promptSourceMessages: Message[] = sourceMessages,
+): RenderItem {
   return {
     type: "user_prompt",
     id,
     content: "go",
-    sourceMessages,
+    sourceMessages: promptSourceMessages,
   };
 }
 
@@ -87,6 +90,127 @@ describe("getSessionActivityUiState", () => {
     expect(state.canStopOwnedProcess).toBe(true);
     expect(state.showProcessingIndicator).toBe(true);
     expect(state.shouldSuppressCurrentTurnOrphans).toBe(true);
+  });
+
+  it("stops stale activity at a durable completed-turn boundary", () => {
+    const prompt: Message = { type: "user", uuid: "u1" };
+    const completion: Message = {
+      type: "system",
+      subtype: "stop_hook_summary",
+      preventedContinuation: false,
+    };
+    const state = getSessionActivityUiState({
+      owner: "self",
+      processState: "in-turn",
+      items: [user("u1", [prompt]), text("a1")],
+      messages: [prompt, completion],
+    });
+
+    expect(state.latestTurnSettled).toBe(true);
+    expect(state.latestTurnCompleted).toBe(true);
+    expect(state.shouldDeferMessages).toBe(false);
+    expect(state.canStopOwnedProcess).toBe(false);
+    expect(state.showProcessingIndicator).toBe(false);
+    expect(state.shouldSuppressCurrentTurnOrphans).toBe(false);
+  });
+
+  it("keeps provider-retained work active after a completed turn", () => {
+    const prompt: Message = { type: "user", uuid: "u1" };
+    const completion: Message = {
+      type: "system",
+      subtype: "stop_hook_summary",
+      preventedContinuation: false,
+    };
+    const state = getSessionActivityUiState({
+      owner: "self",
+      processState: "in-turn",
+      items: [user("u1", [prompt]), text("a1")],
+      messages: [prompt, completion],
+      sessionLiveness: waitingProviderLiveness,
+    });
+
+    expect(state.latestTurnCompleted).toBe(true);
+    expect(state.shouldDeferMessages).toBe(true);
+    expect(state.canStopOwnedProcess).toBe(true);
+    expect(state.showProcessingIndicator).toBe(true);
+  });
+
+  it("does not apply an older completion marker to a newer turn", () => {
+    const firstPrompt: Message = { type: "user", uuid: "u1" };
+    const completion: Message = {
+      type: "system",
+      subtype: "stop_hook_summary",
+      preventedContinuation: false,
+    };
+    const latestPrompt: Message = { type: "user", uuid: "u2" };
+    const state = getSessionActivityUiState({
+      owner: "self",
+      processState: "in-turn",
+      items: [
+        user("u1", [firstPrompt]),
+        text("a1"),
+        user("u2", [latestPrompt]),
+      ],
+      messages: [firstPrompt, completion, latestPrompt],
+    });
+
+    expect(state.latestTurnCompleted).toBe(false);
+    expect(state.showProcessingIndicator).toBe(true);
+  });
+
+  it("does not settle a newer user message before it reaches rendered items", () => {
+    const firstPrompt: Message = { type: "user", uuid: "u1" };
+    const completion: Message = {
+      type: "system",
+      subtype: "stop_hook_summary",
+      preventedContinuation: false,
+    };
+    const latestPrompt: Message = { type: "user", uuid: "u2" };
+    const state = getSessionActivityUiState({
+      owner: "self",
+      processState: "in-turn",
+      items: [user("u1", [firstPrompt]), text("a1")],
+      messages: [firstPrompt, completion, latestPrompt],
+    });
+
+    expect(state.latestTurnCompleted).toBe(false);
+    expect(state.showProcessingIndicator).toBe(true);
+  });
+
+  it("recognizes a provider turn-complete marker", () => {
+    const prompt: Message = { type: "user", uuid: "u1" };
+    const completion: Message = {
+      type: "system",
+      subtype: "turn_complete",
+      session_id: "session-a",
+    };
+    const state = getSessionActivityUiState({
+      owner: "self",
+      processState: "in-turn",
+      items: [user("u1", [prompt]), text("a1")],
+      messages: [prompt, completion],
+    });
+
+    expect(state.latestTurnCompleted).toBe(true);
+    expect(state.showProcessingIndicator).toBe(false);
+  });
+
+  it("keeps activity when a stop hook prevents turn completion", () => {
+    const prompt: Message = { type: "user", uuid: "u1" };
+    const completion: Message = {
+      type: "system",
+      subtype: "stop_hook_summary",
+      preventedContinuation: true,
+    };
+    const state = getSessionActivityUiState({
+      owner: "self",
+      processState: "in-turn",
+      items: [user("u1", [prompt]), text("a1")],
+      messages: [prompt, completion],
+    });
+
+    expect(state.latestTurnCompleted).toBe(false);
+    expect(state.showProcessingIndicator).toBe(true);
   });
 
   it("does not let older pending tool rows orphan the bottom spinner after idle", () => {
