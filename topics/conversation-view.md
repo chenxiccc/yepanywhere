@@ -123,9 +123,14 @@ provider-history rewrite and not deletion.
   preview, preserving live-turn context without leaving two completed cards
   behind. When that completed turn also has visible agent-authored
   conversation text after the thinking, the thinking preview and the
-  thinking-height activity names fade out after
-  `CONVERSATION_THINKING_AUTO_HIDE_MS` (5s) and the activity row returns to
-  the compact summary. The delay is measured from turn completion: a turn
+  thinking-height activity names hide after
+  `CONVERSATION_THINKING_AUTO_HIDE_MS` (5s). The hide is a
+  `CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS` (1.5s) CSS height rollup of
+  the activity+thinking row down to the compact summary: overflow clips
+  from the bottom while a bottom-edge mask fades the clipping line, and
+  the extras ease-in to `opacity: 0` over the same 1.5s so the shrink
+  stays visible. The summary pill does not fade. After the 1.5s the extras
+  unmount. The delay is measured from turn completion: a turn
   that finished more than 5s ago starts compact, with no flash of the
   card. Live turns, and completed turns whose latest content is still
   thinking, keep the preview. Turning thinking visibility back on restores

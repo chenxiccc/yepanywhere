@@ -40,7 +40,7 @@ import {
   updateThinkingPreviewWidth,
 } from "../lib/sessionDetail/thinkingPreviewWidth";
 import {
-  CONVERSATION_THINKING_AUTO_HIDE_FADE_MS,
+  CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS,
   conversationThinkingAutoHideDelayMs,
 } from "../lib/sessionDetail/thinkingPreviewAutoHide";
 import { ThinkingText } from "./ThinkingText";
@@ -546,30 +546,36 @@ function ConversationActivitySummary({
     if (autoHidePhase !== "fading") return;
     const finish = window.setTimeout(() => {
       setAutoHidePhase("hidden");
-    }, CONVERSATION_THINKING_AUTO_HIDE_FADE_MS);
+    }, CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS);
     return () => window.clearTimeout(finish);
   }, [autoHidePhase]);
   useLayoutEffect(() => {
     if (autoHidePhase === "visible") return;
     const row = rowRef.current;
     if (autoHidePhase === "fading" && row) {
-      for (const card of row.querySelectorAll<HTMLElement>(
-        ".conversation-thinking-preview",
-      )) {
-        if (!card.style.maxHeight) {
-          card.style.maxHeight = `${card.offsetHeight}px`;
-        }
+      const summary = row.querySelector<HTMLElement>(
+        ".conversation-activity-summary",
+      );
+      const fromHeight = row.offsetHeight;
+      let toHeight = fromHeight;
+      if (summary) {
+        const summaryStyle = window.getComputedStyle(summary);
+        toHeight = Math.ceil(
+          (Number.parseFloat(summaryStyle.marginTop) || 0) +
+            summary.offsetHeight +
+            (Number.parseFloat(summaryStyle.marginBottom) || 0),
+        );
       }
-      const frame = window.requestAnimationFrame(() => {
-        for (const card of row.querySelectorAll<HTMLElement>(
-          ".conversation-thinking-preview",
-        )) {
-          card.style.maxHeight = "0px";
-        }
-      });
+      row.style.height = `${fromHeight}px`;
       reserveRef.current.reserve = null;
-      syncHeightReserve();
+      row.style.removeProperty("--conversation-activity-reserved-height");
+      const frame = window.requestAnimationFrame(() => {
+        row.style.height = `${Math.min(fromHeight, toHeight)}px`;
+      });
       return () => window.cancelAnimationFrame(frame);
+    }
+    if (row) {
+      row.style.removeProperty("height");
     }
     reserveRef.current.reserve = null;
     syncHeightReserve();
@@ -626,8 +632,15 @@ function ConversationActivitySummary({
     <div
       className={`conversation-activity-row ${styles.activityHeightReserve}${
         widerActivityPreviews ? " is-wide-activity-previews" : ""
-      }`}
+      }${autoHidingThinking ? ` ${styles.thinkingRollingUp}` : ""}`}
       ref={rowRef}
+      style={
+        autoHidingThinking
+          ? ({
+              "--conversation-thinking-rollup-ms": `${CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS}ms`,
+            } as CSSProperties)
+          : undefined
+      }
     >
       <div className="conversation-activity-column">
         <button

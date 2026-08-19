@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_THINKING_AUTO_HIDE_MS,
+  CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS,
   conversationThinkingAutoHideDelayMs,
 } from "../thinkingPreviewAutoHide";
 
@@ -36,6 +37,10 @@ describe("conversationThinkingAutoHideDelayMs", () => {
         nowMs: 11_000,
       }),
     ).toBe(CONVERSATION_THINKING_AUTO_HIDE_MS - 1_000);
+  });
+
+  it("rolls up for more than one second so the height change is readable", () => {
+    expect(CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS).toBeGreaterThan(1_000);
   });
 
   it("hides immediately for a turn that completed past the delay", () => {

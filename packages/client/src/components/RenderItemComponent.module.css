@@ -84,18 +84,37 @@
   min-height: var(--conversation-activity-reserved-height, 0);
 }
 
-.thinkingAutoHiding {
-  min-height: 0;
-  margin: 0;
+/*
+ * Auto-hide rollup of the activity+thinking extras down to the compact
+ * summary. Height is set inline from the measured row to the summary height;
+ * overflow clips from the bottom. The mask keeps the summary solid and fades
+ * only the clipping edge. Duration comes from
+ * --conversation-thinking-rollup-ms (1.5s).
+ */
+.thinkingRollingUp {
   overflow: hidden;
+  min-height: 0;
+  transition: height var(--conversation-thinking-rollup-ms, 1.5s) ease-in-out;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 2.75rem,
+    #000 max(2.75rem, calc(100% - 2.5rem)),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 2.75rem,
+    #000 max(2.75rem, calc(100% - 2.5rem)),
+    transparent
+  );
+}
+
+.thinkingAutoHiding {
   opacity: 0;
   pointer-events: none;
-  border-width: 0;
-  transition:
-    max-height 400ms ease,
-    opacity 280ms ease,
-    margin 400ms ease,
-    border-width 400ms ease;
+  transition: opacity var(--conversation-thinking-rollup-ms, 1.5s) ease-in;
 }
 
 /*

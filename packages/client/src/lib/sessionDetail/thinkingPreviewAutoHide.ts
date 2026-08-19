@@ -5,7 +5,8 @@
  * still thinking, keep the card.
  */
 export const CONVERSATION_THINKING_AUTO_HIDE_MS = 5_000;
-export const CONVERSATION_THINKING_AUTO_HIDE_FADE_MS = 400;
+/** Height rollup plus bottom/overall fade. Longer than 1s so the shrink reads. */
+export const CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS = 1_500;
 
 export function conversationThinkingAutoHideDelayMs({
   active,

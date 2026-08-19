@@ -4,6 +4,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { CONVERSATION_ACTIVITY_RESERVE_HOLD_MS } from "../../lib/sessionDetail/activityHeightReserve";
+import { CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS } from "../../lib/sessionDetail/thinkingPreviewAutoHide";
 import type {
   ConversationActivityItem,
   ConversationThinkingPreviewSlot,
@@ -513,7 +514,7 @@ describe("conversation thinking auto-hide", () => {
     ).not.toBeNull();
 
     act(() => {
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS);
     });
     expect(
       container.querySelector(".conversation-thinking-preview"),
