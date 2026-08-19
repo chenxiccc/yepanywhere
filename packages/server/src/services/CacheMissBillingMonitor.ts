@@ -181,6 +181,12 @@ export class CacheMissBillingMonitor {
     state.messageIndex += 1;
     this.processStates.set(process.id, state);
 
+    if (message.type === "system" && message.subtype === "compact_boundary") {
+      state.lastExpectedWarmAtMs = undefined;
+      state.lastTotalContextTokens = undefined;
+      return;
+    }
+
     if (!CACHE_MISS_BILLING_PROVIDERS.has(process.provider)) {
       return;
     }

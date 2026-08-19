@@ -217,18 +217,23 @@ function applyNeedleReplacement(
   return replaceLineBlock(currentFile, located.block, replacement);
 }
 
+export interface ReconstructedEditFiles {
+  originalFile: string;
+  editedFile: string;
+}
+
 /**
- * Build a pre-edit file the expand-diff endpoint can apply exactly.
- * Prefers a unique current-file match of newString (post-edit), then oldString
- * (still pre-edit). Multiple matches or a whitespace-only needle that cannot
- * be placed uniquely return null so the viewer can drop diff markers.
+ * Build both sides of an edit from whichever side is uniquely present now.
+ * Prefers a current-file match of newString (post-edit), then oldString
+ * (still pre-edit). Multiple matches or an unplaceable whitespace-only needle
+ * return null so the viewer can drop diff markers.
  */
-export function reconstructOriginalFile(args: {
+export function reconstructEditFiles(args: {
   currentFile: string;
   oldString: string;
   newString: string;
   structuredPatch?: EditContextPatchHunk[];
-}): string | null {
+}): ReconstructedEditFiles | null {
   const replacement = resolveEditReplacement(
     args.oldString,
     args.newString,
@@ -243,11 +248,14 @@ export function reconstructOriginalFile(args: {
     return null;
   }
   if (newHit) {
-    return applyNeedleReplacement(
-      args.currentFile,
-      newHit,
-      replacement.oldString,
-    );
+    return {
+      originalFile: applyNeedleReplacement(
+        args.currentFile,
+        newHit,
+        replacement.oldString,
+      ),
+      editedFile: args.currentFile,
+    };
   }
 
   const oldHit = locateNeedle(args.currentFile, replacement.oldString);
@@ -255,11 +263,24 @@ export function reconstructOriginalFile(args: {
     return null;
   }
   if (oldHit) {
-    return applyNeedleReplacement(
-      args.currentFile,
-      oldHit,
-      replacement.oldString,
-    );
+    return {
+      originalFile: applyNeedleReplacement(
+        args.currentFile,
+        oldHit,
+        replacement.oldString,
+      ),
+      editedFile: applyNeedleReplacement(
+        args.currentFile,
+        oldHit,
+        replacement.newString,
+      ),
+    };
   }
   return null;
+}
+
+export function reconstructOriginalFile(
+  args: Parameters<typeof reconstructEditFiles>[0],
+): string | null {
+  return reconstructEditFiles(args)?.originalFile ?? null;
 }

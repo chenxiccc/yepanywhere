@@ -295,6 +295,91 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     manager.dispose();
   });
 
+  it("rescans when subscription coverage widens during an active expansion", async () => {
+    const projectId = "project-a" as UrlProjectId;
+    const currentFiles = [
+      file("src/a.ts", "tracked"),
+      file("notes.txt", "untracked"),
+      file("build/output.js", "ignored"),
+    ];
+    let releaseExpansion: () => void = () => {};
+    const expansionGate = new Promise<void>((resolve) => {
+      releaseExpansion = resolve;
+    });
+    let expansionStarted = false;
+    const coverages: GitWorktreeCoverage[] = [];
+    const scanWorktree = vi.fn(
+      async (_path: string, coverage: GitWorktreeCoverage) => {
+        coverages.push({ ...coverage });
+        if (coverage.untracked && !coverage.ignored) {
+          expansionStarted = true;
+          await expansionGate;
+        }
+        return {
+          headSha: "head-a",
+          baseSha: "base-a",
+          files: mapFiles(
+            currentFiles.filter((entry) => coverage[entry.kind ?? "untracked"]),
+          ),
+        };
+      },
+    );
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-a",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      watchDirectory: () => new FakeWatcher() as unknown as fs.FSWatcher,
+      scanWorktree,
+    });
+    const tracked = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: false, ignored: false },
+      vi.fn(),
+    );
+    await tracked.ready;
+    await vi.waitFor(() =>
+      expect(scanWorktree.mock.calls.length).toBeGreaterThan(1),
+    );
+
+    const untracked = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await vi.waitFor(() => expect(expansionStarted).toBe(true));
+    const ignoredEvents: GitWorktreeSubscriptionEvent[] = [];
+    const ignored = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: true },
+      (event) => ignoredEvents.push(event),
+    );
+    releaseExpansion();
+
+    await Promise.all([untracked.ready, ignored.ready]);
+    expect(coverages.at(-1)?.ignored).toBe(true);
+    expect(ignoredEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: expect.arrayContaining([
+        expect.objectContaining({ path: "build/output.js", kind: "ignored" }),
+      ]),
+    });
+
+    ignored.release();
+    untracked.release();
+    tracked.release();
+    manager.dispose();
+  });
+
   it("pins the reconciliation deadline to the first unprocessed event", async () => {
     const projectId = "project-a" as UrlProjectId;
     const watchListeners = new Map<
@@ -349,7 +434,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     manager.dispose();
   });
 
-  it("polls only while complete filesystem watching is unavailable", async () => {
+  it("keeps bounded reconciliation after filesystem watches are complete", async () => {
     const projectId = "project-a" as UrlProjectId;
     const watchListeners = new Map<
       string,
@@ -404,13 +489,104 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     );
     const recoveredScanCount = scanWorktree.mock.calls.length;
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount + 1),
+    );
+    const reconciledScanCount = scanWorktree.mock.calls.length;
 
     subscription.release();
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount);
+    expect(scanWorktree).toHaveBeenCalledTimes(reconciledScanCount);
     manager.dispose();
   });
+
+  it("reconciles index staging and commits without dot-git watches", async () => {
+    await rm(projectPath, { recursive: true });
+    await mkdir(projectPath);
+    await runGit(projectPath, ["init"]);
+    await runGit(projectPath, ["config", "user.email", "ya-test@example.com"]);
+    await runGit(projectPath, ["config", "user.name", "YA Test"]);
+    await writeFile(join(projectPath, "base.txt"), "base\n");
+    await runGit(projectPath, ["add", "base.txt"]);
+    await runGit(projectPath, ["commit", "-m", "Base"]);
+    await writeFile(join(projectPath, "pending.txt"), "pending\n");
+
+    const projectId = "project-git-metadata" as UrlProjectId;
+    const events: GitWorktreeSubscriptionEvent[] = [];
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-git-metadata",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      fallbackPollMs: 1_000,
+      watchDirectory: () => new FakeWatcher() as unknown as fs.FSWatcher,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      (event) => events.push(event),
+    );
+
+    await subscription.ready;
+    expect(events[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: expect.arrayContaining([
+        expect.objectContaining({ path: "pending.txt", kind: "untracked" }),
+      ]),
+    });
+
+    await runGit(projectPath, ["add", "pending.txt"]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "git-worktree-delta",
+          changes: expect.arrayContaining([
+            expect.objectContaining({
+              path: "pending.txt",
+              file: expect.objectContaining({
+                kind: "tracked",
+                worktreeChanges: expect.arrayContaining([
+                  expect.objectContaining({ staged: true }),
+                ]),
+              }),
+            }),
+          ]),
+        }),
+      ),
+    );
+    const stagedSequence = events.at(-1)?.generation.sequence ?? 0;
+
+    await runGit(projectPath, ["commit", "-m", "Add pending"]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(events.at(-1)).toMatchObject({
+        type: "git-worktree-delta",
+        changes: [
+          expect.objectContaining({
+            path: "pending.txt",
+            file: expect.not.objectContaining({
+              worktreeChanges: expect.anything(),
+            }),
+          }),
+        ],
+      }),
+    );
+    expect(events.at(-1)?.generation.sequence).toBeGreaterThan(stagedSequence);
+
+    subscription.release();
+    manager.dispose();
+  });
+
   it("streams create, modify, and delete deltas from a real repository", async () => {
     vi.useRealTimers();
     await rm(projectPath, { recursive: true });

@@ -363,7 +363,7 @@ export class ProjectWorktreeSubscriptionManager {
 
   private async activate(state: ProjectState): Promise<void> {
     await this.refresh(state, state.initialized);
-    this.syncFallbackPoll(state);
+    this.syncReconciliationPoll(state);
     if (state.watchersNeedFullSync) {
       state.watchersNeedFullSync = false;
       this.scheduleWatcherSync(state, true, true);
@@ -419,7 +419,7 @@ export class ProjectWorktreeSubscriptionManager {
         }
       }
       if (state.subscribers.size === 0) return;
-      this.syncFallbackPoll(state);
+      this.syncReconciliationPoll(state);
       if (refreshAfter || watchersChanged) await this.refresh(state, true);
     } while (state.watchSyncQueued && state.subscribers.size > 0);
   }
@@ -464,7 +464,7 @@ export class ProjectWorktreeSubscriptionManager {
         state.watchers.delete(directory);
         state.watchComplete = false;
         state.pendingWatchPaths.add(directory);
-        this.syncFallbackPoll(state);
+        this.syncReconciliationPoll(state);
         this.scheduleRefresh(state);
       });
       state.watchers.set(directory, { watcher });
@@ -650,6 +650,9 @@ export class ProjectWorktreeSubscriptionManager {
         state.sequence += 1;
         if (emit) this.emit(state, changes);
       }
+      if (!sameCoverage(coverage, unionCoverage(state.subscribers.values()))) {
+        state.refreshQueued = true;
+      }
     } while (state.refreshQueued && state.subscribers.size > 0);
   }
 
@@ -702,18 +705,13 @@ export class ProjectWorktreeSubscriptionManager {
     }
   }
 
-  private syncFallbackPoll(state: ProjectState): void {
-    if (state.watchComplete) {
-      if (state.pollTimer) clearInterval(state.pollTimer);
-      state.pollTimer = null;
-      return;
-    }
+  private syncReconciliationPoll(state: ProjectState): void {
     if (state.pollTimer) return;
     state.pollTimer = setInterval(() => {
       void this.refresh(state, true).catch((error) => {
         getLogger().warn(
           { error, projectId: state.projectId },
-          "WORKTREE_WATCH: fallback reconciliation failed",
+          "WORKTREE_WATCH: periodic reconciliation failed",
         );
       });
     }, this.fallbackPollMs);

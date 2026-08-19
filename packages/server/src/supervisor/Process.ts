@@ -3551,6 +3551,7 @@ export class Process {
       content?: SyntheticSessionBoundaryCommand;
       tempId?: string;
       timestamp?: string;
+      userTurnVersion?: number;
     },
   ): PendingYaCommand {
     const content: SyntheticSessionBoundaryCommand =
@@ -3575,7 +3576,7 @@ export class Process {
       content,
       tempId: options?.tempId ?? `ya-${command}-${randomUUID()}`,
       timestamp: options?.timestamp ?? new Date().toISOString(),
-      userTurnVersion: this._userTurnVersion,
+      userTurnVersion: options?.userTurnVersion ?? this._userTurnVersion,
       completionStarted: false,
     };
     this.pendingYaCommands.push(entry);

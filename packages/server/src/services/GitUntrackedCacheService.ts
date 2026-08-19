@@ -434,10 +434,6 @@ async function walkCandidateFiles(
     try {
       const directory = await opendir(absoluteDirectory);
       for await (const entry of directory) {
-        if (files.length > limit) {
-          truncated = true;
-          break;
-        }
         if (relativeDirectory === "" && entry.name === ".git") continue;
         const relativePath = relativeDirectory
           ? `${relativeDirectory}/${entry.name}`
@@ -451,7 +447,12 @@ async function walkCandidateFiles(
         }
         if (entry.isDirectory()) {
           await visit(join(absoluteDirectory, entry.name), relativePath);
+          if (truncated) break;
         } else if (entry.isFile() || entry.isSymbolicLink()) {
+          if (files.length === limit) {
+            truncated = true;
+            break;
+          }
           files.push(relativePath);
         }
       }
@@ -462,7 +463,6 @@ async function walkCandidateFiles(
   };
 
   await visit(projectPath, "");
-  if (files.length > limit) files.length = limit;
   return { files, truncated };
 }
 

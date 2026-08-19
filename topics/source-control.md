@@ -331,23 +331,25 @@ stands in for it, and no query identity serializes the file corpus. A selected
 file reads its projection availability from the resident row rather than
 launching another project-wide status or projection-manifest request.
 
-Filesystem changes publish create, modify, and delete deltas. The generation
-sequence advances globally even when a subscriber's coverage filters the delta
-to an empty change list. The client applies only contiguous deltas, preserves
-untouched row object identity, ignores stale events, and requests one full
-snapshot after a generation gap or reconnect. Selection, detail mode, scroll,
-and explicit outline disclosure remain component state and therefore survive
-ordinary corpus replacement.
+Filesystem changes publish create, modify, and delete deltas. If subscriber
+coverage widens while a narrower scan is active, the owner scans again before
+the new subscriber becomes ready; its initial snapshot therefore covers the
+complete requested union. The generation sequence advances globally even when
+a subscriber's coverage filters the delta to an empty change list. The client
+applies only contiguous deltas, preserves untouched row object identity,
+ignores stale events, and requests one full snapshot after a generation gap or
+reconnect. Selection, detail mode, scroll, and explicit outline disclosure
+remain component state and therefore survive ordinary corpus replacement.
 
 On Linux, YA watches the project root and each content directory
 non-recursively. Directory creation and removal update only that subtree's watch
 set. The initial root watcher is installed before the background directory
 walk, so watcher expansion cannot delay the first snapshot or starve a
 notification-triggered Git scan. `.git` and every descendant are absent from
-both traversal and watching. A missing or failed content watch enables bounded
-30-second reconciliation until complete coverage is restored; explicit YA Git
-actions and the focused status fallback cover Git-administrative changes without
-a `.git` watcher.
+both traversal and watching. While a lease is active, bounded 30-second
+reconciliation observes index and `HEAD` changes that content watchers cannot
+see and also covers missing or failed content watches. Explicit YA Git actions
+may refresh those facts earlier.
 
 A 150 ms quiet timer coalesces an ordinary burst. A separate five-second
 maximum deadline is pinned to the first unprocessed filesystem event; later
@@ -461,14 +463,14 @@ A current client also suppresses binary-looking structured patch text returned
 by an older server.
 
 Large text diffs have a bounded plain projection rather than inheriting the
-syntax-highlighted projection's expansion limit. Up to 1,048,576 hunk
+syntax-highlighted projection's expansion limit. Up to 16,777,216 hunk
 characters, 20,000 hunk lines, and 20,000 characters on any one line, the server
 ships the complete structured patch. Above 32 KiB of hunk text—or whenever
 highlighted HTML expands past 1,000,000 characters—it omits highlighting and the
 client renders one low-node-count unified text block. The plain view says that
 syntax color, split view, and line comments are unavailable; copy, full context,
-and hunk navigation remain. Source versions still stop at 8 MiB combined before
-diff computation. Binary and malformed-text guards remain independent.
+and hunk navigation remain. Source versions stop at 32 MiB combined before diff
+computation. Binary and malformed-text guards remain independent.
 
 ## Design decisions
 

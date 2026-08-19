@@ -60,6 +60,22 @@ export class SessionDoneCoordinator {
     );
   }
 
+  recoverPendingDone(process: Process): void {
+    const pending = this.options.sessionMetadataService?.getMetadata(
+      process.sessionId,
+    )?.pendingSyntheticDone;
+    if (!pending || process.hasPendingYaCommand("done")) {
+      return;
+    }
+    process.queueYaCommand("done", {
+      content: pending.message.content,
+      tempId: pending.message.uuid,
+      timestamp: pending.message.timestamp,
+      userTurnVersion: pending.userTurnVersion,
+    });
+    this.pauseLiveProcess(process);
+  }
+
   async requestSessionDone(
     sessionId: string,
     command: SyntheticSessionBoundaryCommand = "/done",
@@ -76,19 +92,55 @@ export class SessionDoneCoordinator {
     const metadata = this.requireMetadata();
     const process = this.options.getProcessForSession(sessionId);
     const existing = process?.getPendingYaCommand("done");
+    const persisted = metadata.getMetadata(sessionId)?.pendingSyntheticDone;
     const archive = command === "/archive";
     const pendingCommand =
-      existing?.content === "/archive" ? "/archive" : command;
+      existing?.content === "/archive" ||
+      persisted?.message.content === "/archive"
+        ? "/archive"
+        : command;
     const hasActiveTurn =
       process !== undefined &&
       (process.state.type === "in-turn" ||
         process.state.type === "waiting-input" ||
         process.isRetainingProviderWork());
 
-    if (process && (existing || hasActiveTurn)) {
-      await this.persistAutomationPause(sessionId, archive);
+    if (persisted || (process && (existing || hasActiveTurn))) {
+      const timestamp =
+        existing?.timestamp ??
+        persisted?.message.timestamp ??
+        new Date().toISOString();
+      const tempId =
+        existing?.tempId ??
+        persisted?.message.uuid ??
+        `ya-done-${randomUUID()}`;
+      const userTurnVersion =
+        existing?.userTurnVersion ??
+        persisted?.userTurnVersion ??
+        process?.userTurnVersion;
+      if (userTurnVersion === undefined) {
+        throw new Error("Pending session boundary has no user-turn version");
+      }
+      const boundaryMessage = syntheticDoneMessage(
+        tempId,
+        timestamp,
+        pendingCommand,
+      );
+      await this.persistPendingDone(
+        sessionId,
+        boundaryMessage,
+        userTurnVersion,
+        archive,
+      );
+      if (!process) {
+        this.options.requestHeartbeatSweep();
+        return { message: boundaryMessage, paused: true, queued: true };
+      }
       const pending = process.queueYaCommand("done", {
         content: pendingCommand,
+        tempId,
+        timestamp,
+        userTurnVersion,
       });
       this.pauseLiveProcess(process);
 
@@ -155,7 +207,7 @@ export class SessionDoneCoordinator {
       return null;
     }
 
-    const timestamp = new Date().toISOString();
+    const timestamp = pending.timestamp;
     const command = pending.content === "/archive" ? "/archive" : "/done";
     const message = syntheticDoneMessage(pending.tempId, timestamp, command);
     try {
@@ -266,12 +318,15 @@ export class SessionDoneCoordinator {
     return metadata;
   }
 
-  private async persistAutomationPause(
+  private async persistPendingDone(
     sessionId: string,
+    message: DurableSyntheticDoneMessage,
+    userTurnVersion: number,
     archived: boolean,
   ): Promise<void> {
     await this.requireMetadata().updateMetadata(sessionId, {
       automationPausedUntilUserTurn: true,
+      pendingSyntheticDone: { message, userTurnVersion },
       ...(archived ? { archived: true } : {}),
     });
   }

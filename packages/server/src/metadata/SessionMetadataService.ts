@@ -67,6 +67,11 @@ export interface SessionMetadata {
   recapMessages?: DurableRecapMessage[];
   /** Durable YA-only `/done` rows merged into the transcript view only. */
   syntheticDoneMessages?: DurableSyntheticDoneMessage[];
+  /** Requested boundary awaiting the live provider turn's idle edge. */
+  pendingSyntheticDone?: {
+    message: DurableSyntheticDoneMessage;
+    userTurnVersion: number;
+  };
   /** Provider usage evidence for warm/forked prefix cache hits and recomputes. */
   cacheMissBillingEvents?: CacheMissBillingRecord[];
   /**
@@ -357,6 +362,10 @@ export class SessionMetadataService {
         syntheticDoneMessages: nextMessages.slice(
           -MAX_SYNTHETIC_DONE_MESSAGES_PER_SESSION,
         ),
+        pendingSyntheticDone:
+          metadata.pendingSyntheticDone?.message.uuid === message.uuid
+            ? undefined
+            : metadata.pendingSyntheticDone,
         automationPausedUntilUserTurn: true,
         ...(options?.archived ? { isArchived: true } : {}),
       };
@@ -776,6 +785,7 @@ export class SessionMetadataService {
       recapMode?: RecapMode | null;
       recapPausedUntilUserTurn?: boolean;
       automationPausedUntilUserTurn?: boolean;
+      pendingSyntheticDone?: SessionMetadata["pendingSyntheticDone"] | null;
     },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
@@ -874,6 +884,10 @@ export class SessionMetadataService {
           updates.automationPausedUntilUserTurn || undefined;
       }
 
+      if (updates.pendingSyntheticDone !== undefined) {
+        result.pendingSyntheticDone = updates.pendingSyntheticDone ?? undefined;
+      }
+
       return result;
     });
     await this.save();
@@ -911,6 +925,9 @@ export class SessionMetadataService {
     }
     if (updated.syntheticDoneMessages?.length) {
       cleaned.syntheticDoneMessages = updated.syntheticDoneMessages;
+    }
+    if (updated.pendingSyntheticDone) {
+      cleaned.pendingSyntheticDone = updated.pendingSyntheticDone;
     }
     if (updated.cacheMissBillingEvents?.length) {
       cleaned.cacheMissBillingEvents = updated.cacheMissBillingEvents;

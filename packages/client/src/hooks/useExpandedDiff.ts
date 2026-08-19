@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import type { PatchHunk } from "../components/renderers/tools/types";
 import { useSessionMetadata } from "../contexts/SessionMetadataContext";
 import {
-  reconstructOriginalFile,
+  reconstructEditFiles,
   resolveEditReplacement,
 } from "../lib/editFullContext";
 
@@ -74,7 +74,7 @@ export function useExpandedDiff(options: UseExpandedDiffOptions) {
       } else {
         const file = await api.getFile(projectId, options.filePath);
         currentFile = file.content ?? "";
-        const reconstructed = reconstructOriginalFile({
+        const reconstructed = reconstructEditFiles({
           currentFile,
           oldString: replacement.oldString,
           newString: replacement.newString,
@@ -84,15 +84,14 @@ export function useExpandedDiff(options: UseExpandedDiffOptions) {
           setResult({ kind: "file", content: currentFile });
           return;
         }
-        // Diff the reconstructed pre-edit file against current contents.
         // Do not reuse an empty tool oldString — expand treats that as
         // insert-at-start rather than the located replacement.
         data = await api.expandDiffContext(
           projectId,
           options.filePath,
-          reconstructed,
-          currentFile,
-          reconstructed,
+          reconstructed.originalFile,
+          reconstructed.editedFile,
+          reconstructed.originalFile,
         );
       }
       setResult({

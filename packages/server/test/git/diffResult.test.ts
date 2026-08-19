@@ -46,6 +46,22 @@ describe("buildGitDiffResult", () => {
     expect(result.structuredPatch[0]?.lines).toHaveLength(19_800);
   });
 
+  it("renders a 5,000-line multi-megabyte diff in plain mode", async () => {
+    const result = await buildGitDiffResult({
+      path: "generated.txt",
+      oldContent: "",
+      newContent: Array.from(
+        { length: 5_000 },
+        (_, index) => `${index}: ${"x".repeat(2_048)}`,
+      ).join("\n"),
+    });
+
+    expect(result.previewSkipped).toBeUndefined();
+    expect(result.diffHtml).toBe("");
+    expect(result.renderMode).toBe("plain");
+    expect(result.structuredPatch[0]?.lines).toHaveLength(5_000);
+  });
+
   it("skips a plain diff above the browser line budget", async () => {
     const result = await buildGitDiffResult({
       path: "many-lines.txt",
@@ -64,17 +80,17 @@ describe("buildGitDiffResult", () => {
     const result = await buildGitDiffResult({
       path: "wide-lines.txt",
       oldContent: "",
-      newContent: Array.from({ length: 100 }, () => "x".repeat(11_000)).join(
+      newContent: Array.from({ length: 1_000 }, () => "x".repeat(17_000)).join(
         "\n",
       ),
     });
 
     expect(result.previewSkipped).toMatchObject({
       reason: "content-too-large",
-      maxTotalChars: 1_048_576,
+      maxTotalChars: 16_777_216,
       maxTotalLines: 20_000,
     });
-    expect(result.previewSkipped?.totalChars).toBeGreaterThan(1_048_576);
+    expect(result.previewSkipped?.totalChars).toBeGreaterThan(16_777_216);
   });
 
   it("resolves Quarto includes through the selected project", async () => {

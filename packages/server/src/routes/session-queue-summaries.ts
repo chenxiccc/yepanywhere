@@ -3,6 +3,7 @@ import type {
   UserMessageDeliveryIntent,
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
+import type { SessionMetadataService } from "../metadata/index.js";
 import type {
   PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
@@ -12,6 +13,7 @@ import type { Process } from "../supervisor/Process.js";
 
 export interface SessionQueueSummaryDeps {
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
+  sessionMetadataService?: Pick<SessionMetadataService, "getMetadata">;
 }
 
 export function persistedPatientQueueSummary(
@@ -75,9 +77,16 @@ export function sessionQueueSummaries(
 ): SessionQueuedMessageSummary[] {
   const recovered = recoveredPatientQueueSummaries(deps, sessionId);
   const live = process?.getDeferredQueueSummary() ?? [];
+  const pendingBoundary =
+    deps.sessionMetadataService?.getMetadata(sessionId)?.pendingSyntheticDone;
   const liveIds = new Set(
     live
       .map((message) => message.id)
+      .filter((id): id is string => id !== undefined),
+  );
+  const liveTempIds = new Set(
+    live
+      .map((message) => message.tempId)
       .filter((id): id is string => id !== undefined),
   );
   return [
@@ -85,6 +94,18 @@ export function sessionQueueSummaries(
     ...recovered.filter(
       (message) => message.id === undefined || !liveIds.has(message.id),
     ),
+    ...(pendingBoundary && !liveTempIds.has(pendingBoundary.message.uuid)
+      ? [
+          {
+            tempId: pendingBoundary.message.uuid,
+            content: pendingBoundary.message.content,
+            timestamp: pendingBoundary.message.timestamp,
+            kind: "ya-command" as const,
+            yaCommand: "done" as const,
+            status: "queued" as const,
+          },
+        ]
+      : []),
   ].sort((left, right) =>
     (left.queuedAt ?? left.timestamp).localeCompare(
       right.queuedAt ?? right.timestamp,

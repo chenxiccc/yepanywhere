@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
+import type { GrokSessionReader } from "../../src/sessions/grok-reader.js";
 import {
   attachProviderChildSessions,
   resolveProviderChildSessions,
@@ -147,5 +148,51 @@ describe("attachProviderChildSessions", () => {
     );
     expect(published[0]?.providerChildren).toEqual([child]);
     expect(reader.listProviderChildSessions).not.toHaveBeenCalled();
+  });
+
+  it("does not overlap cold child scans for sessions from one provider", async () => {
+    const project: Project = {
+      id: toUrlProjectId("/tmp/project"),
+      path: "/tmp/project",
+      name: "project",
+      sessionCount: 2,
+      sessionDir: "/tmp/grok-sessions",
+      activeOwnedCount: 0,
+      activeExternalCount: 0,
+      lastActivity: null,
+      provider: "grok",
+    };
+    let active = 0;
+    let maxActive = 0;
+    const releases: Array<() => void> = [];
+    const reader = {
+      listProviderChildSessions: vi.fn(async () => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        active -= 1;
+        return [];
+      }),
+    } as unknown as ISessionReader;
+
+    const attached = attachProviderChildSessions(
+      [
+        { id: "grok-1", provider: "grok" as const },
+        { id: "grok-2", provider: "grok" as const },
+      ],
+      project,
+      {
+        readerFactory: () => reader,
+        grokReaderFactory: () => reader as unknown as GrokSessionReader,
+      },
+      "accepted-or-cheap",
+    );
+
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    releases.shift()?.();
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    releases.shift()?.();
+    await expect(attached).resolves.toHaveLength(2);
+    expect(maxActive).toBe(1);
   });
 });

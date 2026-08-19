@@ -3893,7 +3893,16 @@ describe("Supervisor", () => {
       ]);
       expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
         "queued-done-session",
-        { automationPausedUntilUserTurn: true },
+        expect.objectContaining({
+          automationPausedUntilUserTurn: true,
+          pendingSyntheticDone: expect.objectContaining({
+            message: expect.objectContaining({
+              content: "/done",
+              uuid: result.message.uuid,
+            }),
+            userTurnVersion: 1,
+          }),
+        }),
       );
       expect(
         doneSupervisor.isAutomationPausedUntilUserTurn("queued-done-session"),

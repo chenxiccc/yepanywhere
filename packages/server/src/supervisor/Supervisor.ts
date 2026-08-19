@@ -4710,6 +4710,7 @@ export class Supervisor {
     this.processes.set(process.id, process);
     this.sessionToProcess.set(process.sessionId, process.id);
     this.everOwnedSessions.add(process.sessionId);
+    this.sessionDone.recoverPendingDone(process);
 
     const ownership: SessionOwnership = {
       owner: "self",

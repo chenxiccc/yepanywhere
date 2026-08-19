@@ -80,6 +80,54 @@ describe("useExpandedDiff", () => {
     });
   });
 
+  it("renders the proposed edit when the current file still has the old side", async () => {
+    mocks.getFile.mockResolvedValue({
+      metadata: {
+        path: "a.ts",
+        size: 19,
+        mimeType: "text/plain",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "head\nold line\ntail",
+    });
+    mocks.expandDiffContext.mockResolvedValue({
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 3,
+          newStart: 1,
+          newLines: 3,
+          lines: [" head", "-old line", "+new line", " tail"],
+        },
+      ],
+      diffHtml: "<pre></pre>",
+    });
+
+    const { result } = renderHook(
+      () =>
+        useExpandedDiff({
+          filePath: "a.ts",
+          oldString: "old line",
+          newString: "new line",
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.fetchExpandedDiff();
+    });
+
+    expect(mocks.expandDiffContext).toHaveBeenCalledWith(
+      "project-1",
+      "a.ts",
+      "head\nold line\ntail",
+      "head\nnew line\ntail",
+      "head\nold line\ntail",
+    );
+    expect(result.current.result).toMatchObject({ kind: "diff" });
+  });
+
   it("returns the current file when the replacement cannot be identified", async () => {
     mocks.getFile.mockResolvedValue({
       metadata: {

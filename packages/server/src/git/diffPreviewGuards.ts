@@ -16,7 +16,7 @@ import type {
  */
 
 /** Plain hunk-content budget above which a preview is omitted. */
-export const GIT_DIFF_PREVIEW_MAX_DIFF_CHARS = 1024 * 1024;
+export const GIT_DIFF_PREVIEW_MAX_DIFF_CHARS = 16 * 1024 * 1024;
 /** Hunk-line budget above which browser layout is omitted. */
 export const GIT_DIFF_PREVIEW_MAX_DIFF_LINES = 20_000;
 /** Per-line character budget above which a preview is omitted. */
@@ -32,7 +32,7 @@ export const GIT_DIFF_PREVIEW_MAX_MARKDOWN_CHARS = 256 * 1024;
  * diff computation and the strings it holds — highlighting is proportional to
  * the hunks — so it sits far above the rendered budget.
  */
-export const GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+export const GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES = 32 * 1024 * 1024;
 
 /**
  * Guard the diff computation itself, before `structuredPatch` runs. Returns

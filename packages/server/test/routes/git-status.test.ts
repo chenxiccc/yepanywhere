@@ -478,7 +478,7 @@ describe("git-status routes", () => {
       structuredPatch: [],
       previewSkipped: {
         reason: "content-too-large",
-        maxTotalChars: 1_048_576,
+        maxTotalChars: 16_777_216,
         maxTotalLines: 20_000,
         maxLineCharsLimit: 20_000,
       },

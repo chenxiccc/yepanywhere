@@ -235,20 +235,25 @@ timestamp without mutating the provider transcript, so it remains visible on a
 later visit.
 
 During an active turn (including provider-retained background work), the action
-first persists `automationPausedUntilUserTurn` and then appears in the
-canonical queued-message projection as a `ya-command` chip. `/archive` persists
-archive and pause together before the chip appears. The same Process-local done
-lane owns both actions, but its visible content is `/done` or `/archive`; there
-is no second scheduler or provider queue. It never enters the deferred,
-patient, direct, or provider queues and does not interrupt the current turn.
-The pause and archive state are session metadata, so a restart or reap before
-idle finalize preserves the requested effect. At the first unretained idle
-boundary, YA records the matching durable synthetic row before removing the
-chip; only then may already-accepted ordinary queued turns resume their normal
-delivery. A failed metadata persist fails the request without queuing a chip. A
-later synthetic-row or read-state failure leaves the already-persisted state in
-force and the command visibly queued for an explicit retry, and still sends no
-provider input.
+first persists the complete pending boundary—command, UUID, request timestamp,
+and request-time user-turn version—together with
+`automationPausedUntilUserTurn`, then appears in the canonical queued-message
+projection as a `ya-command` chip. `/archive` persists archive in that same
+mutation before the chip appears. The same Process-local done lane owns both
+actions, but its visible content is `/done` or `/archive`; there is no second
+scheduler or provider queue. It never enters the deferred, patient, direct, or
+provider queues and does not interrupt the current turn.
+
+The pending boundary and pause are session metadata. A restart or process reap
+therefore retains the chip even before a replacement process exists; registering
+a replacement restores the same command, UUID, timestamp, and user-turn version
+to its done lane. At the first unretained idle boundary, YA promotes that
+boundary to the durable synthetic transcript row and clears the pending record
+before removing the chip; only then may already-accepted ordinary queued turns
+resume their normal delivery. A failed metadata persist fails the request
+without queuing a chip. A later synthetic-row or read-state failure leaves the
+already-persisted state in force and the command visibly queued for an explicit
+retry, and still sends no provider input.
 
 Both durable boundaries pause YA-driven provider work until a later real user
 turn. They block automatic compaction, recaps (including forked and cold

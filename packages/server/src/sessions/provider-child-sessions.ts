@@ -55,30 +55,42 @@ export async function attachProviderChildSessions<
   deps: ProviderResolutionDeps,
   mode: ProviderChildLookupMode,
   catalog?: ProviderProjectCatalog,
-): Promise<T[]> {
+): Promise<Array<T & { providerChildren?: ProviderChildSessionSummary[] }>> {
   if (sessions.length === 0) {
     return sessions;
   }
 
-  const readers = new Map<string, ISessionReader | undefined>();
-  return Promise.all(
-    sessions.map(async (session) => {
-      const provider = session.provider ?? project.provider;
-      if (!readers.has(provider)) {
-        readers.set(
-          provider,
-          readerForProviderChildren(project, deps, provider, catalog),
-        );
-      }
-      const children = await resolveProviderChildSessions(
-        readers.get(provider),
-        session.id,
-        mode,
+  const sessionsByProvider = new Map<
+    ProviderName,
+    Array<{ index: number; session: T }>
+  >();
+  sessions.forEach((session, index) => {
+    const provider = session.provider ?? project.provider;
+    const providerSessions = sessionsByProvider.get(provider);
+    if (providerSessions) providerSessions.push({ index, session });
+    else sessionsByProvider.set(provider, [{ index, session }]);
+  });
+
+  const attached = [...sessions];
+  await Promise.all(
+    [...sessionsByProvider].map(async ([provider, providerSessions]) => {
+      const reader = readerForProviderChildren(
+        project,
+        deps,
+        provider,
+        catalog,
       );
-      if (!children?.length) {
-        return session;
+      for (const { index, session } of providerSessions) {
+        const children = await resolveProviderChildSessions(
+          reader,
+          session.id,
+          mode,
+        );
+        if (children?.length) {
+          attached[index] = { ...session, providerChildren: children };
+        }
       }
-      return { ...session, providerChildren: children };
     }),
   );
+  return attached;
 }

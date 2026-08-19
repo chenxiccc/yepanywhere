@@ -818,6 +818,38 @@ describe("SessionMetadataService", () => {
       expect(reloaded.getSyntheticDoneMessages("session-1")).toEqual([message]);
     });
 
+    it("keeps a pending boundary visible and recoverable across reload", async () => {
+      await service.initialize();
+      const message = {
+        type: "user" as const,
+        content: "/done" as const,
+        message: { role: "user" as const, content: "/done" as const },
+        timestamp: "2026-08-16T12:00:00.000Z",
+        uuid: "pending-done-1",
+        id: "pending-done-1",
+        isSynthetic: true as const,
+        yaSyntheticSource: "done" as const,
+      };
+      await service.updateMetadata("session-1", {
+        automationPausedUntilUserTurn: true,
+        pendingSyntheticDone: { message, userTurnVersion: 7 },
+      });
+
+      const reloaded = new SessionMetadataService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.getSyntheticDoneMessages("session-1")).toEqual([]);
+      expect(reloaded.getMetadata("session-1")?.pendingSyntheticDone).toEqual({
+        message,
+        userTurnVersion: 7,
+      });
+
+      await reloaded.recordSyntheticDone("session-1", message);
+      expect(
+        reloaded.getMetadata("session-1")?.pendingSyntheticDone,
+      ).toBeUndefined();
+      expect(reloaded.getSyntheticDoneMessages("session-1")).toEqual([message]);
+    });
+
     it("persists archive with the boundary row in one mutation", async () => {
       await service.initialize();
       const message = {

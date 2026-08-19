@@ -36,7 +36,9 @@ describe("session done route", () => {
     app.route(
       "/api/sessions",
       createSessionDoneRoutes({
-        sessionMetadataService: {} as SessionMetadataService,
+        sessionMetadataService: {
+          getMetadata: () => undefined,
+        } as unknown as SessionMetadataService,
         supervisor: {
           requestSessionDone,
           getProcessForSession,

@@ -38,7 +38,9 @@ describe("session archive route", () => {
     app.route(
       "/api/sessions",
       createSessionArchiveRoutes({
-        sessionMetadataService: {} as SessionMetadataService,
+        sessionMetadataService: {
+          getMetadata: () => undefined,
+        } as unknown as SessionMetadataService,
         supervisor: {
           requestSessionDone,
           getProcessForSession,

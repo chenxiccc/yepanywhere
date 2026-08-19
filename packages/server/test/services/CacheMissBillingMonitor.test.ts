@@ -69,6 +69,14 @@ function codexTokenUsageMessage(usage: Record<string, number>): SDKMessage {
   } as unknown as SDKMessage;
 }
 
+function compactBoundaryMessage(): SDKMessage {
+  return {
+    type: "system",
+    subtype: "compact_boundary",
+    session_id: "session-1",
+  } as unknown as SDKMessage;
+}
+
 function monitorWith(
   settings: Record<string, unknown>,
   metadata: Record<string, unknown> = {},
@@ -200,6 +208,45 @@ describe("CacheMissBillingMonitor", () => {
     );
     expect(misses).toEqual([]);
   });
+
+  it.each([1, 20])(
+    "resets the warm-prefix baseline across compaction after %d minutes",
+    async (idleMinutes) => {
+      const { monitor, addCacheMissBillingEvent } = monitorWith({
+        enabled: true,
+        minimumWastedTokens: 10_000,
+        recentActivityMinutes: 10,
+      });
+      const process = fakeProcess();
+      const startedAt = Date.now();
+      const now = vi
+        .spyOn(Date, "now")
+        .mockReturnValueOnce(startedAt)
+        .mockReturnValue(startedAt + idleMinutes * 60_000);
+      try {
+        monitor.observeMessage(
+          process,
+          claudeAssistantMessage({
+            input_tokens: 5,
+            cache_read_input_tokens: 150_000,
+          }),
+        );
+        monitor.observeMessage(process, compactBoundaryMessage());
+        monitor.observeMessage(
+          process,
+          claudeAssistantMessage({
+            input_tokens: 20_000,
+            cache_read_input_tokens: 0,
+          }),
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(addCacheMissBillingEvent).not.toHaveBeenCalled();
+      } finally {
+        now.mockRestore();
+      }
+    },
+  );
 
   it("charges only the excess over expected new content", async () => {
     const { monitor, addCacheMissBillingEvent } = monitorWith({
