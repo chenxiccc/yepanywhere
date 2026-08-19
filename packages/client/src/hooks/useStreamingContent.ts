@@ -71,6 +71,7 @@ interface StreamingState {
   blocks: ContentBlock[];
   isStreaming: boolean;
   agentId?: string;
+  partialInputJson: Map<number, string>;
 }
 
 /**
@@ -107,16 +108,23 @@ export function useStreamingContent(
   // Throttle streaming UI updates to avoid overwhelming React with re-renders
   // Data accumulates in streamingContentRef immediately, but state updates are batched
   const streamingThrottleRef = useRef<{
-    timer: ReturnType<typeof setTimeout> | null;
+    quietTimer: ReturnType<typeof setTimeout> | null;
+    deadlineTimer: ReturnType<typeof setTimeout> | null;
+    dirtySinceMs: number | null;
+    deadlineAtMs: number | null;
     pendingIds: Set<string>;
     pendingEventCount: number;
     intervalMs: number;
   }>({
-    timer: null,
+    quietTimer: null,
+    deadlineTimer: null,
+    dirtySinceMs: null,
+    deadlineAtMs: null,
     pendingIds: new Set(),
     pendingEventCount: 0,
     intervalMs: STREAMING_UPDATE_BASE_MS,
   });
+  const flushStreamingUpdatesRef = useRef<() => void>(() => {});
 
   // Update messages with streaming content
   // Creates or updates a streaming placeholder message with accumulated content
@@ -167,12 +175,52 @@ export function useStreamingContent(
     [],
   );
 
+  const cancelStreamingTimers = useCallback(() => {
+    const throttle = streamingThrottleRef.current;
+    if (throttle.quietTimer) {
+      clearTimeout(throttle.quietTimer);
+      throttle.quietTimer = null;
+    }
+    if (throttle.deadlineTimer) {
+      clearTimeout(throttle.deadlineTimer);
+      throttle.deadlineTimer = null;
+    }
+    throttle.dirtySinceMs = null;
+    throttle.deadlineAtMs = null;
+  }, []);
+
+  const scheduleStreamingFlush = useCallback(() => {
+    const throttle = streamingThrottleRef.current;
+    const flush = () => flushStreamingUpdatesRef.current();
+    const scheduledAtMs = nowMs();
+    throttle.dirtySinceMs ??= scheduledAtMs;
+
+    if (throttle.quietTimer) {
+      clearTimeout(throttle.quietTimer);
+    }
+    throttle.quietTimer = setTimeout(flush, throttle.intervalMs);
+
+    // The quiet timer follows the newest delta. This deadline follows the
+    // oldest unpublished delta, so a continuous burst cannot defer rendering
+    // forever. Recompute it in place when the adaptive cadence changes; moving
+    // a deadline behind now produces an immediate timer rather than starvation.
+    const deadlineAtMs =
+      throttle.dirtySinceMs + Math.max(200, throttle.intervalMs);
+    if (throttle.deadlineAtMs !== deadlineAtMs) {
+      if (throttle.deadlineTimer) {
+        clearTimeout(throttle.deadlineTimer);
+      }
+      throttle.deadlineAtMs = deadlineAtMs;
+      throttle.deadlineTimer = setTimeout(
+        flush,
+        Math.max(0, deadlineAtMs - scheduledAtMs),
+      );
+    }
+  }, []);
+
   const flushStreamingUpdates = useCallback(() => {
     const throttle = streamingThrottleRef.current;
-    if (throttle.timer) {
-      clearTimeout(throttle.timer);
-      throttle.timer = null;
-    }
+    cancelStreamingTimers();
     if (throttle.pendingIds.size === 0) {
       throttle.pendingEventCount = 0;
       return;
@@ -198,39 +246,43 @@ export function useStreamingContent(
         category: pendingIds.length === 1 ? "one-message" : "multi-message",
       });
     }
-  }, [tuneStreamingInterval, updateStreamingMessage]);
 
-  // Throttled version of updateStreamingMessage for delta events
-  // Batches rapid updates to reduce React re-renders during streaming. Slow
-  // devices naturally move toward larger chunks instead of one-token UI work.
+    // An update callback may synchronously accept more stream data. Re-arm from
+    // the remaining dirty set instead of requiring a later event to notice it.
+    if (throttle.pendingIds.size > 0) {
+      scheduleStreamingFlush();
+    }
+  }, [
+    cancelStreamingTimers,
+    scheduleStreamingFlush,
+    tuneStreamingInterval,
+    updateStreamingMessage,
+  ]);
+  flushStreamingUpdatesRef.current = flushStreamingUpdates;
+
+  // Batches rapid deltas behind one resettable quiet timer and one non-resetting
+  // maximum-age timer. Slow devices naturally move toward larger chunks.
   const throttledUpdateStreamingMessage = useCallback(
     (messageId: string) => {
       const throttle = streamingThrottleRef.current;
       throttle.pendingIds.add(messageId);
       throttle.pendingEventCount += 1;
-
-      // If no timer running, start one
-      if (!throttle.timer) {
-        throttle.timer = setTimeout(flushStreamingUpdates, throttle.intervalMs);
-      }
+      scheduleStreamingFlush();
     },
-    [flushStreamingUpdates],
+    [scheduleStreamingFlush],
   );
 
   // Clear all accumulated streaming state and pending UI flushes.
   const clearStreaming = useCallback(() => {
     const throttle = streamingThrottleRef.current;
-    if (throttle.timer) {
-      clearTimeout(throttle.timer);
-      throttle.timer = null;
-    }
+    cancelStreamingTimers();
     throttle.pendingIds.clear();
     throttle.pendingEventCount = 0;
     throttle.intervalMs = STREAMING_UPDATE_BASE_MS;
     streamingContentRef.current.clear();
     currentStreamingIdRef.current = null;
     currentStreamingAgentIdRef.current = null;
-  }, []);
+  }, [cancelStreamingTimers]);
 
   // Process a stream_event SSE message
   // Returns true if the event was handled, false if it should be processed elsewhere
@@ -352,20 +404,26 @@ export function useStreamingContent(
           unknown
         > | null;
         if (contentBlock) {
-          const streaming = streamingContentRef.current.get(streamingId) ?? {
+          const streaming: StreamingState = streamingContentRef.current.get(
+            streamingId,
+          ) ?? {
             blocks: [],
             isStreaming: true,
             agentId, // Track which agent this stream belongs to
+            partialInputJson: new Map(),
           };
           // Ensure array is long enough
           while (streaming.blocks.length <= index) {
             streaming.blocks.push({ type: "text", text: "" });
           }
-          // Initialize the block with its type
+          // Preserve tool identity and input along with text/thinking fields. A
+          // lossy projection here hides live tool activity until JSONL catch-up.
           streaming.blocks[index] = {
-            type: (contentBlock.type as string) ?? "text",
-            text: (contentBlock.text as string) ?? "",
-            thinking: (contentBlock.thinking as string) ?? undefined,
+            ...contentBlock,
+            type:
+              typeof contentBlock.type === "string"
+                ? contentBlock.type
+                : "text",
           };
           streamingContentRef.current.set(streamingId, streaming);
           updateStreamingMessage(streamingId);
@@ -380,13 +438,35 @@ export function useStreamingContent(
           if (streaming?.blocks[index]) {
             const block = streaming.blocks[index];
             const deltaType = delta.type as string;
-            if (deltaType === "text_delta" && delta.text) {
-              block.text = (block.text ?? "") + (delta.text as string);
-            } else if (deltaType === "thinking_delta" && delta.thinking) {
-              block.thinking =
-                (block.thinking ?? "") + (delta.thinking as string);
+            let changed = false;
+            if (deltaType === "text_delta" && typeof delta.text === "string") {
+              block.text = (block.text ?? "") + delta.text;
+              changed = delta.text.length > 0;
+            } else if (
+              deltaType === "thinking_delta" &&
+              typeof delta.thinking === "string"
+            ) {
+              block.thinking = (block.thinking ?? "") + delta.thinking;
+              changed = delta.thinking.length > 0;
+            } else if (
+              deltaType === "input_json_delta" &&
+              typeof delta.partial_json === "string"
+            ) {
+              const partialJson =
+                (streaming.partialInputJson.get(index) ?? "") +
+                delta.partial_json;
+              streaming.partialInputJson.set(index, partialJson);
+              try {
+                block.input = JSON.parse(partialJson);
+                changed = true;
+              } catch {
+                // Partial tool input becomes publishable when a later delta
+                // completes the JSON value.
+              }
             }
-            throttledUpdateStreamingMessage(streamingId);
+            if (changed) {
+              throttledUpdateStreamingMessage(streamingId);
+            }
           }
         }
       } else if (eventType === "content_block_stop") {
@@ -422,13 +502,10 @@ export function useStreamingContent(
 
   // Cleanup function for useEffect (clears timers)
   const cleanup = useCallback(() => {
-    if (streamingThrottleRef.current.timer) {
-      clearTimeout(streamingThrottleRef.current.timer);
-      streamingThrottleRef.current.timer = null;
-    }
+    cancelStreamingTimers();
     streamingThrottleRef.current.pendingIds.clear();
     streamingThrottleRef.current.pendingEventCount = 0;
-  }, []);
+  }, [cancelStreamingTimers]);
 
   return {
     handleStreamEvent,

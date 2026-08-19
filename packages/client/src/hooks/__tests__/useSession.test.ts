@@ -1386,6 +1386,55 @@ describe("useSession completion reconciliation", () => {
     });
   });
 
+  it("gates stream-progress liveness and publishes the trailing event", () => {
+    const eventStart = new Date("2026-04-24T01:00:00.000Z");
+    vi.setSystemTime(eventStart);
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+    const sendVisibleDelta = () =>
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "x" },
+        },
+      });
+
+    act(sendVisibleDelta);
+    expect(result.current.sessionLiveness?.lastVerifiedProgressAt).toBe(
+      eventStart.toISOString(),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(499);
+      sendVisibleDelta();
+    });
+    expect(result.current.sessionLiveness?.lastVerifiedProgressAt).toBe(
+      eventStart.toISOString(),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(result.current.sessionLiveness?.lastVerifiedProgressAt).toBe(
+      new Date(eventStart.getTime() + 499).toISOString(),
+    );
+
+    act(() => {
+      sendVisibleDelta();
+      vi.advanceTimersByTime(500);
+    });
+    expect(result.current.sessionLiveness?.lastVerifiedProgressAt).toBe(
+      new Date(eventStart.getTime() + 500).toISOString(),
+    );
+  });
+
   it("keeps stale liveness when stream_event has no user-visible content", () => {
     const eventStart = new Date("2026-04-24T01:00:00.000Z");
     vi.setSystemTime(eventStart);

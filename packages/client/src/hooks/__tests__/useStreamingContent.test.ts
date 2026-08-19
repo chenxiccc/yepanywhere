@@ -230,6 +230,201 @@ describe("useStreamingContent", () => {
       );
     });
 
+    it("forces continuous deltas out by the oldest unpublished deadline", () => {
+      const { result } = renderHook(() =>
+        useStreamingContent(defaultOptions()),
+      );
+
+      act(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "message_start",
+            message: { id: "msg-123" },
+          },
+        });
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          },
+        });
+      });
+      onUpdateMessage.mockClear();
+
+      for (const text of ["a", "b", "c", "d"]) {
+        act(() => {
+          result.current.handleStreamEvent({
+            type: "stream_event",
+            event: {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "text_delta", text },
+            },
+          });
+          vi.advanceTimersByTime(50);
+        });
+      }
+
+      expect(onUpdateMessage).toHaveBeenCalledTimes(1);
+      expect(onUpdateMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({
+            content: expect.arrayContaining([
+              expect.objectContaining({ text: "abcd" }),
+            ]),
+          }),
+        }),
+        undefined,
+      );
+    });
+
+    it("re-arms when a flush callback accepts another delta", () => {
+      const { result } = renderHook(() =>
+        useStreamingContent(defaultOptions()),
+      );
+
+      act(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "message_start",
+            message: { id: "msg-123" },
+          },
+        });
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          },
+        });
+      });
+      onUpdateMessage.mockClear();
+      onUpdateMessage.mockImplementationOnce(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: "b" },
+          },
+        });
+      });
+
+      act(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: "a" },
+          },
+        });
+        vi.advanceTimersByTime(100);
+      });
+      expect(onUpdateMessage).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(onUpdateMessage).toHaveBeenCalledTimes(2);
+      expect(onUpdateMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({
+            content: expect.arrayContaining([
+              expect.objectContaining({ text: "ab" }),
+            ]),
+          }),
+        }),
+        undefined,
+      );
+    });
+
+    it("preserves live tool identity and publishes complete input JSON", () => {
+      const { result } = renderHook(() =>
+        useStreamingContent(defaultOptions()),
+      );
+
+      act(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "message_start",
+            message: { id: "msg-tool" },
+          },
+        });
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "tool_use",
+              id: "tool-123",
+              name: "Bash",
+              input: {},
+            },
+          },
+        });
+      });
+
+      expect(onUpdateMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "tool_use",
+                id: "tool-123",
+                name: "Bash",
+                input: {},
+              }),
+            ]),
+          }),
+        }),
+        undefined,
+      );
+      onUpdateMessage.mockClear();
+
+      act(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "input_json_delta",
+              partial_json: '{"command":',
+            },
+          },
+        });
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          event: {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "input_json_delta", partial_json: '"pwd"}' },
+          },
+        });
+        vi.advanceTimersByTime(100);
+      });
+
+      expect(onUpdateMessage).toHaveBeenCalledTimes(1);
+      expect(onUpdateMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({
+            content: expect.arrayContaining([
+              expect.objectContaining({ input: { command: "pwd" } }),
+            ]),
+          }),
+        }),
+        undefined,
+      );
+    });
+
     it("handles thinking deltas", () => {
       const { result } = renderHook(() =>
         useStreamingContent(defaultOptions()),

@@ -584,6 +584,15 @@ export function useSession(
     pendingIso: null,
     timer: null,
   });
+  const streamProgressLivenessRef = useRef<{
+    lastUpdateMs: number;
+    pendingObservedAtMs: number | null;
+    timer: ReturnType<typeof setTimeout> | null;
+  }>({
+    lastUpdateMs: Number.NEGATIVE_INFINITY,
+    pendingObservedAtMs: null,
+    timer: null,
+  });
 
   const noteStreamActivity = useCallback((immediate = false) => {
     const nowMs = Date.now();
@@ -654,32 +663,65 @@ export function useSession(
     [],
   );
 
+  const publishStreamProgressLiveness = useCallback(
+    (observedAtMs: number) => {
+      const ref = streamProgressLivenessRef.current;
+      ref.lastUpdateMs = Date.now();
+      setSessionLiveness((previous) => {
+        const previousProgressMs = Date.parse(
+          previous?.lastVerifiedProgressAt ?? previous?.checkedAt ?? "",
+        );
+        if (
+          previous?.derivedStatus === "verified-progressing" &&
+          Number.isFinite(previousProgressMs) &&
+          previousProgressMs >= observedAtMs
+        ) {
+          return previous;
+        }
+        return buildStreamProgressLiveness(observedAtMs, previous);
+      });
+    },
+    [buildStreamProgressLiveness],
+  );
+
   const noteStreamProgressLiveness = useCallback(() => {
-    const nowMs = Date.now();
-
-    setSessionLiveness((previous) => {
-      const nowVerifiedProgressMs = Date.parse(
-        previous?.lastVerifiedProgressAt ?? previous?.checkedAt ?? "",
-      );
-
-      if (
-        previous &&
-        previous.derivedStatus === "verified-progressing" &&
-        Number.isFinite(nowVerifiedProgressMs) &&
-        nowMs - nowVerifiedProgressMs < STREAM_LIVENESS_UPDATE_MS
-      ) {
-        return previous;
+    const observedAtMs = Date.now();
+    const ref = streamProgressLivenessRef.current;
+    const elapsedMs = observedAtMs - ref.lastUpdateMs;
+    if (elapsedMs < 0 || elapsedMs >= STREAM_LIVENESS_UPDATE_MS) {
+      if (ref.timer) {
+        clearTimeout(ref.timer);
+        ref.timer = null;
       }
+      ref.pendingObservedAtMs = null;
+      publishStreamProgressLiveness(observedAtMs);
+      return;
+    }
 
-      return buildStreamProgressLiveness(nowMs, previous);
-    });
-  }, [buildStreamProgressLiveness]);
+    // Gate before enqueueing React state, but retain one trailing observation.
+    // A provider burst gets one timer, and silence cannot strand its final state.
+    ref.pendingObservedAtMs = observedAtMs;
+    if (!ref.timer) {
+      ref.timer = setTimeout(() => {
+        const pendingObservedAtMs = ref.pendingObservedAtMs;
+        ref.pendingObservedAtMs = null;
+        ref.timer = null;
+        if (pendingObservedAtMs !== null) {
+          publishStreamProgressLiveness(pendingObservedAtMs);
+        }
+      }, STREAM_LIVENESS_UPDATE_MS - elapsedMs);
+    }
+  }, [publishStreamProgressLiveness]);
 
   useEffect(() => {
     return () => {
-      const timer = streamActivityRef.current.timer;
-      if (timer) {
-        clearTimeout(timer);
+      const activityTimer = streamActivityRef.current.timer;
+      if (activityTimer) {
+        clearTimeout(activityTimer);
+      }
+      const livenessTimer = streamProgressLivenessRef.current.timer;
+      if (livenessTimer) {
+        clearTimeout(livenessTimer);
       }
     };
   }, []);
