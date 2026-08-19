@@ -326,7 +326,7 @@ describe("SessionDoneCoordinator", () => {
         content: command,
         tempId: "durable-boundary-1",
         timestamp: "2026-08-16T10:00:00.000Z",
-        userTurnVersion: 4,
+        userTurnVersion: process.userTurnVersion,
       });
       expect(process.pauseRecapsUntilUserTurn).toHaveBeenCalled();
 
@@ -346,6 +346,53 @@ describe("SessionDoneCoordinator", () => {
       expect(process.hasPendingYaCommand("done")).toBe(false);
     },
   );
+
+  it("resumes automation when the replacement process takes a user turn", async () => {
+    // The requesting process counted four user turns; its replacement starts
+    // its own count at zero, so the recovered boundary must wait for a turn
+    // this process sees rather than one it can never reach.
+    const process = coordinatorProcess({
+      userTurnVersion: 0,
+    } as unknown as Partial<Process>);
+    const message = {
+      type: "user" as const,
+      content: "/done" as const,
+      message: { role: "user" as const, content: "/done" as const },
+      timestamp: "2026-08-16T10:00:00.000Z",
+      uuid: "durable-boundary-1",
+      id: "durable-boundary-1",
+      isSynthetic: true as const,
+      yaSyntheticSource: "done" as const,
+    };
+    const updateMetadata = vi.fn(async () => {});
+    const state = new SessionDoneCoordinator({
+      sessionMetadataService: {
+        getMetadata: () => ({
+          automationPausedUntilUserTurn: true,
+          pendingSyntheticDone: { message, userTurnVersion: 4 },
+        }),
+        recordSyntheticDone: async () => {},
+        updateMetadata,
+      } as unknown as SessionMetadataService,
+      getProcessForSession: () => process,
+      cancelInFlightForkedRecap: () => {},
+      requestHeartbeatSweep: () => {},
+    });
+
+    state.recoverPendingDone(process);
+    expect(process.getPendingYaCommand("done")?.userTurnVersion).toBe(0);
+
+    (process as unknown as { userTurnVersion: number }).userTurnVersion = 1;
+    (process as unknown as { state: { type: "idle" } }).state = {
+      type: "idle",
+    };
+    await state.finalizePendingDone(process);
+
+    expect(updateMetadata).toHaveBeenCalledWith("session-1", {
+      automationPausedUntilUserTurn: false,
+    });
+    expect(process.resumeRecapsAfterUserTurn).toHaveBeenCalled();
+  });
 
   it("does not queue /done when the pause cannot be persisted", async () => {
     const process = coordinatorProcess();

@@ -278,9 +278,3 @@ export function reconstructEditFiles(args: {
   }
   return null;
 }
-
-export function reconstructOriginalFile(
-  args: Parameters<typeof reconstructEditFiles>[0],
-): string | null {
-  return reconstructEditFiles(args)?.originalFile ?? null;
-}

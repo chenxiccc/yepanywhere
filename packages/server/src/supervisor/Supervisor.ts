@@ -3193,6 +3193,15 @@ export class Supervisor {
     return this.processes.get(processId);
   }
 
+  /**
+   * Durable session state for projections a live subscription must build from
+   * the same sources the request routes use — a queued boundary outlives the
+   * Process that requested it.
+   */
+  getSessionMetadataService(): SessionMetadataService | undefined {
+    return this.sessionMetadataService;
+  }
+
   getProviderRuntimeStatusForSession(sessionId: string): ProviderRuntimeStatus {
     return (
       this.getProcessForSession(sessionId)?.getProviderRuntimeStatus() ??

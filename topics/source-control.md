@@ -518,6 +518,19 @@ computation. Binary and malformed-text guards remain independent.
   350,000 tiny lines took 597–653 ms, which is why both the character and line
   bounds are required. These are diagnostic same-host measurements, not a
   cross-host performance ratchet.
+- **Keep one plain-projection budget for every connection** (vs. a smaller
+  budget when the viewer arrives through the relay): the server would have to
+  learn the viewer's transport at the diff route to vary it, and a remote viewer
+  asking for a large diff usually wants the same content a local one gets. The
+  accepted cost is that the largest allowed diffs are near the relay's delivery
+  ceiling. A relay response travels as 256 KiB transport chunks, but the relay
+  closes a circuit whose queued bytes pass 2 MiB, or whose socket passes 8 MiB,
+  rather than slowing the sender — so a multi-megabyte diff sent to a viewer
+  that cannot drain it that fast drops the remote connection instead of the
+  request. A direct (Tailscale/LAN) connection has no such ceiling. Lower
+  `GIT_DIFF_PREVIEW_MAX_DIFF_CHARS` if remote viewers start losing connections
+  on large diffs; raise the relay's per-circuit queue only with its own
+  memory-per-connection evidence.
 
 Markdown Preview follows the explicit diff/full-context scope. Diff-only uses
 the same approximate diff-aware rich-text projection as session Edit details,

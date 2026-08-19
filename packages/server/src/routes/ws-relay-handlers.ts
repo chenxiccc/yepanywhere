@@ -1041,6 +1041,7 @@ export function handleSessionSubscribe(
   const { cleanup } = createSessionSubscription(process, sendEvent, {
     wantsLiveDeltas,
     sessionQueuePersistenceService,
+    sessionMetadataService: supervisor.getSessionMetadataService(),
     resolveAbsoluteFilePaths,
     onError: (err) => {
       console.error("[WS Relay] Error in session subscription:", err);

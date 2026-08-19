@@ -102,6 +102,20 @@ function carriesUsage(message: SDKMessage): boolean {
   return message.type === "system" && message.subtype === "token_usage";
 }
 
+/**
+ * A boundary that rewrites the prompt prefix, so the next request pays for a
+ * prefix the provider never cached and no earlier observation predicts it.
+ * Microcompaction drops older content from the same prefix, which invalidates
+ * the comparison exactly as a full compaction does.
+ */
+function isContextReplacementBoundary(message: SDKMessage): boolean {
+  return (
+    message.type === "system" &&
+    (message.subtype === "compact_boundary" ||
+      message.subtype === "microcompact_boundary")
+  );
+}
+
 export function extractCacheMissBillingObservation(
   message: SDKMessage,
   provider: ProviderName,
@@ -181,7 +195,7 @@ export class CacheMissBillingMonitor {
     state.messageIndex += 1;
     this.processStates.set(process.id, state);
 
-    if (message.type === "system" && message.subtype === "compact_boundary") {
+    if (isContextReplacementBoundary(message)) {
       state.lastExpectedWarmAtMs = undefined;
       state.lastTotalContextTokens = undefined;
       return;

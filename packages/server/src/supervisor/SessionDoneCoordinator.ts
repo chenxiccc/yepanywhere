@@ -71,7 +71,11 @@ export class SessionDoneCoordinator {
       content: pending.message.content,
       tempId: pending.message.uuid,
       timestamp: pending.message.timestamp,
-      userTurnVersion: pending.userTurnVersion,
+      // A user-turn version counts turns within one Process, so the requesting
+      // process's value means nothing to this one. Rebase on the replacement's
+      // current count: the boundary still waits for a later real user turn,
+      // measured where the wait now happens.
+      userTurnVersion: process.userTurnVersion,
     });
     this.pauseLiveProcess(process);
   }
@@ -114,10 +118,12 @@ export class SessionDoneCoordinator {
         existing?.tempId ??
         persisted?.message.uuid ??
         `ya-done-${randomUUID()}`;
+      // A live process's own count wins over a persisted one, which may have
+      // been recorded by an earlier process whose turn numbering ended with it.
       const userTurnVersion =
         existing?.userTurnVersion ??
-        persisted?.userTurnVersion ??
-        process?.userTurnVersion;
+        process?.userTurnVersion ??
+        persisted?.userTurnVersion;
       if (userTurnVersion === undefined) {
         throw new Error("Pending session boundary has no user-turn version");
       }

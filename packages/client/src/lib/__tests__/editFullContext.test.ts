@@ -3,7 +3,7 @@ import {
   deriveReplacementFromPatch,
   locateUniqueExact,
   locateUniqueWhitespaceInsensitive,
-  reconstructOriginalFile,
+  reconstructEditFiles,
 } from "../editFullContext";
 
 describe("locateUniqueExact", () => {
@@ -56,60 +56,63 @@ describe("deriveReplacementFromPatch", () => {
   });
 });
 
-describe("reconstructOriginalFile", () => {
+describe("reconstructEditFiles", () => {
   it("inverts a unique post-edit exact match", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: "head\nnew line\ntail\n",
         oldString: "old line",
         newString: "new line",
-      }),
+      })?.originalFile,
     ).toBe("head\nold line\ntail\n");
   });
 
   it("removes a whole-line insertion without leaving a blank line", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: "keep\nadded\n",
         oldString: "",
         newString: "added",
-      }),
+      })?.originalFile,
     ).toBe("keep\n");
   });
 
   it("inverts a unique whitespace-insensitive post-edit match", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: ["head", "    added   item", "tail"].join("\n"),
         oldString: "",
         newString: "added item",
-      }),
+      })?.originalFile,
     ).toBe("head\ntail");
   });
 
   it("treats a unique pre-edit exact match as the original snapshot", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: "head\n  old line\ntail",
         oldString: "old line",
         newString: "new line",
       }),
-    ).toBe("head\n  old line\ntail");
+    ).toEqual({
+      originalFile: "head\n  old line\ntail",
+      editedFile: "head\n  new line\ntail",
+    });
   });
 
   it("normalizes a unique pre-edit whitespace-insensitive match", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: "head\n  old   line\ntail",
         oldString: "old line",
         newString: "new line",
-      }),
+      })?.originalFile,
     ).toBe("head\nold line\ntail");
   });
 
   it("derives the replacement from a single hunk when old/new are empty", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: "before\nadded\nafter",
         oldString: "",
         newString: "",
@@ -118,13 +121,13 @@ describe("reconstructOriginalFile", () => {
             lines: [" before", "+added", " after"],
           },
         ],
-      }),
+      })?.originalFile,
     ).toBe("before\nafter");
   });
 
   it("drops identification when the new side is ambiguous", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: "new\nmiddle\nnew",
         oldString: "old",
         newString: "new",
@@ -134,7 +137,7 @@ describe("reconstructOriginalFile", () => {
 
   it("returns null when neither side can be placed", () => {
     expect(
-      reconstructOriginalFile({
+      reconstructEditFiles({
         currentFile: "unrelated",
         oldString: "old",
         newString: "new",

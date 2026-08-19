@@ -69,10 +69,12 @@ function codexTokenUsageMessage(usage: Record<string, number>): SDKMessage {
   } as unknown as SDKMessage;
 }
 
-function compactBoundaryMessage(): SDKMessage {
+function compactBoundaryMessage(
+  subtype: "compact_boundary" | "microcompact_boundary" = "compact_boundary",
+): SDKMessage {
   return {
     type: "system",
-    subtype: "compact_boundary",
+    subtype,
     session_id: "session-1",
   } as unknown as SDKMessage;
 }
@@ -209,9 +211,14 @@ describe("CacheMissBillingMonitor", () => {
     expect(misses).toEqual([]);
   });
 
-  it.each([1, 20])(
-    "resets the warm-prefix baseline across compaction after %d minutes",
-    async (idleMinutes) => {
+  it.each([
+    ["compact_boundary", 1],
+    ["compact_boundary", 20],
+    ["microcompact_boundary", 1],
+    ["microcompact_boundary", 20],
+  ] as const)(
+    "resets the warm-prefix baseline across %s after %d minutes",
+    async (subtype, idleMinutes) => {
       const { monitor, addCacheMissBillingEvent } = monitorWith({
         enabled: true,
         minimumWastedTokens: 10_000,
@@ -231,7 +238,7 @@ describe("CacheMissBillingMonitor", () => {
             cache_read_input_tokens: 150_000,
           }),
         );
-        monitor.observeMessage(process, compactBoundaryMessage());
+        monitor.observeMessage(process, compactBoundaryMessage(subtype));
         monitor.observeMessage(
           process,
           claudeAssistantMessage({
