@@ -142,6 +142,60 @@ describe("git file projection routes", () => {
     });
   });
 
+  it("resolves one renamed projection from its resident row paths", async () => {
+    await git("mv", "head-only.txt", "renamed.txt");
+    const { projectId, routes } = createRoutesForProject(dir);
+    const response = await routes.request(
+      `/${projectId}/git/file-projection-diff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "renamed.txt",
+          origPath: "head-only.txt",
+          mode: "worktree",
+        }),
+      },
+    );
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.reviewProjections).toEqual({
+      old: {
+        kind: "revision",
+        revision: headSha,
+        path: "head-only.txt",
+        side: "old",
+      },
+      new: { kind: "worktree", path: "renamed.txt", side: "new" },
+    });
+  });
+
+  it("renders a large untracked projection as plain text", async () => {
+    const path = "evidence.jsonl";
+    const lines = Array.from({ length: 19_000 }, (_, index) =>
+      JSON.stringify({ index, value: `sample-${index}` }),
+    );
+    await writeFile(join(dir, path), `${lines.join("\n")}\n`);
+
+    const { projectId, routes } = createRoutesForProject(dir);
+    const response = await routes.request(
+      `/${projectId}/git/file-projection-diff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, mode: "worktree" }),
+      },
+    );
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.previewSkipped).toBeUndefined();
+    expect(body.renderMode).toBe("plain");
+    expect(body.diffHtml).toBe("");
+    expect(body.structuredPatch[0]?.lines).toHaveLength(19_000);
+  });
+
   it("rejects a projection that has no net diff", async () => {
     const { projectId, routes } = createRoutesForProject(dir);
     const response = await routes.request(

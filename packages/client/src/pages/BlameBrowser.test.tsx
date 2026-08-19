@@ -1,15 +1,22 @@
 // @vitest-environment jsdom
 
-import type { GitStatusInfo } from "@yep-anywhere/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { GitStatusInfo, GitWorkingTreeFile } from "@yep-anywhere/shared";
+import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ProjectWorktreePauseContext } from "../hooks/useProjectWorktree";
+import { asClientSummarySourceKey } from "../lib/clientSummaryStore";
+import type { YaSourceRuntime } from "../lib/sourceRuntime";
+import { SourceRuntimeProvider } from "../lib/sourceRuntimeReact";
+import { FakeSourceTransport } from "../lib/transport";
 
 vi.mock("react-router-dom", async (orig) => ({
   ...(await orig<typeof import("react-router-dom")>()),
@@ -43,6 +50,53 @@ vi.mock("../api/client", () => ({
 import { BlameBrowser } from "./BlameBrowser";
 
 const t = (key: string) => key;
+
+function createRuntime(
+  transport: FakeSourceTransport,
+  sourceKey: string,
+): YaSourceRuntime {
+  return {
+    sourceKey: asClientSummarySourceKey(sourceKey),
+    transport,
+    api: {} as YaSourceRuntime["api"],
+    summary: {} as YaSourceRuntime["summary"],
+    sessionDetails: {} as YaSourceRuntime["sessionDetails"],
+  };
+}
+
+function withRuntime(runtime: YaSourceRuntime, children: ReactNode): ReactNode {
+  return (
+    <SourceRuntimeProvider runtime={runtime}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </SourceRuntimeProvider>
+  );
+}
+
+async function emitWorktreeSnapshot(
+  transport: FakeSourceTransport,
+  files: GitWorkingTreeFile[],
+): Promise<void> {
+  await waitFor(() =>
+    expect(transport.getSubscriptions("worktree").length).toBeGreaterThan(0),
+  );
+  const subscription = transport.getSubscriptions("worktree").at(-1);
+  if (!subscription) throw new Error("Expected worktree subscription");
+  act(() => {
+    transport.emitSubscriptionEvent(subscription.id, "git-worktree-snapshot", {
+      type: "git-worktree-snapshot",
+      generation: {
+        epoch: "test-epoch",
+        sequence: transport.getSubscriptions("worktree").length - 1,
+      },
+      coverage: subscription.coverage,
+      headSha: "head-a",
+      baseSha: "base-a",
+      files,
+      truncated: false,
+      timestamp: "2026-08-19T00:00:00.000Z",
+    });
+  });
+}
 
 describe("BlameBrowser", () => {
   afterEach(() => {
@@ -94,7 +148,9 @@ describe("BlameBrowser", () => {
 
     const row = document.querySelector<HTMLButtonElement>(
       ".blame-file-item.selected",
-    )!;
+    );
+    expect(row).not.toBeNull();
+    if (!row) throw new Error("Expected selected file row");
     fireEvent.contextMenu(row, { clientX: 32, clientY: 40 });
     expect(await screen.findByRole("menu")).toBeDefined();
     expect(
@@ -159,21 +215,35 @@ describe("BlameBrowser", () => {
   });
 
   it("browses current dirty and unchanged content behind the new capability", async () => {
+    const transport = new FakeSourceTransport();
+    const runtime = createRuntime(transport, "test:blame-browser-live");
     const groupedCleanFiles = Array.from(
       { length: 12 },
       (_, index) =>
         `packages/client/file-${index.toString().padStart(3, "0")}.ts`,
     );
-    listGitWorkingTreeFiles.mockResolvedValue({
-      files: [
-        { path: "README.md", tracked: true },
-        { path: "notes/new.txt", tracked: false },
-        ...groupedCleanFiles.map((path) => ({ path, tracked: true })),
-        { path: "src/live.ts", tracked: true },
-      ],
-      truncated: false,
-      limit: 50_000,
-    });
+    const currentFiles: GitWorkingTreeFile[] = [
+      { path: "README.md", tracked: true, kind: "tracked" },
+      { path: "notes/new.txt", tracked: false, kind: "untracked" },
+      ...groupedCleanFiles.map((path) => ({
+        path,
+        tracked: true,
+        kind: "tracked" as const,
+      })),
+      {
+        path: "src/live.ts",
+        tracked: true,
+        kind: "tracked",
+        worktreeChanges: [
+          {
+            status: "M",
+            staged: false,
+            linesAdded: 1,
+            linesDeleted: 0,
+          },
+        ],
+      },
+    ];
     getFile.mockImplementation((_projectId: string, path: string) =>
       Promise.resolve({
         metadata: {
@@ -216,37 +286,85 @@ describe("BlameBrowser", () => {
     };
 
     render(
-      <MemoryRouter>
+      withRuntime(
+        runtime,
         <BlameBrowser
           projectId="p1"
-          isWideScreen={true}
+          isWideScreen={false}
           status={status}
           supportsWorkingTreeFiles
+          supportsWorktreeSections
           t={t}
-        />
-      </MemoryRouter>,
+        />,
+      ),
     );
 
-    await waitFor(() =>
-      expect(listGitWorkingTreeFiles).toHaveBeenCalledWith("p1"),
-    );
+    await emitWorktreeSnapshot(transport, currentFiles);
+    expect(transport.getSubscriptions("worktree")).toHaveLength(1);
+    expect(transport.getSubscriptions("worktree")[0]).toMatchObject({
+      projectId: "p1",
+      coverage: { tracked: true, untracked: true, ignored: false },
+    });
+    expect(listGitWorkingTreeFiles).not.toHaveBeenCalled();
     expect(listGitFiles).not.toHaveBeenCalled();
-    expect(screen.getByText("sourceUnchangedFiles")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /sourceTrackedFiles/, pressed: true }),
+    ).toBeDefined();
+    const ignoredToggle = screen.getByRole("button", {
+      name: /sourceIgnoredFiles/,
+      pressed: false,
+    });
+    expect(ignoredToggle).toBeDefined();
+    const packageGroup = (await screen.findByText("packages/client/")).closest(
+      "button",
+    );
+    expect(packageGroup).not.toBeNull();
+    if (!packageGroup) throw new Error("Expected packages/client group");
+    fireEvent.click(packageGroup);
+    expect(
+      document.querySelector(
+        '[data-source-path="packages/client/file-000.ts"]',
+      ),
+    ).not.toBeNull();
+
+    const search = screen.getByPlaceholderText("sourceFilterFiles");
+    fireEvent.change(search, { target: { value: "output" } });
+    expect(screen.queryByText("build/output.txt")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "sourceIgnoredFiles",
+        expanded: false,
+      }),
+    );
+    await waitFor(() =>
+      expect(transport.getSubscriptions("worktree")).toHaveLength(2),
+    );
+    expect(transport.getSubscriptions("worktree")[1]).toMatchObject({
+      projectId: "p1",
+      coverage: { tracked: true, untracked: true, ignored: true },
+    });
+    await emitWorktreeSnapshot(transport, [
+      ...currentFiles,
+      {
+        path: "build/output.txt",
+        tracked: false,
+        kind: "ignored",
+      },
+    ]);
     await waitFor(() =>
       expect(
-        document.querySelector(
-          '[data-source-path="packages/client/file-000.ts"]',
-        ),
+        document.querySelector('[data-source-path="build/output.txt"]'),
       ).not.toBeNull(),
     );
+    fireEvent.change(search, { target: { value: "" } });
 
-    fireEvent.click(screen.getByText("packages/client/").closest("button")!);
+    fireEvent.click(packageGroup);
     expect(
       document.querySelector(
         '[data-source-path="packages/client/file-000.ts"]',
       ),
     ).toBeNull();
-    fireEvent.click(screen.getByText("packages/client/").closest("button")!);
+    fireEvent.click(packageGroup);
 
     fireEvent.click(screen.getByText("README.md"));
     await waitFor(() =>
@@ -263,5 +381,111 @@ describe("BlameBrowser", () => {
     await waitFor(() =>
       expect(getGitBlame).toHaveBeenCalledWith("p1", "README.md"),
     );
+  });
+
+  it("freezes visible deltas while paused without releasing the lease", async () => {
+    const transport = new FakeSourceTransport();
+    const runtime = createRuntime(transport, "test:blame-browser-paused");
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const renderBrowser = (paused: boolean) =>
+      withRuntime(
+        runtime,
+        <ProjectWorktreePauseContext.Provider value={paused}>
+          <BlameBrowser
+            projectId="p1"
+            isWideScreen={false}
+            supportsWorkingTreeFiles
+            supportsWorktreeSections
+            t={t}
+          />
+        </ProjectWorktreePauseContext.Provider>,
+      );
+    const view = render(renderBrowser(true));
+
+    await emitWorktreeSnapshot(transport, [
+      { path: "README.md", tracked: true, kind: "tracked" },
+    ]);
+    expect(await screen.findByText("README.md")).toBeDefined();
+    const subscription = transport.getSubscriptions("worktree").at(-1);
+    if (!subscription) throw new Error("Expected worktree subscription");
+    act(() => {
+      transport.emitSubscriptionEvent(subscription.id, "git-worktree-delta", {
+        type: "git-worktree-delta",
+        generation: { epoch: "test-epoch", sequence: 1 },
+        headSha: "head-a",
+        baseSha: "base-a",
+        changes: [
+          {
+            changeType: "create",
+            path: "notes.txt",
+            file: {
+              path: "notes.txt",
+              tracked: false,
+              kind: "untracked",
+            },
+          },
+        ],
+        timestamp: "2026-08-19T00:00:01.000Z",
+      });
+    });
+    expect(screen.queryByText("notes.txt")).toBeNull();
+    expect(transport.getSubscriptions("worktree")).toHaveLength(1);
+
+    view.rerender(renderBrowser(false));
+    expect(await screen.findByText("notes.txt")).toBeDefined();
+    expect(transport.getSubscriptions("worktree")).toHaveLength(1);
+  });
+
+  it("keeps the inventory when the translation function identity changes", async () => {
+    const transport = new FakeSourceTransport();
+    const runtime = createRuntime(transport, "test:blame-browser-translation");
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const initialT = (key: string) => key;
+    const replacementT = (key: string) => key;
+    const view = render(
+      withRuntime(
+        runtime,
+        <BlameBrowser
+          projectId="p1"
+          isWideScreen={false}
+          supportsWorkingTreeFiles
+          supportsWorktreeSections
+          t={initialT}
+        />,
+      ),
+    );
+
+    await emitWorktreeSnapshot(transport, [
+      { path: "README.md", tracked: true, kind: "tracked" },
+    ]);
+    expect(await screen.findByText("README.md")).toBeDefined();
+    expect(transport.getSubscriptions("worktree")).toHaveLength(1);
+    expect(listGitWorkingTreeFiles).not.toHaveBeenCalled();
+
+    view.rerender(
+      withRuntime(
+        runtime,
+        <BlameBrowser
+          projectId="p1"
+          isWideScreen={false}
+          supportsWorkingTreeFiles
+          supportsWorktreeSections
+          t={replacementT}
+        />,
+      ),
+    );
+
+    await waitFor(() =>
+      expect(transport.getSubscriptions("worktree")).toHaveLength(1),
+    );
+    expect(screen.getByText("README.md")).toBeDefined();
   });
 });

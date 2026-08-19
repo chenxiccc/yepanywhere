@@ -895,7 +895,7 @@ export function WorkingTreeBrowser({
                   className="source-detail-title"
                   title={t("sourceWorkingTreeDescription")}
                 >
-                  {t("sourceWorkingTree")}
+                  {t("sourceUncommittedChanges")}
                 </span>
                 <span className="source-detail-count">
                   {t("sourceChangedFileCount", { count: files.length })}

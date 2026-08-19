@@ -1,6 +1,7 @@
 import type {
   ClientCapabilities,
   DeviceServerMessage,
+  GitWorktreeCoverage,
   RemoteClientMessage,
   StagedAttachmentRef,
   UploadedFile,
@@ -288,6 +289,14 @@ export class WebSocketConnection implements Connection {
 
   subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
     return this.protocol.subscribeGlossary(projectId, handlers);
+  }
+
+  subscribeWorktree(
+    projectId: string,
+    coverage: GitWorktreeCoverage,
+    handlers: StreamHandlers,
+  ): Subscription {
+    return this.protocol.subscribeWorktree(projectId, coverage, handlers);
   }
 
   subscribeSessionWatch(

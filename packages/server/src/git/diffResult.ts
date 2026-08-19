@@ -12,9 +12,12 @@ import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import { decodeLikelyUtf8Text } from "../utils/utf8Text.js";
 import {
   abortedDiffPreviewSkip,
-  GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+  GIT_DIFF_PREVIEW_MAX_HIGHLIGHT_CHARS,
+  GIT_DIFF_PREVIEW_MAX_HTML_CHARS,
+  GIT_DIFF_PREVIEW_MAX_MARKDOWN_CHARS,
   getPatchPreviewSkip,
   getSourceDiffPreviewSkip,
+  measurePatchPreview,
   skippedBinaryGitDiffResult,
   skippedGitDiffResult,
 } from "./diffPreviewGuards.js";
@@ -68,19 +71,29 @@ export async function buildGitDiffResult(
     );
   }
 
-  const patchSkip = getPatchPreviewSkip(hunks);
+  const patchMetrics = measurePatchPreview(hunks);
+  const patchSkip = getPatchPreviewSkip(patchMetrics);
   if (patchSkip) return skippedGitDiffResult(patchSkip);
 
+  let diffHtml = "";
+  if (patchMetrics.totalChars <= GIT_DIFF_PREVIEW_MAX_HIGHLIGHT_CHARS) {
+    const highlighted = await computeEditDiffHtml(editInput, hunks);
+    if (highlighted.length <= GIT_DIFF_PREVIEW_MAX_HTML_CHARS) {
+      diffHtml = highlighted;
+    }
+  }
+
   const result: GitDiffResult = {
-    diffHtml: await computeEditDiffHtml(editInput, hunks),
+    diffHtml,
     structuredPatch: hunks,
+    ...(diffHtml ? {} : { renderMode: "plain" as const }),
   };
 
   if (
     isMarkdownLikeFile(input.path) &&
     input.newContent &&
     // Unlike the diff, a markdown preview renders the whole file.
-    input.newContent.length <= GIT_DIFF_PREVIEW_MAX_DIFF_CHARS
+    input.newContent.length <= GIT_DIFF_PREVIEW_MAX_MARKDOWN_CHARS
   ) {
     try {
       const project = input.markdownProject;

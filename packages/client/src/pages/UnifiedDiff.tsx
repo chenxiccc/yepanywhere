@@ -1,7 +1,8 @@
 import type { PatchHunk } from "@yep-anywhere/shared";
-import { memo, type ReactNode, useMemo } from "react";
+import { Fragment, memo, type ReactNode, useMemo } from "react";
 import { parseDiffLineFragments } from "../lib/diffSideBySide";
 import { ReviewCommentSplitLayout } from "./ReviewCommentSplitLayout";
+import styles from "./UnifiedDiff.module.css";
 
 type UnifiedRow =
   | { type: "header"; text: string }
@@ -15,17 +16,27 @@ export const UnifiedDiff = memo(function UnifiedDiff({
   structuredPatch,
   splitAfterLine,
   editor = null,
+  plain = false,
 }: {
   diffHtml: string;
   structuredPatch: PatchHunk[];
   splitAfterLine?: number;
   editor?: ReactNode;
+  plain?: boolean;
 }) {
-  const fragments = useMemo(() => parseDiffLineFragments(diffHtml), [diffHtml]);
-  const rows = useMemo(
-    () => buildUnifiedRows(structuredPatch),
-    [structuredPatch],
+  const fragments = useMemo(
+    () =>
+      plain ? new Map<number, string>() : parseDiffLineFragments(diffHtml),
+    [diffHtml, plain],
   );
+  const rows = useMemo(
+    () => (plain ? [] : buildUnifiedRows(structuredPatch)),
+    [plain, structuredPatch],
+  );
+  if (plain) {
+    return <PlainUnifiedRows hunks={structuredPatch} />;
+  }
+
   const splitIndex =
     splitAfterLine === undefined
       ? -1
@@ -52,6 +63,27 @@ export const UnifiedDiff = memo(function UnifiedDiff({
     />
   );
 });
+
+function PlainUnifiedRows({ hunks }: { hunks: PatchHunk[] }) {
+  return (
+    <div className={styles.plain} data-diff-rendering="plain">
+      <pre>
+        <code>
+          {hunks.map((hunk, index) => (
+            <Fragment key={`${hunk.oldStart}:${hunk.newStart}:${index}`}>
+              <span className={`${styles.hunkHeader} line-hunk`}>
+                {`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}
+              </span>
+              {"\n"}
+              {hunk.lines.join("\n")}
+              {index + 1 < hunks.length ? "\n" : ""}
+            </Fragment>
+          ))}
+        </code>
+      </pre>
+    </div>
+  );
+}
 
 function buildUnifiedRows(hunks: PatchHunk[]): UnifiedRow[] {
   const rows: UnifiedRow[] = [];

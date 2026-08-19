@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
 import { gitDiffReportsBinary } from "../git/binaryDiff.js";
 import {
-  GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+  GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
   skippedBinaryGitDiffResult,
   skippedGitDiffResult,
 } from "../git/diffPreviewGuards.js";
@@ -58,6 +58,7 @@ export function createGitFileProjectionRoutes(
 
     let body: {
       path?: unknown;
+      origPath?: unknown;
       mode?: unknown;
       fullContext?: unknown;
     };
@@ -81,24 +82,28 @@ export function createGitFileProjectionRoutes(
     }
 
     let requestedPath: string;
+    let originalPath: string | undefined;
     try {
       requestedPath = repositoryRelativePath(body.path);
+      if (body.origPath !== undefined) {
+        if (typeof body.origPath !== "string") {
+          return c.json({ error: "Invalid origPath" }, 400);
+        }
+        originalPath = repositoryRelativePath(body.origPath);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Invalid path";
       return c.json({ error: message }, 400);
     }
 
     try {
-      const manifest = await readFileProjectionManifest(projectPath);
-      const files = filesForMode(manifest, body.mode);
-      const file = files.find(
-        (candidate) =>
-          candidate.path === requestedPath ||
-          candidate.origPath === requestedPath,
+      const projection = await readFileProjectionSelection(
+        projectPath,
+        requestedPath,
+        body.mode,
+        originalPath,
       );
-      const baseSha =
-        body.mode === "worktree" ? manifest.headSha : manifest.baseSha;
-      if (!file || !baseSha) {
+      if (!projection.file || !projection.baseSha) {
         return c.json({ error: "File has no selected projection" }, 404);
       }
 
@@ -106,8 +111,8 @@ export function createGitFileProjectionRoutes(
         await renderFileProjection(
           c.req.param("projectId"),
           projectPath,
-          baseSha,
-          file,
+          projection.baseSha,
+          projection.file,
           body.fullContext,
         ),
       );
@@ -150,13 +155,54 @@ export async function readFileProjectionManifest(
   };
 }
 
-function filesForMode(
-  manifest: GitFileProjectionManifest,
+interface FileProjectionSelection {
+  baseSha: string | null;
+  file: GitFileChange | null;
+}
+
+export async function readFileProjectionSelection(
+  cwd: string,
+  requestedPath: string,
   mode: GitFileDiffMode,
-): GitFileChange[] {
-  return mode === "worktree"
-    ? manifest.worktreeFiles
-    : manifest.cumulativeFiles;
+  originalPath?: string,
+): Promise<FileProjectionSelection> {
+  const baseSha = await resolveCommit(
+    cwd,
+    mode === "worktree" ? "HEAD" : "HEAD^1",
+  );
+  if (!baseSha) {
+    return { baseSha: null, file: null };
+  }
+
+  const paths =
+    originalPath && originalPath !== requestedPath
+      ? [requestedPath, originalPath]
+      : [requestedPath];
+  const tracked = await readGitDiffFileChanges(cwd, [baseSha], {
+    maxBuffer: PROJECTION_MAX_BUFFER,
+    paths,
+  });
+  const file = tracked.find(
+    (candidate) =>
+      paths.includes(candidate.path) ||
+      (candidate.origPath !== undefined && paths.includes(candidate.origPath)),
+  );
+  if (file) {
+    return { baseSha, file };
+  }
+  if (!(await isUntrackedFile(cwd, requestedPath))) {
+    return { baseSha, file: null };
+  }
+  return {
+    baseSha,
+    file: {
+      path: requestedPath,
+      status: "?",
+      staged: false,
+      linesAdded: null,
+      linesDeleted: null,
+    },
+  };
 }
 
 async function readWorktreeChanges(
@@ -198,6 +244,19 @@ async function listUntrackedFiles(cwd: string): Promise<string[]> {
   return paths;
 }
 
+async function isUntrackedFile(cwd: string, path: string): Promise<boolean> {
+  const { stdout } = await runGit(cwd, [
+    ...GIT_DECODE_PATHS_ARGS,
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "-z",
+    "--",
+    `:(literal)${path}`,
+  ]);
+  return stdout.split("\0").includes(path);
+}
+
 async function renderFileProjection(
   projectId: string,
   cwd: string,
@@ -219,11 +278,11 @@ async function renderFileProjection(
   if (file.status === "?") {
     const resolved = await repositoryFilePathIfExists(cwd, file.path);
     const metadata = resolved ? await stat(resolved) : null;
-    if (metadata && metadata.size > GIT_DIFF_PREVIEW_MAX_DIFF_CHARS) {
+    if (metadata && metadata.size > GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES) {
       return skippedGitDiffResult({
         reason: "content-too-large",
         totalBytes: metadata.size,
-        maxTotalBytes: GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+        maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
       });
     }
   }

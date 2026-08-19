@@ -1,5 +1,5 @@
 import type { GitStatusInfo } from "@yep-anywhere/shared";
-import type { ReactNode } from "react";
+import { type ReactNode, useContext } from "react";
 import {
   act,
   fireEvent,
@@ -27,8 +27,10 @@ import {
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
+  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
 } from "@yep-anywhere/shared";
 import selectorStyles from "../../components/ProjectSelector.module.css";
+import { ProjectWorktreePauseContext } from "../../hooks/useProjectWorktree";
 import { setSourceControlCleanLandingPreference } from "../../hooks/useSourceControlCleanLanding";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
 import type { Project } from "../../types";
@@ -93,9 +95,10 @@ vi.mock("../BlameBrowser", () => ({
     initialPath?: string;
     onOpenCommit?: (sha: string) => void;
   }) => {
+    const worktreePaused = useContext(ProjectWorktreePauseContext);
     mocks.renderBlameBrowser(props);
     return (
-      <div data-testid="blame-browser">
+      <div data-testid="blame-browser" data-worktree-paused={worktreePaused}>
         <button
           type="button"
           onClick={() => props.onOpenCommit?.("b".repeat(40))}
@@ -149,6 +152,19 @@ vi.mock("../../hooks/useGitStatus", () => ({
 
 vi.mock("../../hooks/useMediaQuery", () => ({
   useMediaQuery: mocks.useMediaQuery,
+}));
+
+vi.mock("../../hooks/useProjectWorktree", async (original) => ({
+  ...(await original<typeof import("../../hooks/useProjectWorktree")>()),
+  useProjectWorktree: () => ({
+    loading: false,
+    error: null,
+    generation: null,
+    headSha: null,
+    baseSha: null,
+    files: [],
+    truncated: false,
+  }),
 }));
 
 vi.mock("../../hooks/useProjects", () => ({
@@ -777,6 +793,43 @@ describe("GitStatusPage source header", () => {
         showRevisionPane: false,
       }),
     );
+  });
+
+  it("pauses and resumes live Working Tree application from the header", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_WORKING_TREE_FILES_CAPABILITY,
+          GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    renderPage("/git-status?projectId=project-a&tab=files");
+
+    const browser = await screen.findByTestId("blame-browser");
+    const pause = screen.getByRole("button", {
+      name: "sourcePauseLiveUpdates",
+      pressed: false,
+    });
+    expect(browser.getAttribute("data-worktree-paused")).toBe("false");
+
+    fireEvent.click(pause);
+    expect(
+      screen.getByRole("button", {
+        name: "sourceResumeLiveUpdates",
+        pressed: true,
+      }),
+    ).toBeDefined();
+    expect(browser.getAttribute("data-worktree-paused")).toBe("true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceResumeLiveUpdates" }),
+    );
+    expect(browser.getAttribute("data-worktree-paused")).toBe("false");
   });
 
   it("opens a linked file within the requested commit", async () => {

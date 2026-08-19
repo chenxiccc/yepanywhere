@@ -15,10 +15,18 @@ import type {
  * file too big to diff at all — is skipped.
  */
 
-/** Rendered hunk-content budget (characters) above which a preview is omitted. */
-export const GIT_DIFF_PREVIEW_MAX_DIFF_CHARS = 256 * 1024;
+/** Plain hunk-content budget above which a preview is omitted. */
+export const GIT_DIFF_PREVIEW_MAX_DIFF_CHARS = 1024 * 1024;
+/** Hunk-line budget above which browser layout is omitted. */
+export const GIT_DIFF_PREVIEW_MAX_DIFF_LINES = 20_000;
 /** Per-line character budget above which a preview is omitted. */
 export const GIT_DIFF_PREVIEW_MAX_LINE_CHARS = 20_000;
+/** Hunk-content budget above which syntax highlighting is omitted. */
+export const GIT_DIFF_PREVIEW_MAX_HIGHLIGHT_CHARS = 32 * 1024;
+/** Highlighted HTML budget above which the plain projection is used. */
+export const GIT_DIFF_PREVIEW_MAX_HTML_CHARS = 1_000_000;
+/** Whole-document Markdown budget, independent of the plain diff budget. */
+export const GIT_DIFF_PREVIEW_MAX_MARKDOWN_CHARS = 256 * 1024;
 /**
  * Source ceiling above which we decline to diff at all. This bounds only the
  * diff computation and the strings it holds — highlighting is proportional to
@@ -66,31 +74,47 @@ export function abortedDiffPreviewSkip(
   };
 }
 
-/**
- * Guard what we actually render, measured across the hunk lines: their total
- * content and the longest single line. Line prefixes (` `, `-`, `+`) are
- * excluded so the numbers describe source text.
- */
-export function getPatchPreviewSkip(
-  hunks: PatchHunk[],
-): GitDiffPreviewSkipped | null {
+export interface PatchPreviewMetrics {
+  totalChars: number;
+  totalLines: number;
+  maxLineChars: number;
+}
+
+/** Measure the source text represented by the rendered hunks. */
+export function measurePatchPreview(hunks: PatchHunk[]): PatchPreviewMetrics {
   let totalChars = 0;
+  let totalLines = 0;
   let maxLineChars = 0;
 
   for (const hunk of hunks) {
     for (const line of hunk.lines) {
       const chars = line.length > 0 ? line.length - 1 : 0;
       totalChars += chars;
+      totalLines += 1;
       if (chars > maxLineChars) maxLineChars = chars;
     }
   }
 
-  if (totalChars > GIT_DIFF_PREVIEW_MAX_DIFF_CHARS) {
+  return { totalChars, totalLines, maxLineChars };
+}
+
+/** Guard the plain browser projection by characters, lines, and line length. */
+export function getPatchPreviewSkip(
+  metrics: PatchPreviewMetrics,
+): GitDiffPreviewSkipped | null {
+  const { totalChars, totalLines, maxLineChars } = metrics;
+
+  if (
+    totalChars > GIT_DIFF_PREVIEW_MAX_DIFF_CHARS ||
+    totalLines > GIT_DIFF_PREVIEW_MAX_DIFF_LINES
+  ) {
     return {
       reason: "content-too-large",
-      totalBytes: totalChars,
+      totalChars,
+      totalLines,
       maxLineChars,
-      maxTotalBytes: GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+      maxTotalChars: GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+      maxTotalLines: GIT_DIFF_PREVIEW_MAX_DIFF_LINES,
       maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
     };
   }
@@ -98,9 +122,11 @@ export function getPatchPreviewSkip(
   if (maxLineChars > GIT_DIFF_PREVIEW_MAX_LINE_CHARS) {
     return {
       reason: "line-too-long",
-      totalBytes: totalChars,
+      totalChars,
+      totalLines,
       maxLineChars,
-      maxTotalBytes: GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+      maxTotalChars: GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+      maxTotalLines: GIT_DIFF_PREVIEW_MAX_DIFF_LINES,
       maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
     };
   }

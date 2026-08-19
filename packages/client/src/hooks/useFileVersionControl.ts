@@ -1,7 +1,10 @@
 import {
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   type GitFileChange,
+  type GitWorkingTreeChange,
+  type GitWorkingTreeFile,
   type GitFileProjectionManifest,
   serverHasCapability,
 } from "@yep-anywhere/shared";
@@ -19,6 +22,7 @@ import {
 } from "../lib/routeRetention";
 import { normalizePathSeparators } from "../lib/text";
 import { useGitStatus } from "./useGitStatus";
+import { useProjectWorktree } from "./useProjectWorktree";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
 import { useRetainedVersionInfo } from "./useVersion";
 
@@ -126,6 +130,29 @@ function findFile(
   );
 }
 
+function embeddedFileChange(
+  row: GitWorkingTreeFile | undefined,
+  path: string | null,
+  change: GitWorkingTreeChange | undefined,
+): GitFileChange | null {
+  if (!row || !path || !change) return null;
+  if (row.path !== path && change.origPath !== path) return null;
+  return { path: row.path, ...change };
+}
+
+function findLiveRow(
+  path: string | null,
+  files: readonly GitWorkingTreeFile[],
+): GitWorkingTreeFile | undefined {
+  if (!path) return undefined;
+  return files.find(
+    (file) =>
+      file.path === path ||
+      file.worktreeChanges?.some((change) => change.origPath === path) ||
+      file.cumulativeChange?.origPath === path,
+  );
+}
+
 function gitStatusKey(status: {
   recentCommits?: readonly { hash: string }[];
   files: readonly GitFileChange[];
@@ -163,43 +190,57 @@ export function useFileVersionControl(
     version,
     GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   );
-  const enabledProjectId = supportsStatus && supported ? projectId : undefined;
-  const {
-    gitStatus,
-    loading: statusLoading,
-    error: statusError,
-  } = useGitStatus(enabledProjectId, { poll: false });
+  const supportsLiveWorktree = serverHasCapability(
+    version,
+    GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+  );
   const relativePath = useMemo(
     () => projectRelativeGitPath(filePath),
     [filePath],
   );
+  const liveWorktree = useProjectWorktree(
+    projectId ?? "",
+    { tracked: true, untracked: true, ignored: false },
+    Boolean(projectId && relativePath && supported && supportsLiveWorktree),
+  );
+  const enabledLegacyProjectId =
+    supportsStatus && supported && !supportsLiveWorktree
+      ? projectId
+      : undefined;
+  const {
+    gitStatus,
+    loading: statusLoading,
+    error: statusError,
+  } = useGitStatus(enabledLegacyProjectId, { poll: false });
   const statusKey =
     gitStatus?.isGitRepo && relativePath ? gitStatusKey(gitStatus) : null;
   const projection = useFileProjectionManifest(
     sourceKey,
-    enabledProjectId,
+    enabledLegacyProjectId,
     statusKey,
   );
+  const liveRow = findLiveRow(relativePath, liveWorktree.files);
+  const liveWorktreeChange = liveRow?.worktreeChanges?.at(-1);
 
   return {
-    cumulativeFile: findFile(
-      relativePath,
-      projection.manifest?.cumulativeFiles ?? [],
-    ),
+    cumulativeFile: supportsLiveWorktree
+      ? embeddedFileChange(liveRow, relativePath, liveRow?.cumulativeChange)
+      : findFile(relativePath, projection.manifest?.cumulativeFiles ?? []),
     loading: Boolean(
       projectId &&
         relativePath &&
         (version === null ||
-          (enabledProjectId &&
-            (statusLoading ||
-              (!gitStatus && !statusError) ||
-              projection.loading))),
+          (supported && supportsLiveWorktree
+            ? liveWorktree.loading
+            : enabledLegacyProjectId &&
+              (statusLoading ||
+                (!gitStatus && !statusError) ||
+                projection.loading))),
     ),
     relativePath,
     supported,
-    worktreeFile: findFile(
-      relativePath,
-      projection.manifest?.worktreeFiles ?? [],
-    ),
+    worktreeFile: supportsLiveWorktree
+      ? embeddedFileChange(liveRow, relativePath, liveWorktreeChange)
+      : findFile(relativePath, projection.manifest?.worktreeFiles ?? []),
   };
 }

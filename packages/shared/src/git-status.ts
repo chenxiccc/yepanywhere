@@ -189,13 +189,72 @@ export interface GitFileListResult {
   truncated: boolean;
 }
 
-/** A file currently present in the working tree. */
+export type GitWorkingTreePathKind = "tracked" | "untracked" | "ignored";
+
+/** Git change facts embedded in one resident worktree path row. */
+export type GitWorkingTreeChange = Omit<GitFileChange, "path">;
+
+/** One path in the server-maintained worktree snapshot. */
 export interface GitWorkingTreeFile {
   /** Repo-relative path. */
   path: string;
-  /** False for untracked files; true for files known to the index. */
+  /** False for untracked or ignored files; true for files known to the index. */
   tracked: boolean;
+  /** Classification used by live worktree snapshots. Older servers omit it. */
+  kind?: GitWorkingTreePathKind;
+  /** False only for a tracked deletion retained as dirty truth. */
+  present?: boolean;
+  /** Staged and/or unstaged changes from HEAD to the live filesystem. */
+  worktreeChanges?: GitWorkingTreeChange[];
+  /** Net change from HEAD^1 to the live filesystem. */
+  cumulativeChange?: GitWorkingTreeChange;
 }
+
+export interface GitWorktreeCoverage {
+  tracked: boolean;
+  untracked: boolean;
+  ignored: boolean;
+}
+
+export interface GitWorktreeGeneration {
+  epoch: string;
+  sequence: number;
+}
+
+export interface GitWorktreeSnapshotEvent {
+  type: "git-worktree-snapshot";
+  generation: GitWorktreeGeneration;
+  coverage: GitWorktreeCoverage;
+  /** Resolved HEAD used by worktree projection facts. */
+  headSha: string | null;
+  /** Resolved HEAD^1 used by cumulative projection facts. */
+  baseSha: string | null;
+  files: GitWorkingTreeFile[];
+  truncated: boolean;
+  timestamp: string;
+}
+
+export type GitWorktreePathChangeType = "create" | "modify" | "delete";
+
+export interface GitWorktreePathChange {
+  changeType: GitWorktreePathChangeType;
+  path: string;
+  file?: GitWorkingTreeFile;
+}
+
+export interface GitWorktreeDeltaEvent {
+  type: "git-worktree-delta";
+  generation: GitWorktreeGeneration;
+  /** Current resolved projection endpoints after applying this delta. */
+  headSha: string | null;
+  baseSha: string | null;
+  changes: GitWorktreePathChange[];
+  timestamp: string;
+}
+
+export type GitWorktreeSubscriptionEvent =
+  | GitWorktreeSnapshotEvent
+  | GitWorktreeDeltaEvent;
 
 /** Bounded current-content inventory for the Working Tree browser. */
 export interface GitWorkingTreeFileListResult {
@@ -263,14 +322,22 @@ export type GitDiffPreviewSkippedReason =
 export interface GitDiffPreviewSkipped {
   /** Why the preview was omitted or downgraded. */
   reason: GitDiffPreviewSkippedReason;
-  /** Size of the content the guard measured — the diff, or the source it refused to diff. */
+  /** Source bytes measured before diffing, when that boundary rejected input. */
   totalBytes?: number;
+  /** Source characters represented by the rendered hunks. */
+  totalChars?: number;
+  /** Lines represented by the rendered hunks. */
+  totalLines?: number;
   /** Longest measured line in JavaScript string characters, when known. */
   maxLineChars?: number;
-  /** Highlighted HTML size in JavaScript string characters, for client guards. */
+  /** Highlighted HTML size in JavaScript string characters, for legacy clients. */
   htmlChars?: number;
   /** Source content byte budget that triggered this guard. */
   maxTotalBytes?: number;
+  /** Hunk-content character budget that triggered this guard. */
+  maxTotalChars?: number;
+  /** Hunk-line budget that triggered this guard. */
+  maxTotalLines?: number;
   /** Per-line character budget that triggered this guard. */
   maxLineCharsLimit?: number;
   /** Highlighted HTML character budget that triggered this guard. */
@@ -278,9 +345,11 @@ export interface GitDiffPreviewSkipped {
 }
 
 export interface GitDiffResult {
-  /** Syntax-highlighted diff HTML, omitted when previewSkipped is present. */
+  /** Syntax-highlighted diff HTML, omitted for a plain or skipped preview. */
   diffHtml: string;
-  /** Structured diff hunks for normal small previews. */
+  /** Large accepted diffs use one low-node-count plain-text projection. */
+  renderMode?: "plain";
+  /** Structured diff hunks for accepted previews. */
   structuredPatch: PatchHunk[];
   /** Rendered markdown preview HTML for small markdown files. */
   markdownHtml?: string;

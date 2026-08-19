@@ -1,5 +1,6 @@
 import type {
   DeviceServerMessage,
+  GitWorktreeCoverage,
   RemoteClientMessage,
   StagedAttachmentRef,
   UploadedFile,
@@ -289,6 +290,16 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
   subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
     return this.subscribeNow(handlers, (connection, wrappedHandlers) =>
       connection.subscribeGlossary(projectId, wrappedHandlers),
+    );
+  }
+
+  subscribeWorktree(
+    projectId: string,
+    coverage: GitWorktreeCoverage,
+    handlers: StreamHandlers,
+  ): Subscription {
+    return this.subscribeNow(handlers, (connection, wrappedHandlers) =>
+      connection.subscribeWorktree(projectId, coverage, wrappedHandlers),
     );
   }
 

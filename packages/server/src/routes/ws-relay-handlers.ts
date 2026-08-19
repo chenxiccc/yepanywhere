@@ -14,6 +14,7 @@ import type { HttpBindings } from "@hono/node-server";
 import type {
   BinaryFormatValue,
   CapabilityBitset,
+  GitWorktreeCoverage,
   OriginMetadata,
   RelayRequest,
   RelayUploadError,
@@ -53,6 +54,7 @@ import { getLogger } from "../logging/logger.js";
 import { AUTHENTICATED_SRP_TRANSPORT } from "../middleware/authenticated-transport.js";
 import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type { ProjectGlossarySubscriptionManager } from "../projects/projectGlossarySubscriptionManager.js";
+import type { ProjectWorktreeSubscriptionManager } from "../projects/projectWorktreeSubscriptionManager.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -356,6 +358,8 @@ export interface RelayHandlerDeps {
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Project glossary path subscriptions and their reference-counted watchers. */
   projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager;
+  /** Project worktree snapshots and their reference-counted watchers. */
+  projectWorktreeSubscriptionManager?: ProjectWorktreeSubscriptionManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
   /** Speech backend registry for relayed streaming STT (optional) */
@@ -1353,6 +1357,148 @@ export function handleGlossarySubscribe(
   }
 }
 
+function parseWorktreeCoverage(value: unknown): GitWorktreeCoverage | null {
+  if (!value || typeof value !== "object") return null;
+  const coverage = value as Partial<GitWorktreeCoverage>;
+  return typeof coverage.tracked === "boolean" &&
+    typeof coverage.untracked === "boolean" &&
+    typeof coverage.ignored === "boolean"
+    ? {
+        tracked: coverage.tracked,
+        untracked: coverage.untracked,
+        ignored: coverage.ignored,
+      }
+    : null;
+}
+
+/** Subscribe to one maintained worktree snapshot and its revisioned deltas. */
+export function handleWorktreeSubscribe(
+  subscriptions: Map<string, () => void>,
+  msg: RelaySubscribe,
+  send: SendFn,
+  manager?: ProjectWorktreeSubscriptionManager,
+): void {
+  const { subscriptionId, projectId } = msg;
+  const coverage = parseWorktreeCoverage(msg.coverage);
+  if (!manager) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 503,
+      body: { error: "Worktree subscription service unavailable" },
+    });
+    return;
+  }
+  if (!projectId || !isUrlProjectId(projectId)) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 400,
+      body: { error: "Valid projectId required for worktree channel" },
+    });
+    return;
+  }
+  if (!coverage) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 400,
+      body: { error: "Valid coverage required for worktree channel" },
+    });
+    return;
+  }
+
+  let eventId = 0;
+  let opened = false;
+  let cancelled = false;
+  let heartbeatInterval: NodeJS.Timeout | null = null;
+  let release: (() => void) | null = null;
+  const buffered: Array<{ eventType: string; data: unknown }> = [];
+  const sendEvent = (eventType: string, data: unknown) => {
+    if (!opened) {
+      buffered.push({ eventType, data });
+      return;
+    }
+    send({
+      type: "event",
+      subscriptionId,
+      eventType,
+      eventId: String(eventId++),
+      data,
+    });
+  };
+
+  const cleanup = () => {
+    cancelled = true;
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+    release?.();
+    release = null;
+  };
+  subscriptions.set(subscriptionId, cleanup);
+
+  const fail = (error: unknown) => {
+    const ownsSubscription = subscriptions.get(subscriptionId) === cleanup;
+    if (ownsSubscription) subscriptions.delete(subscriptionId);
+    const shouldReport = !cancelled && ownsSubscription;
+    cleanup();
+    if (!shouldReport) return;
+    try {
+      send({
+        type: "response",
+        id: subscriptionId,
+        status:
+          error instanceof Error && error.message === "Project not found"
+            ? 404
+            : 500,
+        body: {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Worktree subscription failed",
+        },
+      });
+    } catch (sendError) {
+      getLogger().warn(
+        { error: sendError, subscriptionId },
+        "[WS Relay] Failed to send worktree subscription error",
+      );
+    }
+  };
+  const open = () => {
+    if (cancelled || subscriptions.get(subscriptionId) !== cleanup) {
+      cleanup();
+      return;
+    }
+
+    opened = true;
+    send({
+      type: "event",
+      subscriptionId,
+      eventType: "connected",
+      eventId: String(eventId++),
+      data: { timestamp: new Date().toISOString() },
+    });
+    for (const event of buffered) sendEvent(event.eventType, event.data);
+    heartbeatInterval = setInterval(() => {
+      sendEvent("heartbeat", { timestamp: new Date().toISOString() });
+    }, 30_000);
+    getLogger().debug(
+      `[WS Relay] Subscribed to worktree project=${projectId} (${subscriptionId})`,
+    );
+  };
+
+  try {
+    const subscription = manager.subscribe(projectId, coverage, (event) => {
+      sendEvent(event.type, event);
+    });
+    release = subscription.release;
+    void subscription.ready.then(open).catch(fail);
+  } catch (error) {
+    fail(error);
+  }
+}
+
 /**
  * Handle a subscribe message.
  */
@@ -1366,6 +1512,7 @@ export function handleSubscribe(
   connState: ConnectionState,
   focusedSessionWatchManager?: FocusedSessionWatchManager,
   projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager,
+  projectWorktreeSubscriptionManager?: ProjectWorktreeSubscriptionManager,
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
   closeConnection?: () => void,
@@ -1425,6 +1572,15 @@ export function handleSubscribe(
         msg,
         send,
         projectGlossarySubscriptionManager,
+      );
+      break;
+
+    case "worktree":
+      handleWorktreeSubscribe(
+        subscriptions,
+        msg,
+        send,
+        projectWorktreeSubscriptionManager,
       );
       break;
 
@@ -1990,6 +2146,7 @@ export async function handleMessage(
           connState,
           deps.focusedSessionWatchManager,
           deps.projectGlossarySubscriptionManager,
+          deps.projectWorktreeSubscriptionManager,
           deps.connectedBrowsers,
           deps.browserProfileService,
           () => ws.close(4004, "Legacy browser profile revoked"),

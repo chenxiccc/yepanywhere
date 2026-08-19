@@ -115,6 +115,17 @@ function installScrollIntoViewMock() {
   };
 }
 
+function sourcePath(path: string): Element | undefined {
+  return Array.from(document.querySelectorAll("[data-source-path]")).find(
+    (element) => element.getAttribute("data-source-path") === path,
+  );
+}
+
+async function findSourcePath(path: string): Promise<Element> {
+  await waitFor(() => expect(sourcePath(path)).toBeDefined());
+  return sourcePath(path)!;
+}
+
 function primeApis() {
   const firstCommit = {
     hash: SHA,
@@ -233,7 +244,7 @@ describe("CommitBrowser", () => {
 
     await screen.findByText("first commit");
     // Wide screen auto-selects the newest commit → its files load.
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     // …and auto-selects the first file → the commit diff is fetched.
     await waitFor(() =>
       expect(getGitCommitDiff).toHaveBeenCalledWith(
@@ -345,12 +356,12 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     fireEvent.click(
       screen.getByRole("button", { name: "sourceCompareToHead" }),
     );
 
-    expect(await screen.findByText("src/cumulative.ts")).toBeDefined();
+    expect(await findSourcePath("src/cumulative.ts")).toBeDefined();
     expect(getGitInclusiveComparison).toHaveBeenCalledWith("p1", SHA);
     await waitFor(() =>
       expect(getGitInclusiveComparisonDiff).toHaveBeenCalledWith(
@@ -384,7 +395,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     const filePath = document.querySelector('[data-source-path="src/x.ts"]');
     const fileButton = filePath?.closest("button");
     expect(fileButton).not.toBeNull();
@@ -420,7 +431,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     expect(
       screen.queryByRole("button", { name: "sourceCompareToHead" }),
     ).toBeNull();
@@ -447,13 +458,13 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     fireEvent.click(
       screen.getByRole("button", { name: "sourceCompareToHead" }),
     );
 
     await waitFor(() => expect(onProjectionUnavailable).toHaveBeenCalled());
-    expect(screen.getAllByText("src/x.ts").length).toBeGreaterThan(0);
+    expect(sourcePath("src/x.ts")).toBeDefined();
     expect(
       screen
         .getByRole("button", { name: "sourceCompareToHead" })
@@ -478,7 +489,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     await waitFor(() => expect(getGitCommitDiff).toHaveBeenCalled());
     getGitCommitDiff.mockClear();
     const filePath = document.querySelector('[data-source-path="src/x.ts"]');
@@ -512,7 +523,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     await waitFor(() =>
       expect(getGitCommitDiff).toHaveBeenCalledWith(
         "p1",
@@ -559,7 +570,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("test/drop.test.ts");
+    await findSourcePath("test/drop.test.ts");
     await waitFor(() =>
       expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
     );
@@ -912,7 +923,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
     await screen.findByText("first commit");
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
 
     const handles = screen.getAllByRole("separator", {
       name: "sourceResizeRevisionPane",
@@ -1082,7 +1093,7 @@ describe("CommitBrowser", () => {
 
       fireEvent.click(await screen.findByText("middle commit"));
 
-      expect(await screen.findByText("src/middle.ts")).toBeDefined();
+      expect(await findSourcePath("src/middle.ts")).toBeDefined();
       expect(screen.queryByText("newest commit")).toBeNull();
       expect(screen.queryByText("oldest commit")).toBeNull();
       expect(
@@ -1098,7 +1109,7 @@ describe("CommitBrowser", () => {
       });
 
       expect(await screen.findByText("middle commit")).toBeDefined();
-      expect(screen.queryByText("src/middle.ts")).toBeNull();
+      expect(sourcePath("src/middle.ts")).toBeUndefined();
     } finally {
       historyBack.mockRestore();
       window.history.replaceState(null, "");
@@ -1390,7 +1401,7 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/x.ts");
+    await findSourcePath("src/x.ts");
     // The blame action now lives in the selected-file banner (diff header),
     // which renders once the file auto-selects.
     await waitFor(() =>

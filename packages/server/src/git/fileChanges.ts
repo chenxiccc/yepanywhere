@@ -35,12 +35,18 @@ export function buildGitFileChanges(
 export async function readGitDiffFileChanges(
   cwd: string,
   revisions: readonly string[],
-  options?: { maxBuffer?: number },
+  options?: { maxBuffer?: number; paths?: readonly string[] },
 ): Promise<GitFileChange[]> {
   const args = [...GIT_DECODE_PATHS_ARGS, "diff", "--no-ext-diff", "-M"];
+  const pathspecs = options?.paths?.map((path) => `:(literal)${path}`) ?? [];
+  const runOptions = options?.maxBuffer
+    ? { maxBuffer: options.maxBuffer }
+    : undefined;
+  const scopedArgs =
+    pathspecs.length > 0 ? [...revisions, "--", ...pathspecs] : revisions;
   const [nameStatus, numstat] = await Promise.all([
-    runGit(cwd, [...args, "--name-status", "-z", ...revisions], options),
-    runGit(cwd, [...args, "--numstat", "-z", ...revisions], options),
+    runGit(cwd, [...args, "--name-status", "-z", ...scopedArgs], runOptions),
+    runGit(cwd, [...args, "--numstat", "-z", ...scopedArgs], runOptions),
   ]);
   return buildGitFileChanges(nameStatus.stdout, numstat.stdout);
 }

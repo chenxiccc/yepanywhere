@@ -97,3 +97,24 @@
 .sectionDivider::before {
   flex: 0 0 12px;
 }
+
+.sectionDividerButton {
+  width: calc(100% - 16px);
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.sectionDividerButton:hover,
+.sectionDividerButton:focus-visible {
+  color: var(--text-primary);
+}
+
+.sectionDisclosure {
+  width: 10px;
+  flex: 0 0 10px;
+  font-size: 0.78rem;
+  text-align: center;
+}

@@ -6,7 +6,10 @@ import type {
 } from "@yep-anywhere/shared";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
-import { resetRouteRetentionForTests } from "../../lib/routeRetention";
+import {
+  clearRouteRetention,
+  resetRouteRetentionForTests,
+} from "../../lib/routeRetention";
 import { useGitStatus } from "../useGitStatus";
 
 interface Deferred<T> {
@@ -158,22 +161,13 @@ describe("useGitStatus", () => {
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
   });
 
-  it("revalidates a stale retained status in the background", async () => {
+  it("does not requery a retained status merely because five seconds passed", async () => {
     const firstStatus = gitStatus([
       {
         path: "a.ts",
         status: "M",
         staged: false,
         linesAdded: 1,
-        linesDeleted: 0,
-      },
-    ]);
-    const updatedStatus = gitStatus([
-      {
-        path: "b.ts",
-        status: "A",
-        staged: true,
-        linesAdded: 3,
         linesDeleted: 0,
       },
     ]);
@@ -185,22 +179,91 @@ describe("useGitStatus", () => {
     first.unmount();
 
     vi.setSystemTime(6000);
-    const revalidation = deferred<GitStatusInfo>();
-    mocks.getGitStatus.mockReturnValueOnce(revalidation.promise);
-
     const second = renderHook(() => useGitStatus("project-a"));
+    await settle();
+
     expect(second.result.current.gitStatus).toEqual(firstStatus);
     expect(second.result.current.loading).toBe(false);
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+  });
 
+  it("refetches when query metadata is fresh but the retained payload is absent", async () => {
+    const firstStatus = gitStatus([
+      {
+        path: "a.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    const recoveredStatus = gitStatus([
+      {
+        path: "b.ts",
+        status: "A",
+        staged: true,
+        linesAdded: 3,
+        linesDeleted: 0,
+      },
+    ]);
+    mocks.getGitStatus
+      .mockResolvedValueOnce(firstStatus)
+      .mockResolvedValueOnce(recoveredStatus);
+
+    const first = renderHook(() => useGitStatus("project-a"));
     await settle();
+    first.unmount();
+    resetRouteRetentionForTests();
+
+    const second = renderHook(() => useGitStatus("project-a"));
+    expect(second.result.current.loading).toBe(true);
+    await settle();
+
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+    expect(second.result.current.gitStatus).toEqual(recoveredStatus);
     expect(second.result.current.loading).toBe(false);
+  });
 
-    revalidation.resolve(updatedStatus);
+  it("recovers when a mounted status payload is evicted", async () => {
+    const firstStatus = gitStatus([
+      {
+        path: "a.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    const recoveredStatus = gitStatus([
+      {
+        path: "b.ts",
+        status: "A",
+        staged: true,
+        linesAdded: 3,
+        linesDeleted: 0,
+      },
+    ]);
+    const recovery = deferred<GitStatusInfo>();
+    mocks.getGitStatus
+      .mockResolvedValueOnce(firstStatus)
+      .mockReturnValueOnce(recovery.promise);
+
+    const rendered = renderHook(() => useGitStatus("project-a"));
     await settle();
+    expect(rendered.result.current.gitStatus).toEqual(firstStatus);
 
-    expect(second.result.current.gitStatus).toEqual(updatedStatus);
-    expect(second.result.current.loading).toBe(false);
+    act(() => clearRouteRetention());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+    expect(rendered.result.current.gitStatus).toBeNull();
+    expect(rendered.result.current.loading).toBe(true);
+
+    recovery.resolve(recoveredStatus);
+    await settle();
+    expect(rendered.result.current.gitStatus).toEqual(recoveredStatus);
+    expect(rendered.result.current.loading).toBe(false);
   });
 
   it("can retain status without installing a polling interval", async () => {
@@ -375,6 +438,31 @@ describe("useGitStatus", () => {
         linesDeleted: null,
       },
     ]);
+  });
+
+  it("omits untracked rows without launching the legacy inventory request", async () => {
+    const tracked = gitStatus([
+      {
+        path: "src/tracked.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    mocks.getGitStatus.mockResolvedValue(tracked);
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", { omitUntracked: true, poll: false }),
+    );
+    await settle();
+
+    expect(mocks.getGitStatus).toHaveBeenCalledWith("project-a", {
+      omitUntracked: true,
+    });
+    expect(mocks.listGitUntrackedFiles).not.toHaveBeenCalled();
+    expect(rendered.result.current.loading).toBe(false);
+    expect(rendered.result.current.gitStatus?.files).toEqual(tracked.files);
   });
 
   it("shares an in-flight untracked cache request across polling ticks", async () => {

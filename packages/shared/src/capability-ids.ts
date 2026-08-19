@@ -264,6 +264,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "git-inclusive-to-head",
     introducedIn: "0.7.1",
   },
+  gitWorkingTreeSections: {
+    id: 41,
+    direction: "server",
+    name: "git-working-tree-sections",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

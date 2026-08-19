@@ -20,17 +20,24 @@ import type {
   GitUntrackedFileListResult,
   GitUntrackedFolderInfo,
   GitWorkingTreeFileListResult,
+  GitWorktreeCoverage,
 } from "@yep-anywhere/shared";
 import { fetchJSON } from "./sourceApiFetch";
 
 export const gitApi = {
   getGitStatus: (
     projectId: string,
-    options: { useUntrackedCache?: boolean } = {},
-  ) =>
-    fetchJSON<GitStatusInfo>(
-      `/projects/${projectId}/git${options.useUntrackedCache ? "?untracked=cache" : ""}`,
-    ),
+    options: { omitUntracked?: boolean; useUntrackedCache?: boolean } = {},
+  ) => {
+    const untrackedMode = options.useUntrackedCache
+      ? "cache"
+      : options.omitUntracked
+        ? "none"
+        : null;
+    return fetchJSON<GitStatusInfo>(
+      `/projects/${projectId}/git${untrackedMode ? `?untracked=${untrackedMode}` : ""}`,
+    );
+  },
 
   getGitUntrackedFolder: (projectId: string, path: string) =>
     fetchJSON<GitUntrackedFolderInfo>(
@@ -196,6 +203,7 @@ export const gitApi = {
     params: {
       path: string;
       mode: GitFileDiffMode;
+      origPath?: string;
       fullContext?: boolean;
     },
   ) =>
@@ -228,10 +236,21 @@ export const gitApi = {
     );
   },
 
-  listGitWorkingTreeFiles: (projectId: string) =>
-    fetchJSON<GitWorkingTreeFileListResult>(
-      `/projects/${projectId}/git/working-tree-files`,
-    ),
+  listGitWorkingTreeFiles: (
+    projectId: string,
+    coverage?: GitWorktreeCoverage,
+  ) => {
+    const query = new URLSearchParams();
+    if (coverage) {
+      query.set("tracked", String(coverage.tracked));
+      query.set("untracked", String(coverage.untracked));
+      query.set("ignored", String(coverage.ignored));
+    }
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return fetchJSON<GitWorkingTreeFileListResult>(
+      `/projects/${projectId}/git/working-tree-files${suffix}`,
+    );
+  },
 
   searchGit: (
     projectId: string,

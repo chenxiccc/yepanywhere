@@ -8,13 +8,21 @@ import {
 import type {
   GitFileProjectionManifest,
   GitStatusInfo,
+  GitWorkingTreeFile,
 } from "@yep-anywhere/shared";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileVersionControlLinks } from "../../components/FileDiffViewLinks";
 import { I18nProvider } from "../../i18n";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
-import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
+import {
+  asClientSummarySourceKey,
+  resetClientSummaryStoreForTests,
+} from "../../lib/clientSummaryStore";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
+import type { YaSourceRuntime } from "../../lib/sourceRuntime";
+import { SourceRuntimeProvider } from "../../lib/sourceRuntimeReact";
+import { FakeSourceTransport } from "../../lib/transport";
 import { useFileVersionControl } from "../useFileVersionControl";
 import { resetVersionSnapshotsForTests, useVersion } from "../useVersion";
 
@@ -101,6 +109,30 @@ function VersionLinksFixture({ count }: { count: number }) {
   );
 }
 
+function createRuntime(transport: FakeSourceTransport): YaSourceRuntime {
+  return {
+    sourceKey: asClientSummarySourceKey("test:file-version-control"),
+    transport,
+    api: {} as YaSourceRuntime["api"],
+    summary: {} as YaSourceRuntime["summary"],
+    sessionDetails: {} as YaSourceRuntime["sessionDetails"],
+  };
+}
+
+function createWrapper(runtime: YaSourceRuntime) {
+  return function TestSourceRuntimeProvider({
+    children,
+  }: {
+    children: ReactNode;
+  }) {
+    return (
+      <SourceRuntimeProvider runtime={runtime}>
+        {children}
+      </SourceRuntimeProvider>
+    );
+  };
+}
+
 async function settle() {
   await act(async () => {
     await Promise.resolve();
@@ -138,6 +170,83 @@ afterEach(() => {
 });
 
 describe("useFileVersionControl", () => {
+  it("uses one live worktree subscription without status or manifest requests", async () => {
+    mocks.getVersion.mockResolvedValue({
+      current: "0.7.2",
+      latest: null,
+      updateAvailable: false,
+    });
+    const transport = new FakeSourceTransport();
+    const hook = renderHook(
+      () => [useSubject("src/worktree.ts"), useSubject("src/other.ts")],
+      { wrapper: createWrapper(createRuntime(transport)) },
+    );
+    await settle();
+
+    const subscriptions = transport.getSubscriptions("worktree");
+    expect(subscriptions).toHaveLength(1);
+    expect(subscriptions[0]).toMatchObject({
+      projectId: "project-a",
+      coverage: { tracked: true, untracked: true, ignored: false },
+    });
+    const worktreeRow: GitWorkingTreeFile = {
+      path: "src/worktree.ts",
+      tracked: true,
+      kind: "tracked",
+      worktreeChanges: [STATUS.files[0]!],
+      cumulativeChange: {
+        status: "M",
+        staged: false,
+        linesAdded: 3,
+        linesDeleted: 1,
+      },
+    };
+    const files: GitWorkingTreeFile[] = [
+      worktreeRow,
+      { path: "src/other.ts", tracked: true, kind: "tracked" },
+      ...Array.from({ length: 10_000 }, (_, index) => ({
+        path: `scratch/generated-${index}.txt`,
+        tracked: false,
+        kind: "untracked" as const,
+      })),
+    ];
+    const subscription = subscriptions[0];
+    if (!subscription) throw new Error("Expected worktree subscription");
+    act(() => {
+      transport.emitSubscriptionEvent(
+        subscription.id,
+        "git-worktree-snapshot",
+        {
+          type: "git-worktree-snapshot",
+          generation: { epoch: "epoch-a", sequence: 0 },
+          coverage: subscription.coverage,
+          headSha: "head-sha",
+          baseSha: "parent-sha",
+          files,
+          truncated: false,
+          timestamp: "2026-08-19T00:00:00.000Z",
+        },
+      );
+    });
+
+    expect(hook.result.current[0]).toMatchObject({
+      supported: true,
+      loading: false,
+      relativePath: "src/worktree.ts",
+      worktreeFile: { path: "src/worktree.ts", linesAdded: 1 },
+      cumulativeFile: { path: "src/worktree.ts", linesAdded: 3 },
+    });
+    expect(hook.result.current[1]).toMatchObject({
+      supported: true,
+      loading: false,
+      relativePath: "src/other.ts",
+      worktreeFile: null,
+      cumulativeFile: null,
+    });
+    expect(mocks.getGitStatus).not.toHaveBeenCalled();
+    expect(mocks.getGitFileProjections).not.toHaveBeenCalled();
+  });
+
   it("exposes only the exact projections containing the path", async () => {
     const worktree = renderHook(() => useSubject("src/worktree.ts"));
     const cumulative = renderHook(() => useSubject("src/committed.ts"));

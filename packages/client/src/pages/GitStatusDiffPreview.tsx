@@ -36,6 +36,7 @@ import { DiffCommentController } from "./DiffCommentLayer";
 import { SideBySideDiff } from "./SideBySideDiff";
 import { CHANGED_DIFF_LINE_SELECTOR, UnifiedDiff } from "./UnifiedDiff";
 import type { MessageKey, TranslationFn } from "../i18n";
+import styles from "./GitStatusDiffPreview.module.css";
 
 const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
 
@@ -200,6 +201,7 @@ function fetchDiffForSource(
     return api.getGitFileProjectionDiff(projectId, {
       path: file.path,
       mode: source.mode,
+      ...(file.origPath ? { origPath: file.origPath } : {}),
       fullContext,
     });
   }
@@ -979,7 +981,10 @@ function GitDiffContent({
   const displayResult =
     showFullContext && fullContextResult ? fullContextResult : diffResult;
 
-  const oversizedHtmlSkip = getOversizedDiffHtmlSkip(displayResult.diffHtml);
+  const plainDiff =
+    displayResult.renderMode === "plain" ||
+    displayResult.diffHtml.length > GIT_DIFF_MAX_RENDERED_HTML_CHARS;
+  const diffHtml = plainDiff ? "" : displayResult.diffHtml;
   const binaryPatchSkip = useMemo(
     () =>
       displayResult.previewSkipped
@@ -987,8 +992,7 @@ function GitDiffContent({
         : getBinaryPatchSkip(displayResult.structuredPatch),
     [displayResult.previewSkipped, displayResult.structuredPatch],
   );
-  const previewSkipped =
-    displayResult.previewSkipped ?? binaryPatchSkip ?? oversizedHtmlSkip;
+  const previewSkipped = displayResult.previewSkipped ?? binaryPatchSkip;
   const [hunkPosition, setHunkPosition] = useState({ index: 0, count: 0 });
   const hunkPositionRef = useRef(hunkPosition);
 
@@ -1209,7 +1213,7 @@ function GitDiffContent({
         }
         icon="content"
       />
-      {!showingMarkdownPreview && (
+      {!showingMarkdownPreview && !plainDiff && (
         <button
           type="button"
           className="diff-context-toggle diff-toolbar-icon-button"
@@ -1237,18 +1241,19 @@ function GitDiffContent({
           ? t("gitStatusWhitespaceChangesHidden")
           : t("gitStatusNoContentChanges")}
       </div>
-    ) : displayResult.diffHtml &&
+    ) : diffHtml &&
       resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
       <SideBySideDiff
-        diffHtml={displayResult.diffHtml}
+        diffHtml={diffHtml}
         structuredPatch={displayResult.structuredPatch}
         splitAfterLine={splitAfterLine}
         editor={editor}
       />
-    ) : displayResult.diffHtml ? (
+    ) : diffHtml ? (
       <UnifiedDiff
-        diffHtml={displayResult.diffHtml}
+        diffHtml={diffHtml}
         structuredPatch={displayResult.structuredPatch}
+        plain={plainDiff}
         splitAfterLine={splitAfterLine}
         editor={editor}
       />
@@ -1256,6 +1261,7 @@ function GitDiffContent({
       <UnifiedDiff
         diffHtml=""
         structuredPatch={displayResult.structuredPatch}
+        plain={plainDiff}
         splitAfterLine={splitAfterLine}
         editor={editor}
       />
@@ -1282,6 +1288,11 @@ function GitDiffContent({
         className="diff-modal-content source-diff-pane diff-gutter-aligned"
         ref={mountContent}
       >
+        {plainDiff && !previewSkipped && !showingMarkdownPreview && (
+          <div className={styles.plainNotice}>
+            {t("gitStatusDiffPlainMode")}
+          </div>
+        )}
         {showingMarkdownPreview && renderedPreviewHtml ? (
           <MarkdownPreview html={renderedPreviewHtml} sourcePath={file.path} />
         ) : previewSkipped ? (
@@ -1478,6 +1489,18 @@ function GitDiffPreviewSkippedState({
             <dd>{formatBytes(previewSkipped.totalBytes)}</dd>
           </div>
         )}
+        {previewSkipped.totalChars !== undefined && (
+          <div>
+            <dt>{t("gitStatusDiffPreviewSkippedCharacters")}</dt>
+            <dd>{previewSkipped.totalChars.toLocaleString()}</dd>
+          </div>
+        )}
+        {previewSkipped.totalLines !== undefined && (
+          <div>
+            <dt>{t("gitStatusDiffPreviewSkippedLines")}</dt>
+            <dd>{previewSkipped.totalLines.toLocaleString()}</dd>
+          </div>
+        )}
         {previewSkipped.maxLineChars !== undefined && (
           <div>
             <dt>{t("gitStatusDiffPreviewSkippedLineLength")}</dt>
@@ -1493,20 +1516,6 @@ function GitDiffPreviewSkippedState({
       </dl>
     </div>
   );
-}
-
-function getOversizedDiffHtmlSkip(
-  diffHtml: string,
-): GitDiffPreviewSkipped | null {
-  if (diffHtml.length <= GIT_DIFF_MAX_RENDERED_HTML_CHARS) {
-    return null;
-  }
-
-  return {
-    reason: "html-too-large",
-    htmlChars: diffHtml.length,
-    maxHtmlChars: GIT_DIFF_MAX_RENDERED_HTML_CHARS,
-  };
 }
 
 function getBinaryPatchSkip(
@@ -1559,7 +1568,6 @@ function getDiffPreviewSkippedMessage(
     case "html-too-large":
       return t("gitStatusDiffPreviewSkippedHtmlTooLarge");
   }
-  return t("gitStatusDiffPreviewSkippedContentTooLarge");
 }
 
 function formatBytes(bytes: number): string {

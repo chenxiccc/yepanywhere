@@ -9,6 +9,7 @@ import {
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
+  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PROVIDER_HOST_CONTROL_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
@@ -244,6 +245,18 @@ describe("server capability advertisements", () => {
     expect(advertisement).toEqual({
       capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
       capabilityBits: [[1, 2 ** 8]],
+    });
+  });
+
+  it("assigns Working Tree sections to permanent capability ID 41", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeSections.id).toBe(41);
+    const advertisement = encodeVersionedServerCapabilities(
+      [GIT_WORKING_TREE_SECTIONS_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 2 ** 9]],
     });
   });
 

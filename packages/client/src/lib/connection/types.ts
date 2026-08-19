@@ -1,5 +1,6 @@
 import type {
   DeviceServerMessage,
+  GitWorktreeCoverage,
   RemoteClientMessage,
   StagedAttachmentRef,
   UploadedFile,
@@ -263,6 +264,13 @@ export interface Connection {
 
   /** Subscribe to one project's glossary path snapshot and later changes. */
   subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription;
+
+  /** Subscribe to one project's worktree snapshot and revisioned deltas. */
+  subscribeWorktree(
+    projectId: string,
+    coverage: GitWorktreeCoverage,
+    handlers: StreamHandlers,
+  ): Subscription;
 
   /**
    * Subscribe to focused file-change events for a specific session file.

@@ -1,8 +1,10 @@
 import type {
+  GitFileChange,
   GitIntegrationOptionReason,
   GitIntegrationOptionsResult,
   GitStatusInfo,
   GitUntrackedFileListResult,
+  GitWorkingTreeFile,
 } from "@yep-anywhere/shared";
 import {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
@@ -17,6 +19,7 @@ import {
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
+  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
@@ -36,31 +39,26 @@ import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
 import { SourceReviewDefaultSessionContext } from "../contexts/SourceReviewDefaultSessionContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
-  type GitActionState,
   formatRemoteCheckTime,
+  type GitActionState,
   useGitActions,
 } from "../hooks/useGitActions";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import { useProject, useProjects } from "../hooks/useProjects";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
-import { useRelativeNow } from "../hooks/useRelativeNow";
-import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
-import { useServerSettings } from "../hooks/useServerSettings";
-import { useSourceControlCleanLanding } from "../hooks/useSourceControlCleanLanding";
-import { BlameBrowser } from "./BlameBrowser";
-import { CommitBrowser } from "./CommitBrowser";
-import { RepoStatusBar } from "./RepoStatusBar";
-import { ReviewCommentsPanel } from "./ReviewCommentsPanel";
-import { ReviewSubmissionsPanel } from "./ReviewSubmissionsPanel";
-import styles from "./GitStatusPage.module.css";
-import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
-import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
-import { ReviewSubmitModal } from "./ReviewSubmitModal";
+import { useProject, useProjects } from "../hooks/useProjects";
+import {
+  ProjectWorktreePauseContext,
+  useProjectWorktree,
+} from "../hooks/useProjectWorktree";
 import {
   resolvePreferredProjectId,
   setRecentProjectId,
 } from "../hooks/useRecentProject";
+import { useRelativeNow } from "../hooks/useRelativeNow";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useServerSettings } from "../hooks/useServerSettings";
+import { useSourceControlCleanLanding } from "../hooks/useSourceControlCleanLanding";
 import { useVersion } from "../hooks/useVersion";
 import { type TranslationFn, useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
@@ -71,11 +69,20 @@ import {
 } from "../lib/clientSummaryStore";
 import {
   patchRouteRetention,
+  type RouteRetentionKeyInput,
   readRouteRetention,
   subscribeRouteRetention,
-  type RouteRetentionKeyInput,
 } from "../lib/routeRetention";
 import { parseSourceControlNavigationState } from "../lib/sourceControlNavigationState";
+import { BlameBrowser } from "./BlameBrowser";
+import { CommitBrowser } from "./CommitBrowser";
+import styles from "./GitStatusPage.module.css";
+import { RepoStatusBar } from "./RepoStatusBar";
+import { ReviewCommentsPanel } from "./ReviewCommentsPanel";
+import { ReviewSubmissionsPanel } from "./ReviewSubmissionsPanel";
+import { ReviewSubmitModal } from "./ReviewSubmitModal";
+import { SourceModeTabs, type SourceTab } from "./SourceModeTabs";
+import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
 
 interface SourceControlRouteState {
   pageScrollTop?: number;
@@ -100,6 +107,20 @@ const SOURCE_SELECTION_PARAMS = [
   "bf",
   "submission",
 ] as const;
+
+function mergeLiveWorktreeStatus(
+  status: GitStatusInfo | null,
+  files: readonly GitWorkingTreeFile[],
+): GitStatusInfo | null {
+  if (!status) return null;
+  const changes: GitFileChange[] = [];
+  for (const file of files) {
+    for (const change of file.worktreeChanges ?? []) {
+      changes.push({ path: file.path, ...change });
+    }
+  }
+  return { ...status, files: changes, isClean: changes.length === 0 };
+}
 
 /**
  * Source-mode tab state, derived from the `?tab=` URL param. Shared by the
@@ -220,8 +241,10 @@ function SourceHeaderActions({
   pendingCount,
   reviewsEnabled,
   supportsWorkingTreeFiles,
+  worktreePaused,
   gitActions,
   isWideScreen,
+  onToggleWorktreePaused,
   onComments,
   t,
 }: {
@@ -229,8 +252,10 @@ function SourceHeaderActions({
   pendingCount: number;
   reviewsEnabled: boolean;
   supportsWorkingTreeFiles: boolean;
+  worktreePaused?: boolean;
   gitActions: GitActionState;
   isWideScreen: boolean;
+  onToggleWorktreePaused?: () => void;
   onComments: () => void;
   t: TranslationFn;
 }) {
@@ -302,6 +327,8 @@ function SourceHeaderActions({
       >
         <SourceHeaderControls
           gitActions={gitActions}
+          worktreePaused={worktreePaused}
+          onToggleWorktreePaused={onToggleWorktreePaused}
           onComments={onComments}
           t={t}
         />
@@ -348,10 +375,14 @@ function cssPixels(value: string): number {
 
 function SourceHeaderControls({
   gitActions,
+  worktreePaused,
+  onToggleWorktreePaused,
   onComments,
   t,
 }: {
   gitActions: GitActionState;
+  worktreePaused?: boolean;
+  onToggleWorktreePaused?: () => void;
   onComments?: () => void;
   t: TranslationFn;
 }) {
@@ -402,6 +433,28 @@ function SourceHeaderControls({
           onClick={gitActions.handleCheckRemote}
           disabled={gitActions.isRunning}
         />
+      )}
+      {onToggleWorktreePaused && (
+        <button
+          type="button"
+          className="git-status-action-button"
+          aria-pressed={worktreePaused}
+          title={
+            worktreePaused
+              ? t("sourceResumeLiveUpdates")
+              : t("sourcePauseLiveUpdates")
+          }
+          onClick={onToggleWorktreePaused}
+        >
+          <span className="git-status-action-indicator" aria-hidden="true">
+            {worktreePaused ? "▶" : "Ⅱ"}
+          </span>
+          <span className={styles.actionLabel}>
+            {worktreePaused
+              ? t("sourceResumeLiveUpdates")
+              : t("sourcePauseLiveUpdates")}
+          </span>
+        </button>
       )}
       {onComments && (
         <button
@@ -580,6 +633,7 @@ export function GitStatusPage() {
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const pageScrollRef = useRef<HTMLElement | null>(null);
+  const [worktreePaused, setWorktreePaused] = useState(false);
 
   const { projects, loading: projectsLoading } = useProjects();
   const effectiveProjectId =
@@ -619,6 +673,10 @@ export function GitStatusPage() {
     version,
     GIT_WORKING_TREE_FILES_CAPABILITY,
   );
+  const supportsWorkingTreeSections = serverHasCapability(
+    version,
+    GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+  );
   const supportsIncomingCommits = serverHasCapability(
     version,
     GIT_INCOMING_COMMITS_CAPABILITY,
@@ -633,10 +691,44 @@ export function GitStatusPage() {
     version,
     GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   );
-  const { gitStatus, untrackedFiles, loading, error, refetch } = useGitStatus(
-    supportsEnhancedGitStatus ? effectiveProjectId : undefined,
-    { useUntrackedCache: supportsWorkingTreeFiles },
+  const liveWorktree = useProjectWorktree(
+    effectiveProjectId ?? "",
+    { tracked: true, untracked: true, ignored: false },
+    Boolean(effectiveProjectId && supportsWorkingTreeSections),
+    worktreePaused,
   );
+  const {
+    gitStatus: statusMetadata,
+    untrackedFiles: legacyUntrackedFiles,
+    loading: statusLoading,
+    error: statusError,
+    refetch,
+  } = useGitStatus(supportsEnhancedGitStatus ? effectiveProjectId : undefined, {
+    omitUntracked: supportsWorkingTreeSections,
+    useUntrackedCache: supportsWorkingTreeFiles && !supportsWorkingTreeSections,
+  });
+  const gitStatus = useMemo(
+    () =>
+      supportsWorkingTreeSections && liveWorktree.generation
+        ? mergeLiveWorktreeStatus(statusMetadata, liveWorktree.files)
+        : statusMetadata,
+    [
+      liveWorktree.files,
+      liveWorktree.generation,
+      statusMetadata,
+      supportsWorkingTreeSections,
+    ],
+  );
+  const untrackedFiles = supportsWorkingTreeSections
+    ? null
+    : legacyUntrackedFiles;
+  const loading =
+    statusLoading || (supportsWorkingTreeSections && liveWorktree.loading);
+  const error =
+    statusError ??
+    (supportsWorkingTreeSections && liveWorktree.generation === null
+      ? liveWorktree.error
+      : null);
   const reviewComments = useProjectReviewComments(
     supportsSourceReview ? effectiveProjectId : undefined,
   );
@@ -761,6 +853,12 @@ export function GitStatusPage() {
               supportsWorkingTreeFiles={supportsWorkingTreeFiles}
               gitActions={gitActions}
               isWideScreen={isWideScreen}
+              worktreePaused={worktreePaused}
+              onToggleWorktreePaused={
+                supportsWorkingTreeSections
+                  ? () => setWorktreePaused((paused) => !paused)
+                  : undefined
+              }
               onComments={() => setHeaderTab("comments")}
               t={t}
             />
@@ -788,28 +886,31 @@ export function GitStatusPage() {
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
           ) : gitStatus && effectiveProjectId && supportsSourceReview ? (
             <GlossaryProjectBoundary projectId={effectiveProjectId}>
-              <SourceReviewDefaultSessionContext.Provider
-                value={defaultSession}
-              >
-                <GitStatusContent
-                  key={`${sourceKey}:${effectiveProjectId}`}
-                  status={gitStatus}
-                  projectId={effectiveProjectId}
-                  isWideScreen={isWideScreen}
-                  supportsProjections={supportsSourceReviewProjections}
-                  supportsInclusiveToHead={supportsInclusiveToHead}
-                  supportsWorkingTreeFiles={supportsWorkingTreeFiles}
-                  untrackedFiles={untrackedFiles}
-                  supportsLastEditor={supportsLastEditor}
-                  gitActions={gitActions}
-                  reviewComments={reviewComments}
-                  reviewsEnabled={reviewsEnabled}
-                  showReviewModal={showReviewModal}
-                  onOpenReview={() => setShowReviewModal(true)}
-                  onCloseReview={() => setShowReviewModal(false)}
-                  t={t}
-                />
-              </SourceReviewDefaultSessionContext.Provider>
+              <ProjectWorktreePauseContext.Provider value={worktreePaused}>
+                <SourceReviewDefaultSessionContext.Provider
+                  value={defaultSession}
+                >
+                  <GitStatusContent
+                    key={`${sourceKey}:${effectiveProjectId}`}
+                    status={gitStatus}
+                    projectId={effectiveProjectId}
+                    isWideScreen={isWideScreen}
+                    supportsProjections={supportsSourceReviewProjections}
+                    supportsInclusiveToHead={supportsInclusiveToHead}
+                    supportsWorkingTreeFiles={supportsWorkingTreeFiles}
+                    supportsWorkingTreeSections={supportsWorkingTreeSections}
+                    untrackedFiles={untrackedFiles}
+                    supportsLastEditor={supportsLastEditor}
+                    gitActions={gitActions}
+                    reviewComments={reviewComments}
+                    reviewsEnabled={reviewsEnabled}
+                    showReviewModal={showReviewModal}
+                    onOpenReview={() => setShowReviewModal(true)}
+                    onCloseReview={() => setShowReviewModal(false)}
+                    t={t}
+                  />
+                </SourceReviewDefaultSessionContext.Provider>
+              </ProjectWorktreePauseContext.Provider>
             </GlossaryProjectBoundary>
           ) : gitStatus && effectiveProjectId ? (
             <GitStatusCompatibilityContent
@@ -863,6 +964,7 @@ function GitStatusContent({
   supportsProjections,
   supportsInclusiveToHead,
   supportsWorkingTreeFiles,
+  supportsWorkingTreeSections,
   untrackedFiles,
   supportsLastEditor,
   gitActions,
@@ -879,6 +981,7 @@ function GitStatusContent({
   supportsProjections: boolean;
   supportsInclusiveToHead: boolean;
   supportsWorkingTreeFiles: boolean;
+  supportsWorkingTreeSections: boolean;
   untrackedFiles: GitUntrackedFileListResult | null;
   supportsLastEditor: boolean;
   gitActions: GitActionState;
@@ -1018,7 +1121,9 @@ function GitStatusContent({
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
-          supportsUntrackedCache={supportsWorkingTreeFiles}
+          supportsUntrackedCache={
+            supportsWorkingTreeFiles && !supportsWorkingTreeSections
+          }
           untrackedFiles={untrackedFiles}
           initialWorkingTreePath={worktreeFile}
           onBrowseHistory={handleBrowseHistory}
@@ -1035,7 +1140,9 @@ function GitStatusContent({
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
-          supportsUntrackedCache={supportsWorkingTreeFiles}
+          supportsUntrackedCache={
+            supportsWorkingTreeFiles && !supportsWorkingTreeSections
+          }
           untrackedFiles={untrackedFiles}
           initialSha={commitSha}
           initialPath={commitFile}
@@ -1077,6 +1184,7 @@ function GitStatusContent({
           initialPath={blameFile}
           status={status}
           supportsWorkingTreeFiles={supportsWorkingTreeFiles}
+          supportsWorktreeSections={supportsWorkingTreeSections}
           onOpenCommit={handleOpenCommit}
           captureReviewProjections={reviewsEnabled}
           t={t}

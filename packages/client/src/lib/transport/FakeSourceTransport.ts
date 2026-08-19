@@ -1,4 +1,8 @@
-import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
+import type {
+  GitWorktreeCoverage,
+  StagedAttachmentRef,
+  UploadedFile,
+} from "@yep-anywhere/shared";
 import {
   SourceTransportDisposedError,
   SourceTransportNotReadyError,
@@ -35,6 +39,7 @@ export type FakeSourceTransportSubscriptionKind =
   | "session"
   | "session-watch"
   | "glossary"
+  | "worktree"
   | "activity";
 
 export interface FakeSourceTransportSubscriptionRecord {
@@ -42,6 +47,7 @@ export interface FakeSourceTransportSubscriptionRecord {
   readonly kind: FakeSourceTransportSubscriptionKind;
   readonly sessionId?: string;
   readonly projectId?: string;
+  readonly coverage?: GitWorktreeCoverage;
   readonly lastEventId?: string;
   readonly options?:
     | SessionSubscriptionOptions
@@ -339,6 +345,17 @@ export class FakeSourceTransport implements SourceTransport {
     return this.createSubscription("glossary", handlers, { projectId });
   }
 
+  subscribeWorktree(
+    projectId: string,
+    coverage: GitWorktreeCoverage,
+    handlers: StreamHandlers,
+  ): Subscription {
+    return this.createSubscription("worktree", handlers, {
+      projectId,
+      coverage,
+    });
+  }
+
   async reconnect(): Promise<void> {
     this.assertNotDisposed();
     await this.reconnectHandler?.();
@@ -412,6 +429,7 @@ export class FakeSourceTransport implements SourceTransport {
     details: {
       sessionId?: string;
       projectId?: string;
+      coverage?: GitWorktreeCoverage;
       lastEventId?: string;
       options?: SessionSubscriptionOptions | SessionWatchSubscriptionOptions;
     },
@@ -424,6 +442,7 @@ export class FakeSourceTransport implements SourceTransport {
       handlers,
       sessionId: details.sessionId,
       projectId: details.projectId,
+      coverage: details.coverage,
       lastEventId: details.lastEventId,
       options: details.options,
       closed: false,
@@ -499,6 +518,7 @@ function publicSubscriptionRecord(
     kind: record.kind,
     sessionId: record.sessionId,
     projectId: record.projectId,
+    coverage: record.coverage,
     lastEventId: record.lastEventId,
     options: record.options,
     closed: record.closed,

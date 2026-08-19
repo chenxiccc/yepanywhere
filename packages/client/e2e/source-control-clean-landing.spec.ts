@@ -397,7 +397,7 @@ test("groups semantic file sections and keeps current-content browsing distinct"
   await page.setViewportSize({ width: 1000, height: 600 });
   await page.goto(`${baseURL}/git-status?projectId=${projectId}&tab=files`);
   await expect(
-    page.getByText("Tracked, unchanged", { exact: true }),
+    page.getByRole("button", { name: "Tracked", exact: true }).last(),
   ).toBeVisible();
   await expect(
     page.locator('[data-source-path="src/grouped/unchanged.ts"]'),
@@ -409,7 +409,7 @@ test("groups semantic file sections and keeps current-content browsing distinct"
 
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(
-    page.getByText("Tracked, unchanged", { exact: true }),
+    page.getByRole("button", { name: "Tracked", exact: true }).last(),
   ).toBeVisible();
   await capture(page, "source-control-browsing-files-mobile-375x812.png");
 

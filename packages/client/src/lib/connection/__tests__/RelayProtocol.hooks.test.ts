@@ -98,6 +98,11 @@ describe("RelayProtocol hooks", () => {
       protocol.subscribeSession("session-1", handlers),
       protocol.subscribeActivity(handlers),
       protocol.subscribeGlossary("project-1", handlers),
+      protocol.subscribeWorktree(
+        "project-1",
+        { tracked: true, untracked: true, ignored: false },
+        handlers,
+      ),
       protocol.subscribeSessionWatch("session-1", handlers),
     ];
 
@@ -110,7 +115,7 @@ describe("RelayProtocol hooks", () => {
     await Promise.resolve();
 
     expect(sent).toEqual([]);
-    expect(onClose).toHaveBeenCalledTimes(4);
+    expect(onClose).toHaveBeenCalledTimes(5);
     expect(onError).not.toHaveBeenCalled();
     expect(protocol.subscriptions.size).toBe(0);
   });
@@ -129,10 +134,15 @@ describe("RelayProtocol hooks", () => {
       protocol.subscribeSession("session-1", handlers),
       protocol.subscribeActivity(handlers),
       protocol.subscribeGlossary("project-1", handlers),
+      protocol.subscribeWorktree(
+        "project-1",
+        { tracked: true, untracked: true, ignored: false },
+        handlers,
+      ),
       protocol.subscribeSessionWatch("session-1", handlers),
     ];
     await flushUntil(
-      () => sent.filter((message) => message.type === "subscribe").length === 4,
+      () => sent.filter((message) => message.type === "subscribe").length === 5,
     );
     const subscribeIds = sent
       .filter((message) => message.type === "subscribe")
@@ -149,8 +159,32 @@ describe("RelayProtocol hooks", () => {
       .map((message) => message.subscriptionId)
       .sort();
     expect(unsubscribeIds).toEqual(subscribeIds);
-    expect(onClose).toHaveBeenCalledTimes(4);
+    expect(onClose).toHaveBeenCalledTimes(5);
     expect(protocol.subscriptions.size).toBe(0);
+  });
+
+  it("sends project and coverage on worktree subscriptions", async () => {
+    const sent: RemoteClientMessage[] = [];
+    const protocol = new RelayProtocol({
+      sendMessage: (message) => sent.push(message),
+      sendUploadChunk: vi.fn(),
+      ensureConnected: vi.fn(async () => undefined),
+      isConnected: vi.fn(() => true),
+    });
+    const coverage = { tracked: true, untracked: false, ignored: true };
+
+    protocol.subscribeWorktree("project-1", coverage, {
+      onEvent: vi.fn(),
+    });
+    await flushUntil(() => sent.length === 1);
+
+    expect(sent[0]).toMatchObject({
+      type: "subscribe",
+      channel: "worktree",
+      projectId: "project-1",
+      coverage,
+      subscriptionId: expect.any(String),
+    });
   });
 
   it("does not publish a late connection failure after pending close", async () => {

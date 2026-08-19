@@ -5,6 +5,7 @@ import type { WebSocket as RawWebSocket } from "ws";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { isAllowedOrigin } from "../middleware/allowed-hosts.js";
 import type { ProjectGlossarySubscriptionManager } from "../projects/projectGlossarySubscriptionManager.js";
+import type { ProjectWorktreeSubscriptionManager } from "../projects/projectWorktreeSubscriptionManager.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -72,6 +73,8 @@ export interface WsRelayDeps {
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Project glossary path subscriptions and reference-counted watchers. */
   projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager;
+  /** Project worktree snapshots and reference-counted watchers. */
+  projectWorktreeSubscriptionManager?: ProjectWorktreeSubscriptionManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
   /** Speech backend registry for relayed streaming STT (optional) */
@@ -119,6 +122,8 @@ export interface AcceptRelayConnectionDeps {
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Project glossary path subscriptions and reference-counted watchers. */
   projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager;
+  /** Project worktree snapshots and reference-counted watchers. */
+  projectWorktreeSubscriptionManager?: ProjectWorktreeSubscriptionManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
   /** Speech backend registry for relayed streaming STT (optional) */
@@ -243,6 +248,7 @@ export function createWsRelayRoutes(
     browserProfileService,
     focusedSessionWatchManager,
     projectGlossarySubscriptionManager,
+    projectWorktreeSubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,
@@ -266,6 +272,7 @@ export function createWsRelayRoutes(
     browserProfileService,
     focusedSessionWatchManager,
     projectGlossarySubscriptionManager,
+    projectWorktreeSubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,
@@ -453,6 +460,7 @@ export function createAcceptRelayConnection(
     browserProfileService,
     focusedSessionWatchManager,
     projectGlossarySubscriptionManager,
+    projectWorktreeSubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,
@@ -476,6 +484,7 @@ export function createAcceptRelayConnection(
     browserProfileService,
     focusedSessionWatchManager,
     projectGlossarySubscriptionManager,
+    projectWorktreeSubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,

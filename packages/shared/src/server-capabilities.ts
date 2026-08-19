@@ -1,13 +1,13 @@
-import { PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY } from "./public-shares.js";
-import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
 import {
   CAPABILITY_ID_ALLOCATIONS,
   CAPABILITY_ID_ENCODING_INTRODUCED_IN,
   CAPABILITY_ID_ENCODING_VERSION,
+  type CapabilityBitset,
   capabilityBitIsSet,
   encodeCapabilityIds,
-  type CapabilityBitset,
 } from "./capability-ids.js";
+import { PUBLIC_SHARE_SESSION_CHUNKS_CAPABILITY } from "./public-shares.js";
+import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
 
 export type ServerCapabilityKind = "permanent" | "transitional";
 
@@ -764,6 +764,49 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Older servers expose only tracked paths, so the hosted client must not infer an incomplete current-content inventory from that route.",
+    },
+  },
+  gitWorkingTreeSections: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeSections.id,
+    name: "git-working-tree-sections",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server maintains one project-keyed, lease-owned Working Tree snapshot with requested tracked, untracked, and ignored coverage, embedded dirty and cumulative Git facts, and sequenced live deltas.",
+    clientFallback:
+      "Use the released static working-tree inventory and cache-backed status paths without section controls, ignored enumeration, or a worktree subscription.",
+    serverContract: {
+      routes: ["GET /api/projects/:projectId/git/working-tree-files"],
+      requestFields: [
+        "gitWorkingTreeFiles.tracked",
+        "gitWorkingTreeFiles.untracked",
+        "gitWorkingTreeFiles.ignored",
+        "relaySubscribe.channel=worktree",
+        "relaySubscribe.projectId",
+        "relaySubscribe.coverage",
+      ],
+      responseFields: [
+        "gitWorkingTreeFiles.files[].kind",
+        "gitWorktreeSnapshot.generation",
+        "gitWorktreeSnapshot.coverage",
+        "gitWorktreeSnapshot.headSha",
+        "gitWorktreeSnapshot.baseSha",
+        "gitWorktreeSnapshot.files[].tracked",
+        "gitWorktreeSnapshot.files[].kind",
+        "gitWorktreeSnapshot.files[].present",
+        "gitWorktreeSnapshot.files[].worktreeChanges",
+        "gitWorktreeSnapshot.files[].cumulativeChange",
+        "gitWorktreeDelta.generation",
+        "gitWorktreeDelta.changes",
+      ],
+      events: ["git-worktree-snapshot", "git-worktree-delta"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace self-hosted servers, and the released inventory route provides neither sectioned ignored coverage nor a resident live snapshot and delta contract.",
     },
   },
   gitIncomingCommits: {
@@ -1725,6 +1768,8 @@ export const GIT_FILE_DIFF_PROJECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitFileDiffProjections.name;
 export const GIT_WORKING_TREE_FILES_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeFiles.name;
+export const GIT_WORKING_TREE_SECTIONS_CAPABILITY =
+  SERVER_CAPABILITIES.gitWorkingTreeSections.name;
 export const GIT_INCOMING_COMMITS_CAPABILITY =
   SERVER_CAPABILITIES.gitIncomingCommits.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =

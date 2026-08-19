@@ -88,6 +88,17 @@ selected-tree-to-HEAD and ignore-whitespace meaning; a separately available
 direct per-file action continues to use only those older routes. It is
 version-implied from `0.7.1`.
 
+`git-working-tree-sections` owns the lease-backed project snapshot and
+sequenced live-delta contract, including requested Tracked / Untracked /
+Ignored coverage, embedded dirty and cumulative Git facts, and the sectioned
+static route used for explicit refresh or resynchronization. Subscribers to
+one project share the server snapshot, watcher set, and reconciliation owner.
+Without permanent ID 41, the client keeps the released static
+`git-working-tree-files` behavior, sends no worktree subscription, does no
+ignored enumeration, and retains the focused 30-second fallback refresh. It is
+version-implied from `0.7.2`; the Maintainer approved expanding this unpublished
+capability before its first stable release.
+
 `codex-reasoning-summary-setting` owns `settings.codexReasoningSummary` on
 `GET /api/settings` and `PUT /api/settings`. The ordinary optional-feature
 corpus was `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other stable
@@ -283,9 +294,10 @@ the same ledger:
 | 38 | server | 0.7.1 | `git-working-tree-files` |
 | 39 | server | 0.7.1 | `git-incoming-commits` |
 | 40 | server | 0.7.1 | `git-inclusive-to-head` |
+| 41 | server | 0.7.2 | `git-working-tree-sections` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 41; retired rows stay in the ledger as reserved IDs.
+ID 42; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

@@ -8,6 +8,7 @@ import {
   type GitIntegrationOptionsResult,
   type GitPullResult,
   type GitPushResult,
+  type GitRemoteCheckResult,
   type GitStatusInfo,
   type GitUntrackedFolderInfo,
   toUrlProjectId,
@@ -307,12 +308,23 @@ describe("git-status routes", () => {
       dirtyFileEditorService,
     );
 
-    const response = await routes.request(`/${projectId}/git?untracked=cache`);
-    const body = (await response.json()) as GitStatusInfo;
+    const cacheResponse = await routes.request(
+      `/${projectId}/git?untracked=cache`,
+    );
+    const cacheBody = (await cacheResponse.json()) as GitStatusInfo;
+    const noneResponse = await routes.request(
+      `/${projectId}/git?untracked=none`,
+    );
+    const noneBody = (await noneResponse.json()) as GitStatusInfo;
 
-    expect(response.status).toBe(200);
-    expect(body.files.map((file) => file.path)).toEqual(["README.md"]);
-    expect(reconciliations).toEqual([{ authoritative: false }]);
+    expect(cacheResponse.status).toBe(200);
+    expect(noneResponse.status).toBe(200);
+    expect(cacheBody.files.map((file) => file.path)).toEqual(["README.md"]);
+    expect(noneBody.files.map((file) => file.path)).toEqual(["README.md"]);
+    expect(reconciliations).toEqual([
+      { authoritative: false },
+      { authoritative: false },
+    ]);
   });
 
   it("round-trips non-ASCII untracked folder paths", async () => {
@@ -439,10 +451,10 @@ describe("git-status routes", () => {
         maxLineCharsLimit: 20_000,
       },
     });
-    expect(body.previewSkipped?.totalBytes).toBeGreaterThan(30_000);
+    expect(body.previewSkipped?.totalChars).toBeGreaterThan(30_000);
   });
 
-  it("skips untracked files over the preview byte budget", async () => {
+  it("skips an untracked file over the plain-preview line budget", async () => {
     const repoDir = await createRepoWithUpstream();
     await writeFile(join(repoDir, "large.txt"), "line\n".repeat(60_000));
     const { projectId, routes } = createRoutesForProject(repoDir);
@@ -466,11 +478,40 @@ describe("git-status routes", () => {
       structuredPatch: [],
       previewSkipped: {
         reason: "content-too-large",
-        maxTotalBytes: 262_144,
+        maxTotalChars: 1_048_576,
+        maxTotalLines: 20_000,
         maxLineCharsLimit: 20_000,
       },
     });
-    expect(body.previewSkipped?.totalBytes).toBeGreaterThan(262_144);
+    expect(body.previewSkipped?.totalLines).toBeGreaterThan(20_000);
+  });
+
+  it("previews a large untracked evidence file as plain text", async () => {
+    const repoDir = await createRepoWithUpstream();
+    const content = Array.from(
+      { length: 19_000 },
+      (_, index) => `{"index":${index},"value":"record ${index}"}`,
+    ).join("\n");
+    expect(Buffer.byteLength(content)).toBeGreaterThan(256 * 1024);
+    await writeFile(join(repoDir, "evidence.json"), content);
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "evidence.json",
+        staged: false,
+        status: "?",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.previewSkipped).toBeUndefined();
+    expect(body.renderMode).toBe("plain");
+    expect(body.diffHtml).toBe("");
+    expect(body.structuredPatch[0]?.lines).toHaveLength(19_000);
   });
 
   it("previews a small change inside a file far larger than the render budget", async () => {
@@ -593,7 +634,7 @@ describe("git-status routes", () => {
     );
   });
 
-  it("skips full-context requests for files over the render budget", async () => {
+  it("renders a 12k-line full-context request as plain text", async () => {
     const repoDir = await createRepoWithUpstream();
     const lines = Array.from(
       { length: 12_000 },
@@ -622,10 +663,9 @@ describe("git-status routes", () => {
     const body = (await response.json()) as GitDiffResult;
 
     expect(response.status).toBe(200);
-    expect(body.previewSkipped).toMatchObject({
-      reason: "content-too-large",
-      maxTotalBytes: 262_144,
-    });
+    expect(body.previewSkipped).toBeUndefined();
+    expect(body.diffHtml).toBe("");
+    expect(body.structuredPatch[0]?.lines.length).toBeGreaterThan(12_000);
   });
 
   it("returns normal git diff previews for small untracked files", async () => {

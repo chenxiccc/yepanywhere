@@ -22,8 +22,8 @@ import { getLogger } from "../logging/logger.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { DirtyFileEditorService } from "../services/DirtyFileEditorService.js";
 import {
-  GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
   GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
+  GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
   skippedBinaryGitDiffResult,
   skippedGitDiffResult,
 } from "../git/diffPreviewGuards.js";
@@ -148,7 +148,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     try {
       const result = await getGitStatusWithRemoteCheckTime(
         project.path,
-        c.req.query("untracked") !== "cache",
+        c.req.query("untracked") === undefined,
       );
       return c.json(result);
     } catch (err) {
@@ -725,23 +725,20 @@ function workingTreeDiffArgs(
   return staged ? ["diff", "--cached"] : ["diff"];
 }
 
-/**
- * An untracked file is entirely additions, so the file *is* the diff and its
- * size can be checked against the rendered budget without reading it.
- */
+/** Reject an untracked file before reading only when it exceeds the source ceiling. */
 async function getUntrackedDiffPreviewSizeSkip(
   cwd: string,
   path: string,
 ): Promise<GitDiffPreviewSkipped | null> {
   const stats = await stat(resolve(cwd, path));
-  if (!stats.isFile() || stats.size <= GIT_DIFF_PREVIEW_MAX_DIFF_CHARS) {
+  if (!stats.isFile() || stats.size <= GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES) {
     return null;
   }
 
   return {
     reason: "content-too-large",
     totalBytes: stats.size,
-    maxTotalBytes: GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
+    maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
     maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
   };
 }
@@ -1251,7 +1248,7 @@ function statusChar(xy: string | undefined, index: 0 | 1): string | null {
   return ch && ch !== "." ? ch : null;
 }
 
-async function getGitStatus(
+export async function getGitStatus(
   projectPath: string,
   checkedRemoteAt: string | null,
   includeUntracked = true,

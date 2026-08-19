@@ -1,4 +1,8 @@
-import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
+import type {
+  GitWorktreeCoverage,
+  StagedAttachmentRef,
+  UploadedFile,
+} from "@yep-anywhere/shared";
 import { fetchPlainBlob, fetchPlainJSON } from "../../api/plainFetch";
 import {
   uploadFile,
@@ -201,6 +205,20 @@ export class LocalhostSourceTransport implements SourceTransport {
   subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
     return this.trackStreamSubscription((wrappedHandlers) =>
       this.streamConnection.subscribeGlossary(projectId, wrappedHandlers),
+    )(handlers);
+  }
+
+  subscribeWorktree(
+    projectId: string,
+    coverage: GitWorktreeCoverage,
+    handlers: StreamHandlers,
+  ): Subscription {
+    return this.trackStreamSubscription((wrappedHandlers) =>
+      this.streamConnection.subscribeWorktree(
+        projectId,
+        coverage,
+        wrappedHandlers,
+      ),
     )(handlers);
   }
 

@@ -89,16 +89,33 @@ describe("git-working-tree-files routes", () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({
       files: [
-        { path: ".gitignore", tracked: true },
-        { path: "clean.ts", tracked: true },
-        { path: "indexed-add.ts", tracked: true },
-        { path: "nested/new.txt", tracked: false },
-        { path: "untracked.txt", tracked: false },
-        { path: "雪.txt", tracked: false },
+        { path: ".gitignore", tracked: true, kind: "tracked" },
+        { path: "clean.ts", tracked: true, kind: "tracked" },
+        { path: "indexed-add.ts", tracked: true, kind: "tracked" },
+        { path: "nested/new.txt", tracked: false, kind: "untracked" },
+        { path: "untracked.txt", tracked: false, kind: "untracked" },
+        { path: "雪.txt", tracked: false, kind: "untracked" },
       ],
       truncated: false,
       limit: 50_000,
     });
+  });
+
+  it("enumerates ignored paths only when their section is enabled", async () => {
+    await writeFile(join(dir, "untracked.txt"), "untracked\n");
+    await writeFile(join(dir, "ignored.txt"), "ignored\n");
+    await writeFile(join(dir, ".git", "administrative.txt"), "hidden\n");
+    const { projectId, routes } = createRoutesForProject(dir, dataDir);
+
+    const response = await routes.request(
+      `/${projectId}/git/working-tree-files?tracked=false&untracked=false&ignored=true`,
+    );
+    const body = (await response.json()) as GitWorkingTreeFileListResult;
+
+    expect(response.status).toBe(200);
+    expect(body.files).toEqual([
+      { path: "ignored.txt", tracked: false, kind: "ignored" },
+    ]);
   });
 
   it("searches cached children before a folder is expanded", async () => {

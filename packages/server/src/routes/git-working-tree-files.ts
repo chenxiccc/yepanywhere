@@ -1,6 +1,8 @@
 import type {
   GitUntrackedFileListResult,
+  GitWorkingTreeFile,
   GitWorkingTreeFileListResult,
+  GitWorktreeCoverage,
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -39,11 +41,19 @@ export function createGitWorkingTreeFilesRoutes(
     if (typeof projectPath !== "string") return projectPath;
 
     const limit = clampLimit(c.req.query("limit"));
+    const coverage = {
+      tracked: queryEnabled(c.req.query("tracked"), true),
+      untracked: queryEnabled(c.req.query("untracked"), true),
+      ignored: queryEnabled(c.req.query("ignored"), false),
+    };
     try {
-      const untracked = await untrackedCache.all(projectPath);
+      const untracked = coverage.untracked
+        ? await untrackedCache.all(projectPath)
+        : undefined;
       return c.json(
-        await listWorkingTreeFiles(projectPath, limit, untracked.files, {
-          untrackedTruncated: untracked.truncated,
+        await listWorkingTreeFiles(projectPath, limit, untracked?.files, {
+          coverage,
+          untrackedTruncated: untracked?.truncated,
         }),
       );
     } catch (error) {
@@ -77,22 +87,42 @@ export async function listWorkingTreeFiles(
   cwd: string,
   limit = DEFAULT_WORKING_TREE_FILE_LIMIT,
   cachedUntracked?: string[],
-  options: { untrackedTruncated?: boolean } = {},
+  options: {
+    coverage?: GitWorktreeCoverage;
+    untrackedTruncated?: boolean;
+  } = {},
 ): Promise<GitWorkingTreeFileListResult> {
-  const [cached, deleted, untracked] = await Promise.all([
-    listPaths(cwd, ["--cached"]),
-    listPaths(cwd, ["--deleted"]),
-    cachedUntracked ?? listPaths(cwd, ["--others", "--exclude-standard"]),
+  const coverage = options.coverage ?? {
+    tracked: true,
+    untracked: true,
+    ignored: false,
+  };
+  const [cached, deleted, untracked, ignored] = await Promise.all([
+    coverage.tracked ? listPaths(cwd, ["--cached"]) : Promise.resolve([]),
+    coverage.tracked ? listPaths(cwd, ["--deleted"]) : Promise.resolve([]),
+    coverage.untracked
+      ? (cachedUntracked ?? listPaths(cwd, ["--others", "--exclude-standard"]))
+      : Promise.resolve([]),
+    coverage.ignored
+      ? listPaths(cwd, ["--others", "--ignored", "--exclude-standard"])
+      : Promise.resolve([]),
   ]);
   const deletedPaths = new Set(deleted);
   const trackedPaths = new Set(
     cached.filter((path) => !deletedPaths.has(path)),
   );
-  const files = [
-    ...Array.from(trackedPaths, (path) => ({ path, tracked: true })),
+  const files: GitWorkingTreeFile[] = [
+    ...Array.from(trackedPaths, (path) => ({
+      path,
+      tracked: true,
+      kind: "tracked" as const,
+    })),
     ...untracked
       .filter((path) => !trackedPaths.has(path))
-      .map((path) => ({ path, tracked: false })),
+      .map((path) => ({ path, tracked: false, kind: "untracked" as const })),
+    ...ignored
+      .filter((path) => !trackedPaths.has(path))
+      .map((path) => ({ path, tracked: false, kind: "ignored" as const })),
   ].sort((a, b) => comparePaths(a.path, b.path));
   const truncated = Boolean(options.untrackedTruncated) || files.length > limit;
 
@@ -151,6 +181,11 @@ function clampLimit(raw: string | undefined): number {
   const value = Number.parseInt(raw, 10);
   if (!Number.isFinite(value)) return DEFAULT_WORKING_TREE_FILE_LIMIT;
   return Math.min(MAX_WORKING_TREE_FILE_LIMIT, Math.max(1, value));
+}
+
+function queryEnabled(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined) return fallback;
+  return raw === "1" || raw === "true";
 }
 
 function gitError(c: Context, error: unknown): Response {

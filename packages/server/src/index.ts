@@ -56,6 +56,7 @@ import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
 import { ProjectGlossarySubscriptionManager } from "./projects/projectGlossarySubscriptionManager.js";
+import { ProjectWorktreeSubscriptionManager } from "./projects/projectWorktreeSubscriptionManager.js";
 import { projectPathCacheDiagnostics } from "./projects/projectPathIndex.js";
 import { ProjectStoragePolicy } from "./projects/projectStoragePolicy.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
@@ -170,6 +171,8 @@ let disposeAppForShutdown:
   | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
 let projectGlossarySubscriptionsForShutdown: ProjectGlossarySubscriptionManager | null =
+  null;
+let projectWorktreeSubscriptionsForShutdown: ProjectWorktreeSubscriptionManager | null =
   null;
 let hostAwakeForShutdown: HostAwakeService | null = null;
 let securityClientForShutdown: SecurityClientService | null = null;
@@ -294,6 +297,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
   projectGlossarySubscriptionsForShutdown?.dispose();
   projectGlossarySubscriptionsForShutdown = null;
+  projectWorktreeSubscriptionsForShutdown?.dispose();
+  projectWorktreeSubscriptionsForShutdown = null;
   providerSessionWatchersForShutdown?.stop();
   providerSessionWatchersForShutdown = null;
 
@@ -1007,6 +1012,9 @@ async function startServer() {
       glossaryIndexService,
     });
   projectGlossarySubscriptionsForShutdown = projectGlossarySubscriptionManager;
+  const projectWorktreeSubscriptionManager =
+    new ProjectWorktreeSubscriptionManager({ scanner });
+  projectWorktreeSubscriptionsForShutdown = projectWorktreeSubscriptionManager;
 
   // Set service references for graceful shutdown
   supervisorForShutdown = supervisor;
@@ -1124,6 +1132,7 @@ async function startServer() {
     browserProfileService,
     focusedSessionWatchManager,
     projectGlossarySubscriptionManager,
+    projectWorktreeSubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir: config.dataDir,
@@ -1149,6 +1158,7 @@ async function startServer() {
     browserProfileService,
     focusedSessionWatchManager,
     projectGlossarySubscriptionManager,
+    projectWorktreeSubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir: config.dataDir,

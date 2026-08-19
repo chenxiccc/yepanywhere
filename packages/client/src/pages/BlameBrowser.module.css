@@ -2,6 +2,43 @@
   min-width: 0;
 }
 
+.sectionControls {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+}
+
+.sectionToggle {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sectionToggle:hover,
+.sectionToggle:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.activeSectionToggle {
+  color: var(--text-primary);
+  background: var(--bg-selected);
+  border-color: var(--border-color);
+}
+
 .truncated {
   margin: 8px;
   color: var(--text-muted);
@@ -28,10 +65,13 @@
 }
 
 .detailModes {
+  min-width: 0;
   display: flex;
   justify-content: flex-end;
+  margin: 0;
   padding: 4px 8px;
   background: var(--bg-secondary);
+  border: 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 

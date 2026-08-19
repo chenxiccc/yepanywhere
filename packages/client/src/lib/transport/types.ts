@@ -1,5 +1,6 @@
 import type {
   DeviceServerMessage,
+  GitWorktreeCoverage,
   RemoteClientMessage,
   StagedAttachmentRef,
   UploadedFile,
@@ -183,6 +184,11 @@ export interface SourceTransport {
   ): Subscription;
   subscribeActivity(handlers: StreamHandlers): Subscription;
   subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription;
+  subscribeWorktree(
+    projectId: string,
+    coverage: GitWorktreeCoverage,
+    handlers: StreamHandlers,
+  ): Subscription;
 
   /**
    * Source-level reconnect action. Localhost implementations no-op because

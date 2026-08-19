@@ -468,6 +468,49 @@ describe("GitDiffBody", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("downgrades oversized highlighted HTML to the plain projection", async () => {
+    getGitDiff.mockResolvedValue({
+      ...result("large line"),
+      diffHtml: "x".repeat(1_000_001),
+    });
+
+    render(
+      <MemoryRouter>
+        <GitDiffBody
+          file={FILE}
+          fileKey="src/example.ts:false"
+          projectId="p1"
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-diff-rendering="plain"]')?.textContent,
+      ).toContain("+large line"),
+    );
+    expect(screen.getByText("gitStatusDiffPlainMode")).toBeTruthy();
+    expect(document.querySelectorAll(".line-hunk")).toHaveLength(1);
+    await waitFor(() =>
+      expect(document.querySelector(".diff-hunk-indicator")?.textContent).toBe(
+        "1/1",
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "sourcePreviousHunkShortcut" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "sourceNextHunkShortcut" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: "diffViewModeTitle: diffViewModeAuto",
+      }),
+    ).toBeNull();
+    expect(screen.queryByText("gitStatusDiffPreviewSkipped")).toBeNull();
+  });
+
   it("renders the server binary-file omission state", async () => {
     getGitDiff.mockResolvedValue({
       diffHtml: "",

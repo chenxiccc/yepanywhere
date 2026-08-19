@@ -34,7 +34,6 @@ import {
 
 const SAFETY_REFRESH_INTERVAL_MS = 30_000;
 const ACTIVITY_REFRESH_DELAY_MS = 750;
-const GIT_STATUS_STALE_MS = 5000;
 const GIT_STATUS_TTL_MS = 60 * 1000;
 
 interface GitStatusQueryMeta {
@@ -53,12 +52,15 @@ function getGitStatusRetentionKey(
   sourceKey: ClientSummarySourceKey,
   projectId: string,
   useUntrackedCache: boolean,
+  omitUntracked: boolean,
 ): RouteRetentionKeyInput {
   return {
     sourceKey,
     routeId: useUntrackedCache
       ? "git-status:data:cached-untracked"
-      : "git-status:data",
+      : omitUntracked
+        ? "git-status:data:no-untracked"
+        : "git-status:data",
     projectId,
   };
 }
@@ -67,13 +69,19 @@ function useGitStatusSnapshot(
   sourceKey: ClientSummarySourceKey,
   projectId: string | undefined,
   useUntrackedCache: boolean,
+  omitUntracked: boolean,
 ): GitStatusInfo | null {
   const retentionKey = useMemo(
     () =>
       projectId
-        ? getGitStatusRetentionKey(sourceKey, projectId, useUntrackedCache)
+        ? getGitStatusRetentionKey(
+            sourceKey,
+            projectId,
+            useUntrackedCache,
+            omitUntracked,
+          )
         : null,
-    [sourceKey, projectId, useUntrackedCache],
+    [sourceKey, projectId, useUntrackedCache, omitUntracked],
   );
 
   return useSyncExternalStore(
@@ -91,15 +99,21 @@ function useGitStatusSnapshot(
 
 export function useGitStatus(
   projectId: string | undefined,
-  options: { poll?: boolean; useUntrackedCache?: boolean } = {},
+  options: {
+    omitUntracked?: boolean;
+    poll?: boolean;
+    useUntrackedCache?: boolean;
+  } = {},
 ) {
   const sourceKey = useClientSummarySourceKey();
   const ready = useRemoteReady();
   const useUntrackedCache = options.useUntrackedCache === true;
+  const omitUntracked = options.omitUntracked === true;
   const statusSnapshot = useGitStatusSnapshot(
     sourceKey,
     projectId,
     useUntrackedCache,
+    omitUntracked,
   );
   const [untrackedFiles, setUntrackedFiles] =
     useState<GitUntrackedFileListResult | null>(null);
@@ -120,15 +134,21 @@ export function useGitStatus(
     useRef<Promise<GitUntrackedFileListResult> | null>(null);
   const gitStatusRef = useRef(gitStatus);
   const untrackedFilesRef = useRef(untrackedFiles);
+  const payloadStateRef = useRef({
+    queryKey: "",
+    present: false,
+  });
   const queryKey = useMemo(
     () =>
       createClientQueryKey({
         endpoint: useUntrackedCache
           ? "git-status:cached-untracked"
-          : "git-status",
+          : omitUntracked
+            ? "git-status:no-untracked"
+            : "git-status",
         projectId: projectId ?? null,
       }),
-    [projectId, useUntrackedCache],
+    [omitUntracked, projectId, useUntrackedCache],
   );
 
   gitStatusRef.current = gitStatus;
@@ -145,11 +165,12 @@ export function useGitStatus(
     void projectId;
     void sourceKey;
     void useUntrackedCache;
+    void omitUntracked;
     untrackedRequestSequenceRef.current += 1;
     untrackedInFlightRef.current = null;
     setUntrackedFiles(null);
     setUntrackedError(null);
-  }, [projectId, sourceKey, useUntrackedCache]);
+  }, [omitUntracked, projectId, sourceKey, useUntrackedCache]);
 
   useEffect(() => {
     void sourceKey;
@@ -240,6 +261,7 @@ export function useGitStatus(
             context.sourceKey,
             requestProjectId,
             useUntrackedCache,
+            omitUntracked,
           ),
           data,
           { ttlMs: GIT_STATUS_TTL_MS },
@@ -251,15 +273,17 @@ export function useGitStatus(
         if (!requestProjectId) {
           throw new Error("Project id is required");
         }
-        return api.getGitStatus(requestProjectId, { useUntrackedCache });
+        return api.getGitStatus(requestProjectId, {
+          ...(omitUntracked ? { omitUntracked: true } : {}),
+          ...(useUntrackedCache ? { useUntrackedCache: true } : {}),
+        });
       };
 
       try {
         const settlement = await ensureClientQuery({
           sourceKey,
           key: queryKey,
-          staleTimeMs: GIT_STATUS_STALE_MS,
-          force,
+          force: force || !hasSnapshot,
           meta,
           fetcher,
           applySnapshot,
@@ -283,13 +307,28 @@ export function useGitStatus(
         }
       }
     },
-    [projectId, queryKey, ready, sourceKey, useUntrackedCache],
+    [omitUntracked, projectId, queryKey, ready, sourceKey, useUntrackedCache],
   );
 
   useEffect(() => {
     if (!projectId || !ready) return;
     void fetchStatus({ background: gitStatusRef.current !== null });
   }, [fetchStatus, projectId, ready]);
+
+  useEffect(() => {
+    const previous = payloadStateRef.current;
+    const present = statusSnapshot !== null;
+    payloadStateRef.current = { queryKey, present };
+    if (
+      previous.queryKey === queryKey &&
+      previous.present &&
+      !present &&
+      projectId &&
+      ready
+    ) {
+      void fetchStatus();
+    }
+  }, [fetchStatus, projectId, queryKey, ready, statusSnapshot]);
 
   useEffect(() => {
     if (statusSnapshot?.isGitRepo !== true) return;

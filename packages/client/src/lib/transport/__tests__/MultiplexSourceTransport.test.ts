@@ -1,5 +1,6 @@
 import type {
   DeviceServerMessage,
+  GitWorktreeCoverage,
   RemoteClientMessage,
   StagedAttachmentRef,
   UploadedFile,
@@ -96,6 +97,15 @@ class FakeMultiplexConnection implements Connection {
 
   subscribeGlossary(
     _projectId: string,
+    handlers: StreamHandlers,
+  ): Subscription {
+    handlers.onOpen?.();
+    return { close: () => handlers.onClose?.() };
+  }
+
+  subscribeWorktree(
+    _projectId: string,
+    _coverage: GitWorktreeCoverage,
     handlers: StreamHandlers,
   ): Subscription {
     handlers.onOpen?.();

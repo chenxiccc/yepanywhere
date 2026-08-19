@@ -41,9 +41,9 @@ The navigation surface has these modes:
   instead select the newest commit when the repository is clean; Working tree
   remains available as a pinned revision.
 - **Working Tree** keeps the stable `?tab=files` URL while browsing current
-  filesystem contents: dirty files, indexed additions, non-ignored untracked
-  files, and tracked unchanged files. Current content is primary; blame is an
-  optional tracked-file projection.
+  filesystem contents. Its complete surface can find every project file except
+  `.git` administrative state. Current content is primary; blame is an optional
+  tracked-file projection.
 - **Pending Comments** is the unsubmitted accumulator owned by
   [Source Review → New Session](source-review-to-session.md). Its stable URL
   key remains `comments`, preserving existing `?tab=comments` links.
@@ -236,18 +236,33 @@ depending on hover.
 
 ### Current-content inventory and untracked cache
 
-The Working Tree browser uses
-`GET /api/projects/:projectId/git/working-tree-files` only on explicit entry or
-refresh, never on the five-second status poll. Its complete corpus combines
-present indexed paths with cached non-ignored untracked paths and subtracts
-tracked deletions. Tracked changes come first, **Untracked** separates live-only
-files, and **Tracked, unchanged** separates the remaining tracked paths. The
-Working tree revision in Changes uses the first two sections only: tracked rows
-open HEAD-to-filesystem diffs, while untracked rows open live contents through
-`FileViewer`. Every section uses the shared outline described above. Search
-spans the returned corpus without changing group disclosure state, and any
-server safety bound is an explicit truncation state rather than a claim of
-completeness.
+Working Tree exposes a route-local row of **Tracked**, **Untracked**, and
+**Ignored** visibility toggles. Revisiting the route restores its defaults:
+Tracked and Untracked on, Ignored off. Ordinary entry therefore performs no
+ignored-file enumeration merely to hide its result. Tracked means every present
+tracked path. Changes retains its diff-oriented changed-tracked and non-ignored
+untracked list; composing it from the same section-control surface remains an
+optional unification, not a requirement.
+
+Ignored is the final divider-separated section and includes every path Git
+classifies through repository ignore rules, `.git/info/exclude`, or global
+excludes. `.git` itself and every descendant are categorically absent: YA does
+not list, traverse for content, or attach a filesystem watch within that
+administrative subtree. No config-file exception is implied.
+
+The Working Tree browser uses the live project subscription described below
+when `git-working-tree-sections` is present. A server with only
+`git-working-tree-files` retains the released explicit-entry or refresh request
+to `GET /api/projects/:projectId/git/working-tree-files`; neither path runs on a
+five-second poll. The complete corpus combines present indexed paths with
+non-ignored untracked paths and subtracts tracked deletions. Tracked changes
+come first, **Untracked** separates live-only files, and **Tracked, unchanged**
+separates the remaining tracked paths. The Working tree revision in Changes
+uses the first two sections only: tracked rows open HEAD-to-filesystem diffs,
+while untracked rows open live contents through `FileViewer`. Every section
+uses the shared outline described above. Search spans the enabled section
+corpus without changing group disclosure state, and any server safety bound is
+an explicit truncation state rather than a claim of completeness.
 
 Selecting a path renders its live contents through the shared `FileViewer`,
 including clean and untracked files. Tracked files may switch to Blame; an
@@ -295,6 +310,53 @@ to hourly; a stale selected path is checked at most hourly, and a root query
 does not stat every nested child. Persisted paths must remain canonical
 repository-relative paths, bounds and truncation are explicit, and concurrent
 refresh callers share one refresh.
+
+### Live project worktree ownership
+
+With `git-working-tree-sections`, one project-keyed server owner replaces the
+static file corpus as the current Source Control truth while any capable view
+holds a lease. Identical subscribers across direct and relay transports share
+one snapshot, watcher set, and reconciliation computation. Subscriber coverage
+is unioned: Tracked and Untracked are present by default, while Ignored paths
+are neither enumerated nor retained until at least one subscriber requests
+them. Releasing the final lease closes every watcher and timer; inactive
+snapshots may then remain only as bounded least-recently-used state.
+
+The first subscriber receives one complete snapshot with project-root
+`{ epoch, sequence }` generation, resolved `HEAD` / `HEAD^1` endpoints, present
+tracked and untracked rows, tracked deletions marked `present: false`, and the
+exact dirty and cumulative projection facts each row needs. That payload ends
+Loading immediately. Fresh query metadata without a retained payload never
+stands in for it, and no query identity serializes the file corpus. A selected
+file reads its projection availability from the resident row rather than
+launching another project-wide status or projection-manifest request.
+
+Filesystem changes publish create, modify, and delete deltas. The generation
+sequence advances globally even when a subscriber's coverage filters the delta
+to an empty change list. The client applies only contiguous deltas, preserves
+untouched row object identity, ignores stale events, and requests one full
+snapshot after a generation gap or reconnect. Selection, detail mode, scroll,
+and explicit outline disclosure remain component state and therefore survive
+ordinary corpus replacement.
+
+On Linux, YA watches the project root and each content directory
+non-recursively. Directory creation and removal update only that subtree's watch
+set. The initial root watcher is installed before the background directory
+walk, so watcher expansion cannot delay the first snapshot or starve a
+notification-triggered Git scan. `.git` and every descendant are absent from
+both traversal and watching. A missing or failed content watch enables bounded
+30-second reconciliation until complete coverage is restored; explicit YA Git
+actions and the focused status fallback cover Git-administrative changes without
+a `.git` watcher.
+
+A 150 ms quiet timer coalesces an ordinary burst. A separate five-second
+maximum deadline is pinned to the first unprocessed filesystem event; later
+events never move it forward. Five seconds is not a polling cadence or an
+initial-load delay. The Source Control Pause control freezes visible client
+application while retaining the lease and continuing server maintenance; Play
+applies the queued current snapshot. Pointer motion over the Working Tree list
+may wait for 200 ms of quiet before applying row movement, but a pending client
+delta has its own five-second hard deadline.
 
 ### Diff gutter
 
@@ -396,8 +458,31 @@ commit, and selected-revision comparison files show a bounded skipped-preview
 state with the path and size when known, and their bytes never enter syntax
 highlighting. Untracked files receive the same treatment from their content.
 A current client also suppresses binary-looking structured patch text returned
-by an older server. Large-content, long-line, and highlighted-HTML limits remain
-independent reasons to omit a text preview.
+by an older server.
+
+Large text diffs have a bounded plain projection rather than inheriting the
+syntax-highlighted projection's expansion limit. Up to 1,048,576 hunk
+characters, 20,000 hunk lines, and 20,000 characters on any one line, the server
+ships the complete structured patch. Above 32 KiB of hunk text—or whenever
+highlighted HTML expands past 1,000,000 characters—it omits highlighting and the
+client renders one low-node-count unified text block. The plain view says that
+syntax color, split view, and line comments are unavailable; copy, full context,
+and hunk navigation remain. Source versions still stop at 8 MiB combined before
+diff computation. Binary and malformed-text guards remain independent.
+
+## Design decisions
+
+- **Use a complete bounded plain projection for large diffs** (vs. raising the
+  highlighted-HTML/line-DOM limits or continuing to omit the preview): this keeps
+  the useful source while bounding server expansion and browser nodes. On a
+  quiet 16-core host, three cold-cache repetitions of a real 568,301-character,
+  19,803-line evidence file took 166–188 ms to produce 3.6 million highlighted
+  HTML characters; its plain browser layout took 53–61 ms at 1000×600. A
+  representative one-million-character plain block took 62–64 ms, while two
+  million characters took 111–136 ms. One million characters split into about
+  350,000 tiny lines took 597–653 ms, which is why both the character and line
+  bounds are required. These are diagnostic same-host measurements, not a
+  cross-host performance ratchet.
 
 Markdown Preview follows the explicit diff/full-context scope. Diff-only uses
 the same approximate diff-aware rich-text projection as session Edit details,
@@ -439,10 +524,14 @@ or untracked work. It is not the commit-only `HEAD^1`-to-`HEAD` diff. A
 worktree edit that exactly cancels the current commit's change therefore
 removes that path from the cumulative corpus.
 
-A selector exists only when its complete project-wide Git projection contains
-the path. A clean path has no **vs HEAD** selector; a root commit has no **vs
-HEAD^1** selector; a path with neither net diff has no selector at all.
-Renames match either the old or new path and render as one file projection.
+A selector exists only when the current Git projection contains the path. With
+the live worktree capability, availability comes from the resident project row;
+older capable servers use the static project manifest. A clean path has no **vs
+HEAD** selector; a root commit has no **vs HEAD^1** selector; a path with neither
+net diff has no selector at all. Selecting one projection sends only its current
+path and, for a rename, its original path; the server performs an exact
+literal-path comparison rather than rebuilding the project-wide manifest.
+Renames match either path and render as one file projection.
 
 The shared project-file link is the access point in prose and structured
 Read/Edit turns. Hovering the filename reveals the available projections
@@ -676,12 +765,16 @@ continues to use only the prior capability and routes. Existing capability
 meanings and older capable behavior remain unchanged.
 
 `git-working-tree-files` (permanent ID 38, version-implied from `0.7.1`) owns the
-working-tree inventory, persistent untracked-cache route family, and
+static working-tree inventory, persistent untracked-cache route family, and
 cache-backed status request described above. Its absence preserves tracked-only
 Files plus legacy compact untracked expansion and sends none of those requests.
-`git-incoming-commits` (permanent ID 39, version-implied from `0.7.1`) owns the
-local tracking-ref preview; its absence keeps upstream inert. Neither broadens a
-previously advertised Source Control capability. See
+`git-working-tree-sections` (permanent ID 41, version-implied from `0.7.2`) owns
+the expanded live snapshot and delta contract described above. Its absence
+keeps ID 38's static behavior and sends no worktree subscription. The Maintainer
+approved expanding ID 41 before its first published release rather than
+allocating another capability. `git-incoming-commits` (permanent ID 39,
+version-implied from `0.7.1`) owns the local tracking-ref preview; its absence
+keeps upstream inert. None broadens a published Source Control capability. See
 [server capabilities](server-capabilities.md) and
 [`063-source-control-hosted-compatibility.md`](../docs/tactical/063-source-control-hosted-compatibility.md).
 

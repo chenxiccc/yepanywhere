@@ -1,6 +1,7 @@
 import type {
   ClientPing,
   DeviceServerMessage,
+  GitWorktreeCoverage,
   RelayEvent,
   RelayRequest,
   RelayResponse,
@@ -819,6 +820,21 @@ export class RelayProtocol {
       subscriptionId,
       channel: "glossary",
       projectId,
+    }));
+  }
+
+  /** Subscribe to one project's worktree snapshot and revisioned deltas. */
+  subscribeWorktree(
+    projectId: string,
+    coverage: GitWorktreeCoverage,
+    handlers: StreamHandlers,
+  ): Subscription {
+    return this.createSubscription(handlers, (subscriptionId) => ({
+      type: "subscribe",
+      subscriptionId,
+      channel: "worktree",
+      projectId,
+      coverage,
     }));
   }
 

@@ -7,8 +7,8 @@ import {
   useState,
 } from "react";
 import type { TranslationFn } from "../i18n";
-import { SourceFileStatusBadge } from "./SourceFileRow";
 import styles from "./SourceFileOutline.module.css";
+import { SourceFileStatusBadge } from "./SourceFileRow";
 
 const FALLBACK_VISIBLE_ROWS = 14;
 const ESTIMATED_ROW_HEIGHT = 29;
@@ -49,9 +49,28 @@ interface PathNode<T> {
 
 export function SourceFileSectionDivider({
   children,
+  expanded,
+  onToggle,
 }: {
   children: ReactNode;
+  expanded?: boolean;
+  onToggle?: () => void;
 }) {
+  if (onToggle) {
+    return (
+      <button
+        type="button"
+        className={`${styles.sectionDivider} ${styles.sectionDividerButton}`}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <span className={styles.sectionDisclosure} aria-hidden="true">
+          {expanded ? "▾" : "▸"}
+        </span>
+        <span>{children}</span>
+      </button>
+    );
+  }
   return (
     <div className={styles.sectionDivider}>
       <span>{children}</span>

@@ -18,6 +18,7 @@ import type {
   DeviceWebRTCAnswer,
   DeviceWebRTCOffer,
 } from "./devices.js";
+import type { GitWorktreeCoverage } from "./git-status.js";
 import type { StagedAttachmentRef, UploadedFile } from "./upload.js";
 import { isCapabilityBitset, type CapabilityBitset } from "./capability-ids.js";
 
@@ -68,7 +69,8 @@ export type RelaySubscriptionChannel =
   | "session"
   | "activity"
   | "session-watch"
-  | "glossary";
+  | "glossary"
+  | "worktree";
 
 /** Client -> Server: Subscribe to events */
 export interface RelaySubscribe {
@@ -79,8 +81,10 @@ export interface RelaySubscribe {
   channel: RelaySubscriptionChannel;
   /** Required for channel: "session" */
   sessionId?: string;
-  /** Required for channels: "session-watch" and "glossary" */
+  /** Required for channels: "session-watch", "glossary", and "worktree" */
   projectId?: string;
+  /** Requested inventory classes for channel: "worktree" */
+  coverage?: GitWorktreeCoverage;
   /** Optional provider hint for channel: "session-watch" */
   provider?: string;
   /** Last event ID for resumption */

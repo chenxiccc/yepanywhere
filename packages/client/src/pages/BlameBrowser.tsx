@@ -1,4 +1,9 @@
-import type { GitStatusInfo, GitWorkingTreeFile } from "@yep-anywhere/shared";
+import type {
+  GitStatusInfo,
+  GitWorkingTreeFile,
+  GitWorkingTreePathKind,
+  GitWorktreeCoverage,
+} from "@yep-anywhere/shared";
 import {
   type ReactNode,
   useCallback,
@@ -9,34 +14,41 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { FileViewer } from "../components/FileViewer";
+import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
+import {
+  type SourceContextMenuAction,
+  SourceRowMenuTrigger,
+  sourceRowMenuSurface,
+  useSourceContextMenu,
+} from "../components/SourceContextMenu";
 import {
   SourceFileOutline,
   SourceFileSectionDivider,
   type SourceOutlinePathProps,
 } from "../components/SourceFileOutline";
-import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
 import {
   SourceFilePath,
   SourceFileRowButton,
   SourceFileStatusBadge,
 } from "../components/SourceFileRow";
-import {
-  SourceRowMenuTrigger,
-  sourceRowMenuSurface,
-  type SourceContextMenuAction,
-  useSourceContextMenu,
-} from "../components/SourceContextMenu";
 import { Modal } from "../components/ui/Modal";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
+import { useProjectWorktree } from "../hooks/useProjectWorktree";
 import {
   handleSourceListKeyDown,
   useSourceSearchShortcut,
 } from "../hooks/useSourceKeyboard";
-import { FileSearchIndex } from "../lib/fileSearchIndex";
-import { writeClipboardText } from "../lib/clipboard";
-import { BlameView } from "./BlameView";
 import type { TranslationFn } from "../i18n";
+import { writeClipboardText } from "../lib/clipboard";
+import { FileSearchIndex } from "../lib/fileSearchIndex";
 import styles from "./BlameBrowser.module.css";
+import { BlameView } from "./BlameView";
+
+const DEFAULT_WORKTREE_COVERAGE: GitWorktreeCoverage = {
+  tracked: true,
+  untracked: true,
+  ignored: false,
+};
 
 /**
  * The Source Control file surface. New servers expose the live Working Tree —
@@ -50,6 +62,7 @@ export function BlameBrowser({
   initialPath,
   status,
   supportsWorkingTreeFiles = false,
+  supportsWorktreeSections = false,
   onOpenCommit,
   captureReviewProjections = false,
   t,
@@ -60,6 +73,7 @@ export function BlameBrowser({
   initialPath?: string;
   status?: GitStatusInfo;
   supportsWorkingTreeFiles?: boolean;
+  supportsWorktreeSections?: boolean;
   /** Open a populated blame hash in the commit browser. */
   onOpenCommit?: (sha: string) => void;
   captureReviewProjections?: boolean;
@@ -69,6 +83,32 @@ export function BlameBrowser({
   const [workingTreeFiles, setWorkingTreeFiles] = useState<
     GitWorkingTreeFile[]
   >([]);
+  const [coverage, setCoverage] = useState<GitWorktreeCoverage>(
+    DEFAULT_WORKTREE_COVERAGE,
+  );
+  const [pointerMoving, setPointerMoving] = useState(false);
+  const pointerQuietTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlePointerMove = useCallback(() => {
+    setPointerMoving(true);
+    if (pointerQuietTimer.current) clearTimeout(pointerQuietTimer.current);
+    pointerQuietTimer.current = setTimeout(() => {
+      pointerQuietTimer.current = null;
+      setPointerMoving(false);
+    }, 200);
+  }, []);
+  useEffect(
+    () => () => {
+      if (pointerQuietTimer.current) clearTimeout(pointerQuietTimer.current);
+    },
+    [],
+  );
+  const liveWorktree = useProjectWorktree(
+    projectId,
+    coverage,
+    supportsWorktreeSections,
+    undefined,
+    pointerMoving,
+  );
   const [inventoryTruncated, setInventoryTruncated] = useState(false);
   const [detailMode, setDetailMode] = useState<"contents" | "blame">(
     "contents",
@@ -101,19 +141,25 @@ export function BlameBrowser({
   // Seed/reseed the open file from the bridge's initialPath. Capability gating
   // is also the request boundary: older servers only see the released route.
   useEffect(() => {
+    if (supportsWorktreeSections) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
     setFiles([]);
     setWorkingTreeFiles([]);
     setInventoryTruncated(false);
-    setSelectedPath(initialPath ?? null);
+    setSelectedPath((current) => initialPath ?? current);
     const request = supportsWorkingTreeFiles
-      ? api.listGitWorkingTreeFiles(projectId).then((result) => ({
-          files: result.files.map((file) => file.path),
-          workingTreeFiles: result.files,
-          truncated: result.truncated,
-        }))
+      ? api
+          .listGitWorkingTreeFiles(
+            projectId,
+            supportsWorktreeSections ? coverage : undefined,
+          )
+          .then((result) => ({
+            files: result.files.map((file) => file.path),
+            workingTreeFiles: result.files,
+            truncated: result.truncated,
+          }))
       : api.listGitFiles(projectId).then((result) => ({
           files: result.files,
           workingTreeFiles: [],
@@ -129,44 +175,94 @@ export function BlameBrowser({
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : t("gitStatusLoading"));
+        setError(err instanceof Error ? err.message : String(err));
         setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [projectId, initialPath, supportsWorkingTreeFiles, t]);
+  }, [
+    coverage,
+    projectId,
+    initialPath,
+    supportsWorkingTreeFiles,
+    supportsWorktreeSections,
+  ]);
 
-  const fileIndex = useMemo(() => new FileSearchIndex(files), [files]);
+  const effectiveWorkingTreeFiles = useMemo(
+    () =>
+      supportsWorktreeSections
+        ? liveWorktree.files.filter(
+            (file) =>
+              file.present !== false &&
+              coverage[workingTreeKind(file) ?? "untracked"],
+          )
+        : workingTreeFiles,
+    [coverage, liveWorktree.files, supportsWorktreeSections, workingTreeFiles],
+  );
+  const effectiveFiles = useMemo(
+    () =>
+      supportsWorktreeSections
+        ? effectiveWorkingTreeFiles.map((file) => file.path)
+        : files,
+    [effectiveWorkingTreeFiles, files, supportsWorktreeSections],
+  );
+  const effectiveLoading = supportsWorktreeSections
+    ? liveWorktree.loading
+    : loading;
+  const effectiveError = supportsWorktreeSections
+    ? (liveWorktree.error?.message ?? null)
+    : error;
+  const effectiveInventoryTruncated = supportsWorktreeSections
+    ? liveWorktree.truncated
+    : inventoryTruncated;
+  const fileIndex = useMemo(
+    () => new FileSearchIndex(effectiveFiles),
+    [effectiveFiles],
+  );
   const filtered = useMemo(() => fileIndex.search(query), [fileIndex, query]);
   const workingTreeFileByPath = useMemo(
-    () => new Map(workingTreeFiles.map((file) => [file.path, file])),
-    [workingTreeFiles],
+    () =>
+      new Map(
+        effectiveWorkingTreeFiles.map((file) => [file.path, file] as const),
+      ),
+    [effectiveWorkingTreeFiles],
   );
   const dirtyStatusByPath = useMemo(() => {
     const dirty = new Map<string, string>();
-    for (const file of status?.files ?? []) dirty.set(file.path, file.status);
+    if (supportsWorktreeSections) {
+      for (const file of liveWorktree.files) {
+        const change = file.worktreeChanges?.at(-1);
+        if (change) dirty.set(file.path, change.status);
+      }
+    } else {
+      for (const file of status?.files ?? []) dirty.set(file.path, file.status);
+    }
     return dirty;
-  }, [status?.files]);
-  const trackedChangedFiles = useMemo(
+  }, [liveWorktree.files, status?.files, supportsWorktreeSections]);
+  const trackedFiles = useMemo(
     () =>
-      filtered.filter((path) => {
-        const file = workingTreeFileByPath.get(path);
-        return file?.tracked && dirtyStatusByPath.has(path);
-      }),
-    [dirtyStatusByPath, filtered, workingTreeFileByPath],
-  );
-  const untrackedFiles = useMemo(
-    () => filtered.filter((path) => !workingTreeFileByPath.get(path)?.tracked),
+      filtered.filter(
+        (path) =>
+          workingTreeKind(workingTreeFileByPath.get(path)) === "tracked",
+      ),
     [filtered, workingTreeFileByPath],
   );
-  const unchangedFiles = useMemo(
+  const untrackedFiles = useMemo(
     () =>
-      filtered.filter((path) => {
-        const file = workingTreeFileByPath.get(path);
-        return file?.tracked && !dirtyStatusByPath.has(path);
-      }),
-    [dirtyStatusByPath, filtered, workingTreeFileByPath],
+      filtered.filter(
+        (path) =>
+          workingTreeKind(workingTreeFileByPath.get(path)) === "untracked",
+      ),
+    [filtered, workingTreeFileByPath],
+  );
+  const ignoredFiles = useMemo(
+    () =>
+      filtered.filter(
+        (path) =>
+          workingTreeKind(workingTreeFileByPath.get(path)) === "ignored",
+      ),
+    [filtered, workingTreeFileByPath],
   );
   const selectedWorkingTreeFile = selectedPath
     ? workingTreeFileByPath.get(selectedPath)
@@ -180,11 +276,18 @@ export function BlameBrowser({
   // by selecting the first visible file when there is no still-visible
   // selection. Mobile deliberately stays on the list until the user taps.
   useEffect(() => {
-    if (!isWideScreen || loading || error || filtered.length === 0) return;
+    if (
+      !isWideScreen ||
+      effectiveLoading ||
+      effectiveError ||
+      filtered.length === 0
+    ) {
+      return;
+    }
     setSelectedPath((current) =>
       current && filtered.includes(current) ? current : (filtered[0] ?? null),
     );
-  }, [error, filtered, isWideScreen, loading]);
+  }, [effectiveError, effectiveLoading, filtered, isWideScreen]);
 
   const fileMenuActions = useCallback(
     (file: string): SourceContextMenuAction[] => [
@@ -211,6 +314,9 @@ export function BlameBrowser({
     naturalDetailMeasurement?.path === selectedPath
       ? naturalDetailMeasurement.width
       : undefined;
+  const toggleCoverage = useCallback((kind: GitWorkingTreePathKind) => {
+    setCoverage((current) => ({ ...current, [kind]: !current[kind] }));
+  }, []);
   const renderFileRow = (
     file: string,
     visiblePath = file,
@@ -221,7 +327,7 @@ export function BlameBrowser({
     const inventoryEntry = workingTreeFileByPath.get(file);
     const fileStatus =
       dirtyStatusByPath.get(file) ??
-      (inventoryEntry && !inventoryEntry.tracked ? "?" : undefined);
+      (workingTreeKind(inventoryEntry) === "untracked" ? "?" : undefined);
     return (
       <li key={file} className={`commit-file-row ${sourceRowMenuSurface}`}>
         <SourceFileRowButton
@@ -269,7 +375,19 @@ export function BlameBrowser({
         className="blame-browser-columns"
         t={t}
       >
-        <div className="blame-file-column">
+        <div
+          className="blame-file-column"
+          onPointerMove={
+            supportsWorktreeSections ? handlePointerMove : undefined
+          }
+        >
+          {supportsWorktreeSections && (
+            <WorktreeSectionControls
+              coverage={coverage}
+              onToggle={toggleCoverage}
+              t={t}
+            />
+          )}
           <div className="source-search-field">
             <input
               ref={searchInputRef}
@@ -288,23 +406,26 @@ export function BlameBrowser({
             />
             <kbd className="source-search-shortcut">/</kbd>
           </div>
-          {loading ? (
+          {effectiveLoading ? (
             <div className="git-diff-loading">{t("gitStatusLoading")}</div>
-          ) : error ? (
-            <div className="git-diff-error">{error}</div>
-          ) : filtered.length === 0 ? (
-            <div className="git-status-empty">{t("sourceNoFiles")}</div>
+          ) : effectiveError ? (
+            <div className="git-diff-error">{effectiveError}</div>
           ) : supportsWorkingTreeFiles ? (
             <WorkingTreeFileList
-              trackedChangedFiles={trackedChangedFiles}
+              trackedFiles={trackedFiles}
               untrackedFiles={untrackedFiles}
-              unchangedFiles={unchangedFiles}
+              ignoredFiles={ignoredFiles}
+              coverage={coverage}
+              sectionsEnabled={supportsWorktreeSections}
+              onToggle={toggleCoverage}
               scopeKey={projectId}
               query={query}
-              truncated={inventoryTruncated}
+              truncated={effectiveInventoryTruncated}
               renderFile={renderFileRow}
               t={t}
             />
+          ) : filtered.length === 0 ? (
+            <div className="git-status-empty">{t("sourceNoFiles")}</div>
           ) : (
             <ul className="blame-file-list" onKeyDown={handleSourceListKeyDown}>
               {filtered.map((file) => renderFileRow(file))}
@@ -370,19 +491,65 @@ export function BlameBrowser({
   );
 }
 
+function WorktreeSectionControls({
+  coverage,
+  onToggle,
+  t,
+}: {
+  coverage: GitWorktreeCoverage;
+  onToggle: (kind: GitWorkingTreePathKind) => void;
+  t: TranslationFn;
+}) {
+  const sections: Array<{
+    kind: GitWorkingTreePathKind;
+    label: string;
+  }> = [
+    { kind: "tracked", label: t("sourceTrackedFiles") },
+    { kind: "untracked", label: t("sourceUntrackedFiles") },
+    { kind: "ignored", label: t("sourceIgnoredFiles") },
+  ];
+  return (
+    <fieldset
+      className={styles.sectionControls}
+      aria-label={t("sourceWorkingTreeSections")}
+    >
+      {sections.map(({ kind, label }) => (
+        <button
+          key={kind}
+          type="button"
+          className={`${styles.sectionToggle} ${
+            coverage[kind] ? styles.activeSectionToggle : ""
+          }`}
+          aria-pressed={coverage[kind]}
+          onClick={() => onToggle(kind)}
+        >
+          <span aria-hidden="true">{coverage[kind] ? "●" : "○"}</span>
+          {label}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
 function WorkingTreeFileList({
-  trackedChangedFiles,
+  trackedFiles,
   untrackedFiles,
-  unchangedFiles,
+  ignoredFiles,
+  coverage,
+  sectionsEnabled,
+  onToggle,
   scopeKey,
   query,
   truncated,
   renderFile,
   t,
 }: {
-  trackedChangedFiles: string[];
+  trackedFiles: string[];
   untrackedFiles: string[];
-  unchangedFiles: string[];
+  ignoredFiles: string[];
+  coverage: GitWorktreeCoverage;
+  sectionsEnabled: boolean;
+  onToggle: (kind: GitWorkingTreePathKind) => void;
   scopeKey: string;
   query: string;
   truncated: boolean;
@@ -411,39 +578,76 @@ function WorkingTreeFileList({
       t={t}
     />
   );
+  const sections: Array<{
+    kind: GitWorkingTreePathKind;
+    label: string;
+    files: string[];
+  }> = [
+    {
+      kind: "tracked",
+      label: t("sourceTrackedFiles"),
+      files: trackedFiles,
+    },
+    {
+      kind: "untracked",
+      label: t("sourceUntrackedFiles"),
+      files: untrackedFiles,
+    },
+    {
+      kind: "ignored",
+      label: t("sourceIgnoredFiles"),
+      files: ignoredFiles,
+    },
+  ];
+
+  if (!sectionsEnabled) {
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: delegates arrow traversal across the sectioned file lists to their nested controls
+      <div className={styles.inventory} onKeyDown={handleSourceListKeyDown}>
+        {trackedFiles.length > 0 && renderOutline(trackedFiles, "tracked")}
+        {untrackedFiles.length > 0 && (
+          <>
+            <SourceFileSectionDivider>
+              {t("sourceUntrackedFiles")}
+            </SourceFileSectionDivider>
+            {renderOutline(untrackedFiles, "untracked")}
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: delegates arrow traversal across the sectioned file lists to their nested controls
     <div className={styles.inventory} onKeyDown={handleSourceListKeyDown}>
-      {trackedChangedFiles.length > 0 &&
-        renderOutline(trackedChangedFiles, "tracked-changes")}
-      {untrackedFiles.length > 0 && (
-        <>
-          <SourceFileSectionDivider>
-            {t("sourceUntrackedFiles")}
+      {sections.map(({ kind, label, files }) => (
+        <div key={kind}>
+          <SourceFileSectionDivider
+            expanded={coverage[kind]}
+            onToggle={() => onToggle(kind)}
+          >
+            {label}
           </SourceFileSectionDivider>
-          {renderOutline(untrackedFiles, "untracked")}
-        </>
-      )}
-      {unchangedFiles.length > 0 && (
-        <>
-          <SourceFileSectionDivider>
-            {t("sourceUnchangedFiles")}
-          </SourceFileSectionDivider>
-          {renderOutline(unchangedFiles, "unchanged")}
-        </>
-      )}
+          {coverage[kind] && files.length > 0 && renderOutline(files, kind)}
+        </div>
+      ))}
       {truncated && !searching && (
         <div className={styles.truncated} role="status">
           {t("sourceWorkingTreeFilesTruncated", {
             count:
-              trackedChangedFiles.length +
-              untrackedFiles.length +
-              unchangedFiles.length,
+              trackedFiles.length + untrackedFiles.length + ignoredFiles.length,
           })}
         </div>
       )}
     </div>
+  );
+}
+
+function workingTreeKind(
+  file: GitWorkingTreeFile | undefined,
+): GitWorkingTreePathKind | undefined {
+  return (
+    file?.kind ?? (file ? (file.tracked ? "tracked" : "untracked") : undefined)
   );
 }
 
@@ -470,7 +674,10 @@ function WorkingTreeFileDetail({
   return (
     <section className={styles.detail}>
       {tracked && (
-        <div className={styles.detailModes} role="group">
+        <fieldset
+          className={styles.detailModes}
+          aria-label={t("sourceViewMode")}
+        >
           <button
             type="button"
             className={effectiveMode === "contents" ? styles.activeMode : ""}
@@ -487,7 +694,7 @@ function WorkingTreeFileDetail({
           >
             {t("sourceViewBlame")}
           </button>
-        </div>
+        </fieldset>
       )}
       {effectiveMode === "blame" ? (
         <BlameView
