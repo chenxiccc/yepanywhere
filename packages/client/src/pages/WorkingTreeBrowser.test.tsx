@@ -995,7 +995,11 @@ describe("WorkingTreeBrowser", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("src/keep.ts");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-source-path="src/keep.ts"]'),
+      ).not.toBeNull(),
+    );
     await waitFor(() => expect(listReviewComments).toHaveBeenCalledWith("p1"));
     fireEvent.click(screen.getByRole("button", { name: "sourceFilterFiles" }));
     const input = screen.getByPlaceholderText("sourceFilterFiles");
@@ -1005,7 +1009,9 @@ describe("WorkingTreeBrowser", () => {
     expect(
       document.querySelector('[data-source-path="src/keep.ts"]'),
     ).not.toBeNull();
-    expect(screen.queryByText("scratch/drop.txt")).toBeNull();
+    expect(
+      document.querySelector('[data-source-path="scratch/drop.txt"]'),
+    ).toBeNull();
     fireEvent.change(input, { target: { value: "missing" } });
     expect(screen.getByText("sourceNoMatches")).toBeDefined();
   });
@@ -1094,7 +1100,16 @@ describe("WorkingTreeBrowser", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByText("src/mobile.ts"));
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-source-path="src/mobile.ts"]'),
+      ).not.toBeNull(),
+    );
+    fireEvent.click(
+      document
+        .querySelector('[data-source-path="src/mobile.ts"]')!
+        .closest("button")!,
+    );
 
     expect(await screen.findByRole("dialog")).toBeDefined();
     expect(screen.queryByText("sourceWorktreeUnstaged")).toBeNull();
@@ -1323,7 +1338,9 @@ describe("WorkingTreeBrowser", () => {
         const rendered = render(view(dirtyStatus(1)));
         if (!isWideScreen) {
           fireEvent.click(
-            screen.getByRole("button", { name: /notes\/live\.md/ }),
+            document
+              .querySelector('[data-source-path="notes/live.md"]')!
+              .closest("button")!,
           );
         }
         fireEvent.click(
@@ -1354,7 +1371,9 @@ describe("WorkingTreeBrowser", () => {
         rendered.rerender(view(dirtyStatus(3)));
         if (!isWideScreen) {
           fireEvent.click(
-            screen.getByRole("button", { name: /notes\/live\.md/ }),
+            document
+              .querySelector('[data-source-path="notes/live.md"]')!
+              .closest("button")!,
           );
         }
 

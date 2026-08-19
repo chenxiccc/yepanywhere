@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SourceFileOutline, type SourceOutlineItem } from "./SourceFileOutline";
 
@@ -100,71 +94,35 @@ describe("SourceFileOutline", () => {
     expect(group.textContent).toContain("M");
   });
 
-  it("creates a one-child group when width would truncate the full path", async () => {
-    const rect = (width: number): DOMRect => ({
-      x: 0,
-      y: 0,
-      width,
-      height: 20,
-      top: 0,
-      right: width,
-      bottom: 20,
-      left: 0,
-      toJSON: () => ({}),
-    });
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: HTMLElement) {
-        return rect(this.style.width === "max-content" ? 240 : 48);
-      },
-    );
+  it("groups one-child directory paths without measuring width", async () => {
+    const measure = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
 
-    render(
-      <TestOutline items={[item("a/very/long/parent/prefix/only-child.ts")]} />,
-    );
+    render(<TestOutline items={[item("a/only-child.ts")]} />);
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "sourceCollapsePathGroup" }),
-      ).toBeDefined(),
-    );
+    expect(
+      await screen.findByRole("button", {
+        name: "sourceCollapsePathGroup",
+      }),
+    ).toBeDefined();
     expect(screen.getByText("only-child.ts")).toBeDefined();
     expect(
-      document.querySelector(
-        '[data-source-path="a/very/long/parent/prefix/only-child.ts"]',
-      ),
+      document.querySelector('[data-source-path="a/only-child.ts"]'),
     ).not.toBeNull();
+    expect(measure).not.toHaveBeenCalled();
   });
 
-  it("remeasures one-child grouping when the corpus refreshes", async () => {
-    const rect = (width: number): DOMRect => ({
-      x: 0,
-      y: 0,
-      width,
-      height: 20,
-      top: 0,
-      right: width,
-      bottom: 20,
-      left: 0,
-      toJSON: () => ({}),
-    });
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: HTMLElement) {
-        return rect(this.style.width === "max-content" ? 240 : 48);
-      },
-    );
+  it("keeps one-child grouping when the corpus refreshes", async () => {
     const rendered = render(<TestOutline items={[item("short.ts")]} />);
 
     rendered.rerender(
-      <TestOutline
-        items={[item("a/very/long/parent/prefix/refreshed-child.ts")]}
-      />,
+      <TestOutline items={[item("a/parent/refreshed-child.ts")]} />,
     );
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "sourceCollapsePathGroup" }),
-      ).toBeDefined(),
-    );
+    expect(
+      await screen.findByRole("button", {
+        name: "sourceCollapsePathGroup",
+      }),
+    ).toBeDefined();
     expect(screen.getByText("refreshed-child.ts")).toBeDefined();
   });
 });

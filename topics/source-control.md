@@ -212,19 +212,18 @@ covers only children that legacy enumeration has returned.
 Working-tree changes, commit revisions, and Files use one shared file-row/path
 treatment and one path-compression outline. Filtering and semantic sectioning
 happen first; grouping is independent inside each resulting section. The
-outline factors the longest useful shared parent into a heading, and a measured
-path that would otherwise truncate may form a one-child group. Expanded rows
-omit the heading prefix while their tooltip, copy target, menu actions,
-accessibility name, and `data-source-path` retain the complete canonical path.
-A collapsed group renders every distinct Git status represented by its children
-rather than choosing one status for a mixed group.
+outline factors slash-delimited directory prefixes into headings, including a
+directory with only one surviving file. Expanded rows omit the heading prefix
+while their tooltip, copy target, menu actions, accessibility name, and
+`data-source-path` retain the complete canonical path. This deterministic
+elision does not depend on measuring row width and does not attempt generalized
+non-path prefix factoring. A collapsed group renders every distinct Git status
+represented by its children rather than choosing one status for a mixed group.
 
 Initial disclosure uses the list's available row budget: groups expand in order
 while their immediate children fit. A later explicit expand or collapse choice
-wins through corpus refreshes and resizes. Width-driven one-child groups may
-appear or disappear as the pane changes width without erasing that choice.
-Search renders the filtered complete paths directly, so grouping never hides a
-match.
+wins through corpus refreshes and resizes. Search renders the filtered complete
+paths directly, so grouping never hides a match.
 
 A case-insensitive search match is highlighted and held visible: the leading
 prefix yields from its start and the suffix consumes the remaining live row

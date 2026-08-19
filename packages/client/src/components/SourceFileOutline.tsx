@@ -89,14 +89,7 @@ export function SourceFileOutline<T>({
     Record<string, boolean>
   >({});
   const [availableRows, setAvailableRows] = useState(FALLBACK_VISIBLE_ROWS);
-  const [widthGroupedIds, setWidthGroupedIds] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
   const searching = (query?.trim().length ?? 0) > 0;
-  const widthMeasurementKey = useMemo(
-    () => items.map((item) => `${item.id}\0${item.displayPath}`).join("\x01"),
-    [items],
-  );
   const entries = useMemo(
     () =>
       searching
@@ -108,14 +101,13 @@ export function SourceFileOutline<T>({
               pathProps: outlinePathProps(item),
             }),
           )
-        : buildSourceOutline(items, scopeKey, widthGroupedIds),
-    [items, scopeKey, searching, widthGroupedIds],
+        : buildSourceOutline(items, scopeKey),
+    [items, scopeKey, searching],
   );
 
   useLayoutEffect(() => {
     automaticExpansion.current.clear();
     setExplicitExpansion({});
-    setWidthGroupedIds(new Set());
   }, []);
 
   useLayoutEffect(() => {
@@ -161,44 +153,6 @@ export function SourceFileOutline<T>({
     if (changed) setExplicitExpansion((current) => ({ ...current }));
   }, [availableRows, entries]);
 
-  useLayoutEffect(() => {
-    if (searching || widthMeasurementKey.length === 0) return;
-    const list = listRef.current;
-    if (!list) return;
-    const measureWidths = () => {
-      const grouped = new Set<string>();
-      for (const element of list.querySelectorAll<HTMLElement>(
-        "[data-source-outline-id]",
-      )) {
-        const id = element.dataset.sourceOutlineId;
-        const fullPath = element.dataset.sourceOutlinePath;
-        if (!id || !fullPath?.includes("/")) continue;
-        const availableWidth = element.getBoundingClientRect().width;
-        if (availableWidth <= 0) continue;
-        const measurement = element.cloneNode(false) as HTMLElement;
-        measurement.textContent = fullPath;
-        measurement.style.position = "fixed";
-        measurement.style.visibility = "hidden";
-        measurement.style.width = "max-content";
-        measurement.style.maxWidth = "none";
-        measurement.style.flex = "none";
-        measurement.style.whiteSpace = "nowrap";
-        document.body.append(measurement);
-        const naturalWidth = measurement.getBoundingClientRect().width;
-        measurement.remove();
-        if (naturalWidth > availableWidth + 0.5) grouped.add(id);
-      }
-      setWidthGroupedIds((current) =>
-        sameSet(current, grouped) ? current : grouped,
-      );
-    };
-    measureWidths();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measureWidths);
-    observer.observe(findScrollViewport(list) ?? list);
-    return () => observer.disconnect();
-  }, [searching, widthMeasurementKey]);
-
   return (
     <ul
       {...listProps}
@@ -224,7 +178,6 @@ export function SourceFileOutline<T>({
 function buildSourceOutline<T>(
   items: SourceOutlineItem<T>[],
   scopeKey: string,
-  widthGroupedIds: ReadonlySet<string>,
 ): SourceOutlineEntry<T>[] {
   const root: PathNode<T> = { files: [], directories: new Map() };
   for (const item of items) {
@@ -244,14 +197,13 @@ function buildSourceOutline<T>(
     }
     node.files.push(item);
   }
-  return emitNode(root, "", scopeKey, widthGroupedIds);
+  return emitNode(root, "", scopeKey);
 }
 
 function emitNode<T>(
   node: PathNode<T>,
   prefix: string,
   scopeKey: string,
-  widthGroupedIds: ReadonlySet<string>,
 ): SourceOutlineEntry<T>[] {
   const entries: SourceOutlineEntry<T>[] = node.files.map((item) => ({
     kind: "file",
@@ -271,27 +223,14 @@ function emitNode<T>(
       child = next[1];
     }
     const descendants = collectItems(child);
-    const groupSingleton =
-      descendants.length === 1 && widthGroupedIds.has(descendants[0]!.id);
-    if (descendants.length > 1 || groupSingleton) {
-      entries.push({
-        kind: "group",
-        key: `${scopeKey}\0${groupPath}`,
-        path: groupPath,
-        items: descendants,
-        children: emitNode(child, groupPath, scopeKey, widthGroupedIds),
-        statuses: collectStatuses(descendants),
-      });
-    } else {
-      for (const item of descendants) {
-        entries.push({
-          kind: "file",
-          item,
-          visiblePath: item.displayPath,
-          pathProps: outlinePathProps(item),
-        });
-      }
-    }
+    entries.push({
+      kind: "group",
+      key: `${scopeKey}\0${groupPath}`,
+      path: groupPath,
+      items: descendants,
+      children: emitNode(child, groupPath, scopeKey),
+      statuses: collectStatuses(descendants),
+    });
   }
   return entries;
 }
@@ -415,12 +354,4 @@ function findScrollViewport(element: HTMLElement): HTMLElement | null {
     current = current.parentElement;
   }
   return element.parentElement;
-}
-
-function sameSet(left: ReadonlySet<string>, right: ReadonlySet<string>) {
-  if (left.size !== right.size) return false;
-  for (const value of left) {
-    if (!right.has(value)) return false;
-  }
-  return true;
 }

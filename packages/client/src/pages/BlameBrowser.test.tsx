@@ -240,17 +240,13 @@ describe("BlameBrowser", () => {
       ).not.toBeNull(),
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "sourceCollapsePathGroup" }),
-    );
+    fireEvent.click(screen.getByText("packages/client/").closest("button")!);
     expect(
       document.querySelector(
         '[data-source-path="packages/client/file-000.ts"]',
       ),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "sourceExpandPathGroup" }),
-    );
+    fireEvent.click(screen.getByText("packages/client/").closest("button")!);
 
     fireEvent.click(screen.getByText("README.md"));
     await waitFor(() =>
