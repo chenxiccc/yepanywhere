@@ -5,3 +5,39 @@
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
 }
+
+@container (max-width: 520px) {
+  .toolbar {
+    flex-wrap: wrap;
+    row-gap: 3px;
+    padding-block: 3px;
+  }
+
+  .controls,
+  .headerActions {
+    order: 1;
+  }
+
+  .controls {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .headerActions {
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+
+  .fileIdentity {
+    flex-basis: 100%;
+    order: 2;
+  }
+
+  .previewTitle {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}

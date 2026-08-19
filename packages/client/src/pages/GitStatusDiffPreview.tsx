@@ -1340,8 +1340,11 @@ function DiffPaneToolbar({
         : path
       : "";
   return (
-    <div className="git-diff-pane-toolbar">
-      <span className="git-diff-file-identity" title={path || title}>
+    <div className={`git-diff-pane-toolbar ${styles.toolbar}`}>
+      <span
+        className={`git-diff-file-identity ${styles.fileIdentity}`}
+        title={path || title}
+      >
         {directoryPath && (
           <>
             <span className="git-diff-toolbar-path">{directoryPath}</span>
@@ -1350,11 +1353,21 @@ function DiffPaneToolbar({
             </span>
           </>
         )}
-        <h3 className="git-diff-preview-title">{title}</h3>
+        <h3 className={`git-diff-preview-title ${styles.previewTitle}`}>
+          {title}
+        </h3>
       </span>
-      {children && <div className="diff-context-buttons">{children}</div>}
+      {children && (
+        <div className={`diff-context-buttons ${styles.controls}`}>
+          {children}
+        </div>
+      )}
       {actions && (
-        <div className="git-diff-preview-header-actions">{actions}</div>
+        <div
+          className={`git-diff-preview-header-actions ${styles.headerActions}`}
+        >
+          {actions}
+        </div>
       )}
     </div>
   );

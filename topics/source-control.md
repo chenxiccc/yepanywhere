@@ -493,13 +493,14 @@ identities, aligned blocks, and the cross-representation scroll contract live in
 [aligned Markdown diffs](aligned-markdown-diffs.md).
 
 The wide diff pane keeps filename, path, view controls, hunk navigation, and
-file actions in one toolbar row when they fit. A narrow pane or phone modal may
-use a compact second row. The filename is the primary identity: it uses compact
-source type and retains its full text before the directory path spends
-remaining width. The smaller directory prefix precedes it and, when clipped,
-keeps its rightmost segment next to the filename. Toolbar actions use compact
-glyphs with complete hover and accessible names; hunk position uses the
-language-neutral `current/total` form.
+file actions in one toolbar row when they fit. In a narrow pane, controls take
+the first row and may wrap to additional control rows; file identity follows on
+its own full-width row. The filename wraps without a line cap. The filename is
+the primary identity: it uses compact source type and retains its full text
+before the directory path spends remaining width. The smaller directory prefix
+precedes it and, when clipped, keeps its rightmost segment next to the filename.
+Toolbar actions use compact glyphs with complete hover and accessible names;
+hunk position uses the language-neutral `current/total` form.
 
 Ignore whitespace uses the compact `_+` glyph. Its tooltip reads **Ignore
 whitespace changes** when off and **Ignoring whitespace — click to include it**

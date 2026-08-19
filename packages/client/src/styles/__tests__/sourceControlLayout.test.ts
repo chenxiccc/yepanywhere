@@ -17,6 +17,10 @@ const gitStatusPageStylesheetUrl = new URL(
   "../../pages/GitStatusPage.module.css",
   import.meta.url,
 );
+const gitStatusDiffPreviewStylesheetUrl = new URL(
+  "../../pages/GitStatusDiffPreview.module.css",
+  import.meta.url,
+);
 const commitHistoryParentLinkStylesheetUrl = new URL(
   "../../pages/CommitHistoryParentLink.module.css",
   import.meta.url,
@@ -321,7 +325,10 @@ describe("Source Control workbench layout CSS contract", () => {
   });
 
   it("prioritizes the filename and uses compact diff controls", async () => {
-    const css = await readFile(rendererStylesheetUrl, "utf8");
+    const [css, previewCss] = await Promise.all([
+      readFile(rendererStylesheetUrl, "utf8"),
+      readFile(gitStatusDiffPreviewStylesheetUrl, "utf8"),
+    ]);
     const identity = getRuleDeclarationsContaining(
       css,
       ".git-diff-file-identity",
@@ -331,12 +338,25 @@ describe("Source Control workbench layout CSS contract", () => {
       css,
       ".git-diff-pane-toolbar .git-diff-preview-title",
     );
+    const narrowIdentity = getLastRuleDeclarations(previewCss, ".fileIdentity");
+    const narrowTitle = getLastRuleDeclarations(previewCss, ".previewTitle");
+    const narrowControlOrder = getLastRuleDeclarations(
+      previewCss,
+      ".controls,\n  .headerActions",
+    );
+    const narrowControls = getLastRuleDeclarations(previewCss, ".controls");
     const path = getLastRuleDeclarations(css, ".git-diff-toolbar-path");
     const icon = getLastRuleDeclarations(css, ".diff-toolbar-icon-button");
     const hunk = getLastRuleDeclarations(css, ".diff-hunk-indicator");
 
     expect(identity).toMatch(/min-width:\s*0\s*;/);
     expect(title).toMatch(/font-size:\s*0\.74rem\s*;/);
+    expect(narrowIdentity).toMatch(/flex-basis:\s*100%\s*;/);
+    expect(narrowIdentity).toMatch(/order:\s*2\s*;/);
+    expect(narrowTitle).toMatch(/overflow-wrap:\s*anywhere\s*;/);
+    expect(narrowTitle).toMatch(/white-space:\s*normal\s*;/);
+    expect(narrowControlOrder).toMatch(/order:\s*1\s*;/);
+    expect(narrowControls).toMatch(/flex-wrap:\s*wrap\s*;/);
     expect(path).toMatch(/flex:\s*0\s+1000\s+auto\s*;/);
     expect(path).toMatch(/direction:\s*rtl\s*;/);
     expect(icon).toMatch(/width:\s*24px\s*;/);

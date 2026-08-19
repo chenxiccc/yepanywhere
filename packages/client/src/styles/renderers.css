@@ -5159,22 +5159,6 @@ pre.code-highlighter-plain,
   height: 22px;
 }
 
-@container (max-width: 520px) {
-  .git-diff-pane-toolbar {
-    flex-wrap: wrap;
-    row-gap: 3px;
-    padding-block: 3px;
-  }
-
-  .git-diff-file-identity {
-    flex-basis: 100%;
-  }
-
-  .git-diff-pane-toolbar .diff-context-buttons {
-    margin-left: auto;
-  }
-}
-
 .git-diff-preview-body > .source-diff-pane {
   overflow: visible;
 }
