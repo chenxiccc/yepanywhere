@@ -6,35 +6,43 @@
   border-bottom: 1px solid var(--border-color);
 }
 
+/*
+ * Every element here also carries its legacy `git-diff-*` class, and
+ * renderers.css/index.css style those with two-class selectors such as
+ * `.git-diff-pane-toolbar .git-diff-preview-header-actions`. A single module
+ * class loses to those, and a container query adds no specificity, so each
+ * narrow rule is written through `.toolbar` (the toolbar's own rule repeats
+ * its class) to outrank the legacy declarations it replaces.
+ */
 @container (max-width: 520px) {
-  .toolbar {
+  .toolbar.toolbar {
     flex-wrap: wrap;
     row-gap: 3px;
     padding-block: 3px;
   }
 
-  .controls,
-  .headerActions {
+  .toolbar .controls,
+  .toolbar .headerActions {
     order: 1;
   }
 
-  .controls {
+  .toolbar .controls {
     min-width: 0;
     max-width: 100%;
     flex-wrap: wrap;
   }
 
-  .headerActions {
+  .toolbar .headerActions {
     margin-left: auto;
     flex-wrap: wrap;
   }
 
-  .fileIdentity {
+  .toolbar .fileIdentity {
     flex-basis: 100%;
     order: 2;
   }
 
-  .previewTitle {
+  .toolbar .previewTitle {
     overflow: visible;
     overflow-wrap: anywhere;
     text-overflow: clip;

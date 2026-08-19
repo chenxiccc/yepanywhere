@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { e2ePaths, expect, test } from "./fixtures.js";
 
-const projectPath = join(e2ePaths.tempDir, "source-control-qmd-project");
+const projectPath = join(e2ePaths.tempDir, "source-control-toolbar-project");
 const fileName =
   "claude-gateway-process-start-and-output-collector-with-an-intentionally-long-layout-name-that-wraps-at-medium-width.ts";
 const relativePath = `src/${fileName}`;
@@ -13,9 +13,16 @@ const projectId = Buffer.from(projectPath).toString("base64url");
 
 test.use({ serviceWorkers: "block" });
 
+// This spec owns its project so its extra commit and dirty file cannot reach
+// another spec's fixture, and so it does not depend on global setup having
+// created a repository here.
 test.beforeAll(() => {
   mkdirSync(join(projectPath, "src"), { recursive: true });
   writeFileSync(filePath, "export const toolbarLayoutFixture = false;\n");
+  execFileSync("git", ["init", "--initial-branch=main"], {
+    cwd: projectPath,
+    stdio: "ignore",
+  });
   execFileSync("git", ["add", relativePath], {
     cwd: projectPath,
     stdio: "ignore",
