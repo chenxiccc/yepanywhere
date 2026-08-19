@@ -51,6 +51,40 @@ describe("scanFilesystemWorktree directory failures", () => {
     expect(scan.truncated).toBe(false);
   });
 
+  it("spends its budget breadth first and watches only what it read", async () => {
+    // A heavy dependency tree must not crowd out the shallow files a reader
+    // came for, and directories the walk never reached are not watch targets.
+    readdir.mockImplementation(async (path: string) => {
+      if (path === "/project") {
+        return [directory("deps"), file("root.txt")];
+      }
+      if (path === "/project/deps") {
+        return [directory("deep"), file("a.txt"), file("b.txt")];
+      }
+      if (path === "/project/deps/deep") return [file("buried.txt")];
+      throw failure("ENOENT");
+    });
+
+    const scan = await scanFilesystemWorktree("/project", ALL_COVERAGE, 2);
+
+    expect([...scan.files.keys()]).toEqual(["root.txt", "deps/a.txt"]);
+    expect(scan.truncated).toBe(true);
+    expect([...(scan.directories ?? [])].sort()).toEqual(["", "deps"]);
+  });
+
+  it("names every directory it read when the walk completes", async () => {
+    readdir.mockImplementation(async (path: string) => {
+      if (path === "/project") return [directory("src"), file("root.txt")];
+      if (path === "/project/src") return [file("main.ts")];
+      throw failure("ENOENT");
+    });
+
+    const scan = await scanFilesystemWorktree("/project", ALL_COVERAGE, 100);
+
+    expect(scan.truncated).toBe(false);
+    expect([...(scan.directories ?? [])].sort()).toEqual(["", "src"]);
+  });
+
   it("reports an incomplete inventory when a directory cannot be read", async () => {
     readdir.mockImplementation(async (path: string) => {
       if (path === "/project") return [directory("closed"), directory("open")];

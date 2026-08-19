@@ -23,6 +23,12 @@ const DEFAULT_MAX_EVENT_AGE_MS = 5_000;
 const DEFAULT_FALLBACK_POLL_MS = 30_000;
 const DEFAULT_MAX_RETAINED_PROJECTS = 32;
 const DEFAULT_FILE_LIMIT = 100_000;
+/**
+ * A project outside Git has no ignore rules to thin its tree, so its inventory
+ * is bounded far below the Git limit: enough for a real working set, small
+ * enough that a phone renders it and the walk stays cheap.
+ */
+const FILESYSTEM_INVENTORY_FILE_LIMIT = 5_000;
 const MAX_BUFFER = 64 * 1024 * 1024;
 const GIT_METADATA_PLATFORM: NodeJS.Platform = "linux";
 
@@ -84,6 +90,12 @@ export interface ProjectWorktreeScan {
   baseSha: string | null;
   files: Map<string, GitWorkingTreeFile>;
   truncated?: boolean;
+  /**
+   * Content directories the scan actually enumerated. Present only for a
+   * filesystem-only inventory, whose walk is bounded: watching what it did not
+   * read would cost the traversal the bound exists to avoid.
+   */
+  directories?: Set<string>;
 }
 
 interface ProjectState {
@@ -107,6 +119,8 @@ interface ProjectState {
   fingerprintPromise: Promise<void> | null;
   initialized: boolean;
   scanTruncated: boolean;
+  /** Directories the last filesystem-only scan read; null when Git lists them. */
+  scanDirectories: Set<string> | null;
   activationPromise: Promise<void> | null;
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
@@ -266,7 +280,11 @@ export class ProjectWorktreeSubscriptionManager {
       : (projectPath, coverage, isGitRepository) =>
           isGitRepository
             ? scanGitWorktree(projectPath, coverage)
-            : scanFilesystemWorktree(projectPath, coverage, this.fileLimit);
+            : scanFilesystemWorktree(
+                projectPath,
+                coverage,
+                Math.min(this.fileLimit, FILESYSTEM_INVENTORY_FILE_LIMIT),
+              );
   }
 
   subscribe(
@@ -411,6 +429,7 @@ export class ProjectWorktreeSubscriptionManager {
       fingerprintPromise: null,
       initialized: false,
       scanTruncated: false,
+      scanDirectories: null,
       activationPromise: null,
       refreshPromise: null,
       refreshQueued: false,
@@ -512,7 +531,12 @@ export class ProjectWorktreeSubscriptionManager {
   private async syncWatchers(state: ProjectState): Promise<void> {
     let complete = true;
     if (!state.watchers.has("")) complete = this.attachWatcher(state, "");
-    const listed = await this.listDirectories(state.projectPath);
+    // A bounded filesystem-only inventory watches exactly what it enumerated.
+    // Walking the rest to watch it would spend the traversal the bound avoids,
+    // and its files are not published, so their events would say nothing.
+    const listed = state.scanDirectories
+      ? { directories: state.scanDirectories, complete: !state.scanTruncated }
+      : await this.listDirectories(state.projectPath);
     const wanted = listed.directories;
     complete &&= listed.complete;
     if (state.subscribers.size === 0) return;
@@ -587,6 +611,13 @@ export class ProjectWorktreeSubscriptionManager {
         changed = true;
       }
       return changed;
+    }
+
+    if (state.scanDirectories) {
+      // A bounded inventory already names every directory worth watching, and
+      // the scan that follows this sync updates that set.
+      await this.syncWatchers(state);
+      return true;
     }
 
     const listed = await this.listDirectories(absolute, path);
@@ -913,6 +944,7 @@ export class ProjectWorktreeSubscriptionManager {
       state.headSha = scan.headSha;
       state.baseSha = scan.baseSha;
       state.scanTruncated = scan.truncated === true;
+      state.scanDirectories = scan.directories ?? null;
       state.initialized = true;
       if (changes.length > 0 || endpointsChanged) {
         state.sequence += 1;
@@ -1342,69 +1374,77 @@ async function scanFilesystemWorktree(
   }
 
   const files = new Map<string, GitWorkingTreeFile>();
-  const pending = [{ absolute: projectPath, relative: "" }];
+  const directories = new Set<string>([""]);
+  let level = [{ absolute: projectPath, relative: "" }];
   let truncated = false;
-  let reachedLimit = false;
-  while (pending.length > 0 && !reachedLimit) {
-    const current = pending.pop();
-    if (!current) break;
-    let entries: fs.Dirent[];
-    try {
-      entries = await readdir(current.absolute, { withFileTypes: true });
-    } catch (error) {
-      // A directory removed while we walk is ordinary in a live worktree and
-      // leaves nothing to list. One we may not read leaves part of the corpus
-      // unknown, which the snapshot reports rather than calling itself
-      // complete. Neither ends the walk.
-      if (!isMissingPathError(error)) {
-        truncated = true;
-        getLogger().debug(
-          { directory: current.absolute, error, projectPath },
-          "WORKTREE_SCAN: directory unreadable; inventory reported incomplete",
-        );
-      }
-      continue;
-    }
-    entries.sort((left, right) => comparePaths(left.name, right.name));
-    const directories: Array<{ absolute: string; relative: string }> = [];
-    for (const entry of entries) {
-      if (entry.name === ".git") continue;
-      const path = current.relative
-        ? `${current.relative}/${entry.name}`
-        : entry.name;
-      if (entry.isDirectory()) {
-        directories.push({
-          absolute: join(current.absolute, entry.name),
-          relative: path,
-        });
-        continue;
-      }
+  // Breadth first, so a budget spent inside one heavy subtree — a dependency
+  // or build directory — cannot hide the shallow files a reader came for.
+  while (level.length > 0) {
+    const next: Array<{ absolute: string; relative: string }> = [];
+    for (const current of level) {
       if (files.size >= fileLimit) {
         truncated = true;
-        reachedLimit = true;
         break;
       }
-      const change: GitWorkingTreeChange = {
-        status: "?",
-        staged: false,
-        linesAdded: null,
-        linesDeleted: null,
-      };
-      files.set(path, {
-        path,
-        tracked: false,
-        kind: "untracked",
-        present: true,
-        worktreeChanges: [change],
-        cumulativeChange: change,
-      });
+      let entries: fs.Dirent[];
+      try {
+        entries = await readdir(current.absolute, { withFileTypes: true });
+      } catch (error) {
+        // A directory removed while we walk is ordinary in a live worktree and
+        // leaves nothing to list. One we may not read leaves part of the corpus
+        // unknown, which the snapshot reports rather than calling itself
+        // complete. Neither ends the walk.
+        if (!isMissingPathError(error)) {
+          truncated = true;
+          getLogger().debug(
+            { directory: current.absolute, error, projectPath },
+            "WORKTREE_SCAN: directory unreadable; inventory reported incomplete",
+          );
+        }
+        continue;
+      }
+      directories.add(current.relative);
+      entries.sort((left, right) => comparePaths(left.name, right.name));
+      for (const entry of entries) {
+        if (entry.name === ".git") continue;
+        const path = current.relative
+          ? `${current.relative}/${entry.name}`
+          : entry.name;
+        if (entry.isDirectory()) {
+          next.push({
+            absolute: join(current.absolute, entry.name),
+            relative: path,
+          });
+          continue;
+        }
+        if (files.size >= fileLimit) {
+          truncated = true;
+          break;
+        }
+        const change: GitWorkingTreeChange = {
+          status: "?",
+          staged: false,
+          linesAdded: null,
+          linesDeleted: null,
+        };
+        files.set(path, {
+          path,
+          tracked: false,
+          kind: "untracked",
+          present: true,
+          worktreeChanges: [change],
+          cumulativeChange: change,
+        });
+      }
     }
-    for (let index = directories.length - 1; index >= 0; index -= 1) {
-      const directory = directories[index];
-      if (directory) pending.push(directory);
+    if (truncated) {
+      if (next.length > 0) break;
+      level = [];
+      continue;
     }
+    level = next;
   }
-  return { headSha: null, baseSha: null, files, truncated };
+  return { headSha: null, baseSha: null, files, truncated, directories };
 }
 
 async function scanGitWorktree(

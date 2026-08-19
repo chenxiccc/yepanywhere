@@ -279,6 +279,17 @@ initializes Git nor offers an initialization control. A server without the live
 capability retains the released **Not a git repository** fallback and receives
 no worktree subscription.
 
+Such a project has no ignore rules to thin its tree, so its inventory is
+bounded well below the Git corpus and the walk spends that bound breadth
+first: a dependency or build directory cannot crowd out the shallow files a
+reader came for. Reaching the bound reports the corpus as incomplete. Watches
+follow the same bound — the walk's own directories are the watch targets,
+since walking further to watch files it does not publish would cost exactly
+the traversal the bound avoids — so a bounded inventory keeps the 30-second
+reconciliation its incomplete coverage implies. Reaching past that bound wants
+client-expanded directory prefixes rather than a larger number; that design is
+in `gaps/untracked-inventory-client-expanded-prefixes.md`.
+
 The same capability owns
 `GET /api/projects/:projectId/git/untracked-files` and cache-backed status via
 `GET /api/projects/:projectId/git?untracked=cache`. Cache-backed polling asks Git
