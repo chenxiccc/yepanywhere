@@ -49,10 +49,11 @@ export function useProjectWorktree(
     [enabled, projectId, runtime.sourceKey, runtime.transport],
   );
 
+  const { ignored, tracked, untracked } = coverage;
   useEffect(() => {
     if (!store) return;
-    return store.retain(coverage);
-  }, [coverage.ignored, coverage.tracked, coverage.untracked, store]);
+    return store.retain({ ignored, tracked, untracked });
+  }, [ignored, store, tracked, untracked]);
 
   const current = useSyncExternalStore(
     store?.subscribe ?? emptySubscribe,
@@ -93,7 +94,7 @@ export function useProjectWorktree(
       Math.max(0, deferralDeadline.current - now),
     );
     return () => clearTimeout(timer);
-  }, [current, maxDeferralMs, updateDeferred]);
+  }, [maxDeferralMs, updateDeferred]);
   return visible.current.snapshot;
 }
 
