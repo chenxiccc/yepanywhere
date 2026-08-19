@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
 import type { YaSourceRuntime } from "../../lib/sourceRuntime";
 import { SourceRuntimeProvider } from "../../lib/sourceRuntimeReact";
@@ -30,7 +31,7 @@ function createRuntime(): YaSourceRuntime {
 function Wrapper({ children }: { children: ReactNode }) {
   return (
     <SourceRuntimeProvider runtime={createRuntime()}>
-      {children}
+      <I18nProvider>{children}</I18nProvider>
     </SourceRuntimeProvider>
   );
 }

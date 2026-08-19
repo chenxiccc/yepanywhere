@@ -3,7 +3,12 @@ import "fake-indexeddb/auto";
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { planThumbnail } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getEntry, openDatabase, putEntryWithKey } from "../diagnostics/idb";
+import {
+  deleteEntry,
+  getEntry,
+  openDatabase,
+  putEntryWithKey,
+} from "../diagnostics/idb";
 import {
   loadCachedAttachmentPreview,
   storeUploadedAttachmentPreview,
@@ -159,7 +164,9 @@ describe("attachment preview cache", () => {
       attachmentId: uploadedFile.id,
       path: uploadedFile.path,
     });
-    expect(await getEntry(db, STORE_NAME, uploadedFile.path)).toBeNull();
+    expect(await getEntry(db, STORE_NAME, uploadedFile.path)).toMatchObject({
+      aliasFor: uploadedFile.id,
+    });
     db.close();
 
     const loadedByPath = await loadCachedAttachmentPreview(
@@ -197,7 +204,36 @@ describe("attachment preview cache", () => {
       attachmentId,
       path: legacyPath,
     });
-    expect(await getEntry(db, STORE_NAME, legacyPath)).toBeNull();
+    expect(await getEntry(db, STORE_NAME, legacyPath)).toMatchObject({
+      aliasFor: attachmentId,
+    });
     db.close();
+  });
+
+  it("serves a stored preview from the database rather than memory", async () => {
+    // Only an upload in flight may be held in memory; once stored, the entry
+    // lives under the database eviction budget and nowhere else, reachable by
+    // its persisted path through a pointer rather than a second copy.
+    const sourceFile = new File(["preview"], "held.jpeg", {
+      type: "image/jpeg",
+    });
+    const uploadedFile: UploadedFile = {
+      id: "attachment-id-3",
+      originalName: "held.jpeg",
+      name: "attachment-id-3_held.jpeg",
+      path: "/project/.attachments/session/attachment-id-3_held.jpeg",
+      size: sourceFile.size,
+      mimeType: "image/jpeg",
+    };
+
+    await storeUploadedAttachmentPreview(uploadedFile, sourceFile);
+
+    const db = await openPreviewDatabase();
+    await deleteEntry(db, STORE_NAME, uploadedFile.id);
+    db.close();
+
+    expect(
+      await loadCachedAttachmentPreview(uploadedFile.id, uploadedFile.path),
+    ).toBeNull();
   });
 });

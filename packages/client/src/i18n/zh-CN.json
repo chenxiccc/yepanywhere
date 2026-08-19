@@ -476,7 +476,7 @@
   "newSessionThinkingOn": "思考：开启（{level}）",
   "newSessionThinkingMode": "思考模式：{mode}",
   "newSessionStartAction": "开始会话",
-  "newSessionRemoveFile": "移除 {name}",
+  "attachmentRemove": "移除 {name}",
   "newSessionHeaderSubtitle": "选择一个项目目录，或者先保持未绑定，等准备好再开始。",
   "newSessionProjectDetached": "未绑定",
   "newSessionProjectDetachedHint": "还没有选择目录",

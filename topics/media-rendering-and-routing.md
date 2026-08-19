@@ -209,9 +209,13 @@ full-screen viewer behavior are aligned without flattening those two roles.
 - **Attachment chips** — image thumbnails on a sent user message, in the
   composer's pending-attachment row, and on the new-session form's pending
   files. `components/AttachmentChip.tsx` prefers a local object URL or the
-  in-memory/IndexedDB preview cache, including files just pasted or just
-  uploaded, and does not fetch from the server while those bytes are already
-  on the client. Remote fallback is `useRemoteImage` →
+  IndexedDB preview cache, including files just pasted or just uploaded, and
+  does not fetch from the server while those bytes are already on the client.
+  Only an upload still in flight is held in memory; once stored, an image lives
+  under the cache's eviction budget alone, and its persisted path holds a
+  blob-free pointer to the entry so a sent chip that knows only that path still
+  resolves locally, including after a reload. Remote fallback is
+  `useRemoteImage` →
   `/api/projects/:id/sessions/:sid/upload/:filename`. The project coordinate
   comes from logical session metadata because app-data project keys are
   intentionally irreversible. The session coordinate comes from the
@@ -225,9 +229,12 @@ full-screen viewer behavior are aligned without flattening those two roles.
   (`HOVER_PREVIEW_LINGER_MS = 450`), an image chip shows the full image
   anchored to the thumbnail, scaled to the remaining viewport with a small
   margin. Placement prefers below, then above, then left/right, and never
-  creates page scrollbars or crops the image. Touch keeps the click-to-modal
-  path; hover enlargement is a desktop affordance. Just-sent and
-  still-pending chips reuse the local preview bytes rather than fetching.
+  creates page scrollbars or crops the image. It follows resize and scroll so
+  it stays anchored to a thumbnail that moves under a resting pointer. Touch
+  keeps the click-to-modal path; hover enlargement is a desktop affordance.
+  Just-sent and still-pending chips reuse the local preview bytes rather than
+  fetching. The remove control on every chip uses the localized
+  `attachmentRemove` label.
 
 ### Read-only shares
 

@@ -224,7 +224,7 @@
   "newSessionThinkingOn": "Thinking: オン ({level})",
   "newSessionThinkingMode": "Thinking モード: {mode}",
   "newSessionStartAction": "セッションを開始",
-  "newSessionRemoveFile": "{name} を削除",
+  "attachmentRemove": "{name} を削除",
   "newSessionHeaderSubtitle": "プロジェクトフォルダーを選ぶか、開始するまで未選択のままにできます。",
   "newSessionProjectDetached": "未選択",
   "newSessionProjectDetachedHint": "まだフォルダーが選ばれていません",

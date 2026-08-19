@@ -224,7 +224,7 @@
   "newSessionThinkingOn": "Réflexion : activée ({level})",
   "newSessionThinkingMode": "Mode de réflexion : {mode}",
   "newSessionStartAction": "Démarrer la session",
-  "newSessionRemoveFile": "Supprimer {name}",
+  "attachmentRemove": "Supprimer {name}",
   "newSessionHeaderSubtitle": "Choisissez un dossier de projet, ou restez détaché jusqu'au moment de démarrer.",
   "newSessionProjectDetached": "Détaché",
   "newSessionProjectDetachedHint": "Aucun dossier sélectionné pour l'instant",

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
+import { useI18n } from "../i18n";
 import { useRemoteImage } from "../hooks/useRemoteImage";
 import { loadCachedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import {
@@ -277,6 +278,7 @@ function NonImageAttachmentChip({
   sizeLabel,
   onRemove,
 }: AttachmentChipProps) {
+  const { t } = useI18n();
   return (
     <span className={styles.chip} title={`${mimeType}, ${sizeLabel}`}>
       <span className={styles.previewFallback} aria-hidden="true">
@@ -291,7 +293,7 @@ function NonImageAttachmentChip({
           type="button"
           className={styles.remove}
           onClick={onRemove}
-          aria-label={`Remove ${originalName}`}
+          aria-label={t("attachmentRemove", { name: originalName })}
         >
           x
         </button>
@@ -312,6 +314,7 @@ function ImageAttachmentChip({
   projectId,
   onRemove,
 }: AttachmentChipProps) {
+  const { t } = useI18n();
   const sessionMetadata = useOptionalSessionMetadata();
   const routeProjectId = projectId ?? sessionMetadata?.projectId;
   const [showModal, setShowModal] = useState(false);
@@ -395,8 +398,13 @@ function ImageAttachmentChip({
     if (!showHoverPreview || !fullUrl) return;
     updateHoverPlacement();
     window.addEventListener("resize", updateHoverPlacement);
+    // A wheel with the pointer resting on a chip moves the thumbnail without
+    // any pointer event, and the preview is fixed to the viewport, so it must
+    // follow every scrolling ancestor to stay anchored.
+    window.addEventListener("scroll", updateHoverPlacement, true);
     return () => {
       window.removeEventListener("resize", updateHoverPlacement);
+      window.removeEventListener("scroll", updateHoverPlacement, true);
     };
   }, [fullUrl, showHoverPreview, updateHoverPlacement]);
 
@@ -451,7 +459,7 @@ function ImageAttachmentChip({
             type="button"
             className={styles.remove}
             onClick={onRemove}
-            aria-label={`Remove ${originalName}`}
+            aria-label={t("attachmentRemove", { name: originalName })}
           >
             x
           </button>

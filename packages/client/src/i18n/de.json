@@ -224,7 +224,7 @@
   "newSessionThinkingOn": "Denken: an ({level})",
   "newSessionThinkingMode": "Denkmodus: {mode}",
   "newSessionStartAction": "Sitzung starten",
-  "newSessionRemoveFile": "{name} entfernen",
+  "attachmentRemove": "{name} entfernen",
   "newSessionHeaderSubtitle": "Wähle einen Projektordner oder bleibe losgelöst, bis du starten willst.",
   "newSessionProjectDetached": "Losgelöst",
   "newSessionProjectDetachedHint": "Noch kein Ordner ausgewählt",

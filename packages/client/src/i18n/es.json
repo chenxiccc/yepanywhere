@@ -224,7 +224,7 @@
   "newSessionThinkingOn": "Pensando: activado ({level})",
   "newSessionThinkingMode": "Modo de pensamiento: {mode}",
   "newSessionStartAction": "Iniciar sesión",
-  "newSessionRemoveFile": "Eliminar {name}",
+  "attachmentRemove": "Eliminar {name}",
   "newSessionHeaderSubtitle": "Elige una carpeta de proyecto o quédate sin adjuntar hasta que quieras empezar.",
   "newSessionProjectDetached": "Sin proyecto",
   "newSessionProjectDetachedHint": "Todavía no hay carpeta seleccionada",

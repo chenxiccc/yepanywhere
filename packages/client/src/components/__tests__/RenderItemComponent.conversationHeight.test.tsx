@@ -542,4 +542,120 @@ describe("conversation thinking auto-hide", () => {
       container.querySelector(".conversation-thinking-preview"),
     ).not.toBeNull();
   });
+
+  function renderItem(item: ConversationActivityItem) {
+    return render(
+      <I18nProvider>
+        <RenderItemComponent
+          item={item}
+          isStreaming={false}
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+        />
+      </I18nProvider>,
+    );
+  }
+
+  function completedItem(
+    overrides: Partial<ConversationActivityItem> = {},
+  ): ConversationActivityItem {
+    const base = conversationActivityItem() as ConversationActivityItem;
+    return {
+      ...base,
+      active: false,
+      hasFollowingConversationText: true,
+      endedAtMs: Date.now(),
+      thinkingPreviews: base.thinkingPreviews?.map((preview) => ({
+        ...preview,
+        status: "complete",
+      })),
+      ...overrides,
+    };
+  }
+
+  it("hides thinking that arrived after the row, measured from its arrival", () => {
+    // A live turn's activity row usually exists before its first thought, so
+    // the card's own wait starts when it appears, not when the turn began.
+    const live = completedItem({ active: true, thinkingPreviews: undefined });
+    const { container, rerender } = renderItem(live);
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeNull();
+
+    const withThinking = completedItem({ active: true });
+    act(() => {
+      rerender(
+        <I18nProvider>
+          <RenderItemComponent
+            item={withThinking}
+            isStreaming={false}
+            thinkingExpanded={false}
+            toggleThinkingExpanded={() => {}}
+          />
+        </I18nProvider>,
+      );
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).not.toBeNull();
+
+    act(() => {
+      rerender(
+        <I18nProvider>
+          <RenderItemComponent
+            item={completedItem({ endedAtMs: Date.now() })}
+            isStreaming={false}
+            thinkingExpanded={false}
+            toggleThinkingExpanded={() => {}}
+          />
+        </I18nProvider>,
+      );
+    });
+    act(() => {
+      vi.advanceTimersByTime(4_999);
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    act(() => {
+      vi.advanceTimersByTime(CONVERSATION_THINKING_AUTO_HIDE_ROLLUP_MS);
+    });
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeNull();
+  });
+
+  it("releases the pinned row height when a new turn interrupts the rollup", () => {
+    const { container, rerender } = renderItem(completedItem());
+    const row = container.querySelector<HTMLElement>(
+      ".conversation-activity-row",
+    );
+    expect(row).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(row?.style.height).not.toBe("");
+
+    act(() => {
+      rerender(
+        <I18nProvider>
+          <RenderItemComponent
+            item={completedItem({ active: true })}
+            isStreaming={false}
+            thinkingExpanded={false}
+            toggleThinkingExpanded={() => {}}
+          />
+        </I18nProvider>,
+      );
+    });
+    expect(row?.style.height).toBe("");
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).not.toBeNull();
+  });
 });

@@ -561,7 +561,7 @@
   "newSessionThinkingOn": "Thinking: on ({level})",
   "newSessionThinkingMode": "Thinking mode: {mode}",
   "newSessionStartAction": "Start session",
-  "newSessionRemoveFile": "Remove {name}",
+  "attachmentRemove": "Remove {name}",
   "newSessionHeaderSubtitle": "What do you need help with?",
   "newSessionProjectDetached": "No project",
   "newSessionProjectDetachedHint": "Choose a folder when you need one",

@@ -130,15 +130,18 @@ provider-history rewrite and not deletion.
   from the bottom while a bottom-edge mask fades the clipping line, and
   the extras ease-in to `opacity: 0` over the same 1.5s so the shrink
   stays visible. The summary pill does not fade. After the 1.5s the extras
-  unmount. The delay is measured from turn completion: a turn
-  that finished more than 5s ago starts compact, with no flash of the
-  card. Live turns, and completed turns whose latest content is still
-  thinking, keep the preview. Turning thinking visibility back on restores
-  the preview even after auto-hide. A block restored by expanding its ordinary activity summary is not
-  duplicated in the preview. Preview text participates in the projected search
-  scope. The row packs the activity summary and available previews together
-  whenever their measured target widths fit, then wraps whole cards when they
-  do not.
+  unmount. The delay runs from turn completion, or from the moment the card
+  appeared when that is later — a live turn's first thought, or thinking
+  switched back on, is glanceable for its own 5s rather than vanishing on
+  arrival. A turn already rendered as complete more than 5s ago starts
+  compact, with no flash of the card. Live turns, and completed turns whose
+  latest content is still thinking, keep the preview. Turning thinking
+  visibility back on restores the preview even after auto-hide. A new turn
+  interrupting the rollup returns the row to its natural height. A block
+  restored by expanding its ordinary activity summary is not duplicated in
+  the preview. Preview text participates in the projected search scope. The
+  row packs the activity summary and available previews together whenever
+  their measured target widths fit, then wraps whole cards when they do not.
 - The activity list and the superseded *previous* thinking preview each cap
   their height to the current/latest preview's rendered content height, measured
   and published on the row as `--conversation-thinking-height`. Neither sibling

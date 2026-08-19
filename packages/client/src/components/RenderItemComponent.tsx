@@ -375,7 +375,9 @@ function ConversationActivitySummary({
   const previousThinkingPreviewCountRef = useRef(
     item.thinkingPreviews?.length ?? 0,
   );
-  const skipThinkingAutoHideRef = useRef(false);
+  const [thinkingShownSinceMs, setThinkingShownSinceMs] = useState<
+    number | null
+  >(null);
   // The recent-activity list is newest-first and clips its oldest (bottom) rows
   // when they exceed the thinking height. Mark it so the stylesheet can fade
   // that bottom edge — but only while it actually overflows, so a short list
@@ -515,17 +517,24 @@ function ConversationActivitySummary({
     const count = item.thinkingPreviews?.length ?? 0;
     const previousCount = previousThinkingPreviewCountRef.current;
     previousThinkingPreviewCountRef.current = count;
-    if (previousCount === 0 && count > 0) {
-      skipThinkingAutoHideRef.current = true;
+    if (count === 0) {
+      setThinkingShownSinceMs(null);
+      return;
+    }
+    if (previousCount === 0) {
+      // A card that arrives after this row mounted — a live turn's first
+      // thought, or thinking switched back on — starts its own glance window
+      // so it cannot appear and vanish in the same breath.
+      setThinkingShownSinceMs(Date.now());
       setAutoHidePhase("visible");
     }
   }, [item.thinkingPreviews?.length]);
   useEffect(() => {
-    if (skipThinkingAutoHideRef.current) return;
     const delay = conversationThinkingAutoHideDelayMs({
       active: item.active,
       hasFollowingConversationText: Boolean(item.hasFollowingConversationText),
       endedAtMs: item.endedAtMs,
+      shownSinceMs: thinkingShownSinceMs,
       nowMs: Date.now(),
     });
     if (delay === null) {
@@ -541,7 +550,12 @@ function ConversationActivitySummary({
       setAutoHidePhase("fading");
     }, delay);
     return () => window.clearTimeout(start);
-  }, [item.active, item.endedAtMs, item.hasFollowingConversationText]);
+  }, [
+    item.active,
+    item.endedAtMs,
+    item.hasFollowingConversationText,
+    thinkingShownSinceMs,
+  ]);
   useEffect(() => {
     if (autoHidePhase !== "fading") return;
     const finish = window.setTimeout(() => {
@@ -550,7 +564,6 @@ function ConversationActivitySummary({
     return () => window.clearTimeout(finish);
   }, [autoHidePhase]);
   useLayoutEffect(() => {
-    if (autoHidePhase === "visible") return;
     const row = rowRef.current;
     if (autoHidePhase === "fading" && row) {
       const summary = row.querySelector<HTMLElement>(
@@ -574,9 +587,13 @@ function ConversationActivitySummary({
       });
       return () => window.cancelAnimationFrame(frame);
     }
+    // The rollup pins a height to animate from. Leaving it behind would hold
+    // the row at the compact height, so drop it whichever way the rollup ends
+    // — including a new turn interrupting it.
     if (row) {
       row.style.removeProperty("height");
     }
+    if (autoHidePhase === "visible") return;
     reserveRef.current.reserve = null;
     syncHeightReserve();
   }, [autoHidePhase, syncHeightReserve]);

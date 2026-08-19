@@ -12,17 +12,30 @@ export function conversationThinkingAutoHideDelayMs({
   active,
   hasFollowingConversationText,
   endedAtMs,
+  shownSinceMs = null,
   nowMs,
   hideAfterMs = CONVERSATION_THINKING_AUTO_HIDE_MS,
 }: {
   active: boolean;
   hasFollowingConversationText: boolean;
   endedAtMs: number | null;
+  /**
+   * When the card appeared, for a preview that arrived after its turn ended —
+   * a live turn's first thought, or thinking switched back on. The card is
+   * glanceable for the full delay from whichever came last.
+   */
+  shownSinceMs?: number | null;
   nowMs: number;
   hideAfterMs?: number;
 }): number | null {
   if (active || !hasFollowingConversationText) return null;
-  if (endedAtMs === null) return 0;
-  const remaining = hideAfterMs - (nowMs - endedAtMs);
+  const since =
+    endedAtMs === null
+      ? shownSinceMs
+      : shownSinceMs === null
+        ? endedAtMs
+        : Math.max(endedAtMs, shownSinceMs);
+  if (since === null) return 0;
+  const remaining = hideAfterMs - (nowMs - since);
   return remaining > 0 ? remaining : 0;
 }
