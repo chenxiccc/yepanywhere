@@ -279,16 +279,32 @@ initializes Git nor offers an initialization control. A server without the live
 capability retains the released **Not a git repository** fallback and receives
 no worktree subscription.
 
-Such a project has no ignore rules to thin its tree, so its inventory is
-bounded well below the Git corpus and the walk spends that bound breadth
-first: a dependency or build directory cannot crowd out the shallow files a
-reader came for. Reaching the bound reports the corpus as incomplete. Watches
-follow the same bound — the walk's own directories are the watch targets,
-since walking further to watch files it does not publish would cost exactly
-the traversal the bound avoids — so a bounded inventory keeps the 30-second
-reconciliation its incomplete coverage implies. Reaching past that bound wants
-client-expanded directory prefixes rather than a larger number; that design is
-in `gaps/untracked-inventory-client-expanded-prefixes.md`.
+A current client begins such a project with only the filesystem root open. The
+snapshot contains direct root files and one pending row for each direct
+subdirectory; a pending row claims no file count. Opening a row leases that
+canonical project-relative prefix and its ancestors, enumerates only its direct
+files and subdirectories, and watches that directory non-recursively. Each open
+directory has its own 5,000-file bound. Reaching it preserves every direct
+subdirectory row, marks the opened row incomplete, and displays the published
+count as `n+` rather than claiming completeness.
+
+Directory disclosure is subscription state, not a selectable pseudo-file.
+Collapsing a directory releases it and every descendant prefix from that client
+lease. Search covers already enumerated files and hides pending directory rows;
+it never implies that unopened descendants were searched. Subscriber prefixes
+are unioned by the project owner, but each subscriber receives only files below
+its own open prefixes and sees a directory opened only by another subscriber as
+pending. The filesystem root and the union of currently open prefixes are the
+only content directories watched; narrowing the union closes obsolete watches.
+A missing directory disappears, while an unreadable open directory remains
+explicitly incomplete.
+
+`expandedPrefixes` is optional at the protocol boundary because capability 41
+was expanded before its first stable release. Omission retains the earlier
+bounded breadth-first filesystem inventory for a cached source client. A current
+filesystem client sends an empty array for root-only mode and accepts a snapshot
+without directory rows from an older source server; that safely displays the
+server's bounded file corpus without offering unsupported lazy disclosure.
 
 The same capability owns
 `GET /api/projects/:projectId/git/untracked-files` and cache-backed status via
@@ -338,17 +354,22 @@ holds a lease. Identical subscribers across direct and relay transports share
 one snapshot, watcher set, and reconciliation computation. Subscriber coverage
 is unioned: Tracked and Untracked are present by default, while Ignored paths
 are neither enumerated nor retained until at least one subscriber requests
-them. Releasing the final lease closes every watcher and timer; inactive
-snapshots may then remain only as bounded least-recently-used state.
+them. For filesystem-only projects, explicitly opened directory prefixes are
+unioned as well, then projected back to each subscriber's own lease. Releasing
+a prefix narrows the retained file corpus and watcher set; releasing the final
+lease closes every watcher and timer. Inactive snapshots may then remain only
+as bounded least-recently-used state.
 
 The first subscriber receives one complete snapshot with project-root
 `{ epoch, sequence }` generation, resolved `HEAD` / `HEAD^1` endpoints, present
 tracked and untracked rows, tracked deletions marked `present: false`, and the
-exact dirty and cumulative projection facts each row needs. That payload ends
-Loading immediately. Fresh query metadata without a retained payload never
-stands in for it, and no query identity serializes the file corpus. A selected
-file reads its projection availability from the resident row rather than
-launching another project-wide status or projection-manifest request.
+exact dirty and cumulative projection facts each row needs. A lazy filesystem
+snapshot also carries the visible directory rows and their pending or bounded
+state. That payload ends Loading immediately. Fresh query metadata without a
+retained payload never stands in for it, and no query identity serializes the
+file corpus. A selected file reads its projection availability from the
+resident row rather than launching another project-wide status or
+projection-manifest request.
 
 Filesystem changes publish create, modify, and delete deltas. If subscriber
 coverage widens while a narrower scan is active, the owner scans again before
@@ -360,12 +381,15 @@ ignores stale events, and requests one full snapshot after a generation gap or
 reconnect. Selection, detail mode, scroll, and explicit outline disclosure
 remain component state and therefore survive ordinary corpus replacement.
 
-On Linux, YA watches the project root and each content directory
-non-recursively. Directory creation and removal update only that subtree's watch
-set. The initial root watcher is installed before the background directory
-walk, so watcher expansion cannot delay the first snapshot or starve a
-notification-triggered Git scan. `.git` and every descendant are absent from
-content traversal and watching.
+On Linux, YA watches content directories non-recursively. Git repositories and
+the omitted-prefix compatibility walk cover each enumerated content directory;
+lazy filesystem inventory covers only the root and the union of open prefixes.
+Directory creation and removal update only the affected watch set. For the full
+walk, the initial root watcher is installed before background watcher expansion,
+so expansion cannot delay the first snapshot or starve a notification-triggered
+Git scan. Lazy filesystem watches synchronize to the scanned open-prefix set
+before a widened subscriber becomes ready. `.git` and every descendant are
+absent from content traversal and watching.
 
 A Git repository adds a separate metadata watch set. YA resolves both the
 per-worktree administrative directory and the common Git directory rather than

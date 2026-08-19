@@ -774,7 +774,7 @@ export const SERVER_CAPABILITIES = {
     introducedIn: "0.7.2",
     advertisement: { kind: "version-implied" },
     description:
-      "Server maintains one project-keyed, lease-owned Working Tree snapshot with requested tracked, untracked, and ignored coverage, filesystem-only inventory outside Git repositories, embedded Git facts when available, and sequenced live deltas.",
+      "Server maintains one project-keyed, lease-owned Working Tree snapshot with requested tracked, untracked, ignored, and filesystem-directory coverage, lazy filesystem-only inventory outside Git repositories, embedded Git facts when available, and sequenced live deltas.",
     clientFallback:
       "Use the released static working-tree inventory and cache-backed status paths without section controls, ignored enumeration, or a worktree subscription.",
     serverContract: {
@@ -786,6 +786,7 @@ export const SERVER_CAPABILITIES = {
         "relaySubscribe.channel=worktree",
         "relaySubscribe.projectId",
         "relaySubscribe.coverage",
+        "relaySubscribe.coverage.expandedPrefixes",
       ],
       responseFields: [
         "gitWorkingTreeFiles.files[].kind",
@@ -798,8 +799,13 @@ export const SERVER_CAPABILITIES = {
         "gitWorktreeSnapshot.files[].present",
         "gitWorktreeSnapshot.files[].worktreeChanges",
         "gitWorktreeSnapshot.files[].cumulativeChange",
+        "gitWorktreeSnapshot.directories[].path",
+        "gitWorktreeSnapshot.directories[].pending",
+        "gitWorktreeSnapshot.directories[].truncated",
         "gitWorktreeDelta.generation",
         "gitWorktreeDelta.changes",
+        "gitWorktreeDelta.directoryChanges",
+        "gitWorktreeDelta.truncated",
       ],
       events: ["git-worktree-snapshot", "git-worktree-delta"],
     },

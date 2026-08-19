@@ -90,11 +90,16 @@ version-implied from `0.7.1`.
 
 `git-working-tree-sections` owns the lease-backed project snapshot and
 sequenced live-delta contract, including requested Tracked / Untracked /
-Ignored coverage, filesystem-only current contents outside Git repositories,
+Ignored coverage, lazy opened-directory coverage for filesystem-only projects,
 embedded dirty and cumulative Git facts when available, and the sectioned
-static route used for explicit refresh or resynchronization. Subscribers to
-one project share the server snapshot, watcher set, and reconciliation owner.
-Without permanent ID 41, the client keeps the released static
+static route used for explicit refresh or resynchronization. A filesystem
+subscriber sends optional `coverage.expandedPrefixes`; root is implicit, and
+snapshots plus deltas may carry pending or bounded directory rows. Subscribers
+to one project share the server snapshot, unioned watcher set, and
+reconciliation owner while receiving a projection of their own prefixes.
+Omitting the new request field retains the preceding bounded breadth-first
+filesystem inventory, and omitting the new response fields remains readable by
+a current client. Without permanent ID 41, the client keeps the released static
 `git-working-tree-files` behavior, sends no worktree subscription, does no
 ignored enumeration, and retains the focused 30-second fallback refresh. It is
 version-implied from `0.7.2`; the Maintainer approved expanding this unpublished

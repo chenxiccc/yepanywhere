@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import type * as fs from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -10,6 +10,7 @@ import type {
   GitWorkingTreePathKind,
   GitWorktreeCoverage,
   GitWorktreeDeltaEvent,
+  GitWorktreeDirectory,
   GitWorktreeSubscriptionEvent,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -910,6 +911,299 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount + 2),
     );
     expect(maxActiveScans).toBe(1);
+
+    subscription.release();
+    manager.dispose();
+  });
+
+  it("unions filesystem prefixes while projecting and watching each subscriber's coverage", async () => {
+    const projectId = "project-expanded-prefixes" as UrlProjectId;
+    await mkdir(join(projectPath, "notes"));
+    await writeFile(join(projectPath, "notes", "todo.txt"), "todo\n");
+    const watchers = new Map<string, FakeWatcher[]>();
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-expanded-prefixes",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      platform: "linux",
+      watchDirectory: (path) => {
+        const watcher = new FakeWatcher();
+        watchers.set(path, [...(watchers.get(path) ?? []), watcher]);
+        return watcher as unknown as fs.FSWatcher;
+      },
+    });
+    const rootEvents: GitWorktreeSubscriptionEvent[] = [];
+    const root = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: [],
+      },
+      (event) => rootEvents.push(event),
+    );
+    await root.ready;
+
+    expect(rootEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [],
+      directories: [
+        { path: "notes", pending: true, truncated: false },
+        { path: "src", pending: true, truncated: false },
+      ],
+    });
+    expect(watchers.has(projectPath)).toBe(true);
+    expect(watchers.has(join(projectPath, "src"))).toBe(false);
+
+    const srcEvents: GitWorktreeSubscriptionEvent[] = [];
+    const src = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: ["src"],
+      },
+      (event) => srcEvents.push(event),
+    );
+    await src.ready;
+
+    expect(srcEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [expect.objectContaining({ path: "src/a.ts" })],
+      directories: [
+        { path: "notes", pending: true, truncated: false },
+        { path: "src", pending: false, truncated: false },
+        { path: "src/nested", pending: true, truncated: false },
+      ],
+    });
+    expect(watchers.has(join(projectPath, "src"))).toBe(true);
+    expect(watchers.has(join(projectPath, "src", "nested"))).toBe(false);
+
+    const notesEvents: GitWorktreeSubscriptionEvent[] = [];
+    const notes = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: ["notes"],
+      },
+      (event) => notesEvents.push(event),
+    );
+    await notes.ready;
+
+    expect(notesEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [expect.objectContaining({ path: "notes/todo.txt" })],
+      directories: [
+        { path: "notes", pending: false, truncated: false },
+        { path: "src", pending: true, truncated: false },
+      ],
+    });
+    expect(
+      notesEvents[0]?.type === "git-worktree-snapshot" &&
+        notesEvents[0].files.some((entry) => entry.path === "src/a.ts"),
+    ).toBe(false);
+    expect(watchers.has(join(projectPath, "notes"))).toBe(true);
+
+    src.release();
+    await vi.waitFor(() => {
+      expect(
+        watchers
+          .get(join(projectPath, "src"))
+          ?.every((watcher) => watcher.closed),
+      ).toBe(true);
+    });
+    expect(
+      watchers
+        .get(join(projectPath, "notes"))
+        ?.some((watcher) => !watcher.closed),
+    ).toBe(true);
+    expect(rootEvents.at(-1)).toMatchObject({
+      type: "git-worktree-delta",
+      changes: [],
+      directoryChanges: expect.arrayContaining([
+        expect.objectContaining({
+          path: "src",
+          directory: { path: "src", pending: true, truncated: false },
+        }),
+      ]),
+    });
+
+    notes.release();
+    root.release();
+    manager.dispose();
+  });
+
+  it("keeps expanded-prefix projections narrow during a compatibility scan", async () => {
+    const projectId = "project-mixed-prefix-coverage" as UrlProjectId;
+    const rootFile = file("root.txt", "untracked");
+    const nestedFile = file("src/a.ts", "untracked");
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-mixed-prefix-coverage",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      platform: "darwin",
+      scanWorktree: vi.fn(async (_path, coverage) =>
+        coverage.expandedPrefixes === undefined
+          ? {
+              headSha: null,
+              baseSha: null,
+              files: mapFiles([rootFile, nestedFile]),
+              directories: new Set(["", "src"]),
+            }
+          : {
+              headSha: null,
+              baseSha: null,
+              files: mapFiles([rootFile]),
+              directories: new Set([""]),
+              directoryRows: new Map<string, GitWorktreeDirectory>([
+                ["", { path: "", pending: false, truncated: false }],
+                ["src", { path: "src", pending: true, truncated: false }],
+              ]),
+            },
+      ),
+    });
+    const rootEvents: GitWorktreeSubscriptionEvent[] = [];
+    const root = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: [],
+      },
+      (event) => rootEvents.push(event),
+    );
+    await root.ready;
+
+    const legacyEvents: GitWorktreeSubscriptionEvent[] = [];
+    const legacy = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      (event) => legacyEvents.push(event),
+    );
+    await legacy.ready;
+
+    expect(legacyEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [rootFile, nestedFile],
+    });
+    expect(rootEvents.at(-1)).toMatchObject({
+      type: "git-worktree-delta",
+      changes: [],
+      directoryChanges: [{ changeType: "delete", path: "src" }],
+    });
+
+    legacy.release();
+    root.release();
+    manager.dispose();
+  });
+
+  it("streams create, rename, and delete changes for pending directories", async () => {
+    const projectId = "project-directory-deltas" as UrlProjectId;
+    const watchListeners = new Map<
+      string,
+      (eventType: string, filename: Buffer | string | null) => void
+    >();
+    const events: GitWorktreeSubscriptionEvent[] = [];
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-directory-deltas",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      debounceMs: 25,
+      platform: "linux",
+      watchDirectory: (path, listener) => {
+        watchListeners.set(path, listener);
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: [],
+      },
+      (event) => events.push(event),
+    );
+    await subscription.ready;
+
+    await mkdir(join(projectPath, "docs"));
+    watchListeners.get(projectPath)?.("rename", "docs");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() =>
+      expect(events.at(-1)).toMatchObject({
+        type: "git-worktree-delta",
+        directoryChanges: [
+          {
+            changeType: "create",
+            path: "docs",
+            directory: { path: "docs", pending: true, truncated: false },
+          },
+        ],
+      }),
+    );
+
+    await rename(join(projectPath, "docs"), join(projectPath, "guides"));
+    watchListeners.get(projectPath)?.("rename", "docs");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() =>
+      expect(events.at(-1)).toMatchObject({
+        type: "git-worktree-delta",
+        directoryChanges: [
+          { changeType: "delete", path: "docs" },
+          {
+            changeType: "create",
+            path: "guides",
+            directory: { path: "guides", pending: true, truncated: false },
+          },
+        ],
+      }),
+    );
+
+    await rm(join(projectPath, "guides"), { recursive: true });
+    watchListeners.get(projectPath)?.("rename", "guides");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() =>
+      expect(events.at(-1)).toMatchObject({
+        type: "git-worktree-delta",
+        directoryChanges: [{ changeType: "delete", path: "guides" }],
+      }),
+    );
 
     subscription.release();
     manager.dispose();

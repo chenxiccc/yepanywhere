@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -136,6 +136,116 @@ describe("scanGitWorktree", () => {
       100,
     );
     expect(withoutUntracked.files.size).toBe(0);
+  });
+
+  it("enumerates only root and explicitly opened filesystem directories", async () => {
+    await mkdir(join(repo, "notes", "nested"), { recursive: true });
+    await writeFile(join(repo, "notes", "direct.txt"), "direct\n");
+    await writeFile(join(repo, "notes", "nested", "idea.txt"), "idea\n");
+
+    const rootOnly = await scanFilesystemWorktree(
+      repo,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: true,
+        expandedPrefixes: [],
+      },
+      100,
+    );
+
+    expect(rootOnly.files.has("notes/direct.txt")).toBe(false);
+    expect(rootOnly.directories).toEqual(new Set([""]));
+    expect(rootOnly.directoryRows?.get("notes")).toEqual({
+      path: "notes",
+      pending: true,
+      truncated: false,
+    });
+
+    const opened = await scanFilesystemWorktree(
+      repo,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: true,
+        expandedPrefixes: ["notes"],
+      },
+      100,
+    );
+
+    expect(opened.files.get("notes/direct.txt")).toMatchObject({
+      tracked: false,
+      kind: "untracked",
+      present: true,
+    });
+    expect(opened.files.has("notes/nested/idea.txt")).toBe(false);
+    expect(opened.directories).toEqual(new Set(["", "notes"]));
+    expect(opened.directoryRows?.get("notes")).toEqual({
+      path: "notes",
+      pending: false,
+      truncated: false,
+    });
+    expect(opened.directoryRows?.get("notes/nested")).toEqual({
+      path: "notes/nested",
+      pending: true,
+      truncated: false,
+    });
+  });
+
+  it("does not enumerate a requested symlink as an opened directory", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "ya-worktree-outside-"));
+    try {
+      await writeFile(join(outside, "secret.txt"), "secret\n");
+      await symlink(outside, join(repo, "outside"));
+
+      const scan = await scanFilesystemWorktree(
+        repo,
+        {
+          tracked: true,
+          untracked: true,
+          ignored: true,
+          expandedPrefixes: ["outside"],
+        },
+        100,
+      );
+
+      expect(scan.files.has("outside/secret.txt")).toBe(false);
+      expect(scan.directories).toEqual(new Set([""]));
+      expect(scan.directoryRows?.has("outside")).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true });
+    }
+  });
+
+  it("bounds files per opened filesystem directory without hiding subdirectories", async () => {
+    await mkdir(join(repo, "many", "nested"), { recursive: true });
+    await writeFile(join(repo, "many", "a.txt"), "a\n");
+    await writeFile(join(repo, "many", "b.txt"), "b\n");
+
+    const scan = await scanFilesystemWorktree(
+      repo,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: true,
+        expandedPrefixes: ["many"],
+      },
+      1,
+    );
+
+    expect(
+      [...scan.files.keys()].filter((path) => path.startsWith("many/")),
+    ).toEqual(["many/a.txt"]);
+    expect(scan.directoryRows?.get("many")).toEqual({
+      path: "many",
+      pending: false,
+      truncated: true,
+    });
+    expect(scan.directoryRows?.get("many/nested")).toEqual({
+      path: "many/nested",
+      pending: true,
+      truncated: false,
+    });
   });
 
   it("resolves separate per-worktree and common Git directories", async () => {

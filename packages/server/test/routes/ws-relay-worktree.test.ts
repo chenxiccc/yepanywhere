@@ -66,6 +66,101 @@ describe("WebSocket worktree subscriptions", () => {
     });
   });
 
+  it("normalizes expanded prefixes and adds their ancestors", async () => {
+    const release = vi.fn();
+    const manager = {
+      subscribe: vi.fn(() => ({ ready: Promise.resolve(), release })),
+    } as unknown as ProjectWorktreeSubscriptionManager;
+    const subscriptions = new Map<string, () => void>();
+
+    handleWorktreeSubscribe(
+      subscriptions,
+      {
+        ...message(),
+        coverage: {
+          ...coverage,
+          expandedPrefixes: ["src/nested", "notes"],
+        },
+      },
+      vi.fn(),
+      manager,
+    );
+    await Promise.resolve();
+
+    expect(manager.subscribe).toHaveBeenCalledWith(
+      projectId,
+      {
+        ...coverage,
+        expandedPrefixes: ["notes", "src", "src/nested"],
+      },
+      expect.any(Function),
+    );
+    cleanupSubscriptions(subscriptions);
+  });
+
+  it.each([
+    ["absolute", ["/src"]],
+    ["escaping", ["src/../secret"]],
+    ["Git metadata", ["src/.GIT/objects"]],
+    ["backslash", ["src\\nested"]],
+    ["empty segment", ["src//nested"]],
+    ["Windows drive", ["C:/src"]],
+    ["non-string", [42]],
+  ])("rejects %s expanded prefixes", (_label, expandedPrefixes) => {
+    const manager = {
+      subscribe: vi.fn(),
+    } as unknown as ProjectWorktreeSubscriptionManager;
+    const subscriptions = new Map<string, () => void>();
+    const send = vi.fn();
+
+    handleWorktreeSubscribe(
+      subscriptions,
+      {
+        ...message(),
+        coverage: {
+          ...coverage,
+          expandedPrefixes: expandedPrefixes as unknown as string[],
+        },
+      },
+      send,
+      manager,
+    );
+
+    expect(manager.subscribe).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith({
+      type: "response",
+      id: "worktree-1",
+      status: 400,
+      body: { error: "Valid coverage required for worktree channel" },
+    });
+  });
+
+  it("rejects expanded-prefix lists above the protocol bound", () => {
+    const manager = {
+      subscribe: vi.fn(),
+    } as unknown as ProjectWorktreeSubscriptionManager;
+    const send = vi.fn();
+
+    handleWorktreeSubscribe(
+      new Map(),
+      {
+        ...message(),
+        coverage: {
+          ...coverage,
+          expandedPrefixes: Array.from(
+            { length: 257 },
+            (_, index) => `directory-${index}`,
+          ),
+        },
+      },
+      send,
+      manager,
+    );
+
+    expect(manager.subscribe).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ status: 400 }));
+  });
+
   it("sends connected before a buffered initial snapshot", async () => {
     const pending = deferred<void>();
     const release = vi.fn();

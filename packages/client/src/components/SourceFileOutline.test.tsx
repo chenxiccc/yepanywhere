@@ -125,4 +125,30 @@ describe("SourceFileOutline", () => {
     ).toBeDefined();
     expect(screen.getByText("refreshed-child.ts")).toBeDefined();
   });
+
+  it("counts only direct files in explicit directory rows", () => {
+    render(
+      <SourceFileOutline
+        items={[item("src/a.ts"), item("src/nested/b.ts")]}
+        directories={[
+          { path: "src", pending: false, truncated: false },
+          { path: "src/nested", pending: false, truncated: false },
+        ]}
+        expandedDirectories={new Set(["src", "src/nested"])}
+        onToggleDirectory={vi.fn()}
+        scopeKey="explicit-directories"
+        renderFile={(entry, visiblePath, pathProps) => (
+          <li key={entry.id}>
+            <span {...pathProps}>{visiblePath}</span>
+          </li>
+        )}
+        t={t}
+      />,
+    );
+
+    const src = screen
+      .getAllByRole("button", { name: "sourceCollapseDirectory" })
+      .find((button) => button.textContent?.includes("src/"));
+    expect(src?.querySelector("[class*='groupCount']")?.textContent).toBe("1");
+  });
 });

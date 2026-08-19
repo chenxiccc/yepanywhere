@@ -1,6 +1,7 @@
 import type {
   GitWorkingTreeFile,
   GitWorktreeCoverage,
+  GitWorktreeDirectory,
   GitWorktreeSnapshotEvent,
 } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +18,7 @@ const COVERAGE: GitWorktreeCoverage = {
 function snapshot(
   files: GitWorkingTreeFile[],
   sequence = 0,
+  directories?: GitWorktreeDirectory[],
 ): GitWorktreeSnapshotEvent {
   return {
     type: "git-worktree-snapshot",
@@ -25,6 +27,7 @@ function snapshot(
     headSha: "head-a",
     baseSha: "base-a",
     files,
+    ...(directories ? { directories } : {}),
     truncated: false,
     timestamp: "2026-08-19T00:00:00.000Z",
   };
@@ -83,6 +86,40 @@ describe("ProjectWorktreeStore", () => {
       closed: true,
       closeCalls: 1,
     });
+  });
+
+  it("unions and narrows expanded-prefix leases", () => {
+    const transport = new FakeSourceTransport();
+    const store = getProjectWorktreeStore(
+      asClientSummarySourceKey("test:worktree-prefix-leases"),
+      "project-a",
+      transport,
+    );
+
+    const releaseRoot = store.retain({ ...COVERAGE, expandedPrefixes: [] });
+    const root = onlyWorktreeSubscription(transport);
+    expect(root.coverage).toEqual({ ...COVERAGE, expandedPrefixes: [] });
+
+    const releaseNested = store.retain({
+      ...COVERAGE,
+      expandedPrefixes: ["src", "src/nested"],
+    });
+    expect(transport.getSubscriptions("worktree")[0]).toMatchObject({
+      closed: true,
+      closeCalls: 1,
+    });
+    expect(onlyWorktreeSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: ["src", "src/nested"],
+    });
+
+    releaseNested();
+    expect(onlyWorktreeSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: [],
+    });
+    releaseRoot();
+    expect(onlyWorktreeSubscription(transport).closed).toBe(true);
   });
 
   it("settles from a snapshot and preserves untouched row identity across deltas", () => {
@@ -146,6 +183,73 @@ describe("ProjectWorktreeStore", () => {
     const updated = store.getSnapshot();
     expect(updated.files[0]).toBe(first);
     expect(updated.files[1]).toBe(changedSecond);
+    release();
+  });
+
+  it("applies optional directory snapshots and deltas", () => {
+    const transport = new FakeSourceTransport();
+    const store = getProjectWorktreeStore(
+      asClientSummarySourceKey("test:worktree-directory-deltas"),
+      "project-a",
+      transport,
+    );
+    const release = store.retain({ ...COVERAGE, expandedPrefixes: ["src"] });
+    const subscription = onlyWorktreeSubscription(transport);
+    const src: GitWorktreeDirectory = {
+      path: "src",
+      pending: true,
+      truncated: false,
+    };
+    const notes: GitWorktreeDirectory = {
+      path: "notes",
+      pending: true,
+      truncated: false,
+    };
+
+    transport.emitSubscriptionEvent(
+      subscription.id,
+      "git-worktree-snapshot",
+      snapshot([], 0, [notes, src]),
+    );
+    expect(store.getSnapshot().directories).toEqual([notes, src]);
+
+    const openedSrc: GitWorktreeDirectory = {
+      path: "src",
+      pending: false,
+      truncated: true,
+    };
+    const nested: GitWorktreeDirectory = {
+      path: "src/nested",
+      pending: true,
+      truncated: false,
+    };
+    transport.emitSubscriptionEvent(subscription.id, "git-worktree-delta", {
+      type: "git-worktree-delta",
+      generation: { epoch: "epoch-a", sequence: 1 },
+      headSha: null,
+      baseSha: null,
+      changes: [],
+      directoryChanges: [
+        { changeType: "delete", path: "notes" },
+        {
+          changeType: "modify",
+          path: "src",
+          directory: openedSrc,
+        },
+        {
+          changeType: "create",
+          path: "src/nested",
+          directory: nested,
+        },
+      ],
+      truncated: true,
+      timestamp: "2026-08-19T00:00:01.000Z",
+    });
+
+    expect(store.getSnapshot()).toMatchObject({
+      directories: [openedSrc, nested],
+      truncated: true,
+    });
     release();
   });
 

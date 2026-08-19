@@ -3,6 +3,7 @@ import type {
   GitWorkingTreeFile,
   GitWorkingTreePathKind,
   GitWorktreeCoverage,
+  GitWorktreeDirectory,
 } from "@yep-anywhere/shared";
 import {
   type ReactNode,
@@ -86,6 +87,23 @@ export function BlameBrowser({
   const [coverage, setCoverage] = useState<GitWorktreeCoverage>(
     DEFAULT_WORKTREE_COVERAGE,
   );
+  const [storedExpandedPrefixes, setStoredExpandedPrefixes] = useState<
+    string[]
+  >([]);
+  const expandedPrefixesProjectId = useRef(projectId);
+  const expandedPrefixes =
+    expandedPrefixesProjectId.current === projectId
+      ? storedExpandedPrefixes
+      : [];
+  const lazyFilesystemInventory =
+    supportsWorktreeSections && status?.isGitRepo === false;
+  const liveCoverage = useMemo<GitWorktreeCoverage>(
+    () => ({
+      ...coverage,
+      ...(lazyFilesystemInventory ? { expandedPrefixes } : {}),
+    }),
+    [coverage, expandedPrefixes, lazyFilesystemInventory],
+  );
   const [pointerMoving, setPointerMoving] = useState(false);
   const pointerQuietTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handlePointerMove = useCallback(() => {
@@ -102,9 +120,14 @@ export function BlameBrowser({
     },
     [],
   );
+  useEffect(() => {
+    if (expandedPrefixesProjectId.current === projectId) return;
+    expandedPrefixesProjectId.current = projectId;
+    setStoredExpandedPrefixes([]);
+  }, [projectId]);
   const liveWorktree = useProjectWorktree(
     projectId,
-    coverage,
+    liveCoverage,
     supportsWorktreeSections,
     undefined,
     pointerMoving,
@@ -216,6 +239,9 @@ export function BlameBrowser({
   const effectiveInventoryTruncated = supportsWorktreeSections
     ? liveWorktree.truncated
     : inventoryTruncated;
+  const effectiveDirectories = lazyFilesystemInventory
+    ? liveWorktree.directories
+    : [];
   const fileIndex = useMemo(
     () => new FileSearchIndex(effectiveFiles),
     [effectiveFiles],
@@ -317,6 +343,28 @@ export function BlameBrowser({
   const toggleCoverage = useCallback((kind: GitWorkingTreePathKind) => {
     setCoverage((current) => ({ ...current, [kind]: !current[kind] }));
   }, []);
+  const expandedDirectorySet = useMemo(
+    () => new Set(expandedPrefixes),
+    [expandedPrefixes],
+  );
+  const toggleDirectory = useCallback((path: string, expanded: boolean) => {
+    setStoredExpandedPrefixes((current) => {
+      if (!expanded) {
+        return current.filter(
+          (prefix) => prefix !== path && !prefix.startsWith(`${path}/`),
+        );
+      }
+      const next = new Set(current);
+      const segments = path.split("/");
+      for (let length = 1; length <= segments.length; length += 1) {
+        next.add(segments.slice(0, length).join("/"));
+      }
+      return [...next].sort((left, right) => {
+        const depth = left.split("/").length - right.split("/").length;
+        return depth !== 0 ? depth : left.localeCompare(right);
+      });
+    });
+  }, []);
   const renderFileRow = (
     file: string,
     visiblePath = file,
@@ -415,9 +463,16 @@ export function BlameBrowser({
               trackedFiles={trackedFiles}
               untrackedFiles={untrackedFiles}
               ignoredFiles={ignoredFiles}
+              directories={effectiveDirectories}
               coverage={coverage}
               sectionsEnabled={supportsWorktreeSections}
               onToggle={toggleCoverage}
+              {...(lazyFilesystemInventory
+                ? {
+                    expandedDirectories: expandedDirectorySet,
+                    onToggleDirectory: toggleDirectory,
+                  }
+                : {})}
               scopeKey={projectId}
               query={query}
               truncated={effectiveInventoryTruncated}
@@ -535,9 +590,12 @@ function WorkingTreeFileList({
   trackedFiles,
   untrackedFiles,
   ignoredFiles,
+  directories,
   coverage,
   sectionsEnabled,
   onToggle,
+  expandedDirectories,
+  onToggleDirectory,
   scopeKey,
   query,
   truncated,
@@ -547,9 +605,12 @@ function WorkingTreeFileList({
   trackedFiles: string[];
   untrackedFiles: string[];
   ignoredFiles: string[];
+  directories: readonly GitWorktreeDirectory[];
   coverage: GitWorktreeCoverage;
   sectionsEnabled: boolean;
   onToggle: (kind: GitWorkingTreePathKind) => void;
+  expandedDirectories?: ReadonlySet<string>;
+  onToggleDirectory?: (path: string, expanded: boolean) => void;
   scopeKey: string;
   query: string;
   truncated: boolean;
@@ -561,7 +622,11 @@ function WorkingTreeFileList({
   t: TranslationFn;
 }) {
   const searching = query.trim().length > 0;
-  const renderOutline = (files: string[], section: string) => (
+  const renderOutline = (
+    files: string[],
+    section: string,
+    sectionDirectories: readonly GitWorktreeDirectory[] = [],
+  ) => (
     <SourceFileOutline
       className="blame-file-list"
       items={files.map((path) => ({
@@ -570,6 +635,10 @@ function WorkingTreeFileList({
         displayPath: path,
         value: path,
       }))}
+      directories={sectionDirectories}
+      {...(expandedDirectories && onToggleDirectory
+        ? { expandedDirectories, onToggleDirectory }
+        : {})}
       scopeKey={`${scopeKey}:${section}`}
       query={query}
       renderFile={(item, visiblePath, pathProps) =>
@@ -628,7 +697,10 @@ function WorkingTreeFileList({
           >
             {label}
           </SourceFileSectionDivider>
-          {coverage[kind] && files.length > 0 && renderOutline(files, kind)}
+          {coverage[kind] &&
+            (files.length > 0 ||
+              (kind === "untracked" && directories.length > 0)) &&
+            renderOutline(files, kind, kind === "untracked" ? directories : [])}
         </div>
       ))}
       {truncated && !searching && (

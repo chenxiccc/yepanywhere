@@ -1557,6 +1557,8 @@
   "sourceUnchangedFiles": "Tracked, unchanged",
   "sourceExpandPathGroup": "Expand {path} ({count} files)",
   "sourceCollapsePathGroup": "Collapse {path} ({count} files)",
+  "sourceExpandDirectory": "Expand directory {path}",
+  "sourceCollapseDirectory": "Collapse directory {path}",
   "sourceViewMode": "File view mode",
   "sourceViewContents": "Contents",
   "sourceViewBlame": "Blame",

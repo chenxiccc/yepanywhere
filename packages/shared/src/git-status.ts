@@ -214,6 +214,21 @@ export interface GitWorktreeCoverage {
   tracked: boolean;
   untracked: boolean;
   ignored: boolean;
+  /**
+   * Filesystem-only directories explicitly opened by this subscriber. The root
+   * is implicit. Omission retains the earlier bounded breadth-first inventory.
+   */
+  expandedPrefixes?: string[];
+}
+
+/** One filesystem-only directory row in a lazy worktree inventory. */
+export interface GitWorktreeDirectory {
+  /** Canonical project-relative path without a trailing slash. */
+  path: string;
+  /** True until a subscriber opens this directory prefix. */
+  pending: boolean;
+  /** True when the opened directory contains more files than were published. */
+  truncated: boolean;
 }
 
 export interface GitWorktreeGeneration {
@@ -230,6 +245,8 @@ export interface GitWorktreeSnapshotEvent {
   /** Resolved HEAD^1 used by cumulative projection facts. */
   baseSha: string | null;
   files: GitWorkingTreeFile[];
+  /** Filesystem-only directory rows. Older servers omit this field. */
+  directories?: GitWorktreeDirectory[];
   truncated: boolean;
   timestamp: string;
 }
@@ -242,6 +259,12 @@ export interface GitWorktreePathChange {
   file?: GitWorkingTreeFile;
 }
 
+export interface GitWorktreeDirectoryChange {
+  changeType: GitWorktreePathChangeType;
+  path: string;
+  directory?: GitWorktreeDirectory;
+}
+
 export interface GitWorktreeDeltaEvent {
   type: "git-worktree-delta";
   generation: GitWorktreeGeneration;
@@ -249,6 +272,10 @@ export interface GitWorktreeDeltaEvent {
   headSha: string | null;
   baseSha: string | null;
   changes: GitWorktreePathChange[];
+  /** Filesystem-only directory-row changes. Older servers omit this field. */
+  directoryChanges?: GitWorktreeDirectoryChange[];
+  /** Current bounded state. Older servers omit this field from deltas. */
+  truncated?: boolean;
   timestamp: string;
 }
 

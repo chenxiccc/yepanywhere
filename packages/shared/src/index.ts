@@ -358,6 +358,8 @@ export type {
   GitWorkingTreePathKind,
   GitWorktreeCoverage,
   GitWorktreeDeltaEvent,
+  GitWorktreeDirectory,
+  GitWorktreeDirectoryChange,
   GitWorktreeGeneration,
   GitWorktreePathChange,
   GitWorktreePathChangeType,

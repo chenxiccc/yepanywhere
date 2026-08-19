@@ -26,6 +26,14 @@ export interface SourceOutlinePathProps {
   "data-source-outline-path": string;
 }
 
+export interface SourceOutlineDirectory {
+  path: string;
+  pending: boolean;
+  truncated: boolean;
+}
+
+const EMPTY_OUTLINE_DIRECTORIES: readonly SourceOutlineDirectory[] = [];
+
 type SourceOutlineEntry<T> =
   | {
       kind: "file";
@@ -40,11 +48,14 @@ type SourceOutlineEntry<T> =
       items: SourceOutlineItem<T>[];
       children: SourceOutlineEntry<T>[];
       statuses: string[];
+      count: number;
+      directory?: SourceOutlineDirectory;
     };
 
 interface PathNode<T> {
   files: SourceOutlineItem<T>[];
   directories: Map<string, PathNode<T>>;
+  directory?: SourceOutlineDirectory;
 }
 
 export function SourceFileSectionDivider({
@@ -85,6 +96,9 @@ export function SourceFileSectionDivider({
  */
 export function SourceFileOutline<T>({
   items,
+  directories = EMPTY_OUTLINE_DIRECTORIES,
+  expandedDirectories,
+  onToggleDirectory,
   scopeKey,
   query,
   className,
@@ -93,6 +107,9 @@ export function SourceFileOutline<T>({
   ...listProps
 }: Omit<HTMLAttributes<HTMLUListElement>, "children"> & {
   items: SourceOutlineItem<T>[];
+  directories?: readonly SourceOutlineDirectory[];
+  expandedDirectories?: ReadonlySet<string>;
+  onToggleDirectory?: (path: string, expanded: boolean) => void;
   scopeKey: string;
   query?: string;
   renderFile: (
@@ -120,8 +137,8 @@ export function SourceFileOutline<T>({
               pathProps: outlinePathProps(item),
             }),
           )
-        : buildSourceOutline(items, scopeKey),
-    [items, scopeKey, searching],
+        : buildSourceOutline(items, directories, scopeKey),
+    [directories, items, scopeKey, searching],
   );
 
   useLayoutEffect(() => {
@@ -149,7 +166,7 @@ export function SourceFileOutline<T>({
   }, []);
 
   useLayoutEffect(() => {
-    const groups = collectGroups(entries);
+    const groups = collectGroups(entries).filter((group) => !group.directory);
     if (groups.length === 0) return;
     const list = listRef.current;
     const measuredHeight = list
@@ -187,6 +204,8 @@ export function SourceFileOutline<T>({
             ...current,
             [key]: !expanded,
           })),
+        expandedDirectories,
+        onToggleDirectory,
         renderFile,
         t,
       )}
@@ -196,6 +215,7 @@ export function SourceFileOutline<T>({
 
 function buildSourceOutline<T>(
   items: SourceOutlineItem<T>[],
+  directories: readonly SourceOutlineDirectory[],
   scopeKey: string,
 ): SourceOutlineEntry<T>[] {
   const root: PathNode<T> = { files: [], directories: new Map() };
@@ -216,6 +236,20 @@ function buildSourceOutline<T>(
     }
     node.files.push(item);
   }
+  for (const directory of directories) {
+    const segments = directory.path.split("/").filter(Boolean);
+    if (segments.length === 0) continue;
+    let node = root;
+    for (const segment of segments) {
+      let child = node.directories.get(segment);
+      if (!child) {
+        child = { files: [], directories: new Map() };
+        node.directories.set(segment, child);
+      }
+      node = child;
+    }
+    node.directory = directory;
+  }
   return emitNode(root, "", scopeKey);
 }
 
@@ -233,7 +267,11 @@ function emitNode<T>(
   for (const [segment, initialChild] of node.directories) {
     let child = initialChild;
     let groupPath = `${prefix}${segment}/`;
-    while (child.files.length === 0 && child.directories.size === 1) {
+    while (
+      !child.directory &&
+      child.files.length === 0 &&
+      child.directories.size === 1
+    ) {
       const next = child.directories.entries().next().value as
         | [string, PathNode<T>]
         | undefined;
@@ -249,6 +287,8 @@ function emitNode<T>(
       items: descendants,
       children: emitNode(child, groupPath, scopeKey),
       statuses: collectStatuses(descendants),
+      count: child.directory ? child.files.length : descendants.length,
+      ...(child.directory ? { directory: child.directory } : {}),
     });
   }
   return entries;
@@ -305,6 +345,8 @@ function renderEntries<T>(
   explicitExpansion: Record<string, boolean>,
   automaticExpansion: ReadonlyMap<string, boolean>,
   toggle: (key: string, expanded: boolean) => void,
+  expandedDirectories: ReadonlySet<string> | undefined,
+  onToggleDirectory: ((path: string, expanded: boolean) => void) | undefined,
   renderFile: (
     item: SourceOutlineItem<T>,
     visiblePath: string,
@@ -316,14 +358,29 @@ function renderEntries<T>(
     if (entry.kind === "file") {
       return renderFile(entry.item, entry.visiblePath, entry.pathProps);
     }
-    const expanded =
-      explicitExpansion[entry.key] ??
-      automaticExpansion.get(entry.key) ??
-      false;
-    const label = t(
-      expanded ? "sourceCollapsePathGroup" : "sourceExpandPathGroup",
-      { path: entry.path, count: entry.items.length },
+    const controlled = Boolean(
+      entry.directory && expandedDirectories && onToggleDirectory,
     );
+    const expanded =
+      controlled && entry.directory
+        ? expandedDirectories?.has(entry.directory.path) === true
+        : (explicitExpansion[entry.key] ??
+          automaticExpansion.get(entry.key) ??
+          false);
+    const loading = entry.directory?.pending === true && expanded;
+    const label = entry.directory
+      ? t(
+          loading
+            ? "sourceLoadingUntrackedFolder"
+            : expanded
+              ? "sourceCollapseDirectory"
+              : "sourceExpandDirectory",
+          { path: entry.path },
+        )
+      : t(expanded ? "sourceCollapsePathGroup" : "sourceExpandPathGroup", {
+          path: entry.path,
+          count: entry.count,
+        });
     return (
       <li key={entry.key} className={styles.group}>
         <button
@@ -333,10 +390,16 @@ function renderEntries<T>(
           aria-expanded={expanded}
           aria-label={label}
           title={label}
-          onClick={() => toggle(entry.key, expanded)}
+          onClick={() => {
+            if (controlled && entry.directory && onToggleDirectory) {
+              onToggleDirectory(entry.directory.path, !expanded);
+            } else {
+              toggle(entry.key, expanded);
+            }
+          }}
         >
           <span className={styles.disclosure} aria-hidden="true">
-            {expanded ? "▾" : "▸"}
+            {loading ? "…" : expanded ? "▾" : "▸"}
           </span>
           <span className={styles.groupLabel}>{entry.path}</span>
           {entry.statuses.length > 0 && (
@@ -346,15 +409,31 @@ function renderEntries<T>(
               ))}
             </span>
           )}
-          <span className={styles.groupCount}>{entry.items.length}</span>
+          {!entry.directory?.pending && (
+            <span
+              className={styles.groupCount}
+              title={
+                entry.directory?.truncated
+                  ? t("sourceUntrackedFolderTruncated", {
+                      count: entry.count,
+                    })
+                  : undefined
+              }
+            >
+              {entry.count}
+              {entry.directory?.truncated ? "+" : ""}
+            </span>
+          )}
         </button>
-        {expanded && (
+        {expanded && entry.children.length > 0 && (
           <ul className={styles.children}>
             {renderEntries(
               entry.children,
               explicitExpansion,
               automaticExpansion,
               toggle,
+              expandedDirectories,
+              onToggleDirectory,
               renderFile,
               t,
             )}

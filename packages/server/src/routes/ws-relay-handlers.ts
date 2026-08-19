@@ -1358,16 +1358,69 @@ export function handleGlossarySubscribe(
   }
 }
 
+const MAX_WORKTREE_EXPANDED_PREFIXES = 256;
+const MAX_WORKTREE_PREFIX_LENGTH = 4_096;
+
+function parseExpandedPrefixes(value: unknown): string[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MAX_WORKTREE_EXPANDED_PREFIXES) {
+    return null;
+  }
+
+  const prefixes = new Set<string>();
+  for (const candidate of value) {
+    if (typeof candidate !== "string") return null;
+    if (candidate === "") continue;
+    if (
+      candidate.length > MAX_WORKTREE_PREFIX_LENGTH ||
+      candidate.startsWith("/") ||
+      candidate.includes("\\") ||
+      candidate.includes("\0")
+    ) {
+      return null;
+    }
+    const segments = candidate.split("/");
+    if (
+      segments.some(
+        (segment) =>
+          segment === "" ||
+          segment === "." ||
+          segment === ".." ||
+          segment.toLowerCase() === ".git",
+      ) ||
+      /^[a-z]:$/iu.test(segments[0] ?? "")
+    ) {
+      return null;
+    }
+    for (let length = 1; length <= segments.length; length += 1) {
+      prefixes.add(segments.slice(0, length).join("/"));
+      if (prefixes.size > MAX_WORKTREE_EXPANDED_PREFIXES) return null;
+    }
+  }
+  return [...prefixes].sort((left, right) => {
+    const depth = left.split("/").length - right.split("/").length;
+    return depth !== 0 ? depth : left < right ? -1 : left > right ? 1 : 0;
+  });
+}
+
 function parseWorktreeCoverage(value: unknown): GitWorktreeCoverage | null {
   if (!value || typeof value !== "object") return null;
-  const coverage = value as Partial<GitWorktreeCoverage>;
+  const coverage = value as {
+    tracked?: unknown;
+    untracked?: unknown;
+    ignored?: unknown;
+    expandedPrefixes?: unknown;
+  };
+  const expandedPrefixes = parseExpandedPrefixes(coverage.expandedPrefixes);
   return typeof coverage.tracked === "boolean" &&
     typeof coverage.untracked === "boolean" &&
-    typeof coverage.ignored === "boolean"
+    typeof coverage.ignored === "boolean" &&
+    expandedPrefixes !== null
     ? {
         tracked: coverage.tracked,
         untracked: coverage.untracked,
         ignored: coverage.ignored,
+        ...(expandedPrefixes === undefined ? {} : { expandedPrefixes }),
       }
     : null;
 }

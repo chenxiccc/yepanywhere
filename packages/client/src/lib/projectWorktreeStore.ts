@@ -2,6 +2,7 @@ import type {
   GitWorkingTreeFile,
   GitWorktreeCoverage,
   GitWorktreeDeltaEvent,
+  GitWorktreeDirectory,
   GitWorktreeGeneration,
   GitWorktreeSnapshotEvent,
   GitWorktreeSubscriptionEvent,
@@ -20,6 +21,7 @@ export interface ProjectWorktreeSnapshot {
   headSha: string | null;
   baseSha: string | null;
   files: readonly GitWorkingTreeFile[];
+  directories: readonly GitWorktreeDirectory[];
   truncated: boolean;
 }
 
@@ -34,6 +36,7 @@ const EMPTY_SNAPSHOT: ProjectWorktreeSnapshot = {
   headSha: null,
   baseSha: null,
   files: [],
+  directories: [],
   truncated: false,
 };
 
@@ -45,18 +48,45 @@ function sameCoverage(
     left !== null &&
     left.tracked === right.tracked &&
     left.untracked === right.untracked &&
-    left.ignored === right.ignored
+    left.ignored === right.ignored &&
+    sameStrings(left.expandedPrefixes, right.expandedPrefixes)
+  );
+}
+
+function sameStrings(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined &&
+      right !== undefined &&
+      left.length === right.length &&
+      left.every((value, index) => value === right[index]))
   );
 }
 
 function unionCoverage(leases: Iterable<Lease>): GitWorktreeCoverage {
   const coverage = { tracked: false, untracked: false, ignored: false };
+  const expandedPrefixes = new Set<string>();
+  let hasExpandedPrefixes = false;
   for (const lease of leases) {
     coverage.tracked ||= lease.coverage.tracked;
     coverage.untracked ||= lease.coverage.untracked;
     coverage.ignored ||= lease.coverage.ignored;
+    if (lease.coverage.expandedPrefixes !== undefined) {
+      hasExpandedPrefixes = true;
+      for (const prefix of lease.coverage.expandedPrefixes) {
+        expandedPrefixes.add(prefix);
+      }
+    }
   }
-  return coverage;
+  return {
+    ...coverage,
+    ...(hasExpandedPrefixes
+      ? { expandedPrefixes: [...expandedPrefixes].sort() }
+      : {}),
+  };
 }
 
 function isWorktreeEvent(
@@ -82,6 +112,7 @@ class ProjectWorktreeStore {
   private readonly listeners = new Set<() => void>();
   private readonly leases = new Map<number, Lease>();
   private readonly files = new Map<string, GitWorkingTreeFile>();
+  private readonly directories = new Map<string, GitWorktreeDirectory>();
   private snapshot = EMPTY_SNAPSHOT;
   private stream: ManagedStream | null = null;
   private activeCoverage: GitWorktreeCoverage | null = null;
@@ -104,7 +135,14 @@ class ProjectWorktreeStore {
 
   retain(coverage: GitWorktreeCoverage): () => void {
     const leaseId = this.nextLeaseId++;
-    this.leases.set(leaseId, { coverage: { ...coverage } });
+    this.leases.set(leaseId, {
+      coverage: {
+        ...coverage,
+        ...(coverage.expandedPrefixes
+          ? { expandedPrefixes: [...coverage.expandedPrefixes] }
+          : {}),
+      },
+    });
     this.syncStream();
     return () => {
       if (!this.leases.delete(leaseId)) return;
@@ -162,6 +200,10 @@ class ProjectWorktreeStore {
   private applySnapshot(event: GitWorktreeSnapshotEvent): void {
     this.files.clear();
     for (const file of event.files) this.files.set(file.path, file);
+    this.directories.clear();
+    for (const directory of event.directories ?? []) {
+      this.directories.set(directory.path, directory);
+    }
     this.publish({
       loading: false,
       error: null,
@@ -169,6 +211,7 @@ class ProjectWorktreeStore {
       headSha: event.headSha,
       baseSha: event.baseSha,
       files: [...this.files.values()],
+      directories: [...this.directories.values()],
       truncated: event.truncated,
     });
   }
@@ -192,6 +235,13 @@ class ProjectWorktreeStore {
         this.files.set(change.path, change.file);
       }
     }
+    for (const change of event.directoryChanges ?? []) {
+      if (change.changeType === "delete") {
+        this.directories.delete(change.path);
+      } else if (change.directory) {
+        this.directories.set(change.path, change.directory);
+      }
+    }
     this.publish({
       loading: false,
       error: null,
@@ -199,14 +249,17 @@ class ProjectWorktreeStore {
       headSha: event.headSha,
       baseSha: event.baseSha,
       files: [...this.files.values()],
-      truncated: this.snapshot.truncated,
+      directories: [...this.directories.values()],
+      truncated: event.truncated ?? this.snapshot.truncated,
     });
   }
 
   private publish(snapshot: ProjectWorktreeSnapshot): void {
     if (this.snapshot === snapshot) return;
     this.snapshot = snapshot;
-    for (const listener of [...this.listeners]) listener();
+    // Listener callbacks may change the subscription set during dispatch.
+    const listeners = Array.from(this.listeners);
+    for (const listener of listeners) listener();
   }
 }
 

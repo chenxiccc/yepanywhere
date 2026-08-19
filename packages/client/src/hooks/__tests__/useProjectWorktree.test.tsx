@@ -50,6 +50,50 @@ afterEach(() => {
 });
 
 describe("useProjectWorktree", () => {
+  it("does not reconnect for equal expanded-prefix arrays", async () => {
+    const transport = new FakeSourceTransport();
+    const rendered = renderHook(
+      ({ coverage }: { coverage: GitWorktreeCoverage }) =>
+        useProjectWorktree("project-a", coverage, true),
+      {
+        initialProps: {
+          coverage: {
+            ...COVERAGE,
+            expandedPrefixes: [],
+          } as GitWorktreeCoverage,
+        },
+        wrapper: createWrapper(transport),
+      },
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(latestSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: [],
+    });
+
+    rendered.rerender({
+      coverage: { ...COVERAGE, expandedPrefixes: [] },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(transport.getSubscriptions("worktree")).toHaveLength(1);
+
+    rendered.rerender({
+      coverage: { ...COVERAGE, expandedPrefixes: ["src"] },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(transport.getSubscriptions("worktree")).toHaveLength(2);
+    expect(latestSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: ["src"],
+    });
+  });
+
   it("pins the deferred-update deadline to the first unapplied delta", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

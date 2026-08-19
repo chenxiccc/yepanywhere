@@ -8,7 +8,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { GitStatusInfo, GitWorkingTreeFile } from "@yep-anywhere/shared";
+import type {
+  GitStatusInfo,
+  GitWorkingTreeFile,
+  GitWorktreeDirectory,
+} from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,6 +79,7 @@ function withRuntime(runtime: YaSourceRuntime, children: ReactNode): ReactNode {
 async function emitWorktreeSnapshot(
   transport: FakeSourceTransport,
   files: GitWorkingTreeFile[],
+  directories?: GitWorktreeDirectory[],
 ): Promise<void> {
   await waitFor(() =>
     expect(transport.getSubscriptions("worktree").length).toBeGreaterThan(0),
@@ -92,6 +97,7 @@ async function emitWorktreeSnapshot(
       headSha: "head-a",
       baseSha: "base-a",
       files,
+      ...(directories ? { directories } : {}),
       truncated: false,
       timestamp: "2026-08-19T00:00:00.000Z",
     });
@@ -381,6 +387,120 @@ describe("BlameBrowser", () => {
     await waitFor(() =>
       expect(getGitBlame).toHaveBeenCalledWith("p1", "README.md"),
     );
+  });
+
+  it("opens and releases filesystem directory prefixes without selecting directory rows", async () => {
+    const transport = new FakeSourceTransport();
+    const runtime = createRuntime(transport, "test:blame-browser-prefixes");
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const status: GitStatusInfo = {
+      isGitRepo: false,
+      branch: null,
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      isClean: true,
+      files: [],
+    };
+
+    render(
+      withRuntime(
+        runtime,
+        <BlameBrowser
+          projectId="p1"
+          isWideScreen={false}
+          status={status}
+          supportsWorkingTreeFiles
+          supportsWorktreeSections
+          t={t}
+        />,
+      ),
+    );
+
+    await emitWorktreeSnapshot(
+      transport,
+      [],
+      [{ path: "src", pending: true, truncated: false }],
+    );
+    expect(transport.getSubscriptions("worktree")[0]?.coverage).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: [],
+    });
+    const pendingSrc = screen.getByRole("button", {
+      name: "sourceExpandDirectory",
+    });
+    expect(pendingSrc.querySelector("[class*='groupCount']")).toBeNull();
+
+    const search = screen.getByPlaceholderText("sourceFilterFiles");
+    fireEvent.change(search, { target: { value: "src" } });
+    expect(
+      screen.queryByRole("button", { name: "sourceExpandDirectory" }),
+    ).toBeNull();
+    fireEvent.change(search, { target: { value: "" } });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceExpandDirectory" }),
+    );
+    await waitFor(() =>
+      expect(transport.getSubscriptions("worktree")).toHaveLength(2),
+    );
+    expect(transport.getSubscriptions("worktree")[1]?.coverage).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: ["src"],
+    });
+    expect(getFile).not.toHaveBeenCalled();
+
+    await emitWorktreeSnapshot(
+      transport,
+      [{ path: "src/a.ts", tracked: false, kind: "untracked" }],
+      [
+        { path: "src", pending: false, truncated: true },
+        { path: "src/nested", pending: true, truncated: false },
+      ],
+    );
+    expect(await screen.findByText("a.ts")).toBeDefined();
+    const openedSrc = screen.getByRole("button", {
+      name: "sourceCollapseDirectory",
+    });
+    expect(openedSrc.textContent).toContain("1+");
+    expect(getFile).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceExpandDirectory" }),
+    );
+    await waitFor(() =>
+      expect(transport.getSubscriptions("worktree")).toHaveLength(3),
+    );
+    expect(transport.getSubscriptions("worktree")[2]?.coverage).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: ["src", "src/nested"],
+    });
+
+    const srcDisclosure = screen
+      .getAllByRole("button", { name: "sourceCollapseDirectory" })
+      .find((button) => button.textContent?.includes("src/"));
+    expect(srcDisclosure).toBeDefined();
+    if (!srcDisclosure) throw new Error("Expected open src directory");
+    fireEvent.click(srcDisclosure);
+    await waitFor(() =>
+      expect(transport.getSubscriptions("worktree")).toHaveLength(4),
+    );
+    expect(transport.getSubscriptions("worktree")[3]?.coverage).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: [],
+    });
   });
 
   it("freezes visible deltas while paused without releasing the lease", async () => {
