@@ -318,9 +318,9 @@ const SCROLL_SNAPSHOT_PUBLISH_DEBOUNCE_MS = 200;
 // velocity/direction reading. "Is the bottom line visible right now" stays
 // consistent through momentum and bounce (during a bottom bounce the last line
 // is *more* in view, which correctly reads as at-bottom), so it needs no
-// direction tracking and no settle timer. Exit-follow stays sensitive via the
-// directional wheel/touch/key handlers, which fire on intent during the touch,
-// before momentum begins.
+// direction tracking and no settle timer. Exit-follow uses the directional
+// wheel/touch/key handlers plus displacement above the latest follow write, so a
+// missed input precursor cannot let animated layout work trap the reader.
 function isAtScrollBottom(
   viewport: HTMLElement,
   content: HTMLElement,
@@ -1083,6 +1083,7 @@ export const MessageList = memo(function MessageList({
   const isInitialLoadRef = useRef(true);
   const isProgrammaticScrollRef = useRef(false);
   const lastHeightRef = useRef(0);
+  const lastFollowScrollTopRef = useRef(0);
   const touchStartYRef = useRef<number | null>(null);
   const followUpScrollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forcedCurrentScrollTimersRef = useRef<ReturnType<typeof setTimeout>[]>(
@@ -1247,6 +1248,7 @@ export const MessageList = memo(function MessageList({
         container.scrollTo({ top, behavior });
       }
       lastHeightRef.current = container.scrollHeight;
+      lastFollowScrollTopRef.current = top;
       setIsScrolledToBottom(true);
       reportFollowingBottom(true);
       setScrollPositionTimestampMs(null);
@@ -2835,12 +2837,20 @@ export const MessageList = memo(function MessageList({
 
     const atBottom = isAtScrollBottom(container, content);
     if (shouldAutoScrollRef.current) {
-      // Follow is explicit intent, not a conclusion inferred from one geometry
-      // sample. Layout can grow between a bottom write and its scroll event;
-      // keep that transaction pinned unless a deliberate gesture cancels it.
-      if (!atBottom) {
+      // Layout can grow between a bottom write and its scroll event. Unchanged
+      // scrollTop is stale follow geometry and should re-pin; movement upward
+      // from the last follow write is reader intent even when an input precursor
+      // was unavailable or lost amid animated layout work.
+      const movedUpFromFollowWrite =
+        !atBottom &&
+        container.scrollTop <
+          lastFollowScrollTopRef.current - FOLLOW_BOTTOM_TOLERANCE_PX;
+      if (movedUpFromFollowWrite) {
+        stopFollowingForUserScroll(container);
+      } else if (!atBottom) {
         scrollToBottom(container);
       } else {
+        lastFollowScrollTopRef.current = container.scrollTop;
         thinkingDeltaFollowAllowedRef.current = true;
         setNewOutputBelowVisible(false);
         setIsScrolledToBottom(true);
@@ -2853,6 +2863,7 @@ export const MessageList = memo(function MessageList({
     shouldAutoScrollRef.current = atBottom;
     thinkingDeltaFollowAllowedRef.current = atBottom;
     if (atBottom) {
+      lastFollowScrollTopRef.current = container.scrollTop;
       setNewOutputBelowVisible(false);
     } else {
       clearForcedCurrentScrollTimers();
@@ -2865,6 +2876,7 @@ export const MessageList = memo(function MessageList({
     reportFollowingBottom,
     scheduleSettledScrollState,
     scrollToBottom,
+    stopFollowingForUserScroll,
   ]);
 
   // Attach scroll listener to parent container

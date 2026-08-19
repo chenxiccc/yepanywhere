@@ -1417,6 +1417,66 @@ describe("MessageList scroll and follow", () => {
     expect(container.scrollTop).toBe(320);
   });
 
+  it("lets an upward scroll movement cancel live follow", async () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+      />,
+    );
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    const messageList = container.querySelector<HTMLElement>(".message-list");
+    const lastLine = messageList?.lastElementChild as HTMLElement | null;
+    expect(lastLine).toBeTruthy();
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
+      bottom: 500,
+    } as DOMRect);
+    vi.spyOn(
+      lastLine as HTMLElement,
+      "getBoundingClientRect",
+    ).mockImplementation(
+      () =>
+        ({
+          bottom: 1000 - container.scrollTop,
+        }) as DOMRect,
+    );
+
+    act(() => {
+      for (const callback of animationFrames.splice(0)) {
+        callback(0);
+      }
+    });
+    fireEvent.scroll(container);
+    container.scrollTop = 300;
+    fireEvent.scroll(container);
+
+    expect(container.scrollTop).toBe(300);
+    expect(
+      await screen.findByRole("button", {
+        name: "Follow latest session output",
+      }),
+    ).toBeDefined();
+  });
+
   it("ignores unanchored top snapshots on initial restore", () => {
     const scrollContainer = document.createElement("div");
     document.body.append(scrollContainer);
