@@ -619,6 +619,103 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     manager.dispose();
   });
 
+  it("reconciles on the clock until a failed scan succeeds again", async () => {
+    const projectId = "project-scan-failure" as UrlProjectId;
+    const gitDir = join(projectPath, ".git");
+    const headRefPath = join(gitDir, "refs", "heads", "main");
+    await mkdir(join(gitDir, "refs", "heads"), { recursive: true });
+    await writeFile(join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+    await writeFile(join(gitDir, "index"), "index-a\n");
+    await writeFile(headRefPath, "head-a\n");
+
+    const watchListeners = new Map<
+      string,
+      (eventType: string, filename: Buffer | string | null) => void
+    >();
+    let failScan = false;
+    const scanWorktree = vi.fn(async () => {
+      if (failScan) throw new Error("scan failed");
+      return {
+        headSha: "head-a",
+        baseSha: "base-a",
+        files: mapFiles([file("src/a.ts", "tracked")]),
+      };
+    });
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-scan-failure",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      debounceMs: 25,
+      maxEventAgeMs: 100,
+      fallbackPollMs: 1_000,
+      platform: "linux",
+      resolveGitMetadata: vi.fn(async () => ({
+        gitDir,
+        commonDir: gitDir,
+        headRefPath,
+      })),
+      watchDirectory: (path, listener) => {
+        watchListeners.set(path, listener);
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
+      scanWorktree,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+    await vi.waitFor(() => expect(scanWorktree).toHaveBeenCalledTimes(2));
+
+    // Complete watches make the fingerprint the truth source, so an unchanged
+    // tick does no work.
+    const quietScanCount = scanWorktree.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+    expect(scanWorktree).toHaveBeenCalledTimes(quietScanCount);
+
+    failScan = true;
+    watchListeners.get(projectPath)?.("change", "src/a.ts");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(quietScanCount + 1),
+    );
+
+    // The snapshot is now behind the worktree with no pending event of its
+    // own, so reconciliation runs on the clock without a metadata change.
+    const failedScanCount = scanWorktree.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(failedScanCount + 1),
+    );
+
+    failScan = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree.mock.calls.length).toBeGreaterThan(
+        failedScanCount + 1,
+      ),
+    );
+    const recoveredScanCount = scanWorktree.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+    expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount);
+
+    subscription.release();
+    manager.dispose();
+  });
+
   it("falls back to full polling when a Git metadata directory is not watchable", async () => {
     const projectId = "project-metadata-fallback" as UrlProjectId;
     const gitDir = join(projectPath, ".git");

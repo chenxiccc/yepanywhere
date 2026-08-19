@@ -373,9 +373,16 @@ refs, the current symbolic ref, operation markers, config, and excludes. An
 unchanged tick runs no Git subprocess. Changed metadata triggers a full scan,
 and fingerprints before and after that scan force a follow-up if Git moved
 during observation. A missing or failed watch restores full 30-second
-reconciliation. macOS, Windows, and other platforms retain that full fallback
-because recursive watch truth is not assumed there. Explicit YA Git actions and
-watch events may refresh more frequently.
+reconciliation, and so does a failed scan: the published snapshot is then
+behind the worktree with no pending event of its own, so the clock reconciles
+until a scan succeeds. macOS, Windows, and other platforms retain that full
+fallback because recursive watch truth is not assumed there. Explicit YA Git
+actions and watch events may refresh more frequently.
+
+A filesystem-only walk survives its directories changing under it. A directory
+removed mid-walk is skipped and leaves the inventory complete; one that cannot
+be read is skipped and reported as an incomplete inventory. Only the file limit
+ends a walk early.
 
 A 150 ms quiet timer coalesces an ordinary burst. A separate five-second
 maximum deadline is pinned to the first unprocessed filesystem event; later

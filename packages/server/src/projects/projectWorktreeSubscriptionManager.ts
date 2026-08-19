@@ -110,6 +110,8 @@ interface ProjectState {
   activationPromise: Promise<void> | null;
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
+  /** A scan failed; reconcile on the clock until one succeeds again. */
+  reconciliationRecoveryNeeded: boolean;
   watchSyncPromise: Promise<void> | null;
   watchSyncQueued: boolean;
   watchSyncNeedsRefresh: boolean;
@@ -412,6 +414,7 @@ export class ProjectWorktreeSubscriptionManager {
       activationPromise: null,
       refreshPromise: null,
       refreshQueued: false,
+      reconciliationRecoveryNeeded: false,
       watchSyncPromise: null,
       watchSyncQueued: false,
       watchSyncNeedsRefresh: false,
@@ -842,9 +845,23 @@ export class ProjectWorktreeSubscriptionManager {
       await state.refreshPromise;
       return;
     }
-    state.refreshPromise = this.runRefreshLoop(state, emit).finally(() => {
-      state.refreshPromise = null;
-    });
+    state.refreshPromise = this.runRefreshLoop(state, emit)
+      .then(() => {
+        if (!state.reconciliationRecoveryNeeded) return;
+        state.reconciliationRecoveryNeeded = false;
+        this.syncReconciliationPoll(state);
+      })
+      .catch((error: unknown) => {
+        // Watches are only a truth source while scans succeed. A failed scan
+        // leaves the published snapshot behind the worktree with no event of
+        // its own to retry on, so reconcile on the clock until one succeeds.
+        state.reconciliationRecoveryNeeded = true;
+        this.syncReconciliationPoll(state);
+        throw error;
+      })
+      .finally(() => {
+        state.refreshPromise = null;
+      });
     await state.refreshPromise;
   }
 
@@ -960,7 +977,8 @@ export class ProjectWorktreeSubscriptionManager {
     const watchesAreTruth =
       this.platform === GIT_METADATA_PLATFORM &&
       state.watchComplete &&
-      state.gitMetadataWatchComplete;
+      state.gitMetadataWatchComplete &&
+      !state.reconciliationRecoveryNeeded;
     const mode: ReconciliationMode | null = watchesAreTruth
       ? state.gitMetadata
         ? "fingerprint"
@@ -1326,10 +1344,27 @@ async function scanFilesystemWorktree(
   const files = new Map<string, GitWorkingTreeFile>();
   const pending = [{ absolute: projectPath, relative: "" }];
   let truncated = false;
-  while (pending.length > 0 && !truncated) {
+  let reachedLimit = false;
+  while (pending.length > 0 && !reachedLimit) {
     const current = pending.pop();
     if (!current) break;
-    const entries = await readdir(current.absolute, { withFileTypes: true });
+    let entries: fs.Dirent[];
+    try {
+      entries = await readdir(current.absolute, { withFileTypes: true });
+    } catch (error) {
+      // A directory removed while we walk is ordinary in a live worktree and
+      // leaves nothing to list. One we may not read leaves part of the corpus
+      // unknown, which the snapshot reports rather than calling itself
+      // complete. Neither ends the walk.
+      if (!isMissingPathError(error)) {
+        truncated = true;
+        getLogger().debug(
+          { directory: current.absolute, error, projectPath },
+          "WORKTREE_SCAN: directory unreadable; inventory reported incomplete",
+        );
+      }
+      continue;
+    }
     entries.sort((left, right) => comparePaths(left.name, right.name));
     const directories: Array<{ absolute: string; relative: string }> = [];
     for (const entry of entries) {
@@ -1346,6 +1381,7 @@ async function scanFilesystemWorktree(
       }
       if (files.size >= fileLimit) {
         truncated = true;
+        reachedLimit = true;
         break;
       }
       const change: GitWorkingTreeChange = {
