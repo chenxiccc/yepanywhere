@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../src/logging/logger.js";
 import {
   Process,
   createControllableIterator,
@@ -7,6 +8,10 @@ import {
 import type { ProcessEvent, UrlProjectId } from "./process.test-support.js";
 
 describe("Process", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("provider runtime status", () => {
     it("records Claude api_retry status in process info", async () => {
       const controller = createControllableIterator();
@@ -55,6 +60,81 @@ describe("Process", () => {
         Date.parse(status?.retryAt ?? "") -
         Date.parse(status?.lastSeenAt ?? "");
       expect(retryDelay).toBe(60_000);
+
+      controller.finish();
+    });
+
+    it("classifies Claude Gateway quota exhaustion as terminal rate limiting", async () => {
+      vi.spyOn(getLogger(), "warn").mockImplementation(() => undefined);
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude-gateway",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "assistant",
+        session_id: "sess-1",
+        error: "unknown",
+        isApiErrorMessage: true,
+        apiErrorStatus: 402,
+        message: {
+          model: "<synthetic>",
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: 'API Error: 402 {"error":{"message":"You have exceeded your monthly quota","code":"quota_exceeded"}}',
+            },
+          ],
+        },
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("terminal");
+      });
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "terminal",
+        provider: "claude-gateway",
+        reason: "rate_limit",
+        message: expect.stringContaining("exceeded your monthly quota"),
+        source: "claude.assistant.api_error",
+      });
+
+      controller.finish();
+    });
+
+    it("detects Claude Gateway quota exhaustion from compact command stderr", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude-gateway",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "local_command",
+        session_id: "sess-1",
+        content:
+          '<local-command-stderr>Error during compaction: API Error: 402 {"error":{"message":"You have exceeded your monthly quota","code":"quota_exceeded"}}</local-command-stderr>',
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("terminal");
+      });
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "terminal",
+        provider: "claude-gateway",
+        reason: "rate_limit",
+        message: "You have exceeded your monthly quota",
+        source: "claude.system.local_command.compaction",
+      });
 
       controller.finish();
     });

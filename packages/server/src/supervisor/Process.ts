@@ -493,6 +493,89 @@ function buildClaudeApiRetryStatus(
   };
 }
 
+function normalizeClaudeTerminalReason(
+  message: SDKMessage,
+): ProviderRuntimeReason {
+  const httpStatus = readPositiveInteger(message.apiErrorStatus);
+  if (httpStatus === 402 || httpStatus === 429) return "rate_limit";
+  if (httpStatus === 529) return "overloaded";
+
+  const providerReason = normalizeProviderRuntimeReason(message.error);
+  if (providerReason !== "unknown") return providerReason;
+  return httpStatus !== undefined && httpStatus >= 500
+    ? "server_error"
+    : "unknown";
+}
+
+function buildClaudeApiTerminalStatus(
+  provider: ProviderName,
+  message: SDKMessage,
+  receivedAt: Date,
+): ProviderRuntimeTerminalStatus | null {
+  if (!isClaudeSdkApiErrorMessage(provider, message)) return null;
+  return {
+    kind: "terminal",
+    provider,
+    reason: normalizeClaudeTerminalReason(message),
+    message: extractMessageText(message) ?? "Claude API request failed",
+    occurredAt: receivedAt.toISOString(),
+    source: "claude.assistant.api_error",
+  };
+}
+
+function readClaudeGatewayCompactionQuotaMessage(
+  provider: ProviderName,
+  message: SDKMessage,
+): string | null {
+  if (
+    provider !== "claude-gateway" ||
+    message.type !== "system" ||
+    message.subtype !== "local_command"
+  ) {
+    return null;
+  }
+  const content = readNonEmptyString(message.content);
+  const prefix =
+    "<local-command-stderr>Error during compaction: API Error: 402 ";
+  const suffix = "</local-command-stderr>";
+  if (!content?.startsWith(prefix) || !content.endsWith(suffix)) return null;
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(content.slice(prefix.length, -suffix.length));
+  } catch {
+    return null;
+  }
+  const error =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>).error
+      : null;
+  if (!error || typeof error !== "object") return null;
+  const fields = error as Record<string, unknown>;
+  if (fields.code !== "quota_exceeded") return null;
+  return readNonEmptyString(fields.message) ?? "Claude Gateway quota exceeded";
+}
+
+function buildClaudeGatewayCompactionQuotaStatus(
+  provider: ProviderName,
+  message: SDKMessage,
+  receivedAt: Date,
+): ProviderRuntimeTerminalStatus | null {
+  const quotaMessage = readClaudeGatewayCompactionQuotaMessage(
+    provider,
+    message,
+  );
+  if (!quotaMessage) return null;
+  return {
+    kind: "terminal",
+    provider,
+    reason: "rate_limit",
+    message: quotaMessage,
+    occurredAt: receivedAt.toISOString(),
+    source: "claude.system.local_command.compaction",
+  };
+}
+
 function normalizeCodexTerminalReason(
   codexErrorInfo: unknown,
 ): ProviderRuntimeReason {
@@ -1639,6 +1722,26 @@ export class Process {
           receivedAt,
         ),
       );
+      return;
+    }
+
+    const claudeCompactionQuotaStatus = buildClaudeGatewayCompactionQuotaStatus(
+      this.provider,
+      message,
+      receivedAt,
+    );
+    if (claudeCompactionQuotaStatus) {
+      this.setProviderRuntimeStatus(claudeCompactionQuotaStatus);
+      return;
+    }
+
+    const claudeTerminalStatus = buildClaudeApiTerminalStatus(
+      this.provider,
+      message,
+      receivedAt,
+    );
+    if (claudeTerminalStatus) {
+      this.setProviderRuntimeStatus(claudeTerminalStatus);
       return;
     }
 

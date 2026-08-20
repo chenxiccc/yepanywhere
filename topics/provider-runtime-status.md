@@ -79,6 +79,21 @@ for its configured shared rollout token budget, not subscription credits. A
 future taxonomy should distinguish at least context/session budget, auth,
 policy, request, and sandbox failures from billing rate limits.
 
+Claude SDK providers also turn an explicit synthetic API-error assistant
+message into terminal runtime status before terminating the unusable provider
+process. Structured HTTP 402 and 429 failures normalize to `rate_limit`, 529 to
+`overloaded`, provider-supplied retry reasons retain their shared normalized
+meaning, and other 5xx failures normalize to `server_error`. The provider's
+message remains the diagnostic detail.
+
+Claude Gateway has one additional observed boundary shape: a failed native
+`/compact` arrives as a `system/local_command` stderr wrapper rather than an
+API-error assistant message. YA recognizes only the exact compaction-error
+wrapper whose parsed HTTP 402 payload carries `error.code: "quota_exceeded"`;
+it records terminal `rate_limit` status with the payload's message. Arbitrary
+local-command output containing quota-like text does not qualify. This failed
+turn does not imply that the retained provider process crashed.
+
 ## Codex 0.144.1 source audit
 
 The findings in this section were checked against the official Codex source at

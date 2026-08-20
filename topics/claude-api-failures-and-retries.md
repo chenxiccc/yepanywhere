@@ -195,9 +195,12 @@ Three observations grounded in the text above:
   declares `isApiErrorMessage` (optional bool). `apiErrorStatus` is **not** in
   the schema; it is read as an untyped field.
 - **Terminal fallback** — `packages/server/src/supervisor/Process.ts`:
-  - The only live error-termination hook is `isClaudeSdkApiErrorMessage()`
-    (L184), which requires `message.isApiErrorMessage === true`; on match (L2676)
-    it `abortFn()` + `markTerminated("Claude SDK API error; restart required")`.
+  - `isClaudeSdkApiErrorMessage()` requires
+    `message.isApiErrorMessage === true`; on match YA first records terminal
+    provider-runtime status, then calls `abortFn()` and
+    `markTerminated("Claude SDK API error; restart required")`. HTTP 402/429
+    classify as `rate_limit`, 529 as `overloaded`, and other 5xx failures as
+    `server_error`.
   - **For the observed 529 this hook did not fire**: the live terminal message
     lacks `isApiErrorMessage`, so the predicate is false. The trailing `result`
     message then runs `transitionToIdle()` (L2724); the `result` handler does
@@ -206,8 +209,14 @@ Three observations grounded in the text above:
     default launch policy, retryable 429/529 failures should no longer reach
     this terminal shape; the limitation remains relevant when an operator
     disables persistent retry or an upstream behavior changes.
-  - (The L2676 termination path is real and unit-tested in `process.test.ts`,
-    but the tests feed a message that already has `isApiErrorMessage: true`.)
+  - The termination path is unit-tested with messages that already carry
+    `isApiErrorMessage: true`. Streams that omit the marker still cannot be
+    classified from their trailing `result` alone.
+  - Claude Gateway compaction quota failure has a separate observed shape: a
+    `system/local_command` stderr wrapper containing an HTTP 402 JSON payload.
+    YA parses that boundary only when the payload code is `quota_exceeded` and
+    records terminal `rate_limit` status without terminating the retained
+    process.
 - **Read/resume path** — `packages/server/src/routes/sessions.ts`
   `getClaudeResumeApiErrorBlocker()` (L143) reads the persisted jsonl (where the
   fields exist), detects a trailing API-error assistant row, and returns a
