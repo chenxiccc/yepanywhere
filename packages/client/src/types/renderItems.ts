@@ -156,6 +156,12 @@ export interface ConversationActivityItem extends RenderItemBase {
    * ordinary tool summary remains available as a tooltip.
    */
   recentActivities?: ConversationRecentActivity[];
+  /**
+   * Newest ordinary activity summaries available when the summary tooltip is
+   * explicitly enlarged. The headline's count remains authoritative when this
+   * bounded preview omits thinking or older activity.
+   */
+  tooltipActivities?: ConversationRecentActivity[];
   /** Earliest observed source-message timestamp among condensed activities. */
   startedAtMs: number | null;
   /** Latest observed timestamp, or the current clock while the turn is active. */

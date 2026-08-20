@@ -40,9 +40,13 @@ describe("themed tooltip CSS contract", () => {
     expect(declarations).toMatch(/z-index:\s*2147483647\s*;/);
     expect(declarations).toMatch(/pointer-events:\s*none\s*;/);
     expect(declarations).toMatch(/user-select:\s*none\s*;/);
+    expect(declarations).toMatch(/max-width:\s*min\(520px,/);
     expect(interactiveDeclarations).toMatch(/pointer-events:\s*auto\s*;/);
     expect(interactiveDeclarations).toMatch(/user-select:\s*text\s*;/);
-    expect(enlargedDeclarations).not.toMatch(/max-width\s*:/);
+    expect(enlargedDeclarations).toMatch(
+      /max-width:\s*min\(calc\(520px \+ 4\.25em\),/,
+    );
+    expect(enlargedDeclarations).toMatch(/max-height:\s*min\(/);
     expect(richRootDeclarations).toMatch(/z-index:\s*2147483647\s*;/);
     expect(richDeclarations).toMatch(/z-index:\s*2147483647\s*;/);
     expect(hovercardDeclarations).toMatch(/z-index:\s*2147483647\s*;/);

@@ -34,6 +34,8 @@ interface VisibleTooltip {
   anchorY: number;
   forcedThemed: boolean;
   glossary: boolean;
+  zoomHeadline: string | null;
+  zoomDetail: string | null;
 }
 
 interface PointerPosition {
@@ -195,6 +197,12 @@ function wheelDeltaYPixels(event: WheelEvent, tooltip: HTMLElement): number {
     return event.deltaY * lineHeight;
   }
   return event.deltaY;
+}
+
+function clipboardTextForTooltip(tooltip: VisibleTooltip): string {
+  return tooltip.zoomHeadline && tooltip.zoomDetail
+    ? `${tooltip.zoomHeadline}\n${tooltip.zoomDetail}`
+    : tooltip.text;
 }
 
 /**
@@ -404,12 +412,20 @@ export function TooltipLayer() {
         left: resolvedAnchorX + POINTER_OFFSET_PX,
         top: resolvedAnchorY + POINTER_OFFSET_PX,
       });
+      const zoomHeadline = target
+        .getAttribute("data-tooltip-zoom-headline")
+        ?.trim();
+      const zoomDetail = target
+        .getAttribute("data-tooltip-zoom-detail")
+        ?.trim();
       setVisible({
         text: currentText,
         anchorX: resolvedAnchorX,
         anchorY: resolvedAnchorY,
         forcedThemed,
         glossary: target.matches("[data-glossary-term]"),
+        zoomHeadline: zoomHeadline || null,
+        zoomDetail: zoomDetail || null,
       });
     },
     [detachTitle, dismissUntilDeparture, hide],
@@ -904,7 +920,7 @@ export function TooltipLayer() {
       event.preventDefault();
       event.stopImmediatePropagation();
       setEnlarged(true);
-      void writeClipboardText(currentTooltip.text);
+      void writeClipboardText(clipboardTextForTooltip(currentTooltip));
     };
     const onContextMenu = (event: MouseEvent) => {
       const currentTooltip = visibleTooltipRef.current;
@@ -935,7 +951,7 @@ export function TooltipLayer() {
       }
       event.preventDefault();
       setEnlarged(true);
-      void writeClipboardText(currentTooltip.text);
+      void writeClipboardText(clipboardTextForTooltip(currentTooltip));
     };
     const onWheel = (event: WheelEvent) => {
       const tooltip = tooltipRef.current;
@@ -1081,7 +1097,14 @@ export function TooltipLayer() {
       role="tooltip"
       style={{ left: position.left, top: position.top }}
     >
-      {visible.text}
+      {enlarged && visible.zoomHeadline && visible.zoomDetail ? (
+        <>
+          <span className={styles.zoomHeadline}>{visible.zoomHeadline}</span>
+          <span className={styles.zoomDetail}>{visible.zoomDetail}</span>
+        </>
+      ) : (
+        visible.text
+      )}
     </div>,
     document.body,
   );

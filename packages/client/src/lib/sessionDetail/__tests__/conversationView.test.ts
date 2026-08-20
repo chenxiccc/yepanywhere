@@ -601,6 +601,11 @@ describe("selectConversationThinkingPreviews", () => {
       { label: "Write", detail: "Write: report.md", preview: "report.md" },
       { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
     ]);
+    expect(summary(projected).tooltipActivities?.slice(0, 2)).toEqual([
+      { label: "Write", detail: "Write: report.md", preview: "report.md" },
+      { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
+    ]);
+    expect(summary(projected).tooltipActivities).toHaveLength(4);
   });
 
   it("keeps the activities after the last thought once the turn ends", () => {

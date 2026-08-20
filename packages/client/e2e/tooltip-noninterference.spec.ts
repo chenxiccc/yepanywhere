@@ -189,9 +189,12 @@ for (const viewport of [
     );
     expect(enlargedBox.x).toBeCloseTo(expectedLeft, 0);
     expect(enlargedBox.y).toBeCloseTo(expectedTop, 0);
-    const compactAspect = beforeScrollBox.width / beforeScrollBox.height;
-    const enlargedAspect = enlargedBox.width / enlargedBox.height;
-    expect(enlargedAspect / compactAspect).toBeGreaterThan(0.8);
-    expect(enlargedAspect / compactAspect).toBeLessThan(1.25);
+    expect(enlargedBox.width).toBeGreaterThanOrEqual(beforeScrollBox.width);
+    expect(enlargedBox.height).toBeGreaterThan(beforeScrollBox.height);
+    expect(
+      await tooltip.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
   });
 }

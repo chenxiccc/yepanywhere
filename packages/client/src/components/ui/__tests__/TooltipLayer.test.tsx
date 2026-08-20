@@ -921,6 +921,54 @@ describe("TooltipLayer", () => {
     expect(tooltip.style.top).toBe(initialPosition.top);
   });
 
+  it("shows and copies producer-supplied detail only after enlargement", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <>
+        <TooltipLayer />
+        <button
+          type="button"
+          data-tooltip="Show hidden activity"
+          data-tooltip-zoom-headline="12s · 3 activities hidden"
+          data-tooltip-zoom-detail={"Write: report.md\nRun: pnpm test"}
+        >
+          Activities
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Activities" });
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    const tooltip = screen.getByRole("tooltip");
+    mockElementRect(tooltip, {
+      left: 18,
+      top: 18,
+      width: 180,
+      height: 40,
+    });
+
+    expect(tooltip.textContent).toBe("Show hidden activity");
+    fireEvent.contextMenu(target, { clientX: 20, clientY: 20 });
+
+    expect(tooltip.querySelector(`.${styles.zoomHeadline}`)?.textContent).toBe(
+      "12s · 3 activities hidden",
+    );
+    expect(tooltip.querySelector(`.${styles.zoomDetail}`)?.textContent).toBe(
+      "Write: report.md\nRun: pnpm test",
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      "12s · 3 activities hidden\nWrite: report.md\nRun: pnpm test",
+    );
+  });
+
   it("moves an enlarged tooltip only enough to remain in the viewport", () => {
     vi.stubGlobal("innerWidth", 300);
     vi.stubGlobal("innerHeight", 200);

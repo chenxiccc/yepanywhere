@@ -216,29 +216,33 @@ Instructions such as “Click to view” are omitted because link activation and
 browser link gestures are already conventional.
 
 Secondary-click inside a visible passive plain-text tooltip's measured bounds
-copies its full text and immediately increases the tooltip by one text-size
-step, without animation or changing primary hit-testing. A nonempty existing
-selection or an app-owned context menu retains browser/application behavior;
-right-click outside the visible tooltip bounds likewise remains owned by its
-page target. Whenever the tooltip declines a secondary click this way, it also
-dismisses itself and stays dismissed until the pointer leaves the trigger: the
-menu that opens claims the same screen position, and the pointer then rests, so
-nothing else would clear the hint before it had covered the menu's first
-entries. Menus the tooltip layer never sees — an app menu whose handler stops
-propagation, such as the file link's Copy path menu — assert the same
-invariant for their mounted lifetime through the shared suppression hold, so
-a hover hint cannot reappear over an open menu. The compact tooltip reserves
-no empty enlarged-state space. On
-enlargement, the box retains the ordinary maximum width and its existing top-
-left position when that fits; each axis moves only the minimum needed to keep
-the enlarged box inside the viewport. This limits rewrapping and aspect-ratio
-change without making the initial tooltip loose. The enlarged tooltip follows
-the same hover-region and close grace as its ordinary form. Passive tooltip
-text is not pointer-selectable: full-text copy is the retrieval path. Wheel
-input inside a vertically overflowing tooltip changes only its internal scroll
-position: the tooltip rectangle, word wrapping, and underlying page position
-remain fixed, including at the tooltip's scroll boundary. A non-overflowing
-tooltip does not consume wheel input.
+copies the text the enlarged tooltip presents and immediately increases the
+tooltip by one text-size step, without animation or changing primary hit-
+testing. A producer may supply a zoom-only one-line headline and detail body;
+ordinary hover keeps its compact text, while enlargement renders the headline
+in stronger weight above that additional detail. A nonempty existing selection
+or an app-owned context menu retains browser/application behavior; right-click
+outside the visible tooltip bounds likewise remains owned by its page target.
+Whenever the tooltip declines a secondary click this way, it also dismisses
+itself and stays dismissed until the pointer leaves the trigger: the menu that
+opens claims the same screen position, and the pointer then rests, so nothing
+else would clear the hint before it had covered the menu's first entries. Menus
+the tooltip layer never sees — an app menu whose handler stops propagation,
+such as the file link's Copy path menu — assert the same invariant for their
+mounted lifetime through the shared suppression hold, so a hover hint cannot
+reappear over an open menu. The compact tooltip reserves no empty enlarged-
+state space and retains its ordinary size limits. Enlargement adds a font-
+relative increment to the maximum width, keeping its usable line length close
+to the font step until the viewport clamp takes over. It also raises the
+vertical cap to use available viewport height before contained scrolling is
+needed. The box keeps its existing top-left position when the result fits; each
+axis moves only the minimum needed to remain inside the viewport. The enlarged
+tooltip follows the same hover-region and close grace as its ordinary form.
+Passive tooltip text is not pointer-selectable: full-text copy is the retrieval
+path. Wheel input inside a vertically overflowing tooltip changes only its
+internal scroll position: the tooltip rectangle, word wrapping, and underlying
+page position remain fixed, including at the tooltip's scroll boundary. A non-
+overflowing tooltip does not consume wheel input.
 
 Explicit glossary-term activation begins in the same enlarged treatment because
 the activation expresses reading intent; passive pointer hover remains compact.
@@ -312,13 +316,15 @@ not the surface into a card.
   ordinary browser tooltips.
 - Touch activation of a session row or Recent Sessions link navigates without
   opening, warming, or leaving behind a session preview or text tooltip.
-- Secondary-click inside passive tooltip bounds copies/enlarges the full text
-  while respecting existing-selection and app-context-menu exclusions. A
-  declined secondary click dismisses the tooltip until pointer departure, and
-  no hover hint is visible while an app context menu is mounted. The compact
-  box reserves no enlarged-state gap; enlargement preserves its top-
-  left position unless the viewport requires the minimum per-axis clamp and
-  retains the ordinary maximum width to limit reflow.
+- Secondary-click inside passive tooltip bounds copies/enlarges the presented
+  text while respecting existing-selection and app-context-menu exclusions. A
+  producer's zoom-only headline/detail replaces the compact hint only after
+  enlargement. A declined secondary click dismisses the tooltip until pointer
+  departure, and no hover hint is visible while an app context menu is mounted.
+  The compact box reserves no enlarged-state gap or changed size limit;
+  enlargement preserves its top-left position unless the viewport requires the
+  minimum per-axis clamp, adds a font-relative maximum-width increment, and
+  raises the viewport-bounded height cap.
 - Wheel input over an overflowing passive tooltip scrolls its content without
   changing its rectangle, wrapping, or the underlying page position; passive
   text remains unselectable.

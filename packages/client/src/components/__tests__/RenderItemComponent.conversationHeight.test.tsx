@@ -234,6 +234,37 @@ describe("conversation thinking preview height publication", () => {
         ?.classList.contains("is-wide-activity-previews"),
     ).toBe(true);
   });
+
+  it("supplies the activity headline and expanded-row summaries to tooltip zoom", () => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    const base = conversationActivityItem() as ConversationActivityItem;
+    const item: ConversationActivityItem = {
+      ...base,
+      tooltipActivities: [
+        { label: "Write", detail: "Write: report.md", preview: "report.md" },
+        { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
+      ],
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <RenderItemComponent
+          item={item}
+          isStreaming
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    const summary = container.querySelector<HTMLElement>(
+      ".conversation-activity-summary",
+    );
+    expect(summary?.dataset.tooltipZoomHeadline).toContain("5 activities");
+    expect(summary?.dataset.tooltipZoomDetail).toBe(
+      "Write: report.md\nRun: pnpm test\n…",
+    );
+  });
 });
 
 describe("conversation thinking preview age", () => {

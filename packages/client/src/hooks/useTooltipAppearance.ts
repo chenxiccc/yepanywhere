@@ -12,9 +12,16 @@ import { getVisibilityAwareTooltipText } from "../lib/tooltipVisibility";
 
 export type TooltipMode = "themed" | "native";
 
+export interface TooltipZoomContent {
+  headline: string;
+  detail: string;
+}
+
 export interface TextTooltipAttributes {
   title?: string;
   "data-tooltip"?: string;
+  "data-tooltip-zoom-headline"?: string;
+  "data-tooltip-zoom-detail"?: string;
 }
 
 export const TOOLTIP_DELAY_MIN_MS = 0;
@@ -100,9 +107,19 @@ export function getTooltipMode(): TooltipMode {
 export function getTextTooltipAttributes(
   text: string | null | undefined,
   mode: TooltipMode = getTooltipMode(),
+  zoomContent?: TooltipZoomContent,
 ): TextTooltipAttributes {
   if (!text) return {};
-  return mode === "themed" ? { "data-tooltip": text } : { title: text };
+  if (mode === "native") return { title: text };
+  return {
+    "data-tooltip": text,
+    ...(zoomContent?.headline && zoomContent.detail
+      ? {
+          "data-tooltip-zoom-headline": zoomContent.headline,
+          "data-tooltip-zoom-detail": zoomContent.detail,
+        }
+      : {}),
+  };
 }
 
 /**
@@ -223,9 +240,10 @@ export function useTooltipAppearance() {
 /** Reactive attributes for render-time tooltip text. */
 export function useTextTooltipAttributes(
   text: string | null | undefined,
+  zoomContent?: TooltipZoomContent,
 ): TextTooltipAttributes {
   const tooltipMode = useTooltipMode();
-  return getTextTooltipAttributes(text, tooltipMode);
+  return getTextTooltipAttributes(text, tooltipMode, zoomContent);
 }
 
 /**

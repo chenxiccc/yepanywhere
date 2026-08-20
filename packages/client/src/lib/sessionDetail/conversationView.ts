@@ -505,6 +505,7 @@ export function projectConversationView(
         groupIndex === lastActivityGroupIndex && thinkingPreviews.length > 0
           ? getRecentActivities(hiddenItems, lastCompleteThinkingId)
           : undefined,
+      tooltipActivities: getRecentActivities(hiddenItems, null),
       startedAtMs,
       endedAtMs: isActive ? nowMs : endedAtMs,
       sourceMessages: hiddenItems.flatMap((item) => item.sourceMessages),

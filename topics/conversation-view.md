@@ -207,8 +207,15 @@ provider-history rewrite and not deletion.
   cut. File operations may add a basename and commands may add a bounded
   description or verb-first command fragment. These previews remain whole single
   lines and may truncate; by default they cannot widen the activity column. The
-  complete ordinary tool summary remains available as a tooltip. Shell
-  separators divide a command preview only outside quoted or escaped text, so a
+  complete ordinary tool summary remains available as a tooltip. The turn's
+  compact activity summary keeps its ordinary expand/collapse hint on hover; a
+  secondary click enlarges that hint into the same one-line count/duration
+  headline in stronger weight plus the newest available ordinary activity
+  summaries. The detail list is bounded to the same 24-row preview budget and
+  newest-first order as activity names; the headline's activity count remains
+  authoritative, and an ellipsis marks hidden thinking, semantic sub-actions,
+  or older summaries that the preview cannot enumerate. Shell separators divide
+  a command preview only outside quoted or escaped text, so a
   quoted regular-expression alternation or semicolon remains part of its
   argument while a real pipeline still supplies separate command segments.
   Because the names cap to the current/latest card's rendered height, collapsing

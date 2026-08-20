@@ -637,6 +637,22 @@ function ConversationActivitySummary({
       ? "conversationActivityCollapseTitle"
       : "conversationActivityExpandTitle",
   );
+  const tooltipActivityDetails = item.tooltipActivities
+    ?.map((activity) => activity.detail)
+    .join("\n");
+  const tooltipAttributes = useTextTooltipAttributes(
+    title,
+    tooltipActivityDetails
+      ? {
+          headline: label,
+          detail: `${tooltipActivityDetails}${
+            item.activityCount > (item.tooltipActivities?.length ?? 0)
+              ? "\n…"
+              : ""
+          }`,
+        }
+      : undefined,
+  );
   const showThinkingPreviews = autoHidePhase !== "hidden";
   const autoHidingThinking = autoHidePhase === "fading";
   const hasExpandedThinkingPreview =
@@ -667,7 +683,7 @@ function ConversationActivitySummary({
           }${item.expanded ? " is-expanded" : ""}`}
           onClick={() => onToggle?.(item.id)}
           aria-expanded={item.expanded}
-          title={title}
+          {...tooltipAttributes}
         >
           <span
             className={`${styles.activityChevron}${
