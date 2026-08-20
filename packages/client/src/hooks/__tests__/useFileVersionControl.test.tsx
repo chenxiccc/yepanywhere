@@ -170,7 +170,7 @@ afterEach(() => {
 });
 
 describe("useFileVersionControl", () => {
-  it("uses one live worktree subscription without status or manifest requests", async () => {
+  it("checks the repository once before sharing a live worktree subscription", async () => {
     mocks.getVersion.mockResolvedValue({
       current: "0.7.2",
       latest: null,
@@ -243,8 +243,39 @@ describe("useFileVersionControl", () => {
       worktreeFile: null,
       cumulativeFile: null,
     });
-    expect(mocks.getGitStatus).not.toHaveBeenCalled();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.getGitStatus).toHaveBeenCalledWith("project-a", {
+      omitUntracked: true,
+    });
     expect(mocks.getGitFileProjections).not.toHaveBeenCalled();
+  });
+
+  it("does not lease a worktree for a non-Git project", async () => {
+    mocks.getVersion.mockResolvedValue({
+      current: "0.7.2",
+      latest: null,
+      updateAvailable: false,
+    });
+    mocks.getGitStatus.mockResolvedValue({
+      ...STATUS,
+      isGitRepo: false,
+      files: [],
+      recentCommits: [],
+    });
+    const transport = new FakeSourceTransport();
+    const hook = renderHook(() => useSubject("src/worktree.ts"), {
+      wrapper: createWrapper(createRuntime(transport)),
+    });
+    await settle();
+
+    expect(transport.getSubscriptions("worktree")).toHaveLength(0);
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+    expect(hook.result.current).toMatchObject({
+      supported: true,
+      loading: false,
+      worktreeFile: null,
+      cumulativeFile: null,
+    });
   });
 
   it("exposes only the exact projections containing the path", async () => {

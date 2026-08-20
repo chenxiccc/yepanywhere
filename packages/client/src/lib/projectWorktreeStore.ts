@@ -69,13 +69,14 @@ function sameStrings(
 function unionCoverage(leases: Iterable<Lease>): GitWorktreeCoverage {
   const coverage = { tracked: false, untracked: false, ignored: false };
   const expandedPrefixes = new Set<string>();
-  let hasExpandedPrefixes = false;
+  let compatibilityInventory = false;
   for (const lease of leases) {
     coverage.tracked ||= lease.coverage.tracked;
     coverage.untracked ||= lease.coverage.untracked;
     coverage.ignored ||= lease.coverage.ignored;
-    if (lease.coverage.expandedPrefixes !== undefined) {
-      hasExpandedPrefixes = true;
+    if (lease.coverage.expandedPrefixes === undefined) {
+      compatibilityInventory = true;
+    } else {
       for (const prefix of lease.coverage.expandedPrefixes) {
         expandedPrefixes.add(prefix);
       }
@@ -83,9 +84,9 @@ function unionCoverage(leases: Iterable<Lease>): GitWorktreeCoverage {
   }
   return {
     ...coverage,
-    ...(hasExpandedPrefixes
-      ? { expandedPrefixes: [...expandedPrefixes].sort() }
-      : {}),
+    ...(compatibilityInventory
+      ? {}
+      : { expandedPrefixes: [...expandedPrefixes].sort() }),
   };
 }
 

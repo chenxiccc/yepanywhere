@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveGitMetadata } from "../../src/projects/projectWorktreeSubscriptionManager.js";
 import {
-  resolveGitMetadata,
   scanFilesystemWorktree,
   scanGitWorktree,
-} from "../../src/projects/projectWorktreeSubscriptionManager.js";
+} from "../../src/projects/projectWorktreeScan.js";
 
 const execFileAsync = promisify(execFile);
 

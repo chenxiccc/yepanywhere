@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import { lstat, opendir, readdir, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, opendir, realpath } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import type {
-  GitFileChange,
   GitWorkingTreeChange,
   GitWorkingTreeFile,
-  GitWorkingTreePathKind,
   GitWorktreeCoverage,
   GitWorktreeDirectory,
   GitWorktreeDirectoryChange,
@@ -14,10 +12,23 @@ import type {
   GitWorktreeSubscriptionEvent,
   UrlProjectId,
 } from "@yep-anywhere/shared";
-import { readGitDiffFileChanges } from "../git/fileChanges.js";
-import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
+import { runGit } from "../git/gitExec.js";
 import { getLogger } from "../logging/logger.js";
-import { getGitStatus } from "../routes/git-status.js";
+import {
+  compareWorktreePaths,
+  directoryForCoverage,
+  directoryVisibleToCoverage,
+  includesWorktreeKind,
+  pathCoveredByExpandedPrefixes,
+  sameWorktreeCoverage,
+  unionExpandedWorktreeCoverage,
+  unionWorktreeCoverage,
+} from "./projectWorktreeCoverage.js";
+import {
+  type ProjectWorktreeScan,
+  scanFilesystemWorktree,
+  scanGitWorktree,
+} from "./projectWorktreeScan.js";
 import type { ProjectScanner } from "./scanner.js";
 
 const DEFAULT_DEBOUNCE_MS = 150;
@@ -31,7 +42,6 @@ const DEFAULT_FILE_LIMIT = 100_000;
  * enough that a phone renders it and the walk stays cheap.
  */
 const FILESYSTEM_INVENTORY_FILE_LIMIT = 5_000;
-const MAX_BUFFER = 64 * 1024 * 1024;
 const GIT_METADATA_PLATFORM: NodeJS.Platform = "linux";
 
 const GIT_ROOT_METADATA_NAMES = new Set([
@@ -87,24 +97,6 @@ interface WatchedGitMetadata extends WatchedDirectory {
 
 type ReconciliationMode = "full" | "fingerprint";
 
-export interface ProjectWorktreeScan {
-  headSha: string | null;
-  baseSha: string | null;
-  files: Map<string, GitWorkingTreeFile>;
-  truncated?: boolean;
-  /**
-   * Content directories the scan actually enumerated. Present only for a
-   * filesystem-only inventory, whose walk is bounded: watching what it did not
-   * read would cost the traversal the bound exists to avoid.
-   */
-  directories?: Set<string>;
-  /**
-   * Lazy filesystem directory rows. Presence distinguishes expanded-prefix
-   * inventory from the compatibility breadth-first scan.
-   */
-  directoryRows?: Map<string, GitWorktreeDirectory>;
-}
-
 interface ProjectState {
   projectId: UrlProjectId;
   projectPath: string;
@@ -113,7 +105,7 @@ interface ProjectState {
   headSha: string | null;
   baseSha: string | null;
   files: Map<string, GitWorkingTreeFile>;
-  /** Null for Git and the compatibility breadth-first filesystem inventory. */
+  /** Null when no expanded-prefix subscriber needs directory rows. */
   directoryRows: Map<string, GitWorktreeDirectory> | null;
   subscribers: Map<number, Subscriber>;
   watchers: Map<string, WatchedDirectory>;
@@ -130,6 +122,8 @@ interface ProjectState {
   scanTruncated: boolean;
   /** Directories the last filesystem-only scan read; null when Git lists them. */
   scanDirectories: Set<string> | null;
+  /** Whether that bounded scan found every directory in its inventory mode. */
+  scanDirectoriesComplete: boolean;
   activationPromise: Promise<void> | null;
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
@@ -190,112 +184,8 @@ function isDotGitPath(path: string): boolean {
   return path.split("/").includes(".git");
 }
 
-function isContained(root: string, candidate: string): boolean {
-  const rel = relative(root, candidate);
-  return (
-    rel === "" ||
-    (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel))
-  );
-}
-
-function comparePaths(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
 function pathIsAtOrBelow(path: string, parent: string): boolean {
   return path === parent || (parent !== "" && path.startsWith(`${parent}/`));
-}
-
-function includesKind(
-  coverage: GitWorktreeCoverage,
-  kind: GitWorkingTreePathKind,
-): boolean {
-  return coverage[kind];
-}
-
-function unionCoverage(subscribers: Iterable<Subscriber>): GitWorktreeCoverage {
-  const result = { tracked: false, untracked: false, ignored: false };
-  const expandedPrefixes = new Set<string>();
-  let legacyInventory = false;
-  for (const subscriber of subscribers) {
-    result.tracked ||= subscriber.coverage.tracked;
-    result.untracked ||= subscriber.coverage.untracked;
-    result.ignored ||= subscriber.coverage.ignored;
-    if (subscriber.coverage.expandedPrefixes === undefined) {
-      legacyInventory = true;
-    } else {
-      for (const prefix of subscriber.coverage.expandedPrefixes) {
-        expandedPrefixes.add(prefix);
-      }
-    }
-  }
-  return {
-    ...result,
-    ...(legacyInventory
-      ? {}
-      : { expandedPrefixes: [...expandedPrefixes].sort(comparePaths) }),
-  };
-}
-
-function sameCoverage(
-  left: GitWorktreeCoverage,
-  right: GitWorktreeCoverage,
-): boolean {
-  return (
-    left.tracked === right.tracked &&
-    left.untracked === right.untracked &&
-    left.ignored === right.ignored &&
-    sameStrings(left.expandedPrefixes, right.expandedPrefixes)
-  );
-}
-
-function sameStrings(
-  left: readonly string[] | undefined,
-  right: readonly string[] | undefined,
-): boolean {
-  return (
-    left === right ||
-    (left !== undefined &&
-      right !== undefined &&
-      left.length === right.length &&
-      left.every((value, index) => value === right[index]))
-  );
-}
-
-function parentDirectory(path: string): string {
-  const separator = path.lastIndexOf("/");
-  return separator < 0 ? "" : path.slice(0, separator);
-}
-
-function directoryVisibleToCoverage(
-  path: string,
-  coverage: GitWorktreeCoverage,
-): boolean {
-  const parent = parentDirectory(path);
-  return parent === "" || coverage.expandedPrefixes?.includes(parent) === true;
-}
-
-function pathCoveredByExpandedPrefixes(
-  path: string,
-  coverage: GitWorktreeCoverage,
-): boolean {
-  const parent = parentDirectory(path);
-  return parent === "" || coverage.expandedPrefixes?.includes(parent) === true;
-}
-
-function directoryForCoverage(
-  directory: GitWorktreeDirectory,
-  coverage: GitWorktreeCoverage,
-): GitWorktreeDirectory {
-  const expanded = coverage.expandedPrefixes?.includes(directory.path) === true;
-  if (directory.pending === !expanded && (!expanded || !directory.truncated)) {
-    return directory;
-  }
-  return {
-    path: directory.path,
-    pending: !expanded,
-    truncated: expanded && directory.truncated,
-  };
 }
 
 export class ProjectWorktreeSubscriptionManager {
@@ -373,7 +263,7 @@ export class ProjectWorktreeSubscriptionManager {
         ? {}
         : {
             expandedPrefixes: [...new Set(coverage.expandedPrefixes)].sort(
-              comparePaths,
+              compareWorktreePaths,
             ),
           }),
     };
@@ -444,7 +334,10 @@ export class ProjectWorktreeSubscriptionManager {
     const state = this.getOrCreateState(projectId, projectPath);
     const subscriberId = this.nextSubscriberId++;
     const subscriber: Subscriber = { coverage, listener, ready: false };
-    const previousCoverage = unionCoverage(state.subscribers.values());
+    const previousCoverage = unionWorktreeCoverage(state.subscribers.values());
+    const previousDirectoryCoverage = unionExpandedWorktreeCoverage(
+      state.subscribers.values(),
+    );
     state.subscribers.set(subscriberId, subscriber);
     state.lastUsedAt = Date.now();
 
@@ -454,7 +347,10 @@ export class ProjectWorktreeSubscriptionManager {
       detached = true;
       const current = this.projects.get(projectId);
       if (current !== state) return;
-      const before = unionCoverage(current.subscribers.values());
+      const before = unionWorktreeCoverage(current.subscribers.values());
+      const beforeDirectories = unionExpandedWorktreeCoverage(
+        current.subscribers.values(),
+      );
       current.subscribers.delete(subscriberId);
       current.lastUsedAt = Date.now();
       if (current.subscribers.size === 0) {
@@ -462,8 +358,14 @@ export class ProjectWorktreeSubscriptionManager {
         this.evictInactiveProjects();
         return;
       }
-      const after = unionCoverage(current.subscribers.values());
-      if (!sameCoverage(before, after)) {
+      const after = unionWorktreeCoverage(current.subscribers.values());
+      const afterDirectories = unionExpandedWorktreeCoverage(
+        current.subscribers.values(),
+      );
+      if (
+        !sameWorktreeCoverage(before, after) ||
+        !sameOptionalWorktreeCoverage(beforeDirectories, afterDirectories)
+      ) {
         void this.refresh(current, true)
           .then(async () => {
             if (current.directoryRows === null) return;
@@ -482,7 +384,11 @@ export class ProjectWorktreeSubscriptionManager {
     if (pending.cancelled) return detach();
 
     try {
-      await this.ensureActive(state, previousCoverage);
+      await this.ensureActive(
+        state,
+        previousCoverage,
+        previousDirectoryCoverage,
+      );
       if (
         pending.cancelled ||
         state.subscribers.get(subscriberId) !== subscriber
@@ -527,6 +433,7 @@ export class ProjectWorktreeSubscriptionManager {
       initialized: false,
       scanTruncated: false,
       scanDirectories: null,
+      scanDirectoriesComplete: false,
       activationPromise: null,
       refreshPromise: null,
       refreshQueued: false,
@@ -550,10 +457,18 @@ export class ProjectWorktreeSubscriptionManager {
   private ensureActive(
     state: ProjectState,
     previousCoverage: GitWorktreeCoverage,
+    previousDirectoryCoverage: GitWorktreeCoverage | null,
   ): Promise<void> {
-    const wanted = unionCoverage(state.subscribers.values());
+    const wanted = unionWorktreeCoverage(state.subscribers.values());
+    const wantedDirectories = unionExpandedWorktreeCoverage(
+      state.subscribers.values(),
+    );
     if (state.activationPromise) return state.activationPromise;
-    if (state.initialized && sameCoverage(previousCoverage, wanted)) {
+    if (
+      state.initialized &&
+      sameWorktreeCoverage(previousCoverage, wanted) &&
+      sameOptionalWorktreeCoverage(previousDirectoryCoverage, wantedDirectories)
+    ) {
       return Promise.resolve();
     }
     state.activationPromise = this.activate(state).finally(() => {
@@ -640,7 +555,7 @@ export class ProjectWorktreeSubscriptionManager {
     const listed = state.scanDirectories
       ? {
           directories: state.scanDirectories,
-          complete: state.directoryRows !== null ? true : !state.scanTruncated,
+          complete: state.scanDirectoriesComplete,
         }
       : await this.listDirectories(state.projectPath);
     const wanted = listed.directories;
@@ -1012,19 +927,35 @@ export class ProjectWorktreeSubscriptionManager {
         await this.syncGitMetadataWatchers(state);
         this.syncReconciliationPoll(state);
       }
-      const coverage = unionCoverage(state.subscribers.values());
+      const coverage = unionWorktreeCoverage(state.subscribers.values());
+      const directoryCoverage = unionExpandedWorktreeCoverage(
+        state.subscribers.values(),
+      );
       const pendingPaths = new Set(state.pendingPaths);
       state.pendingPaths.clear();
       const fingerprintBefore = state.gitMetadata
         ? await readGitMetadataFingerprint(state.gitMetadata)
         : null;
+      const isGitRepository = state.gitMetadata !== null;
       let scan: ProjectWorktreeScan;
       try {
         scan = await this.scanWorktree(
           state.projectPath,
           coverage,
-          state.gitMetadata !== null,
+          isGitRepository,
         );
+        if (
+          !isGitRepository &&
+          coverage.expandedPrefixes === undefined &&
+          directoryCoverage
+        ) {
+          const directoryScan = await this.scanWorktree(
+            state.projectPath,
+            directoryCoverage,
+            false,
+          );
+          scan = { ...scan, directoryRows: directoryScan.directoryRows };
+        }
       } catch (error) {
         for (const path of pendingPaths) state.pendingPaths.add(path);
         throw error;
@@ -1058,6 +989,9 @@ export class ProjectWorktreeSubscriptionManager {
       state.baseSha = scan.baseSha;
       state.scanTruncated = scan.truncated === true;
       state.scanDirectories = scan.directories ?? null;
+      state.scanDirectoriesComplete =
+        scan.directories !== undefined &&
+        (coverage.expandedPrefixes !== undefined || scan.truncated !== true);
       state.initialized = true;
       if (
         changes.length > 0 ||
@@ -1068,7 +1002,16 @@ export class ProjectWorktreeSubscriptionManager {
         state.sequence += 1;
         if (emit) this.emit(state, changes, directoryChanges);
       }
-      if (!sameCoverage(coverage, unionCoverage(state.subscribers.values()))) {
+      if (
+        !sameWorktreeCoverage(
+          coverage,
+          unionWorktreeCoverage(state.subscribers.values()),
+        ) ||
+        !sameOptionalWorktreeCoverage(
+          directoryCoverage,
+          unionExpandedWorktreeCoverage(state.subscribers.values()),
+        )
+      ) {
         state.refreshQueued = true;
       }
     } while (state.refreshQueued && state.subscribers.size > 0);
@@ -1084,24 +1027,25 @@ export class ProjectWorktreeSubscriptionManager {
     const files = [...state.files.values()]
       .filter(
         (file) =>
-          includesKind(
+          includesWorktreeKind(
             coverage,
             file.kind ?? (file.tracked ? "tracked" : "untracked"),
           ) &&
           (!expandedFilesystemProjection ||
             pathCoveredByExpandedPrefixes(file.path, coverage)),
       )
-      .sort((left, right) => comparePaths(left.path, right.path));
-    const directories = directoryRows
-      ? [...directoryRows.values()]
-          .filter(
-            (directory) =>
-              directory.path !== "" &&
-              directoryVisibleToCoverage(directory.path, coverage),
-          )
-          .map((directory) => directoryForCoverage(directory, coverage))
-          .sort((left, right) => comparePaths(left.path, right.path))
-      : undefined;
+      .sort((left, right) => compareWorktreePaths(left.path, right.path));
+    const directories =
+      directoryRows && coverage.expandedPrefixes !== undefined
+        ? [...directoryRows.values()]
+            .filter(
+              (directory) =>
+                directory.path !== "" &&
+                directoryVisibleToCoverage(directory.path, coverage),
+            )
+            .map((directory) => directoryForCoverage(directory, coverage))
+            .sort((left, right) => compareWorktreePaths(left.path, right.path))
+        : undefined;
     return {
       type: "git-worktree-snapshot",
       generation: { epoch: state.epoch, sequence: state.sequence },
@@ -1111,13 +1055,22 @@ export class ProjectWorktreeSubscriptionManager {
       files: files.slice(0, this.fileLimit),
       ...(directories ? { directories } : {}),
       truncated:
-        this.truncatedForCoverage(state) || files.length > this.fileLimit,
+        this.truncatedForCoverage(state, coverage) ||
+        files.length > this.fileLimit,
       timestamp: new Date().toISOString(),
     };
   }
 
-  private truncatedForCoverage(state: ProjectState): boolean {
-    if (state.directoryRows === null) return state.scanTruncated;
+  private truncatedForCoverage(
+    state: ProjectState,
+    coverage: GitWorktreeCoverage,
+  ): boolean {
+    if (
+      coverage.expandedPrefixes === undefined ||
+      state.directoryRows === null
+    ) {
+      return state.scanTruncated;
+    }
     return state.directoryRows.get("")?.truncated === true;
   }
 
@@ -1134,7 +1087,8 @@ export class ProjectWorktreeSubscriptionManager {
       const filtered = changes.filter((change) => {
         const kind = change.file?.kind ?? state.files.get(change.path)?.kind;
         return (
-          (kind === undefined || includesKind(subscriber.coverage, kind)) &&
+          (kind === undefined ||
+            includesWorktreeKind(subscriber.coverage, kind)) &&
           (!expandedFilesystemProjection ||
             pathCoveredByExpandedPrefixes(change.path, subscriber.coverage))
         );
@@ -1171,7 +1125,7 @@ export class ProjectWorktreeSubscriptionManager {
           ...(includesDirectoryProjection
             ? { directoryChanges: filteredDirectories }
             : {}),
-          truncated: this.truncatedForCoverage(state),
+          truncated: this.truncatedForCoverage(state, subscriber.coverage),
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
@@ -1259,6 +1213,16 @@ export class ProjectWorktreeSubscriptionManager {
   }
 }
 
+function sameOptionalWorktreeCoverage(
+  left: GitWorktreeCoverage | null,
+  right: GitWorktreeCoverage | null,
+): boolean {
+  return (
+    left === right ||
+    (left !== null && right !== null && sameWorktreeCoverage(left, right))
+  );
+}
+
 function diffFiles(
   previous: Map<string, GitWorkingTreeFile>,
   current: Map<string, GitWorkingTreeFile>,
@@ -1288,7 +1252,7 @@ function diffFiles(
       changes.push({ changeType: "delete", path, file });
     }
   }
-  changes.sort((left, right) => comparePaths(left.path, right.path));
+  changes.sort((left, right) => compareWorktreePaths(left.path, right.path));
   return { files, changes };
 }
 
@@ -1309,7 +1273,7 @@ function diffDirectories(
               path: directory.path,
               directory,
             }))
-            .sort((left, right) => comparePaths(left.path, right.path))
+            .sort((left, right) => compareWorktreePaths(left.path, right.path))
         : [],
     };
   }
@@ -1333,7 +1297,9 @@ function diffDirectories(
       directoryChanges.push({ changeType: "delete", path, directory });
     }
   }
-  directoryChanges.sort((left, right) => comparePaths(left.path, right.path));
+  directoryChanges.sort((left, right) =>
+    compareWorktreePaths(left.path, right.path),
+  );
   return { directoryRows, directoryChanges };
 }
 
@@ -1578,7 +1544,9 @@ async function readGitMetadataFingerprint(
     paths.add(dirname(metadata.headRefPath));
   }
   return (
-    await Promise.all([...paths].sort(comparePaths).map(pathFingerprint))
+    await Promise.all(
+      [...paths].sort(compareWorktreePaths).map(pathFingerprint),
+    )
   ).join("\n");
 }
 
@@ -1598,369 +1566,4 @@ function isMissingPathError(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR";
 }
 
-async function scanFilesystemWorktree(
-  projectPath: string,
-  coverage: GitWorktreeCoverage,
-  fileLimit: number,
-): Promise<ProjectWorktreeScan> {
-  if (coverage.expandedPrefixes !== undefined) {
-    return scanExpandedFilesystemWorktree(projectPath, coverage, fileLimit);
-  }
-  return scanFilesystemWorktreeBreadthFirst(projectPath, coverage, fileLimit);
-}
-
-async function scanExpandedFilesystemWorktree(
-  projectPath: string,
-  coverage: GitWorktreeCoverage,
-  fileLimit: number,
-): Promise<ProjectWorktreeScan> {
-  const files = new Map<string, GitWorkingTreeFile>();
-  const directories = new Set<string>([""]);
-  const directoryRows = new Map<string, GitWorktreeDirectory>([
-    ["", { path: "", pending: false, truncated: false }],
-  ]);
-  if (!coverage.untracked) {
-    return {
-      headSha: null,
-      baseSha: null,
-      files,
-      directories,
-      directoryRows,
-    };
-  }
-
-  const expandedPrefixes = coverage.expandedPrefixes ?? [];
-  const expanded = new Set(expandedPrefixes);
-  let truncated = false;
-  for (const prefix of ["", ...expandedPrefixes]) {
-    // A requested prefix must first have been observed as a real directory in
-    // its opened parent. Besides preserving one-level disclosure, this keeps a
-    // guessed symlink path from escaping the project through readdir.
-    if (prefix && !directoryRows.has(prefix)) continue;
-    const absolute = prefix ? join(projectPath, prefix) : projectPath;
-    let entries: fs.Dirent[];
-    try {
-      entries = await readdir(absolute, { withFileTypes: true });
-    } catch (error) {
-      if (isMissingPathError(error)) {
-        if (prefix) directoryRows.delete(prefix);
-        continue;
-      }
-      truncated = true;
-      directoryRows.set(prefix, {
-        path: prefix,
-        pending: false,
-        truncated: true,
-      });
-      getLogger().debug(
-        { directory: absolute, error, projectPath },
-        "WORKTREE_SCAN: opened directory unreadable; listing reported incomplete",
-      );
-      continue;
-    }
-
-    directories.add(prefix);
-    entries.sort((left, right) => comparePaths(left.name, right.name));
-    let publishedFiles = 0;
-    let prefixTruncated = false;
-    for (const entry of entries) {
-      if (entry.name === ".git") continue;
-      const path = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        const opened = expanded.has(path);
-        const previous = directoryRows.get(path);
-        directoryRows.set(path, {
-          path,
-          pending: !opened,
-          truncated: opened && previous?.truncated === true,
-        });
-        continue;
-      }
-      if (publishedFiles >= fileLimit) {
-        prefixTruncated = true;
-        continue;
-      }
-      files.set(path, createFilesystemFile(path));
-      publishedFiles += 1;
-    }
-    directoryRows.set(prefix, {
-      path: prefix,
-      pending: false,
-      truncated: prefixTruncated,
-    });
-    truncated ||= prefixTruncated;
-  }
-
-  return {
-    headSha: null,
-    baseSha: null,
-    files,
-    truncated,
-    directories,
-    directoryRows,
-  };
-}
-
-async function scanFilesystemWorktreeBreadthFirst(
-  projectPath: string,
-  coverage: GitWorktreeCoverage,
-  fileLimit: number,
-): Promise<ProjectWorktreeScan> {
-  if (!coverage.untracked) {
-    return { headSha: null, baseSha: null, files: new Map() };
-  }
-
-  const files = new Map<string, GitWorkingTreeFile>();
-  const directories = new Set<string>([""]);
-  let level = [{ absolute: projectPath, relative: "" }];
-  let truncated = false;
-  // Compatibility path for clients predating expanded prefixes. Breadth-first
-  // spending keeps a heavy subtree from hiding shallower files.
-  while (level.length > 0) {
-    const next: Array<{ absolute: string; relative: string }> = [];
-    for (const current of level) {
-      if (files.size >= fileLimit) {
-        truncated = true;
-        break;
-      }
-      let entries: fs.Dirent[];
-      try {
-        entries = await readdir(current.absolute, { withFileTypes: true });
-      } catch (error) {
-        if (!isMissingPathError(error)) {
-          truncated = true;
-          getLogger().debug(
-            { directory: current.absolute, error, projectPath },
-            "WORKTREE_SCAN: directory unreadable; inventory reported incomplete",
-          );
-        }
-        continue;
-      }
-      directories.add(current.relative);
-      entries.sort((left, right) => comparePaths(left.name, right.name));
-      for (const entry of entries) {
-        if (entry.name === ".git") continue;
-        const path = current.relative
-          ? `${current.relative}/${entry.name}`
-          : entry.name;
-        if (entry.isDirectory()) {
-          next.push({
-            absolute: join(current.absolute, entry.name),
-            relative: path,
-          });
-          continue;
-        }
-        if (files.size >= fileLimit) {
-          truncated = true;
-          break;
-        }
-        files.set(path, createFilesystemFile(path));
-      }
-    }
-    if (truncated) {
-      if (next.length > 0) break;
-      level = [];
-      continue;
-    }
-    level = next;
-  }
-  return { headSha: null, baseSha: null, files, truncated, directories };
-}
-
-function createFilesystemFile(path: string): GitWorkingTreeFile {
-  const change: GitWorkingTreeChange = {
-    status: "?",
-    staged: false,
-    linesAdded: null,
-    linesDeleted: null,
-  };
-  return {
-    path,
-    tracked: false,
-    kind: "untracked",
-    present: true,
-    worktreeChanges: [change],
-    cumulativeChange: change,
-  };
-}
-
-async function scanGitWorktree(
-  projectPath: string,
-  coverage: GitWorktreeCoverage,
-): Promise<ProjectWorktreeScan> {
-  const [headSha, cached, deleted, untracked, ignored] = await Promise.all([
-    resolveCommit(projectPath, "HEAD"),
-    coverage.tracked ? listGitPaths(projectPath, ["--cached"]) : [],
-    coverage.tracked ? listGitPaths(projectPath, ["--deleted"]) : [],
-    coverage.untracked
-      ? listGitPaths(projectPath, ["--others", "--exclude-standard"])
-      : [],
-    coverage.ignored
-      ? listGitPaths(projectPath, [
-          "--others",
-          "--ignored",
-          "--exclude-standard",
-        ])
-      : [],
-  ]);
-  const baseSha = headSha ? await resolveCommit(projectPath, "HEAD^1") : null;
-  const [status, cumulativeFiles] = await Promise.all([
-    headSha ? getGitStatus(projectPath, null, false) : null,
-    baseSha
-      ? readGitDiffFileChanges(projectPath, [baseSha], {
-          maxBuffer: MAX_BUFFER,
-        })
-      : [],
-  ]);
-
-  const worktreeByPath = groupChanges(status?.files ?? []);
-  const cumulativeByPath = new Map(
-    cumulativeFiles.map((change) => [change.path, withoutPath(change)]),
-  );
-  const deletedPaths = new Set(deleted);
-  const files = new Map<string, GitWorkingTreeFile>();
-
-  for (const path of cached) {
-    if (!path || deletedPaths.has(path) || !validPath(projectPath, path))
-      continue;
-    files.set(
-      path,
-      createFile(path, "tracked", true, worktreeByPath, cumulativeByPath),
-    );
-  }
-  for (const path of deletedPaths) {
-    if (!path || !validPath(projectPath, path)) continue;
-    const worktreeChanges = worktreeByPath.get(path);
-    const cumulativeChange = cumulativeByPath.get(path);
-    if (!worktreeChanges && !cumulativeChange) continue;
-    files.set(path, {
-      path,
-      tracked: true,
-      kind: "tracked",
-      present: false,
-      ...(worktreeChanges ? { worktreeChanges } : {}),
-      ...(cumulativeChange ? { cumulativeChange } : {}),
-    });
-  }
-  for (const path of untracked) {
-    if (!path || files.has(path) || !validPath(projectPath, path)) continue;
-    const untrackedChange: GitWorkingTreeChange = {
-      status: "?",
-      staged: false,
-      linesAdded: null,
-      linesDeleted: null,
-    };
-    files.set(path, {
-      path,
-      tracked: false,
-      kind: "untracked",
-      present: true,
-      worktreeChanges: [untrackedChange],
-      cumulativeChange: untrackedChange,
-    });
-  }
-  for (const path of ignored) {
-    if (!path || files.has(path) || !validPath(projectPath, path)) continue;
-    files.set(path, {
-      path,
-      tracked: false,
-      kind: "ignored",
-      present: true,
-    });
-  }
-  for (const [path, worktreeChanges] of worktreeByPath) {
-    if (files.has(path) || !validPath(projectPath, path)) continue;
-    files.set(path, {
-      path,
-      tracked: true,
-      kind: "tracked",
-      present: false,
-      worktreeChanges,
-      ...(cumulativeByPath.has(path)
-        ? { cumulativeChange: cumulativeByPath.get(path) }
-        : {}),
-    });
-  }
-
-  return { headSha, baseSha, files };
-}
-
-function createFile(
-  path: string,
-  kind: GitWorkingTreePathKind,
-  present: boolean,
-  worktreeByPath: ReadonlyMap<string, GitWorkingTreeChange[]>,
-  cumulativeByPath: ReadonlyMap<string, GitWorkingTreeChange>,
-): GitWorkingTreeFile {
-  const worktreeChanges = worktreeByPath.get(path);
-  const cumulativeChange = cumulativeByPath.get(path);
-  return {
-    path,
-    tracked: kind === "tracked",
-    kind,
-    present,
-    ...(worktreeChanges ? { worktreeChanges } : {}),
-    ...(cumulativeChange ? { cumulativeChange } : {}),
-  };
-}
-
-function groupChanges(
-  changes: readonly GitFileChange[],
-): Map<string, GitWorkingTreeChange[]> {
-  const result = new Map<string, GitWorkingTreeChange[]>();
-  for (const change of changes) {
-    const existing = result.get(change.path);
-    const value = withoutPath(change);
-    if (existing) existing.push(value);
-    else result.set(change.path, [value]);
-  }
-  return result;
-}
-
-function withoutPath(change: GitFileChange): GitWorkingTreeChange {
-  const { path: _path, ...value } = change;
-  return value;
-}
-
-function validPath(projectPath: string, path: string): boolean {
-  if (isDotGitPath(path)) return false;
-  return isContained(projectPath, join(projectPath, path));
-}
-
-async function listGitPaths(
-  projectPath: string,
-  flags: string[],
-): Promise<string[]> {
-  const { stdout } = await runGit(
-    projectPath,
-    [...GIT_DECODE_PATHS_ARGS, "ls-files", "-z", ...flags],
-    { maxBuffer: MAX_BUFFER },
-  );
-  const paths = stdout.split("\0");
-  if (paths.at(-1) === "") paths.pop();
-  return paths;
-}
-
-async function resolveCommit(
-  projectPath: string,
-  revision: string,
-): Promise<string | null> {
-  try {
-    const { stdout } = await runGit(projectPath, [
-      "rev-parse",
-      "--verify",
-      `${revision}^{commit}`,
-    ]);
-    return stdout.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-export {
-  ALL_COVERAGE,
-  diffFiles,
-  resolveGitMetadata,
-  scanFilesystemWorktree,
-  scanGitWorktree,
-};
+export { ALL_COVERAGE, diffFiles, resolveGitMetadata };

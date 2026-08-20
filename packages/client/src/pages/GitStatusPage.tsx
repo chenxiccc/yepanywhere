@@ -691,12 +691,6 @@ export function GitStatusPage() {
     version,
     GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   );
-  const liveWorktree = useProjectWorktree(
-    effectiveProjectId ?? "",
-    { tracked: true, untracked: true, ignored: false },
-    Boolean(effectiveProjectId && supportsWorkingTreeSections),
-    worktreePaused,
-  );
   const {
     gitStatus: statusMetadata,
     untrackedFiles: legacyUntrackedFiles,
@@ -707,6 +701,17 @@ export function GitStatusPage() {
     omitUntracked: supportsWorkingTreeSections,
     useUntrackedCache: supportsWorkingTreeFiles && !supportsWorkingTreeSections,
   });
+  const liveWorktreeEnabled = Boolean(
+    effectiveProjectId &&
+      supportsWorkingTreeSections &&
+      statusMetadata?.isGitRepo,
+  );
+  const liveWorktree = useProjectWorktree(
+    effectiveProjectId ?? "",
+    { tracked: true, untracked: true, ignored: false },
+    liveWorktreeEnabled,
+    worktreePaused,
+  );
   const gitStatus = useMemo(
     () =>
       supportsWorkingTreeSections && liveWorktree.generation
@@ -723,10 +728,10 @@ export function GitStatusPage() {
     ? null
     : legacyUntrackedFiles;
   const loading =
-    statusLoading || (supportsWorkingTreeSections && liveWorktree.loading);
+    statusLoading || (liveWorktreeEnabled && liveWorktree.loading);
   const error =
     statusError ??
-    (supportsWorkingTreeSections && liveWorktree.generation === null
+    (liveWorktreeEnabled && liveWorktree.generation === null
       ? liveWorktree.error
       : null);
   const reviewComments = useProjectReviewComments(

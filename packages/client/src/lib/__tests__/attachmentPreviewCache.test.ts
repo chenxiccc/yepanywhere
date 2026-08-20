@@ -236,4 +236,68 @@ describe("attachment preview cache", () => {
       await loadCachedAttachmentPreview(uploadedFile.id, uploadedFile.path),
     ).toBeNull();
   });
+
+  it("evicts preview and alias pairs without deleting live aliases", async () => {
+    const db = await openPreviewDatabase();
+    const recentId = "attachment-id-recent";
+    const recentPath = "/project/.attachments/session/recent.jpg";
+    const oldId = "attachment-id-old";
+    const oldPath = "/project/.attachments/session/old.jpg";
+    const preview = (
+      attachmentId: string,
+      path: string,
+      lastAccessedAt: number,
+    ) => ({
+      attachmentId,
+      path,
+      originalName: `${attachmentId}.jpg`,
+      mimeType: "image/jpeg",
+      size: 1,
+      thumbnailVariant: "current",
+      thumbnailWidth: 1,
+      thumbnailHeight: 1,
+      fullBlob: new Blob(["x"], { type: "image/jpeg" }),
+      totalBytes: 70 * 1024 * 1024,
+      createdAt: 1,
+      lastAccessedAt,
+    });
+    await putEntryWithKey(
+      db,
+      STORE_NAME,
+      recentId,
+      preview(recentId, recentPath, 300),
+    );
+    await putEntryWithKey(db, STORE_NAME, recentPath, {
+      aliasFor: recentId,
+      totalBytes: 0,
+      lastAccessedAt: 100,
+    });
+    await putEntryWithKey(db, STORE_NAME, oldId, preview(oldId, oldPath, 200));
+    await putEntryWithKey(db, STORE_NAME, oldPath, {
+      aliasFor: oldId,
+      totalBytes: 0,
+      lastAccessedAt: 150,
+    });
+    db.close();
+
+    const sourceFile = new File(["new"], "new.jpg", { type: "image/jpeg" });
+    const uploadedFile: UploadedFile = {
+      id: "attachment-id-new",
+      originalName: "new.jpg",
+      name: "attachment-id-new_new.jpg",
+      path: "/project/.attachments/session/new.jpg",
+      size: sourceFile.size,
+      mimeType: "image/jpeg",
+    };
+    await storeUploadedAttachmentPreview(uploadedFile, sourceFile);
+
+    const inspected = await openPreviewDatabase();
+    expect(await getEntry(inspected, STORE_NAME, recentId)).toBeDefined();
+    expect(await getEntry(inspected, STORE_NAME, recentPath)).toMatchObject({
+      aliasFor: recentId,
+    });
+    expect(await getEntry(inspected, STORE_NAME, oldId)).toBeNull();
+    expect(await getEntry(inspected, STORE_NAME, oldPath)).toBeNull();
+    inspected.close();
+  });
 });

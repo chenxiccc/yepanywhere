@@ -305,6 +305,11 @@ bounded breadth-first filesystem inventory for a cached source client. A current
 filesystem client sends an empty array for root-only mode and accepts a snapshot
 without directory rows from an older source server; that safely displays the
 server's bounded file corpus without offering unsupported lazy disclosure.
+When omitted-prefix and expanded-prefix subscribers coexist, the shared file
+scan retains the compatibility corpus while a separate scan of the expanded
+prefix union preserves current clients' directory rows. Compatibility
+subscribers receive no directory fields; expanded-prefix subscribers receive
+their own narrow file and directory projection.
 
 The same capability owns
 `GET /api/projects/:projectId/git/untracked-files` and cache-backed status via
@@ -367,9 +372,12 @@ exact dirty and cumulative projection facts each row needs. A lazy filesystem
 snapshot also carries the visible directory rows and their pending or bounded
 state. That payload ends Loading immediately. Fresh query metadata without a
 retained payload never stands in for it, and no query identity serializes the
-file corpus. A selected file reads its projection availability from the
-resident row rather than launching another project-wide status or
-projection-manifest request.
+file corpus. File-level diff links first reuse a non-polling status query with
+untracked enumeration omitted to establish that the project is a Git
+repository. They retain live coverage only for a repository and then read
+projection availability from the resident row rather than requesting a
+projection manifest. Multiple links share both the status query and live
+subscription.
 
 Filesystem changes publish create, modify, and delete deltas. If subscriber
 coverage widens while a narrower scan is active, the owner scans again before

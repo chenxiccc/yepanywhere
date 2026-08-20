@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   useProject: vi.fn(),
   useVersion: vi.fn(),
   useGitStatus: vi.fn(),
+  useProjectWorktree: vi.fn(),
   useNavigationLayout: vi.fn(),
   useMediaQuery: vi.fn(),
   serverSettings: { sourceReviewSubmissionsEnabled: false },
@@ -156,15 +157,7 @@ vi.mock("../../hooks/useMediaQuery", () => ({
 
 vi.mock("../../hooks/useProjectWorktree", async (original) => ({
   ...(await original<typeof import("../../hooks/useProjectWorktree")>()),
-  useProjectWorktree: () => ({
-    loading: false,
-    error: null,
-    generation: null,
-    headSha: null,
-    baseSha: null,
-    files: [],
-    truncated: false,
-  }),
+  useProjectWorktree: mocks.useProjectWorktree,
 }));
 
 vi.mock("../../hooks/useProjects", () => ({
@@ -376,6 +369,17 @@ beforeEach(() => {
     loading: false,
     error: null,
     refetch: vi.fn(),
+  });
+  mocks.useProjectWorktree.mockReset();
+  mocks.useProjectWorktree.mockReturnValue({
+    loading: false,
+    error: null,
+    generation: null,
+    headSha: null,
+    baseSha: null,
+    files: [],
+    directories: [],
+    truncated: false,
   });
   mocks.useNavigationLayout.mockReturnValue({
     openSidebar: vi.fn(),
@@ -1086,6 +1090,12 @@ describe("GitStatusPage filesystem-only projects", () => {
         status: expect.objectContaining({ isGitRepo: false }),
         supportsWorktreeSections: true,
       }),
+    );
+    expect(mocks.useProjectWorktree).toHaveBeenCalledWith(
+      "project-a",
+      { tracked: true, untracked: true, ignored: false },
+      false,
+      false,
     );
     expect(screen.queryByText("gitStatusNotRepo")).toBeNull();
     expect(screen.queryByRole("button", { name: /init/i })).toBeNull();

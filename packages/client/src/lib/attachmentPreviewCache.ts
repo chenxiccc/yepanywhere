@@ -167,9 +167,32 @@ async function evictOldestEntries(
         return;
       }
 
-      const value = cursor.value as CachedAttachmentPreview;
+      const value = cursor.value as CachedAttachmentRecord;
+      if (isAlias(value)) {
+        cursor.continue();
+        return;
+      }
+
       freed += value.totalBytes ?? 0;
       cursor.delete();
+      if (value.path && value.path !== value.attachmentId) {
+        const aliasRequest = store.get(value.path);
+        aliasRequest.onerror = () => reject(aliasRequest.error);
+        aliasRequest.onsuccess = () => {
+          const alias = aliasRequest.result as
+            | CachedAttachmentRecord
+            | undefined;
+          if (
+            alias &&
+            isAlias(alias) &&
+            alias.aliasFor === value.attachmentId
+          ) {
+            store.delete(value.path);
+          }
+          cursor.continue();
+        };
+        return;
+      }
       cursor.continue();
     };
   });

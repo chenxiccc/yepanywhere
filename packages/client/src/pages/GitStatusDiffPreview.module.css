@@ -11,38 +11,38 @@
  * renderers.css/index.css style those with two-class selectors such as
  * `.git-diff-pane-toolbar .git-diff-preview-header-actions`. A single module
  * class loses to those, and a container query adds no specificity, so each
- * narrow rule is written through `.toolbar` (the toolbar's own rule repeats
- * its class) to outrank the legacy declarations it replaces.
+ * narrow rule includes the toolbar's local and legacy classes plus the target
+ * class to outrank the legacy declarations regardless of chunk arrival order.
  */
 @container (max-width: 520px) {
-  .toolbar.toolbar {
+  .toolbar:global(.git-diff-pane-toolbar).toolbar {
     flex-wrap: wrap;
     row-gap: 3px;
     padding-block: 3px;
   }
 
-  .toolbar .controls,
-  .toolbar .headerActions {
+  .toolbar:global(.git-diff-pane-toolbar) .controls,
+  .toolbar:global(.git-diff-pane-toolbar) .headerActions {
     order: 1;
   }
 
-  .toolbar .controls {
+  .toolbar:global(.git-diff-pane-toolbar) .controls {
     min-width: 0;
     max-width: 100%;
     flex-wrap: wrap;
   }
 
-  .toolbar .headerActions {
+  .toolbar:global(.git-diff-pane-toolbar) .headerActions {
     margin-left: auto;
     flex-wrap: wrap;
   }
 
-  .toolbar .fileIdentity {
+  .toolbar:global(.git-diff-pane-toolbar) .fileIdentity {
     flex-basis: 100%;
     order: 2;
   }
 
-  .toolbar .previewTitle {
+  .toolbar:global(.git-diff-pane-toolbar) .previewTitle {
     overflow: visible;
     overflow-wrap: anywhere;
     text-overflow: clip;

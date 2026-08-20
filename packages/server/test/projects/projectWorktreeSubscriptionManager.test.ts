@@ -1047,10 +1047,31 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     manager.dispose();
   });
 
-  it("keeps expanded-prefix projections narrow during a compatibility scan", async () => {
+  it("preserves expanded-prefix projections during a compatibility scan", async () => {
     const projectId = "project-mixed-prefix-coverage" as UrlProjectId;
     const rootFile = file("root.txt", "untracked");
     const nestedFile = file("src/a.ts", "untracked");
+    const scanWorktree = vi.fn(async (_path, coverage: GitWorktreeCoverage) => {
+      if (coverage.expandedPrefixes === undefined) {
+        return {
+          headSha: null,
+          baseSha: null,
+          files: mapFiles([rootFile, nestedFile]),
+          directories: new Set(["", "src"]),
+        };
+      }
+      const srcExpanded = coverage.expandedPrefixes.includes("src");
+      return {
+        headSha: null,
+        baseSha: null,
+        files: mapFiles(srcExpanded ? [rootFile, nestedFile] : [rootFile]),
+        directories: new Set(srcExpanded ? ["", "src"] : [""]),
+        directoryRows: new Map<string, GitWorktreeDirectory>([
+          ["", { path: "", pending: false, truncated: false }],
+          ["src", { path: "src", pending: !srcExpanded, truncated: false }],
+        ]),
+      };
+    });
     const manager = new ProjectWorktreeSubscriptionManager({
       scanner: {
         getProject: vi.fn(async () => ({
@@ -1066,25 +1087,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
         })),
       },
       platform: "darwin",
-      scanWorktree: vi.fn(async (_path, coverage) =>
-        coverage.expandedPrefixes === undefined
-          ? {
-              headSha: null,
-              baseSha: null,
-              files: mapFiles([rootFile, nestedFile]),
-              directories: new Set(["", "src"]),
-            }
-          : {
-              headSha: null,
-              baseSha: null,
-              files: mapFiles([rootFile]),
-              directories: new Set([""]),
-              directoryRows: new Map<string, GitWorktreeDirectory>([
-                ["", { path: "", pending: false, truncated: false }],
-                ["src", { path: "src", pending: true, truncated: false }],
-              ]),
-            },
-      ),
+      scanWorktree,
     });
     const rootEvents: GitWorktreeSubscriptionEvent[] = [];
     const root = manager.subscribe(
@@ -1114,9 +1117,32 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     expect(rootEvents.at(-1)).toMatchObject({
       type: "git-worktree-delta",
       changes: [],
-      directoryChanges: [{ changeType: "delete", path: "src" }],
+      directoryChanges: [],
     });
 
+    const srcEvents: GitWorktreeSubscriptionEvent[] = [];
+    const src = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: ["src"],
+      },
+      (event) => srcEvents.push(event),
+    );
+    await src.ready;
+    expect(srcEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [rootFile, nestedFile],
+      directories: [{ path: "src", pending: false, truncated: false }],
+    });
+    expect(scanWorktree).toHaveBeenLastCalledWith(
+      projectPath,
+      expect.objectContaining({ expandedPrefixes: ["src"] }),
+    );
+
+    src.release();
     legacy.release();
     root.release();
     manager.dispose();

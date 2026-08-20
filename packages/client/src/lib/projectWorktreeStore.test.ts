@@ -122,6 +122,30 @@ describe("ProjectWorktreeStore", () => {
     expect(onlyWorktreeSubscription(transport).closed).toBe(true);
   });
 
+  it("keeps compatibility inventory while any lease omits prefixes", () => {
+    const transport = new FakeSourceTransport();
+    const store = getProjectWorktreeStore(
+      asClientSummarySourceKey("test:worktree-mixed-prefix-leases"),
+      "project-a",
+      transport,
+    );
+
+    const releaseRoot = store.retain({ ...COVERAGE, expandedPrefixes: [] });
+    const root = onlyWorktreeSubscription(transport);
+    const releaseCompatibility = store.retain(COVERAGE);
+    expect(
+      transport.getSubscriptions("worktree").find(({ id }) => id === root.id),
+    ).toMatchObject({ closed: true, closeCalls: 1 });
+    expect(onlyWorktreeSubscription(transport).coverage).toEqual(COVERAGE);
+
+    releaseCompatibility();
+    expect(onlyWorktreeSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: [],
+    });
+    releaseRoot();
+  });
+
   it("settles from a snapshot and preserves untouched row identity across deltas", () => {
     const transport = new FakeSourceTransport();
     const store = getProjectWorktreeStore(

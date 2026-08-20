@@ -348,23 +348,23 @@ describe("Source Control workbench layout CSS contract", () => {
     );
     const narrowIdentity = getLastRuleDeclarations(
       previewCss,
-      ".toolbar .fileIdentity",
+      ".toolbar:global(.git-diff-pane-toolbar) .fileIdentity",
     );
     const narrowTitle = getLastRuleDeclarations(
       previewCss,
-      ".toolbar .previewTitle",
+      ".toolbar:global(.git-diff-pane-toolbar) .previewTitle",
     );
     const narrowControlOrder = getLastRuleDeclarations(
       previewCss,
-      ".toolbar .controls, .toolbar .headerActions",
+      ".toolbar:global(.git-diff-pane-toolbar) .controls, .toolbar:global(.git-diff-pane-toolbar) .headerActions",
     );
     const narrowControls = getLastRuleDeclarations(
       previewCss,
-      ".toolbar .controls",
+      ".toolbar:global(.git-diff-pane-toolbar) .controls",
     );
     const narrowActions = getLastRuleDeclarations(
       previewCss,
-      ".toolbar .headerActions",
+      ".toolbar:global(.git-diff-pane-toolbar) .headerActions",
     );
     const path = getLastRuleDeclarations(css, ".git-diff-toolbar-path");
     const icon = getLastRuleDeclarations(css, ".diff-toolbar-icon-button");
@@ -399,12 +399,13 @@ describe("Source Control workbench layout CSS contract", () => {
     expect(selectors.length).toBeGreaterThan(0);
     for (const selector of selectors) {
       // Each toolbar element also carries its legacy `git-diff-*` class, which
-      // renderers.css and index.css style with two-class selectors; a single
-      // class here would lose regardless of stylesheet order.
+      // renderers.css and index.css style with two-class selectors. Every
+      // replacement must have strictly greater specificity so chunk order is
+      // irrelevant.
       expect(
         (selector.match(/\./g) ?? []).length,
         `${selector} must outrank the legacy two-class rule it replaces`,
-      ).toBeGreaterThanOrEqual(2);
+      ).toBeGreaterThan(2);
     }
   });
 

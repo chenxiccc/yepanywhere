@@ -198,20 +198,31 @@ export function useFileVersionControl(
     () => projectRelativeGitPath(filePath),
     [filePath],
   );
-  const liveWorktree = useProjectWorktree(
-    projectId ?? "",
-    { tracked: true, untracked: true, ignored: false },
-    Boolean(projectId && relativePath && supported && supportsLiveWorktree),
-  );
-  const enabledLegacyProjectId =
-    supportsStatus && supported && !supportsLiveWorktree
-      ? projectId
-      : undefined;
+  const enabledStatusProjectId =
+    supportsStatus && supported && relativePath ? projectId : undefined;
   const {
     gitStatus,
     loading: statusLoading,
     error: statusError,
-  } = useGitStatus(enabledLegacyProjectId, { poll: false });
+  } = useGitStatus(enabledStatusProjectId, {
+    poll: false,
+    omitUntracked: supportsLiveWorktree,
+  });
+  const liveWorktree = useProjectWorktree(
+    projectId ?? "",
+    { tracked: true, untracked: true, ignored: false },
+    Boolean(
+      projectId &&
+        relativePath &&
+        supported &&
+        supportsLiveWorktree &&
+        gitStatus?.isGitRepo,
+    ),
+  );
+  const enabledLegacyProjectId =
+    enabledStatusProjectId && !supportsLiveWorktree
+      ? enabledStatusProjectId
+      : undefined;
   const statusKey =
     gitStatus?.isGitRepo && relativePath ? gitStatusKey(gitStatus) : null;
   const projection = useFileProjectionManifest(
@@ -230,12 +241,14 @@ export function useFileVersionControl(
       projectId &&
         relativePath &&
         (version === null ||
-          (supported && supportsLiveWorktree
-            ? liveWorktree.loading
-            : enabledLegacyProjectId &&
-              (statusLoading ||
-                (!gitStatus && !statusError) ||
-                projection.loading))),
+          (supported &&
+            enabledStatusProjectId &&
+            (statusLoading ||
+              (!gitStatus && !statusError) ||
+              (gitStatus?.isGitRepo &&
+                (supportsLiveWorktree
+                  ? liveWorktree.loading
+                  : projection.loading))))),
     ),
     relativePath,
     supported,

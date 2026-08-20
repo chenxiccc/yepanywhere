@@ -9,7 +9,7 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
 }));
 
 const { scanFilesystemWorktree } = await import(
-  "../../src/projects/projectWorktreeSubscriptionManager.js"
+  "../../src/projects/projectWorktreeScan.js"
 );
 
 const ALL_COVERAGE = { tracked: true, untracked: true, ignored: true };
