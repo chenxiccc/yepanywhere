@@ -179,10 +179,6 @@ describe("Source Control workbench layout CSS contract", () => {
       ".headerControls.fallbackRow .actionGroup,\n.compatibilityActions .actionGroup",
       "width",
     );
-    const review = getLastRuleDeclarations(
-      pageCss,
-      ".headerControls.fallbackRow :global(.review-tray-button)",
-    );
     const indicator = getRuleDeclarationsContaining(
       indexCss,
       ".git-status-action-indicator",
@@ -202,7 +198,6 @@ describe("Source Control workbench layout CSS contract", () => {
     expect(actionGroup).toMatch(/display:\s*inline-flex\s*;/);
     expect(actionGroup).toMatch(/flex-shrink:\s*0\s*;/);
     expect(fallback).toMatch(/width:\s*100%\s*;/);
-    expect(review).toMatch(/margin-left:\s*auto\s*;/);
     expect(indicator).toMatch(/width:\s*0\.75rem\s*;/);
     expect(indicator).toMatch(/flex:\s*0\s+0\s+0\.75rem\s*;/);
     expect(projectSelector).toMatch(/flex:\s*0\s+0\s+auto\s*;/);

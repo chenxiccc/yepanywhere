@@ -246,7 +246,6 @@ function SourceHeaderActions({
   gitActions,
   isWideScreen,
   onToggleWorktreePaused,
-  onComments,
   t,
 }: {
   status: GitStatusInfo;
@@ -257,7 +256,6 @@ function SourceHeaderActions({
   gitActions: GitActionState;
   isWideScreen: boolean;
   onToggleWorktreePaused?: () => void;
-  onComments: () => void;
   t: TranslationFn;
 }) {
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -330,7 +328,6 @@ function SourceHeaderActions({
           gitActions={gitActions}
           worktreePaused={worktreePaused}
           onToggleWorktreePaused={onToggleWorktreePaused}
-          onComments={onComments}
           t={t}
         />
       </div>
@@ -378,13 +375,11 @@ function SourceHeaderControls({
   gitActions,
   worktreePaused,
   onToggleWorktreePaused,
-  onComments,
   t,
 }: {
   gitActions: GitActionState;
   worktreePaused?: boolean;
   onToggleWorktreePaused?: () => void;
-  onComments?: () => void;
   t: TranslationFn;
 }) {
   const nowMs = useRelativeNow();
@@ -448,22 +443,13 @@ function SourceHeaderControls({
           onClick={onToggleWorktreePaused}
         >
           <span className="git-status-action-indicator" aria-hidden="true">
-            {worktreePaused ? "▶" : "Ⅱ"}
+            <SourceActionGlyph action={worktreePaused ? "play" : "pause"} />
           </span>
           <span className={styles.actionLabel}>
             {worktreePaused
               ? t("sourceResumeLiveUpdates")
               : t("sourcePauseLiveUpdates")}
           </span>
-        </button>
-      )}
-      {onComments && (
-        <button
-          type="button"
-          className="git-status-action-button review-tray-button"
-          onClick={onComments}
-        >
-          {t("sourceCommentsAction")}
         </button>
       )}
     </div>
@@ -542,7 +528,36 @@ function SourceActionButton({
   );
 }
 
-function SourceActionGlyph({ action }: { action: "pull" | "push" | "check" }) {
+function SourceActionGlyph({
+  action,
+}: {
+  action: "pull" | "push" | "check" | "pause" | "play";
+}) {
+  if (action === "pause") {
+    return (
+      <svg
+        className="git-status-action-glyph"
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+      >
+        <rect x="4" y="3" width="2.75" height="10" rx="0.6" />
+        <rect x="9.25" y="3" width="2.75" height="10" rx="0.6" />
+      </svg>
+    );
+  }
+  if (action === "play") {
+    return (
+      <svg
+        className="git-status-action-glyph"
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+      >
+        <path d="M5 3.15 13 8 5 12.85Z" />
+      </svg>
+    );
+  }
   if (action === "check") {
     return (
       <svg
@@ -869,7 +884,6 @@ export function GitStatusPage() {
                   ? () => setWorktreePaused((paused) => !paused)
                   : undefined
               }
-              onComments={() => setHeaderTab("comments")}
               t={t}
             />
           ) : undefined

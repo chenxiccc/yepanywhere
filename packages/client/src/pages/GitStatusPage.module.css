@@ -56,10 +56,6 @@
   width: 100%;
 }
 
-.headerControls.fallbackRow :global(.review-tray-button) {
-  margin-left: auto;
-}
-
 @media (max-width: 759px) {
   .headerTabs {
     width: 100%;

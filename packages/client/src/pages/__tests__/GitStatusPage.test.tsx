@@ -414,9 +414,12 @@ describe("GitStatusPage source header", () => {
       '[data-source-actions-placement="fallback"]',
     ) as HTMLElement;
     expect(actions).not.toBeNull();
-    expect(actions.querySelector(".review-tray-button")?.textContent).toContain(
-      "sourceCommentsAction",
-    );
+    expect(
+      screen.queryByRole("button", { name: "sourceCommentsAction" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("tab", { name: /sourceTabComments/ }),
+    ).toBeDefined();
     expect(document.querySelector(".source-control-action-row")).toBeNull();
     expect(
       document.querySelector('.git-status > [data-testid="repo-status-bar"]'),
@@ -500,7 +503,7 @@ describe("GitStatusPage source header", () => {
       ).not.toBeNull();
       expect(
         header.querySelectorAll("[data-source-action-group] > button"),
-      ).toHaveLength(4);
+      ).toHaveLength(3);
 
       headerWidth = 360;
       act(() => notifyResize?.());
@@ -514,7 +517,7 @@ describe("GitStatusPage source header", () => {
     }
   });
 
-  it("opens Comments even with pending drafts and preserves mode history", async () => {
+  it("opens Pending Comments even with pending drafts and preserves mode history", async () => {
     mocks.listReviewComments.mockResolvedValue({
       comments: [
         {
@@ -539,7 +542,7 @@ describe("GitStatusPage source header", () => {
 
     await screen.findByTestId("working-tree-browser");
     fireEvent.click(
-      await screen.findByRole("button", { name: "sourceCommentsAction" }),
+      await screen.findByRole("tab", { name: /sourceTabComments/ }),
     );
 
     expect(
@@ -822,15 +825,17 @@ describe("GitStatusPage source header", () => {
       name: "sourcePauseLiveUpdates",
       pressed: false,
     });
+    expect(pause.querySelector(".git-status-action-glyph")).not.toBeNull();
+    expect(pause.textContent).not.toMatch(/[Ⅱ▶]/);
     expect(browser.getAttribute("data-worktree-paused")).toBe("false");
 
     fireEvent.click(pause);
-    expect(
-      screen.getByRole("button", {
-        name: "sourceResumeLiveUpdates",
-        pressed: true,
-      }),
-    ).toBeDefined();
+    const play = screen.getByRole("button", {
+      name: "sourceResumeLiveUpdates",
+      pressed: true,
+    });
+    expect(play.querySelector(".git-status-action-glyph")).not.toBeNull();
+    expect(play.textContent).not.toMatch(/[Ⅱ▶]/);
     expect(browser.getAttribute("data-worktree-paused")).toBe("true");
 
     fireEvent.click(
@@ -1167,7 +1172,9 @@ describe("GitStatusPage released-server compatibility", () => {
       ).toBeDefined();
       expect(screen.queryByTestId("commit-browser")).toBeNull();
       expect(document.querySelector('[role="tablist"]')).toBeNull();
-      expect(document.querySelector(".review-tray-button")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "sourceCommentsAction" }),
+      ).toBeNull();
       expect(mocks.listReviewComments).not.toHaveBeenCalled();
     },
   );

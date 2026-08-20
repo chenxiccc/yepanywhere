@@ -4933,11 +4933,6 @@ pre.code-highlighter-plain,
   cursor: text;
 }
 
-/* Source-review submit modal + tray (topic: source-review-to-session, P7). */
-.review-tray-button {
-  font-weight: 600;
-}
-
 /* Side-by-side diff (topic: source-review-to-session, P8). */
 .side-by-side-diff {
   display: flex;

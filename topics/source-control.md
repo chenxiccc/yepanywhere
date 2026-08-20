@@ -96,7 +96,9 @@ the standalone Working tree landing.
 Project selection, branch, upstream, ahead/behind state, and the Clean/Dirty
 badge form the Source Control identity cluster. Changes/Files/Pending
 Comments/Reviews is the trailing mode selector. Pull, Push, Check remote, and
-Comments form one repository-action group in that fixed order.
+Pause form one repository-action group in that fixed order. Pending Comments
+is only that mode tab; there is no second Comments action that opens the same
+pane.
 
 On a wide layout, repository actions occupy the title row between identity and
 the trailing modes only when the rendered intrinsic widths of all three groups
@@ -123,9 +125,9 @@ preview never fetches: it shows only what the last **Check remote** observed.
 Without the capability, upstream remains inert text and the client sends no
 incoming-commit request.
 
-Comments always opens Pending Comments, including when drafts exist; submission
-remains on that pane. In the full-width fallback, Comments stays at the trailing
-edge while Pull, Push, and Check remote remain left-anchored. Branch names,
+The Pending Comments tab opens that accumulator, including when drafts exist;
+submission remains on that pane. In the full-width fallback, repository
+actions stay left-anchored. Branch names,
 upstream names, count badges, action progress, and action outcomes must not move
 the Pull/Push/Check group. Their visible labels stay constant while a leading
 action glyph changes in place to present progress and brief success/warning
@@ -451,9 +453,12 @@ maximum deadline is pinned to the first unprocessed filesystem event; later
 events never move it forward. Five seconds is not a polling cadence or an
 initial-load delay. The Source Control Pause control freezes visible client
 application while retaining the lease and continuing server maintenance; Play
-applies the queued current snapshot. Pointer motion over the Working Tree list
-may wait for 200 ms of quiet before applying row movement, but a pending client
-delta has its own five-second hard deadline.
+applies the queued current snapshot. Pause and Play use the same reserved
+leading glyph slot as Pull, Push, and Check: a pair of vertical bars or a
+right-pointing triangle, drawn as a 16×16 SVG and optically centered in that
+slot. They are not text or numeral glyphs. Pointer motion over the Working
+Tree list may wait for 200 ms of quiet before applying row movement, but a
+pending client delta has its own five-second hard deadline.
 
 ### Diff gutter
 
