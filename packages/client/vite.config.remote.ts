@@ -88,7 +88,6 @@ export default defineConfig(({ command }) => ({
   // Build configuration for static site
   build: {
     assetsInlineLimit: shouldInlineClientAsset,
-    chunkSizeWarningLimit: 501,
     outDir: "dist-remote",
     // Emit external .map files (+ sourceMappingURL comments) so production stack
     // traces in the hosted /remote bundle are debuggable. Safe to expose: the
@@ -98,6 +97,11 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       input: {
         main: resolve(__dirname, "remote.html"),
+      },
+      output: {
+        manualChunks: {
+          "react-runtime": ["react", "react-dom/client"],
+        },
       },
     },
   },
