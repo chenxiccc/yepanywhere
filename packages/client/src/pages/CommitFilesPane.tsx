@@ -115,7 +115,7 @@ export function CommitFilesPane({
   );
 
   useEffect(() => {
-    if (!isWideScreen) return;
+    if (!isWideScreen || loading) return;
     const selectableFiles = filteredFiles.filter(
       (file) => !file.path.endsWith("/"),
     );
@@ -128,7 +128,13 @@ export function CommitFilesPane({
     if ((nextFile?.path ?? null) !== selectedPath) {
       onFilteredSelectionChange(nextFile);
     }
-  }, [filteredFiles, isWideScreen, onFilteredSelectionChange, selectedPath]);
+  }, [
+    filteredFiles,
+    isWideScreen,
+    loading,
+    onFilteredSelectionChange,
+    selectedPath,
+  ]);
 
   const fileMenuActions = (file: GitFileChange): SourceContextMenuAction[] => [
     {
@@ -148,7 +154,7 @@ export function CommitFilesPane({
     ...(onBlameFile
       ? [
           {
-            label: t("sourceBlameAtHead"),
+            label: t("sourceToggleBlame"),
             onSelect: () => onBlameFile(file.path),
           },
         ]

@@ -1,9 +1,10 @@
-import type {
-  GitFileChange,
-  GitStatusInfo,
-  GitUntrackedFileListResult,
-  GitUntrackedFolderInfo,
-  ReviewSiteStateSummary,
+import {
+  getSessionDisplayTitle,
+  type GitFileChange,
+  type GitStatusInfo,
+  type GitUntrackedFileListResult,
+  type GitUntrackedFolderInfo,
+  type ReviewSiteStateSummary,
 } from "@yep-anywhere/shared";
 import {
   memo,
@@ -47,6 +48,10 @@ import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import type { TranslationFn } from "../i18n";
+import {
+  getClientSummarySnapshotForSource,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
 import { writeClipboardText } from "../lib/clipboard";
 import { Modal } from "../components/ui/Modal";
 import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
@@ -267,6 +272,7 @@ export function WorkingTreeBrowser({
     navigateRef.current(href);
   }, []);
   const basePath = useRemoteBasePath();
+  const clientSummarySourceKey = useClientSummarySourceKey();
   const fileMenu = useSourceContextMenu(t);
   const { pending, siteStates } = useProjectReviewComments(
     projectId,
@@ -738,12 +744,28 @@ export function WorkingTreeBrowser({
     retainedScrollRatioRef.current.set(fileKey, ratio);
   }, []);
 
+  const lastEditorSessionLabel = useCallback(
+    (sessionId: string) => {
+      const session = getClientSummarySnapshotForSource(
+        clientSummarySourceKey,
+      ).sessions.entities.get(sessionId);
+      const title = getSessionDisplayTitle(session);
+      return t("sourceOpenLastEditorSessionNamed", {
+        title: title === "Untitled" ? sessionId.slice(0, 8) : title,
+      });
+    },
+    [clientSummarySourceKey, t],
+  );
+
   const fileMenuActions = useCallback(
     (file: WorktreeFileChange): SourceContextMenuAction[] => {
       const lastEditorSessionHref =
         supportsLastEditor && file.lastEditor
           ? `${basePath}/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(file.lastEditor.sessionId)}`
           : undefined;
+      const editorSessionLabel = file.lastEditor
+        ? lastEditorSessionLabel(file.lastEditor.sessionId)
+        : t("sourceOpenLastEditorSession");
       return [
         {
           label: t("sourceCopyPath"),
@@ -754,7 +776,7 @@ export function WorkingTreeBrowser({
         ...(lastEditorSessionHref
           ? [
               {
-                label: t("sourceOpenLastEditorSession"),
+                label: editorSessionLabel,
                 onSelect: () => navigateTo(lastEditorSessionHref),
               },
             ]
@@ -769,17 +791,29 @@ export function WorkingTreeBrowser({
           : []),
       ];
     },
-    [basePath, navigateTo, onBlameFile, projectId, supportsLastEditor, t],
+    [
+      basePath,
+      lastEditorSessionLabel,
+      navigateTo,
+      onBlameFile,
+      projectId,
+      supportsLastEditor,
+      t,
+    ],
   );
 
   const lastEditorSessionHref =
     supportsLastEditor && selectedFile?.lastEditor
       ? `${basePath}/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(selectedFile.lastEditor.sessionId)}`
       : undefined;
+  const selectedLastEditorSessionLabel = selectedFile?.lastEditor
+    ? lastEditorSessionLabel(selectedFile.lastEditor.sessionId)
+    : undefined;
   const fileActions = selectedFile ? (
     <SourceFileHeaderActions
       path={selectedFile.path}
       lastEditorSessionHref={lastEditorSessionHref}
+      lastEditorSessionLabel={selectedLastEditorSessionLabel}
       onBlameFile={onBlameFile}
       t={t}
     />

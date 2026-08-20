@@ -56,14 +56,19 @@ interface OpenBlameComment {
 export function BlameView({
   projectId,
   path,
+  rev,
   onOpenCommit,
+  onToggleBlame,
   onContentWidthChange,
   captureReviewProjections = false,
   t,
 }: {
   projectId: string;
   path: string;
+  /** Immutable revision to blame; omission blames the live working tree. */
+  rev?: string;
   onOpenCommit?: (sha: string) => void;
+  onToggleBlame?: () => void;
   onContentWidthChange?: (path: string, width: number) => void;
   captureReviewProjections?: boolean;
   t: TranslationFn;
@@ -99,22 +104,28 @@ export function BlameView({
     // File content and provenance are independent. The ordinary file endpoint
     // gives the reader useful content immediately; blame enriches the gutter
     // whenever its more expensive Git walk completes.
-    api
-      .getFile(projectId, path, false)
-      .then((result) => {
-        if (cancelled) return;
-        setFile(result);
-        setContentLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setContentError(
-          err instanceof Error ? err.message : t("fileViewerLoadFailed"),
-        );
-        setContentLoading(false);
-      });
-    api
-      .getGitBlame(projectId, path)
+    if (rev) {
+      setContentLoading(false);
+    } else {
+      api
+        .getFile(projectId, path, false)
+        .then((result) => {
+          if (cancelled) return;
+          setFile(result);
+          setContentLoading(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setContentError(
+            err instanceof Error ? err.message : t("fileViewerLoadFailed"),
+          );
+          setContentLoading(false);
+        });
+    }
+    const blameRequest = rev
+      ? api.getGitBlame(projectId, path, rev)
+      : api.getGitBlame(projectId, path);
+    blameRequest
       .then((result) => {
         if (cancelled) return;
         setBlame(result);
@@ -130,7 +141,7 @@ export function BlameView({
     return () => {
       cancelled = true;
     };
-  }, [projectId, path, t]);
+  }, [projectId, path, rev, t]);
 
   const codeLines = useMemo(
     () =>
@@ -255,7 +266,9 @@ export function BlameView({
       ...(captureReviewProjections
         ? {
             projection: {
-              kind: "worktree" as const,
+              ...(rev
+                ? { kind: "revision" as const, revision: blame.rev }
+                : { kind: "worktree" as const }),
               path,
               side: "new" as const,
             },
@@ -419,6 +432,18 @@ export function BlameView({
             icon="path"
           />
         </span>
+        {onToggleBlame && (
+          <button
+            type="button"
+            className="source-detail-action source-detail-icon-action active"
+            title={t("sourceToggleBlame")}
+            aria-label={t("sourceToggleBlame")}
+            aria-pressed="true"
+            onClick={onToggleBlame}
+          >
+            <BlameToggleIcon />
+          </button>
+        )}
         {blameLoading && (
           <span className={styles.provenanceStatus} role="status">
             {t("sourceBlameLoading")}
@@ -464,6 +489,26 @@ export function BlameView({
         <div className={styles.truncated}>{t("sourceBlameTruncated")}</div>
       )}
     </section>
+  );
+}
+
+function BlameToggleIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 2" />
+    </svg>
   );
 }
 

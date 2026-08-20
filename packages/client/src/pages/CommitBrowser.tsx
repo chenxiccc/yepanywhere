@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
 import { SourceFileHeaderActions } from "../components/SourceFileHeaderActions";
@@ -26,6 +27,7 @@ import {
   type GitDiffPreviewHandle,
 } from "./GitStatusDiffPreview";
 import { CommitRevisionPane } from "./CommitRevisionPane";
+import { BlameView } from "./BlameView";
 import {
   useCommitBrowserModel,
   WORKING_TREE_KEY,
@@ -80,7 +82,7 @@ export function CommitBrowser({
   onSelectRevision?: (sha: string | null) => void;
   /** Open the commit selector around the focused revision. */
   onBrowseHistory?: () => void;
-  /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
+  /** Bridge the pinned Working tree revision into the Files blame view. */
   onBlameFile?: (path: string) => void;
   captureReviewProjections?: boolean;
   supportsProjections?: boolean;
@@ -97,6 +99,7 @@ export function CommitBrowser({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileListScrollTopRef = useRef(0);
   const restoreMobileListScrollRef = useRef(false);
+  const [showBlame, setShowBlame] = useState(false);
   useSourceSearchShortcut(searchInputRef);
   const {
     displayedCommits,
@@ -211,12 +214,32 @@ export function CommitBrowser({
     [isWideScreen, onSelectRevision, setSelectedKey],
   );
 
+  const blameRevision =
+    source?.kind === "commit"
+      ? source.sha
+      : source?.kind === "comparison" || source?.kind === "inclusive-comparison"
+        ? source.headSha
+        : undefined;
+  const toggleBlame = useCallback(() => {
+    setMessageView(false);
+    setShowBlame((current) => !current);
+  }, [setMessageView]);
+  const openBlameFile = useCallback(
+    (path: string) => {
+      setSelectedPath(path);
+      setMessageView(false);
+      setShowBlame(true);
+    },
+    [setMessageView, setSelectedPath],
+  );
+
   // Selected-file actions, shown in the diff pane header (the file banner)
   // instead of on every hovered row.
   const fileActions = selectedFile ? (
     <SourceFileHeaderActions
       path={selectedFile.path}
-      onBlameFile={onBlameFile}
+      onBlameFile={blameRevision ? toggleBlame : undefined}
+      blameTitle={t("sourceToggleBlame")}
       t={t}
     />
   ) : null;
@@ -414,9 +437,17 @@ export function CommitBrowser({
             }
             onToggleComparison={toggleComparison}
             onCompareFileToHead={
-              supportsProjections ? openDirectComparison : undefined
+              supportsProjections
+                ? (file) => {
+                    setShowBlame(false);
+                    void openDirectComparison(file);
+                  }
+                : undefined
             }
-            onShowMessage={() => setMessageView(true)}
+            onShowMessage={() => {
+              setShowBlame(false);
+              setMessageView(true);
+            }}
             onFocusFile={(file) => {
               setSelectedPath(file.path);
               setMessageView(false);
@@ -436,7 +467,7 @@ export function CommitBrowser({
               setSelectedPath(file.path);
               setMessageView(false);
             }}
-            onBlameFile={onBlameFile}
+            onBlameFile={blameRevision ? openBlameFile : undefined}
             onMarkReadTo={readState.markReadTo}
             onMarkUnreadSince={readState.markUnreadSince}
             t={t}
@@ -446,6 +477,16 @@ export function CommitBrowser({
         {isWideScreen &&
           (messageView && detail ? (
             <CommitMessageView detail={detail} t={t} />
+          ) : showBlame && selectedFile && blameRevision ? (
+            <BlameView
+              projectId={projectId}
+              path={selectedFile.path}
+              rev={blameRevision}
+              onOpenCommit={openRevision}
+              onToggleBlame={toggleBlame}
+              captureReviewProjections={captureReviewProjections}
+              t={t}
+            />
           ) : selectedFile && source && diffFileKey ? (
             <GitDiffPreview
               ref={diffPreviewRef}
@@ -477,7 +518,24 @@ export function CommitBrowser({
         !messageView &&
         selectedFile &&
         source &&
-        diffFileKey && (
+        diffFileKey &&
+        (showBlame && blameRevision ? (
+          <Modal
+            title={selectedFile.path}
+            onClose={() => setSelectedPath(null)}
+            closeOnBackGesture
+          >
+            <BlameView
+              projectId={projectId}
+              path={selectedFile.path}
+              rev={blameRevision}
+              onOpenCommit={openRevision}
+              onToggleBlame={toggleBlame}
+              captureReviewProjections={captureReviewProjections}
+              t={t}
+            />
+          </Modal>
+        ) : (
           <GitDiffModal
             file={selectedFile}
             fileKey={diffFileKey}
@@ -491,7 +549,7 @@ export function CommitBrowser({
             t={t}
             onClose={() => setSelectedPath(null)}
           />
-        )}
+        ))}
     </div>
   );
 }

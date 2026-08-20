@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildGitDiffResult } from "../../src/git/diffResult.js";
+import {
+  GIT_DIFF_PREVIEW_MAX_HIGHLIGHT_CHARS,
+  GIT_DIFF_PREVIEW_MAX_HTML_CHARS,
+} from "../../src/git/diffPreviewGuards.js";
 
 describe("buildGitDiffResult", () => {
   it.each([...MARKDOWN_LIKE_FILE_EXTENSIONS])(
@@ -27,6 +31,24 @@ describe("buildGitDiffResult", () => {
     });
 
     expect(result.markdownHtml).toBeUndefined();
+  });
+
+  it("keeps syntax rendering for diffs twenty times the former budget", async () => {
+    expect(GIT_DIFF_PREVIEW_MAX_HIGHLIGHT_CHARS).toBe(32 * 1024 * 20);
+    expect(GIT_DIFF_PREVIEW_MAX_HTML_CHARS).toBe(1_000_000 * 20);
+
+    const result = await buildGitDiffResult({
+      path: "expanded-threshold.ts",
+      oldContent: "",
+      newContent: Array.from(
+        { length: 2_000 },
+        (_, index) => `export const value${index} = ${index};`,
+      ).join("\n"),
+    });
+
+    expect(result.structuredPatch.length).toBeGreaterThan(0);
+    expect(result.diffHtml.length).toBeGreaterThan(0);
+    expect(result.renderMode).toBeUndefined();
   });
 
   it("returns a large useful diff without syntax-highlighted expansion", async () => {

@@ -22,9 +22,9 @@ export const GIT_DIFF_PREVIEW_MAX_DIFF_LINES = 20_000;
 /** Per-line character budget above which a preview is omitted. */
 export const GIT_DIFF_PREVIEW_MAX_LINE_CHARS = 20_000;
 /** Hunk-content budget above which syntax highlighting is omitted. */
-export const GIT_DIFF_PREVIEW_MAX_HIGHLIGHT_CHARS = 32 * 1024;
+export const GIT_DIFF_PREVIEW_MAX_HIGHLIGHT_CHARS = 32 * 1024 * 20;
 /** Highlighted HTML budget above which the plain projection is used. */
-export const GIT_DIFF_PREVIEW_MAX_HTML_CHARS = 1_000_000;
+export const GIT_DIFF_PREVIEW_MAX_HTML_CHARS = 1_000_000 * 20;
 /** Whole-document Markdown budget, independent of the plain diff budget. */
 export const GIT_DIFF_PREVIEW_MAX_MARKDOWN_CHARS = 256 * 1024;
 /**

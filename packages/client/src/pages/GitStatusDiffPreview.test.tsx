@@ -471,7 +471,7 @@ describe("GitDiffBody", () => {
   it("downgrades oversized highlighted HTML to the plain projection", async () => {
     getGitDiff.mockResolvedValue({
       ...result("large line"),
-      diffHtml: "x".repeat(1_000_001),
+      diffHtml: "x".repeat(20_000_001),
     });
 
     render(

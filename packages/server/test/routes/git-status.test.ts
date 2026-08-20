@@ -634,7 +634,7 @@ describe("git-status routes", () => {
     );
   });
 
-  it("renders a 12k-line full-context request as plain text", async () => {
+  it("keeps a 12k-line full-context request syntax highlighted", async () => {
     const repoDir = await createRepoWithUpstream();
     const lines = Array.from(
       { length: 12_000 },
@@ -664,7 +664,8 @@ describe("git-status routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.previewSkipped).toBeUndefined();
-    expect(body.diffHtml).toBe("");
+    expect(body.diffHtml).toContain('<pre class="shiki">');
+    expect(body.renderMode).toBeUndefined();
     expect(body.structuredPatch[0]?.lines.length).toBeGreaterThan(12_000);
   });
 

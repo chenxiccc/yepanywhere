@@ -55,7 +55,7 @@ function primeBlame() {
     content: "const a = 1;\nconst b = 2;\n",
     rawUrl: "/raw/src/x.ts",
   });
-  getGitBlame.mockResolvedValue({
+  const blame = {
     path: "src/x.ts",
     rev: "HEAD",
     truncated: false,
@@ -86,7 +86,8 @@ function primeBlame() {
         uncommitted: true,
       },
     ],
-  });
+  };
+  getGitBlame.mockResolvedValue(blame);
   listReviewComments.mockResolvedValue({
     comments: [],
     batches: [],
@@ -95,6 +96,7 @@ function primeBlame() {
   addReviewComment.mockResolvedValue({
     comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
   });
+  return blame;
 }
 
 async function commentOnRow(rowIndex: number, text: string) {
@@ -112,7 +114,12 @@ async function commentOnRow(rowIndex: number, text: string) {
     side: string;
     oldLine: number | null;
     newLine: number | null;
-    projection?: { kind: string; path: string; side: string };
+    projection?: {
+      kind: string;
+      revision?: string;
+      path: string;
+      side: string;
+    };
   };
 }
 
@@ -154,6 +161,35 @@ describe("BlameView", () => {
     expect(anchor.revision).toEqual({ kind: "sha", sha: COMMITTED_SHA });
     expect(anchor.projection).toEqual({
       kind: "worktree",
+      path: "src/x.ts",
+      side: "new",
+    });
+  });
+
+  it("blames an explicit revision without reading working-tree content", async () => {
+    const blame = primeBlame();
+    getGitBlame.mockResolvedValue({
+      ...blame,
+      rev: COMMITTED_SHA,
+    });
+    render(
+      <MemoryRouter>
+        <BlameView
+          projectId="p1"
+          path="src/x.ts"
+          rev={COMMITTED_SHA}
+          captureReviewProjections
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    const anchor = await commentOnRow(0, "review the committed line");
+    expect(getGitBlame).toHaveBeenCalledWith("p1", "src/x.ts", COMMITTED_SHA);
+    expect(getFile).not.toHaveBeenCalled();
+    expect(anchor.projection).toEqual({
+      kind: "revision",
+      revision: COMMITTED_SHA,
       path: "src/x.ts",
       side: "new",
     });

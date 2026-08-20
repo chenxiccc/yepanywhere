@@ -38,7 +38,7 @@ import { CHANGED_DIFF_LINE_SELECTOR, UnifiedDiff } from "./UnifiedDiff";
 import type { MessageKey, TranslationFn } from "../i18n";
 import styles from "./GitStatusDiffPreview.module.css";
 
-const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
+const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000 * 20;
 
 function getDiffSourceText(hunks: PatchHunk[]): string {
   return hunks.flatMap((hunk) => hunk.lines).join("\n");

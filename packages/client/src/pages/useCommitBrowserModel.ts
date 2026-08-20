@@ -197,9 +197,8 @@ export function useCommitBrowserModel({
     setCompareToHead(false);
     setComparison(null);
     setLoadingComparison(false);
-    if (compareToHead) setSelectedPath(null);
     onProjectionUnavailable();
-  }, [compareToHead, onProjectionUnavailable]);
+  }, [onProjectionUnavailable]);
 
   const openDirectComparison = useCallback(
     async (file: GitFileChange) => {
@@ -246,7 +245,6 @@ export function useCommitBrowserModel({
       setCompareToHead(false);
       setComparison(null);
       setLoadingComparison(false);
-      setSelectedPath(null);
       return;
     }
     if (!supportsInclusiveToHead) {
@@ -254,7 +252,7 @@ export function useCommitBrowserModel({
       return;
     }
     setCompareToHead(true);
-    setSelectedPath(null);
+    setLoadingComparison(true);
     setMessageView(false);
   }, [compareToHead, onProjectionUnavailable, supportsInclusiveToHead]);
 
@@ -335,20 +333,30 @@ export function useCommitBrowserModel({
   );
 
   useEffect(() => {
+    if (compareToHead && loadingComparison) return;
     const linkedFile = initialPath
       ? selectedFiles.find(
           (file) => file.path === initialPath || file.origPath === initialPath,
         )
       : undefined;
     if (!isWideScreen && !linkedFile) return;
-    setSelectedPath((current) =>
-      linkedFile
-        ? linkedFile.path
-        : current && selectedFiles.some((file) => file.path === current)
-          ? current
-          : (selectedFiles[0]?.path ?? null),
-    );
-  }, [initialPath, isWideScreen, selectedFiles]);
+    setSelectedPath((current) => {
+      const retainedFile = current
+        ? selectedFiles.find(
+            (file) => file.path === current || file.origPath === current,
+          )
+        : undefined;
+      return (
+        linkedFile?.path ?? retainedFile?.path ?? selectedFiles[0]?.path ?? null
+      );
+    });
+  }, [
+    compareToHead,
+    initialPath,
+    isWideScreen,
+    loadingComparison,
+    selectedFiles,
+  ]);
 
   useEffect(() => {
     if (directComparisonFile && directComparisonFile.path !== selectedPath) {

@@ -515,7 +515,10 @@ its first parent as the fixed base, a selected root uses Git's empty tree, and
 the server pins current HEAD as the tip. The returned list therefore contains
 the net squash-style change from the selected commit through HEAD, including
 paths first added by the selected commit. Every per-file request stays on those
-returned endpoints so a later HEAD move cannot mix comparisons.
+returned endpoints so a later HEAD move cannot mix comparisons. Switching the
+range on or off retains the selected file whenever that path, or its rename
+counterpart, exists in the new corpus; loading the replacement corpus never
+clears the selection merely because its rows have not arrived yet.
 
 Direct selected-tree-to-HEAD remains a different, clearly labelled per-file
 context-menu action. It retains the established direct-comparison route and
@@ -565,12 +568,15 @@ by an older server.
 Large text diffs have a bounded plain projection rather than inheriting the
 syntax-highlighted projection's expansion limit. Up to 16,777,216 hunk
 characters, 20,000 hunk lines, and 20,000 characters on any one line, the server
-ships the complete structured patch. Above 32 KiB of hunk text—or whenever
-highlighted HTML expands past 1,000,000 characters—it omits highlighting and the
-client renders one low-node-count unified text block. The plain view says that
-syntax color, split view, and line comments are unavailable; copy, full context,
-and hunk navigation remain. Source versions stop at 32 MiB combined before diff
-computation. Binary and malformed-text guards remain independent.
+ships the complete structured patch. Above 640 KiB of hunk text—or whenever
+highlighted HTML expands past 20,000,000 characters—it omits highlighting and
+the client renders one low-node-count unified text block. The plain view says
+that syntax color, split view, and line comments are unavailable; copy, full
+context, and hunk navigation remain. Source versions stop at 32 MiB combined
+before diff computation. Binary and malformed-text guards remain independent.
+Markdown Preview has a separate 256 KiB whole-document rendering budget; it is
+not unlimited and does not decide whether the source diff uses rich or plain
+mode.
 
 ## Design decisions
 
@@ -581,9 +587,11 @@ computation. Binary and malformed-text guards remain independent.
 - **Show filesystem-only current contents without repository mutations** (vs.
   adding a Git initialization action): projects remain inspectable outside Git
   while Source Control keeps its established inspection-first product boundary.
-- **Use a complete bounded plain projection for large diffs** (vs. raising the
-  highlighted-HTML/line-DOM limits or continuing to omit the preview): this keeps
-  the useful source while bounding server expansion and browser nodes. On a
+- **Use a complete bounded plain projection beyond the generous rich-diff
+  budget** (vs. omitting the preview or leaving rich rendering unbounded): this
+  keeps useful source available while still bounding server expansion and
+  browser nodes. The rich budget is twenty times its original 32 KiB / one-
+  million-HTML-character thresholds. On a
   quiet 16-core host, three cold-cache repetitions of a real 568,301-character,
   19,803-line evidence file took 166–188 ms to produce 3.6 million highlighted
   HTML characters; its plain browser layout took 53–61 ms at 1000×600. A
@@ -706,6 +714,13 @@ blame. Readable content renders as soon as the file request returns and never
 waits for `git blame`. Blame then fills commit-hash links in place and may add
 highlighting without resetting the file selection or scroll context. Failure to
 load blame leaves readable content visible with a provenance warning.
+
+In a commit detail, **Blame** is an in-place gutter mode rather than navigation
+to Working Tree. It keeps the selected commit and file panes mounted and blames
+the exact immutable revision being viewed; an inclusive or direct comparison
+uses its pinned tip. The active gutter control returns to the diff in place.
+Right-clicking a commit file reaches the same mode. Working Tree retains its
+Contents/Blame projection and may use live-file provenance.
 
 A committed hash opens that exact revision in Commits, including a revision
 outside the recent page. Its tooltip shows the full SHA, author/date when
@@ -911,7 +926,9 @@ it**. This reverses the existing bridge from a session Edit block into the exact
 dirty file without pretending YA can reconstruct complete authorship. In
 Changes, the selected file banner and shared file context menu expose one
 compact session action when attribution exists; it navigates through the
-canonical YA session id. Selecting a file starts no attribution query.
+canonical YA session id. The context-menu action includes the session's known
+display title, falling back to its short id when the summary is unavailable.
+Selecting a file starts no attribution query.
 
 Git records no dirty-file session authorship. The deliberately bounded
 contract is **the last session with a recorded edit**: a successful structured
@@ -936,6 +953,10 @@ overwrite newer attribution. There is no editor set, event history, tool id,
 content hash, transcript backfill, or before/after lineage. The observer already
 has project and session context, so Source Control must not run provider
 discovery, session inventory, or `agent-mapping` work to construct the link.
+This is YA application metadata for a still-dirty path, not a Git note, commit
+header, hidden commit field, or commit-message trailer. YA currently records no
+session attribution for committed changes; cleaning or committing the path
+removes this last-editor row once status reconciliation observes it clean.
 
 Scripted commands are a deliberately best-effort supplement. For a bounded set
 of recognizable write-shaped shell commands—redirection, common file mutation

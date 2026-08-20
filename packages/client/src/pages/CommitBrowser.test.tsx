@@ -27,6 +27,7 @@ const getGitComparison = vi.fn();
 const getGitComparisonDiff = vi.fn();
 const getGitInclusiveComparison = vi.fn();
 const getGitInclusiveComparisonDiff = vi.fn();
+const getGitBlame = vi.fn();
 const getGitDiff = vi.fn();
 const getGitUntrackedFolder = vi.fn();
 const getGitCommitSearchManifest = vi.fn();
@@ -44,6 +45,7 @@ vi.mock("../api/client", () => ({
       getGitInclusiveComparison(...args),
     getGitInclusiveComparisonDiff: (...args: unknown[]) =>
       getGitInclusiveComparisonDiff(...args),
+    getGitBlame: (...args: unknown[]) => getGitBlame(...args),
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
     getGitUntrackedFolder: (...args: unknown[]) =>
       getGitUntrackedFolder(...args),
@@ -221,6 +223,23 @@ function primeApis() {
       },
     ],
   });
+  getGitBlame.mockResolvedValue({
+    path: "src/x.ts",
+    rev: SHA,
+    lines: [
+      {
+        line: 1,
+        sha: DIRECT_SHA,
+        shortSha: DIRECT_SHA.slice(0, 7),
+        author: "Dev",
+        authorTime: "2026-07-25T00:00:00Z",
+        summary: "origin",
+        content: "const x = 1;",
+        uncommitted: false,
+      },
+    ],
+    truncated: false,
+  });
   listReviewComments.mockResolvedValue({
     comments: [],
     batches: [],
@@ -379,6 +398,60 @@ describe("CommitBrowser", () => {
         .getByRole("button", { name: "sourceCompareToHead" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+  });
+
+  it("keeps the selected file when switching to the inclusive comparison", async () => {
+    primeApis();
+    getGitInclusiveComparison.mockResolvedValue({
+      selectedSha: SHA,
+      baseSha: DIRECT_SHA,
+      headSha: HEAD_SHA,
+      files: [
+        {
+          path: "src/other.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+        {
+          path: "src/x.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 2,
+          linesDeleted: 1,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          supportsProjections
+          supportsInclusiveToHead
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await findSourcePath("src/x.ts");
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceCompareToHead" }),
+    );
+
+    await waitFor(() =>
+      expect(getGitInclusiveComparisonDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({ path: "src/x.ts" }),
+      ),
+    );
+    expect(
+      document
+        .querySelector(".commit-file-item.selected")
+        ?.querySelector("[data-source-path]")
+        ?.getAttribute("data-source-path"),
+    ).toBe("src/x.ts");
   });
 
   it("keeps direct selected-tree comparison as a labelled per-file action", async () => {
@@ -1387,30 +1460,32 @@ describe("CommitBrowser", () => {
     },
   );
 
-  it("bridges a commit file to its blame view via onBlameFile", async () => {
+  it("toggles revision blame in place without losing the commit view", async () => {
     primeApis();
-    const onBlameFile = vi.fn();
     render(
       <MemoryRouter>
-        <CommitBrowser
-          projectId="p1"
-          isWideScreen={true}
-          onBlameFile={onBlameFile}
-          t={t}
-        />
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
       </MemoryRouter>,
     );
 
     await findSourcePath("src/x.ts");
-    // The blame action now lives in the selected-file banner (diff header),
-    // which renders once the file auto-selects.
     await waitFor(() =>
       expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: "sourceBlameAtHead" }),
+      await screen.findByRole("button", { name: "sourceToggleBlame" }),
     );
-    expect(onBlameFile).toHaveBeenCalledWith("src/x.ts");
+
+    await waitFor(() =>
+      expect(getGitBlame).toHaveBeenCalledWith("p1", "src/x.ts", SHA),
+    );
+    expect(document.querySelector("[data-blame-row]")).not.toBeNull();
+    expect(document.querySelector(".commit-files-column")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "sourceToggleBlame" }));
+    await waitFor(() =>
+      expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
+    );
   });
 
   it("re-clicks the selected file to advance to the next diff hunk", async () => {

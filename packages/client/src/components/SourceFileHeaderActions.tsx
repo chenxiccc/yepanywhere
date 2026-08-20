@@ -6,12 +6,18 @@ import { CopyButton } from "./CopyButton";
 export function SourceFileHeaderActions({
   path,
   lastEditorSessionHref,
+  lastEditorSessionLabel,
   onBlameFile,
+  blameTitle,
+  blameActive = false,
   t,
 }: {
   path: string;
   lastEditorSessionHref?: string;
+  lastEditorSessionLabel?: string;
   onBlameFile?: (path: string) => void;
+  blameTitle?: string;
+  blameActive?: boolean;
   t: TranslationFn;
 }) {
   return (
@@ -26,8 +32,10 @@ export function SourceFileHeaderActions({
         <Link
           to={lastEditorSessionHref}
           className="source-detail-action source-detail-icon-action"
-          title={t("sourceOpenLastEditorSession")}
-          aria-label={t("sourceOpenLastEditorSession")}
+          title={lastEditorSessionLabel ?? t("sourceOpenLastEditorSession")}
+          aria-label={
+            lastEditorSessionLabel ?? t("sourceOpenLastEditorSession")
+          }
         >
           <SessionLinkIcon />
         </Link>
@@ -35,9 +43,12 @@ export function SourceFileHeaderActions({
       {onBlameFile && (
         <button
           type="button"
-          className="source-detail-action source-detail-icon-action"
-          title={t("sourceBlameAtHead")}
-          aria-label={t("sourceBlameAtHead")}
+          className={`source-detail-action source-detail-icon-action ${
+            blameActive ? "active" : ""
+          }`}
+          title={blameTitle ?? t("sourceBlameAtHead")}
+          aria-label={blameTitle ?? t("sourceBlameAtHead")}
+          aria-pressed={blameActive}
           onClick={() => onBlameFile(path)}
         >
           <BlameIcon />

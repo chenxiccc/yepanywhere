@@ -12,6 +12,9 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const stableT = vi.hoisted(() => (key: string) => key);
+const sessionRecords = vi.hoisted(
+  () => new Map<string, { title?: string; customTitle?: string }>(),
+);
 
 vi.mock("react-router-dom", async (orig) => ({
   ...(await orig<typeof import("react-router-dom")>()),
@@ -23,6 +26,13 @@ vi.mock("../hooks/useRemoteBasePath", () => ({
 vi.mock("../i18n", async (orig) => ({
   ...(await orig<typeof import("../i18n")>()),
   useI18n: () => ({ t: stableT }),
+}));
+vi.mock("../lib/clientSummaryStore", async (orig) => ({
+  ...(await orig<typeof import("../lib/clientSummaryStore")>()),
+  useClientSummarySourceKey: () => "local",
+  getClientSummarySnapshotForSource: () => ({
+    sessions: { entities: sessionRecords },
+  }),
 }));
 
 const getFile = vi.fn();
@@ -68,6 +78,7 @@ describe("WorkingTreeBrowser", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    sessionRecords.clear();
   });
 
   it("keeps a clean working tree as the Changes landing", async () => {
@@ -222,6 +233,11 @@ describe("WorkingTreeBrowser", () => {
   });
 
   it("shows the last-editor session link only behind its capability", async () => {
+    sessionRecords.set("session-1", { title: "Fix source navigation" });
+    const namedT = (key: string, params?: Record<string, unknown>) =>
+      key === "sourceOpenLastEditorSessionNamed"
+        ? `Open session: ${String(params?.title)}`
+        : key;
     getGitDiff.mockResolvedValue({ diffHtml: "", structuredPatch: [] });
     listReviewComments.mockResolvedValue({
       comments: [],
@@ -256,7 +272,7 @@ describe("WorkingTreeBrowser", () => {
           projectId="p1"
           status={status}
           isWideScreen={true}
-          t={t}
+          t={namedT}
         />
       </MemoryRouter>,
     );
@@ -273,15 +289,26 @@ describe("WorkingTreeBrowser", () => {
           status={status}
           isWideScreen={true}
           supportsLastEditor
-          t={t}
+          t={namedT}
         />
       </MemoryRouter>,
     );
 
     const link = await screen.findByRole("link", {
-      name: "sourceOpenLastEditorSession",
+      name: "Open session: Fix source navigation",
     });
     expect(link.getAttribute("href")).toBe("/projects/p1/sessions/session-1");
+
+    const row = document.querySelector('[data-source-path="src/dirty.ts"]');
+    fireEvent.contextMenu(row?.closest("button") as HTMLButtonElement, {
+      clientX: 20,
+      clientY: 20,
+    });
+    expect(
+      await screen.findByRole("menuitem", {
+        name: "Open session: Fix source navigation",
+      }),
+    ).toBeDefined();
   });
 
   it("keeps last-editor links when an untracked folder expands", async () => {
@@ -333,7 +360,7 @@ describe("WorkingTreeBrowser", () => {
     );
 
     const link = await screen.findByRole("link", {
-      name: "sourceOpenLastEditorSession",
+      name: "sourceOpenLastEditorSessionNamed",
     });
     expect(link.getAttribute("href")).toBe(
       "/projects/p1/sessions/session-untracked",
