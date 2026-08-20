@@ -66,6 +66,7 @@ import {
   reportProviderRuntimeStatusSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
+  reportSessionCollectionTitleSnapshot,
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
   useActiveAgentCount,
@@ -237,6 +238,54 @@ describe("clientSummaryStore", () => {
     });
 
     expect(status.result.current).toBe(null);
+  });
+
+  it("merges a targeted title snapshot without replacing richer fields", () => {
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        SOURCE_KEY,
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [
+            globalSession("session-1", {
+              title: "Old title",
+              fullTitle: "Old full title",
+              messageCount: 42,
+              model: "claude-opus-5",
+            }),
+          ],
+          hasMore: false,
+        },
+        100,
+      );
+      reportSessionCollectionTitleSnapshot(
+        SOURCE_KEY,
+        {
+          id: "session-1",
+          projectId: PROJECT_ID,
+          title: "Current title",
+          fullTitle: "Current full title",
+          customTitle: "Current custom title",
+          createdAt: RECENT,
+          updatedAt: RECENT,
+          messageCount: 0,
+          provider: "claude",
+        },
+        200,
+      );
+    });
+
+    expect(
+      getClientSummarySnapshotForSource(SOURCE_KEY).sessions.entities.get(
+        "session-1",
+      ),
+    ).toMatchObject({
+      title: "Current title",
+      fullTitle: "Current full title",
+      customTitle: "Current custom title",
+      messageCount: 42,
+      model: "claude-opus-5",
+    });
   });
 
   it("reports snapshots and applies metadata events to projections", () => {

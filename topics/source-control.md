@@ -927,8 +927,24 @@ dirty file without pretending YA can reconstruct complete authorship. In
 Changes, the selected file banner and shared file context menu expose one
 compact session action when attribution exists; it navigates through the
 canonical YA session id. The context-menu action includes the session's known
-display title, falling back to its short id when the summary is unavailable.
-Selecting a file starts no attribution query.
+display title, falling back to its short id when the title is unavailable.
+Selecting a file starts no attribution or session query.
+
+Opening that file's menu triggers one targeted read of the existing session
+metadata route when the source-keyed client catalog has not yet observed any of
+the session's title fields. Concurrent openings join the same source/project/
+session request. A successful response merges only project and title facts into
+the catalog at request-start freshness, preserving richer summary fields and
+feeding the still-open menu, selected-file header, and later consumers. An
+explicit null title is an observation and therefore does not cause repeated
+reads. Failure keeps the short-id fallback and permits the next explicit menu
+opening to retry. This adds no dirty-editor payload field, server route, or
+capability; older servers already support the stable session metadata route.
+
+The live Working Tree projection carries `lastEditor` forward from the latest
+status metadata for the same path when its resident change row has no newer
+attribution of its own. Replacing status rows with live snapshot rows must not
+silently remove an already-observed editor action.
 
 Git records no dirty-file session authorship. The deliberately bounded
 contract is **the last session with a recorded edit**: a successful structured

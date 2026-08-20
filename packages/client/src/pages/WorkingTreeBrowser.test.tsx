@@ -13,7 +13,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const stableT = vi.hoisted(() => (key: string) => key);
 const sessionRecords = vi.hoisted(
-  () => new Map<string, { title?: string; customTitle?: string }>(),
+  () =>
+    new Map<
+      string,
+      { title?: string | null; fullTitle?: string | null; customTitle?: string }
+    >(),
 );
 
 vi.mock("react-router-dom", async (orig) => ({
@@ -33,9 +37,25 @@ vi.mock("../lib/clientSummaryStore", async (orig) => ({
   getClientSummarySnapshotForSource: () => ({
     sessions: { entities: sessionRecords },
   }),
+  reportSessionCollectionTitleSnapshot: (
+    _sourceKey: string,
+    session: {
+      id: string;
+      title: string | null;
+      fullTitle: string | null;
+      customTitle?: string;
+    },
+  ) => {
+    sessionRecords.set(session.id, {
+      title: session.title,
+      fullTitle: session.fullTitle,
+      customTitle: session.customTitle,
+    });
+  },
 }));
 
 const getFile = vi.fn();
+const getSessionMetadata = vi.fn();
 const getGitDiff = vi.fn();
 const getGitUntrackedFolder = vi.fn();
 const listGitUntrackedFiles = vi.fn();
@@ -45,6 +65,7 @@ vi.mock("../api/client", () => ({
   api: {
     getFile: (...args: unknown[]) => getFile(...args),
     getFileRawUrl: () => "/raw/file",
+    getSessionMetadata: (...args: unknown[]) => getSessionMetadata(...args),
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
     getGitUntrackedFolder: (...args: unknown[]) =>
       getGitUntrackedFolder(...args),
@@ -61,6 +82,7 @@ const t = stableT;
 
 describe("WorkingTreeBrowser", () => {
   beforeEach(() => {
+    getSessionMetadata.mockReset();
     getFile.mockImplementation((_projectId: string, path: string) =>
       Promise.resolve({
         metadata: {
@@ -309,6 +331,103 @@ describe("WorkingTreeBrowser", () => {
         name: "Open session: Fix source navigation",
       }),
     ).toBeDefined();
+    expect(getSessionMetadata).not.toHaveBeenCalled();
+  });
+
+  it("loads a missing last-editor title into the client catalog once", async () => {
+    const namedT = (key: string, params?: Record<string, unknown>) =>
+      key === "sourceOpenLastEditorSessionNamed"
+        ? `Open session: ${String(params?.title)}`
+        : key;
+    getSessionMetadata.mockResolvedValue({
+      session: {
+        id: "session-missing",
+        projectId: "p1",
+        title: "Fetched editor title",
+        fullTitle: "Fetched editor title",
+        createdAt: "2026-08-02T09:00:00.000Z",
+        updatedAt: "2026-08-02T10:00:00.000Z",
+        messageCount: 2,
+        provider: "claude",
+      },
+      ownership: { owner: "none" },
+      processState: null,
+    });
+    getGitDiff.mockResolvedValue({ diffHtml: "", structuredPatch: [] });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "src/dirty.ts",
+                status: "M",
+                staged: false,
+                linesAdded: 1,
+                linesDeleted: 1,
+                lastEditor: {
+                  sessionId: "session-missing",
+                  observedAt: "2026-08-02T10:00:00.000Z",
+                },
+              },
+            ],
+            recentCommits: [],
+          }}
+          isWideScreen={true}
+          supportsLastEditor
+          t={namedT}
+        />
+      </MemoryRouter>,
+    );
+
+    const row = document.querySelector('[data-source-path="src/dirty.ts"]');
+    fireEvent.contextMenu(row?.closest("button") as HTMLButtonElement, {
+      clientX: 20,
+      clientY: 20,
+    });
+    expect(
+      screen.getByRole("menuitem", { name: "Open session: session-" }),
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(getSessionMetadata).toHaveBeenCalledWith("p1", "session-missing"),
+    );
+    expect(
+      await screen.findByRole("menuitem", {
+        name: "Open session: Fetched editor title",
+      }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", {
+        name: "Open session: Fetched editor title",
+      }),
+    ).toBeDefined();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceDismissActions" }),
+    );
+    fireEvent.contextMenu(row?.closest("button") as HTMLButtonElement, {
+      clientX: 20,
+      clientY: 20,
+    });
+    expect(
+      screen.getByRole("menuitem", {
+        name: "Open session: Fetched editor title",
+      }),
+    ).toBeDefined();
+    expect(getSessionMetadata).toHaveBeenCalledTimes(1);
   });
 
   it("keeps last-editor links when an untracked folder expands", async () => {

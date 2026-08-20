@@ -37,6 +37,7 @@ import {
   sourceRowMenuSurface,
   type SourceContextMenuAction,
   type SourceContextMenuController,
+  type SourceContextMenuOpenOptions,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
 import {
@@ -50,6 +51,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import type { TranslationFn } from "../i18n";
 import {
   getClientSummarySnapshotForSource,
+  reportSessionCollectionTitleSnapshot,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
 import { writeClipboardText } from "../lib/clipboard";
@@ -81,8 +83,25 @@ const UNTRACKED_FOLDER_CONCURRENCY = 4;
 /** How long arriving expansions accumulate before one list re-render. */
 const FOLDER_FLUSH_MS = 100;
 const UNTRACKED_GROUP_COLLAPSE_THRESHOLD = 10;
+const sessionTitleRequests = new Map<string, Promise<boolean>>();
 
 const EMPTY_REVIEW_STATES: ReviewSiteStateSummary[] = [];
+
+function hasSessionTitleObservation(
+  session:
+    | { title?: string | null; fullTitle?: string | null; customTitle?: string }
+    | undefined,
+): boolean {
+  return (
+    session?.title !== undefined ||
+    session?.fullTitle !== undefined ||
+    session?.customTitle !== undefined
+  );
+}
+
+function fileMenuContextKey(file: WorktreeFileChange): string {
+  return `${file.path}\0${file.lastEditor?.sessionId ?? ""}`;
+}
 
 type WorktreeListEntry =
   | {
@@ -111,6 +130,7 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
   reviewStates,
   isWideScreen,
   menuActionsForFile,
+  menuOpenOptionsForFile,
   menuTargetProps,
   onOpenMenu,
   onActivateFile,
@@ -125,6 +145,9 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
   reviewStates: ReviewSiteStateSummary[];
   isWideScreen: boolean;
   menuActionsForFile: (file: WorktreeFileChange) => SourceContextMenuAction[];
+  menuOpenOptionsForFile: (
+    file: WorktreeFileChange,
+  ) => SourceContextMenuOpenOptions;
   menuTargetProps: SourceContextMenuController["targetProps"];
   onOpenMenu: SourceContextMenuController["openFromButton"];
   onActivateFile: (file: WorktreeFileChange, selected: boolean) => void;
@@ -132,6 +155,7 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
 }) {
   const isFolder = file.path.endsWith("/");
   const menuActions = menuActionsForFile(file);
+  const menuOpenOptions = menuOpenOptionsForFile(file);
   const fullDisplayPath = sourceFileDisplayPath(file);
 
   return (
@@ -147,9 +171,13 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
             onActivateFile(file, selected);
           }
         }}
-        {...menuTargetProps(menuActions, () => {
-          onActivateFile(file, selected);
-        })}
+        {...menuTargetProps(
+          menuActions,
+          () => {
+            onActivateFile(file, selected);
+          },
+          menuOpenOptions,
+        )}
       >
         <SourceFileStatusBadge status={file.status} t={t} />
         <WorktreeStateMarker state={file.worktreeState} t={t} />
@@ -181,6 +209,7 @@ const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
           actions={menuActions}
           label={t("sourceMoreActions")}
           onOpen={onOpenMenu}
+          openOptions={menuOpenOptions}
         />
       )}
     </li>
@@ -254,6 +283,7 @@ export function WorkingTreeBrowser({
   const folderRequestsRef = useRef(new Set<string>());
   const searchRequestRef = useRef(0);
   const [fileQuery, setFileQuery] = useState("");
+  const [sessionTitleRevision, setSessionTitleRevision] = useState(0);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [commentEditorOpen, setCommentEditorOpen] = useState(false);
   const [appliedWorkingTreeLink, setAppliedWorkingTreeLink] = useState<
@@ -274,6 +304,7 @@ export function WorkingTreeBrowser({
   const basePath = useRemoteBasePath();
   const clientSummarySourceKey = useClientSummarySourceKey();
   const fileMenu = useSourceContextMenu(t);
+  const refreshFileMenuActions = fileMenu.refreshOpenActions;
   const { pending, siteStates } = useProjectReviewComments(
     projectId,
     captureReviewProjections,
@@ -746,6 +777,7 @@ export function WorkingTreeBrowser({
 
   const lastEditorSessionLabel = useCallback(
     (sessionId: string) => {
+      void sessionTitleRevision;
       const session = getClientSummarySnapshotForSource(
         clientSummarySourceKey,
       ).sessions.entities.get(sessionId);
@@ -754,7 +786,7 @@ export function WorkingTreeBrowser({
         title: title === "Untitled" ? sessionId.slice(0, 8) : title,
       });
     },
-    [clientSummarySourceKey, t],
+    [clientSummarySourceKey, sessionTitleRevision, t],
   );
 
   const fileMenuActions = useCallback(
@@ -802,6 +834,66 @@ export function WorkingTreeBrowser({
     ],
   );
 
+  const loadSessionTitle = useCallback(
+    (sessionId: string): Promise<boolean> | null => {
+      const session = getClientSummarySnapshotForSource(
+        clientSummarySourceKey,
+      ).sessions.entities.get(sessionId);
+      if (hasSessionTitleObservation(session)) return null;
+
+      const requestKey = `${clientSummarySourceKey}\0${projectId}\0${sessionId}`;
+      let request = sessionTitleRequests.get(requestKey);
+      if (!request) {
+        const requestStartedAt = Date.now();
+        request = api.getSessionMetadata(projectId, sessionId).then(
+          (response) => {
+            reportSessionCollectionTitleSnapshot(
+              clientSummarySourceKey,
+              response.session,
+              requestStartedAt,
+            );
+            return true;
+          },
+          () => false,
+        );
+        sessionTitleRequests.set(requestKey, request);
+        void request.finally(() => {
+          if (sessionTitleRequests.get(requestKey) === request) {
+            sessionTitleRequests.delete(requestKey);
+          }
+        });
+      }
+      return request;
+    },
+    [clientSummarySourceKey, projectId],
+  );
+
+  const menuOpenOptionsForFile = useCallback(
+    (file: WorktreeFileChange): SourceContextMenuOpenOptions => {
+      const contextKey = fileMenuContextKey(file);
+      return {
+        contextKey,
+        onOpen: () => {
+          const sessionId = file.lastEditor?.sessionId;
+          if (!supportsLastEditor || !sessionId) return;
+          const request = loadSessionTitle(sessionId);
+          if (!request) return;
+          void request.then((loaded) => {
+            if (!loaded) return;
+            setSessionTitleRevision((revision) => revision + 1);
+            refreshFileMenuActions(contextKey, fileMenuActions(file));
+          });
+        },
+      };
+    },
+    [
+      fileMenuActions,
+      loadSessionTitle,
+      refreshFileMenuActions,
+      supportsLastEditor,
+    ],
+  );
+
   const lastEditorSessionHref =
     supportsLastEditor && selectedFile?.lastEditor
       ? `${basePath}/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(selectedFile.lastEditor.sessionId)}`
@@ -840,6 +932,7 @@ export function WorkingTreeBrowser({
       reviewStates={reviewStatesByPath.get(file.path) ?? EMPTY_REVIEW_STATES}
       isWideScreen={isWideScreen}
       menuActionsForFile={fileMenuActions}
+      menuOpenOptionsForFile={menuOpenOptionsForFile}
       menuTargetProps={fileMenu.targetProps}
       onOpenMenu={fileMenu.openFromButton}
       onActivateFile={handleFileClick}

@@ -698,6 +698,77 @@ describe("GitStatusPage source header", () => {
     );
   });
 
+  it("preserves dirty-file attribution in the live worktree projection", async () => {
+    const metadataStatus = status();
+    metadataStatus.files[0] = {
+      ...metadataStatus.files[0]!,
+      lastEditor: {
+        sessionId: "session-editor",
+        observedAt: "2026-08-20T22:00:00.000Z",
+      },
+    };
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+          GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    mocks.useGitStatus.mockReturnValue({
+      gitStatus: metadataStatus,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mocks.useProjectWorktree.mockReturnValue({
+      loading: false,
+      error: null,
+      generation: { epoch: "live", sequence: 1 },
+      headSha: null,
+      baseSha: null,
+      files: [
+        {
+          path: "a.ts",
+          tracked: true,
+          worktreeChanges: [
+            {
+              status: "M",
+              staged: false,
+              linesAdded: 1,
+              linesDeleted: 0,
+            },
+          ],
+        },
+      ],
+      directories: [],
+      truncated: false,
+    });
+
+    renderPage();
+
+    await screen.findByTestId("working-tree-browser");
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: expect.objectContaining({
+          files: [
+            expect.objectContaining({
+              path: "a.ts",
+              lastEditor: {
+                sessionId: "session-editor",
+                observedAt: "2026-08-20T22:00:00.000Z",
+              },
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it("enables the whitespace projection when the server advertises it", async () => {
     renderPage();
     await screen.findByTestId("working-tree-browser");

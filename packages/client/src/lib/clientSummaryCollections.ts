@@ -23,6 +23,7 @@ export type SessionCollectionObservationKind =
 export type SessionCollectionObservationSource =
   | "global-sessions"
   | "inbox"
+  | "session-metadata"
   | "session-created"
   | "session-updated"
   | "metadata-changed"

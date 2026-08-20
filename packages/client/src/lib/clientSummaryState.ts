@@ -9,6 +9,7 @@ import type {
   ProjectQueueItemSummary,
   ProjectQueueProjectStatus,
   ProjectQueueRecoveredSessionQueueSummary,
+  SessionMetadataPayload,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import type { GlobalSessionItem, InboxItem } from "../api/client";
@@ -1595,6 +1596,38 @@ function recordMatchesQuery(
     return false;
   }
   return true;
+}
+
+export function applySessionCollectionTitleSnapshot(
+  state: ClientSummaryState,
+  session: SessionMetadataPayload,
+  observedAt = Date.now(),
+): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    observedAt,
+    "partial-snapshot",
+    "session-metadata",
+  );
+  let record = getRecord(state, session.id);
+  record = withContentFields(
+    record,
+    {
+      title: session.title,
+      fullTitle: session.fullTitle,
+    },
+    observation,
+  );
+  record = withMetadataFields(
+    record,
+    { customTitle: session.customTitle },
+    observation,
+  );
+  record = withProjectFields(
+    record,
+    { projectId: session.projectId },
+    observation,
+  );
+  return putRecord(state, record);
 }
 
 export function applyGlobalSessionsCollectionSnapshot(

@@ -31,6 +31,11 @@ export interface SourceContextMenuAction {
   separatorBefore?: boolean;
 }
 
+export interface SourceContextMenuOpenOptions {
+  contextKey?: string;
+  onOpen?: () => void;
+}
+
 export interface SourceContextMenuLabels {
   dismiss: string;
   menu: string;
@@ -41,6 +46,7 @@ interface OpenSourceContextMenu {
   x: number;
   y: number;
   returnFocus: HTMLElement | null;
+  contextKey?: string;
 }
 
 interface SourceMenuTargetProps {
@@ -58,15 +64,22 @@ export interface SourceContextMenuController {
   targetProps: (
     actions: SourceContextMenuAction[],
     onActivate: () => void,
+    options?: SourceContextMenuOpenOptions,
   ) => SourceMenuTargetProps;
   openAt: (
     x: number,
     y: number,
     returnFocus: HTMLElement | null,
     actions: SourceContextMenuAction[],
+    options?: SourceContextMenuOpenOptions,
   ) => void;
   openFromButton: (
     event: ReactMouseEvent<HTMLElement>,
+    actions: SourceContextMenuAction[],
+    options?: SourceContextMenuOpenOptions,
+  ) => void;
+  refreshOpenActions: (
+    contextKey: string,
     actions: SourceContextMenuAction[],
   ) => void;
   beginLongPressAt: (
@@ -76,6 +89,7 @@ export interface SourceContextMenuController {
     >,
     returnFocus: HTMLElement,
     actions: SourceContextMenuAction[],
+    options?: SourceContextMenuOpenOptions,
   ) => void;
   moveLongPressAt: (
     event: Pick<globalThis.PointerEvent, "clientX" | "clientY">,
@@ -111,8 +125,16 @@ export function useSourceContextMenu(
       y: number,
       returnFocus: HTMLElement | null,
       actions: SourceContextMenuAction[],
+      options?: SourceContextMenuOpenOptions,
     ) => {
-      setOpen({ actions, x, y, returnFocus });
+      setOpen({
+        actions,
+        x,
+        y,
+        returnFocus,
+        ...(options?.contextKey ? { contextKey: options.contextKey } : {}),
+      });
+      options?.onOpen?.();
     },
     [],
   );
@@ -121,23 +143,46 @@ export function useSourceContextMenu(
     (
       event: ReactMouseEvent<HTMLElement>,
       actions: SourceContextMenuAction[],
+      options?: SourceContextMenuOpenOptions,
     ) => {
       event.preventDefault();
       event.stopPropagation();
       const rect = event.currentTarget.getBoundingClientRect();
-      openAt(rect.right, rect.bottom + 4, event.currentTarget, actions);
+      openAt(
+        rect.right,
+        rect.bottom + 4,
+        event.currentTarget,
+        actions,
+        options,
+      );
     },
     [openAt],
+  );
+
+  const refreshOpenActions = useCallback(
+    (contextKey: string, actions: SourceContextMenuAction[]) => {
+      setOpen((current) =>
+        current?.contextKey === contextKey ? { ...current, actions } : current,
+      );
+    },
+    [],
   );
 
   const openFromContextMenu = useCallback(
     (
       event: ReactMouseEvent<HTMLElement>,
       actions: SourceContextMenuAction[],
+      options?: SourceContextMenuOpenOptions,
     ) => {
       event.preventDefault();
       event.stopPropagation();
-      openAt(event.clientX, event.clientY, event.currentTarget, actions);
+      openAt(
+        event.clientX,
+        event.clientY,
+        event.currentTarget,
+        actions,
+        options,
+      );
     },
     [openAt],
   );
@@ -146,6 +191,7 @@ export function useSourceContextMenu(
     (
       event: ReactKeyboardEvent<HTMLElement>,
       actions: SourceContextMenuAction[],
+      options?: SourceContextMenuOpenOptions,
     ) => {
       if (
         event.key !== "ContextMenu" &&
@@ -161,6 +207,7 @@ export function useSourceContextMenu(
         rect.top + Math.min(32, rect.height),
         event.currentTarget,
         actions,
+        options,
       );
       return true;
     },
@@ -181,6 +228,7 @@ export function useSourceContextMenu(
       >,
       returnFocus: HTMLElement,
       actions: SourceContextMenuAction[],
+      options?: SourceContextMenuOpenOptions,
     ) => {
       endLongPress();
       if (suppressionClearTimerRef.current) {
@@ -200,7 +248,7 @@ export function useSourceContextMenu(
       const timer = setTimeout(() => {
         suppressNextClickRef.current = true;
         longPressRef.current = null;
-        openAt(x, y, returnFocus, actions);
+        openAt(x, y, returnFocus, actions, options);
       }, LONG_PRESS_MS);
       longPressRef.current = { timer, x, y };
     },
@@ -211,8 +259,14 @@ export function useSourceContextMenu(
     (
       event: ReactPointerEvent<HTMLElement>,
       actions: SourceContextMenuAction[],
+      options?: SourceContextMenuOpenOptions,
     ) => {
-      beginLongPressAt(event.nativeEvent, event.currentTarget, actions);
+      beginLongPressAt(
+        event.nativeEvent,
+        event.currentTarget,
+        actions,
+        options,
+      );
     },
     [beginLongPressAt],
   );
@@ -264,12 +318,13 @@ export function useSourceContextMenu(
     (
       actions: SourceContextMenuAction[],
       onActivate: () => void,
+      options?: SourceContextMenuOpenOptions,
     ): SourceMenuTargetProps => ({
-      onContextMenu: (event) => openFromContextMenu(event, actions),
+      onContextMenu: (event) => openFromContextMenu(event, actions, options),
       onKeyDown: (event) => {
-        openFromKeyboard(event, actions);
+        openFromKeyboard(event, actions, options);
       },
-      onPointerDown: (event) => beginLongPress(event, actions),
+      onPointerDown: (event) => beginLongPress(event, actions, options),
       onPointerMove: moveLongPress,
       onPointerUp: endLongPress,
       onPointerCancel: endLongPress,
@@ -308,6 +363,7 @@ export function useSourceContextMenu(
     targetProps,
     openAt,
     openFromButton,
+    refreshOpenActions,
     beginLongPressAt,
     moveLongPressAt,
     endLongPress,
@@ -319,10 +375,12 @@ export function SourceRowMenuTrigger({
   actions,
   label,
   onOpen,
+  openOptions,
 }: {
   actions: SourceContextMenuAction[];
   label: string;
   onOpen: SourceContextMenuController["openFromButton"];
+  openOptions?: SourceContextMenuOpenOptions;
 }) {
   return (
     <button
@@ -330,7 +388,7 @@ export function SourceRowMenuTrigger({
       className={styles.trigger}
       aria-label={label}
       title={label}
-      onClick={(event) => onOpen(event, actions)}
+      onClick={(event) => onOpen(event, actions, openOptions)}
     >
       ⋯
     </button>
@@ -440,7 +498,7 @@ function SourceContextMenu({
       >
         {actions.map((action, index) => (
           <button
-            key={`${action.label}-${index}`}
+            key={index}
             type="button"
             role="menuitem"
             className={

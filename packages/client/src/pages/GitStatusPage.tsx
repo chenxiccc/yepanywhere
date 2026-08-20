@@ -114,10 +114,20 @@ function mergeLiveWorktreeStatus(
   files: readonly GitWorkingTreeFile[],
 ): GitStatusInfo | null {
   if (!status) return null;
+  const lastEditors = new Map(
+    status.files.flatMap((file) =>
+      file.lastEditor ? [[file.path, file.lastEditor] as const] : [],
+    ),
+  );
   const changes: GitFileChange[] = [];
   for (const file of files) {
     for (const change of file.worktreeChanges ?? []) {
-      changes.push({ path: file.path, ...change });
+      const lastEditor = change.lastEditor ?? lastEditors.get(file.path);
+      changes.push({
+        path: file.path,
+        ...change,
+        ...(lastEditor ? { lastEditor } : {}),
+      });
     }
   }
   return { ...status, files: changes, isClean: changes.length === 0 };

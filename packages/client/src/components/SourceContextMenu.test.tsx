@@ -76,6 +76,29 @@ describe("SourceContextMenu", () => {
 
     expect(onActivate).toHaveBeenCalledOnce();
   });
+
+  it("refreshes only the matching open menu and preserves item focus", () => {
+    render(<RefreshMenuHarness />);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Target" }));
+    const oldItem = screen.getByRole("menuitem", { name: "Old" });
+    oldItem.focus();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh target" }));
+
+    const newItem = screen.getByRole("menuitem", { name: "New" });
+    expect(document.activeElement).toBe(newItem);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceDismissActions" }),
+    );
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Other" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh target" }));
+
+    expect(
+      screen.getByRole("menuitem", { name: "Other action" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("menuitem", { name: "New" })).toBeNull();
+  });
 });
 
 function MenuHarness({ onActivate }: { onActivate: () => void }) {
@@ -85,6 +108,45 @@ function MenuHarness({ onActivate }: { onActivate: () => void }) {
     <>
       <button type="button" {...controller.targetProps(actions, onActivate)}>
         Target
+      </button>
+      {controller.menu}
+    </>
+  );
+}
+
+function RefreshMenuHarness() {
+  const controller = useSourceContextMenu(t);
+  return (
+    <>
+      <button
+        type="button"
+        {...controller.targetProps(
+          [{ label: "Old", onSelect: vi.fn() }],
+          vi.fn(),
+          { contextKey: "target" },
+        )}
+      >
+        Target
+      </button>
+      <button
+        type="button"
+        {...controller.targetProps(
+          [{ label: "Other action", onSelect: vi.fn() }],
+          vi.fn(),
+          { contextKey: "other" },
+        )}
+      >
+        Other
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          controller.refreshOpenActions("target", [
+            { label: "New", onSelect: vi.fn() },
+          ])
+        }
+      >
+        Refresh target
       </button>
       {controller.menu}
     </>

@@ -1,6 +1,7 @@
 import type {
   ProjectQueueChangedEvent,
   ProjectQueueItemSummary,
+  SessionMetadataPayload,
 } from "@yep-anywhere/shared";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useStore } from "zustand";
@@ -35,6 +36,7 @@ import {
   applySessionCollectionProcessStateChanged,
   applySessionCollectionSeen,
   applySessionCollectionStatusChanged,
+  applySessionCollectionTitleSnapshot,
   applySessionCollectionUpdated,
   createEmptyClientSummaryState,
 } from "./clientSummaryState";
@@ -622,6 +624,16 @@ export function reportProjectQueueGlobalCollectionSnapshot(
 ): void {
   updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
     applyProjectQueueGlobalCollectionSnapshot(current, input, requestStartedAt),
+  );
+}
+
+export function reportSessionCollectionTitleSnapshot(
+  sourceKey: ClientSummarySourceKey,
+  session: SessionMetadataPayload,
+  observedAt = Date.now(),
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
+    applySessionCollectionTitleSnapshot(current, session, observedAt),
   );
 }
 
