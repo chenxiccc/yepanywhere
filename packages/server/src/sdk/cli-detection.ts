@@ -146,11 +146,44 @@ function safeMtimeMs(path: string): number {
   }
 }
 
-function parseWhichOutput(stdout: string): string[] {
+/**
+ * Parse `which` / Windows `where` output into ordered command candidates.
+ *
+ * Windows routinely reports one CRLF-delimited line per PATHEXT match. Keep
+ * parsing separate from executable selection: a `.cmd` shim may exist but
+ * still be unusable by a provider that launches through `execFile()`.
+ */
+export function parseCommandLookupOutput(stdout: string): string[] {
   return stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+export type CommandLookupLaunchMode = "direct" | "shell";
+
+/**
+ * Select an existing lookup hit compatible with a provider's launch mode.
+ *
+ * POSIX launchers keep the first existing hit. On Windows, shell-free Node
+ * launches require a native executable, while an intentionally shell-owned
+ * launch may also use command and batch shims. Extensionless npm shims are
+ * POSIX shell scripts and are not safe candidates for either Windows mode.
+ */
+export function selectCommandLookupTarget(
+  stdout: string,
+  launchMode: CommandLookupLaunchMode,
+  platform: NodeJS.Platform = process.platform,
+  fileExists: (path: string) => boolean = existsSync,
+): string | null {
+  const candidates = parseCommandLookupOutput(stdout).filter((path) =>
+    fileExists(path),
+  );
+  if (platform !== "win32") return candidates[0] ?? null;
+
+  const compatibleExtension =
+    launchMode === "direct" ? /\.(?:exe|com)$/i : /\.(?:exe|com|cmd|bat)$/i;
+  return candidates.find((path) => compatibleExtension.test(path)) ?? null;
 }
 
 function dedupePathKey(path: string): string {
@@ -266,7 +299,7 @@ async function getPathCodexCandidates(): Promise<string[]> {
     const { stdout } = await execAsync(command, {
       encoding: "utf-8",
     });
-    return parseWhichOutput(stdout);
+    return parseCommandLookupOutput(stdout);
   } catch {
     return [];
   }

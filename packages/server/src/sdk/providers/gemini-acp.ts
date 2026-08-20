@@ -22,7 +22,7 @@ import type {
 } from "@agentclientprotocol/sdk";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
-import { whichCommand } from "../cli-detection.js";
+import { selectCommandLookupTarget, whichCommand } from "../cli-detection.js";
 const execAsync = promisify(exec);
 import { MessageQueue } from "../messageQueue.js";
 import type {
@@ -925,10 +925,13 @@ export class GeminiACPProvider implements AgentProvider {
       const { stdout } = await execAsync(whichCommand("gemini"), {
         encoding: "utf-8",
       });
-      const result = stdout.trim();
-      if (result && existsSync(result)) {
-        return result;
-      }
+      const result = selectCommandLookupTarget(
+        stdout,
+        "shell",
+        process.platform,
+        existsSync,
+      );
+      if (result) return result;
     } catch {
       // Not in PATH
     }

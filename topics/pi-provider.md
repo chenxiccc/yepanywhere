@@ -57,7 +57,7 @@ deltas: `text_delta`, etc.), `tool_execution_start/update/end`, plus
 `auto_retry_start/end`, and (from 0.80.4) `agent_settled`. This is already
 close to a normalized envelope.
 
-### Settled-turn boundary — compatible through Pi 0.82.1
+### Settled-turn boundary — compatible through Pi 0.84.2
 
 The official `v0.79.9..v0.81.1` source diff changed the RPC lifecycle contract:
 `agent_end` ends one low-level agent run and reports `willRetry`, while
@@ -95,6 +95,17 @@ adds `bash_execution_update` only for the direct RPC `bash` command. YA does
 not issue that command, while model-driven Bash continues to arrive through
 the existing `tool_execution_update` path, so the provider needs no new event
 branch.
+
+The 2026-08-20 refresh compared official tags `v0.82.1` and `v0.84.2`,
+confirmed the published `pi: dist/cli.js` entry and the RPC
+`get_state`/`get_available_models` response shapes, and passed the zero-token
+contract against Pi 0.84.2 on Windows. Pi 0.84.0 makes
+`message_update.assistantMessageEvent` delta-only and removes the cumulative
+message/partial fields. YA already accumulates `text_delta` and
+`thinking_delta` between `message_start` and `message_end`; `turn_end` remains
+the authoritative settled usage source. Pi 0.84.2 restores cumulative usage on
+the delta event itself, which YA may ignore without losing settled usage. No
+new lifecycle or normalization branch is required.
 
 ## Why YA cares
 
@@ -201,6 +212,22 @@ trailing `\r`. The docs call this out explicitly.
 
 ### Installed-binary compatibility check
 
+#### Executable selection
+
+Pi discovery resolves one launch descriptor for every process call site. On
+POSIX, a discovered executable remains the command with no argument prefix. On
+Windows, YA does not pass npm's extensionless or `.cmd` shims to `spawn()` or
+`execFile()`: npm global and project-local `.bin` layouts resolve to the known
+`@earendil-works/pi-coding-agent/dist/cli.js` entry, and YA launches the current
+Node executable with that entry as the first argument. A native `.exe` remains
+directly launchable and wins when `where` reports one.
+
+`PI_EXECUTABLE` / `PI_PATH` retain precedence over configured `piPath`. Any of
+those explicit paths is authoritative: if it is missing or cannot resolve to a
+shell-free target, Pi reports uninstalled and does not select a different PATH
+copy. Model discovery, session startup, version probing, and the installed
+binary contract all compose arguments through the same descriptor.
+
 The normal Pi suite remains synthetic: provider lifecycle tests use fabricated
 events, the RPC client uses fake streams, tool normalization uses known shapes,
 and the durable reader uses checked-in JSONL fixtures. Those tests are the fast
@@ -213,15 +240,20 @@ The explicit zero-token check is:
 PI_CONTRACT_TEST=true pnpm --filter @yep-anywhere/server test:e2e
 ```
 
-`pi-contract.e2e.test.ts` runs the installed `pi --version`, requires YA to
-recognize its lifecycle boundary, launches the same
-`pi --mode rpc --no-session` command used for production model discovery, and
-requires successful `get_state` and `get_available_models` responses with the
-fields YA consumes. It sends no prompt and closes RPC stdin only after both
-responses arrive; Pi must then exit successfully rather than leaving a child
-process behind. The probe captures stdout, stderr, and extension UI requests
-and fails with the emitted notice if either command reports an `Update
-Available` / `New version ... available` banner.
+`pi-contract.e2e.test.ts` resolves the production launch target, runs
+`pi --version`, requires YA to recognize its lifecycle boundary, launches the
+same `pi --mode rpc --no-session` command used for production model discovery,
+and requires successful `get_state` and `get_available_models` responses with
+the fields YA consumes. An empty `models` array is valid when the Pi profile has
+no configured models; production model discovery converts that case to YA's
+synthetic `Default` fallback. The contract sends no prompt and closes RPC stdin
+only after both responses arrive; Pi must then exit successfully rather than
+leaving a child process behind. The probe captures stdout, stderr, and extension
+UI requests and fails with the emitted notice if either command reports an
+`Update Available` / `New version ... available` banner. Its Windows deadline
+allows for measured cold JavaScript startup in the VM; it is a protocol-shape
+guard, not a startup-performance ceiling and does not change the provider's
+runtime model-list fallback timeout.
 
 Run this check after upgrading the Pi installation used for YA development.
 It deliberately bypasses `PiProvider.getAvailableModels()` because that

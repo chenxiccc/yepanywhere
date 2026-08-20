@@ -8,6 +8,8 @@ import {
   findCodexCliPath,
   getCodexCliVersion,
   normalizeCodexCliVersion,
+  parseCommandLookupOutput,
+  selectCommandLookupTarget,
 } from "../../src/sdk/cli-detection.js";
 
 const tempDirs: string[] = [];
@@ -44,6 +46,50 @@ function prependPath(...dirs: string[]): void {
     .filter(Boolean)
     .join(delimiter);
 }
+
+describe("command lookup output", () => {
+  it("parses ordered CRLF candidates and ignores blank lines", () => {
+    expect(
+      parseCommandLookupOutput("  C:\\npm\\pi  \r\nC:\\npm\\pi.cmd\r\n\r\n"),
+    ).toEqual(["C:\\npm\\pi", "C:\\npm\\pi.cmd"]);
+  });
+
+  it("also accepts ordinary LF-delimited which output", () => {
+    expect(
+      parseCommandLookupOutput("/opt/homebrew/bin/pi\n/usr/local/bin/pi\n"),
+    ).toEqual(["/opt/homebrew/bin/pi", "/usr/local/bin/pi"]);
+  });
+
+  it("selects a Windows command shim only for shell-owned launches", () => {
+    const output = "C:\\npm\\gemini\r\nC:\\npm\\gemini.cmd\r\n";
+    const exists = () => true;
+
+    expect(selectCommandLookupTarget(output, "shell", "win32", exists)).toBe(
+      "C:\\npm\\gemini.cmd",
+    );
+    expect(
+      selectCommandLookupTarget(output, "direct", "win32", exists),
+    ).toBeNull();
+  });
+
+  it("selects a native Windows executable for shell-free launches", () => {
+    const output =
+      "C:\\npm\\grok\r\nC:\\npm\\grok.cmd\r\nC:\\bin\\grok.exe\r\n";
+
+    expect(
+      selectCommandLookupTarget(output, "direct", "win32", () => true),
+    ).toBe("C:\\bin\\grok.exe");
+  });
+
+  it("keeps the first existing POSIX candidate for either launch mode", () => {
+    const output = "/stale/gemini\n/usr/local/bin/gemini\n";
+    const exists = (path: string) => path.startsWith("/usr/local");
+
+    expect(selectCommandLookupTarget(output, "shell", "linux", exists)).toBe(
+      "/usr/local/bin/gemini",
+    );
+  });
+});
 
 describe("Codex CLI detection", () => {
   it("normalizes and compares Codex CLI semver output", () => {

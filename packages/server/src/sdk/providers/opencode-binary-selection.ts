@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { win32 as windowsPath } from "node:path";
+import { parseCommandLookupOutput } from "../cli-detection.js";
 
 /**
  * Pick a usable OpenCode binary out of `which` / `where` output.
@@ -18,11 +19,9 @@ export function selectOpenCodeBinary(
   platform: NodeJS.Platform = process.platform,
   fileExists: (path: string) => boolean = existsSync,
 ): string | null {
-  const hits = stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .filter((line) => fileExists(line));
+  const hits = parseCommandLookupOutput(stdout).filter((line) =>
+    fileExists(line),
+  );
 
   if (platform !== "win32") {
     return hits[0] ?? null;

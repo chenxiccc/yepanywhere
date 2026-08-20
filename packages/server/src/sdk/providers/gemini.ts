@@ -22,7 +22,7 @@ import type {
   GeminiToolUseEvent,
   ModelInfo,
 } from "@yep-anywhere/shared";
-import { whichCommand } from "../cli-detection.js";
+import { selectCommandLookupTarget, whichCommand } from "../cli-detection.js";
 import { normalizeGeminiTool } from "./gemini-tools.js";
 const execAsync = promisify(exec);
 
@@ -626,10 +626,13 @@ export class GeminiProvider implements AgentProvider {
       const { stdout } = await execAsync(whichCommand("gemini"), {
         encoding: "utf-8",
       });
-      const result = stdout.trim();
-      if (result && existsSync(result)) {
-        return result;
-      }
+      const result = selectCommandLookupTarget(
+        stdout,
+        "shell",
+        process.platform,
+        existsSync,
+      );
+      if (result) return result;
     } catch {
       // Not in PATH
     }

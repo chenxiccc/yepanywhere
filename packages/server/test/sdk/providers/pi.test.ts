@@ -1,10 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   PiProvider,
   piVersionUsesAgentSettled,
 } from "../../../src/sdk/providers/pi.js";
 
 type PiEvent = { type: string; [key: string]: unknown };
+
+const originalPiExecutable = process.env.PI_EXECUTABLE;
+
+afterEach(() => {
+  if (originalPiExecutable === undefined) {
+    delete process.env.PI_EXECUTABLE;
+  } else {
+    process.env.PI_EXECUTABLE = originalPiExecutable;
+  }
+});
 
 function makeStream(terminalEvent: "agent_end" | "agent_settled") {
   return {
@@ -35,6 +45,13 @@ function mapPiEvent(
 }
 
 describe("PiProvider event mapping", () => {
+  it("keeps an unlaunchable explicit path authoritative", async () => {
+    process.env.PI_EXECUTABLE = `${process.execPath}.missing-pi`;
+    const provider = new PiProvider({ piPath: process.execPath });
+
+    await expect(provider.isInstalled()).resolves.toBe(false);
+  });
+
   it("selects the terminal event from the Pi version boundary", () => {
     expect(piVersionUsesAgentSettled("0.80.3")).toBe(false);
     expect(piVersionUsesAgentSettled("pi 0.80.4")).toBe(true);

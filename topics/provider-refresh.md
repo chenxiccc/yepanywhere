@@ -83,6 +83,13 @@ matching upstream release tags when the version changed; the real zero-token
 probe covers the production model-discovery command but intentionally does not
 exercise authenticated assistant events or persisted sessions.
 
+Current refresh, 2026-08-20: official `v0.82.1..v0.84.2` preserves Pi's
+published JavaScript bin entry and the RPC commands, response fields,
+`agent_settled` boundary, and v3 coding-agent session assumptions consumed by
+YA. The 0.84.0 delta-only `message_update` change matches YA's existing
+accumulators, and the 0.84.2 Windows zero-token probe completed successfully.
+Root compatibility is recorded through Pi 0.84.2.
+
 ## Codex
 
 YA's active Codex backend is the installed `codex` CLI app-server path.

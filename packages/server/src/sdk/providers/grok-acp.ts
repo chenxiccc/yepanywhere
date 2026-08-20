@@ -69,7 +69,7 @@ import {
 } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
-import { whichCommand } from "../cli-detection.js";
+import { selectCommandLookupTarget, whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type {
   PermissionMode,
@@ -1571,10 +1571,13 @@ export class GrokACPProvider implements AgentProvider {
       const { stdout } = await execAsync(whichCommand("grok"), {
         encoding: "utf-8",
       });
-      const result = stdout.trim().split("\n")[0];
-      if (result && this.pathExists(result)) {
-        return result;
-      }
+      const result = selectCommandLookupTarget(
+        stdout,
+        "direct",
+        process.platform,
+        (path) => this.pathExists(path),
+      );
+      if (result) return result;
     } catch {
       // Not in PATH
     }

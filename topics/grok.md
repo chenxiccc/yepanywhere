@@ -26,6 +26,14 @@ Installed `grok 1.0.4` is the current local target.
 keeps the YA-owned process off a shared TUI/leader so updates are not
 buffered behind another client.
 
+**CLI lookup is multi-result safe.** Windows `where grok` output is parsed as
+CRLF-delimited candidates rather than one path; blank and stale hits are
+ignored, and shell-free PATH discovery requires a directly reported `.exe` or
+`.com` rather than an npm `.cmd` shim. Grok's documented `GROK_HOME/bin/grok`
+installation still wins before PATH, and explicit `grokPath` remains
+authoritative. This is discovery compatibility, not support for unrelated npm
+Grok packages.
+
 **Default model is `grok-4.6`.** `getAvailableModels()` follows `grok models`
 (`*` / `-` rows) and enriches from `GROK_HOME/models_cache.json`. It does
 not hardcode 4.6, so an older CLI can still advertise 4.5. The

@@ -15,7 +15,6 @@
  */
 
 import { type ChildProcess, exec, execFile, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -33,6 +32,12 @@ import type {
   SDKMessage,
 } from "../types.js";
 import { PiRpcClient } from "./pi-rpc-client.js";
+import {
+  buildPiLaunchArgs,
+  type PiLaunchTarget,
+  resolvePiLaunchTarget,
+  selectPiLaunchTarget,
+} from "./pi-launch-target.js";
 import {
   attachPiResultDetailToToolInput,
   normalizePiTool,
@@ -207,7 +212,7 @@ export class PiProvider implements AgentProvider {
   }
 
   async isInstalled(): Promise<boolean> {
-    return (await this.findPiPath()) !== null;
+    return (await this.findPiLaunchTarget()) !== null;
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -245,16 +250,20 @@ export class PiProvider implements AgentProvider {
     };
     const fallback: ModelInfo[] = [defaultModel];
 
-    const piPath = await this.findPiPath();
-    if (!piPath) return fallback;
+    const piTarget = await this.findPiLaunchTarget();
+    if (!piTarget) return fallback;
 
     let proc: ChildProcess | undefined;
     try {
-      proc = spawn(piPath, ["--mode", "rpc", "--no-session"], {
-        cwd: homedir(),
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env },
-      });
+      proc = spawn(
+        piTarget.command,
+        buildPiLaunchArgs(piTarget, ["--mode", "rpc", "--no-session"]),
+        {
+          cwd: homedir(),
+          stdio: ["pipe", "pipe", "pipe"],
+          env: { ...process.env },
+        },
+      );
       const client = new PiRpcClient(proc);
       const response = await client.request(
         { type: "get_available_models" },
@@ -286,11 +295,11 @@ export class PiProvider implements AgentProvider {
 
   async startSession(options: StartSessionOptions): Promise<AgentSession> {
     const log = getLogger();
-    const piPath = await this.findPiPath();
-    if (!piPath) {
+    const piTarget = await this.findPiLaunchTarget();
+    if (!piTarget) {
       return this.errorSession("pi CLI not found");
     }
-    const terminalEvent = await this.getPiTerminalEvent(piPath);
+    const terminalEvent = await this.getPiTerminalEvent(piTarget);
     if (!terminalEvent) {
       return this.errorSession(
         "Unable to determine pi RPC lifecycle support from `pi --version`",
@@ -307,7 +316,7 @@ export class PiProvider implements AgentProvider {
 
     let proc: ChildProcess;
     try {
-      proc = spawn(piPath, args, {
+      proc = spawn(piTarget.command, buildPiLaunchArgs(piTarget, args), {
         cwd: options.cwd,
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, ...options.remoteEnv },
@@ -895,13 +904,11 @@ export class PiProvider implements AgentProvider {
     return images;
   }
 
-  private async findPiPath(): Promise<string | null> {
+  private async findPiLaunchTarget(): Promise<PiLaunchTarget | null> {
     const envExecutable = process.env.PI_EXECUTABLE ?? process.env.PI_PATH;
-    if (envExecutable && existsSync(envExecutable)) {
-      return envExecutable;
-    }
-    if (this.configuredPath && existsSync(this.configuredPath)) {
-      return this.configuredPath;
+    const explicitPath = envExecutable ?? this.configuredPath;
+    if (explicitPath) {
+      return resolvePiLaunchTarget(explicitPath);
     }
     const commonPaths = [
       join(homedir(), ".local", "bin", "pi"),
@@ -910,14 +917,14 @@ export class PiProvider implements AgentProvider {
       join(homedir(), ".bun", "bin", "pi"),
     ];
     for (const path of commonPaths) {
-      if (existsSync(path)) return path;
+      const target = resolvePiLaunchTarget(path);
+      if (target) return target;
     }
     try {
       const { stdout } = await execAsync(whichCommand("pi"), {
         encoding: "utf-8",
       });
-      const result = stdout.trim();
-      if (result && existsSync(result)) return result;
+      return selectPiLaunchTarget(stdout);
     } catch {
       // Not in PATH.
     }
@@ -925,21 +932,27 @@ export class PiProvider implements AgentProvider {
   }
 
   private async getPiTerminalEvent(
-    piPath: string,
+    piTarget: PiLaunchTarget,
   ): Promise<"agent_end" | "agent_settled" | null> {
-    const cached = this.cachedTerminalEvents.get(piPath);
+    const cacheKey = `${piTarget.command}\0${piTarget.argsPrefix.join("\0")}`;
+    const cached = this.cachedTerminalEvents.get(cacheKey);
     if (cached) return cached;
     try {
-      const { stdout } = await execFileAsync(piPath, ["--version"], {
-        encoding: "utf-8",
-      });
+      const { stdout } = await execFileAsync(
+        piTarget.command,
+        buildPiLaunchArgs(piTarget, ["--version"]),
+        { encoding: "utf-8" },
+      );
       const usesAgentSettled = piVersionUsesAgentSettled(stdout);
       if (usesAgentSettled === null) return null;
       const terminalEvent = usesAgentSettled ? "agent_settled" : "agent_end";
-      this.cachedTerminalEvents.set(piPath, terminalEvent);
+      this.cachedTerminalEvents.set(cacheKey, terminalEvent);
       return terminalEvent;
     } catch (error) {
-      getLogger().debug({ error, piPath }, "pi: version probe failed");
+      getLogger().debug(
+        { error, piPath: piTarget.sourcePath },
+        "pi: version probe failed",
+      );
       return null;
     }
   }

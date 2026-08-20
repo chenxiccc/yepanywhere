@@ -31,6 +31,17 @@ translate more provider-specific concepts itself:
 - generic YA content block rendering in
   `packages/client/src/components/renderers/`.
 
+### Windows executable discovery
+
+Windows `where opencode` may report both npm's extensionless shim and
+`opencode.cmd`. YA parses those as separate candidates and resolves the npm
+global layout to `opencode-ai/bin/opencode.exe`, because model discovery uses
+`execFile()` and cannot execute either shim. A directly reported `.exe` wins;
+POSIX retains the first existing `which` hit. The 2026-08-20 Windows regression
+probe used OpenCode 1.18.18, selected the packaged executable, completed the
+version probe, and returned the verbose model catalog. Session discovery from
+durable storage remains independent of whether the executable is installed.
+
 ## Capability Comparison
 
 | Capability | Claude | Codex | OpenCode status |
