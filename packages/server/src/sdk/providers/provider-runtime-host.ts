@@ -500,6 +500,7 @@ export async function startHostedProviderSession(
 class HostedMessageQueue implements AgentMessageQueue {
   private pending: UserMessage[] = [];
   private remoteDepth: number;
+  private yieldedListeners = new Set<(messages: UserMessage[]) => void>();
 
   constructor(
     initialDepth: number,
@@ -549,6 +550,20 @@ class HostedMessageQueue implements AgentMessageQueue {
     this.pending = this.pending.filter(
       (message) => !message.uuid || !removed.has(message.uuid),
     );
+  }
+
+  notifyYielded(uuids: string[]): void {
+    const yielded = new Set(uuids);
+    const messages = this.pending.filter(
+      (message) => message.uuid && yielded.has(message.uuid),
+    );
+    if (messages.length === 0) return;
+    for (const listener of this.yieldedListeners) listener(messages);
+  }
+
+  subscribeYielded(listener: (messages: UserMessage[]) => void): () => void {
+    this.yieldedListeners.add(listener);
+    return () => this.yieldedListeners.delete(listener);
   }
 
   get depth(): number {
@@ -749,6 +764,13 @@ class HostedAgentSession {
         return;
       case "queueRemoved":
         this.queue.removeAccepted(
+          Array.isArray(message.uuids)
+            ? message.uuids.map((value) => String(value))
+            : [],
+        );
+        return;
+      case "queueYielded":
+        this.queue.notifyYielded(
           Array.isArray(message.uuids)
             ? message.uuids.map((value) => String(value))
             : [],

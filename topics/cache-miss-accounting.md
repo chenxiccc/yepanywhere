@@ -7,10 +7,15 @@
 
 Topic: cache-miss-accounting
 
-Status: implemented 2026-08-17 in
+Status: checkpoint implementation as of 2026-08-20 in
 `packages/server/src/services/CacheMissBillingMonitor.ts`, surfaced in
-Settings → Cache Billing. Default off. The per-project boot baseline described
-under [Session boot](#session-boot) is not built; it is tracked in
+Settings → Cache Billing. Default off. The checkpoint corrects the idle-gap
+boundary and adds rate/provider charts plus grouped event inspection, but is
+not release-ready: `recentActivityMinutes` still carries the opposite meaning
+in older clients and servers. Mixed-version support must add a distinct
+ignore-after field and capability gate before this setting is published. Final
+desktop/mobile rendered validation also remains. The per-project boot baseline
+described under [Session boot](#session-boot) is not built; it is tracked in
 [`gaps/cache-miss-boot-baseline.md`](../gaps/cache-miss-boot-baseline.md).
 
 Related topics: [session usage accounting](session-usage-accounting.md) (the
@@ -70,25 +75,46 @@ no expectation and is never judged.
 
 ## Recorded versus flagged
 
-Every miss above the wasted-token floor is **recorded**. Only misses after a
-real idle gap are **flagged** (`exception: true`, eligible for a popup).
-Within `recentActivityMinutes` — 10 by default — a miss is recorded with
-`exception: false` and stays silent: a provider-side shard or serving
-migration can drop a warm cache with no YA-visible cause and no YA-available
-remedy, so alarming about it trains the operator to ignore the feature. The
-observation still counts in the distribution, which is where it is useful.
+A continuing-turn sample's idle gap starts at the previous usage-bearing
+assistant observation and ends when the next real human message is yielded to
+the provider. It therefore excludes the provider's work on the new turn. A
+reload-safe worker that predates yield reporting temporarily uses server receipt
+of the human message; a current worker replaces that fallback with the provider
+boundary before usage arrives. Additional provider requests within the same
+human turn have no human idle interval and occupy the zero end of the 0–10
+minute bucket. Only the first provider request after a human message is a
+complete human-turn probability sample.
 
-Clean hits are recorded only once the idle gap reaches that same window. They
-are the denominator — a bucket where one turn in twenty missed reads very
-differently from one where every turn missed — but back-to-back turns are
-never at risk, and recording each would rewrite session metadata on every
-assistant message for no analytic gain.
+Within the provider freshness window, every measurable clean hit and every
+miss above the wasted-token floor is **recorded**. Clean hits are the
+denominator: a duration bucket where one turn in twenty missed means something
+different from one where every turn missed. Every recorded miss is **flagged**
+(`exception: true`, eligible for a popup when popups are enabled), because a
+short-delay miss is the surprising case.
+
+The optional ignore-after cutoff excludes both hits and misses beyond its
+duration so the event list, totals, and probability denominators describe the
+same population. Zero means no additional cutoff beyond the provider freshness
+window. The field remains temporarily serialized as `recentActivityMinutes`;
+that wire-compatibility defect is the checkpoint's release blocker.
+
+The UI's separate recency filter limits records by event timestamp. Its 1–96h
+slider ends in an unlimited notch, and a blank numeric value also means
+unlimited. The visible summary, all charts, provider/model hover contents, and
+grouped wrapping table consume that same explicitly filtered event set. A
+finite window is repeated beside the table row count; unlimited adds no suffix.
+The first duration bucket is 0–10 minutes, including exact-zero observations.
+Table columns distinguish when YA recorded an event (`Seen`) from its measured
+human-turn delay (`Gap`), while `Msg` is a compact message reference whose full
+provider id remains available on hover.
 
 ## Defaults
 
 - `minimumWastedTokens` 10,000 — above per-turn noise (breakpoint shuffles,
   re-written trailing segments), well below a prefix recompute worth seeing.
-- `recentActivityMinutes` 10 — the "not YA's fault, don't alarm" boundary.
+- ignore-after 0 — do not impose another measurement cutoff inside the
+  provider freshness window. This is temporarily stored under the legacy
+  `recentActivityMinutes` name and must be replaced before release.
 - `providerFreshWindowMinutes` claude 60 / codex 10 — how long YA expects a
   cache to exist at all. Beyond it, no expectation is formed and nothing is
   recorded.

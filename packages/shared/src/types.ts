@@ -201,12 +201,13 @@ export const DEFAULT_CACHE_MISS_BILLING_PROVIDER_FRESH_WINDOW_MINUTES: Partial<
  */
 export const DEFAULT_CACHE_MISS_BILLING_MINIMUM_WASTED_TOKENS = 10_000;
 /**
- * Misses this soon after the previous turn are recorded but never flagged as
- * exceptions: a provider-side shard or serving migration can drop a prompt
- * cache through no fault of YA's, and the point of recording them is to see
- * that distribution rather than to alarm about it.
+ * Optional upper bound on human-turn idle gaps YA judges. Zero keeps every
+ * observation inside the provider freshness window eligible.
  */
-export const DEFAULT_CACHE_MISS_BILLING_RECENT_ACTIVITY_MINUTES = 10;
+export const DEFAULT_CACHE_MISS_BILLING_IGNORE_AFTER_MINUTES = 0;
+/** @deprecated Wire-compatible name retained for older clients and servers. */
+export const DEFAULT_CACHE_MISS_BILLING_RECENT_ACTIVITY_MINUTES =
+  DEFAULT_CACHE_MISS_BILLING_IGNORE_AFTER_MINUTES;
 
 export interface CacheMissBillingSettings {
   /** Enable usage-accounting detection and durable server-side evidence logs. */
@@ -219,7 +220,10 @@ export interface CacheMissBillingSettings {
   providerFreshWindowMinutes?: Partial<Record<ProviderName, number>>;
   /** Wasted-token floor, measured as excess over the expected new content. */
   minimumWastedTokens?: number;
-  /** Gap below which a miss is recorded as data but never flagged. */
+  /**
+   * Ignore observations after this many idle minutes. Zero disables this
+   * additional cutoff. The wire name is retained for stable-server support.
+   */
   recentActivityMinutes?: number;
 }
 
@@ -278,6 +282,8 @@ export interface CacheMissBillingRecord {
   id: string;
   timestamp: string;
   provider: ProviderName;
+  /** Provider-reported model when known; absent on records from older servers. */
+  model?: string;
   sessionId: string;
   projectId: UrlProjectId;
   sessionPath: string;
@@ -287,11 +293,7 @@ export interface CacheMissBillingRecord {
   forkedFromSessionId?: string;
   reason: CacheMissBillingReason;
   outcome: CacheMissBillingOutcome;
-  /**
-   * Whether this miss is worth an operator's attention. A miss inside the
-   * recent-activity window is recorded with `exception: false`: it is a data
-   * point for the inactivity distribution, not something YA can act on.
-   */
+  /** Whether this measured miss is worth an operator's attention. */
   exception: boolean;
   messageId?: string;
   messageIndex?: number;
@@ -304,9 +306,19 @@ export interface CacheMissBillingRecord {
    */
   wastedInputTokens: number;
   freshWindowMinutes: number;
-  /** Gap since the previous turn of this session, the histogram's x axis. */
+  /**
+   * Gap from the previous cache-warm assistant observation to the moment this
+   * human turn was yielded to the provider, which is the histogram's x axis.
+   * Additional provider requests inside that same human turn use zero.
+   */
   elapsedSinceExpectedCacheMs?: number;
   expectedCacheSource: "fork" | "warm-session";
+  /**
+   * This record is the first provider request for a complete human-turn
+   * hit/miss sample. Later same-turn provider requests and older records do not
+   * support the human-turn probability denominator.
+   */
+  completeProbabilitySample?: true;
 }
 
 export const DEFAULT_CACHE_MISS_BILLING_SETTINGS: Required<CacheMissBillingSettings> =

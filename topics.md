@@ -324,3 +324,4 @@
   after search unhides non-matching turns.
 - attachment-hover-preview - Anchored full-size image hover on attachment chips, using local bytes when just pasted or sent.
 - conversation-thinking-auto-hide - Conversation view fades thinking 5s after a completed turn with following text.
+- cache-miss-accounting - Provider-normalized cache hit/miss evidence, human-turn idle gaps, empirical rate/provider views, and grouped event inspection.

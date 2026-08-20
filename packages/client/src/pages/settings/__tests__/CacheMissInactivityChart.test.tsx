@@ -7,6 +7,9 @@ import { I18nProvider } from "../../../i18n";
 import {
   bucketByInactivity,
   CacheMissInactivityChart,
+  CacheMissProbabilityChart,
+  CacheMissProviderChart,
+  logarithmicRateWidth,
 } from "../CacheMissInactivityChart";
 
 function record(
@@ -52,12 +55,9 @@ describe("bucketByInactivity", () => {
       }),
     ]);
 
-    expect(buckets.find((bucket) => bucket.toMinutes === 1)?.wastedTokens).toBe(
-      5000,
-    );
-    expect(buckets.find((bucket) => bucket.toMinutes === 2)?.wastedTokens).toBe(
-      7000,
-    );
+    expect(
+      buckets.find((bucket) => bucket.toMinutes === 10)?.wastedTokens,
+    ).toBe(12_000);
     expect(
       buckets.find((bucket) => bucket.toMinutes === 60)?.wastedTokens,
     ).toBe(120_000);
@@ -73,7 +73,7 @@ describe("bucketByInactivity", () => {
       }),
     ]);
 
-    const bucket = buckets.find((candidate) => candidate.toMinutes === 5);
+    const bucket = buckets.find((candidate) => candidate.toMinutes === 10);
     expect(bucket).toMatchObject({ misses: 1, hits: 1 });
   });
 
@@ -123,6 +123,47 @@ describe("CacheMissInactivityChart", () => {
     expect(screen.getByText("1/2 missed")).toBeTruthy();
   });
 
+  it("includes zero and sub-minute gaps in the 0–10m bin", () => {
+    render(
+      <I18nProvider>
+        <CacheMissInactivityChart
+          events={[
+            record({ elapsedSinceExpectedCacheMs: 0 }),
+            record({ elapsedSinceExpectedCacheMs: 30_000 }),
+          ]}
+        />
+      </I18nProvider>,
+    );
+
+    const firstBin = screen.getByText("0–10m").closest("li");
+    expect(firstBin).toBeTruthy();
+    expect(firstBin?.textContent).toContain("2/2 missed");
+  });
+
+  it("lists the exact provider/model tuples represented by a bar", () => {
+    render(
+      <I18nProvider>
+        <CacheMissInactivityChart
+          events={[
+            record({
+              elapsedSinceExpectedCacheMs: 30_000,
+              model: "opus",
+            }),
+            record({
+              elapsedSinceExpectedCacheMs: 30_000,
+              provider: "codex",
+              model: "gpt-5.6",
+            }),
+          ]}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("0–10m").closest("li")?.title).toBe(
+      "Provider / model tuples with events:\nclaude / opus\ncodex / gpt-5.6",
+    );
+  });
+
   it("says so when nothing timed has been recorded", () => {
     render(
       <I18nProvider>
@@ -133,5 +174,76 @@ describe("CacheMissInactivityChart", () => {
     expect(
       screen.getByText("No timed observations recorded yet."),
     ).toBeTruthy();
+  });
+});
+
+describe("cache-miss probability charts", () => {
+  afterEach(cleanup);
+
+  it("uses only complete records for both the bar and exact sample label", () => {
+    render(
+      <I18nProvider>
+        <CacheMissProbabilityChart
+          events={[
+            record({ elapsedSinceExpectedCacheMs: 15 * 60_000 }),
+            record({
+              elapsedSinceExpectedCacheMs: 15 * 60_000,
+              completeProbabilitySample: true,
+            }),
+            record({
+              elapsedSinceExpectedCacheMs: 15 * 60_000,
+              outcome: "expected-cache-hit",
+              reason: "warm-session-cache-hit",
+              completeProbabilitySample: true,
+            }),
+          ]}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("50%")).toBeTruthy();
+    expect(screen.getByText("1/2 missed")).toBeTruthy();
+  });
+
+  it("breaks the same complete sample down by provider", () => {
+    render(
+      <I18nProvider>
+        <CacheMissProviderChart
+          events={[
+            record({ completeProbabilitySample: true, model: "opus" }),
+            record({
+              completeProbabilitySample: true,
+              outcome: "expected-cache-hit",
+              reason: "warm-session-cache-hit",
+              model: "sonnet",
+            }),
+            record({
+              provider: "codex",
+              completeProbabilitySample: true,
+              outcome: "expected-cache-hit",
+              reason: "warm-session-cache-hit",
+              model: "gpt-5.6",
+            }),
+          ]}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("claude").closest("li")?.textContent).toContain(
+      "1/2 missed",
+    );
+    expect(screen.getByText("codex").closest("li")?.textContent).toContain(
+      "0/1 missed",
+    );
+    expect(screen.getByText("claude").closest("li")?.title).toContain(
+      "claude / opus",
+    );
+  });
+
+  it("gives very small nonzero rates a visible logarithmic width", () => {
+    expect(logarithmicRateWidth(0.0001)).toBeGreaterThan(0);
+    expect(logarithmicRateWidth(0.0001)).toBeLessThan(
+      logarithmicRateWidth(0.01),
+    );
   });
 });

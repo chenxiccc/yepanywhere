@@ -36,6 +36,7 @@ function fakeProcess(
   return {
     id: "process-1",
     provider: "claude",
+    resolvedModel: "claude-sonnet-4-5",
     sessionId: "session-1",
     projectId: "project-1" as UrlProjectId,
     lastPromptCacheRefreshTime: null,
@@ -109,7 +110,7 @@ describe("CacheMissBillingMonitor", () => {
         codex: 10,
       },
       minimumWastedTokens: 10_000,
-      recentActivityMinutes: 10,
+      recentActivityMinutes: 0,
     });
   });
 
@@ -294,7 +295,7 @@ describe("CacheMissBillingMonitor", () => {
     });
   });
 
-  it("records a miss soon after activity without flagging it", async () => {
+  it("flags a miss inside the configured idle cutoff", async () => {
     const { monitor, addCacheMissBillingEvent, emit } = monitorWith({
       enabled: true,
       showToasts: true,
@@ -310,6 +311,7 @@ describe("CacheMissBillingMonitor", () => {
         cache_read_input_tokens: 100_000,
       }),
     );
+    monitor.observeUserTurnStarted(process);
     monitor.observeMessage(
       process,
       claudeAssistantMessage({
@@ -323,9 +325,171 @@ describe("CacheMissBillingMonitor", () => {
     );
     const record = addCacheMissBillingEvent.mock.calls.at(-1)?.[1];
     expect(record?.outcome).toBe("unexpected-recompute");
-    expect(record?.exception).toBe(false);
+    expect(record?.exception).toBe(true);
     expect(record?.elapsedSinceExpectedCacheMs).toBeLessThan(10 * 60_000);
-    expect(emit.mock.calls.at(-1)?.[0]).toMatchObject({ showToast: false });
+    expect(record?.completeProbabilitySample).toBe(true);
+    expect(emit.mock.calls.at(-1)?.[0]).toMatchObject({ showToast: true });
+  });
+
+  it("ignores both hits and misses after a positive idle cutoff", async () => {
+    const { monitor, addCacheMissBillingEvent } = monitorWith({
+      enabled: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 10,
+    });
+    const process = fakeProcess();
+    const startedAt = Date.now();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(startedAt)
+      .mockReturnValue(startedAt + 12 * 60_000);
+    try {
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 5,
+          cache_read_input_tokens: 100_000,
+        }),
+      );
+      monitor.observeUserTurnStarted(process, startedAt + 11 * 60_000);
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 100_005,
+          cache_read_input_tokens: 0,
+        }),
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(addCacheMissBillingEvent).not.toHaveBeenCalled();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("treats zero idle cutoff as unlimited", async () => {
+    const { monitor, addCacheMissBillingEvent } = monitorWith({
+      enabled: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 0,
+    });
+    const process = fakeProcess();
+    const startedAt = Date.now();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(startedAt)
+      .mockReturnValue(startedAt + 21 * 60_000);
+    try {
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 5,
+          cache_read_input_tokens: 100_000,
+        }),
+      );
+      monitor.observeUserTurnStarted(process, startedAt + 20 * 60_000);
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 100_005,
+          cache_read_input_tokens: 0,
+        }),
+      );
+
+      await waitFor(() =>
+        expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(1),
+      );
+      expect(
+        addCacheMissBillingEvent.mock.calls[0]?.[1].elapsedSinceExpectedCacheMs,
+      ).toBe(20 * 60_000);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("measures to provider input rather than assistant completion", async () => {
+    const { monitor, addCacheMissBillingEvent } = monitorWith({
+      enabled: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 0,
+    });
+    const process = fakeProcess();
+    const startedAt = Date.now();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(startedAt)
+      .mockReturnValue(startedAt + 25 * 60_000);
+    try {
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 5,
+          cache_read_input_tokens: 100_000,
+        }),
+      );
+      monitor.observeUserTurnStarted(process, startedAt + 5 * 60_000);
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 100_005,
+          cache_read_input_tokens: 0,
+        }),
+      );
+
+      await waitFor(() =>
+        expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(1),
+      );
+      expect(
+        addCacheMissBillingEvent.mock.calls[0]?.[1].elapsedSinceExpectedCacheMs,
+      ).toBe(5 * 60_000);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("places later provider requests in the same human turn at zero gap", async () => {
+    const { monitor, addCacheMissBillingEvent } = monitorWith({
+      enabled: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 0,
+    });
+    const process = fakeProcess();
+
+    monitor.observeMessage(
+      process,
+      claudeAssistantMessage({
+        input_tokens: 5,
+        cache_read_input_tokens: 100_000,
+      }),
+    );
+    monitor.observeUserTurnStarted(process);
+    monitor.observeMessage(
+      process,
+      claudeAssistantMessage({
+        input_tokens: 100_005,
+        cache_read_input_tokens: 0,
+      }),
+    );
+    monitor.observeMessage(
+      process,
+      claudeAssistantMessage({
+        input_tokens: 5,
+        cache_read_input_tokens: 100_005,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(2),
+    );
+    expect(addCacheMissBillingEvent.mock.calls[0]?.[1]).toMatchObject({
+      completeProbabilitySample: true,
+    });
+    expect(addCacheMissBillingEvent.mock.calls[1]?.[1]).toMatchObject({
+      elapsedSinceExpectedCacheMs: 0,
+    });
+    expect(
+      addCacheMissBillingEvent.mock.calls[1]?.[1].completeProbabilitySample,
+    ).toBeUndefined();
   });
 
   it("never flags a session's first turn, which has no measured prefix", async () => {
@@ -372,6 +536,7 @@ describe("CacheMissBillingMonitor", () => {
     const [, record] = addCacheMissBillingEvent.mock.calls[0]!;
     expect(record).toMatchObject({
       provider: "claude",
+      model: "claude-sonnet-4-5",
       sessionId: "session-1",
       forkedFromSessionId: "parent-1",
       reason: "fork-prefix-cache-miss",
@@ -405,13 +570,15 @@ describe("CacheMissBillingMonitor", () => {
       enabled: true,
       showToasts: true,
       minimumWastedTokens: 10_000,
-      recentActivityMinutes: 10,
+      recentActivityMinutes: 0,
     });
 
+    const process = fakeProcess({
+      lastPromptCacheRefreshTime: new Date(Date.now() - 30 * 60_000),
+    });
+    monitor.observeUserTurnStarted(process);
     monitor.observeMessage(
-      fakeProcess({
-        lastPromptCacheRefreshTime: new Date(Date.now() - 30 * 60_000),
-      }),
+      process,
       claudeAssistantMessage({
         input_tokens: 50,
         cache_read_input_tokens: 150_000,
@@ -424,11 +591,12 @@ describe("CacheMissBillingMonitor", () => {
       reason: "warm-session-cache-hit",
       outcome: "expected-cache-hit",
       exception: false,
+      completeProbabilitySample: true,
     });
     expect(emit.mock.calls[0]?.[0]).toMatchObject({ showToast: false });
   });
 
-  it("skips hit records for back-to-back turns", async () => {
+  it("records back-to-back hits for a complete probability sample", async () => {
     const { monitor, addCacheMissBillingEvent } = monitorWith({
       enabled: true,
       minimumWastedTokens: 10_000,
@@ -443,6 +611,7 @@ describe("CacheMissBillingMonitor", () => {
         cache_read_input_tokens: 100_000,
       }),
     );
+    monitor.observeUserTurnStarted(process);
     monitor.observeMessage(
       process,
       claudeAssistantMessage({
@@ -452,7 +621,10 @@ describe("CacheMissBillingMonitor", () => {
       }),
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(addCacheMissBillingEvent).not.toHaveBeenCalled();
+    await waitFor(() => expect(addCacheMissBillingEvent).toHaveBeenCalled());
+    expect(addCacheMissBillingEvent.mock.calls.at(-1)?.[1]).toMatchObject({
+      outcome: "expected-cache-hit",
+      completeProbabilitySample: true,
+    });
   });
 });

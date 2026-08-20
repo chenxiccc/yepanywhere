@@ -18,7 +18,7 @@
   grid-template-columns: 4.5rem 1fr 3.5rem 4rem;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
 }
 
 .barLabel {
@@ -45,6 +45,14 @@
 .barFill[data-empty] {
   min-width: 0;
   background: transparent;
+}
+
+.probabilityFill {
+  background: var(--error-color);
+}
+
+.providerFill {
+  background: var(--app-yep-green);
 }
 
 .barValue {

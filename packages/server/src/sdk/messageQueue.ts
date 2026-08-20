@@ -31,6 +31,8 @@ export interface AgentMessageQueue {
   /** Remote queues use this to return the worker's authoritative drain. */
   drainAsync?(): Promise<UserMessage[]>;
   removeByTempId(tempId: string): UserMessage[];
+  /** Observe messages when the provider input iterator actually consumes them. */
+  subscribeYielded?(listener: (messages: UserMessage[]) => void): () => void;
   readonly depth: number;
 }
 

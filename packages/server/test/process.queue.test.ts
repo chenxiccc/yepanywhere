@@ -38,6 +38,47 @@ describe("MessageQueue", () => {
 
 describe("Process", () => {
   describe("message queue", () => {
+    it("reports when a human turn is yielded to provider input", async () => {
+      let resolveIterator!: (result: IteratorResult<SDKMessage>) => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = resolve;
+          }),
+      };
+      const queue = new MessageQueue();
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+      const started = vi.fn();
+      const accepted = vi.fn();
+      process.subscribe((event) => {
+        if (event.type === "provider-turn-started") {
+          started(event.startedAtMs);
+        } else if (event.type === "user-turn-accepted") {
+          accepted(event.startedAtMs);
+        }
+      });
+
+      const serverReceivedAt = new Date().toISOString();
+      process.queueMessage({
+        text: "provider-bound",
+        metadata: { serverReceivedAt },
+      });
+      await queue[Symbol.asyncIterator]().next();
+
+      expect(accepted).toHaveBeenCalledWith(Date.parse(serverReceivedAt));
+      expect(started).toHaveBeenCalledTimes(1);
+      expect(started).toHaveBeenCalledWith(expect.any(Number));
+      resolveIterator({ done: true, value: undefined });
+      await process.abort();
+    });
+
     it("queues messages and returns position", async () => {
       const iterator = createMockIterator([
         { type: "system", session_id: "sess-1" },

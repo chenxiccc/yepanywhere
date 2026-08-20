@@ -832,6 +832,7 @@ export class Process {
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: AgentMessageQueue | null;
+  private unsubscribeMessageQueueYielded: (() => void) | undefined;
   private deferredDeliveryOverrides: DeferredDeliveryOptions | undefined;
   private sessionQueuePersistenceService:
     | SessionQueuePersistenceService
@@ -1137,6 +1138,23 @@ export class Process {
 
     // Start bucket swap timer for bounded message history
     this.startBucketSwapTimer();
+
+    this.unsubscribeMessageQueueYielded = this.messageQueue?.subscribeYielded?.(
+      (messages) => {
+        const includesHumanTurn = messages.some(
+          (message) =>
+            !isHiddenInjectedMessage(message) &&
+            message.automaticSource === undefined &&
+            message.metadata?.serverReceivedAt !== undefined,
+        );
+        if (includesHumanTurn) {
+          this.emit({
+            type: "provider-turn-started",
+            startedAtMs: Date.now(),
+          });
+        }
+      },
+    );
 
     // Start processing messages from the SDK
     this.processMessages();
@@ -2262,6 +2280,8 @@ export class Process {
   private emitCompletion(): void {
     if (this.completionEmitted) return;
     this.completionEmitted = true;
+    this.unsubscribeMessageQueueYielded?.();
+    this.unsubscribeMessageQueueYielded = undefined;
     this.emit({ type: "complete" });
   }
 
@@ -3134,9 +3154,13 @@ export class Process {
       message.automaticSource === undefined &&
       message.metadata?.serverReceivedAt !== undefined
     ) {
+      const receivedAtMs = Date.parse(message.metadata.serverReceivedAt);
       this._userTurnVersion += 1;
       this.resumeRecapsAfterUserTurn();
-      this.emit({ type: "user-turn-accepted" });
+      this.emit({
+        type: "user-turn-accepted",
+        startedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
+      });
     }
     return { ...message, recapResumeHandled: true };
   }

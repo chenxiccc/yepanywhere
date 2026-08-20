@@ -318,6 +318,12 @@ class ProviderRuntimeWorker {
       this.observesQueueYield = true;
       this.unsubscribeQueueYielded = concrete.subscribeYielded((messages) => {
         this.activeProviderTurn = true;
+        write(this.attachedSocket, {
+          type: "queueYielded",
+          uuids: messages.flatMap((message) =>
+            message.uuid ? [message.uuid] : [],
+          ),
+        });
         const auxiliary = this.auxiliarySubmission;
         if (
           !auxiliary ||

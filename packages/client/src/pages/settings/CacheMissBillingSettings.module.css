@@ -1,8 +1,5 @@
-/* Cache-billing pane: the narrow token field plus the two-column event log
-   and its per-event header/detail rows. The shared settings primitives
-   (`settings-group`, `settings-item`, `settings-hint`, `settings-button`,
-   `settings-empty`, ...) stay global — this module only owns the vocabulary
-   the pane itself introduced. */
+/* Cache-billing pane controls and evidence layout. Shared settings primitives
+   stay global; this module owns only this pane's vocabulary. */
 
 /* Kept literally from index.css. It has never decided the rendered width:
    the field always sits inside `.settings-input-unit`, whose
@@ -12,61 +9,128 @@
   width: 7rem;
 }
 
-/* Tighter than the shared group's `gap: var(--space-3)`. Compounded with the
-   global class so the override keeps winning on specificity rather than on
-   where the module's CSS happens to be emitted relative to index.css. */
-.events:global(.settings-group) {
-  gap: var(--space-2);
-}
-
-.eventLog {
+.evidence {
   container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
-.eventColumns {
+.recencyControl,
+.chartPanel {
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-code);
+}
+
+.recencyHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.recencyHeader h3,
+.chartPanel h3,
+.eventTableSection h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 650;
+}
+
+.recencyHeader p,
+.chartPanel > p,
+.eventTableSection > p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.recencyHeader > span {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.recencyInputs {
+  display: flex;
+  align-items: end;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.sliderStack {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sliderStack input {
+  width: 100%;
+  accent-color: var(--accent-color);
+}
+
+.sliderLabels {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.recencyTextInput {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.recencyTextInput input {
+  width: 4rem;
+}
+
+.chartGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
   align-items: start;
 }
 
-.eventColumn {
+.chartPanel {
   min-width: 0;
 }
 
-.eventColumnTitle {
-  margin: 0 0 var(--space-2);
-  color: var(--text);
-  font-size: var(--font-size-sm);
-  font-weight: 650;
+.chartPanel:first-child {
+  grid-column: 1 / -1;
 }
 
-.eventHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
-}
-
-.eventDetail {
-  margin: var(--space-2) 0 0;
-  word-break: break-word;
+.eventTableSection > p {
+  margin-bottom: var(--space-2);
 }
 
 @container (max-width: 48rem) {
-  .eventColumns {
+  .chartGrid {
     grid-template-columns: 1fr;
   }
-}
 
-@container (max-width: 36rem) {
-  .eventHeader {
+  .chartPanel:first-child {
+    grid-column: auto;
+  }
+
+  .recencyHeader,
+  .recencyInputs {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .eventHeader :global(.settings-button) {
+  .recencyHeader > span {
     align-self: flex-start;
   }
 }

@@ -4466,7 +4466,19 @@ export class Supervisor {
     }
     this.observedProcessIds.add(process.id);
     process.subscribe((event) => {
-      if (event.type === "user-turn-accepted") {
+      if (event.type === "provider-turn-started") {
+        this.cacheMissBillingMonitor.observeUserTurnStarted(
+          process,
+          event.startedAtMs,
+        );
+      } else if (event.type === "user-turn-accepted") {
+        // Server receipt is the fallback boundary for an older reload-safe
+        // worker. A worker that reports provider yield replaces it with the
+        // later authoritative boundary before usage arrives.
+        this.cacheMissBillingMonitor.observeUserTurnStarted(
+          process,
+          event.startedAtMs,
+        );
         this.resumeRecapsAfterUserTurn(process);
         this.resumeAutomationAfterUserTurn(process);
       } else if (
