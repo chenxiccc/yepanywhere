@@ -10,6 +10,7 @@ import {
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
+  GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GLOSSARY_TOOLTIPS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
@@ -110,6 +111,12 @@ describe("Version Routes", () => {
       GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
     );
     expect(getServerCapabilities()).toContain(GIT_INCLUSIVE_TO_HEAD_CAPABILITY);
+  });
+
+  it("advertises complete filesystem scan requests", () => {
+    expect(getServerCapabilities()).toContain(
+      GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
+    );
   });
 
   it("advertises sandbox status but only advertises use when preflight passes", () => {
