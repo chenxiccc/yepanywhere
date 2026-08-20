@@ -40,9 +40,30 @@
 }
 
 .truncated {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   margin: 8px;
   color: var(--text-muted);
   font-size: 0.75rem;
+}
+
+.truncated button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 3px 8px;
+  color: var(--text-primary);
+  font: inherit;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.truncated button:hover,
+.truncated button:focus-visible {
+  background: var(--bg-hover);
 }
 
 .detail {

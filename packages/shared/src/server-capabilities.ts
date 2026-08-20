@@ -815,6 +815,33 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace self-hosted servers, and the released inventory route provides neither sectioned ignored coverage nor a resident live snapshot and delta contract.",
     },
   },
+  gitWorkingTreeCompleteScan: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeCompleteScan.id,
+    name: "git-working-tree-complete-scan",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server reports total filesystem inventory sizes and accepts an explicit complete-scan worktree lease that removes the bounded client projection.",
+    clientFallback:
+      "Keep the bounded filesystem inventory and truncation notice without sending a complete-scan request or showing a Show all action.",
+    serverContract: {
+      requestFields: ["relaySubscribe.coverage.filesystemScan"],
+      responseFields: [
+        "gitWorktreeSnapshot.totalFiles",
+        "gitWorktreeSnapshot.directories[].totalFiles",
+        "gitWorktreeDelta.totalFiles",
+        "gitWorktreeDelta.directoryChanges[].directory.totalFiles",
+      ],
+      events: ["git-worktree-snapshot", "git-worktree-delta"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers ignore the new request field and cannot honor a visible request to replace a bounded filesystem listing with its complete contents.",
+    },
+  },
   gitIncomingCommits: {
     id: CAPABILITY_ID_ALLOCATIONS.gitIncomingCommits.id,
     name: "git-incoming-commits",
@@ -1776,6 +1803,8 @@ export const GIT_WORKING_TREE_FILES_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeFiles.name;
 export const GIT_WORKING_TREE_SECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeSections.name;
+export const GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY =
+  SERVER_CAPABILITIES.gitWorkingTreeCompleteScan.name;
 export const GIT_INCOMING_COMMITS_CAPABILITY =
   SERVER_CAPABILITIES.gitIncomingCommits.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =

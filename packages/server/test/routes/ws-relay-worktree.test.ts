@@ -80,6 +80,7 @@ describe("WebSocket worktree subscriptions", () => {
         coverage: {
           ...coverage,
           expandedPrefixes: ["src/nested", "notes"],
+          filesystemScan: "complete",
         },
       },
       vi.fn(),
@@ -92,6 +93,7 @@ describe("WebSocket worktree subscriptions", () => {
       {
         ...coverage,
         expandedPrefixes: ["notes", "src", "src/nested"],
+        filesystemScan: "complete",
       },
       expect.any(Function),
     );
@@ -152,6 +154,49 @@ describe("WebSocket worktree subscriptions", () => {
             (_, index) => `directory-${index}`,
           ),
         },
+      },
+      send,
+      manager,
+    );
+
+    expect(manager.subscribe).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ status: 400 }));
+  });
+
+  it("rejects an unknown filesystem scan policy", () => {
+    const manager = {
+      subscribe: vi.fn(),
+    } as unknown as ProjectWorktreeSubscriptionManager;
+    const send = vi.fn();
+
+    handleWorktreeSubscribe(
+      new Map(),
+      {
+        ...message(),
+        coverage: {
+          ...coverage,
+          filesystemScan: "everything",
+        } as typeof coverage,
+      },
+      send,
+      manager,
+    );
+
+    expect(manager.subscribe).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ status: 400 }));
+  });
+
+  it("rejects a filesystem scan policy without expanded prefixes", () => {
+    const manager = {
+      subscribe: vi.fn(),
+    } as unknown as ProjectWorktreeSubscriptionManager;
+    const send = vi.fn();
+
+    handleWorktreeSubscribe(
+      new Map(),
+      {
+        ...message(),
+        coverage: { ...coverage, filesystemScan: "complete" },
       },
       send,
       manager,

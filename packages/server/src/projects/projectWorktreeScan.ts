@@ -1,5 +1,5 @@
 import type * as fs from "node:fs";
-import { readdir } from "node:fs/promises";
+import { lstat, readdir } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import type {
   GitFileChange,
@@ -22,10 +22,12 @@ export interface ProjectWorktreeScan {
   baseSha: string | null;
   files: Map<string, GitWorkingTreeFile>;
   truncated?: boolean;
+  /** Exact total files in this scan mode; absent when any count is unknown. */
+  totalFiles?: number;
   /**
    * Content directories the scan actually enumerated. Present only for a
-   * filesystem-only inventory, whose walk is bounded: watching what it did not
-   * read would cost the traversal the bound exists to avoid.
+   * filesystem-only inventory; unopened descendants are neither read nor
+   * watched.
    */
   directories?: Set<string>;
   /**
@@ -49,7 +51,7 @@ export async function scanFilesystemWorktree(
 async function scanExpandedFilesystemWorktree(
   projectPath: string,
   coverage: GitWorktreeCoverage,
-  fileLimit: number,
+  _fileLimit: number,
 ): Promise<ProjectWorktreeScan> {
   const files = new Map<string, GitWorkingTreeFile>();
   const directories = new Set<string>([""]);
@@ -61,6 +63,7 @@ async function scanExpandedFilesystemWorktree(
       headSha: null,
       baseSha: null,
       files,
+      totalFiles: 0,
       directories,
       directoryRows,
     };
@@ -69,6 +72,8 @@ async function scanExpandedFilesystemWorktree(
   const expandedPrefixes = coverage.expandedPrefixes ?? [];
   const expanded = new Set(expandedPrefixes);
   let truncated = false;
+  let totalFiles = 0;
+  let totalFilesKnown = true;
   for (const prefix of ["", ...expandedPrefixes]) {
     // A requested prefix must first have been observed as a real directory in
     // its opened parent. Besides preserving one-level disclosure, this keeps a
@@ -84,10 +89,19 @@ async function scanExpandedFilesystemWorktree(
         continue;
       }
       truncated = true;
+      const fallbackTotalFiles = await countDirectFilesystemFiles(absolute);
+      if (fallbackTotalFiles === null) {
+        totalFilesKnown = false;
+      } else {
+        totalFiles += fallbackTotalFiles;
+      }
       directoryRows.set(prefix, {
         path: prefix,
         pending: false,
         truncated: true,
+        ...(fallbackTotalFiles === null
+          ? {}
+          : { totalFiles: fallbackTotalFiles }),
       });
       getLogger().debug(
         { directory: absolute, error, projectPath },
@@ -98,8 +112,7 @@ async function scanExpandedFilesystemWorktree(
 
     directories.add(prefix);
     entries.sort((left, right) => compareWorktreePaths(left.name, right.name));
-    let publishedFiles = 0;
-    let prefixTruncated = false;
+    let directFiles = 0;
     for (const entry of entries) {
       if (entry.name === ".git") continue;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -113,19 +126,16 @@ async function scanExpandedFilesystemWorktree(
         });
         continue;
       }
-      if (publishedFiles >= fileLimit) {
-        prefixTruncated = true;
-        continue;
-      }
       files.set(path, createFilesystemFile(path));
-      publishedFiles += 1;
+      directFiles += 1;
+      totalFiles += 1;
     }
     directoryRows.set(prefix, {
       path: prefix,
       pending: false,
-      truncated: prefixTruncated,
+      truncated: false,
+      totalFiles: directFiles,
     });
-    truncated ||= prefixTruncated;
   }
 
   return {
@@ -133,6 +143,7 @@ async function scanExpandedFilesystemWorktree(
     baseSha: null,
     files,
     truncated,
+    ...(totalFilesKnown ? { totalFiles } : {}),
     directories,
     directoryRows,
   };
@@ -203,7 +214,42 @@ async function scanFilesystemWorktreeBreadthFirst(
     }
     level = next;
   }
-  return { headSha: null, baseSha: null, files, truncated, directories };
+  return {
+    headSha: null,
+    baseSha: null,
+    files,
+    truncated,
+    ...(!truncated ? { totalFiles: files.size } : {}),
+    directories,
+  };
+}
+
+async function countDirectFilesystemFiles(
+  directory: string,
+): Promise<number | null> {
+  try {
+    const names = (await readdir(directory)).filter((name) => name !== ".git");
+    let count = 0;
+    const batchSize = 64;
+    for (let offset = 0; offset < names.length; offset += batchSize) {
+      const stats = await Promise.all(
+        names.slice(offset, offset + batchSize).map(async (name) => {
+          try {
+            return await lstat(join(directory, name));
+          } catch (error) {
+            if (isMissingPathError(error)) return null;
+            throw error;
+          }
+        }),
+      );
+      for (const entry of stats) {
+        if (entry && !entry.isDirectory()) count += 1;
+      }
+    }
+    return count;
+  } catch {
+    return null;
+  }
 }
 
 function createFilesystemFile(path: string): GitWorkingTreeFile {

@@ -23,6 +23,7 @@ export interface ProjectWorktreeSnapshot {
   files: readonly GitWorkingTreeFile[];
   directories: readonly GitWorktreeDirectory[];
   truncated: boolean;
+  totalFiles: number | null;
 }
 
 interface Lease {
@@ -38,6 +39,7 @@ const EMPTY_SNAPSHOT: ProjectWorktreeSnapshot = {
   files: [],
   directories: [],
   truncated: false,
+  totalFiles: null,
 };
 
 function sameCoverage(
@@ -49,7 +51,8 @@ function sameCoverage(
     left.tracked === right.tracked &&
     left.untracked === right.untracked &&
     left.ignored === right.ignored &&
-    sameStrings(left.expandedPrefixes, right.expandedPrefixes)
+    sameStrings(left.expandedPrefixes, right.expandedPrefixes) &&
+    (left.filesystemScan ?? "bounded") === (right.filesystemScan ?? "bounded")
   );
 }
 
@@ -70,10 +73,12 @@ function unionCoverage(leases: Iterable<Lease>): GitWorktreeCoverage {
   const coverage = { tracked: false, untracked: false, ignored: false };
   const expandedPrefixes = new Set<string>();
   let compatibilityInventory = false;
+  let completeFilesystemScan = false;
   for (const lease of leases) {
     coverage.tracked ||= lease.coverage.tracked;
     coverage.untracked ||= lease.coverage.untracked;
     coverage.ignored ||= lease.coverage.ignored;
+    completeFilesystemScan ||= lease.coverage.filesystemScan === "complete";
     if (lease.coverage.expandedPrefixes === undefined) {
       compatibilityInventory = true;
     } else {
@@ -87,6 +92,7 @@ function unionCoverage(leases: Iterable<Lease>): GitWorktreeCoverage {
     ...(compatibilityInventory
       ? {}
       : { expandedPrefixes: [...expandedPrefixes].sort() }),
+    ...(completeFilesystemScan ? { filesystemScan: "complete" as const } : {}),
   };
 }
 
@@ -214,6 +220,7 @@ class ProjectWorktreeStore {
       files: [...this.files.values()],
       directories: [...this.directories.values()],
       truncated: event.truncated,
+      totalFiles: event.totalFiles ?? null,
     });
   }
 
@@ -252,6 +259,10 @@ class ProjectWorktreeStore {
       files: [...this.files.values()],
       directories: [...this.directories.values()],
       truncated: event.truncated ?? this.snapshot.truncated,
+      totalFiles:
+        event.totalFiles === undefined
+          ? this.snapshot.totalFiles
+          : event.totalFiles,
     });
   }
 

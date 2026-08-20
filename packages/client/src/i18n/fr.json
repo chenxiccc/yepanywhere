@@ -1252,5 +1252,7 @@
   "remoteSetupErrorCustomYaRequired": "L’URL YA personnalisée est requise",
   "remoteSetupErrorSaveFailed": "Impossible d’enregistrer",
   "remoteSetupErrorUpdateFailed": "Impossible de mettre à jour",
-  "publicShareRetrying": "Reconnexion au partage..."
+  "publicShareRetrying": "Reconnexion au partage...",
+  "sourceWorkingTreeFilesIncomplete": "L’inventaire est incomplet ; {count} fichiers au total.",
+  "sourceWorkingTreeShowAll": "Afficher les {count} fichiers"
 }

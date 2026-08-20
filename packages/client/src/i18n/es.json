@@ -1252,5 +1252,7 @@
   "remoteSetupErrorCustomYaRequired": "La URL personalizada de YA es obligatoria",
   "remoteSetupErrorSaveFailed": "Error al guardar",
   "remoteSetupErrorUpdateFailed": "Error al actualizar",
-  "publicShareRetrying": "Reconectando al recurso compartido..."
+  "publicShareRetrying": "Reconectando al recurso compartido...",
+  "sourceWorkingTreeFilesIncomplete": "El inventario está incompleto; hay {count} archivos en total.",
+  "sourceWorkingTreeShowAll": "Mostrar los {count} archivos"
 }

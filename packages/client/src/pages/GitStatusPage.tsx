@@ -18,6 +18,7 @@ import {
   GIT_STATUS_PULL_CAPABILITY,
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+  GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
   GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   serverHasCapability,
@@ -677,6 +678,10 @@ export function GitStatusPage() {
     version,
     GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   );
+  const supportsCompleteFilesystemScan = serverHasCapability(
+    version,
+    GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
+  );
   const supportsIncomingCommits = serverHasCapability(
     version,
     GIT_INCOMING_COMMITS_CAPABILITY,
@@ -900,6 +905,9 @@ export function GitStatusPage() {
                     status={gitStatus}
                     supportsWorkingTreeFiles={supportsWorkingTreeFiles}
                     supportsWorktreeSections
+                    supportsCompleteFilesystemScan={
+                      supportsCompleteFilesystemScan
+                    }
                     t={t}
                   />
                 </div>
@@ -922,6 +930,9 @@ export function GitStatusPage() {
                     supportsInclusiveToHead={supportsInclusiveToHead}
                     supportsWorkingTreeFiles={supportsWorkingTreeFiles}
                     supportsWorkingTreeSections={supportsWorkingTreeSections}
+                    supportsCompleteFilesystemScan={
+                      supportsCompleteFilesystemScan
+                    }
                     untrackedFiles={untrackedFiles}
                     supportsLastEditor={supportsLastEditor}
                     gitActions={gitActions}
@@ -988,6 +999,7 @@ function GitStatusContent({
   supportsInclusiveToHead,
   supportsWorkingTreeFiles,
   supportsWorkingTreeSections,
+  supportsCompleteFilesystemScan,
   untrackedFiles,
   supportsLastEditor,
   gitActions,
@@ -1005,6 +1017,7 @@ function GitStatusContent({
   supportsInclusiveToHead: boolean;
   supportsWorkingTreeFiles: boolean;
   supportsWorkingTreeSections: boolean;
+  supportsCompleteFilesystemScan: boolean;
   untrackedFiles: GitUntrackedFileListResult | null;
   supportsLastEditor: boolean;
   gitActions: GitActionState;
@@ -1208,6 +1221,7 @@ function GitStatusContent({
           status={status}
           supportsWorkingTreeFiles={supportsWorkingTreeFiles}
           supportsWorktreeSections={supportsWorkingTreeSections}
+          supportsCompleteFilesystemScan={supportsCompleteFilesystemScan}
           onOpenCommit={handleOpenCommit}
           captureReviewProjections={reviewsEnabled}
           t={t}

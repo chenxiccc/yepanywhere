@@ -210,6 +210,8 @@ export interface GitWorkingTreeFile {
   cumulativeChange?: GitWorkingTreeChange;
 }
 
+export type GitWorktreeFilesystemScan = "bounded" | "complete";
+
 export interface GitWorktreeCoverage {
   tracked: boolean;
   untracked: boolean;
@@ -219,6 +221,11 @@ export interface GitWorktreeCoverage {
    * is implicit. Omission retains the earlier bounded breadth-first inventory.
    */
   expandedPrefixes?: string[];
+  /**
+   * Delivery policy for an opened filesystem-only directory. Omission is the
+   * bounded policy understood by earlier servers.
+   */
+  filesystemScan?: GitWorktreeFilesystemScan;
 }
 
 /** One filesystem-only directory row in a lazy worktree inventory. */
@@ -229,6 +236,8 @@ export interface GitWorktreeDirectory {
   pending: boolean;
   /** True when the opened directory contains more files than were published. */
   truncated: boolean;
+  /** Exact direct file count when known, including count-only recovery. */
+  totalFiles?: number;
 }
 
 export interface GitWorktreeGeneration {
@@ -248,6 +257,8 @@ export interface GitWorktreeSnapshotEvent {
   /** Filesystem-only directory rows. Older servers omit this field. */
   directories?: GitWorktreeDirectory[];
   truncated: boolean;
+  /** Exact files in this subscriber's opened-directory corpus when known. */
+  totalFiles?: number;
   timestamp: string;
 }
 
@@ -276,6 +287,8 @@ export interface GitWorktreeDeltaEvent {
   directoryChanges?: GitWorktreeDirectoryChange[];
   /** Current bounded state. Older servers omit this field from deltas. */
   truncated?: boolean;
+  /** Current exact opened-directory total; null clears an unavailable count. */
+  totalFiles?: number | null;
   timestamp: string;
 }
 

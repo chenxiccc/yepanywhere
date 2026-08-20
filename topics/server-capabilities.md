@@ -105,6 +105,15 @@ ignored enumeration, and retains the focused 30-second fallback refresh. It is
 version-implied from `0.7.2`; the Maintainer approved expanding this unpublished
 capability before its first stable release.
 
+`git-working-tree-complete-scan` owns exact filesystem file totals on worktree
+snapshots, deltas, and directory rows plus the optional
+`coverage.filesystemScan: "complete"` request. The ordinary optional-feature
+corpus is `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); neither contains ID
+41's live subscription or these fields. Without permanent ID 42, the client
+keeps the bounded opened-directory projection and its truncation notice, hides
+**Show all N**, and sends no complete request. Existing capability meanings and
+older capable behavior remain unchanged. It is version-implied from `0.7.2`.
+
 `codex-reasoning-summary-setting` owns `settings.codexReasoningSummary` on
 `GET /api/settings` and `PUT /api/settings`. The ordinary optional-feature
 corpus was `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other stable
@@ -301,9 +310,10 @@ the same ledger:
 | 39 | server | 0.7.1 | `git-incoming-commits` |
 | 40 | server | 0.7.1 | `git-inclusive-to-head` |
 | 41 | server | 0.7.2 | `git-working-tree-sections` |
+| 42 | server | 0.7.2 | `git-working-tree-complete-scan` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 42; retired rows stay in the ledger as reserved IDs.
+ID 43; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

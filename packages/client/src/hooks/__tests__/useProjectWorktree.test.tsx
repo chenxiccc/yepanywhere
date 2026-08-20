@@ -92,6 +92,23 @@ describe("useProjectWorktree", () => {
       ...COVERAGE,
       expandedPrefixes: ["src"],
     });
+
+    rendered.rerender({
+      coverage: {
+        ...COVERAGE,
+        expandedPrefixes: ["src"],
+        filesystemScan: "complete",
+      },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(transport.getSubscriptions("worktree")).toHaveLength(3);
+    expect(latestSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: ["src"],
+      filesystemScan: "complete",
+    });
   });
 
   it("pins the deferred-update deadline to the first unapplied delta", async () => {

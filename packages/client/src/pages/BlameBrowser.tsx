@@ -64,6 +64,7 @@ export function BlameBrowser({
   status,
   supportsWorkingTreeFiles = false,
   supportsWorktreeSections = false,
+  supportsCompleteFilesystemScan = false,
   onOpenCommit,
   captureReviewProjections = false,
   t,
@@ -75,6 +76,7 @@ export function BlameBrowser({
   status?: GitStatusInfo;
   supportsWorkingTreeFiles?: boolean;
   supportsWorktreeSections?: boolean;
+  supportsCompleteFilesystemScan?: boolean;
   /** Open a populated blame hash in the commit browser. */
   onOpenCommit?: (sha: string) => void;
   captureReviewProjections?: boolean;
@@ -90,19 +92,35 @@ export function BlameBrowser({
   const [storedExpandedPrefixes, setStoredExpandedPrefixes] = useState<
     string[]
   >([]);
+  const [storedCompleteFilesystemScan, setStoredCompleteFilesystemScan] =
+    useState(false);
   const expandedPrefixesProjectId = useRef(projectId);
   const expandedPrefixes =
     expandedPrefixesProjectId.current === projectId
       ? storedExpandedPrefixes
       : [];
+  const completeFilesystemScan =
+    expandedPrefixesProjectId.current === projectId &&
+    storedCompleteFilesystemScan;
   const lazyFilesystemInventory =
     supportsWorktreeSections && status?.isGitRepo === false;
   const liveCoverage = useMemo<GitWorktreeCoverage>(
     () => ({
       ...coverage,
       ...(lazyFilesystemInventory ? { expandedPrefixes } : {}),
+      ...(lazyFilesystemInventory &&
+      supportsCompleteFilesystemScan &&
+      completeFilesystemScan
+        ? { filesystemScan: "complete" as const }
+        : {}),
     }),
-    [coverage, expandedPrefixes, lazyFilesystemInventory],
+    [
+      completeFilesystemScan,
+      coverage,
+      expandedPrefixes,
+      lazyFilesystemInventory,
+      supportsCompleteFilesystemScan,
+    ],
   );
   const [pointerMoving, setPointerMoving] = useState(false);
   const pointerQuietTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,6 +142,7 @@ export function BlameBrowser({
     if (expandedPrefixesProjectId.current === projectId) return;
     expandedPrefixesProjectId.current = projectId;
     setStoredExpandedPrefixes([]);
+    setStoredCompleteFilesystemScan(false);
   }, [projectId]);
   const liveWorktree = useProjectWorktree(
     projectId,
@@ -476,6 +495,16 @@ export function BlameBrowser({
               scopeKey={projectId}
               query={query}
               truncated={effectiveInventoryTruncated}
+              totalFiles={liveWorktree.totalFiles}
+              onShowAll={
+                lazyFilesystemInventory &&
+                supportsCompleteFilesystemScan &&
+                !completeFilesystemScan &&
+                liveWorktree.totalFiles !== null &&
+                liveWorktree.totalFiles > liveWorktree.files.length
+                  ? () => setStoredCompleteFilesystemScan(true)
+                  : undefined
+              }
               renderFile={renderFileRow}
               t={t}
             />
@@ -599,6 +628,8 @@ function WorkingTreeFileList({
   scopeKey,
   query,
   truncated,
+  totalFiles,
+  onShowAll,
   renderFile,
   t,
 }: {
@@ -614,6 +645,8 @@ function WorkingTreeFileList({
   scopeKey: string;
   query: string;
   truncated: boolean;
+  totalFiles: number | null;
+  onShowAll?: () => void;
   renderFile: (
     path: string,
     visiblePath?: string,
@@ -705,10 +738,21 @@ function WorkingTreeFileList({
       ))}
       {truncated && !searching && (
         <div className={styles.truncated} role="status">
-          {t("sourceWorkingTreeFilesTruncated", {
-            count:
-              trackedFiles.length + untrackedFiles.length + ignoredFiles.length,
-          })}
+          <span aria-hidden="true">…</span>
+          {onShowAll && totalFiles !== null ? (
+            <button type="button" onClick={onShowAll}>
+              {t("sourceWorkingTreeShowAll", { count: totalFiles })}
+            </button>
+          ) : totalFiles !== null ? (
+            t("sourceWorkingTreeFilesIncomplete", { count: totalFiles })
+          ) : (
+            t("sourceWorkingTreeFilesTruncated", {
+              count:
+                trackedFiles.length +
+                untrackedFiles.length +
+                ignoredFiles.length,
+            })
+          )}
         </div>
       )}
     </div>

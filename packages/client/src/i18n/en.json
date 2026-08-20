@@ -1550,6 +1550,8 @@
   "sourceNoFiles": "No files.",
   "sourceFilesTruncated": "Showing {shown} of {total}",
   "sourceWorkingTreeFilesTruncated": "Showing the first {count} files; the working tree inventory is truncated.",
+  "sourceWorkingTreeFilesIncomplete": "The inventory is incomplete; {count} files total.",
+  "sourceWorkingTreeShowAll": "Show all {count}",
   "sourceWorkingTreeSections": "Working Tree sections",
   "sourceTrackedFiles": "Tracked",
   "sourceUntrackedFiles": "Untracked",

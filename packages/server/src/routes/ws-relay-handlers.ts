@@ -1410,17 +1410,23 @@ function parseWorktreeCoverage(value: unknown): GitWorktreeCoverage | null {
     untracked?: unknown;
     ignored?: unknown;
     expandedPrefixes?: unknown;
+    filesystemScan?: unknown;
   };
   const expandedPrefixes = parseExpandedPrefixes(coverage.expandedPrefixes);
+  const filesystemScan = coverage.filesystemScan;
   return typeof coverage.tracked === "boolean" &&
     typeof coverage.untracked === "boolean" &&
     typeof coverage.ignored === "boolean" &&
-    expandedPrefixes !== null
+    expandedPrefixes !== null &&
+    (filesystemScan === undefined ||
+      (expandedPrefixes !== undefined &&
+        (filesystemScan === "bounded" || filesystemScan === "complete")))
     ? {
         tracked: coverage.tracked,
         untracked: coverage.untracked,
         ignored: coverage.ignored,
         ...(expandedPrefixes === undefined ? {} : { expandedPrefixes }),
+        ...(filesystemScan === undefined ? {} : { filesystemScan }),
       }
     : null;
 }

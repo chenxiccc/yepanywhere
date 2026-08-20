@@ -1252,5 +1252,7 @@
   "remoteSetupErrorCustomYaRequired": "Benutzerdefinierte YA-URL ist erforderlich",
   "remoteSetupErrorSaveFailed": "Speichern fehlgeschlagen",
   "remoteSetupErrorUpdateFailed": "Aktualisierung fehlgeschlagen",
-  "publicShareRetrying": "Verbindung zur Freigabe wird wiederhergestellt..."
+  "publicShareRetrying": "Verbindung zur Freigabe wird wiederhergestellt...",
+  "sourceWorkingTreeFilesIncomplete": "Das Inventar ist unvollständig; insgesamt {count} Dateien.",
+  "sourceWorkingTreeShowAll": "Alle {count} Dateien anzeigen"
 }

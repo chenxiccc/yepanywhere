@@ -23,6 +23,7 @@ const DISABLED_SNAPSHOT: ProjectWorktreeSnapshot = {
   files: [],
   directories: [],
   truncated: false,
+  totalFiles: null,
 };
 
 export const ProjectWorktreePauseContext = createContext(false);
@@ -50,7 +51,8 @@ export function useProjectWorktree(
     [enabled, projectId, runtime.sourceKey, runtime.transport],
   );
 
-  const { expandedPrefixes, ignored, tracked, untracked } = coverage;
+  const { expandedPrefixes, filesystemScan, ignored, tracked, untracked } =
+    coverage;
   const expandedPrefixKey = expandedPrefixes?.join("\0");
   useEffect(() => {
     if (!store) return;
@@ -64,8 +66,9 @@ export function useProjectWorktree(
             expandedPrefixes:
               expandedPrefixKey === "" ? [] : expandedPrefixKey.split("\0"),
           }),
+      ...(filesystemScan === undefined ? {} : { filesystemScan }),
     });
-  }, [expandedPrefixKey, ignored, store, tracked, untracked]);
+  }, [expandedPrefixKey, filesystemScan, ignored, store, tracked, untracked]);
 
   const current = useSyncExternalStore(
     store?.subscribe ?? emptySubscribe,

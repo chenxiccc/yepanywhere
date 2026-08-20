@@ -25,10 +25,12 @@ export function unionWorktreeCoverage(
   const result = { tracked: false, untracked: false, ignored: false };
   const expandedPrefixes = new Set<string>();
   let compatibilityInventory = false;
+  let completeFilesystemScan = false;
   for (const source of sources) {
     result.tracked ||= source.coverage.tracked;
     result.untracked ||= source.coverage.untracked;
     result.ignored ||= source.coverage.ignored;
+    completeFilesystemScan ||= source.coverage.filesystemScan === "complete";
     if (source.coverage.expandedPrefixes === undefined) {
       compatibilityInventory = true;
     } else {
@@ -44,6 +46,7 @@ export function unionWorktreeCoverage(
       : {
           expandedPrefixes: [...expandedPrefixes].sort(compareWorktreePaths),
         }),
+    ...(completeFilesystemScan ? { filesystemScan: "complete" as const } : {}),
   };
 }
 
@@ -68,7 +71,8 @@ export function sameWorktreeCoverage(
     left.tracked === right.tracked &&
     left.untracked === right.untracked &&
     left.ignored === right.ignored &&
-    sameStrings(left.expandedPrefixes, right.expandedPrefixes)
+    sameStrings(left.expandedPrefixes, right.expandedPrefixes) &&
+    (left.filesystemScan ?? "bounded") === (right.filesystemScan ?? "bounded")
   );
 }
 
@@ -91,15 +95,29 @@ export function pathCoveredByExpandedPrefixes(
 export function directoryForCoverage(
   directory: GitWorktreeDirectory,
   coverage: GitWorktreeCoverage,
+  boundedFileLimit: number,
 ): GitWorktreeDirectory {
   const expanded = coverage.expandedPrefixes?.includes(directory.path) === true;
-  if (directory.pending === !expanded && (!expanded || !directory.truncated)) {
+  const truncated =
+    expanded &&
+    (directory.truncated ||
+      (coverage.filesystemScan !== "complete" &&
+        directory.totalFiles !== undefined &&
+        directory.totalFiles > boundedFileLimit));
+  if (
+    directory.pending === !expanded &&
+    directory.truncated === truncated &&
+    (expanded || directory.totalFiles === undefined)
+  ) {
     return directory;
   }
   return {
     path: directory.path,
     pending: !expanded,
-    truncated: expanded && directory.truncated,
+    truncated,
+    ...(expanded && directory.totalFiles !== undefined
+      ? { totalFiles: directory.totalFiles }
+      : {}),
   };
 }
 

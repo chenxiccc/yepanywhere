@@ -1034,16 +1034,199 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     expect(rootEvents.at(-1)).toMatchObject({
       type: "git-worktree-delta",
       changes: [],
-      directoryChanges: expect.arrayContaining([
-        expect.objectContaining({
-          path: "src",
-          directory: { path: "src", pending: true, truncated: false },
-        }),
-      ]),
+      directoryChanges: [],
     });
 
     notes.release();
     root.release();
+    manager.dispose();
+  });
+
+  it("reports truncation when a Git projection reaches the manager bound", async () => {
+    const projectId = "project-bounded-git-projection" as UrlProjectId;
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-bounded-git-projection",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      fileLimit: 2,
+      watchDirectory: () => new FakeWatcher() as unknown as fs.FSWatcher,
+      scanWorktree: vi.fn(async () => ({
+        headSha: "head-a",
+        baseSha: "base-a",
+        files: mapFiles([
+          file("a.txt", "tracked"),
+          file("b.txt", "tracked"),
+          file("c.txt", "tracked"),
+        ]),
+      })),
+    });
+    const events: GitWorktreeSubscriptionEvent[] = [];
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: false, ignored: false },
+      (event) => events.push(event),
+    );
+
+    await subscription.ready;
+    expect(events[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [file("a.txt", "tracked"), file("b.txt", "tracked")],
+      truncated: true,
+    });
+
+    subscription.release();
+    manager.dispose();
+  });
+
+  it("keeps bounded subscribers bounded beside a complete filesystem subscriber", async () => {
+    const projectId = "project-complete-filesystem-scan" as UrlProjectId;
+    const watchListeners = new Map<
+      string,
+      (eventType: string, filename: Buffer | string | null) => void
+    >();
+    let currentFiles = [
+      file("a.txt", "untracked"),
+      file("b.txt", "untracked"),
+      file("c.txt", "untracked"),
+    ];
+    const scanWorktree = vi.fn(
+      async (_path: string, _coverage: GitWorktreeCoverage) => ({
+        headSha: null,
+        baseSha: null,
+        files: mapFiles(currentFiles),
+        totalFiles: currentFiles.length,
+        directories: new Set([""]),
+        directoryRows: new Map<string, GitWorktreeDirectory>([
+          [
+            "",
+            {
+              path: "",
+              pending: false,
+              truncated: false,
+              totalFiles: currentFiles.length,
+            },
+          ],
+        ]),
+      }),
+    );
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-complete-filesystem-scan",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      fileLimit: 2,
+      debounceMs: 25,
+      platform: "linux",
+      watchDirectory: (path, listener) => {
+        watchListeners.set(path, listener);
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
+      scanWorktree,
+    });
+    const boundedEvents: GitWorktreeSubscriptionEvent[] = [];
+    const bounded = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: [],
+      },
+      (event) => boundedEvents.push(event),
+    );
+    await bounded.ready;
+    expect(boundedEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [file("a.txt", "untracked"), file("b.txt", "untracked")],
+      truncated: true,
+      totalFiles: 3,
+    });
+
+    const hiddenEvents: GitWorktreeSubscriptionEvent[] = [];
+    const hidden = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: false,
+        ignored: false,
+        expandedPrefixes: [],
+      },
+      (event) => hiddenEvents.push(event),
+    );
+    await hidden.ready;
+    expect(hiddenEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: [],
+      truncated: false,
+      totalFiles: 0,
+    });
+
+    const completeEvents: GitWorktreeSubscriptionEvent[] = [];
+    const complete = manager.subscribe(
+      projectId,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: [],
+        filesystemScan: "complete",
+      },
+      (event) => completeEvents.push(event),
+    );
+    await complete.ready;
+    expect(completeEvents[0]).toMatchObject({
+      type: "git-worktree-snapshot",
+      files: currentFiles,
+      truncated: false,
+      totalFiles: 3,
+    });
+    expect(boundedEvents[0]).toMatchObject({
+      files: [file("a.txt", "untracked"), file("b.txt", "untracked")],
+    });
+
+    currentFiles = [file("0.txt", "untracked"), ...currentFiles];
+    watchListeners.get(projectPath)?.("rename", "0.txt");
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.waitFor(() => {
+      expect(boundedEvents.at(-1)).toMatchObject({
+        type: "git-worktree-delta",
+        changes: [
+          { changeType: "create", path: "0.txt" },
+          { changeType: "delete", path: "b.txt" },
+        ],
+        truncated: true,
+        totalFiles: 4,
+      });
+      expect(completeEvents.at(-1)).toMatchObject({
+        type: "git-worktree-delta",
+        changes: [{ changeType: "create", path: "0.txt" }],
+        truncated: false,
+        totalFiles: 4,
+      });
+    });
+
+    complete.release();
+    hidden.release();
+    bounded.release();
     manager.dispose();
   });
 
@@ -1056,8 +1239,9 @@ describe("ProjectWorktreeSubscriptionManager", () => {
         return {
           headSha: null,
           baseSha: null,
-          files: mapFiles([rootFile, nestedFile]),
-          directories: new Set(["", "src"]),
+          files: mapFiles([rootFile]),
+          truncated: true,
+          directories: new Set([""]),
         };
       }
       const srcExpanded = coverage.expandedPrefixes.includes("src");
@@ -1065,13 +1249,23 @@ describe("ProjectWorktreeSubscriptionManager", () => {
         headSha: null,
         baseSha: null,
         files: mapFiles(srcExpanded ? [rootFile, nestedFile] : [rootFile]),
+        totalFiles: srcExpanded ? 2 : 1,
         directories: new Set(srcExpanded ? ["", "src"] : [""]),
         directoryRows: new Map<string, GitWorktreeDirectory>([
-          ["", { path: "", pending: false, truncated: false }],
-          ["src", { path: "src", pending: !srcExpanded, truncated: false }],
+          ["", { path: "", pending: false, truncated: false, totalFiles: 1 }],
+          [
+            "src",
+            {
+              path: "src",
+              pending: !srcExpanded,
+              truncated: false,
+              ...(srcExpanded ? { totalFiles: 1 } : {}),
+            },
+          ],
         ]),
       };
     });
+    const watchedPaths = new Set<string>();
     const manager = new ProjectWorktreeSubscriptionManager({
       scanner: {
         getProject: vi.fn(async () => ({
@@ -1087,6 +1281,10 @@ describe("ProjectWorktreeSubscriptionManager", () => {
         })),
       },
       platform: "darwin",
+      watchDirectory: (path) => {
+        watchedPaths.add(path);
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      },
       scanWorktree,
     });
     const rootEvents: GitWorktreeSubscriptionEvent[] = [];
@@ -1112,7 +1310,8 @@ describe("ProjectWorktreeSubscriptionManager", () => {
 
     expect(legacyEvents[0]).toMatchObject({
       type: "git-worktree-snapshot",
-      files: [rootFile, nestedFile],
+      files: [rootFile],
+      truncated: true,
     });
     expect(rootEvents.at(-1)).toMatchObject({
       type: "git-worktree-delta",
@@ -1135,12 +1334,23 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     expect(srcEvents[0]).toMatchObject({
       type: "git-worktree-snapshot",
       files: [rootFile, nestedFile],
-      directories: [{ path: "src", pending: false, truncated: false }],
+      directories: [
+        {
+          path: "src",
+          pending: false,
+          truncated: false,
+          totalFiles: 1,
+        },
+      ],
+      totalFiles: 2,
     });
     expect(scanWorktree).toHaveBeenLastCalledWith(
       projectPath,
       expect.objectContaining({ expandedPrefixes: ["src"] }),
     );
+    await vi.waitFor(() => {
+      expect(watchedPaths.has(join(projectPath, "src"))).toBe(true);
+    });
 
     src.release();
     legacy.release();

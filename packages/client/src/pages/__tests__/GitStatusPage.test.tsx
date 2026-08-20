@@ -26,6 +26,7 @@ import {
   GIT_STATUS_PULL_CAPABILITY,
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+  GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
   GIT_WORKING_TREE_SECTIONS_CAPABILITY,
 } from "@yep-anywhere/shared";
@@ -1075,6 +1076,7 @@ describe("GitStatusPage filesystem-only projects", () => {
         capabilities: [
           GIT_STATUS_ENHANCED_CAPABILITY,
           GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+          GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
         ],
       },
       loading: false,
@@ -1089,6 +1091,7 @@ describe("GitStatusPage filesystem-only projects", () => {
         projectId: "project-a",
         status: expect.objectContaining({ isGitRepo: false }),
         supportsWorktreeSections: true,
+        supportsCompleteFilesystemScan: true,
       }),
     );
     expect(mocks.useProjectWorktree).toHaveBeenCalledWith(
@@ -1099,6 +1102,26 @@ describe("GitStatusPage filesystem-only projects", () => {
     );
     expect(screen.queryByText("gitStatusNotRepo")).toBeNull();
     expect(screen.queryByRole("button", { name: /init/i })).toBeNull();
+  });
+
+  it("keeps complete filesystem scans unavailable without their capability", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByTestId("blame-browser")).toBeDefined();
+    expect(mocks.renderBlameBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ supportsCompleteFilesystemScan: false }),
+    );
   });
 
   it("keeps the not-repository fallback for older servers", async () => {

@@ -19,6 +19,7 @@ function snapshot(
   files: GitWorkingTreeFile[],
   sequence = 0,
   directories?: GitWorktreeDirectory[],
+  totalFiles?: number,
 ): GitWorktreeSnapshotEvent {
   return {
     type: "git-worktree-snapshot",
@@ -29,6 +30,7 @@ function snapshot(
     files,
     ...(directories ? { directories } : {}),
     truncated: false,
+    ...(totalFiles === undefined ? {} : { totalFiles }),
     timestamp: "2026-08-19T00:00:00.000Z",
   };
 }
@@ -120,6 +122,43 @@ describe("ProjectWorktreeStore", () => {
     });
     releaseRoot();
     expect(onlyWorktreeSubscription(transport).closed).toBe(true);
+  });
+
+  it("widens to a complete filesystem lease and narrows back to bounded", () => {
+    const transport = new FakeSourceTransport();
+    const store = getProjectWorktreeStore(
+      asClientSummarySourceKey("test:worktree-complete-scan-leases"),
+      "project-a",
+      transport,
+    );
+
+    const releaseBounded = store.retain({
+      ...COVERAGE,
+      expandedPrefixes: [],
+      filesystemScan: "bounded",
+    });
+    expect(onlyWorktreeSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: [],
+    });
+
+    const releaseComplete = store.retain({
+      ...COVERAGE,
+      expandedPrefixes: [],
+      filesystemScan: "complete",
+    });
+    expect(onlyWorktreeSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: [],
+      filesystemScan: "complete",
+    });
+
+    releaseComplete();
+    expect(onlyWorktreeSubscription(transport).coverage).toEqual({
+      ...COVERAGE,
+      expandedPrefixes: [],
+    });
+    releaseBounded();
   });
 
   it("keeps compatibility inventory while any lease omits prefixes", () => {
@@ -233,9 +272,12 @@ describe("ProjectWorktreeStore", () => {
     transport.emitSubscriptionEvent(
       subscription.id,
       "git-worktree-snapshot",
-      snapshot([], 0, [notes, src]),
+      snapshot([], 0, [notes, src], 17),
     );
-    expect(store.getSnapshot().directories).toEqual([notes, src]);
+    expect(store.getSnapshot()).toMatchObject({
+      directories: [notes, src],
+      totalFiles: 17,
+    });
 
     const openedSrc: GitWorktreeDirectory = {
       path: "src",
@@ -267,12 +309,14 @@ describe("ProjectWorktreeStore", () => {
         },
       ],
       truncated: true,
+      totalFiles: null,
       timestamp: "2026-08-19T00:00:01.000Z",
     });
 
     expect(store.getSnapshot()).toMatchObject({
       directories: [openedSrc, nested],
       truncated: true,
+      totalFiles: null,
     });
     release();
   });

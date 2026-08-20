@@ -8,6 +8,7 @@ import {
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
+  GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
   GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
@@ -257,6 +258,18 @@ describe("server capability advertisements", () => {
     expect(advertisement).toEqual({
       capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
       capabilityBits: [[1, 2 ** 9]],
+    });
+  });
+
+  it("assigns complete Working Tree scans to permanent capability ID 42", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeCompleteScan.id).toBe(42);
+    const advertisement = encodeVersionedServerCapabilities(
+      [GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 2 ** 10]],
     });
   });
 

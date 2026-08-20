@@ -282,11 +282,21 @@ no worktree subscription.
 A current client begins such a project with only the filesystem root open. The
 snapshot contains direct root files and one pending row for each direct
 subdirectory; a pending row claims no file count. Opening a row leases that
-canonical project-relative prefix and its ancestors, enumerates only its direct
-files and subdirectories, and watches that directory non-recursively. Each open
-directory has its own 5,000-file bound. Reaching it preserves every direct
-subdirectory row, marks the opened row incomplete, and displays the published
-count as `n+` rather than claiming completeness.
+canonical project-relative prefix and its ancestors, enumerates all of its
+direct files and subdirectories, and watches that directory non-recursively.
+Unopened descendants are neither traversed nor watched.
+
+The server retains every enumerated direct file as opened-directory truth. An
+ordinary subscriber receives at most 5,000 files from each open directory, with
+an exact total for every successfully enumerated directory. A truncated browser
+ends with an ellipsis row and **Show all N**, where `N` is the total file count
+across its open-directory corpus. That action acquires an explicit complete
+filesystem lease; it removes only the subscriber projection bound, so a wide
+flat directory deliberately publishes every row. Other subscribers remain
+bounded. If an open directory cannot return rows, it remains explicitly
+incomplete. A separate count-only enumeration may still publish its exact total
+with an empty row response; if that also fails, the total is omitted rather than
+reported as a lower bound.
 
 Directory disclosure is subscription state, not a selectable pseudo-file.
 Collapsing a directory releases it and every descendant prefix from that client
@@ -307,9 +317,17 @@ without directory rows from an older source server; that safely displays the
 server's bounded file corpus without offering unsupported lazy disclosure.
 When omitted-prefix and expanded-prefix subscribers coexist, the shared file
 scan retains the compatibility corpus while a separate scan of the expanded
-prefix union preserves current clients' directory rows. Compatibility
-subscribers receive no directory fields; expanded-prefix subscribers receive
-their own narrow file and directory projection.
+prefix union preserves current clients' directory rows, files, totals, and
+watchers. Compatibility subscribers receive no directory fields;
+expanded-prefix subscribers receive their own narrow file and directory
+projection.
+
+Permanent capability 42, `git-working-tree-complete-scan`, owns the optional
+`coverage.filesystemScan: "complete"` request, snapshot and delta totals, and
+the visible **Show all N** action. Without it, the client keeps the bounded
+inventory and truncation notice, sends no complete request, and never exposes a
+button whose server cannot honor. Capability 41 keeps its existing lazy
+opened-directory meaning.
 
 The same capability owns
 `GET /api/projects/:projectId/git/untracked-files` and cache-backed status via
@@ -424,8 +442,9 @@ actions and watch events may refresh more frequently.
 
 A filesystem-only walk survives its directories changing under it. A directory
 removed mid-walk is skipped and leaves the inventory complete; one that cannot
-be read is skipped and reported as an incomplete inventory. Only the file limit
-ends a walk early.
+be read is skipped and reported as an incomplete inventory. The compatibility
+breadth-first walk alone ends early at its file limit. Opened-directory scans
+enumerate each direct file before applying subscriber-specific delivery bounds.
 
 A 150 ms quiet timer coalesces an ordinary burst. A separate five-second
 maximum deadline is pinned to the first unprocessed filesystem event; later
@@ -871,7 +890,10 @@ Files plus legacy compact untracked expansion and sends none of those requests.
 the expanded live snapshot and delta contract described above. Its absence
 keeps ID 38's static behavior and sends no worktree subscription. The Maintainer
 approved expanding ID 41 before its first published release rather than
-allocating another capability. `git-incoming-commits` (permanent ID 39,
+allocating another capability. `git-working-tree-complete-scan` (permanent ID
+42, version-implied from `0.7.2`) separately owns exact filesystem totals and
+complete projection requests; its absence preserves ID 41's bounded inventory
+without a Show-all action. `git-incoming-commits` (permanent ID 39,
 version-implied from `0.7.1`) owns the local tracking-ref preview; its absence
 keeps upstream inert. None broadens a published Source Control capability. See
 [server capabilities](server-capabilities.md) and

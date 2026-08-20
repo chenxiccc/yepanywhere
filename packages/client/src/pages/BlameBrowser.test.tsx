@@ -80,6 +80,7 @@ async function emitWorktreeSnapshot(
   transport: FakeSourceTransport,
   files: GitWorkingTreeFile[],
   directories?: GitWorktreeDirectory[],
+  inventory?: { truncated?: boolean; totalFiles?: number },
 ): Promise<void> {
   await waitFor(() =>
     expect(transport.getSubscriptions("worktree").length).toBeGreaterThan(0),
@@ -98,7 +99,10 @@ async function emitWorktreeSnapshot(
       baseSha: "base-a",
       files,
       ...(directories ? { directories } : {}),
-      truncated: false,
+      truncated: inventory?.truncated ?? false,
+      ...(inventory?.totalFiles === undefined
+        ? {}
+        : { totalFiles: inventory.totalFiles }),
       timestamp: "2026-08-19T00:00:00.000Z",
     });
   });
@@ -501,6 +505,85 @@ describe("BlameBrowser", () => {
       ignored: false,
       expandedPrefixes: [],
     });
+  });
+
+  it("requests the complete opened-directory inventory from a total-count row", async () => {
+    const transport = new FakeSourceTransport();
+    const runtime = createRuntime(
+      transport,
+      "test:blame-browser-complete-scan",
+    );
+    const status: GitStatusInfo = {
+      isGitRepo: false,
+      branch: null,
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      isClean: true,
+      files: [],
+    };
+
+    render(
+      withRuntime(
+        runtime,
+        <BlameBrowser
+          projectId="p1"
+          isWideScreen={false}
+          status={status}
+          supportsWorkingTreeFiles
+          supportsWorktreeSections
+          supportsCompleteFilesystemScan
+          t={(key, variables) =>
+            key === "sourceWorkingTreeShowAll"
+              ? `Show all ${variables?.count}`
+              : key
+          }
+        />,
+      ),
+    );
+
+    await emitWorktreeSnapshot(
+      transport,
+      [
+        { path: "a.txt", tracked: false, kind: "untracked" },
+        { path: "b.txt", tracked: false, kind: "untracked" },
+      ],
+      [],
+      { truncated: true, totalFiles: 3 },
+    );
+    expect(transport.getSubscriptions("worktree")[0]?.coverage).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: [],
+    });
+    expect(screen.getByRole("button", { name: "Show all 3" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all 3" }));
+    await waitFor(() =>
+      expect(transport.getSubscriptions("worktree")).toHaveLength(2),
+    );
+    expect(transport.getSubscriptions("worktree")[1]?.coverage).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: [],
+      filesystemScan: "complete",
+    });
+    expect(screen.getByText("sourceWorkingTreeFilesIncomplete")).toBeDefined();
+
+    await emitWorktreeSnapshot(
+      transport,
+      [
+        { path: "a.txt", tracked: false, kind: "untracked" },
+        { path: "b.txt", tracked: false, kind: "untracked" },
+        { path: "c.txt", tracked: false, kind: "untracked" },
+      ],
+      [],
+      { totalFiles: 3 },
+    );
+    expect(await screen.findByText("c.txt")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Show all 3" })).toBeNull();
   });
 
   it("freezes visible deltas while paused without releasing the lease", async () => {

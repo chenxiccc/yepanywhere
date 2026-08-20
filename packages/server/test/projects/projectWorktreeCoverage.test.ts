@@ -49,6 +49,39 @@ describe("project worktree coverage", () => {
     });
   });
 
+  it("lets a complete filesystem subscriber widen the shared scan policy", () => {
+    const sources = [
+      source({
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: ["src"],
+      }),
+      source({
+        tracked: true,
+        untracked: true,
+        ignored: false,
+        expandedPrefixes: ["notes"],
+        filesystemScan: "complete" as const,
+      }),
+    ];
+
+    expect(unionWorktreeCoverage(sources)).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: ["notes", "src"],
+      filesystemScan: "complete",
+    });
+    expect(unionExpandedWorktreeCoverage(sources)).toEqual({
+      tracked: true,
+      untracked: true,
+      ignored: false,
+      expandedPrefixes: ["notes", "src"],
+      filesystemScan: "complete",
+    });
+  });
+
   it("has no directory inventory without an expanded-prefix subscriber", () => {
     expect(
       unionExpandedWorktreeCoverage([

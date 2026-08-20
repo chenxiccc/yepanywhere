@@ -1258,6 +1258,8 @@
   "sourceFilterFiles": "筛选文件…",
   "sourceNoFiles": "没有文件。",
   "sourceFilesTruncated": "显示 {shown} / {total}",
+  "sourceWorkingTreeFilesIncomplete": "清单不完整；共 {count} 个文件。",
+  "sourceWorkingTreeShowAll": "显示全部 {count} 个文件",
   "sourceBlameNotCommitted": "尚未提交",
   "sourceBlameLoading": "正在加载提交历史…",
   "sourceBlameLoadFailed": "加载提交历史失败",

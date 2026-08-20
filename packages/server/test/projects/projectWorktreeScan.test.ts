@@ -3,12 +3,43 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveGitMetadata } from "../../src/projects/projectWorktreeSubscriptionManager.js";
 import {
   scanFilesystemWorktree,
   scanGitWorktree,
 } from "../../src/projects/projectWorktreeScan.js";
+
+const fsReadFailure = vi.hoisted(() => ({
+  typedDirectory: null as string | null,
+}));
+vi.mock("node:fs/promises", async () => {
+  const actual =
+    await vi.importActual<typeof import("node:fs/promises")>(
+      "node:fs/promises",
+    );
+  const actualReaddir = actual.readdir as unknown as (
+    ...args: unknown[]
+  ) => unknown;
+  return {
+    ...actual,
+    readdir: (...args: unknown[]) => {
+      const options = args[1];
+      if (
+        String(args[0]) === fsReadFailure.typedDirectory &&
+        options !== null &&
+        typeof options === "object" &&
+        "withFileTypes" in options &&
+        options.withFileTypes === true
+      ) {
+        return Promise.reject(
+          Object.assign(new Error("typed read failed"), { code: "EIO" }),
+        );
+      }
+      return actualReaddir(...args);
+    },
+  };
+});
 
 const execFileAsync = promisify(execFile);
 
@@ -25,6 +56,7 @@ describe("scanGitWorktree", () => {
   let repo: string;
 
   beforeEach(async () => {
+    fsReadFailure.typedDirectory = null;
     repo = await mkdtemp(join(tmpdir(), "ya-worktree-scan-"));
     await runGit(repo, ["init"]);
     await runGit(repo, ["config", "user.email", "ya-test@example.com"]);
@@ -184,12 +216,43 @@ describe("scanGitWorktree", () => {
       path: "notes",
       pending: false,
       truncated: false,
+      totalFiles: 1,
     });
+    expect(opened.totalFiles).toBe(opened.files.size);
     expect(opened.directoryRows?.get("notes/nested")).toEqual({
       path: "notes/nested",
       pending: true,
       truncated: false,
     });
+  });
+
+  it("reports an exact total when row enumeration fails after a count-only read", async () => {
+    await mkdir(join(repo, "blocked"));
+    await writeFile(join(repo, "blocked", "a.txt"), "a\n");
+    await writeFile(join(repo, "blocked", "b.txt"), "b\n");
+    fsReadFailure.typedDirectory = join(repo, "blocked");
+
+    const scan = await scanFilesystemWorktree(
+      repo,
+      {
+        tracked: true,
+        untracked: true,
+        ignored: true,
+        expandedPrefixes: ["blocked"],
+      },
+      100,
+    );
+
+    expect(scan.files.has("blocked/a.txt")).toBe(false);
+    expect(scan.files.has("blocked/b.txt")).toBe(false);
+    expect(scan.directoryRows?.get("blocked")).toEqual({
+      path: "blocked",
+      pending: false,
+      truncated: true,
+      totalFiles: 2,
+    });
+    expect(scan.totalFiles).toBe(scan.files.size + 2);
+    expect(scan.truncated).toBe(true);
   });
 
   it("does not enumerate a requested symlink as an opened directory", async () => {
@@ -217,7 +280,7 @@ describe("scanGitWorktree", () => {
     }
   });
 
-  it("bounds files per opened filesystem directory without hiding subdirectories", async () => {
+  it("enumerates every direct file in an opened filesystem directory", async () => {
     await mkdir(join(repo, "many", "nested"), { recursive: true });
     await writeFile(join(repo, "many", "a.txt"), "a\n");
     await writeFile(join(repo, "many", "b.txt"), "b\n");
@@ -235,17 +298,19 @@ describe("scanGitWorktree", () => {
 
     expect(
       [...scan.files.keys()].filter((path) => path.startsWith("many/")),
-    ).toEqual(["many/a.txt"]);
+    ).toEqual(["many/a.txt", "many/b.txt"]);
     expect(scan.directoryRows?.get("many")).toEqual({
       path: "many",
       pending: false,
-      truncated: true,
+      truncated: false,
+      totalFiles: 2,
     });
     expect(scan.directoryRows?.get("many/nested")).toEqual({
       path: "many/nested",
       pending: true,
       truncated: false,
     });
+    expect(scan.totalFiles).toBe(scan.files.size);
   });
 
   it("resolves separate per-worktree and common Git directories", async () => {
