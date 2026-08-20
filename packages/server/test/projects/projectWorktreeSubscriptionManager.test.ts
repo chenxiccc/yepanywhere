@@ -1265,7 +1265,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
         ]),
       };
     });
-    const watchedPaths = new Set<string>();
+    const watchers = new Map<string, FakeWatcher>();
     const manager = new ProjectWorktreeSubscriptionManager({
       scanner: {
         getProject: vi.fn(async () => ({
@@ -1282,8 +1282,9 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       },
       platform: "darwin",
       watchDirectory: (path) => {
-        watchedPaths.add(path);
-        return new FakeWatcher() as unknown as fs.FSWatcher;
+        const watcher = new FakeWatcher();
+        watchers.set(path, watcher);
+        return watcher as unknown as fs.FSWatcher;
       },
       scanWorktree,
     });
@@ -1349,12 +1350,16 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       expect.objectContaining({ expandedPrefixes: ["src"] }),
     );
     await vi.waitFor(() => {
-      expect(watchedPaths.has(join(projectPath, "src"))).toBe(true);
+      expect(watchers.get(join(projectPath, "src"))?.closed).toBe(false);
     });
 
-    src.release();
-    legacy.release();
     root.release();
+    src.release();
+    await vi.waitFor(() => {
+      expect(watchers.get(join(projectPath, "src"))?.closed).toBe(true);
+      expect(watchers.get(projectPath)?.closed).toBe(false);
+    });
+    legacy.release();
     manager.dispose();
   });
 
