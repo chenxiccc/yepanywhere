@@ -13,12 +13,26 @@ import {
   __resetDeveloperModeForTest,
   getRelayDebugEnabled,
 } from "../../../hooks/useDeveloperMode";
+import { saveHost } from "../../../lib/hostStorage";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { DevelopmentSettings } from "../DevelopmentSettings";
 
 let isManualReloadMode = true;
 let interruptibleSessionCount = 0;
 let queuedSessionMessageCount = 0;
+const { remoteConnectionState } = vi.hoisted(() => ({
+  remoteConnectionState: {
+    value: null as null | {
+      connection: object | null;
+      currentHostId: string | null;
+      currentRelayUsername: string | null;
+    },
+  },
+}));
+
+vi.mock("../../../contexts/RemoteConnectionContext", () => ({
+  useOptionalRemoteConnection: () => remoteConnectionState.value,
+}));
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({
@@ -66,9 +80,9 @@ vi.mock("../../../i18n", () => ({
           developmentCrossHostDelegationDescription:
             "Expose the experimental host preview",
           developmentHostsPreviewOpen: "Open YA Hosts",
-          developmentMultiHostMonitorTitle: "All Hosts Monitor",
-          developmentMultiHostMonitorDescription:
-            "Show the experimental all-hosts monitor link",
+          developmentRelayMonitorTitle: "Relay Monitor",
+          developmentRelayMonitorDescription: "Open relay telemetry",
+          developmentRelayMonitorOpen: "Open Relay Monitor",
           developmentRelayDebugTitle: "Relay Debug Logging",
           developmentRelayDebugDescription: "Capture relay traffic",
           developmentDiagnosticsTitle: "Browser Diagnostics",
@@ -129,6 +143,7 @@ describe("DevelopmentSettings", () => {
     isManualReloadMode = true;
     interruptibleSessionCount = 0;
     queuedSessionMessageCount = 0;
+    remoteConnectionState.value = null;
     window.localStorage.clear();
     __resetDeveloperModeForTest();
   });
@@ -144,7 +159,7 @@ describe("DevelopmentSettings", () => {
 
     expect(screen.getByText("Schema Validation")).toBeTruthy();
     expect(screen.getByText("YA Hosts Preview")).toBeTruthy();
-    expect(screen.getByText("All Hosts Monitor")).toBeTruthy();
+    expect(screen.queryByText("Relay Monitor")).toBeNull();
     expect(screen.getByText("Relay Debug Logging")).toBeTruthy();
     expect(screen.getByText("Browser Diagnostics")).toBeTruthy();
     expect(screen.getByText("Service Worker")).toBeTruthy();
@@ -211,22 +226,28 @@ describe("DevelopmentSettings", () => {
     });
   });
 
-  it("toggles the all-hosts monitor link from development settings", () => {
+  it("links directly to the configured relay monitor", () => {
+    saveHost({
+      id: "relay-host",
+      displayName: "Relay host",
+      mode: "relay",
+      relayUrl: "wss://relay.example.test/team/ws",
+      relayUsername: "alice",
+      srpUsername: "alice",
+      createdAt: "2026-08-20T00:00:00.000Z",
+    });
+    remoteConnectionState.value = {
+      connection: {},
+      currentHostId: null,
+      currentRelayUsername: "alice",
+    };
     renderSettings();
 
-    const toggle = screen.getByRole("checkbox", {
-      name: "All Hosts Monitor",
-    }) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
-
-    fireEvent.click(toggle);
-
-    expect(toggle.checked).toBe(true);
-    expect(
-      JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),
-    ).toMatchObject({
-      multiHostMonitorEnabled: true,
-    });
+    const link = screen.getByRole("link", { name: "Open Relay Monitor" });
+    expect(link.getAttribute("href")).toBe(
+      "https://relay.example.test/team/stats",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
   });
 
   it("reveals the server-scoped hosts route behind its toggle", () => {

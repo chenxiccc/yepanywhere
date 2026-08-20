@@ -189,6 +189,22 @@ test.describe("Full Relay Integration", () => {
     ).toBeVisible();
   });
 
+  test("development settings links to the configured relay monitor", async ({
+    page,
+    remoteClientURL,
+    relayWsURL,
+  }) => {
+    await loginViaRelay(page, remoteClientURL, relayWsURL);
+    await page.goto(remoteRelayUrl(remoteClientURL, "settings/development"));
+
+    const relayUrl = new URL(relayWsURL);
+    relayUrl.protocol = relayUrl.protocol === "wss:" ? "https:" : "http:";
+    relayUrl.pathname = relayUrl.pathname.replace(/\/ws$/, "/stats");
+    await expect(
+      page.getByRole("link", { name: "Open Relay Monitor" }),
+    ).toHaveAttribute("href", relayUrl.toString());
+  });
+
   test("large assistant content stays viewable directly and uses bounded relay chunks", async ({
     page,
     baseURL,

@@ -262,8 +262,9 @@ fallback.
 
 - The remote client owns `/-/monitor` outside the ordinary single-current-host
   provider tree. Direct navigation is deliberate experimental access; the
-  normal remote UI exposes a link near **Switch Host** only when the
-  browser-local development setting is enabled.
+  normal remote UI does not advertise the route. When the current saved host
+  uses a relay, Development settings instead links directly to that configured
+  relay's `/stats` operator monitor in a new tab.
 - Mounting the route selects all saved hosts and attempts resume only for hosts
   with a stored session. A host without one is **Sign-in required** and does
   not open a login dialog automatically.

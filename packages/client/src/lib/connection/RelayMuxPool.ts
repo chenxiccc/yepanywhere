@@ -9,13 +9,13 @@ import {
   isRelayMuxError,
   isRelayMuxOpened,
   isRelayMuxReady,
-  normalizeRelayUrl,
 } from "@yep-anywhere/shared";
 import type { SavedHost } from "../hostStorage";
 import {
   openRelayClientSocket,
   type OpenRelayClientSocketOptions,
 } from "./RelayClientSocket";
+import { relayEndpoints, type RelayEndpoints } from "./relayEndpoints";
 import type { RelaySocketFactory } from "./SecureConnection";
 import type { SecureConnectionSocket } from "./SecureConnectionSocket";
 
@@ -31,13 +31,6 @@ const WS_CONNECTING = 0;
 const WS_OPEN = 1;
 const WS_CLOSING = 2;
 const WS_CLOSED = 3;
-
-interface RelayMuxEndpoints {
-  healthUrl: string;
-  key: string;
-  muxUrl: string;
-  relayUrl: string;
-}
 
 interface RelayHealthResponse {
   relayCapabilities?: unknown;
@@ -72,32 +65,6 @@ export class RelayMuxCircuitOpenError extends Error {
 
 function abortError(): Error {
   return new DOMException("Relay connection aborted", "AbortError");
-}
-
-function relayMuxEndpoints(rawRelayUrl: string): RelayMuxEndpoints | null {
-  let relayUrl: string;
-  try {
-    relayUrl = normalizeRelayUrl(rawRelayUrl);
-  } catch {
-    return null;
-  }
-  const wsUrl = new URL(relayUrl);
-  if (!wsUrl.pathname.endsWith("/ws")) return null;
-  const basePath = wsUrl.pathname.slice(0, -3);
-
-  const muxUrl = new URL(wsUrl);
-  muxUrl.pathname = `${basePath}/mux`;
-
-  const healthUrl = new URL(wsUrl);
-  healthUrl.protocol = wsUrl.protocol === "wss:" ? "https:" : "http:";
-  healthUrl.pathname = `${basePath}/health`;
-
-  return {
-    healthUrl: healthUrl.toString(),
-    key: `${wsUrl.protocol}//${wsUrl.host}${basePath}`,
-    muxUrl: muxUrl.toString(),
-    relayUrl,
-  };
 }
 
 function socketPayloadBytes(data: string | ArrayBuffer | ArrayBufferView): {
@@ -452,7 +419,7 @@ class RelayMuxPhysicalConnection {
       pending.reject(new Error(event.reason || "Relay mux disconnected"));
     }
     this.pending.clear();
-    for (const circuitId of [...this.circuits.keys()]) {
+    for (const circuitId of this.circuits.keys()) {
       this.removeCircuit(
         circuitId,
         event.code || 1006,
@@ -555,7 +522,7 @@ class RelayMuxGroup {
   private readonly lifetime = new AbortController();
 
   constructor(
-    private readonly endpoints: RelayMuxEndpoints,
+    private readonly endpoints: RelayEndpoints,
     private readonly options: Required<RelayMuxPoolOptions>,
   ) {}
 
@@ -675,7 +642,7 @@ class RelayMuxGroup {
 export class RelayMuxSocketPool {
   private readonly eligibleHostIds = new Set<string>();
   private readonly groups = new Map<string, RelayMuxGroup>();
-  private readonly endpointsByHostId = new Map<string, RelayMuxEndpoints>();
+  private readonly endpointsByHostId = new Map<string, RelayEndpoints>();
   private readonly options: Required<RelayMuxPoolOptions>;
   private disposed = false;
 
@@ -689,7 +656,7 @@ export class RelayMuxSocketPool {
 
     const hostsByGroup = new Map<
       string,
-      Array<{ endpoints: RelayMuxEndpoints; host: SavedHost }>
+      Array<{ endpoints: RelayEndpoints; host: SavedHost }>
     >();
     for (const host of hosts) {
       if (
@@ -700,7 +667,7 @@ export class RelayMuxSocketPool {
       ) {
         continue;
       }
-      const endpoints = relayMuxEndpoints(host.relayUrl);
+      const endpoints = relayEndpoints(host.relayUrl);
       if (!endpoints) continue;
       let groupHosts = hostsByGroup.get(endpoints.key);
       if (!groupHosts) {

@@ -17,6 +17,7 @@ import {
   removeHost,
   type SavedHost,
 } from "../lib/hostStorage";
+import { relayEndpoints } from "../lib/connection/relayEndpoints";
 
 type HostStatus = "online" | "offline" | "checking" | "unknown";
 
@@ -58,12 +59,13 @@ export function HostPickerPage() {
       if (!host.relayUrl || !host.relayUsername) return "unknown";
 
       try {
-        // Convert ws:// or wss:// URL to http:// or https:// and remove /ws suffix
-        const httpUrl = host.relayUrl
-          .replace(/^ws/, "http")
-          .replace(/\/ws$/, "");
+        const endpoints = relayEndpoints(host.relayUrl);
+        if (!endpoints) return "offline";
         const res = await fetch(
-          `${httpUrl}/online/${encodeURIComponent(host.relayUsername)}`,
+          new URL(
+            `online/${encodeURIComponent(host.relayUsername)}`,
+            endpoints.httpBaseUrl,
+          ),
           { signal: AbortSignal.timeout(5000) },
         );
         if (!res.ok) return "offline";

@@ -4,8 +4,6 @@ import { UI_KEYS } from "../lib/storageKeys";
 interface DeveloperModeSettings {
   /** Expose the experimental server-scoped YA Hosts preview */
   crossHostDelegationEnabled: boolean;
-  /** Expose the experimental all-hosts monitor link */
-  multiHostMonitorEnabled: boolean;
   /** Log relay requests/responses to console for debugging */
   relayDebugEnabled: boolean;
   /** Capture connection logs and send to server for debugging */
@@ -16,7 +14,6 @@ interface DeveloperModeSettings {
 
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
   crossHostDelegationEnabled: false,
-  multiHostMonitorEnabled: false,
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
   showConnectionBars: false,
@@ -40,9 +37,6 @@ function normalizeSettings(raw: unknown): DeveloperModeSettings {
     crossHostDelegationEnabled:
       parsed.crossHostDelegationEnabled ??
       DEFAULT_SETTINGS.crossHostDelegationEnabled,
-    multiHostMonitorEnabled:
-      parsed.multiHostMonitorEnabled ??
-      DEFAULT_SETTINGS.multiHostMonitorEnabled,
     relayDebugEnabled:
       parsed.relayDebugEnabled ?? DEFAULT_SETTINGS.relayDebugEnabled,
     remoteLogCollectionEnabled:
@@ -119,10 +113,6 @@ export function useDeveloperMode() {
     updateSettings({ ...currentSettings, crossHostDelegationEnabled: enabled });
   }, []);
 
-  const setMultiHostMonitorEnabled = useCallback((enabled: boolean) => {
-    updateSettings({ ...currentSettings, multiHostMonitorEnabled: enabled });
-  }, []);
-
   const setRelayDebugEnabled = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, relayDebugEnabled: enabled });
   }, []);
@@ -139,8 +129,6 @@ export function useDeveloperMode() {
   return {
     crossHostDelegationEnabled: settings.crossHostDelegationEnabled,
     setCrossHostDelegationEnabled,
-    multiHostMonitorEnabled: settings.multiHostMonitorEnabled,
-    setMultiHostMonitorEnabled,
     relayDebugEnabled: settings.relayDebugEnabled,
     setRelayDebugEnabled,
     remoteLogCollectionEnabled: settings.remoteLogCollectionEnabled,

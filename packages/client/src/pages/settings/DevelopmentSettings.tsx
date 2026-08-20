@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSchemaValidationContext } from "../../contexts/SchemaValidationContext";
+import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
@@ -8,6 +9,8 @@ import { useSchemaValidation } from "../../hooks/useSchemaValidation";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useSessionPerformanceSettings } from "../../hooks/useSessionPerformanceSettings";
 import { useI18n } from "../../i18n";
+import { relayEndpoints } from "../../lib/connection/relayEndpoints";
+import { getHostById, getHostByRelayUsername } from "../../lib/hostStorage";
 import {
   SESSION_SCROLL_BEHAVIOR_MODES,
   type SessionScrollBehaviorMode,
@@ -54,6 +57,19 @@ const sessionScrollMemoryModeLabelKeys: Record<
 export function DevelopmentSettings() {
   const { t } = useI18n();
   const basePath = useRemoteBasePath();
+  const remoteConnection = useOptionalRemoteConnection();
+  const currentRelayHost = remoteConnection?.connection
+    ? remoteConnection.currentRelayUsername
+      ? getHostByRelayUsername(remoteConnection.currentRelayUsername)
+      : remoteConnection.currentHostId
+        ? getHostById(remoteConnection.currentHostId)
+        : undefined
+    : undefined;
+  const currentRelayUrl =
+    currentRelayHost?.mode === "relay" ? currentRelayHost.relayUrl : undefined;
+  const relayMonitorUrl = currentRelayUrl
+    ? relayEndpoints(currentRelayUrl)?.statsUrl
+    : undefined;
   useSettingsPaneTitle(t("developmentSectionTitle"));
   const {
     isManualReloadMode,
@@ -69,8 +85,6 @@ export function DevelopmentSettings() {
   const {
     crossHostDelegationEnabled,
     setCrossHostDelegationEnabled,
-    multiHostMonitorEnabled,
-    setMultiHostMonitorEnabled,
     relayDebugEnabled,
     setRelayDebugEnabled,
     remoteLogCollectionEnabled,
@@ -88,7 +102,6 @@ export function DevelopmentSettings() {
         ? {
             validationEnabled: validationSettings.enabled,
             crossHostDelegationEnabled,
-            multiHostMonitorEnabled,
             relayDebugEnabled,
             remoteLogCollectionEnabled,
             sessionScrollBehaviorMode,
@@ -99,7 +112,6 @@ export function DevelopmentSettings() {
     [
       validationSettings.enabled,
       crossHostDelegationEnabled,
-      multiHostMonitorEnabled,
       relayDebugEnabled,
       remoteLogCollectionEnabled,
       serverSettings,
@@ -110,7 +122,6 @@ export function DevelopmentSettings() {
     (snapshot: NonNullable<typeof undoState>) => {
       setValidationEnabled(snapshot.validationEnabled);
       setCrossHostDelegationEnabled(snapshot.crossHostDelegationEnabled);
-      setMultiHostMonitorEnabled(snapshot.multiHostMonitorEnabled);
       setRelayDebugEnabled(snapshot.relayDebugEnabled);
       setRemoteLogCollectionEnabled(snapshot.remoteLogCollectionEnabled);
       setSessionScrollBehaviorMode(snapshot.sessionScrollBehaviorMode);
@@ -126,7 +137,6 @@ export function DevelopmentSettings() {
     [
       setValidationEnabled,
       setCrossHostDelegationEnabled,
-      setMultiHostMonitorEnabled,
       setRelayDebugEnabled,
       setRemoteLogCollectionEnabled,
       setSessionScrollBehaviorMode,
@@ -236,22 +246,21 @@ export function DevelopmentSettings() {
             </label>
           </div>
         </SettingsItem>
-        <SettingsItem
-          label={t("developmentMultiHostMonitorTitle")}
-          description={t("developmentMultiHostMonitorDescription")}
-        >
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              aria-label={t("developmentMultiHostMonitorTitle")}
-              checked={multiHostMonitorEnabled}
-              onChange={(event) =>
-                setMultiHostMonitorEnabled(event.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
-        </SettingsItem>
+        {relayMonitorUrl && (
+          <SettingsItem
+            label={t("developmentRelayMonitorTitle")}
+            description={t("developmentRelayMonitorDescription")}
+          >
+            <a
+              className="settings-button settings-button-secondary"
+              href={relayMonitorUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t("developmentRelayMonitorOpen")}
+            </a>
+          </SettingsItem>
+        )}
         <SettingsItem
           label={t("developmentRelayDebugTitle")}
           description={t("developmentRelayDebugDescription")}
