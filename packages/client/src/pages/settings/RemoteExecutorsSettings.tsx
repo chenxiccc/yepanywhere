@@ -17,8 +17,14 @@ interface ExecutorStatus {
 export function RemoteExecutorsSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("remoteExecutorsTitle"));
-  const { executors, loading, addExecutor, removeExecutor, testExecutor } =
-    useRemoteExecutors();
+  const {
+    executors,
+    loading,
+    addExecutor,
+    removeExecutor,
+    replaceExecutors,
+    testExecutor,
+  } = useRemoteExecutors();
 
   const [newHost, setNewHost] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -36,17 +42,10 @@ export function RemoteExecutorsSettings() {
   );
   const restoreUndoState = useCallback(
     async (snapshot: NonNullable<typeof undoState>) => {
-      const want = new Set(snapshot.executors);
-      const have = new Set(executors);
-      for (const host of executors) {
-        if (!want.has(host)) await removeExecutor(host);
-      }
-      for (const host of snapshot.executors) {
-        if (!have.has(host)) await addExecutor(host);
-      }
+      await replaceExecutors(snapshot.executors);
       setAddError(null);
     },
-    [executors, addExecutor, removeExecutor],
+    [replaceExecutors],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
 
@@ -124,6 +123,7 @@ export function RemoteExecutorsSettings() {
         <SettingsItem
           label={t("remoteExecutorsAddTitle")}
           description={t("remoteExecutorsAddDescription")}
+          className={styles.addItem}
         >
           <div className={styles.addRow}>
             <input

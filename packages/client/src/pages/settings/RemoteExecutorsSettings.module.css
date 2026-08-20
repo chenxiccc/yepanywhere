@@ -115,3 +115,13 @@
 .requirements li {
   margin-bottom: var(--space-1);
 }
+
+@media (max-width: 600px) {
+  .addItem:global(.settings-item) {
+    display: block;
+  }
+
+  .addRow {
+    margin-top: var(--space-3);
+  }
+}

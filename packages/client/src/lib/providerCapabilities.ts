@@ -10,6 +10,12 @@ const PROVIDERS_WITH_LOCAL_SESSION_SANDBOX: ReadonlySet<ProviderName> = new Set(
   ["claude", "claude-gateway", "claude-ollama", "codex"],
 );
 
+const PROVIDERS_WITH_REMOTE_EXECUTORS: ReadonlySet<ProviderName> = new Set([
+  "claude",
+  "claude-gateway",
+  "claude-ollama",
+]);
+
 export interface SessionProviderCapabilities {
   providerName?: ProviderName;
   providerInfo: ProviderInfo | null;
@@ -31,6 +37,14 @@ export function providerSupportsLocalSessionSandbox(
 ): boolean {
   return providerName
     ? PROVIDERS_WITH_LOCAL_SESSION_SANDBOX.has(providerName)
+    : false;
+}
+
+export function providerSupportsRemoteExecutors(
+  providerName?: ProviderName | null,
+): boolean {
+  return providerName
+    ? PROVIDERS_WITH_REMOTE_EXECUTORS.has(providerName)
     : false;
 }
 

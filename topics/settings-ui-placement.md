@@ -160,12 +160,16 @@ UI should state directly.
   decisions, including the associated tool inputs or commands, to
   `logs/approval-decisions.jsonl`. It does not currently audit bypass-mode
   selection or transitions.
-- **Remote Executors.** The current implementation starts Claude sessions on
-  SSH hosts named by the server account's `~/.ssh/config`. A home-relative
-  local project maps the suffix below that operating-system account's home to
-  the remote SSH account's home; a project outside local home requires the
-  exact same absolute path remotely. The remote Claude CLI owns authentication
-  and may differ in version from the local SDK-managed CLI.
+- **Remote Executors.** This server-wide host list is the sole enablement for
+  the New Session **Run via SSH** chooser. Adding or removing a host updates an
+  already-mounted New Session form immediately; no page reload or server restart
+  is required. The chooser appears only for provider adapters that implement
+  remote execution; unsupported providers cannot retain an ignored executor
+  value. Hosts are aliases in the server account's `~/.ssh/config`. A
+  home-relative local project maps the suffix below that operating-system
+  account's home to the remote SSH account's home; a project outside local home
+  requires the exact same absolute path remotely. The remote provider CLI owns
+  authentication and may differ in version from the local runtime.
 - **Development / About.** Development is always visible immediately before
   About; About is last. Restart Server appears only when the development wrapper
   supports manual backend reload. Its warning counts interruptible active

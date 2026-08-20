@@ -77,7 +77,10 @@ import {
   startsAdditionalModelGroup,
   withProviderVisibleModelSelection,
 } from "../lib/modelCatalog";
-import { providerSupportsLocalSessionSandbox } from "../lib/providerCapabilities";
+import {
+  providerSupportsLocalSessionSandbox,
+  providerSupportsRemoteExecutors,
+} from "../lib/providerCapabilities";
 import { serverHasAvailableSessionSandbox } from "../lib/sessionSandboxAvailability";
 import {
   type PendingFile,
@@ -478,9 +481,12 @@ export function NewSessionForm({
   const { version: versionInfo, loading: versionLoading } = useVersion();
   const supportsSessionSandboxing =
     serverHasAvailableSessionSandbox(versionInfo);
+  const supportsRemoteExecutors =
+    providerSupportsRemoteExecutors(selectedProvider);
+  const effectiveExecutor = supportsRemoteExecutors ? selectedExecutor : null;
   const canConfigureSessionSandbox =
     supportsSessionSandboxing &&
-    selectedExecutor === null &&
+    effectiveExecutor === null &&
     providerSupportsLocalSessionSandbox(selectedProvider);
   const effectiveSandboxLevel: SessionSandboxLevel = canConfigureSessionSandbox
     ? sandboxLevel
@@ -2073,7 +2079,7 @@ export function NewSessionForm({
           thinking,
           showThinking,
           provider: selectedProvider ?? undefined,
-          executor: selectedExecutor ?? undefined,
+          executor: effectiveExecutor ?? undefined,
           ...(supportsSessionSandboxing
             ? { sandboxLevel: effectiveSandboxLevel }
             : {}),
@@ -2090,7 +2096,7 @@ export function NewSessionForm({
           model: selectedModel ?? null,
           thinking,
           provider: selectedProvider ?? null,
-          executor: selectedExecutor ?? null,
+          executor: effectiveExecutor,
           sandboxLevel: supportsSessionSandboxing
             ? effectiveSandboxLevel
             : null,
@@ -2323,6 +2329,7 @@ export function NewSessionForm({
       basePath,
       draftControls,
       effectiveEffortLevel,
+      effectiveExecutor,
       effectivePermissionMode,
       effectiveThinkingMode,
       helperSideModel,
@@ -2340,7 +2347,6 @@ export function NewSessionForm({
       effectiveSandboxLevel,
       resolvePendingAttachmentsForSession,
       resolveProjectIdForSubmission,
-      selectedExecutor,
       selectedCheckoutWorkstreamId,
       selectedModel,
       selectedPromptSuggestionMode,
@@ -2425,7 +2431,7 @@ export function NewSessionForm({
           thinking,
           showThinking,
           provider: selectedProvider ?? undefined,
-          executor: selectedExecutor ?? undefined,
+          executor: effectiveExecutor ?? undefined,
           ...(supportsSessionSandboxing
             ? { sandboxLevel: effectiveSandboxLevel }
             : {}),
@@ -2456,7 +2462,7 @@ export function NewSessionForm({
         model: selectedModel ?? null,
         thinking,
         provider: selectedProvider ?? null,
-        executor: selectedExecutor ?? null,
+        executor: effectiveExecutor,
         sandboxLevel: supportsSessionSandboxing ? effectiveSandboxLevel : null,
         textLength: trimmedMessage.length,
         attachmentCount: stagedRefs.length,
@@ -3782,48 +3788,50 @@ export function NewSessionForm({
         )}
       </div>
 
-      {/* Executor Selection - only show if remote executors are configured */}
-      {!executorsLoading && remoteExecutors.length > 0 && (
-        <div className="new-session-executor-section">
-          <h3>{t("newSessionRunOnTitle")}</h3>
-          <div className="executor-options">
-            <button
-              key="local"
-              type="button"
-              className={`executor-option ${selectedExecutor === null ? "selected" : ""}`}
-              onClick={() => setSelectedExecutor(null)}
-              disabled={isStarting}
-            >
-              <span className="executor-option-dot executor-local" />
-              <div className="executor-option-content">
-                <span className="executor-option-label">
-                  {t("newSessionRunOnLocal")}
-                </span>
-                <span className="executor-option-desc">
-                  {t("newSessionRunOnLocalDesc")}
-                </span>
-              </div>
-            </button>
-            {remoteExecutors.map((host) => (
+      {/* Executor Selection - only show for providers whose adapter uses it. */}
+      {supportsRemoteExecutors &&
+        !executorsLoading &&
+        remoteExecutors.length > 0 && (
+          <div className="new-session-executor-section">
+            <h3>{t("newSessionRunOnTitle")}</h3>
+            <div className="executor-options">
               <button
-                key={host}
+                key="local"
                 type="button"
-                className={`executor-option ${selectedExecutor === host ? "selected" : ""}`}
-                onClick={() => setSelectedExecutor(host)}
+                className={`executor-option ${selectedExecutor === null ? "selected" : ""}`}
+                onClick={() => setSelectedExecutor(null)}
                 disabled={isStarting}
               >
-                <span className="executor-option-dot executor-remote" />
+                <span className="executor-option-dot executor-local" />
                 <div className="executor-option-content">
-                  <span className="executor-option-label">{host}</span>
+                  <span className="executor-option-label">
+                    {t("newSessionRunOnLocal")}
+                  </span>
                   <span className="executor-option-desc">
-                    {t("newSessionRunOnRemoteDesc")}
+                    {t("newSessionRunOnLocalDesc")}
                   </span>
                 </div>
               </button>
-            ))}
+              {remoteExecutors.map((host) => (
+                <button
+                  key={host}
+                  type="button"
+                  className={`executor-option ${selectedExecutor === host ? "selected" : ""}`}
+                  onClick={() => setSelectedExecutor(host)}
+                  disabled={isStarting}
+                >
+                  <span className="executor-option-dot executor-remote" />
+                  <div className="executor-option-content">
+                    <span className="executor-option-label">{host}</span>
+                    <span className="executor-option-desc">
+                      {t("newSessionRunOnRemoteDesc")}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }

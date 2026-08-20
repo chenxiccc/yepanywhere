@@ -61,6 +61,7 @@ const {
   modelSettingsState,
   providersState,
   providerRowState,
+  remoteExecutorsState,
   serverSettingsState,
   versionState,
   remoteBasePathState,
@@ -160,6 +161,9 @@ const {
     fresh: true,
     refreshing: false,
     error: null as Error | null,
+  },
+  remoteExecutorsState: {
+    executors: [] as string[],
   },
   serverSettingsState: {
     settings: null as {
@@ -414,7 +418,7 @@ vi.mock("../../hooks/useRemoteBasePath", () => ({
 
 vi.mock("../../hooks/useRemoteExecutors", () => ({
   useRemoteExecutors: () => ({
-    executors: [],
+    executors: remoteExecutorsState.executors,
     loading: false,
   }),
 }));
@@ -719,6 +723,7 @@ describe("NewSessionForm", () => {
     providerRowState.fresh = true;
     providerRowState.refreshing = false;
     providerRowState.error = null;
+    remoteExecutorsState.executors = [];
     serverSettingsState.settings = null;
     serverSettingsState.isLoading = true;
     filterDropdownState.selected = [];
@@ -1046,13 +1051,30 @@ describe("NewSessionForm", () => {
           model: "gpt-5.3-codex",
           thinking: "on:xhigh",
           provider: "codex",
-          executor: "build-host",
+          executor: undefined,
         }),
         clientTimestamp: expect.any(Number),
       });
     });
     expect(mockStartSession).not.toHaveBeenCalled();
     expect((composer as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("offers configured SSH hosts only to supported providers", async () => {
+    remoteExecutorsState.executors = ["build-host"];
+    serverSettingsState.settings = {};
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+      />,
+    );
+
+    expect(await screen.findByText("build-host")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Codex" }));
+    await waitFor(() => expect(screen.queryByText("build-host")).toBeNull());
   });
 
   it("groups previous models and keeps an unlisted saved default selected", async () => {

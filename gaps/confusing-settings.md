@@ -76,17 +76,19 @@ or has independent retention. graehl added the original audit in `d1d46d3b`
 (2026-05-03); Kyle made it configurable and default-off in `02fc240d`
 (2026-07-05).
 
-## Remote executor provider and path contract
+## Remote executor portability
 
-The current implementation runs Claude over SSH, but the new-session executor
-selector is not provider-gated. A non-Claude session can retain an executor
-value that Codex and other providers do not use. Windows local-home translation
-also needs an explicit remote-platform mapping; a backslash suffix cannot be
-assumed valid on a POSIX host.
+The provider-boundary ambiguity is closed: New Session offers configured SSH
+hosts only to the Claude-family adapters that currently implement remote
+execution, and unsupported providers cannot submit or retain an ignored
+executor value. The global Settings copy remains provider-neutral because the
+pane configures hosts rather than one provider.
 
-Decide whether to restrict the selector and persisted default to Claude or
-build a provider-neutral remote-execution contract. Kyle added Remote Executors
-in `d7f51330` (2026-01-14).
+Provider-neutral remote execution remains a possible expansion, not the current
+contract. Windows local-home translation also still needs an explicit
+remote-platform mapping; a backslash suffix cannot be assumed valid on a POSIX
+host. Kyle added Remote Executors in `d7f51330` (2026-01-14); provider gating
+landed in the 2026-08-20 Source Control/settings improvement.
 
 ## Ambient provider keys and metered billing
 

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { type RemoteExecutorTestResult, api } from "../api/client";
-import { useBackgroundRevalidation } from "./useBackgroundRevalidation";
+import { useServerSettings } from "./useServerSettings";
 
 /**
  * Hook to fetch and manage remote executors configuration.
@@ -15,85 +15,38 @@ import { useBackgroundRevalidation } from "./useBackgroundRevalidation";
  * - testExecutor: Test SSH connection to an executor
  */
 export function useRemoteExecutors() {
-  const [executors, setExecutors] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const hasFetchedRef = useRef(false);
-
-  const fetchExecutors = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.getRemoteExecutors();
-      setExecutors(data.executors);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial fetch - only once (avoid StrictMode double-fetch)
-  useEffect(() => {
-    if (hasFetchedRef.current) return;
-    hasFetchedRef.current = true;
-    fetchExecutors();
-  }, [fetchExecutors]);
-
-  // Quietly refresh the executor list when the connection re-establishes.
-  useBackgroundRevalidation({
-    fetcher: () => api.getRemoteExecutors().then((d) => d.executors),
-    current: executors,
-    apply: (next) => {
-      setExecutors(next);
-      setError(null);
-    },
-  });
+  const { settings, isLoading, error, updateSetting, refetch } =
+    useServerSettings();
+  const executors = settings?.remoteExecutors ?? [];
+  const hookError = useMemo(() => (error ? new Error(error) : null), [error]);
 
   const addExecutor = useCallback(
     async (host: string): Promise<void> => {
       if (!host.trim()) return;
       const trimmedHost = host.trim();
-
-      // Optimistic update
-      const prevExecutors = executors;
-      if (!executors.includes(trimmedHost)) {
-        setExecutors([...executors, trimmedHost]);
-      }
-
-      try {
-        const result = await api.updateRemoteExecutors([
-          ...prevExecutors.filter((e) => e !== trimmedHost),
-          trimmedHost,
-        ]);
-        setExecutors(result.executors);
-      } catch (err) {
-        // Revert on error
-        setExecutors(prevExecutors);
-        throw err;
-      }
+      await updateSetting("remoteExecutors", [
+        ...executors.filter((executor) => executor !== trimmedHost),
+        trimmedHost,
+      ]);
     },
-    [executors],
+    [executors, updateSetting],
   );
 
   const removeExecutor = useCallback(
     async (host: string): Promise<void> => {
-      // Optimistic update
-      const prevExecutors = executors;
-      setExecutors(executors.filter((e) => e !== host));
-
-      try {
-        const result = await api.updateRemoteExecutors(
-          prevExecutors.filter((e) => e !== host),
-        );
-        setExecutors(result.executors);
-      } catch (err) {
-        // Revert on error
-        setExecutors(prevExecutors);
-        throw err;
-      }
+      await updateSetting(
+        "remoteExecutors",
+        executors.filter((executor) => executor !== host),
+      );
     },
-    [executors],
+    [executors, updateSetting],
+  );
+
+  const replaceExecutors = useCallback(
+    async (hosts: string[]): Promise<void> => {
+      await updateSetting("remoteExecutors", hosts);
+    },
+    [updateSetting],
   );
 
   const testExecutor = useCallback(
@@ -105,11 +58,12 @@ export function useRemoteExecutors() {
 
   return {
     executors,
-    loading,
-    error,
-    refetch: fetchExecutors,
+    loading: isLoading && settings === null,
+    error: hookError,
+    refetch,
     addExecutor,
     removeExecutor,
+    replaceExecutors,
     testExecutor,
   };
 }
