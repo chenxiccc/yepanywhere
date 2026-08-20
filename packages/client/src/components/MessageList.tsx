@@ -34,6 +34,7 @@ import {
   createRememberedDisclosureStateRegistry,
   RememberedDisclosureStateProvider,
 } from "../contexts/RememberedDisclosureStateContext";
+import { QuoteReplyProvider } from "../contexts/QuoteReplyContext";
 import type {
   ComposerDraftSignal,
   ComposerEditAvailabilityStore,
@@ -3327,7 +3328,7 @@ export const MessageList = memo(function MessageList({
   return createElement(
     RememberedDisclosureStateProvider,
     { registry: rememberedDisclosureStateRegistry },
-    <>
+    <QuoteReplyProvider onQuoteTextBlock={handleQuoteTextBlock}>
       <UserTurnNavigator
         getAnchors={getNavigatorAnchors}
         messageListRef={containerRef}
@@ -3976,6 +3977,6 @@ export const MessageList = memo(function MessageList({
           onToggleThinkingLatestOnly={toggleThinkingLatestOnly}
         />
       </div>
-    </>,
+    </QuoteReplyProvider>,
   );
 });

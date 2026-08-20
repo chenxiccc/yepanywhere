@@ -70,11 +70,18 @@ for (const viewport of [
     const viewer = page.locator(".file-viewer");
     await expect(viewer).toBeVisible();
     if (viewport.width <= 800) {
-      const modalBox = await page.locator(".file-viewer-modal").boundingBox();
+      const [modalBox, composerBox] = await Promise.all([
+        page.locator(".file-viewer-modal").boundingBox(),
+        page.locator(".session-input").boundingBox(),
+      ]);
       expect(modalBox?.x).toBe(0);
-      expect(modalBox?.y).toBe(0);
       expect(modalBox?.width).toBe(viewport.width);
-      expect(modalBox?.height).toBe(viewport.height);
+      if (!modalBox || !composerBox) {
+        throw new Error("Expected viewer and composer layout boxes");
+      }
+      expect(
+        Math.abs(modalBox.y + modalBox.height - composerBox.y),
+      ).toBeLessThan(1.1);
     }
     await expect(
       viewer.getByText("Test Project", { exact: true }),

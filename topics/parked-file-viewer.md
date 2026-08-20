@@ -20,8 +20,10 @@ See also:
 The motivating workflow is document review during a live session:
 
 1. Open a document from a session and read or select a passage.
-2. Park the viewer to reveal the session, quote into the composer, and submit.
-3. Watch the live assistant response without losing the document's place.
+2. Click a rendered Markdown block or quote a range into the composer that
+   remains visible directly below the document, then submit without closing it.
+3. Park the viewer when the transcript itself is needed and watch the live
+   assistant response without losing the document's place.
 4. Restore the viewer and continue from the same scroll position, selection,
    source/preview mode, search state, and loaded content.
 
@@ -32,8 +34,9 @@ message or tool row that opened it.
 
 `open`, `parked`, and `closed` are distinct states:
 
-- **Open** — the viewer owns the reading surface. The live session remains
-  mounted behind it.
+- **Open** — the viewer owns the session's transcript row. The live session
+  remains mounted behind it, while the composer remains visible and operable
+  directly below it.
 - **Parked** — the viewer remains mounted but is not interactive or visible;
   the live session and composer are visible and operable.
 - **Closed** — the viewer is destroyed and its controller disappears.
@@ -92,9 +95,12 @@ was.
   path text yields before either toggle or close becomes unusable. The toolbar
   overflow allocator, not a viewport-width guess, decides which ordinary
   controls make room.
-- The file-viewer modal uses the available viewport width up to its 1200px
-  reading cap rather than reserving a percentage gutter. At 800px and below it
-  becomes edge-to-edge and full-height. Its compact header reserves the first
+- The file-viewer modal uses the available session width up to its 1200px
+  reading cap rather than reserving a percentage gutter. Its top begins below
+  the session header and its bottom meets the top of the composer; it never
+  covers the composer in ordinary open mode. At 800px and below it becomes
+  edge-to-edge within that reading region. Explicit fullscreen may still claim
+  the viewport. Its compact header reserves the first
   row's right column for actions while the path and metadata wrap on the left;
   the path uses at most two lines and the metrics remain on one. At 480px and
   below the actions use a two-row grid. The three-column window block keeps
@@ -102,18 +108,17 @@ was.
   across the same columns below. Those equal-width window cells are short
   rectangles whose combined width aligns with the zoom group, with close at
   top-right; remaining actions fill the cells to their left. The scrollable
-  document reserves the overlaid composer row plus the bottom safe area, so
-  its final line can always scroll completely above those controls.
+  document ends above the separate composer row, so its final line can always
+  scroll completely clear of those controls without overlay-compensation
+  padding.
 - Its reduced form reuses the existing measured narrowing and overflow system;
   it does not introduce another user-configurable priority tier. Send and Mic
   remain non-displaceable, while the controller may move any other optional
   inline toolbar control into the existing overflow menu as needed, including a
   control that would otherwise be pinned.
 
-The open-state controller and enabled composer-toolbar actions may be painted
-above the file-viewer overlay. Only the controls themselves receive pointer
-events there: transparent gaps remain part of the overlay, so clicking empty
-toolbar space retains normal backdrop dismissal. The toolbar parks during
+The open-state controller and enabled composer-toolbar actions sit outside the
+file-viewer overlay in the dedicated composer row. The toolbar parks during
 click capture and leaves the original event to reach the selected action;
 synthetic click replay would lose browser user activation.
 
@@ -214,6 +219,8 @@ of the following at desktop and phone widths:
 
 - The open-state bottom controller is in the same reserved toolbar location as
   the parked-state controller.
+- The ordinary open viewer ends at the composer's top edge at desktop and phone
+  widths, and the composer remains fully visible and operable.
 - Parking immediately reveals the live session and leaves the composer usable.
 - A response can grow and scroll independently while the hidden document keeps
   its exact reading position.

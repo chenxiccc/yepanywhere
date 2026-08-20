@@ -1,0 +1,130 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import type { Locator, Page } from "@playwright/test";
+import { e2ePaths, expect, test } from "./fixtures.js";
+
+const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
+const projectId = Buffer.from(mockProjectPath).toString("base64url");
+const sessionId = "file-viewer-absolute-001";
+
+async function dismissOnboardingIfVisible(page: Page) {
+  const skip = page.locator(".onboarding-skip-all");
+  if (
+    await skip
+      .waitFor({ state: "visible", timeout: 750 })
+      .then(() => true)
+      .catch(() => false)
+  ) {
+    await skip.click();
+  }
+}
+
+async function openRenderedMarkdown(page: Page) {
+  await page.goto(`/projects/${projectId}/sessions/${sessionId}`);
+  await dismissOnboardingIfVisible(page);
+  const sourceLink = page.locator(
+    'a[data-ya-private-project-file-link="true"]',
+  );
+  await expect(sourceLink).toBeVisible();
+  await dismissOnboardingIfVisible(page);
+  await page.waitForTimeout(750);
+  await sourceLink.click();
+  const preview = page.locator(".file-viewer-modal .markdown-preview");
+  await expect(preview).toBeVisible();
+  return preview;
+}
+
+async function textPoint(locator: Locator, horizontal: "start" | "end") {
+  return locator.evaluate((element, edge) => {
+    const text = document
+      .createTreeWalker(element, NodeFilter.SHOW_TEXT)
+      .nextNode() as Text | null;
+    if (!text) throw new Error("Expected rendered Markdown text");
+    const range = document.createRange();
+    const offset = edge === "start" ? 0 : text.data.length;
+    range.setStart(text, offset);
+    range.setEnd(text, offset);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left, y: rect.top + rect.height / 2 };
+  }, horizontal);
+}
+
+async function capture(page: Page, name: string) {
+  const artifactDir = process.env.YEP_UI_CAPTURE_DIR;
+  if (!artifactDir) return;
+  mkdirSync(artifactDir, { recursive: true });
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    animations: "disabled",
+    path: join(artifactDir, `${name}.png`),
+  });
+}
+
+for (const viewport of [
+  { name: "desktop", width: 1000, height: 600 },
+  { name: "mobile", width: 375, height: 812 },
+] as const) {
+  test(`clicks a rendered Markdown block into the visible composer at ${viewport.name} width`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    const preview = await openRenderedMarkdown(page);
+    const paragraph = preview.getByText(
+      "Viewer context remains available while reviewing this file.",
+      { exact: true },
+    );
+    await paragraph.click();
+
+    const composer = page.locator("[data-composer-input]");
+    await expect(composer).toHaveValue(
+      "> Viewer context remains available while reviewing this file.\n",
+    );
+    await expect(composer).toBeFocused();
+    await expect(page.locator(".file-viewer-modal")).toBeVisible();
+
+    const [viewerBox, composerBox] = await Promise.all([
+      page.locator(".file-viewer-modal").boundingBox(),
+      page.locator(".session-input").boundingBox(),
+    ]);
+    if (!viewerBox || !composerBox) {
+      throw new Error("Expected viewer and composer layout boxes");
+    }
+    expect(
+      Math.abs(viewerBox.y + viewerBox.height - composerBox.y),
+    ).toBeLessThan(1.1);
+    await capture(page, `${viewport.name}-markdown-quote`);
+  });
+}
+
+test("keeps selection actions out of an upward pointer drag", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  const preview = await openRenderedMarkdown(page);
+  const start = await textPoint(
+    preview.getByRole("heading", { name: "Scroll clearance specimen" }),
+    "end",
+  );
+  const end = await textPoint(
+    preview.getByText(
+      "Viewer context remains available while reviewing this file.",
+      { exact: true },
+    ),
+    "start",
+  );
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 12 });
+  await expect
+    .poll(() => page.evaluate(() => document.getSelection()?.isCollapsed))
+    .toBe(false);
+  await expect(
+    page.getByRole("button", { name: "Quote reply" }),
+  ).not.toBeVisible();
+
+  await page.mouse.up();
+  await expect(page.getByRole("button", { name: "Quote reply" })).toBeVisible();
+  await expect(page.locator("[data-composer-input]")).toHaveValue("");
+});

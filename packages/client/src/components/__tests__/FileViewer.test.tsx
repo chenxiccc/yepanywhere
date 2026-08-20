@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { toUrlProjectId, type FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QuoteReplyProvider } from "../../contexts/QuoteReplyContext";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
 import { extractMarkdownSnippetsFromSelection } from "../../lib/markdownSelectionCopy";
@@ -625,6 +626,45 @@ describe("FileViewer", () => {
         selectedText: "Title",
       },
     ]);
+  });
+
+  it("quotes a clicked rendered Markdown block into the session", async () => {
+    const onQuoteTextBlock = vi.fn();
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "notes.md",
+          size: 21,
+          mimeType: "text/markdown",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "# Title\n\nSelected text",
+        renderedMarkdownHtml: "<h1>Title</h1><p>Selected text</p>",
+      })),
+    };
+
+    render(
+      <I18nProvider>
+        <QuoteReplyProvider onQuoteTextBlock={onQuoteTextBlock}>
+          <FileViewer
+            projectId="project-id"
+            filePath="notes.md"
+            initialPresentation="preview"
+            source={source}
+          />
+        </QuoteReplyProvider>
+      </I18nProvider>,
+    );
+
+    document.getSelection()?.removeAllRanges();
+    fireEvent.click(await screen.findByText("Selected text"));
+
+    expect(onQuoteTextBlock).toHaveBeenCalledTimes(1);
+    expect(onQuoteTextBlock.mock.calls[0]?.[0]).toMatchObject({
+      quotedText: "> Selected text",
+      selectedText: "Selected text",
+    });
   });
 
   it("opens Quarto files rendered and maps include selections to source", async () => {

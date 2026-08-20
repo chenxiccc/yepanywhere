@@ -1,0 +1,48 @@
+.sessionSplit:global(.session-split) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "messages"
+    "input";
+}
+
+.messages {
+  grid-area: messages;
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewerLayer {
+  position: relative;
+  z-index: 20;
+  grid-area: messages;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.viewerLayer > * {
+  pointer-events: auto;
+}
+
+.input {
+  grid-area: input;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .sessionSplit:global(.session-split-with-aside) {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "messages aside"
+      "input aside";
+  }
+
+  .sessionSplit:global(
+    .session-split-with-aside.session-split-aside-collapsed
+  ) {
+    grid-template-columns: minmax(0, 1fr) 28px;
+  }
+}

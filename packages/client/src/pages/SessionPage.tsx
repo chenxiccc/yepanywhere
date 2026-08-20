@@ -38,6 +38,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { BangCommandHandlers } from "../components/BangCommandDisplayObject";
 import { SessionViewerProvider } from "../components/SessionManagedViewer";
+import styles from "./SessionPage.module.css";
 import { buildBangEchoText, collectBangHistory } from "../lib/bangCommands";
 import { serverSupportsBangCommands } from "../lib/bangCommandAvailability";
 import { BtwAsidePane } from "../components/BtwAsidePane";
@@ -5307,7 +5308,7 @@ function SessionPageContent({
       )}
 
       <div
-        className={`session-split${
+        className={`${styles.sessionSplit} session-split${
           wantBtwSplitLayout ? " session-split-with-aside" : ""
         }${
           wantBtwSplitLayout && btwSidePaneCollapsed
@@ -5315,7 +5316,7 @@ function SessionPageContent({
             : ""
         }`}
       >
-        <main className="session-messages" tabIndex={-1}>
+        <main className={`${styles.messages} session-messages`} tabIndex={-1}>
           {loading ? (
             <div className="loading">
               <div>{t("sessionLoading")}</div>
@@ -5451,6 +5452,7 @@ function SessionPageContent({
             </SessionMetadataProvider>
           )}
         </main>
+        <div className={styles.viewerLayer} data-session-viewer-layer />
         {showBtwSidePane && focusedBtwAside && (
           <BtwAsidePane
             aside={focusedBtwAside}
@@ -5476,7 +5478,7 @@ function SessionPageContent({
           </button>
         )}
 
-        <footer className="session-input">
+        <footer className={`${styles.input} session-input`}>
           <div
             className={`session-connection-bar session-connection-${sessionConnectionStatus}`}
           />

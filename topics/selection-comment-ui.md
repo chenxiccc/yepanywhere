@@ -28,7 +28,9 @@ Phase 2 scope widening shipped 2026-07-01; portaled modal/file scope shipped
 selection actions and independent controls landed 2026-08-12; selected-text
 context actions and source-cited new-session transfer landed 2026-08-13;
 exact formatted-source selection and activity-overlay placement landed
-2026-08-14; mobile long-press selection ownership restored 2026-08-15.**
+2026-08-14; mobile long-press selection ownership restored 2026-08-15;
+session-file Markdown block clicks and live-drag deferral landed
+2026-08-20.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -80,8 +82,10 @@ The early Phase 1 gaps were fixed 2026-06-23, verified in the running app.
   rectangle. Touch uses 44 px tap targets. Transcript selections dock the
   cluster in a dedicated row above the composer, shrinking the transcript
   viewport instead of covering its text; portaled modal selections use the
-  collision-aware local placement because the session composer sits behind the
-  modal.
+  collision-aware local placement. A pointer drag does not render or reposition
+  the cluster while the button remains pressed; the final range produces one
+  stable placement after release. Presses on the cluster itself remain exempt
+  so its controls can consume their preserved selection snapshot.
 - **Activity-detail placement uses the selected range — fixed 2026-08-14.**
   For a selection inside a tall expanded Bash/Edit/Read-style detail surface,
   the below/above candidates and fallback-space ranking are anchored to the
@@ -123,7 +127,7 @@ mental model the feature was requested under.
 
 ## What the user sees (contract)
 
-Three quote entry points, one quote action. A live selection also owns one
+Five quote entry points, one quote action. A live selection also owns one
 shared action snapshot consumed by its compact action cluster and full context
 menu.
 
@@ -164,6 +168,14 @@ menu.
    highlight text — or right-drag
    to select lines (see the line-select helper below) — to comment on a specific
    sub-range instead of the whole paragraph.
+5. **Rendered session-file block click.** In a session-owned rendered Markdown
+   preview, clicking a paragraph, list item, quote, code block, heading, or
+   table row sends that authored block through the same quote-comment pipeline.
+   The viewer stays open, the visible session composer receives and focuses the
+   quote, and the clicked block gets the ordinary comment tint. Links and other
+   interactive controls retain their own actions. A non-collapsed native text
+   selection wins over the click, so releasing a drag never also quotes the
+   block under the pointer.
 
 The **Appearance** rows immediately after `> Reply Buttons` separately control
 selection quote, visible-text copy, source copy, rich copy, and new session.
@@ -208,8 +220,15 @@ The quote block itself:
   session hovercard opened from that session. Reusable modals establish a
   quote-selection root, while their file/text renderers register the actual
   source. The floating actions render inside the owning surface and the `>`
-  sends the quote to the session composer behind it. Modal headers, buttons,
-  labels, and other unregistered chrome remain ineligible.
+  sends the quote to the session composer. A session file viewer leaves that
+  composer visible directly below its reading region; other modal surfaces may
+  still place it behind the modal. Modal headers, buttons, labels, and other
+  unregistered chrome remain ineligible.
+- While a primary pointer is dragging a selection, selection controls remain
+  absent and do not chase the changing range. Pointer release publishes the
+  completed range once, including for upward drags. Keyboard and programmatic
+  selections still publish from `selectionchange`, and pressing an already
+  visible selection control does not dismiss it before its action fires.
 - Hover tooltips never activate while any pointer button is held. In
   particular, dragging a native text selection across a glossary term keeps
   the glossary text selectable and cannot insert a passive tooltip into the

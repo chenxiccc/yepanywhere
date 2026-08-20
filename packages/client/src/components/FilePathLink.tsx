@@ -443,6 +443,12 @@ export function FileViewerModal({
     };
   }, [minimized]);
 
+  const sessionViewerLayer =
+    publicShareContext === null
+      ? (document.querySelector<HTMLElement>(
+          ".navigation-route-layer.is-active [data-session-viewer-layer]",
+        ) ?? document.querySelector<HTMLElement>("[data-session-viewer-layer]"))
+      : null;
   const modalContent = (
     <div
       className="modal-overlay"
@@ -480,9 +486,11 @@ export function FileViewerModal({
 
   const portalHost =
     publicShareContext === null
-      ? (document.querySelector<HTMLElement>(
+      ? (sessionViewerLayer ??
+        document.querySelector<HTMLElement>(
           ".navigation-route-layer.is-active .session-page",
-        ) ?? document.querySelector<HTMLElement>(".session-page"))
+        ) ??
+        document.querySelector<HTMLElement>(".session-page"))
       : null;
 
   return createPortal(

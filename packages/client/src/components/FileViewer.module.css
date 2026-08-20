@@ -16,6 +16,19 @@
   background: var(--bg-code);
 }
 
+.commentableMarkdown
+  :global(.markdown-rendered)
+  :is(p, li, blockquote, pre, h1, h2, h3, h4, h5, h6, tr) {
+  border-radius: var(--radius-sm);
+  transition: background 80ms ease-out;
+}
+
+.commentableMarkdown
+  :global(.markdown-rendered)
+  :is(p, li, blockquote, pre, h1, h2, h3, h4, h5, h6, tr):hover {
+  background: var(--bg-hover);
+}
+
 @media (max-width: 800px) {
   .header {
     display: grid;

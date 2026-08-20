@@ -422,6 +422,10 @@ export function useSelectionActionCapture({
     }
 
     const updateSelectionActions = (pointerEnd?: PointerEnd) => {
+      if (selectionPointerStartedRef.current && !pointerEnd) {
+        setState(null);
+        return;
+      }
       const root = containerRef.current;
       const selection = root?.ownerDocument.getSelection();
       const snapshot = captureSnapshot();
@@ -441,11 +445,19 @@ export function useSelectionActionCapture({
     };
     const handlePointerDown = (event: PointerEvent) => {
       const root = containerRef.current;
+      if (
+        event.target instanceof Element &&
+        event.target.closest('[data-selection-action-cluster="true"]')
+      ) {
+        selectionPointerStartedRef.current = false;
+        return;
+      }
       if (!root || !getQuoteSelectionRootForTarget(root, event.target)) {
         selectionPointerStartedRef.current = false;
         return;
       }
       selectionPointerStartedRef.current = true;
+      setState(null);
     };
     const handlePointerUp = (event: PointerEvent) => {
       const selectionPointerStarted = selectionPointerStartedRef.current;
@@ -458,16 +470,21 @@ export function useSelectionActionCapture({
         });
       }, 0);
     };
+    const handlePointerCancel = () => {
+      selectionPointerStartedRef.current = false;
+    };
     const updateFromSelectionRange = () => updateSelectionActions();
 
     document.addEventListener("selectionchange", updateFromSelectionRange);
     document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointercancel", handlePointerCancel, true);
     document.addEventListener("pointerup", handlePointerUp, true);
     window.addEventListener("resize", updateFromSelectionRange);
     window.addEventListener("scroll", updateFromSelectionRange, true);
     return () => {
       document.removeEventListener("selectionchange", updateFromSelectionRange);
       document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointercancel", handlePointerCancel, true);
       document.removeEventListener("pointerup", handlePointerUp, true);
       window.removeEventListener("resize", updateFromSelectionRange);
       window.removeEventListener("scroll", updateFromSelectionRange, true);
