@@ -108,6 +108,36 @@ export async function getRemoteHome(host: string): Promise<string | null> {
 }
 
 /**
+ * Return the home-relative suffix (starting with a separator) when the path
+ * is the home directory itself or a descendant of it, else null.
+ *
+ * String-prefix matching alone is wrong: /home/user-backup starts with
+ * /home/user but is a sibling, not a descendant. Only a component boundary
+ * (path exhausted, or a `/` or `\` immediately after the home prefix)
+ * counts as containment.
+ */
+export function homeRelativeSuffix(
+  localPath: string,
+  home: string,
+): string | null {
+  // Ignore a trailing separator on the home directory so "/home/user/" and
+  // "/home/user" match the same paths; keep a bare root ("/", "C:\") intact.
+  let base = home;
+  while (
+    base.length > 1 &&
+    (base.endsWith("/") || base.endsWith("\\")) &&
+    !/^[A-Za-z]:[\\/]$/.test(base)
+  ) {
+    base = base.slice(0, -1);
+  }
+  if (!localPath.startsWith(base)) return null;
+  const suffix = localPath.slice(base.length);
+  if (suffix === "") return "";
+  if (suffix.startsWith("/") || suffix.startsWith("\\")) return suffix;
+  return null;
+}
+
+/**
  * Translate a local path to a remote path by replacing the home directory.
  *
  * For example:
@@ -119,11 +149,12 @@ export function translateHomePath(
   localHome: string,
   remoteHome: string,
 ): string {
-  // If the path starts with the local home directory, replace it with remote home
-  if (localPath.startsWith(localHome)) {
-    return remoteHome + localPath.slice(localHome.length);
+  // Replace the local home only when the path is the home directory itself
+  // or a descendant; a sibling like /home/user-backup stays unchanged.
+  const suffix = homeRelativeSuffix(localPath, localHome);
+  if (suffix !== null) {
+    return remoteHome + suffix;
   }
-  // Otherwise return the path unchanged
   return localPath;
 }
 
@@ -326,11 +357,10 @@ async function runSSHCommand(
  *   /var/www/project -> /var/www/project (unchanged)
  */
 function toRemotePath(localPath: string): string {
-  const home = homedir();
-
-  if (localPath.startsWith(home)) {
+  const suffix = homeRelativeSuffix(localPath, homedir());
+  if (suffix !== null) {
     // Replace home directory with $HOME for remote expansion
-    return `$HOME${localPath.slice(home.length)}`;
+    return `$HOME${suffix}`;
   }
 
   return localPath;
