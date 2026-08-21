@@ -3,11 +3,23 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import * as os from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { getLogger } from "../logging/logger.js";
+import {
+  CODEX_INSTALLATION_FAMILY,
+  type ProviderInstallationCoordinator,
+  providerInstallationCoordinator,
+} from "../services/ProviderInstallationCoordinator.js";
+
+export type InstallationReadCoordinator = Pick<
+  ProviderInstallationCoordinator,
+  "withReadLease"
+>;
 
 const isWindows = os.platform() === "win32";
 const CODEX_VERSION_PROBE_TIMEOUT_MS = 3000;
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+const log = getLogger().child({ component: "cli-detection" });
 
 /**
  * Returns the platform-appropriate command to locate an executable in PATH.
@@ -65,6 +77,20 @@ export interface CodexCliInstall {
   normalizedVersion: string | null;
 }
 
+export type CodexCliProbeFailure =
+  | "not-found"
+  | "timeout"
+  | "empty-output"
+  | "launch-failure";
+
+export type CodexCliVersionProbeResult =
+  | { ok: true; version: string }
+  | {
+      ok: false;
+      reason: CodexCliProbeFailure;
+      error?: string;
+    };
+
 interface VersionedCodexCandidate extends CodexCliInstall {
   order: number;
 }
@@ -80,8 +106,12 @@ interface VersionedCodexCandidate extends CodexCliInstall {
  */
 export async function detectCodexCli(
   explicitPath?: string,
+  installationCoordinator: InstallationReadCoordinator = providerInstallationCoordinator,
 ): Promise<CodexCliInfo> {
-  const install = await findCodexCliInstall(explicitPath);
+  const install = await findCodexCliInstall(
+    explicitPath,
+    installationCoordinator,
+  );
   if (install) {
     return { found: true, path: install.path, version: install.version };
   }
@@ -113,6 +143,7 @@ export function getCodexCommonPaths(): string[] {
     : [
         `${home}/.codex/.sandbox-bin/codex`,
         `${home}/.local/bin/codex`,
+        "/opt/homebrew/bin/codex",
         "/usr/local/bin/codex",
         `${home}/.cargo/bin/codex`,
         `${home}/.codex/bin/codex`,
@@ -279,9 +310,17 @@ function selectBestCodexCandidate(
 async function probeCodexCandidate(
   path: string,
   order: number,
+  installationCoordinator: InstallationReadCoordinator,
 ): Promise<VersionedCodexCandidate | null> {
-  const version = await getCodexCliVersion(path);
-  if (!version) return null;
+  const result = await probeCodexCliVersion(path, installationCoordinator);
+  if (!result.ok) {
+    log.debug(
+      { path, reason: result.reason, error: result.error },
+      "Codex CLI candidate probe failed",
+    );
+    return null;
+  }
+  const version = result.version;
   return {
     path,
     version,
@@ -305,15 +344,20 @@ async function getPathCodexCandidates(): Promise<string[]> {
   }
 }
 
-async function findAutoCodexCliInstall(): Promise<CodexCliInstall | null> {
+async function findAutoCodexCliInstall(
+  installationCoordinator: InstallationReadCoordinator,
+): Promise<CodexCliInstall | null> {
   const candidatePaths = uniquePaths([
     ...(await getPathCodexCandidates()),
+    ...(await getNpmGlobalCodexPaths()),
     ...getCodexCommonPaths().filter((path) => existsSync(path)),
   ]);
 
   const candidates = (
     await Promise.all(
-      candidatePaths.map((path, order) => probeCodexCandidate(path, order)),
+      candidatePaths.map((path, order) =>
+        probeCodexCandidate(path, order, installationCoordinator),
+      ),
     )
   ).filter((candidate): candidate is VersionedCodexCandidate =>
     Boolean(candidate),
@@ -340,31 +384,40 @@ async function findAutoCodexCliInstall(): Promise<CodexCliInstall | null> {
  */
 export async function findCodexCliPath(
   explicitPath?: string,
+  installationCoordinator: InstallationReadCoordinator = providerInstallationCoordinator,
 ): Promise<string | null> {
-  if (explicitPath) {
-    return existsSync(explicitPath) ? explicitPath : null;
-  }
-
-  const install = await findAutoCodexCliInstall();
+  const install = await findCodexCliInstall(
+    explicitPath,
+    installationCoordinator,
+  );
   return install?.path ?? null;
 }
 
 export async function findCodexCliInstall(
   explicitPath?: string,
+  installationCoordinator: InstallationReadCoordinator = providerInstallationCoordinator,
 ): Promise<CodexCliInstall | null> {
-  if (explicitPath) {
-    if (!existsSync(explicitPath)) return null;
-    const version = await getCodexCliVersion(explicitPath);
-    return version
-      ? {
-          path: explicitPath,
-          version,
-          normalizedVersion: normalizeCodexCliVersion(version),
-        }
-      : null;
-  }
+  return installationCoordinator.withReadLease(
+    CODEX_INSTALLATION_FAMILY,
+    async () => {
+      if (explicitPath) {
+        if (!existsSync(explicitPath)) return null;
+        const version = await getCodexCliVersion(
+          explicitPath,
+          installationCoordinator,
+        );
+        return version
+          ? {
+              path: explicitPath,
+              version,
+              normalizedVersion: normalizeCodexCliVersion(version),
+            }
+          : null;
+      }
 
-  return findAutoCodexCliInstall();
+      return findAutoCodexCliInstall(installationCoordinator);
+    },
+  );
 }
 
 function isWindowsCommandScript(path: string): boolean {
@@ -380,7 +433,27 @@ function quoteWindowsCommandPath(path: string): string {
  */
 export async function getCodexCliVersion(
   codexPath: string,
+  installationCoordinator: InstallationReadCoordinator = providerInstallationCoordinator,
 ): Promise<string | undefined> {
+  const result = await probeCodexCliVersion(codexPath, installationCoordinator);
+  return result.ok ? result.version : undefined;
+}
+
+export async function probeCodexCliVersion(
+  codexPath: string,
+  installationCoordinator: InstallationReadCoordinator = providerInstallationCoordinator,
+): Promise<CodexCliVersionProbeResult> {
+  return installationCoordinator.withReadLease(CODEX_INSTALLATION_FAMILY, () =>
+    probeCodexCliVersionUncoordinated(codexPath),
+  );
+}
+
+async function probeCodexCliVersionUncoordinated(
+  codexPath: string,
+): Promise<CodexCliVersionProbeResult> {
+  if (!existsSync(codexPath)) {
+    return { ok: false, reason: "not-found" };
+  }
   try {
     const options = {
       encoding: "utf-8",
@@ -394,8 +467,37 @@ export async function getCodexCliVersion(
         })
       : await execFileAsync(codexPath, ["--version"], options);
     const output = stdout.trim();
-    return output;
-  } catch {
-    return undefined;
+    return output
+      ? { ok: true, version: output }
+      : { ok: false, reason: "empty-output" };
+  } catch (error) {
+    const failure = error as NodeJS.ErrnoException & { killed?: boolean };
+    return {
+      ok: false,
+      reason:
+        failure.killed || failure.code === "ETIMEDOUT"
+          ? "timeout"
+          : "launch-failure",
+      error: failure.message,
+    };
+  }
+}
+
+async function getNpmGlobalCodexPaths(): Promise<string[]> {
+  const npmCommand = isWindows ? "npm.cmd" : "npm";
+  try {
+    const { stdout } = await execFileAsync(npmCommand, ["prefix", "-g"], {
+      encoding: "utf8",
+      timeout: CODEX_VERSION_PROBE_TIMEOUT_MS,
+      windowsHide: true,
+    });
+    const prefix = stdout.trim();
+    if (!prefix) return [];
+    return isWindows
+      ? [join(prefix, "codex.exe"), join(prefix, "codex.cmd")]
+      : [join(prefix, "bin", "codex")];
+  } catch (error) {
+    log.debug({ error }, "Unable to resolve npm-global Codex candidate");
+    return [];
   }
 }

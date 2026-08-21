@@ -7,6 +7,21 @@ import {
 const { normalizeVersion, compareVersions } = __testing__;
 const { extractNpmGlobalPackageName, inferManualInstallCommand } = __testing__;
 
+const immediateInstallationCoordinator = {
+  async withReadLease<T>(
+    _family: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return operation();
+  },
+  async runExclusiveUpdate<T>(
+    family: string,
+    operation: (context: { family: string; operationId: string }) => Promise<T>,
+  ): Promise<T> {
+    return operation({ family, operationId: "test-update" });
+  },
+};
+
 describe("CodexUpdateChecker version helpers", () => {
   it("extracts semver from typical CLI output", () => {
     expect(normalizeVersion("codex 0.4.3")).toBe("0.4.3");
@@ -192,6 +207,7 @@ describe("CodexUpdateChecker", () => {
         manualInstallCommand: "brew upgrade codex",
       }),
       runInstall,
+      installationCoordinator: immediateInstallationCoordinator,
     });
 
     const result = await checker.install();
@@ -202,7 +218,7 @@ describe("CodexUpdateChecker", () => {
   });
 
   it("install() runs npm install and refreshes on success", async () => {
-    const versions = ["0.4.2", "0.4.3"];
+    const versions = ["0.4.2", "0.4.2", "0.4.3"];
     const detectInstalled = vi.fn(async () => ({
       version: versions.shift() ?? "0.4.3",
       path: "/usr/local/bin/codex",
@@ -217,6 +233,7 @@ describe("CodexUpdateChecker", () => {
         manualInstallCommand: "npm install -g @openai/codex@latest",
       }),
       runInstall,
+      installationCoordinator: immediateInstallationCoordinator,
     });
 
     const result = await checker.install();
@@ -246,11 +263,58 @@ describe("CodexUpdateChecker", () => {
         manualInstallCommand: "npm install -g @openai/codex@latest",
       }),
       runInstall,
+      installationCoordinator: immediateInstallationCoordinator,
     });
 
     const result = await checker.install();
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/permission denied/);
     expect(result.output).toBe("EACCES");
+  });
+
+  it("refuses an inferred npm package outside the Codex allowlist", async () => {
+    const runInstall = vi.fn(async () => "should not run");
+    const checker = new CodexUpdateChecker({
+      detectInstalled: async () => ({
+        version: "0.4.2",
+        path: "/usr/local/bin/codex",
+      }),
+      fetchLatest: async () => ({ tagName: "v0.4.3", htmlUrl: null }),
+      detectInstallMetadata: async () => ({
+        installedPackage: "unexpected-package",
+        updateMethod: "npm",
+        manualInstallCommand: null,
+      }),
+      runInstall,
+      installationCoordinator: immediateInstallationCoordinator,
+    });
+
+    const result = await checker.install();
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/unrecognized/i);
+    expect(runInstall).not.toHaveBeenCalled();
+  });
+
+  it("fails an npm success whose production CLI verification is unavailable", async () => {
+    const versions = ["0.4.2", "0.4.2", null];
+    const checker = new CodexUpdateChecker({
+      detectInstalled: async () => ({
+        version: versions.shift() ?? null,
+        path: "/usr/local/bin/codex",
+      }),
+      fetchLatest: async () => ({ tagName: "v0.4.3", htmlUrl: null }),
+      detectInstallMetadata: async () => ({
+        installedPackage: "@openai/codex",
+        updateMethod: "npm",
+        manualInstallCommand: "npm install -g @openai/codex@latest",
+      }),
+      runInstall: async () => "npm exited zero",
+      installationCoordinator: immediateInstallationCoordinator,
+    });
+
+    const result = await checker.install();
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/production CLI probe/i);
+    expect(result.status.installed).toBeNull();
   });
 });

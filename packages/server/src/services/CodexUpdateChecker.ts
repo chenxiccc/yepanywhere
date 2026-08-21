@@ -1,15 +1,22 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { getLogger } from "../logging/logger.js";
 import { detectCodexCli } from "../sdk/cli-detection.js";
+import {
+  CODEX_INSTALLATION_FAMILY,
+  ProviderInstallationBusyError,
+  type ProviderInstallationCoordinator,
+  providerInstallationCoordinator,
+} from "./ProviderInstallationCoordinator.js";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const GITHUB_LATEST_URL =
   "https://api.github.com/repos/openai/codex/releases/latest";
 const DEFAULT_REFRESH_TTL_MS = 24 * 60 * 60 * 1000;
+const ALLOWED_NPM_PACKAGES = new Set(["@openai/codex"]);
 
 const log = getLogger().child({ component: "codex-update-checker" });
 
@@ -65,6 +72,11 @@ export interface CodexUpdateCheckerOptions {
   ) => Promise<CodexInstallMetadata>;
   /** Override the package install command (for tests). Returns combined stdout/stderr. */
   runInstall?: (pkg: string) => Promise<string>;
+  /** Shared installation lifecycle owner (injectable for tests). */
+  installationCoordinator?: Pick<
+    ProviderInstallationCoordinator,
+    "runExclusiveUpdate" | "withReadLease"
+  >;
   /** Refresh TTL in ms (default: 24h). */
   refreshTtlMs?: number;
 }
@@ -104,12 +116,22 @@ export class CodexUpdateChecker {
     CodexUpdateCheckerOptions["runInstall"]
   >;
   private readonly refreshTtlMs: number;
+  private readonly installationCoordinator: Pick<
+    ProviderInstallationCoordinator,
+    "runExclusiveUpdate" | "withReadLease"
+  >;
 
   constructor(options: CodexUpdateCheckerOptions = {}) {
+    this.installationCoordinator =
+      options.installationCoordinator ?? providerInstallationCoordinator;
     this.fetchLatest = options.fetchLatest ?? fetchLatestFromGitHub;
     this.detectInstalled =
       options.detectInstalled ??
-      (() => detectInstalledFromCli(options.codexCliPath));
+      (() =>
+        detectInstalledFromCli(
+          options.codexCliPath,
+          this.installationCoordinator,
+        ));
     this.detectInstallMetadata =
       options.detectInstallMetadata ?? detectInstallMetadataFromPath;
     this.runInstall = options.runInstall ?? runNpmGlobalInstall;
@@ -201,11 +223,56 @@ export class CodexUpdateChecker {
       };
     }
     const pkg = current.installedPackage;
-    log.info({ pkg }, "Running npm install -g for Codex CLI update");
+    if (!ALLOWED_NPM_PACKAGES.has(pkg)) {
+      return {
+        success: false,
+        output: "",
+        status: current,
+        error: `Refusing to update unrecognized Codex npm package: ${pkg}`,
+      };
+    }
+
+    let terminalStatus = current;
+    log.info(
+      { family: CODEX_INSTALLATION_FAMILY, pkg },
+      "Admitting Codex CLI update",
+    );
     try {
-      const output = await this.runInstall(pkg);
-      const refreshed = await this.getStatus({ force: true });
-      return { success: true, output, status: refreshed };
+      return await this.installationCoordinator.runExclusiveUpdate(
+        CODEX_INSTALLATION_FAMILY,
+        async () => {
+          const admitted = await this.getStatus({ force: true });
+          terminalStatus = admitted;
+          if (
+            admitted.updateMethod !== "npm" ||
+            admitted.installedPackage !== pkg
+          ) {
+            throw new Error(
+              "Codex installation changed before the update could start",
+            );
+          }
+
+          log.info(
+            { family: CODEX_INSTALLATION_FAMILY, pkg },
+            "Running npm install -g for Codex CLI update",
+          );
+          let output: string;
+          try {
+            output = await this.runInstall(pkg);
+          } catch (error) {
+            terminalStatus = await this.getStatus({ force: true });
+            throw error;
+          }
+          const refreshed = await this.getStatus({ force: true });
+          terminalStatus = refreshed;
+          if (!refreshed.installed || !refreshed.installedPath) {
+            throw new Error(
+              "Codex update completed but the production CLI probe could not launch the installation",
+            );
+          }
+          return { success: true, output, status: refreshed };
+        },
+      );
     } catch (e) {
       const err = e as NodeJS.ErrnoException & {
         stdout?: string;
@@ -215,22 +282,36 @@ export class CodexUpdateChecker {
         .filter(Boolean)
         .join("\n")
         .trim();
-      log.warn({ error: err.message }, "npm install -g failed for Codex CLI");
+      const details = {
+        error: err.message,
+        family: CODEX_INSTALLATION_FAMILY,
+      };
+      if (e instanceof ProviderInstallationBusyError) {
+        log.info(details, "Codex CLI update deferred while provider is active");
+      } else {
+        log.warn(details, "Codex CLI update failed");
+      }
       return {
         success: false,
         output,
-        status: current,
+        status: terminalStatus,
         error: err.message,
       };
     }
   }
 }
 
-async function detectInstalledFromCli(codexCliPath?: string): Promise<{
+async function detectInstalledFromCli(
+  codexCliPath: string | undefined,
+  installationCoordinator: Pick<
+    ProviderInstallationCoordinator,
+    "withReadLease"
+  >,
+): Promise<{
   version: string | null;
   path: string | null;
 }> {
-  const info = await detectCodexCli(codexCliPath);
+  const info = await detectCodexCli(codexCliPath, installationCoordinator);
   return {
     version: info.version ?? null,
     path: info.path ?? null,
@@ -291,8 +372,9 @@ export function inferManualInstallCommand(
 
 async function getNpmGlobalRoot(): Promise<string | null> {
   try {
-    const { stdout } = await execAsync("npm root -g", {
+    const { stdout } = await execFileAsync(npmCommand(), ["root", "-g"], {
       encoding: "utf-8",
+      windowsHide: true,
     });
     const npmGlobalRoot = stdout.trim();
     if (!npmGlobalRoot) return null;
@@ -333,11 +415,24 @@ function extractNpmGlobalPackageName(
 }
 
 async function runNpmGlobalInstall(pkg: string): Promise<string> {
-  const { stdout, stderr } = await execAsync(`npm install -g ${pkg}@latest`, {
-    timeout: 5 * 60 * 1000,
-    maxBuffer: 10 * 1024 * 1024,
-  });
+  if (!ALLOWED_NPM_PACKAGES.has(pkg)) {
+    throw new Error(`Unsupported Codex npm package: ${pkg}`);
+  }
+  const { stdout, stderr } = await execFileAsync(
+    npmCommand(),
+    ["install", "-g", `${pkg}@latest`],
+    {
+      timeout: 5 * 60 * 1000,
+      maxBuffer: 10 * 1024 * 1024,
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
   return [stdout, stderr].filter(Boolean).join("\n").trim();
+}
+
+function npmCommand(): string {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
 async function fetchLatestFromGitHub(): Promise<{

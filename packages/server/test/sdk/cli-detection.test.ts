@@ -9,6 +9,7 @@ import {
   getCodexCliVersion,
   normalizeCodexCliVersion,
   parseCommandLookupOutput,
+  probeCodexCliVersion,
   selectCommandLookupTarget,
 } from "../../src/sdk/cli-detection.js";
 
@@ -110,6 +111,30 @@ describe("Codex CLI detection", () => {
     await expect(getCodexCliVersion(codexPath)).resolves.toBe(
       "codex-cli 99.5.0",
     );
+  });
+
+  it("classifies empty and failed Codex version probes", async () => {
+    const dir = makeTempDir("codex-probe-failure-");
+    const emptyPath = join(
+      dir,
+      process.platform === "win32" ? "codex-empty.cmd" : "codex-empty",
+    );
+    writeFileSync(
+      emptyPath,
+      process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\nexit 0\n",
+      "utf8",
+    );
+    if (process.platform !== "win32") chmodSync(emptyPath, 0o755);
+    await expect(probeCodexCliVersion(emptyPath)).resolves.toMatchObject({
+      ok: false,
+      reason: "empty-output",
+    });
+
+    const missingPath = join(dir, "missing-codex");
+    await expect(probeCodexCliVersion(missingPath)).resolves.toEqual({
+      ok: false,
+      reason: "not-found",
+    });
   });
 
   it("keeps an explicit codex path authoritative", async () => {

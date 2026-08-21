@@ -87,7 +87,11 @@ function createFakeCodexCommand(
   source: string,
 ): string {
   const scriptPath = join(tempDir, `${basename}.mjs`);
-  writeFileSync(scriptPath, source, "utf-8");
+  const versionAwareSource = source.replace(
+    /^(#![^\n]*\n)/,
+    '$1if (process.argv[2] === "--version") { console.log("codex-cli 99.0.0"); process.exit(0); }\n',
+  );
+  writeFileSync(scriptPath, versionAwareSource, "utf-8");
 
   if (process.platform === "win32") {
     const cmdPath = join(tempDir, `${basename}.cmd`);
@@ -132,6 +136,7 @@ describe("CodexProvider", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "codex-path-"));
       const codexPath = join(tempDir, "codex");
       writeFileSync(codexPath, "#!/bin/sh\necho codex-cli 0.0.0\n", "utf-8");
+      if (process.platform !== "win32") chmodSync(codexPath, 0o755);
       const customProvider = new CodexProvider({
         codexPath,
       });

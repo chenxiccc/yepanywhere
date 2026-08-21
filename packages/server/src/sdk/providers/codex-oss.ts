@@ -21,6 +21,11 @@ import {
   normalizeCodexToolInvocation,
 } from "../../codex/normalization.js";
 import { getLogger } from "../../logging/logger.js";
+import {
+  CODEX_INSTALLATION_FAMILY,
+  type ProviderInstallationCoordinator,
+  providerInstallationCoordinator,
+} from "../../services/ProviderInstallationCoordinator.js";
 import { findCodexCliPath } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type { SDKMessage } from "../types.js";
@@ -45,6 +50,8 @@ export interface CodexOSSProviderConfig {
   localProvider?: "ollama" | "lmstudio";
   /** Request timeout in ms (default: 300000 = 5 minutes) */
   timeout?: number;
+  /** Shared installation owner (injectable for deterministic tests). */
+  installationCoordinator?: ProviderInstallationCoordinator;
 }
 
 /**
@@ -174,17 +181,26 @@ export class CodexOSSProvider implements AgentProvider {
   readonly supportsSteering = false;
 
   private codexPath?: string;
+  private readonly installationCoordinator: ProviderInstallationCoordinator;
   private readonly localProvider: "ollama" | "lmstudio";
   private readonly timeout: number;
 
   constructor(config: CodexOSSProviderConfig = {}) {
     this.codexPath = config.codexPath;
+    this.installationCoordinator =
+      config.installationCoordinator ?? providerInstallationCoordinator;
     this.localProvider = config.localProvider ?? "ollama";
     this.timeout = config.timeout ?? 300000;
   }
 
   setCodexPath(codexPath: string | undefined): void {
     this.codexPath = codexPath;
+  }
+
+  getModelCatalogCacheKey(): string {
+    return this.installationCoordinator.getSourceVersion(
+      CODEX_INSTALLATION_FAMILY,
+    );
   }
 
   /**
@@ -281,6 +297,10 @@ export class CodexOSSProvider implements AgentProvider {
    * Start a new CodexOSS session.
    */
   async startSession(options: StartSessionOptions): Promise<AgentSession> {
+    const installationLease =
+      await this.installationCoordinator.acquireRuntimeLease(
+        CODEX_INSTALLATION_FAMILY,
+      );
     const queue = new MessageQueue();
     const abortController = new AbortController();
     const pidRef: { value?: number } = {};
@@ -289,12 +309,19 @@ export class CodexOSSProvider implements AgentProvider {
       queue.push(options.initialMessage);
     }
 
-    const iterator = this.runSession(
+    const sessionIterator = this.runSession(
       options,
       queue,
       abortController.signal,
       pidRef,
     );
+    const iterator = (async function* () {
+      try {
+        yield* sessionIterator;
+      } finally {
+        await installationLease.release();
+      }
+    })();
 
     return {
       iterator,
@@ -1033,7 +1060,7 @@ export class CodexOSSProvider implements AgentProvider {
    * Find codex binary path.
    */
   private async findCodexPath(): Promise<string | null> {
-    return findCodexCliPath(this.codexPath);
+    return findCodexCliPath(this.codexPath, this.installationCoordinator);
   }
 }
 

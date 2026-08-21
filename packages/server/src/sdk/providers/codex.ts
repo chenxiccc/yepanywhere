@@ -42,6 +42,11 @@ import {
 import { formatCodexSubagentActivity } from "../../codex/subagentActivity.js";
 import { getLogger } from "../../logging/logger.js";
 import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
+import {
+  CODEX_INSTALLATION_FAMILY,
+  type ProviderInstallationCoordinator,
+  providerInstallationCoordinator,
+} from "../../services/ProviderInstallationCoordinator.js";
 import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
@@ -582,6 +587,8 @@ export interface CodexProviderConfig {
   baseUrl?: string;
   /** API key override (normally read from ~/.codex/auth.json) */
   apiKey?: string;
+  /** Shared installation owner (injectable for deterministic tests). */
+  installationCoordinator?: ProviderInstallationCoordinator;
 }
 
 class AsyncQueue<T> {
@@ -1005,7 +1012,12 @@ export class CodexProvider implements AgentProvider {
   readonly supportsNativeCompactThreshold = true;
 
   private readonly config: CodexProviderConfig;
-  private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
+  private readonly installationCoordinator: ProviderInstallationCoordinator;
+  private modelCache: {
+    models: ModelInfo[];
+    expiresAt: number;
+    installationSourceVersion: string;
+  } | null = null;
   private getConfiguredReasoningSummary: () => CodexReasoningSummary = () =>
     DEFAULT_CODEX_REASONING_SUMMARY;
   private getConfiguredSubagentMaxDepth: () => SubagentMaxDepth = () =>
@@ -1013,6 +1025,8 @@ export class CodexProvider implements AgentProvider {
 
   constructor(config: CodexProviderConfig = {}) {
     this.config = config;
+    this.installationCoordinator =
+      config.installationCoordinator ?? providerInstallationCoordinator;
   }
 
   setCodexPath(codexPath: string | undefined): void {
@@ -1028,6 +1042,12 @@ export class CodexProvider implements AgentProvider {
     this.getConfiguredSubagentMaxDepth = getter;
   }
 
+  getModelCatalogCacheKey(): string {
+    return this.installationCoordinator.getSourceVersion(
+      CODEX_INSTALLATION_FAMILY,
+    );
+  }
+
   /**
    * Check if the Codex CLI is installed.
    */
@@ -1039,7 +1059,12 @@ export class CodexProvider implements AgentProvider {
    * Check if Codex CLI is installed by looking in PATH and common locations.
    */
   private async isCodexCliInstalled(): Promise<boolean> {
-    return (await findCodexCliPath(this.config.codexPath)) !== null;
+    return (
+      (await findCodexCliPath(
+        this.config.codexPath,
+        this.installationCoordinator,
+      )) !== null
+    );
   }
 
   /**
@@ -1047,7 +1072,10 @@ export class CodexProvider implements AgentProvider {
    */
   private async resolveCodexCommand(): Promise<string> {
     if (this.config.codexPath) return this.config.codexPath;
-    return (await findCodexCliPath()) ?? "codex";
+    return (
+      (await findCodexCliPath(undefined, this.installationCoordinator)) ??
+      "codex"
+    );
   }
 
   private getCodexClientName(overrideClientName?: string): string {
@@ -1103,8 +1131,20 @@ export class CodexProvider implements AgentProvider {
    * Queries Codex app-server's model/list endpoint with a static fallback.
    */
   async getAvailableModels(): Promise<ModelInfo[]> {
+    return this.installationCoordinator.withReadLease(
+      CODEX_INSTALLATION_FAMILY,
+      () => this.getAvailableModelsWithLease(),
+    );
+  }
+
+  private async getAvailableModelsWithLease(): Promise<ModelInfo[]> {
     const now = Date.now();
-    if (this.modelCache && this.modelCache.expiresAt > now) {
+    const installationSourceVersion = this.getModelCatalogCacheKey();
+    if (
+      this.modelCache &&
+      this.modelCache.expiresAt > now &&
+      this.modelCache.installationSourceVersion === installationSourceVersion
+    ) {
       return this.modelCache.models;
     }
 
@@ -1120,12 +1160,22 @@ export class CodexProvider implements AgentProvider {
     this.modelCache = {
       models,
       expiresAt: now + MODEL_CACHE_TTL_MS,
+      installationSourceVersion,
     };
 
     return models;
   }
 
   async getSubscriptionUsage(
+    models: readonly ModelInfo[],
+  ): Promise<ProviderSubscriptionUsage | null> {
+    return this.installationCoordinator.withReadLease(
+      CODEX_INSTALLATION_FAMILY,
+      () => this.getSubscriptionUsageWithLease(models),
+    );
+  }
+
+  private async getSubscriptionUsageWithLease(
     models: readonly ModelInfo[],
   ): Promise<ProviderSubscriptionUsage | null> {
     if (!(await this.isCodexCliInstalled())) return null;
@@ -1334,7 +1384,10 @@ export class CodexProvider implements AgentProvider {
   private async getInstalledCodexCliVersion(): Promise<string | null> {
     try {
       const codexCommand = await this.resolveCodexCommand();
-      const version = await getCodexCliVersion(codexCommand);
+      const version = await getCodexCliVersion(
+        codexCommand,
+        this.installationCoordinator,
+      );
       return normalizeSemver(version);
     } catch {
       return null;
@@ -1437,6 +1490,10 @@ export class CodexProvider implements AgentProvider {
    * Start a new Codex session.
    */
   async startSession(options: StartSessionOptions): Promise<AgentSession> {
+    const installationLease =
+      await this.installationCoordinator.acquireRuntimeLease(
+        CODEX_INSTALLATION_FAMILY,
+      );
     const queue = new MessageQueue();
     const abortController = new AbortController();
     const runtimeState: CodexTurnRuntimeState = {
@@ -1496,6 +1553,7 @@ export class CodexProvider implements AgentProvider {
         yield* sessionIterator;
       } finally {
         settleInitialActiveClient(null);
+        await installationLease.release();
       }
     })();
 
@@ -1525,6 +1583,7 @@ export class CodexProvider implements AgentProvider {
         }
         abortController.abort();
         await activeClient?.close();
+        await installationLease.release();
       },
       isProcessAlive: () => activeClient?.isAlive() ?? false,
       getProviderActivity: () =>
@@ -1815,6 +1874,20 @@ export class CodexProvider implements AgentProvider {
   }
 
   async forkSession(options: {
+    sessionId: string;
+    cwd: string;
+    upToMessageId?: string;
+    boundary?: ProviderForkBoundary;
+    title?: string;
+    sessionSandbox?: SessionSandboxRuntime;
+  }): Promise<{ sessionId: string }> {
+    return this.installationCoordinator.withReadLease(
+      CODEX_INSTALLATION_FAMILY,
+      () => this.forkSessionWithLease(options),
+    );
+  }
+
+  private async forkSessionWithLease(options: {
     sessionId: string;
     cwd: string;
     upToMessageId?: string;
@@ -2962,17 +3035,22 @@ export class CodexProvider implements AgentProvider {
   async generateSummary(
     request: SummaryGenerationRequest,
   ): Promise<SummaryGenerationResult> {
-    switch (request.strategy) {
-      case "side-session": {
-        const text = await this.generateSideSessionRecap(
-          request.recentAssistantText,
-          request.model,
-        );
-        return { text };
-      }
-      case "fork":
-        return await this.generateForkBackedSummary(request);
-    }
+    return this.installationCoordinator.withReadLease(
+      CODEX_INSTALLATION_FAMILY,
+      async () => {
+        switch (request.strategy) {
+          case "side-session": {
+            const text = await this.generateSideSessionRecap(
+              request.recentAssistantText,
+              request.model,
+            );
+            return { text };
+          }
+          case "fork":
+            return await this.generateForkBackedSummary(request);
+        }
+      },
+    );
   }
 
   private async generateSideSessionRecap(
