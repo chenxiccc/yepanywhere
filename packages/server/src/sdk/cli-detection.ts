@@ -17,9 +17,15 @@ export type InstallationReadCoordinator = Pick<
 
 const isWindows = os.platform() === "win32";
 const CODEX_VERSION_PROBE_TIMEOUT_MS = 3000;
+const CODEX_FAILED_DISCOVERY_RETRY_MS = 100;
+const NPM_GLOBAL_PATH_CACHE_TTL_MS = 5 * 60_000;
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const log = getLogger().child({ component: "cli-detection" });
+let npmGlobalCodexPathsCache:
+  | { paths: string[]; expiresAt: number }
+  | undefined;
+let npmGlobalCodexPathsRequest: Promise<string[]> | undefined;
 
 /**
  * Returns the platform-appropriate command to locate an executable in PATH.
@@ -400,22 +406,33 @@ export async function findCodexCliInstall(
   return installationCoordinator.withReadLease(
     CODEX_INSTALLATION_FAMILY,
     async () => {
-      if (explicitPath) {
-        if (!existsSync(explicitPath)) return null;
-        const version = await getCodexCliVersion(
-          explicitPath,
-          installationCoordinator,
-        );
-        return version
-          ? {
-              path: explicitPath,
-              version,
-              normalizedVersion: normalizeCodexCliVersion(version),
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (explicitPath) {
+          if (existsSync(explicitPath)) {
+            const version = await getCodexCliVersion(
+              explicitPath,
+              installationCoordinator,
+            );
+            if (version) {
+              return {
+                path: explicitPath,
+                version,
+                normalizedVersion: normalizeCodexCliVersion(version),
+              };
             }
-          : null;
-      }
+          }
+        } else {
+          const install = await findAutoCodexCliInstall(
+            installationCoordinator,
+          );
+          if (install) return install;
+        }
 
-      return findAutoCodexCliInstall(installationCoordinator);
+        if (attempt === 0) {
+          await delay(CODEX_FAILED_DISCOVERY_RETRY_MS);
+        }
+      }
+      return null;
     },
   );
 }
@@ -484,6 +501,26 @@ async function probeCodexCliVersionUncoordinated(
 }
 
 async function getNpmGlobalCodexPaths(): Promise<string[]> {
+  if (
+    npmGlobalCodexPathsCache &&
+    npmGlobalCodexPathsCache.expiresAt > Date.now()
+  ) {
+    return npmGlobalCodexPathsCache.paths;
+  }
+  if (npmGlobalCodexPathsRequest) return npmGlobalCodexPathsRequest;
+
+  npmGlobalCodexPathsRequest = resolveNpmGlobalCodexPaths().finally(() => {
+    npmGlobalCodexPathsRequest = undefined;
+  });
+  const paths = await npmGlobalCodexPathsRequest;
+  npmGlobalCodexPathsCache = {
+    paths,
+    expiresAt: Date.now() + NPM_GLOBAL_PATH_CACHE_TTL_MS,
+  };
+  return paths;
+}
+
+async function resolveNpmGlobalCodexPaths(): Promise<string[]> {
   const npmCommand = isWindows ? "npm.cmd" : "npm";
   try {
     const { stdout } = await execFileAsync(npmCommand, ["prefix", "-g"], {
@@ -500,4 +537,8 @@ async function getNpmGlobalCodexPaths(): Promise<string[]> {
     log.debug({ error }, "Unable to resolve npm-global Codex candidate");
     return [];
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

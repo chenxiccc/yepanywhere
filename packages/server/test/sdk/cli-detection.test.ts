@@ -152,6 +152,20 @@ describe("Codex CLI detection", () => {
     });
   });
 
+  it("retries a bounded explicit-path replacement miss", async () => {
+    const dir = makeTempDir("codex-replacement-retry-");
+    const codexPath = join(
+      dir,
+      process.platform === "win32" ? "codex.cmd" : "codex",
+    );
+    const detection = findCodexCliPath(codexPath);
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    createFakeCodex(dir, "7.8.9");
+
+    await expect(detection).resolves.toBe(codexPath);
+  });
+
   it("auto-detects the highest version rather than the first PATH hit", async () => {
     const oldDir = makeTempDir("codex-old-");
     const newDir = makeTempDir("codex-new-");

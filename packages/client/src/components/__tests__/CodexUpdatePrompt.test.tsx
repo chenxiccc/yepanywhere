@@ -12,11 +12,13 @@ import { CodexUpdatePrompt } from "../CodexUpdatePrompt";
 
 const {
   mockInstall,
+  mockRefetchProviders,
   mockUpdateSetting,
   mockUseCodexUpdateStatus,
   mockUseServerSettings,
 } = vi.hoisted(() => ({
   mockInstall: vi.fn(),
+  mockRefetchProviders: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockUseCodexUpdateStatus: vi.fn(),
   mockUseServerSettings: vi.fn(),
@@ -29,6 +31,10 @@ vi.mock("../../hooks/useCodexUpdateStatus", () => ({
 
 vi.mock("../../hooks/useServerSettings", () => ({
   useServerSettings: () => mockUseServerSettings(),
+}));
+
+vi.mock("../../hooks/useProviders", () => ({
+  useProviders: () => ({ refetch: mockRefetchProviders }),
 }));
 
 vi.mock("../../i18n", () => ({
@@ -100,6 +106,8 @@ describe("CodexUpdatePrompt", () => {
       },
     });
     mockInstall.mockReset();
+    mockRefetchProviders.mockReset();
+    mockRefetchProviders.mockResolvedValue(undefined);
     mockUpdateSetting.mockReset();
 
     hookState = {
@@ -156,6 +164,7 @@ describe("CodexUpdatePrompt", () => {
       ),
     );
     await waitFor(() => expect(mockInstall).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockRefetchProviders).toHaveBeenCalledTimes(1));
 
     view.rerender(<CodexUpdatePrompt />);
 
@@ -185,6 +194,7 @@ describe("CodexUpdatePrompt", () => {
     fireEvent.click(screen.getByRole("button", { name: "Update now" }));
 
     await waitFor(() => expect(mockInstall).toHaveBeenCalledTimes(1));
+    expect(mockRefetchProviders).not.toHaveBeenCalled();
 
     view.rerender(<CodexUpdatePrompt />);
 

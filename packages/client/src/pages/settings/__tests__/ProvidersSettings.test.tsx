@@ -75,7 +75,7 @@ vi.mock("../../../hooks/useProviders", () => ({
     providers: hookState.providers,
     loading: false,
     error: null,
-    refetch: vi.fn(),
+    refetch: mockReloadProviders,
     reload: mockReloadProviders,
   }),
 }));

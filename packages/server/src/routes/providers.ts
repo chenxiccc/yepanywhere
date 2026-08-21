@@ -12,6 +12,7 @@ import type { AgentProvider } from "../sdk/providers/types.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
 
 const PROVIDER_INFO_CACHE_TTL_MS = 5 * 60_000;
+const PROVIDER_INFO_NEGATIVE_CACHE_TTL_MS = 15_000;
 const PROVIDER_INFO_CACHE_BYTES = 4 * 1024 * 1024;
 const PROVIDER_USAGE_CACHE_TTL_MS = 60_000;
 
@@ -23,6 +24,8 @@ interface ProviderRouteDeps {
   providers?: AgentProvider[];
   /** Provider info cache TTL in ms. */
   cacheTtlMs?: number;
+  /** Unavailable-provider cache TTL in ms. */
+  negativeCacheTtlMs?: number;
   /** Provider subscription usage cache TTL in ms. */
   usageCacheTtlMs?: number;
   /** Whether this route belongs to the bundled desktop runtime. */
@@ -102,6 +105,8 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
     Promise<ProviderSubscriptionUsage | null>
   >();
   const cacheTtlMs = deps.cacheTtlMs ?? PROVIDER_INFO_CACHE_TTL_MS;
+  const negativeCacheTtlMs =
+    deps.negativeCacheTtlMs ?? PROVIDER_INFO_NEGATIVE_CACHE_TTL_MS;
   const usageCacheTtlMs = deps.usageCacheTtlMs ?? PROVIDER_USAGE_CACHE_TTL_MS;
   const getExposedProviders = (): AgentProvider[] => {
     const providers = deps.providers ?? getAllProviders();
@@ -123,7 +128,8 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
       provider.getAvailableModels(),
     ]);
     return {
-      expiresAt: Date.now() + cacheTtlMs,
+      expiresAt:
+        Date.now() + (authStatus.installed ? cacheTtlMs : negativeCacheTtlMs),
       catalogCacheKey: provider.getModelCatalogCacheKey?.(),
       info: {
         name: provider.name,

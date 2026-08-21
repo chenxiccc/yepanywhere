@@ -38,6 +38,7 @@ describe("ProviderInstallationCoordinator", () => {
       leaseStaleMs: 100,
       pollMs: 5,
       readWaitMs: 500,
+      readerDrainWaitMs: 500,
     });
   }
 
@@ -81,6 +82,27 @@ describe("ProviderInstallationCoordinator", () => {
     finishUpdate.resolve();
     await expect(update).resolves.toBe("updated");
     await expect(readResult).resolves.toBe("read");
+  });
+
+  it("waits for a bounded reader before admitting an update", async () => {
+    const coordinator = createCoordinator();
+    const finishRead = deferred();
+    const readEntered = deferred();
+    const read = coordinator.withReadLease(FAMILY, async () => {
+      readEntered.resolve();
+      await finishRead.promise;
+    });
+    await readEntered.promise;
+
+    const operation = vi.fn(async () => "updated");
+    const update = coordinator.runExclusiveUpdate(FAMILY, operation);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(operation).not.toHaveBeenCalled();
+
+    finishRead.resolve();
+    await read;
+    await expect(update).resolves.toBe("updated");
+    expect(operation).toHaveBeenCalledTimes(1);
   });
 
   it("coalesces concurrent in-process update requests", async () => {

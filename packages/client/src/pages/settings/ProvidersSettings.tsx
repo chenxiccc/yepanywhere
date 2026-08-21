@@ -1354,7 +1354,7 @@ export function ProvidersSettings() {
   const [showClaudeOllamaDeprecation, setShowClaudeOllamaDeprecation] =
     useState(shouldShowClaudeOllamaDeprecation);
   const { showToast } = useToastContext();
-  const { providers: serverProviders, reload: reloadProviders } =
+  const { providers: serverProviders, refetch: reloadProviders } =
     useProviders();
   const { settings, updateSetting } = useServerSettings();
   const { version } = useVersion();

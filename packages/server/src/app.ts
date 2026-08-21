@@ -2178,6 +2178,10 @@ export function createApp(options: AppOptions): AppResult {
             console.log(
               `[codex-update] Auto-updated to ${result.status.installed ?? "?"}`,
             );
+          } else if (result.retryable) {
+            console.info(
+              `[codex-update] Auto-update deferred: ${result.error ?? "provider active"}`,
+            );
           } else {
             console.warn(
               `[codex-update] Auto-update failed: ${result.error ?? "unknown"}`,

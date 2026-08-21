@@ -149,7 +149,7 @@ describe("Codex installation update coordination", () => {
     const session = await provider.startSession({ cwd: tempDir });
 
     const blocked = await checker.install();
-    expect(blocked).toMatchObject({ success: false });
+    expect(blocked).toMatchObject({ success: false, retryable: true });
     expect(blocked.error).toMatch(/active provider operation/i);
     expect(runInstall).not.toHaveBeenCalled();
 

@@ -1596,6 +1596,7 @@ export const api = {
       output: string;
       status: CodexUpdateStatus;
       error?: string;
+      retryable?: boolean;
     }>("/codex/updates/install", { method: "POST" }),
 
   // Remote executors API

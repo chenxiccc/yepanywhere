@@ -87,6 +87,46 @@ describe("Providers Routes", () => {
     expect(provider.getAvailableModels).toHaveBeenCalledTimes(1);
   });
 
+  it("retains unavailable provider rows only for the short negative TTL", async () => {
+    const getAuthStatus = vi
+      .fn()
+      .mockResolvedValueOnce({
+        installed: false,
+        authenticated: false,
+        enabled: false,
+      })
+      .mockResolvedValue({
+        installed: true,
+        authenticated: true,
+        enabled: true,
+      });
+    const provider = createProvider({ getAuthStatus });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+      negativeCacheTtlMs: 100,
+    });
+
+    const unavailable = await routes.request("/");
+    const cached = await routes.request("/");
+    await new Promise((resolve) => setTimeout(resolve, 125));
+    const recovered = await routes.request("/");
+
+    expect(
+      ((await unavailable.json()) as { providers: ProviderInfo[] }).providers[0]
+        ?.installed,
+    ).toBe(false);
+    expect(
+      ((await cached.json()) as { providers: ProviderInfo[] }).providers[0]
+        ?.installed,
+    ).toBe(false);
+    expect(
+      ((await recovered.json()) as { providers: ProviderInfo[] }).providers[0]
+        ?.installed,
+    ).toBe(true);
+    expect(getAuthStatus).toHaveBeenCalledTimes(2);
+  });
+
   it("shares an in-flight scan between concurrent requests", async () => {
     const authStatus = deferred<AuthStatus>();
     const models = deferred<ModelInfo[]>();

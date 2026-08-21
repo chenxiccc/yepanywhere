@@ -53,6 +53,15 @@ export interface CodexUpdateStatus {
   error: string | null;
 }
 
+export interface CodexUpdateInstallResult {
+  success: boolean;
+  output: string;
+  status: CodexUpdateStatus;
+  error?: string;
+  /** The installation is healthy but an active operation deferred mutation. */
+  retryable?: boolean;
+}
+
 export interface CodexUpdateCheckerOptions {
   /** Explicit Codex CLI path supplied by an embedding runtime such as desktop. */
   codexCliPath?: string;
@@ -206,12 +215,7 @@ export class CodexUpdateChecker {
    * Run `npm install -g <pkg>@latest` when the install is npm-global.
    * Refreshes status on success. Returns combined stdout/stderr.
    */
-  async install(): Promise<{
-    success: boolean;
-    output: string;
-    status: CodexUpdateStatus;
-    error?: string;
-  }> {
+  async install(): Promise<CodexUpdateInstallResult> {
     const current = await this.getStatus();
     if (current.updateMethod !== "npm" || !current.installedPackage) {
       return {
@@ -296,6 +300,9 @@ export class CodexUpdateChecker {
         output,
         status: terminalStatus,
         error: err.message,
+        ...(e instanceof ProviderInstallationBusyError
+          ? { retryable: true }
+          : {}),
       };
     }
   }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useCodexUpdateStatus } from "../hooks/useCodexUpdateStatus";
+import { useProviders } from "../hooks/useProviders";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
@@ -28,6 +29,7 @@ export function CodexUpdatePrompt() {
   const policy = settings?.codexUpdatePolicy;
   const { status, isInstalling, error, installOutput, install } =
     useCodexUpdateStatus({ enabled: policy === "notify" });
+  const { refetch: refetchProviders } = useProviders();
   const [seenTag, setSeenTag] = useState<string | null>(() => readSeenTag());
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [dismissedTag, setDismissedTag] = useState<string | null>(null);
@@ -111,6 +113,9 @@ export function CodexUpdatePrompt() {
       }
     }
     const ok = await install();
+    if (ok) {
+      await refetchProviders();
+    }
     setInstallAttempted(true);
     setInstallSucceeded(ok);
   };

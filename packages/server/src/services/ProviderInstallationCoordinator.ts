@@ -24,6 +24,7 @@ const DEFAULT_HEARTBEAT_MS = 5_000;
 const DEFAULT_GATE_STALE_MS = 30_000;
 const DEFAULT_GATE_WAIT_MS = 10_000;
 const DEFAULT_READ_WAIT_MS = 6 * 60_000;
+const DEFAULT_READER_DRAIN_WAIT_MS = 10_000;
 const DEFAULT_POLL_MS = 100;
 
 const log = getLogger().child({
@@ -84,6 +85,7 @@ export interface ProviderInstallationCoordinatorOptions {
   gateStaleMs?: number;
   gateWaitMs?: number;
   readWaitMs?: number;
+  readerDrainWaitMs?: number;
   pollMs?: number;
 }
 
@@ -144,6 +146,7 @@ export class ProviderInstallationCoordinator {
   private readonly gateStaleMs: number;
   private readonly gateWaitMs: number;
   private readonly readWaitMs: number;
+  private readonly readerDrainWaitMs: number;
   private readonly pollMs: number;
   private readonly familyStates = new Map<string, FamilyState>();
   private readonly context = new AsyncLocalStorage<InstallationContext>();
@@ -158,6 +161,8 @@ export class ProviderInstallationCoordinator {
     this.gateStaleMs = options.gateStaleMs ?? DEFAULT_GATE_STALE_MS;
     this.gateWaitMs = options.gateWaitMs ?? DEFAULT_GATE_WAIT_MS;
     this.readWaitMs = options.readWaitMs ?? DEFAULT_READ_WAIT_MS;
+    this.readerDrainWaitMs =
+      options.readerDrainWaitMs ?? DEFAULT_READER_DRAIN_WAIT_MS;
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS;
   }
 
@@ -246,23 +251,38 @@ export class ProviderInstallationCoordinator {
     const operationId = randomUUID();
     const writerPath = join(familyDir, "writer.json");
     const startedAt = Date.now();
+    const readerDrainDeadline = startedAt + this.readerDrainWaitMs;
 
-    await this.withGate(familyDir, async () => {
-      const updating = await this.hasActiveWriter(familyDir);
-      const blockers = await this.collectActiveLeases(familyDir);
-      if (updating || blockers.readers > 0 || blockers.runtimes > 0) {
-        throw new ProviderInstallationBusyError(family, {
-          updating,
-          ...blockers,
-        });
+    for (;;) {
+      const blockers = await this.withGate(familyDir, async () => {
+        const updating = await this.hasActiveWriter(familyDir);
+        const activeLeases = await this.collectActiveLeases(familyDir);
+        if (
+          !updating &&
+          activeLeases.readers === 0 &&
+          activeLeases.runtimes === 0
+        ) {
+          await this.writeExclusiveJson(writerPath, {
+            operationId,
+            family,
+            pid: process.pid,
+            createdAt: startedAt,
+          } satisfies WriterRecord);
+          return null;
+        }
+        return { updating, ...activeLeases };
+      });
+      if (!blockers) break;
+      const canWaitForReaders =
+        !blockers.updating &&
+        blockers.runtimes === 0 &&
+        blockers.readers > 0 &&
+        Date.now() < readerDrainDeadline;
+      if (!canWaitForReaders) {
+        throw new ProviderInstallationBusyError(family, blockers);
       }
-      await this.writeExclusiveJson(writerPath, {
-        operationId,
-        family,
-        pid: process.pid,
-        createdAt: startedAt,
-      } satisfies WriterRecord);
-    });
+      await delay(this.pollMs);
+    }
 
     const stopHeartbeat = this.startHeartbeat(writerPath);
     let outcome = "succeeded";
@@ -279,8 +299,8 @@ export class ProviderInstallationCoordinator {
       outcome = "failed";
       throw error;
     } finally {
-      stopHeartbeat();
       await this.publishGeneration(familyDir, family, operationId, outcome);
+      stopHeartbeat();
       await unlink(writerPath).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") {
           log.warn(
