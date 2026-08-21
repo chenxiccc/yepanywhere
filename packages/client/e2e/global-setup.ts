@@ -457,6 +457,14 @@ export default async function globalSetup() {
     ].join("\n"),
   );
   writeFileSync(join(fileBrowserProjectPath, "data.json"), '{"key": "value"}');
+  writeFileSync(
+    join(fileBrowserProjectPath, "hostile.html"),
+    '<script>fetch("/api/processes", { headers: { "X-Yep-Anywhere": "true" } }).then(() => { document.title = "EXECUTED"; })</script>',
+  );
+  writeFileSync(
+    join(fileBrowserProjectPath, "hostile.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" onload="fetch(\'/api/processes\', { headers: { \'X-Yep-Anywhere\': \'true\' } })"><rect width="10" height="10"/></svg>',
+  );
   const fileBrowserSessionDir = join(
     E2E_CLAUDE_SESSIONS_DIR,
     hostname(),

@@ -1,7 +1,9 @@
 # Active Content Origin Isolation
 
-Status: proposed and unstarted as of 2026-08-01. This plan records required
-remediation work; its presence does not authorize implementation.
+Status: active-response containment and its response-header backstop completed
+2026-08-21. Broader viewer convergence, asset brokering, and the isolated
+executable-application origin remain incomplete; this ledger does not by itself
+authorize those later product changes.
 
 Topic: active-content-security
 
@@ -115,17 +117,30 @@ and public-share raw response inert under native navigation. Apply the policy
 server-side so old clients and copied links are protected immediately. Include
 HTML and SVG regression fixtures.
 
+**Completed 2026-08-21.** A shared MIME/extension classifier forces active
+responses to download with `nosniff`, a scriptless sandbox CSP, no-referrer,
+and a restrictive permissions policy. It performs no content scan or
+sanitization and is cheap enough to run in every mode.
+
 ### 2 — converge file actions on the unified viewer
 
 Make normal, modified, context-menu, tooltip/copied-link, and toolbar actions
 resolve to the standalone viewer route. Reserve raw original bytes for an
 explicit download or a viewer-owned authenticated fetch.
 
+**Partially completed 2026-08-09.** Current shared-viewer actions keep HTML in
+source or explicit scriptless preview. A stable standalone viewer coordinate
+for arbitrary allow-listed local files remains open.
+
 ### 3 — harden scriptless previews
 
 Add response-header CSP/defense headers where a document response remains,
 keep HTML preview sandboxed without script tokens, broker local assets, and
 verify that no iframe action can escape to a raw active URL.
+
+**Response backstop completed 2026-08-21.** Active raw responses carry the
+header CSP even if attachment handling is bypassed. Relative-asset brokering
+and the remaining iframe escape matrix are still open.
 
 ### 4 — design the isolated Interactives host
 
@@ -143,7 +158,14 @@ origin isolation.
 
 ## Verification matrix
 
-The remediation is incomplete until browser tests exercise:
+Current containment evidence covers route-level malicious HTML/SVG/XML cases
+for local, project, upload, and public-share responses, plus a real Chromium
+click test for project HTML, project SVG, and the reproduced `/api/local-file`
+HTML route. The full server suite also passes. This proves the shared response
+invariant and direct browser download behavior, not every transport and action
+combination below.
+
+The broader remediation is incomplete until browser tests exercise:
 
 - authenticated direct/LAN access;
 - desktop loopback access;

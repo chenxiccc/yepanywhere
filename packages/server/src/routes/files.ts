@@ -37,6 +37,7 @@ import {
 } from "../utils/projectFileAccess.js";
 import { isLikelyUtf8Text } from "../utils/utf8Text.js";
 import { createLocalResourcePathPolicy } from "./local-resource-policy.js";
+import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 export interface FilesDeps {
   scanner: ProjectScanner;
@@ -1141,13 +1142,12 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
 
     const mimeType = getMimeType(filePath);
     const fileName = relativePath.split("/").pop() || "file";
-    const headers: Record<string, string> = {
-      "Content-Type": mimeType,
-      "Content-Length": String(stats.size),
-      "Content-Disposition": download
-        ? `attachment; filename="${fileName}"`
-        : `inline; filename="${fileName}"`,
-    };
+    const headers = createUntrustedFileResponseHeaders({
+      baseHeaders: { "Content-Length": String(stats.size) },
+      contentType: mimeType,
+      disposition: download ? "attachment" : "inline",
+      filePath: fileName,
+    });
 
     try {
       const stream = fileHandle

@@ -8,12 +8,13 @@
 
 Topic: active-content-security
 
-Status: **open security defect and product constraint (2026-08-01).** A
-same-origin HTML execution path was reproduced against `/api/local-file`; the
-route and adjacent active-content surfaces have not yet been remediated. This
-document owns the required behavior. Reproduction evidence and future work are
-tracked separately so an unstarted plan cannot be mistaken for the current
-contract.
+Status: **current raw-file containment implemented; executable-application
+origin remains a product constraint (2026-08-21).** Active local, project,
+upload, and public-share file responses now share a lightweight native-
+navigation policy. Browser-active HTML, XHTML, SVG, XML, and XSLT responses
+are attachments with `nosniff`, an inert response CSP, no-referrer policy, and
+a restrictive permissions policy. This document owns the required behavior;
+the separate executable-application origin remains unimplemented.
 
 See also:
 
@@ -31,17 +32,26 @@ See also:
 - [active-content-security evidence](active-content-security.evidence.md) —
   reproduced behavior and the dated source audit.
 - [active-content origin-isolation plan](../docs/tactical/078-active-content-origin-isolation.md)
-  — proposed, unstarted remediation and its verification matrix.
+  — implementation ledger and remaining origin-isolation verification matrix.
 
 ## Evidence and remediation state
 
 The confirmed same-origin execution trace, why existing browser defenses did
-not contain it, and the current route audit live in the
-[evidence companion](active-content-security.evidence.md). The ordered repair
-steps, constrained product proposals, and browser verification matrix live in
-the [unstarted tactical plan](../docs/tactical/078-active-content-origin-isolation.md).
-Neither artifact weakens the contract below: until remediation is implemented
-and verified, the defect remains open.
+not contain it, the route audit, and the 2026-08-21 containment evidence live
+in the [evidence companion](active-content-security.evidence.md). The remaining
+viewer, preview, and isolated-application work lives in
+[tactical 078](../docs/tactical/078-active-content-origin-isolation.md).
+
+## Design Decisions
+
+- **Apply metadata-only classification and response headers everywhere** (vs.
+  globally parsing or sanitizing contents): extension/MIME checks close native
+  navigation cheaply, while compute-heavy precautionary inspection is useful
+  only when an enforced project-write sandbox creates the extra boundary.
+- **Preserve original active bytes behind attachment handling plus an inert
+  CSP** (vs. rewriting the response as source text): explicit downloads remain
+  faithful, and the viewer owns source presentation without making the raw
+  endpoint an executable navigation target.
 
 ### Client viewer mitigation — 2026-08-09
 
@@ -53,11 +63,9 @@ and a restrictive meta CSP that denies scripts, connections, frames, objects,
 workers, forms, base URLs, and ambient image/media loads. Markdown keeps its
 sanitized preview default and can be requested as source.
 
-This is defense in depth at the current client presentation boundary, not
-remediation of the confirmed server defect. Old clients, address-bar visits,
-modified browser navigation that escapes interception, redirects, and copied
-raw endpoints remain safe only when the server response work in
-[tactical 078](../docs/tactical/078-active-content-origin-isolation.md) lands.
+This is defense in depth at the client presentation boundary. The later server
+containment protects old clients, address-bar visits, modified browser
+navigation that escapes interception, redirects, and copied raw endpoints.
 The client also deliberately withholds a **Viewer link** for arbitrary
 allow-listed local files rather than mislabeling `/api/local-file`; a stable
 standalone coordinate is future server-backed work.
@@ -102,10 +110,14 @@ Initial active-type classification must include at least:
 - XML/XSLT-capable responses until their browser behavior and type policy are
   deliberately narrowed.
 
-Classification must use the final response type plus conservative extension
-and content checks. A caller-provided MIME type is not trustworthy. PDF and
-other document formats need an explicit browser-capability review; absence
-from the initial confirmed list is not a declaration that they are inert.
+Classification uses the final response type plus a conservative extension
+check, so a caller-provided MIME type cannot opt an active extension out of the
+policy. Lightweight content checks may be added when they materially improve
+coverage. Precautionary parsing or sanitization that is computationally heavy
+is reserved for enforced project-write sandbox sessions rather than imposed on
+every file response. PDF and other document formats need an explicit browser-
+capability review; absence from the initial confirmed list is not a declaration
+that they are inert.
 
 ### Untrusted executable applications
 
@@ -125,9 +137,10 @@ relay, and public-share contexts.
    mode. An explicit static preview may use a sandbox with scripts disabled.
 3. "Open in new tab" means the standalone YA viewer route, not the raw-file
    endpoint. "Download" is the action that returns original active bytes.
-4. Raw active responses use attachment disposition, an inert type such as
-   `text/plain` where source display is intended, and `nosniff`. A raw-byte API
-   needed by the viewer must not itself be a safe native-navigation target.
+4. Raw active responses use attachment disposition, `nosniff`, and the inert
+   response policy below. Source display belongs to the viewer rather than a
+   native top-level navigation; explicit downloads preserve the original
+   bytes and declared type.
 5. Client interception is convenience, not containment. Server responses are
    safe when reached by an old client, a copied link, direct address-bar
    navigation, or a non-browser HTTP caller.
@@ -162,6 +175,13 @@ For source-only responses, `text/plain` or attachment handling is simpler and
 stronger; CSP remains defense in depth. For applications that intentionally
 run scripts, `script-src` changes cannot create a trust boundary on a shared
 origin. Those applications require origin isolation.
+
+The implemented raw-file classifier inspects only the response MIME type and
+file extension, then applies headers. It is cheap enough to run for every
+session and transport mode. Additional precautionary content parsing,
+sanitization, or rasterization that is computationally heavy is enabled only
+for enforced project-write sandbox sessions; a feature that promises inline
+rendering must still provide its required safety boundary by design.
 
 ## Executable Application Origin Contract
 

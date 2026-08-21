@@ -7,6 +7,7 @@ import {
   createLocalResourcePathPolicy,
   LOCAL_MEDIA_CONTENT_TYPES,
 } from "./local-resource-policy.js";
+import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 interface LocalImageDeps {
   allowedPaths: string[] | (() => string[]);
@@ -49,9 +50,17 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
       }
       const { resolvedPath, stats } = resolved.file;
 
-      c.header("Content-Type", contentType);
-      c.header("Content-Length", stats.size.toString());
-      c.header("Cache-Control", "private, max-age=3600");
+      const headers = createUntrustedFileResponseHeaders({
+        baseHeaders: {
+          "Cache-Control": "private, max-age=3600",
+          "Content-Length": stats.size.toString(),
+        },
+        contentType,
+        filePath: resolvedPath,
+      });
+      headers.forEach((value, name) => {
+        c.header(name, value);
+      });
 
       return stream(c, async (s) => {
         const readable = createReadStream(resolvedPath);

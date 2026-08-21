@@ -45,22 +45,15 @@ describe("Local file routes", () => {
     expect(await response.text()).toBe("# Notes\n\nText");
   });
 
-  it("serves HTML and PDF files inline from allowed directories", async () => {
+  it("downloads active HTML and serves PDF inline from allowed directories", async () => {
     const allowedDir = path.join(tempDir, "allowed");
     await mkdir(allowedDir, { recursive: true });
 
     const htmlPath = path.join(allowedDir, "README.print.html");
-    const imagePath = path.join(allowedDir, "views", "shot.png");
-    const sourcePath = path.join(allowedDir, "src", "app.ts");
-    await mkdir(path.dirname(imagePath), { recursive: true });
-    await mkdir(path.dirname(sourcePath), { recursive: true });
     const pdfPath = path.join(allowedDir, "README.pdf");
-    await writeFile(
-      htmlPath,
-      `<!doctype html><base href="file://${allowedDir}/"><title>Readme</title><img src="views/shot.png"><a href="README.pdf">PDF</a><a href="src/app.ts">Source</a><a href="#local">Local</a>`,
-    );
-    await writeFile(imagePath, "png");
-    await writeFile(sourcePath, "export const ok = true;\n");
+    const htmlSource =
+      '<!doctype html><title>Readme</title><script>document.title = "EXECUTED"</script>';
+    await writeFile(htmlPath, htmlSource);
     await writeFile(pdfPath, "%PDF-1.4\n");
 
     const routes = createLocalFileRoutes({ allowedPaths: [allowedDir] });
@@ -72,25 +65,26 @@ describe("Local file routes", () => {
     expect(htmlResponse.headers.get("content-type")?.toLowerCase()).toBe(
       "text/html; charset=utf-8",
     );
-    const html = await htmlResponse.text();
-    expect(html).toContain("<title>Readme</title>");
-    expect(html).not.toContain("file://");
-    expect(html).toContain(
-      `src="/api/local-image?path=${encodeURIComponent(imagePath)}"`,
+    expect(htmlResponse.headers.get("content-disposition")).toContain(
+      "attachment",
     );
-    expect(html).toContain(
-      `href="/api/local-file?path=${encodeURIComponent(pdfPath)}"`,
+    expect(htmlResponse.headers.get("content-security-policy")).toContain(
+      "sandbox",
     );
-    expect(html).toContain(
-      `href="/api/local-file?path=${encodeURIComponent(sourcePath)}"`,
+    expect(htmlResponse.headers.get("content-security-policy")).toContain(
+      "script-src 'none'",
     );
-    expect(html).toContain('href="#local"');
+    expect(htmlResponse.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(htmlResponse.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await htmlResponse.text()).toBe(htmlSource);
 
     const pdfResponse = await routes.request(
       `/?path=${encodeURIComponent(pdfPath)}`,
     );
     expect(pdfResponse.status).toBe(200);
     expect(pdfResponse.headers.get("content-type")).toBe("application/pdf");
+    expect(pdfResponse.headers.get("content-disposition")).toContain("inline");
+    expect(pdfResponse.headers.get("content-security-policy")).toBeNull();
     expect(await pdfResponse.text()).toBe("%PDF-1.4\n");
   });
 

@@ -88,3 +88,24 @@ even when that exact browser path was not used in the reproduction.
 An implementation pass must re-run this inventory rather than assuming the
 list is complete. Any generic byte-serving route, attachment route, share
 proxy, plugin asset route, or future app proxy is in scope.
+
+## 2026-08-21 — active raw-file containment implemented
+
+A central response policy now classifies browser-active files by conservative
+extension and final response MIME type without reading or sanitizing their
+contents. Active HTML, XHTML, SVG, XML, and XSLT responses are forced to
+attachment disposition and receive `nosniff`, `no-referrer`, a restrictive
+permissions policy, and the scriptless sandbox CSP from the contract.
+
+The policy is applied to `/api/local-file`, project raw files,
+`/api/local-image`, session uploads, and public-share raw-file forwarding.
+Local HTML downloads now preserve their original bytes rather than performing
+the old reference rewrite intended for inline execution. Non-active responses
+retain their existing inline/download behavior and receive `nosniff` where
+they pass through the shared policy.
+
+Route tests cover malicious HTML, SVG, and XML across those surfaces. The full
+server suite passed with 4,282 tests and 10 skips. A Playwright regression then
+clicked hostile project HTML, project SVG, and the exact reproduced
+`/api/local-file` HTML URL in Chromium; each produced a browser download and
+none navigated the page or changed its title to the payload marker.

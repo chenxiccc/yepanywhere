@@ -760,6 +760,38 @@ describe("Files API", () => {
       expect(res.headers.get("Content-Disposition")).toContain("inline");
     });
 
+    it.each([
+      ["proof.html", "text/html"],
+      ["proof.svg", "image/svg+xml"],
+      ["proof.xml", "application/xml"],
+    ])(
+      "forces active %s content to download with scriptless headers",
+      async (filename, contentType) => {
+        await writeFile(
+          join(projectPath, filename),
+          '<script>fetch("/api/processes", { headers: { "X-Yep-Anywhere": "true" } })</script>',
+        );
+        const { app } = createApp({
+          sdk: mockSdk,
+          projectsDir: join(testDir, "sessions"),
+        });
+
+        const res = await app.request(
+          `/api/projects/${projectId}/files/raw?path=${filename}`,
+        );
+
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Content-Type")).toBe(contentType);
+        expect(res.headers.get("Content-Disposition")).toContain("attachment");
+        expect(res.headers.get("Content-Security-Policy")).toContain(
+          "script-src 'none'",
+        );
+        expect(res.headers.get("Permissions-Policy")).toContain("camera=()");
+        expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+        expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      },
+    );
+
     it("serves raw content for an absolute path inside an allowed prefix", async () => {
       const inProjectFile = join(projectPath, "abs-raw-notes.txt");
       await writeFile(inProjectFile, "in-project raw notes");

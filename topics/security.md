@@ -64,14 +64,21 @@ an enforced sandbox limits one provider process; it does not reduce the
 authority of an authenticated operator who may create another unsandboxed
 session. See [`session-sandboxing.md`](session-sandboxing.md).
 
-Agent-authored active documents are therefore a significant hardening concern
-specifically for a provider process running inside that project-write sandbox.
-If the operator opens such a document on YA's authenticated origin, its script
-can borrow the operator browser's ambient YA authority and act outside the
-process's filesystem confinement. This is not a distinct authority boundary
-for an ordinary unsandboxed provider or an SSH-backed provider: each already
-has the corresponding local or remote account authority. Keep active project
-content source-first or scriptlessly isolated as described in
+Agent-authored active documents are therefore significant defense-in-depth
+hardening—important, but not a new general trust boundary—specifically for a
+provider process running inside that project-write sandbox. If the operator
+opens such a document on YA's authenticated origin, its script can borrow the
+operator browser's ambient YA authority and act outside the process's
+filesystem confinement. This is not a distinct authority boundary for an
+ordinary unsandboxed provider or an SSH-backed provider: each already has the
+corresponding local or remote account authority.
+
+YA applies the cheap backstop everywhere: active HTML, XHTML, SVG, XML, and
+XSLT file responses are downloads with `nosniff` and a scriptless response
+policy across local, project, upload, and public-share routes. The classifier
+uses only MIME type and extension; it does not scan or sanitize contents.
+Additional precautionary sanitization that is computationally heavy is
+reserved for enforced project-write sandbox sessions. See
 [`active-content-security.md`](active-content-security.md).
 
 ## Authenticated Remote Access And The Relay

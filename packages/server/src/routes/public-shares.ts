@@ -46,6 +46,7 @@ import {
   resolvePublicShareViewerBaseUrl,
   resolveYaClientBaseUrl,
 } from "../utils/publicShareViewerUrl.js";
+import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 export interface RelayConfigForPublicShare {
   url: string;
@@ -960,7 +961,10 @@ async function servePublicShareProjectFile(
   );
 
   if (options.raw) {
-    const headers = new Headers(response.headers);
+    const headers = createUntrustedFileResponseHeaders({
+      baseHeaders: response.headers,
+      filePath: relativePath,
+    });
     headers.set("Cache-Control", "no-store");
     return new Response(response.body, {
       headers,

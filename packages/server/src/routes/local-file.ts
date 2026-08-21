@@ -1,7 +1,6 @@
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { basename, dirname, extname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { basename, dirname, extname } from "node:path";
 import { parseLineColumn } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
@@ -12,6 +11,7 @@ import {
   LOCAL_FILE_CONTENT_TYPES,
   LOCAL_MEDIA_EXTENSIONS,
 } from "./local-resource-policy.js";
+import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 interface LocalFileDeps {
   allowedPaths: string[] | (() => string[]);
@@ -31,17 +31,21 @@ function isMarkdownPath(filePath: string): boolean {
   return ext === ".md" || ext === ".markdown" || ext === ".qmd";
 }
 
-function isHtmlPath(filePath: string): boolean {
-  const ext = extname(filePath).toLowerCase();
-  return ext === ".html" || ext === ".htm";
-}
-
 function getLocalFileContentType(filePath: string): string | null {
   const ext = extname(filePath).toLowerCase();
   if (LOCAL_MEDIA_EXTENSIONS.has(ext)) {
     return null;
   }
   return LOCAL_FILE_CONTENT_TYPES[ext] ?? "text/plain; charset=utf-8";
+}
+
+function applyHeaders(
+  setHeader: (name: string, value: string) => void,
+  headers: Headers,
+): void {
+  headers.forEach((value, name) => {
+    setHeader(name, value);
+  });
 }
 
 function escapeHtml(text: string): string {
@@ -102,91 +106,6 @@ function localFileHref(
     params.set("column", String(parsed.columnNumber));
   }
   return `/api/local-file?${params.toString()}`;
-}
-
-function localMediaHref(filePath: string): string {
-  return `/api/local-image?path=${encodeURIComponent(filePath)}`;
-}
-
-function rewriteLocalHtmlReferences(html: string, filePath: string): string {
-  let basePath = dirname(filePath);
-  const withoutLocalBase = html.replace(
-    /<base\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>/gi,
-    (match, _quote: string, href: string) => {
-      const resolvedBase = resolveHtmlLocalReference(href, basePath);
-      if (!resolvedBase || !href.trim().toLowerCase().startsWith("file:")) {
-        return match;
-      }
-      basePath = href.trim().endsWith("/")
-        ? resolvedBase.filePath
-        : dirname(resolvedBase.filePath);
-      return "";
-    },
-  );
-
-  return withoutLocalBase.replace(
-    /\b(src|href|poster)\s*=\s*(["'])(.*?)\2/gi,
-    (match, attr: string, quote: string, href: string) => {
-      const rewritten = rewriteHtmlLocalReference(href, basePath, attr);
-      return rewritten ? `${attr}=${quote}${rewritten}${quote}` : match;
-    },
-  );
-}
-
-function rewriteHtmlLocalReference(
-  href: string,
-  basePath: string,
-  attr: string,
-): string | null {
-  const resolvedReference = resolveHtmlLocalReference(href, basePath);
-  if (!resolvedReference) {
-    return null;
-  }
-
-  const ext = extname(resolvedReference.filePath).toLowerCase();
-  if (LOCAL_MEDIA_EXTENSIONS.has(ext)) {
-    return localMediaHref(resolvedReference.filePath);
-  }
-
-  if (getLocalFileContentType(resolvedReference.filePath)) {
-    const rewrittenHref = escapeHtml(
-      localFileHref(resolvedReference.filePath, {
-        renderMarkdown: isMarkdownPath(resolvedReference.filePath),
-      }),
-    );
-    return attr.toLowerCase() === "href"
-      ? `${rewrittenHref}${resolvedReference.hash}`
-      : rewrittenHref;
-  }
-
-  return null;
-}
-
-function resolveHtmlLocalReference(
-  href: string,
-  basePath: string,
-): { filePath: string; hash: string } | null {
-  const trimmed = href.trim();
-  if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) {
-    return null;
-  }
-  if (/^(?:https?|mailto|data|blob|javascript):/i.test(trimmed)) {
-    return null;
-  }
-
-  try {
-    const baseUrl = pathToFileURL(`${basePath}/`);
-    const url = new URL(trimmed, baseUrl);
-    if (url.protocol !== "file:") {
-      return null;
-    }
-    return {
-      filePath: resolve(fileURLToPath(url)),
-      hash: url.hash,
-    };
-  } catch {
-    return null;
-  }
 }
 
 function renderMarkdownDocument(
@@ -576,22 +495,18 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
         );
       }
 
-      if (isHtmlPath(resolvedPath)) {
-        const html = await readFile(resolvedPath, "utf-8");
-        const rewrittenHtml = rewriteLocalHtmlReferences(html, resolvedPath);
-
-        c.header("Content-Type", contentType);
-        c.header("Content-Disposition", "inline");
-        c.header("Cache-Control", "private, max-age=60");
-        c.header("X-Content-Type-Options", "nosniff");
-        return c.html(rewrittenHtml);
-      }
-
-      c.header("Content-Type", contentType);
-      c.header("Content-Length", stats.size.toString());
-      c.header("Content-Disposition", "inline");
-      c.header("Cache-Control", "private, max-age=60");
-      c.header("X-Content-Type-Options", "nosniff");
+      applyHeaders(
+        (name, value) => c.header(name, value),
+        createUntrustedFileResponseHeaders({
+          baseHeaders: {
+            "Cache-Control": "private, max-age=60",
+            "Content-Length": stats.size.toString(),
+          },
+          contentType,
+          disposition: "inline",
+          filePath: resolvedPath,
+        }),
+      );
 
       return stream(c, async (s) => {
         const readable = createReadStream(resolvedPath);

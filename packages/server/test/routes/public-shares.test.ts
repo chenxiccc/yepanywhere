@@ -892,6 +892,49 @@ describe("public share public routes", () => {
     expect(await response.text()).toBe("image-bytes");
   });
 
+  it("hardens active raw files even when the project response is inline", async () => {
+    const projectRoot = path.join(testDir, "project");
+    const publicProjectId = toUrlProjectId(projectRoot);
+    const snapshot = makeSession({
+      projectId: publicProjectId,
+      messages: [makeAssistantMessage("See proof.html")],
+    });
+    const { secret } = await service.createShare({
+      mode: "frozen",
+      title: "Active document",
+      source: { projectId: publicProjectId, sessionId: "session-1" },
+      capture: {
+        ...(await captureSession(service, snapshot)),
+        presentation: { version: 1, authorizedPaths: ["proof.html"] },
+      },
+    });
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => snapshot),
+      getPublicSharesEnabled: () => true,
+      fetchProjectFile: vi.fn(
+        async () =>
+          new Response("<script>fetch('/api/processes')</script>", {
+            headers: {
+              "Content-Disposition": "inline",
+              "Content-Type": "text/html",
+            },
+          }),
+      ),
+    });
+
+    const response = await app.request(`/${secret}/files/raw?path=proof.html`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Disposition")).toContain("attachment");
+    expect(response.headers.get("Content-Security-Policy")).toContain(
+      "script-src 'none'",
+    );
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
   it("matches live share file authorization by exact relative path", async () => {
     const projectRoot = path.join(testDir, "project");
     const publicProjectId = toUrlProjectId(projectRoot);

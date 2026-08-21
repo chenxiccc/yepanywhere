@@ -70,6 +70,30 @@ describe("Local image routes", () => {
     expect(await response.text()).toBe("png-bytes");
   });
 
+  it("forces active SVG media to download with a scriptless CSP", async () => {
+    const projectDir = path.join(tempDir, "project");
+    await mkdir(projectDir, { recursive: true });
+
+    const filePath = path.join(projectDir, "proof.svg");
+    await writeFile(filePath, '<svg onload="fetch(`/api/processes`)"></svg>');
+
+    const routes = createLocalImageRoutes({
+      allowedPaths: [projectDir],
+    });
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/svg+xml");
+    expect(response.headers.get("content-disposition")).toContain("attachment");
+    expect(response.headers.get("content-security-policy")).toContain(
+      "script-src 'none'",
+    );
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
   it("rejects files outside the allowed directories", async () => {
     const uploadsDir = path.join(tempDir, "uploads");
     const otherDir = path.join(tempDir, "other");

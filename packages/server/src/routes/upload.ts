@@ -24,6 +24,7 @@ import {
   isSafeUploadPathSegment,
   resolveUploadStoragePath,
 } from "../uploads/index.js";
+import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 /** Progress update interval in bytes (64KB) */
 const PROGRESS_INTERVAL_BYTES = 64 * 1024;
@@ -620,9 +621,17 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         };
         const contentType = mimeTypes[ext] ?? "application/octet-stream";
 
-        c.header("Content-Type", contentType);
-        c.header("Content-Length", found.size.toString());
-        c.header("Cache-Control", "private, max-age=3600");
+        const headers = createUntrustedFileResponseHeaders({
+          baseHeaders: {
+            "Cache-Control": "private, max-age=3600",
+            "Content-Length": found.size.toString(),
+          },
+          contentType,
+          filePath: filename,
+        });
+        headers.forEach((value, name) => {
+          c.header(name, value);
+        });
 
         return stream(c, async (s) => {
           const readable = createReadStream(foundPath);

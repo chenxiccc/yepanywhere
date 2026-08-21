@@ -259,6 +259,39 @@ describe("staged upload direct route", () => {
     await expect(served.text()).resolves.toBe("central materialize");
   });
 
+  it("forces materialized SVG attachments to download with a scriptless CSP", async () => {
+    const content = '<svg onload="fetch(`/api/processes`)"></svg>';
+    const started = await stagingService.startDraftUpload({
+      batchId: "batch-svg",
+      originalName: "proof.svg",
+      size: Buffer.byteLength(content),
+      mimeType: "image/svg+xml",
+    });
+    await stagingService.writeChunk(started.uploadId, Buffer.from(content));
+    const ref = await stagingService.completeUpload(started.uploadId);
+
+    const materialized = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/session-svg/attachments/staging/materialize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId: "batch-svg", refs: [ref] }),
+      },
+    );
+    expect(materialized.status).toBe(200);
+
+    const served = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/session-svg/upload/${ref.name}`,
+    );
+    expect(served.status).toBe(200);
+    expect(served.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(served.headers.get("Content-Disposition")).toContain("attachment");
+    expect(served.headers.get("Content-Security-Policy")).toContain(
+      "script-src 'none'",
+    );
+    expect(served.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
+
   // A first-turn upload materializes under a provisional session id (the
   // real id is assigned by the provider afterwards). The client derives the
   // URL's session segment from the persisted physical path, so the serve
