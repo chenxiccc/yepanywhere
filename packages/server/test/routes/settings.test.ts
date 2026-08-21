@@ -1674,6 +1674,14 @@ describe("Settings Routes", () => {
       expect(response.status).toBe(400);
       const json = await response.json();
       expect(json.error).toContain("cacheMissBilling must use booleans");
+      expect(json.error).toContain("minimumWastedTokens 1-5000000");
+      expect(json.error).toContain(
+        "freshWindowMinutes and providerFreshWindowMinutes 1-1440",
+      );
+      expect(json.error).toContain(
+        "recentActivityMinutes and ignoreAfterMinutes 0-1440",
+      );
+      expect(json.error).not.toContain("minimumInputTokens");
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 

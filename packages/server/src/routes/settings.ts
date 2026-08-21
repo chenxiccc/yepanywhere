@@ -786,7 +786,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
           return c.json(
             {
               error:
-                "cacheMissBilling must use booleans for enabled/showToasts, freshness windows 1-1440, ignore-after minutes 0-1440, and minimumInputTokens 1-5000000",
+                "cacheMissBilling must use booleans for enabled/showToasts, freshWindowMinutes and providerFreshWindowMinutes 1-1440, recentActivityMinutes and ignoreAfterMinutes 0-1440, and minimumWastedTokens 1-5000000",
             },
             400,
           );
