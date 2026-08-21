@@ -50,6 +50,34 @@ afterEach(() => {
 });
 
 describe("useProjectWorktree", () => {
+  it("releases its lease while paused and reacquires it on resume", async () => {
+    const transport = new FakeSourceTransport();
+    const rendered = renderHook(
+      ({ paused }: { paused: boolean }) =>
+        useProjectWorktree("project-a", COVERAGE, true, paused),
+      {
+        initialProps: { paused: false },
+        wrapper: createWrapper(transport),
+      },
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(transport.getSubscriptions("worktree")).toHaveLength(1);
+    expect(transport.getSubscriptions("worktree")[0]?.closed).toBe(false);
+
+    rendered.rerender({ paused: true });
+    expect(transport.getSubscriptions("worktree")[0]?.closed).toBe(true);
+
+    rendered.rerender({ paused: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(transport.getSubscriptions("worktree")).toHaveLength(2);
+    expect(transport.getSubscriptions("worktree")[1]?.closed).toBe(false);
+  });
+
   it("does not reconnect for equal expanded-prefix arrays", async () => {
     const transport = new FakeSourceTransport();
     const rendered = renderHook(

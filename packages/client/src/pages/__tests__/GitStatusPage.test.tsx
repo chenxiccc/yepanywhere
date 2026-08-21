@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => ({
   useVersion: vi.fn(),
   useGitStatus: vi.fn(),
   useProjectWorktree: vi.fn(),
+  documentAttentive: true,
   useNavigationLayout: vi.fn(),
   useMediaQuery: vi.fn(),
   serverSettings: { sourceReviewSubmissionsEnabled: false },
@@ -147,6 +148,10 @@ vi.mock("../WorkingTreeBrowser", async () => {
 
 vi.mock("../../hooks/useDocumentTitle", () => ({
   useDocumentTitle: vi.fn(),
+}));
+
+vi.mock("../../hooks/useDocumentAttention", () => ({
+  useDocumentAttention: () => mocks.documentAttentive,
 }));
 
 vi.mock("../../hooks/useGitStatus", () => ({
@@ -319,6 +324,7 @@ beforeEach(() => {
     pendingCount: 0,
   });
   mocks.serverSettings.sourceReviewSubmissionsEnabled = false;
+  mocks.documentAttentive = true;
   mocks.checkGitRemote.mockResolvedValue({
     status: "checked",
     checkedRemoteAt: "2026-07-26T12:00:00.000Z",
@@ -916,6 +922,33 @@ describe("GitStatusPage source header", () => {
       screen.getByRole("button", { name: "sourceResumeLiveUpdates" }),
     );
     expect(browser.getAttribute("data-worktree-paused")).toBe("false");
+  });
+
+  it("releases live Working Tree ownership without document attention", async () => {
+    mocks.documentAttentive = false;
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+          GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+
+    renderPage("/git-status?projectId=project-a&tab=files");
+
+    const browser = await screen.findByTestId("blame-browser");
+    expect(browser.getAttribute("data-worktree-paused")).toBe("true");
+    expect(mocks.useProjectWorktree).toHaveBeenCalledWith(
+      "project-a",
+      { tracked: true, untracked: true, ignored: false },
+      true,
+      true,
+    );
   });
 
   it("opens a linked file within the requested commit", async () => {

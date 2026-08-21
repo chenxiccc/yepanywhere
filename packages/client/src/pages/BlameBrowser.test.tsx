@@ -586,7 +586,7 @@ describe("BlameBrowser", () => {
     expect(screen.queryByRole("button", { name: "Show all 3" })).toBeNull();
   });
 
-  it("freezes visible deltas while paused without releasing the lease", async () => {
+  it("freezes the inventory and releases the live lease while paused", async () => {
     const transport = new FakeSourceTransport();
     const runtime = createRuntime(transport, "test:blame-browser-paused");
     listReviewComments.mockResolvedValue({
@@ -607,7 +607,7 @@ describe("BlameBrowser", () => {
           />
         </ProjectWorktreePauseContext.Provider>,
       );
-    const view = render(renderBrowser(true));
+    const view = render(renderBrowser(false));
 
     await emitWorktreeSnapshot(transport, [
       { path: "README.md", tracked: true, kind: "tracked" },
@@ -615,32 +615,48 @@ describe("BlameBrowser", () => {
     expect(await screen.findByText("README.md")).toBeDefined();
     const subscription = transport.getSubscriptions("worktree").at(-1);
     if (!subscription) throw new Error("Expected worktree subscription");
+    view.rerender(renderBrowser(true));
+    expect(transport.getSubscriptions("worktree")[0]?.closed).toBe(true);
+
     act(() => {
-      transport.emitSubscriptionEvent(subscription.id, "git-worktree-delta", {
-        type: "git-worktree-delta",
-        generation: { epoch: "test-epoch", sequence: 1 },
-        headSha: "head-a",
-        baseSha: "base-a",
-        changes: [
-          {
-            changeType: "create",
-            path: "notes.txt",
-            file: {
+      transport.emitSubscriptionEvent(
+        subscription.id,
+        "git-worktree-delta",
+        {
+          type: "git-worktree-delta",
+          generation: { epoch: "test-epoch", sequence: 1 },
+          headSha: "head-a",
+          baseSha: "base-a",
+          changes: [
+            {
+              changeType: "create",
               path: "notes.txt",
-              tracked: false,
-              kind: "untracked",
+              file: {
+                path: "notes.txt",
+                tracked: false,
+                kind: "untracked",
+              },
             },
-          },
-        ],
-        timestamp: "2026-08-19T00:00:01.000Z",
-      });
+          ],
+          timestamp: "2026-08-19T00:00:01.000Z",
+        },
+        undefined,
+        { allowClosed: true },
+      );
     });
     expect(screen.queryByText("notes.txt")).toBeNull();
     expect(transport.getSubscriptions("worktree")).toHaveLength(1);
 
     view.rerender(renderBrowser(false));
+    await waitFor(() =>
+      expect(transport.getSubscriptions("worktree")).toHaveLength(2),
+    );
+    await emitWorktreeSnapshot(transport, [
+      { path: "README.md", tracked: true, kind: "tracked" },
+      { path: "notes.txt", tracked: false, kind: "untracked" },
+    ]);
     expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(transport.getSubscriptions("worktree")).toHaveLength(1);
+    expect(transport.getSubscriptions("worktree")[1]?.closed).toBe(false);
   });
 
   it("keeps the inventory when the translation function identity changes", async () => {

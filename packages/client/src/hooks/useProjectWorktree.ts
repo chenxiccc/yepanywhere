@@ -55,7 +55,7 @@ export function useProjectWorktree(
     coverage;
   const expandedPrefixKey = expandedPrefixes?.join("\0");
   useEffect(() => {
-    if (!store) return;
+    if (!store || paused) return;
     return store.retain({
       ignored,
       tracked,
@@ -68,7 +68,15 @@ export function useProjectWorktree(
           }),
       ...(filesystemScan === undefined ? {} : { filesystemScan }),
     });
-  }, [expandedPrefixKey, filesystemScan, ignored, store, tracked, untracked]);
+  }, [
+    expandedPrefixKey,
+    filesystemScan,
+    ignored,
+    paused,
+    store,
+    tracked,
+    untracked,
+  ]);
 
   const current = useSyncExternalStore(
     store?.subscribe ?? emptySubscribe,

@@ -8,7 +8,6 @@ import {
 import type {
   GitFileProjectionManifest,
   GitStatusInfo,
-  GitWorkingTreeFile,
 } from "@yep-anywhere/shared";
 import {
   GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
@@ -174,7 +173,7 @@ afterEach(() => {
 });
 
 describe("useFileVersionControl", () => {
-  it("checks the repository once before sharing a live worktree subscription", async () => {
+  it("uses one static projection without acquiring a live worktree lease", async () => {
     mocks.getVersion.mockResolvedValue({
       current: "0.7.2",
       latest: null,
@@ -186,76 +185,29 @@ describe("useFileVersionControl", () => {
     });
     const transport = new FakeSourceTransport();
     const hook = renderHook(
-      () => [useSubject("src/worktree.ts"), useSubject("src/other.ts")],
+      () => [useSubject("src/worktree.ts"), useSubject("src/committed.ts")],
       { wrapper: createWrapper(createRuntime(transport)) },
     );
     await settle();
 
-    const subscriptions = transport.getSubscriptions("worktree");
-    expect(subscriptions).toHaveLength(1);
-    expect(subscriptions[0]).toMatchObject({
-      projectId: "project-a",
-      coverage: { tracked: true, untracked: true, ignored: false },
-    });
-    const worktreeRow: GitWorkingTreeFile = {
-      path: "src/worktree.ts",
-      tracked: true,
-      kind: "tracked",
-      worktreeChanges: [STATUS.files[0]!],
-      cumulativeChange: {
-        status: "M",
-        staged: false,
-        linesAdded: 3,
-        linesDeleted: 1,
-      },
-    };
-    const files: GitWorkingTreeFile[] = [
-      worktreeRow,
-      { path: "src/other.ts", tracked: true, kind: "tracked" },
-      ...Array.from({ length: 10_000 }, (_, index) => ({
-        path: `scratch/generated-${index}.txt`,
-        tracked: false,
-        kind: "untracked" as const,
-      })),
-    ];
-    const subscription = subscriptions[0];
-    if (!subscription) throw new Error("Expected worktree subscription");
-    act(() => {
-      transport.emitSubscriptionEvent(
-        subscription.id,
-        "git-worktree-snapshot",
-        {
-          type: "git-worktree-snapshot",
-          generation: { epoch: "epoch-a", sequence: 0 },
-          coverage: subscription.coverage,
-          headSha: "head-sha",
-          baseSha: "parent-sha",
-          files,
-          truncated: false,
-          timestamp: "2026-08-19T00:00:00.000Z",
-        },
-      );
-    });
-
+    expect(transport.getSubscriptions("worktree")).toHaveLength(0);
     expect(hook.result.current[0]).toMatchObject({
       supported: true,
       loading: false,
       relativePath: "src/worktree.ts",
       worktreeFile: { path: "src/worktree.ts", linesAdded: 1 },
-      cumulativeFile: { path: "src/worktree.ts", linesAdded: 3 },
+      cumulativeFile: null,
     });
     expect(hook.result.current[1]).toMatchObject({
       supported: true,
       loading: false,
-      relativePath: "src/other.ts",
+      relativePath: "src/committed.ts",
       worktreeFile: null,
-      cumulativeFile: null,
+      cumulativeFile: { path: "src/committed.ts", linesAdded: 2 },
     });
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
-    expect(mocks.getGitStatus).toHaveBeenCalledWith("project-a", {
-      omitUntracked: true,
-    });
-    expect(mocks.getGitFileProjections).not.toHaveBeenCalled();
+    expect(mocks.getGitStatus).toHaveBeenCalledWith("project-a", {});
+    expect(mocks.getGitFileProjections).toHaveBeenCalledTimes(1);
   });
 
   it("does not lease a worktree for a non-Git project", async () => {

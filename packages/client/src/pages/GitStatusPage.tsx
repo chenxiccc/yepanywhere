@@ -40,6 +40,7 @@ import { ProjectSelector } from "../components/ProjectSelector";
 import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
 import { SourceReviewDefaultSessionContext } from "../contexts/SourceReviewDefaultSessionContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useDocumentAttention } from "../hooks/useDocumentAttention";
 import {
   formatRemoteCheckTime,
   type GitActionState,
@@ -661,6 +662,8 @@ export function GitStatusPage() {
     useNavigationLayout();
   const pageScrollRef = useRef<HTMLElement | null>(null);
   const [worktreePaused, setWorktreePaused] = useState(false);
+  const documentAttentive = useDocumentAttention();
+  const worktreeLeasePaused = worktreePaused || !documentAttentive;
 
   const { projects, loading: projectsLoading } = useProjects();
   const effectiveProjectId =
@@ -743,7 +746,7 @@ export function GitStatusPage() {
     effectiveProjectId ?? "",
     { tracked: true, untracked: true, ignored: false },
     liveWorktreeEnabled,
-    worktreePaused,
+    worktreeLeasePaused,
   );
   const gitStatus = useMemo(
     () =>
@@ -924,7 +927,7 @@ export function GitStatusPage() {
             effectiveProjectId &&
             supportsWorkingTreeSections ? (
             <GlossaryProjectBoundary projectId={effectiveProjectId}>
-              <ProjectWorktreePauseContext.Provider value={worktreePaused}>
+              <ProjectWorktreePauseContext.Provider value={worktreeLeasePaused}>
                 <div className="git-status">
                   <BlameBrowser
                     projectId={effectiveProjectId}
@@ -944,7 +947,7 @@ export function GitStatusPage() {
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
           ) : gitStatus && effectiveProjectId && supportsSourceReview ? (
             <GlossaryProjectBoundary projectId={effectiveProjectId}>
-              <ProjectWorktreePauseContext.Provider value={worktreePaused}>
+              <ProjectWorktreePauseContext.Provider value={worktreeLeasePaused}>
                 <SourceReviewDefaultSessionContext.Provider
                   value={defaultSession}
                 >

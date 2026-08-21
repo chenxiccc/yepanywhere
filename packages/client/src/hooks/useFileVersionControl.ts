@@ -1,11 +1,7 @@
 import {
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
-  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
-  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   type GitFileChange,
-  type GitWorkingTreeChange,
-  type GitWorkingTreeFile,
   type GitFileProjectionManifest,
   serverHasCapability,
 } from "@yep-anywhere/shared";
@@ -23,7 +19,6 @@ import {
 } from "../lib/routeRetention";
 import { normalizePathSeparators } from "../lib/text";
 import { useGitStatus } from "./useGitStatus";
-import { useProjectWorktree } from "./useProjectWorktree";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
 import { useRetainedVersionInfo } from "./useVersion";
 
@@ -131,29 +126,6 @@ function findFile(
   );
 }
 
-function embeddedFileChange(
-  row: GitWorkingTreeFile | undefined,
-  path: string | null,
-  change: GitWorkingTreeChange | undefined,
-): GitFileChange | null {
-  if (!row || !path || !change) return null;
-  if (row.path !== path && change.origPath !== path) return null;
-  return { path: row.path, ...change };
-}
-
-function findLiveRow(
-  path: string | null,
-  files: readonly GitWorkingTreeFile[],
-): GitWorkingTreeFile | undefined {
-  if (!path) return undefined;
-  return files.find(
-    (file) =>
-      file.path === path ||
-      file.worktreeChanges?.some((change) => change.origPath === path) ||
-      file.cumulativeChange?.origPath === path,
-  );
-}
-
 function gitStatusKey(status: {
   recentCommits?: readonly { hash: string }[];
   files: readonly GitFileChange[];
@@ -191,9 +163,6 @@ export function useFileVersionControl(
     version,
     GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   );
-  const supportsLiveWorktree =
-    serverHasCapability(version, GIT_LIVE_WORKTREE_SETTING_CAPABILITY) &&
-    serverHasCapability(version, GIT_WORKING_TREE_SECTIONS_CAPABILITY);
   const relativePath = useMemo(
     () => projectRelativeGitPath(filePath),
     [filePath],
@@ -206,37 +175,21 @@ export function useFileVersionControl(
     error: statusError,
   } = useGitStatus(enabledStatusProjectId, {
     poll: false,
-    omitUntracked: supportsLiveWorktree,
+    omitUntracked: false,
   });
-  const liveWorktree = useProjectWorktree(
-    projectId ?? "",
-    { tracked: true, untracked: true, ignored: false },
-    Boolean(
-      projectId &&
-        relativePath &&
-        supported &&
-        supportsLiveWorktree &&
-        gitStatus?.isGitRepo,
-    ),
-  );
-  const enabledLegacyProjectId =
-    enabledStatusProjectId && !supportsLiveWorktree
-      ? enabledStatusProjectId
-      : undefined;
   const statusKey =
     gitStatus?.isGitRepo && relativePath ? gitStatusKey(gitStatus) : null;
   const projection = useFileProjectionManifest(
     sourceKey,
-    enabledLegacyProjectId,
+    enabledStatusProjectId,
     statusKey,
   );
-  const liveRow = findLiveRow(relativePath, liveWorktree.files);
-  const liveWorktreeChange = liveRow?.worktreeChanges?.at(-1);
 
   return {
-    cumulativeFile: supportsLiveWorktree
-      ? embeddedFileChange(liveRow, relativePath, liveRow?.cumulativeChange)
-      : findFile(relativePath, projection.manifest?.cumulativeFiles ?? []),
+    cumulativeFile: findFile(
+      relativePath,
+      projection.manifest?.cumulativeFiles ?? [],
+    ),
     loading: Boolean(
       projectId &&
         relativePath &&
@@ -245,15 +198,13 @@ export function useFileVersionControl(
             enabledStatusProjectId &&
             (statusLoading ||
               (!gitStatus && !statusError) ||
-              (gitStatus?.isGitRepo &&
-                (supportsLiveWorktree
-                  ? liveWorktree.loading
-                  : projection.loading))))),
+              (gitStatus?.isGitRepo && projection.loading)))),
     ),
     relativePath,
     supported,
-    worktreeFile: supportsLiveWorktree
-      ? embeddedFileChange(liveRow, relativePath, liveWorktreeChange)
-      : findFile(relativePath, projection.manifest?.worktreeFiles ?? []),
+    worktreeFile: findFile(
+      relativePath,
+      projection.manifest?.worktreeFiles ?? [],
+    ),
   };
 }
