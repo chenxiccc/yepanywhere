@@ -49,7 +49,18 @@ const DEFAULT_FILE_LIMIT = 100_000;
  * enough that a phone renders it and the walk stays cheap.
  */
 const FILESYSTEM_INVENTORY_FILE_LIMIT = 5_000;
-const GIT_METADATA_PLATFORM: NodeJS.Platform = "linux";
+/**
+ * Native filesystem watchers exist only on Linux. It is the one platform where
+ * complete non-recursive watch sets are treated as truth (macOS and Windows
+ * always run the full 30-second reconciliation, so native watchers there only
+ * lower event latency), and it is the platform whose bounded per-directory
+ * inotify cost has been measured. The macOS incident mechanism — one native
+ * FSEvents client per directory — never allocates: other platforms run
+ * poll-only bounded reconciliation.
+ */
+const NATIVE_WATCH_PLATFORM: NodeJS.Platform = "linux";
+const DEFAULT_REGISTRATION_CHURN_WINDOW_MS = 60_000;
+const DEFAULT_REGISTRATION_CHURN_FACTOR = 4;
 
 const GIT_ROOT_METADATA_NAMES = new Set([
   "HEAD",
@@ -108,6 +119,7 @@ type ReconciliationMode = "full" | "fingerprint";
 type NativeWatcherCircuitReason =
   | "watcher-limit"
   | "active-project-limit"
+  | "registration-churn"
   | "EMFILE"
   | "ENFILE"
   | "ENOSPC"
@@ -177,6 +189,14 @@ export interface ProjectWorktreeSubscriptionManagerOptions {
   maxWatchedProjects?: number;
   fileLimit?: number;
   platform?: NodeJS.Platform;
+  /** Rolling window for the registration-churn circuit (default 60s). */
+  registrationChurnWindowMs?: number;
+  /**
+   * Native registrations admitted per window before the circuit opens
+   * (default 4 x maxNativeWatchers). The active-watcher cap cannot see
+   * repeated close-and-reopen replacement; this can.
+   */
+  registrationChurnLimit?: number;
   watchDirectory?: (
     path: string,
     listener: (eventType: string, filename: Buffer | string | null) => void,
@@ -245,9 +265,15 @@ export class ProjectWorktreeSubscriptionManager {
   ) => Promise<ProjectWorktreeScan>;
   private readonly projects = new Map<string, ProjectState>();
   private readonly pendingSubscriptions = new Set<PendingSubscription>();
+  private readonly nativeWatchingSupported: boolean;
+  private readonly registrationChurnWindowMs: number;
+  private readonly registrationChurnLimit: number;
   private nextSubscriberId = 1;
   private enabled: boolean;
   private watcherCircuitReason: NativeWatcherCircuitReason | null = null;
+  private cumulativeRegistrations = 0;
+  private churnWindowStart = 0;
+  private churnWindowCount = 0;
   private disposed = false;
 
   constructor(options: ProjectWorktreeSubscriptionManagerOptions) {
@@ -280,6 +306,16 @@ export class ProjectWorktreeSubscriptionManager {
       FILESYSTEM_INVENTORY_FILE_LIMIT,
     );
     this.platform = options.platform ?? process.platform;
+    this.nativeWatchingSupported = this.platform === NATIVE_WATCH_PLATFORM;
+    this.registrationChurnWindowMs = Math.max(
+      1_000,
+      options.registrationChurnWindowMs ?? DEFAULT_REGISTRATION_CHURN_WINDOW_MS,
+    );
+    this.registrationChurnLimit = Math.max(
+      this.maxNativeWatchers,
+      options.registrationChurnLimit ??
+        this.maxNativeWatchers * DEFAULT_REGISTRATION_CHURN_FACTOR,
+    );
     this.watchDirectory =
       options.watchDirectory ??
       ((path, listener, watchOptions) =>
@@ -355,7 +391,11 @@ export class ProjectWorktreeSubscriptionManager {
     if (this.disposed || this.enabled === enabled) return;
     this.enabled = enabled;
     if (enabled) {
+      // Explicit monitoring-mode reset: clear the circuit and start a fresh
+      // churn window so the reset itself cannot immediately retrip.
       this.watcherCircuitReason = null;
+      this.churnWindowStart = 0;
+      this.churnWindowCount = 0;
       return;
     }
     for (const pending of this.pendingSubscriptions) {
@@ -396,6 +436,7 @@ export class ProjectWorktreeSubscriptionManager {
     watchedDirectories: number;
     maxWatchedDirectories: number;
     maxWatchedProjects: number;
+    cumulativeRegistrations: number;
   } {
     let activeProjects = 0;
     let watchedProjects = 0;
@@ -412,7 +453,7 @@ export class ProjectWorktreeSubscriptionManager {
     return {
       mode: !this.isEnabled()
         ? "off"
-        : this.watcherCircuitReason
+        : this.watcherCircuitReason || !this.nativeWatchingSupported
           ? "polling"
           : "watching",
       circuitOpen: this.watcherCircuitReason !== null,
@@ -424,6 +465,7 @@ export class ProjectWorktreeSubscriptionManager {
       watchedDirectories,
       maxWatchedDirectories: this.maxNativeWatchers,
       maxWatchedProjects: this.maxWatchedProjects,
+      cumulativeRegistrations: this.cumulativeRegistrations,
     };
   }
 
@@ -574,6 +616,29 @@ export class ProjectWorktreeSubscriptionManager {
     return true;
   }
 
+  /**
+   * Count one successful native registration against the rolling churn
+   * window. The active-watcher cap alone cannot see repeated replacement:
+   * close-and-reopen cycles keep the active count below the ceiling while
+   * cumulative native allocation grows without bound — the shape of the
+   * macOS FSEvents incident (8,301 registrations in minutes). Exceeding the
+   * windowed limit opens the circuit; returns false when it tripped.
+   */
+  private recordWatcherRegistration(): boolean {
+    this.cumulativeRegistrations += 1;
+    const now = Date.now();
+    if (now - this.churnWindowStart > this.registrationChurnWindowMs) {
+      this.churnWindowStart = now;
+      this.churnWindowCount = 0;
+    }
+    this.churnWindowCount += 1;
+    if (this.churnWindowCount > this.registrationChurnLimit) {
+      this.openWatcherCircuit("registration-churn");
+      return false;
+    }
+    return true;
+  }
+
   private openWatcherCircuit(reason: NativeWatcherCircuitReason): void {
     if (this.watcherCircuitReason) return;
     const watchedDirectories = this.nativeWatcherCount();
@@ -674,7 +739,7 @@ export class ProjectWorktreeSubscriptionManager {
   private async activate(state: ProjectState): Promise<void> {
     await this.refresh(state, state.initialized);
     if (state.subscribers.size === 0) return;
-    if (this.watcherCircuitReason) {
+    if (this.watcherCircuitReason || !this.nativeWatchingSupported) {
       this.syncReconciliationPoll(state);
       return;
     }
@@ -697,7 +762,7 @@ export class ProjectWorktreeSubscriptionManager {
     full: boolean,
   ): void {
     if (state.subscribers.size === 0) return;
-    if (this.watcherCircuitReason) {
+    if (this.watcherCircuitReason || !this.nativeWatchingSupported) {
       this.syncReconciliationPoll(state);
       return;
     }
@@ -753,7 +818,7 @@ export class ProjectWorktreeSubscriptionManager {
 
   private async syncWatchers(state: ProjectState): Promise<void> {
     if (state.subscribers.size === 0) return;
-    if (this.watcherCircuitReason) {
+    if (this.watcherCircuitReason || !this.nativeWatchingSupported) {
       state.watchComplete = false;
       this.syncReconciliationPoll(state);
       return;
@@ -804,7 +869,9 @@ export class ProjectWorktreeSubscriptionManager {
   }
 
   private attachWatcher(state: ProjectState, directory: string): boolean {
-    if (this.watcherCircuitReason) return false;
+    if (this.watcherCircuitReason || !this.nativeWatchingSupported) {
+      return false;
+    }
     const absolute = directory
       ? join(state.projectPath, directory)
       : state.projectPath;
@@ -835,7 +902,7 @@ export class ProjectWorktreeSubscriptionManager {
         this.scheduleRefresh(state);
       });
       state.watchers.set(directory, { watcher });
-      return true;
+      return this.recordWatcherRegistration();
     } catch (error) {
       state.watchComplete = false;
       const circuitReason = nativeWatcherErrorReason(error);
@@ -855,7 +922,9 @@ export class ProjectWorktreeSubscriptionManager {
     state: ProjectState,
     path: string,
   ): Promise<boolean> {
-    if (this.watcherCircuitReason) return false;
+    if (this.watcherCircuitReason || !this.nativeWatchingSupported) {
+      return false;
+    }
     if (!path || isDotGitPath(path)) return false;
     const absolute = join(state.projectPath, path);
     let directoryExists = false;
@@ -983,7 +1052,7 @@ export class ProjectWorktreeSubscriptionManager {
     }
 
     state.gitMetadataWatchSyncNeeded = false;
-    if (this.platform !== GIT_METADATA_PLATFORM) {
+    if (this.platform !== NATIVE_WATCH_PLATFORM) {
       this.closeGitMetadataWatchers(state);
       state.gitMetadataWatchComplete = false;
       return;
@@ -1037,7 +1106,9 @@ export class ProjectWorktreeSubscriptionManager {
     state: ProjectState,
     spec: GitMetadataWatchSpec,
   ): boolean {
-    if (this.watcherCircuitReason) return false;
+    if (this.watcherCircuitReason || !this.nativeWatchingSupported) {
+      return false;
+    }
     try {
       const watcher = this.watchDirectory(
         spec.path,
@@ -1065,7 +1136,7 @@ export class ProjectWorktreeSubscriptionManager {
         this.scheduleRefresh(state);
       });
       state.gitMetadataWatchers.set(spec.path, { watcher, spec });
-      return true;
+      return this.recordWatcherRegistration();
     } catch (error) {
       state.gitMetadataWatchComplete = false;
       const circuitReason = nativeWatcherErrorReason(error);
@@ -1378,7 +1449,7 @@ export class ProjectWorktreeSubscriptionManager {
     }
     const watchesAreTruth =
       !this.watcherCircuitReason &&
-      this.platform === GIT_METADATA_PLATFORM &&
+      this.platform === NATIVE_WATCH_PLATFORM &&
       state.watchComplete &&
       state.gitMetadataWatchComplete &&
       !state.reconciliationRecoveryNeeded;

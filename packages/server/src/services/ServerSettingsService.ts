@@ -235,6 +235,21 @@ export interface ServerSettings {
 export const CODEX_UPDATE_POLICIES = ["auto", "notify", "off"] as const;
 export type CodexUpdatePolicy = (typeof CODEX_UPDATE_POLICIES)[number];
 
+/**
+ * Live worktree monitoring defaults on everywhere its resource profile is
+ * safe. Linux uses the perf-validated bounded native watcher set; other
+ * non-macOS platforms run poll-only bounded reconciliation with no native
+ * allocation at all. macOS — the FSEvents watcher-exhaustion incident
+ * platform — is the one default-unsupported platform and stays Off until
+ * explicitly enabled (which also runs poll-only). An explicit stored
+ * choice always wins over this default.
+ */
+export function defaultLiveWorktreeMonitoringEnabled(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform !== "darwin";
+}
+
 /** Default settings */
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   projectDirectoryStorage: "app-data",
@@ -245,7 +260,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   approvalAuditLogEnabled: false,
   publicSharesEnabled: false,
   workstreamsEnabled: false,
-  liveWorktreeMonitoringEnabled: false,
+  liveWorktreeMonitoringEnabled: defaultLiveWorktreeMonitoringEnabled(),
   sourceReviewSubmissionsEnabled: true,
   sourceReviewResponseTurns: DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS,
   hostProcessObservabilityEnabled: true,

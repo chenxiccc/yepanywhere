@@ -1531,7 +1531,7 @@
   "sourceReviewSubmissionsSettingTitle": "Review history and outcomes",
   "sourceReviewSubmissionsSettingDescription": "Show submitted review history in Source Control and unread agent outcomes in Inbox, with the exact source each comment referred to. YA checks for outcomes after each completed assistant turn for a limited window; later outcomes require Refresh in Reviews. When off, line comments and sending reviews still work, but the Reviews view and outcome tracking are unavailable. Existing stored records are kept and return if you turn this on again. On by default for new installs.",
   "liveWorktreeMonitoringSettingTitle": "Experimental live worktree monitoring",
-  "liveWorktreeMonitoringSettingDescription": "Continuously watch project files while Source Control is visible and focused. Off keeps Source Control, file viewing, diffs, and manual refresh available without live filesystem watchers. Large repositories fall back when YA's watcher safety limit is reached. Off by default.",
+  "liveWorktreeMonitoringSettingDescription": "Continuously watch project files while Source Control is visible and focused. Off keeps Source Control, file viewing, diffs, and manual refresh available without live filesystem watchers. Large repositories fall back when YA's watcher safety limit is reached. On by default except on macOS, where it stays off unless enabled here.",
   "sourceCopyBranch": "Copy branch name",
   "sourceCopyCommitHash": "Copy commit hash",
   "sourceCopyCommitSubject": "Copy commit subject",

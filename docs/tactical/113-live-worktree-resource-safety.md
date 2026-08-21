@@ -8,6 +8,16 @@ Topic: live-worktree-resource-safety
 
 Status: implemented and validated 2026-08-21.
 
+Superseded in part on 2026-08-21 after the follow-up harsh review: native
+watchers are now Linux-only (every other platform runs enabled monitoring
+poll-only with zero native allocation), a registration-churn window feeds the
+circuit, and the default became platform-dependent — On everywhere except
+macOS — after a recorded Linux bounded-resource validation. The current
+contract lives in
+[`topics/source-control.md`](../../topics/source-control.md)
+§ Optional live project worktree ownership; this document keeps the original
+incident analysis and default-off decision as history.
+
 Related contracts:
 
 - [`topics/source-control.md`](../../topics/source-control.md)

@@ -373,13 +373,25 @@ refresh callers share one refresh.
 
 ### Optional live project worktree ownership
 
-Live monitoring is an experimental server-wide Source Control option and is
-Off when no explicit stored choice exists. Off advertises no
-`git-working-tree-sections` or complete-scan availability, accepts no worktree
-subscription, and owns no content watcher, Git-metadata watcher,
-reconciliation timer, or retry timer. ID 38's static inventory, cache-backed
-status, explicit refresh, and legacy file projections remain the default core
-behavior.
+Live monitoring is an experimental server-wide Source Control option with a
+platform-dependent default: when no explicit stored choice exists it is On
+everywhere except macOS, which stays Off. macOS is the one
+default-unsupported platform — the 2026-08-21 FSEvents watcher-exhaustion
+incident platform keeps its mitigation posture, and even an explicit macOS
+opt-in runs poll-only. An explicit stored choice always wins over the
+platform default. Off advertises no `git-working-tree-sections` or
+complete-scan availability, accepts no worktree subscription, and owns no
+content watcher, Git-metadata watcher, reconciliation timer, or retry timer.
+ID 38's static inventory, cache-backed status, explicit refresh, and legacy
+file projections remain the core behavior wherever monitoring is off.
+
+Native filesystem watchers exist only on Linux. It is the sole platform where
+complete watch sets are treated as truth, and its bounded per-directory
+inotify cost is the one that has been measured. Every other platform runs
+enabled monitoring poll-only: the bounded 30-second full reconciliation that
+was already the correctness truth source there, with zero native watcher
+allocation. The incident mechanism — one native FSEvents client per
+directory — can therefore no longer allocate on macOS at all.
 
 When enabled, one project-keyed server owner replaces the static file corpus as
 the current Source Control truth while a visible and focused Source Control
@@ -430,7 +442,29 @@ metadata, with at most four projects holding native watches concurrently. These
 are safety bounds, not completeness promises: reaching either opens the same
 process-generation circuit before YA partially constructs the over-budget set.
 Diagnostics report the effective mode, circuit state and reason, subscriber and
-project counts, native-watch count, and both ceilings without exposing paths.
+project counts, native-watch count, cumulative registrations, and both
+ceilings without exposing paths.
+
+The active-watcher ceiling alone cannot see repeated replacement: close-and-
+reopen cycles keep the active count below the cap while cumulative native
+allocation grows without bound — the shape of the macOS incident's 8,301
+registrations. A rolling registration-churn window (default 60 seconds, four
+times the watcher ceiling) therefore also opens the circuit when native
+registrations are churning faster than any healthy watch set requires.
+Sustained heavy directory churn deliberately degrades to bounded polling
+rather than re-allocating; an explicit Off-to-On reset or restart re-arms
+native watching with a fresh window.
+
+2026-08-21 Linux validation on a 16-core x86_64 host (Node 24): a
+12,000-directory Git tree opened the watcher-limit circuit after three
+registrations, held RSS flat (+0.4 MB) across two 30-second polling ticks
+with cumulative registrations frozen, and released cleanly. A 200-directory
+watched tree held 205–246 active watchers under 800 real create/delete churn
+cycles, never exceeded the ceiling, grew RSS by 2.3 MB, tripped the
+registration-churn circuit under runaway-rate churn, and released to zero
+watchers and subscribers. That measurement is the basis for the Linux
+default-on decision; macOS and Windows defaults do not rely on it because
+they allocate no native watchers.
 
 On Linux, YA watches content directories non-recursively. Git repositories and
 the omitted-prefix compatibility walk cover each enumerated content directory;
@@ -461,9 +495,9 @@ and fingerprints before and after that scan force a follow-up if Git moved
 during observation. A missing or failed watch restores full 30-second
 reconciliation, and so does a failed scan: the published snapshot is then
 behind the worktree with no pending event of its own, so the clock reconciles
-until a scan succeeds. macOS, Windows, and other platforms retain that full
-fallback because recursive watch truth is not assumed there. Explicit YA Git
-actions and watch events may refresh more frequently.
+until a scan succeeds. macOS, Windows, and other platforms run that full
+reconciliation as their only mechanism: they allocate no native watchers at
+all. Explicit YA Git actions and watch events may refresh more frequently.
 
 A filesystem-only walk survives its directories changing under it. A directory
 removed mid-walk is skipped and leaves the inventory complete; one that cannot
@@ -934,6 +968,9 @@ the expanded live snapshot and delta contract described above. Its absence
 keeps ID 38's static behavior and sends no worktree subscription. The Maintainer
 approved changing unpublished ID 41 to opt-in availability after the watcher
 exhaustion incident rather than publishing its unsafe version-implied default.
+With the platform-dependent monitoring default, non-macOS servers advertise
+IDs 41/42 out of the box while the effective setting is On; the optional-bit
+mechanism and the server-side rejection while Off are unchanged.
 `git-working-tree-complete-scan` (permanent ID 42, optional from `0.7.2`)
 separately owns exact filesystem totals and complete projection requests; its
 absence preserves ID 41's bounded inventory without a Show-all action. The

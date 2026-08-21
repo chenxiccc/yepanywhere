@@ -104,6 +104,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
           provider: "claude" as const,
         })),
       },
+      platform: "linux",
       watchDirectory: () => {
         const watcher = new FakeWatcher();
         watchers.push(watcher);
@@ -137,7 +138,161 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       watchedDirectories: 0,
       maxWatchedDirectories: 256,
       maxWatchedProjects: 4,
+      cumulativeRegistrations: watchers.length,
     });
+  });
+
+  it.each(["darwin", "win32"] as const)(
+    "never allocates native watchers on %s",
+    async (platform) => {
+      const projectId = "project-poll-only" as UrlProjectId;
+      const watchDirectory = vi.fn(() => {
+        return new FakeWatcher() as unknown as fs.FSWatcher;
+      });
+      const scanWorktree = vi.fn(async () => ({
+        headSha: "head-a",
+        baseSha: "base-a",
+        files: mapFiles([file("src/a.ts", "tracked")]),
+      }));
+      const manager = new ProjectWorktreeSubscriptionManager({
+        scanner: {
+          getProject: vi.fn(async () => ({
+            id: projectId,
+            path: projectPath,
+            name: "project-poll-only",
+            sessionCount: 0,
+            sessionDir: "",
+            activeOwnedCount: 0,
+            activeExternalCount: 0,
+            lastActivity: null,
+            provider: "claude" as const,
+          })),
+        },
+        fallbackPollMs: 1_000,
+        platform,
+        watchDirectory,
+        scanWorktree,
+      });
+      const subscription = manager.subscribe(
+        projectId,
+        { tracked: true, untracked: true, ignored: false },
+        vi.fn(),
+      );
+      await subscription.ready;
+
+      expect(watchDirectory).not.toHaveBeenCalled();
+      expect(manager.diagnostics()).toMatchObject({
+        mode: "polling",
+        circuitOpen: false,
+        circuitReason: null,
+        watchedDirectories: 0,
+        cumulativeRegistrations: 0,
+      });
+
+      // Bounded full reconciliation remains the truth source on the clock.
+      const scanCount = scanWorktree.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.waitFor(() =>
+        expect(scanWorktree).toHaveBeenCalledTimes(scanCount + 1),
+      );
+      expect(watchDirectory).not.toHaveBeenCalled();
+
+      subscription.release();
+      const releasedScanCount = scanWorktree.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(scanWorktree).toHaveBeenCalledTimes(releasedScanCount);
+      manager.dispose();
+    },
+  );
+
+  it("opens the circuit on runaway watcher registration churn", async () => {
+    const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
+    const projectId = "project-churn" as UrlProjectId;
+    const churnDir = join(projectPath, "churn");
+    await mkdir(churnDir, { recursive: true });
+    const watchListeners = new Map<
+      string,
+      (eventType: string, filename: Buffer | string | null) => void
+    >();
+    const watchers: FakeWatcher[] = [];
+    const scanWorktree = vi.fn(async () => ({
+      headSha: "head-a",
+      baseSha: "base-a",
+      files: mapFiles([file("src/a.ts", "tracked")]),
+    }));
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-churn",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      debounceMs: 25,
+      maxEventAgeMs: 100,
+      fallbackPollMs: 1_000,
+      maxNativeWatchers: 6,
+      platform: "linux",
+      registrationChurnLimit: 6,
+      watchDirectory: (path, listener) => {
+        watchListeners.set(path, listener);
+        const watcher = new FakeWatcher();
+        watchers.push(watcher);
+        return watcher as unknown as fs.FSWatcher;
+      },
+      scanWorktree,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+    await vi.waitFor(() =>
+      expect(manager.diagnostics().watchedDirectories).toBeGreaterThan(2),
+    );
+    expect(manager.diagnostics().circuitOpen).toBe(false);
+
+    // Repeatedly replace the same directory. The active count never grows,
+    // but cumulative registrations do, and the churn window catches them.
+    for (let round = 0; round < 8; round += 1) {
+      if (manager.diagnostics().circuitOpen) break;
+      await rm(churnDir, { recursive: true, force: true });
+      watchListeners.get(projectPath)?.("rename", "churn");
+      await vi.advanceTimersByTimeAsync(150);
+      await mkdir(churnDir, { recursive: true });
+      watchListeners.get(projectPath)?.("rename", "churn");
+      await vi.advanceTimersByTimeAsync(150);
+    }
+
+    await vi.waitFor(() =>
+      expect(manager.diagnostics()).toMatchObject({
+        mode: "polling",
+        circuitOpen: true,
+        circuitReason: "registration-churn",
+        watchedDirectories: 0,
+      }),
+    );
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+
+    // The circuit does not retry allocation; polling covers the project.
+    const allocationCount = watchers.length;
+    const scanCount = scanWorktree.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree.mock.calls.length).toBeGreaterThan(scanCount),
+    );
+    expect(watchers.length).toBe(allocationCount);
+
+    subscription.release();
+    warn.mockRestore();
+    manager.dispose();
   });
 
   it("opens the circuit before a directory set can exceed the watcher budget", async () => {
@@ -168,7 +323,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       },
       fallbackPollMs: 1_000,
       maxNativeWatchers: 2,
-      platform: "darwin",
+      platform: "linux",
       watchDirectory,
       scanWorktree,
     });
@@ -235,7 +390,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       },
       fallbackPollMs: 1_000,
       maxNativeWatchers: 10,
-      platform: "darwin",
+      platform: "linux",
       watchDirectory,
       scanWorktree,
     });
@@ -320,7 +475,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       },
       maxNativeWatchers: 20,
       maxWatchedProjects: 1,
-      platform: "darwin",
+      platform: "linux",
       watchDirectory: () => {
         const watcher = new FakeWatcher();
         watchers.push(watcher);
@@ -746,7 +901,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     manager.dispose();
   });
 
-  it("keeps bounded full reconciliation on platforms without Git metadata watches", async () => {
+  it("keeps bounded full reconciliation while a directory watch is unavailable", async () => {
     const projectId = "project-a" as UrlProjectId;
     const watchListeners = new Map<
       string,
@@ -775,7 +930,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       debounceMs: 25,
       maxEventAgeMs: 100,
       fallbackPollMs: 1_000,
-      platform: "darwin",
+      platform: "linux",
       watchDirectory: (path, listener) => {
         if (failSrcWatch && path === join(projectPath, "src")) {
           throw new Error("watch unavailable");
@@ -794,22 +949,28 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     await vi.waitFor(() => expect(scanWorktree).toHaveBeenCalledTimes(2));
     const initialScanCount = scanWorktree.mock.calls.length;
 
+    // The unwatchable directory keeps full clock reconciliation running.
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount + 1),
+    );
+
     failSrcWatch = false;
     watchListeners.get(projectPath)?.("rename", "src");
     await vi.advanceTimersByTimeAsync(25);
     await vi.waitFor(() =>
-      expect(scanWorktree).toHaveBeenCalledTimes(initialScanCount + 2),
+      expect(watchListeners.has(join(projectPath, "src"))).toBe(true),
     );
+    // Let the post-reattach refresh settle; complete watches with no Git
+    // metadata then end clock reconciliation.
+    await vi.advanceTimersByTimeAsync(100);
     const recoveredScanCount = scanWorktree.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(1_000);
-    await vi.waitFor(() =>
-      expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount + 1),
-    );
-    const reconciledScanCount = scanWorktree.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount);
 
     subscription.release();
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(scanWorktree).toHaveBeenCalledTimes(reconciledScanCount);
+    expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount);
     manager.dispose();
   });
 
@@ -1594,7 +1755,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
           provider: "claude" as const,
         })),
       },
-      platform: "darwin",
+      platform: "linux",
       watchDirectory: (path) => {
         const watcher = new FakeWatcher();
         watchers.set(path, watcher);
