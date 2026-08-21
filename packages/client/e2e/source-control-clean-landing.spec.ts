@@ -102,17 +102,31 @@ async function setPageAttention(
 }
 
 function countGitStatusRequests(page: Page) {
-  let count = 0;
-  page.on("request", (request) => {
+  let started = 0;
+  let settled = 0;
+  const matches = (request: { method(): string; url(): string }): boolean => {
     const url = new URL(request.url());
-    if (
+    return (
       request.method() === "GET" &&
       url.pathname === `/api/projects/${projectId}/git`
-    ) {
-      count += 1;
-    }
+    );
+  };
+  page.on("request", (request) => {
+    if (matches(request)) started += 1;
   });
-  return () => count;
+  page.on("requestfinished", (request) => {
+    if (matches(request)) settled += 1;
+  });
+  page.on("requestfailed", (request) => {
+    if (matches(request)) settled += 1;
+  });
+  // A count snapshot used for an exact later +1 assertion must be taken at
+  // quiescence: a still-pending status response lets the next forced refresh
+  // join that in-flight request (deliberate request coalescing) instead of
+  // issuing a new one, which would read as a missing refresh.
+  return Object.assign(() => started, {
+    settled: () => started === settled,
+  });
 }
 
 async function openSourceControl(page: Page, baseURL: string) {
@@ -276,6 +290,7 @@ test("status refresh follows route and page attention", async ({
   ).toBeVisible();
   await page.clock.fastForward(31_000);
   await expect.poll(statusRequests).toBeGreaterThan(requestsAfterLeaving);
+  await expect.poll(statusRequests.settled).toBe(true);
   const requestsAfterReturning = statusRequests();
 
   await setPageAttention(page, "hidden", false);
@@ -299,6 +314,7 @@ test("status refresh follows route and page attention", async ({
   const backgroundRequests = countGitStatusRequests(backgroundPage);
   await openSourceControl(backgroundPage, baseURL);
   await expect.poll(backgroundRequests).toBeGreaterThan(0);
+  await expect.poll(backgroundRequests.settled).toBe(true);
   const initialBackgroundRequests = backgroundRequests();
 
   await backgroundPage.clock.fastForward(60_000);

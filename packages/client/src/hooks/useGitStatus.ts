@@ -134,6 +134,7 @@ export function useGitStatus(
     useRef<Promise<GitUntrackedFileListResult> | null>(null);
   const gitStatusRef = useRef(gitStatus);
   const untrackedFilesRef = useRef(untrackedFiles);
+  const statusSnapshotRef = useRef(statusSnapshot);
   const payloadStateRef = useRef({
     queryKey: "",
     present: false,
@@ -153,6 +154,7 @@ export function useGitStatus(
 
   gitStatusRef.current = gitStatus;
   untrackedFilesRef.current = untrackedFiles;
+  statusSnapshotRef.current = statusSnapshot;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -339,6 +341,45 @@ export function useGitStatus(
     });
   }, [fetchUntrackedFiles, statusSnapshot?.isGitRepo]);
 
+  const pollEnabled = options.poll !== false;
+
+  // Canonical attention-return recovery, independent of periodic polling:
+  // returning to a visible and focused page recovers a missing status
+  // payload (evicted from route retention while hidden), and refreshes a
+  // present payload only for polling consumers. This is the only owner of
+  // attention-return fetches, so a return issues exactly one request.
+  useEffect(() => {
+    if (!projectId || !ready) return;
+
+    let attentive =
+      document.visibilityState === "visible" && document.hasFocus();
+
+    const handleAttentionChange = () => {
+      const next =
+        document.visibilityState === "visible" && document.hasFocus();
+      if (next === attentive) return;
+      attentive = next;
+      if (!next) return;
+      if (statusSnapshotRef.current === null) {
+        void fetchStatus();
+        return;
+      }
+      if (pollEnabled) {
+        void fetchStatus({ force: true, background: true });
+        void fetchUntrackedFiles({ background: true });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleAttentionChange);
+    window.addEventListener("focus", handleAttentionChange);
+    window.addEventListener("blur", handleAttentionChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleAttentionChange);
+      window.removeEventListener("focus", handleAttentionChange);
+      window.removeEventListener("blur", handleAttentionChange);
+    };
+  }, [fetchStatus, fetchUntrackedFiles, pollEnabled, projectId, ready]);
+
   useEffect(() => {
     if (!projectId || !ready || options.poll === false) return;
 
@@ -389,15 +430,15 @@ export function useGitStatus(
       }, ACTIVITY_REFRESH_DELAY_MS);
     };
 
+    // Attention-return refreshes are owned by the canonical recovery effect
+    // above; this effect only starts and stops the periodic timers.
     const updateEligibility = () => {
       const nextEligible =
         document.visibilityState === "visible" && document.hasFocus();
       if (eligibilityInitialized && nextEligible === eligible) return;
-      const shouldRefresh = eligibilityInitialized && nextEligible;
       eligibilityInitialized = true;
       eligible = nextEligible;
       if (eligible) {
-        if (shouldRefresh) refreshInBackground();
         startSafetyRefresh();
       } else {
         stopSafetyRefresh();

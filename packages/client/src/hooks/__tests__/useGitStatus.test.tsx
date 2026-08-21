@@ -356,6 +356,75 @@ describe("useGitStatus", () => {
     expect(rendered.result.current.gitStatus).toEqual(gitStatus([]));
   });
 
+  it("recovers a hidden eviction on attention return without polling", async () => {
+    const firstStatus = gitStatus([
+      {
+        path: "a.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    const recoveredStatus = gitStatus([
+      {
+        path: "b.ts",
+        status: "A",
+        staged: true,
+        linesAdded: 3,
+        linesDeleted: 0,
+      },
+    ]);
+    mocks.getGitStatus
+      .mockResolvedValueOnce(firstStatus)
+      .mockResolvedValueOnce(recoveredStatus);
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", { poll: false }),
+    );
+    await settle();
+    expect(rendered.result.current.gitStatus).toEqual(firstStatus);
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    mocks.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    act(() => clearRouteRetention());
+    await settle();
+    expect(rendered.result.current.gitStatus).toBeNull();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    // Visible but unfocused is not yet attention: still no recovery.
+    mocks.hasFocus = false;
+    mocks.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    mocks.hasFocus = true;
+    window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+    expect(rendered.result.current.gitStatus).toEqual(recoveredStatus);
+    expect(rendered.result.current.loading).toBe(false);
+  });
+
+  it("does not refresh an intact payload on attention return without polling", async () => {
+    mocks.getGitStatus.mockResolvedValue(gitStatus([]));
+
+    renderHook(() => useGitStatus("project-a", { poll: false }));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    mocks.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    mocks.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+  });
+
   it("coalesces project completion events into an early refresh", async () => {
     mocks.getGitStatus.mockResolvedValue(gitStatus([]));
 
