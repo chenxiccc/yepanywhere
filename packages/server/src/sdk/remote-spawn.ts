@@ -9,6 +9,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import type { Readable, Writable } from "node:stream";
 import { getLogger } from "../logging/logger.js";
+import { quoteRemotePath, quoteShellWord } from "./remote-shell.js";
 
 /**
  * Options passed to the spawn function (from SDK).
@@ -139,7 +140,7 @@ export async function checkRemotePath(
     // Use test -d to check if directory exists
     const result = await runSSHCommand(
       host,
-      `test -d '${escapeShell(path)}'`,
+      `test -d ${quoteShellWord(path)}`,
       5000,
     );
 
@@ -171,7 +172,7 @@ export async function ensureRemoteDirectory(
 ): Promise<void> {
   const result = await runSSHCommand(
     host,
-    `mkdir -p '${escapeShell(path)}'`,
+    `mkdir -p ${quoteShellWord(path)}`,
     5000,
   );
   if (!result.success) {
@@ -394,7 +395,7 @@ export function createRemoteSpawn(
     // Forward ANTHROPIC_API_KEY if set locally and not overridden
     if (env.ANTHROPIC_API_KEY && !remoteEnv?.ANTHROPIC_API_KEY) {
       envParts.push(
-        `ANTHROPIC_API_KEY='${escapeShell(env.ANTHROPIC_API_KEY)}'`,
+        `ANTHROPIC_API_KEY=${quoteShellWord(env.ANTHROPIC_API_KEY)}`,
       );
     }
 
@@ -402,7 +403,7 @@ export function createRemoteSpawn(
     if (remoteEnv) {
       for (const [key, value] of Object.entries(remoteEnv)) {
         if (value !== undefined) {
-          envParts.push(`${key}='${escapeShell(value)}'`);
+          envParts.push(`${key}=${quoteShellWord(value)}`);
         }
       }
     }
@@ -414,15 +415,17 @@ export function createRemoteSpawn(
     // Use bash -il (interactive login shell) to get user's full PATH
     // Interactive (-i) sources .bashrc which is needed for NVM/node
     // Login (-l) sources .bash_profile/.profile
-    // Use double quotes for cd path to allow $HOME expansion
-    const escapedArgs = remoteArgs
-      .map((arg) => `'${escapeShell(arg)}'`)
-      .join(" ");
+    // Expand only the intentional $HOME prefix; every path suffix, command,
+    // argument, and environment value remains a literal shell word.
+    const invocation = [
+      ...envParts,
+      quoteShellWord(remoteCommand),
+      ...remoteArgs.map(quoteShellWord),
+    ].join(" ");
     const innerCmd = remoteCwd
-      ? `cd "${remoteCwd}" && ${envParts.join(" ")} ${remoteCommand} ${escapedArgs}`
-      : `${envParts.join(" ")} ${remoteCommand} ${escapedArgs}`;
-    // Wrap in interactive login shell - escape single quotes for the outer bash -il -c '...'
-    const remoteCmd = `bash -il -c '${innerCmd.replace(/'/g, "'\\''")}'`;
+      ? `cd ${quoteRemotePath(remoteCwd)} && ${invocation}`
+      : invocation;
+    const remoteCmd = `bash -il -c ${quoteShellWord(innerCmd)}`;
 
     log.info(
       {
@@ -540,12 +543,4 @@ function wrapChildProcess(childProcess: ChildProcess): SpawnedProcess {
     once: onceWrapper,
     off: offWrapper,
   };
-}
-
-/**
- * Escape a string for use in a shell command.
- */
-function escapeShell(str: string): string {
-  // Replace single quotes with escaped version
-  return str.replace(/'/g, "'\\''");
 }

@@ -20,6 +20,8 @@ peers so the target server resumes the provider locally.
 2. Claude CLI is installed on remote machines
 3. Project paths are symmetric (`$HOME/code/project` exists on both machines)
 4. Remote has valid Claude credentials (`~/.claude/.credentials.json` or `ANTHROPIC_API_KEY`)
+5. rsync 3.0 or newer is installed locally and remotely; session paths use
+   protected arguments so shell metacharacters remain literal
 
 ## Architecture
 

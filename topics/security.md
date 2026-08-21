@@ -64,6 +64,16 @@ an enforced sandbox limits one provider process; it does not reduce the
 authority of an authenticated operator who may create another unsandboxed
 session. See [`session-sandboxing.md`](session-sandboxing.md).
 
+Agent-authored active documents are therefore a significant hardening concern
+specifically for a provider process running inside that project-write sandbox.
+If the operator opens such a document on YA's authenticated origin, its script
+can borrow the operator browser's ambient YA authority and act outside the
+process's filesystem confinement. This is not a distinct authority boundary
+for an ordinary unsandboxed provider or an SSH-backed provider: each already
+has the corresponding local or remote account authority. Keep active project
+content source-first or scriptlessly isolated as described in
+[`active-content-security.md`](active-content-security.md).
+
 ## Authenticated Remote Access And The Relay
 
 The Remote Access password is a full operator credential, not a limited remote

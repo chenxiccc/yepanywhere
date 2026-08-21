@@ -7,8 +7,10 @@
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { getLogger } from "../logging/logger.js";
+import { getRemoteHome } from "./remote-spawn.js";
+import { quoteShellWord } from "./remote-shell.js";
 
 /**
  * Options for session sync operations.
@@ -77,7 +79,7 @@ async function ensureRemoteDir(
         "BatchMode=yes",
         "--", // End option parsing before host
         host,
-        `mkdir -p '${remotePath}'`,
+        `mkdir -p ${quoteShellWord(remotePath)}`,
       ],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
@@ -101,6 +103,38 @@ async function ensureRemoteDir(
   });
 }
 
+async function getRemoteSessionsPath(
+  host: string,
+  projectDir: string,
+  remoteSessionsDir?: string,
+): Promise<string | null> {
+  if (remoteSessionsDir) {
+    return posix.join(remoteSessionsDir, projectDir);
+  }
+
+  const remoteHome = await getRemoteHome(host);
+  if (!remoteHome) {
+    return null;
+  }
+  return posix.join(remoteHome, ".claude", "projects", projectDir);
+}
+
+/**
+ * Build rsync arguments using its protected-argument protocol. Remote paths
+ * stay unquoted here: rsync transmits them outside the remote shell command.
+ */
+export function buildRsyncArgs(source: string, dest: string): string[] {
+  return [
+    "-az",
+    "--protect-args",
+    "-e",
+    "ssh -o BatchMode=yes",
+    "--",
+    source,
+    dest,
+  ];
+}
+
 /**
  * Sync session files between local and remote.
  *
@@ -115,10 +149,18 @@ export async function syncSessions(options: SyncOptions): Promise<SyncResult> {
     options;
 
   const localPath = getSessionsPath(projectDir, sessionsDir);
-  // Remote path has same structure (no hostname subdirectory)
-  const remotePath = remoteSessionsDir
-    ? join(remoteSessionsDir, projectDir)
-    : `~/.claude/projects/${projectDir}`;
+  const remotePath = await getRemoteSessionsPath(
+    host,
+    projectDir,
+    remoteSessionsDir,
+  );
+  if (!remotePath) {
+    return {
+      success: false,
+      error: `Failed to resolve home directory on ${host}`,
+      durationMs: Date.now() - startTime,
+    };
+  }
 
   // Build rsync command
   // -a: archive mode (preserves permissions, timestamps, etc.)
@@ -173,11 +215,9 @@ export async function syncSessions(options: SyncOptions): Promise<SyncResult> {
   );
 
   return new Promise((resolve) => {
-    const rsyncProcess = spawn(
-      "rsync",
-      ["-az", "-e", "ssh -o BatchMode=yes", "--", source, dest],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const rsyncProcess = spawn("rsync", buildRsyncArgs(source, dest), {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
     let stdout = "";
     let stderr = "";
@@ -285,10 +325,18 @@ export async function syncSessionFile(
   const startTime = Date.now();
 
   const localPath = getSessionsPath(projectDir, sessionsDir);
-  // Remote path has same structure (no hostname subdirectory)
-  const remotePath = remoteSessionsDir
-    ? join(remoteSessionsDir, projectDir)
-    : `~/.claude/projects/${projectDir}`;
+  const remotePath = await getRemoteSessionsPath(
+    host,
+    projectDir,
+    remoteSessionsDir,
+  );
+  if (!remotePath) {
+    return {
+      success: false,
+      error: `Failed to resolve home directory on ${host}`,
+      durationMs: Date.now() - startTime,
+    };
+  }
 
   const source = `${host}:${remotePath}/${sessionId}.jsonl`;
   const dest = `${localPath}/`;
@@ -313,11 +361,9 @@ export async function syncSessionFile(
   }
 
   return new Promise((resolve) => {
-    const rsyncProcess = spawn(
-      "rsync",
-      ["-az", "-e", "ssh -o BatchMode=yes", "--", source, dest],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const rsyncProcess = spawn("rsync", buildRsyncArgs(source, dest), {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
     let stderr = "";
 
