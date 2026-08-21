@@ -378,7 +378,10 @@ export class ProjectWorktreeSubscriptionManager {
       pending.detach?.();
     }
     this.pendingSubscriptions.clear();
-    for (const state of this.projects.values()) this.deactivate(state);
+    for (const state of this.projects.values()) {
+      state.subscribers.clear();
+      this.deactivate(state);
+    }
     this.projects.clear();
   }
 
@@ -704,6 +707,7 @@ export class ProjectWorktreeSubscriptionManager {
     if (state.watchSyncPromise) return;
     state.watchSyncPromise = this.runWatcherSyncLoop(state)
       .catch((error) => {
+        if (state.subscribers.size === 0) return;
         getLogger().warn(
           { error, projectId: state.projectId },
           "WORKTREE_WATCH: watcher reconciliation failed",
@@ -1121,6 +1125,7 @@ export class ProjectWorktreeSubscriptionManager {
         }
       })
       .catch((error) => {
+        if (state.subscribers.size === 0) return;
         state.gitMetadataWatchComplete = false;
         this.syncReconciliationPoll(state);
         getLogger().warn(
@@ -1181,6 +1186,7 @@ export class ProjectWorktreeSubscriptionManager {
     void this.refresh(state, true)
       .then(() => this.scheduleWatcherSync(state, false, false))
       .catch((error) => {
+        if (state.subscribers.size === 0) return;
         getLogger().warn(
           { error, projectId: state.projectId },
           "WORKTREE_WATCH: reconciliation failed",
@@ -1395,6 +1401,7 @@ export class ProjectWorktreeSubscriptionManager {
       state.gitMetadataProbeNeeded = true;
       state.gitMetadataWatchSyncNeeded = true;
       void this.refresh(state, true).catch((error) => {
+        if (state.subscribers.size === 0) return;
         getLogger().warn(
           { error, projectId: state.projectId },
           "WORKTREE_WATCH: periodic reconciliation failed",
