@@ -169,7 +169,9 @@ describe("FileWatcher", () => {
       watchDir,
       provider: "claude",
       eventBus,
-      debounceMs: 0,
+      // Keep the platform event from racing the explicit event under test.
+      // stop() clears the delayed timer before it can emit a duplicate.
+      debounceMs: 60_000,
       rescanSlowLogThresholdMs: 60_000,
     });
 

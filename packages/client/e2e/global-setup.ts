@@ -544,6 +544,61 @@ export default async function globalSetup() {
     `[E2E] Created clean Source Control fixture at ${sourceControlProjectPath}`,
   );
 
+  // This project must exist before the server assembles its project inventory.
+  // The spec dirties the committed file after global setup.
+  const sourceControlToolbarProjectPath = join(
+    E2E_TEMP_DIR,
+    "source-control-toolbar-project",
+  );
+  const sourceControlToolbarFileName =
+    "claude-gateway-process-start-and-output-collector-with-an-intentionally-long-layout-name-that-wraps-at-medium-width.ts";
+  const sourceControlToolbarRelativePath = `src/${sourceControlToolbarFileName}`;
+  mkdirSync(join(sourceControlToolbarProjectPath, "src"), { recursive: true });
+  writeFileSync(
+    join(sourceControlToolbarProjectPath, sourceControlToolbarRelativePath),
+    "export const toolbarLayoutFixture = false;\n",
+  );
+  execFileSync("git", ["init", "--initial-branch=main"], {
+    cwd: sourceControlToolbarProjectPath,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["add", sourceControlToolbarRelativePath], {
+    cwd: sourceControlToolbarProjectPath,
+    stdio: "ignore",
+  });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=YA E2E",
+      "-c",
+      "user.email=ya-e2e@example.invalid",
+      "commit",
+      "-m",
+      "Seed toolbar layout fixture",
+    ],
+    { cwd: sourceControlToolbarProjectPath, stdio: "ignore" },
+  );
+  const sourceControlToolbarSessionDir = join(
+    E2E_CLAUDE_SESSIONS_DIR,
+    hostname(),
+    sourceControlToolbarProjectPath.replace(/[/\\:]/g, "-"),
+  );
+  mkdirSync(sourceControlToolbarSessionDir, { recursive: true });
+  writeFileSync(
+    join(sourceControlToolbarSessionDir, "source-control-toolbar-001.jsonl"),
+    JSON.stringify({
+      type: "user",
+      cwd: sourceControlToolbarProjectPath,
+      message: { role: "user", content: "Inspect the diff toolbar layout" },
+      timestamp: "2026-01-03T00:00:02.000Z",
+      uuid: "source-control-toolbar-user-1",
+    }),
+  );
+  console.log(
+    `[E2E] Created Source Control toolbar fixture at ${sourceControlToolbarProjectPath}`,
+  );
+
   // A separate dirty Quarto project exercises the rendered-document path
   // without changing the clean-landing fixture above.
   const sourceControlQmdProjectPath = join(

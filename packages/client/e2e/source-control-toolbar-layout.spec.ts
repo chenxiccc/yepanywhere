@@ -1,5 +1,4 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { e2ePaths, expect, test } from "./fixtures.js";
@@ -13,33 +12,9 @@ const projectId = Buffer.from(projectPath).toString("base64url");
 
 test.use({ serviceWorkers: "block" });
 
-// This spec owns its project so its extra commit and dirty file cannot reach
-// another spec's fixture, and so it does not depend on global setup having
-// created a repository here.
+// Global setup creates and registers the committed project before the server
+// assembles its inventory. This idempotent write supplies the dirty projection.
 test.beforeAll(() => {
-  mkdirSync(join(projectPath, "src"), { recursive: true });
-  writeFileSync(filePath, "export const toolbarLayoutFixture = false;\n");
-  execFileSync("git", ["init", "--initial-branch=main"], {
-    cwd: projectPath,
-    stdio: "ignore",
-  });
-  execFileSync("git", ["add", relativePath], {
-    cwd: projectPath,
-    stdio: "ignore",
-  });
-  execFileSync(
-    "git",
-    [
-      "-c",
-      "user.name=YA E2E",
-      "-c",
-      "user.email=ya-e2e@example.invalid",
-      "commit",
-      "-m",
-      "Seed toolbar layout fixture",
-    ],
-    { cwd: projectPath, stdio: "ignore" },
-  );
   writeFileSync(filePath, "export const toolbarLayoutFixture = true;\n");
 });
 

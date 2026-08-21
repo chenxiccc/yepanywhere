@@ -70,14 +70,19 @@ test("search result and transcript clicks keep their own actions", async ({
         if (!scrollport || !row) return Number.POSITIVE_INFINITY;
         const scrollRect = scrollport.getBoundingClientRect();
         const rowRect = row.getBoundingClientRect();
-        return Math.abs(
+        const desiredScrollTop =
+          scrollport.scrollTop +
           rowRect.top +
-            rowRect.height / 2 -
-            (scrollRect.top + scrollRect.height / 2),
+          rowRect.height / 2 -
+          (scrollRect.top + scrollRect.height / 2);
+        const expectedScrollTop = Math.min(
+          Math.max(0, desiredScrollTop),
+          scrollport.scrollHeight - scrollport.clientHeight,
         );
+        return Math.abs(scrollport.scrollTop - expectedScrollTop);
       }),
     )
-    .toBeLessThan(12);
+    .toBeLessThan(2);
   await expect(allTurnInput).toBeFocused();
 
   await page.keyboard.press("Escape");

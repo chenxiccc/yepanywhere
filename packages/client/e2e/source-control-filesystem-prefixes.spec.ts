@@ -1,7 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { e2ePaths, expect, test } from "./fixtures.js";
+import {
+  e2ePaths,
+  expect,
+  setLiveWorktreeMonitoring,
+  test,
+} from "./fixtures.js";
 
 const projectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(projectPath).toString("base64url");
@@ -29,6 +34,14 @@ async function capture(page: Page, name: string) {
     path: join(directory, name),
   });
 }
+
+test.beforeEach(async ({ baseURL }) => {
+  await setLiveWorktreeMonitoring(baseURL, true);
+});
+
+test.afterEach(async ({ baseURL }) => {
+  await setLiveWorktreeMonitoring(baseURL, false);
+});
 
 test("opens filesystem directories one level at a time", async ({
   page,

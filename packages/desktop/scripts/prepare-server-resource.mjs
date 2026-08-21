@@ -168,6 +168,7 @@ runPnpm([
   "--filter",
   ".",
   "deploy",
+  "--legacy",
   "--prod",
   deployTarget,
 ], serverDir);

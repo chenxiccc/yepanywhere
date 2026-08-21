@@ -2,7 +2,12 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { e2ePaths, expect, test } from "./fixtures.js";
+import {
+  e2ePaths,
+  expect,
+  setLiveWorktreeMonitoring,
+  test,
+} from "./fixtures.js";
 
 const sourceControlProjectPath = join(
   e2ePaths.tempDir,
@@ -308,23 +313,21 @@ test("commit search keeps the matching preview text visible", async ({
   baseURL,
 }) => {
   await page.setViewportSize({ width: 1000, height: 600 });
-  await openSourceControl(page, baseURL);
-  await page.getByRole("button", { name: "Commit history" }).click();
+  await page.goto(`${baseURL}/git-status?projectId=${projectId}&history=1`);
+  await dismissOnboardingIfVisible(page);
   await expect(page).toHaveURL(/(?:\?|&)history=1/);
 
+  // At 1000 px the compact layout opens the preferred clean-tree commit once
+  // its history loads. Wait for that transition to settle, then return to the
+  // revision list before starting the search.
+  await expect(page.getByRole("button", { name: "To HEAD" })).toBeVisible();
+  await page.getByRole("button", { name: "Commit history" }).click();
   const search = page.getByPlaceholder("Search commit changes…");
-  const comparison = page.getByRole("button", { name: "To HEAD" });
-  await expect
-    .poll(
-      async () => (await search.isVisible()) || (await comparison.isVisible()),
-    )
-    .toBe(true);
-  if (await comparison.isVisible()) {
-    await page.getByRole("button", { name: "Commit history" }).click();
-  }
   await expect(search).toBeVisible();
   await search.fill("Z");
-  await expect(page.getByText("Z", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Z", { exact: true })).toHaveCount(1, {
+    timeout: 10_000,
+  });
   await search.fill("ZebraNeedle");
 
   const match = page.getByText("ZebraNeedle", { exact: true });
@@ -343,10 +346,19 @@ test("commit search keeps the matching preview text visible", async ({
   await capture(page, "source-control-search-mobile-375x812.png");
 });
 
+let liveWorktreeMonitoringActive = false;
+test.afterEach(async ({ baseURL }) => {
+  if (!liveWorktreeMonitoringActive) return;
+  liveWorktreeMonitoringActive = false;
+  await setLiveWorktreeMonitoring(baseURL, false);
+});
+
 test("groups semantic file sections and keeps current-content browsing distinct", async ({
   page,
   baseURL,
 }) => {
+  liveWorktreeMonitoringActive = true;
+  await setLiveWorktreeMonitoring(baseURL, true);
   prepareBrowsingFixture();
   await page.setViewportSize({ width: 1000, height: 600 });
   await page.goto(

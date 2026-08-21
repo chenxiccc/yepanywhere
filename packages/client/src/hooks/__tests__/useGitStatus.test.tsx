@@ -334,6 +334,28 @@ describe("useGitStatus", () => {
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(3);
   });
 
+  it("defers missing-payload recovery until attention returns", async () => {
+    mocks.getGitStatus.mockResolvedValue(gitStatus([]));
+    const rendered = renderHook(() => useGitStatus("project-a"));
+    await settle();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    mocks.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    act(() => clearRouteRetention());
+    await settle();
+
+    expect(rendered.result.current.gitStatus).toBeNull();
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
+
+    mocks.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+    expect(rendered.result.current.gitStatus).toEqual(gitStatus([]));
+  });
+
   it("coalesces project completion events into an early refresh", async () => {
     mocks.getGitStatus.mockResolvedValue(gitStatus([]));
 

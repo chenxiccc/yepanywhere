@@ -36,10 +36,16 @@ async function expectThinkingMenuInsideViewport(
 ) {
   const menu = page.getByTestId("thinking-toolbar-menu");
   await expect(menu).toBeVisible();
-  const box = await menu.boundingBox();
-  if (!box) throw new Error("Thinking menu has no layout box");
-  expect(box.x).toBeGreaterThanOrEqual(11.5);
-  expect(box.x + box.width).toBeLessThanOrEqual(viewportWidth - 11.5);
+  await expect
+    .poll(async () => {
+      const box = await menu.boundingBox();
+      return (
+        box !== null &&
+        box.x >= 11.5 &&
+        box.x + box.width <= viewportWidth - 11.5
+      );
+    })
+    .toBe(true);
 }
 
 for (const viewport of [

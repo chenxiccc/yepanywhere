@@ -104,6 +104,25 @@ export const e2ePaths = {
   },
 };
 
+export async function setLiveWorktreeMonitoring(
+  baseURL: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetch(`${baseURL}/api/settings`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Yep-Anywhere": "true",
+    },
+    body: JSON.stringify({ liveWorktreeMonitoringEnabled: enabled }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to ${enabled ? "enable" : "disable"} live worktree monitoring: ${await response.text()}`,
+    );
+  }
+}
+
 /**
  * Helper to configure remote access for tests.
  * Uses the REST API to set up relay config and SRP credentials.

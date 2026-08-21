@@ -324,7 +324,9 @@ export function useGitStatus(
       previous.present &&
       !present &&
       projectId &&
-      ready
+      ready &&
+      document.visibilityState === "visible" &&
+      document.hasFocus()
     ) {
       void fetchStatus();
     }
