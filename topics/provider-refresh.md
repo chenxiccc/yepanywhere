@@ -10,6 +10,7 @@ Topic: provider-refresh
 Related topics: [claude](claude.md), [grok](grok.md),
 [opencode-backend](opencode-backend.md),
 [pi-provider](pi-provider.md),
+[provider-installation-updates](provider-installation-updates.md),
 [provider-state-machine](provider-state-machine.md),
 [provider-model-glyphs](provider-model-glyphs.md),
 [cost-efficiency](cost-efficiency.md).
@@ -41,6 +42,11 @@ Cost and credential boundaries still apply during refresh work. Do not turn a
 subscription-backed provider into an API-billed provider, or pass an ambient API
 key to a CLI that normally uses browser/subscription auth, unless the user made
 that choice explicit. See [cost-efficiency](cost-efficiency.md).
+
+This maintainer audit is not the runtime provider updater. Any YA command that
+mutates a user's installed provider software follows
+[provider-installation-updates](provider-installation-updates.md), including
+its runtime leases, verification, and cache-generation contract.
 
 ## Generic Refresh Loop
 

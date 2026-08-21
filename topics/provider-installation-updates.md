@@ -1,0 +1,212 @@
+# Provider Installation Updates
+
+> A provider installation that YA mutates is a shared runtime dependency, not
+> an isolated settings command. Detection, catalogs, launches, live runtimes,
+> update execution, and every cache of those facts must observe one ordered
+> installation lifecycle.
+
+Topic: provider-installation-updates
+
+Related topics:
+
+- [provider-refresh](provider-refresh.md) — maintainer compatibility audits
+  after an upstream release; this is separate from mutating a user's install;
+- [provider-authoring](provider-authoring.md) — provider discovery and launch
+  contracts;
+- [windows-codex-cli-detection](windows-codex-cli-detection.md) — Codex
+  candidate selection across PATH and desktop/npm installs;
+- [reload-safe-provider-runtimes](reload-safe-provider-runtimes.md) and
+  [provider-host-api](provider-host-api.md) — live worker ownership and launch
+  snapshots; and
+- [hard-development-rules](hard-development-rules.md) and
+  [vanilla-defaults](vanilla-defaults.md) — explicit update choices remain
+  authoritative and no new provider is silently enrolled in auto-update.
+
+## Scope And Current Inventory
+
+This topic covers a command run by YA that can install, update, replace, or
+remove a provider executable or its package files. Merely checking a release
+feed or reporting a copy-pasteable command is not an installation mutation.
+
+As of 2026-08-21, Codex is the only provider installation YA can mutate. With
+`codexUpdatePolicy: "auto"`, or after confirmation in the update prompt, the
+server runs `npm install -g @openai/codex@latest`. Other current mechanisms are
+separate:
+
+| Mechanism | Mutates a provider install? | Coordination owner |
+|---|---|---|
+| Codex npm update | Yes | This topic; first implementation target |
+| Codex Homebrew/cargo hint | No, YA only displays a command | External mutation recovery below |
+| Claude SDK dependency refresh | No runtime package-manager command | YA release/provider-refresh process |
+| Gemini, Grok, OpenCode, Pi detection | No current updater | Must register here before gaining one |
+| Tauri desktop updater | No, it updates the YA shell | `desktop-v0.md` |
+| Yep server update notices | No provider mutation | Version/remote compatibility topics |
+
+Provider rows are not installation identities. `codex` and `codex-oss` share
+one `codex` CLI installation. If YA later updates Gemini, `gemini` and
+`gemini-acp` likewise share one Gemini CLI installation. Coordination is keyed
+by a stable **installation family** such as `codex-cli`, with an explicit set
+of affected provider names and one resolved package/install identity. A
+versioned realpath is not a stable key because the updater may replace it.
+
+## Installation Lifecycle Contract
+
+### One ordered owner
+
+Every YA-owned mutation is admitted by one installation coordinator before a
+package-manager child starts. Per installation family, the coordinator owns a
+monotonic generation and the state machine:
+
+```text
+idle -> checking -> waiting-for-safe -> installing -> verifying
+                                      -> succeeded | failed
+```
+
+`checking` is read-only and does not block provider use. `installing` begins
+before the updater can rename or remove a public command path. Concurrent
+automatic and manual requests join one operation; they never start two package
+managers against the same installation. A later result cannot overwrite a
+newer generation.
+
+The coordination boundary spans all YA processes and profiles owned by the
+same user, not only one Hono generation. A stable per-user lock identity and
+verified stale-owner cleanup prevent two servers from updating one global
+package concurrently. Reader/runtime leases and writer intent must close the
+race where a new provider launch begins after the updater checked for readers
+but before it replaces the command. Project directories and Git metadata are
+never used for these locks.
+
+An external package manager or provider-native self-updater cannot be required
+to honor YA's lock. Detection therefore still needs typed transient failures,
+bounded retry, and short negative retention, but YA must not pretend it can
+serialize an unrelated terminal's `npm`, Homebrew, cargo, desktop-app, or
+self-update operation.
+
+### Provider reads and launches
+
+All operations that need the installation join the same family boundary:
+
+- command lookup and version probing;
+- authentication and installed-state probes;
+- dynamic model/command catalog subprocesses;
+- new, resumed, helper, and auxiliary session launches; and
+- provider-host workers that retain the launched runtime.
+
+Short probes/catalog reads hold bounded reader leases. A live provider runtime
+holds a runtime lease until its process and queued/provider-retained work have
+actually ended. The provider host must report the same lease even when Hono is
+replaced. The coordinator must not infer safety merely from the absence of an
+in-Hono `Process`.
+
+Automatic updates do not interrupt active, waiting-input, queued, or retained
+provider runtimes. They remain `waiting-for-safe` and acquire writer intent
+only when affected runtime leases have drained. The first slice also does not
+force-terminate a runtime for a manual update: it returns or displays the
+concrete blockers and permits retry/update-when-safe. A future explicit force
+operation would require its own product and recovery contract.
+
+Once mutation begins, a new launch must wait behind it or fail with an explicit
+retryable `provider updating` result. It must never reach a temporarily missing
+path and misreport `ENOENT`, `not installed`, or an authentication failure.
+Warm status/catalog callers may retain a last-verified display row during the
+bounded mutation; a cold or forced caller joins the verified completion. A
+temporary YA-owned replacement window is never published as proof that the
+provider was uninstalled.
+
+### Verification defines success
+
+A zero package-manager exit code is necessary but not sufficient. Before the
+writer completes, YA resolves the same launch descriptor used by production,
+executes its version/usability probe, and records the resulting path, version,
+and installation fingerprint. Provider-specific verification may add a
+bounded no-token catalog or protocol handshake when ordinary launchability
+requires it.
+
+Only a verified result is `succeeded`. If the updater exits successfully but
+the production descriptor cannot launch, the operation is failed and the
+provider is not advertised as healthy. A failure distinguishes:
+
+- package-manager failure with the previous installation still usable;
+- verification failure with a usable previous installation;
+- installation unavailable after mutation; and
+- coordinator/lock ownership lost or indeterminate.
+
+The first two retain the last verified provider display fact but expose the
+update failure. The unavailable case publishes a fresh unavailable result with
+short retention. No stale `installed: true` row authorizes a launch after
+verification proved the installation unusable.
+
+## Catalog And Cache Convergence
+
+One verified installation generation invalidates every dependent cache as one
+ordered transition:
+
+- all affected provider-route rows (`codex` and `codex-oss` together);
+- provider-owned model, command, version, auth, and launch-descriptor caches;
+- update-checker installed version/path metadata;
+- model observations derived from the superseded catalog; and
+- client in-memory and retained provider snapshots.
+
+The server generation/fingerprint participates in the provider catalog source
+key, so an accepted pre-update computation cannot publish after verification.
+The post-update refresh uses the ordinary provider-route single-flight owner;
+the updater does not create a second independent catalog cache.
+
+The client that requested a manual update immediately forces the existing
+provider refresh path and publishes the result to all mounted consumers for
+that source. Automatic completion also invalidates connected clients. If this
+requires a new activity event or response field, it is an optional
+compatibility-gated optimization: newer clients retain the existing TTL
+fallback against older servers (and may add focus revalidation through the
+existing route), and older clients must continue to tolerate the new server. A
+seven-day display snapshot is never treated as current launch authority.
+
+Negative provider facts use a materially shorter retention than verified
+successes. `not found`, lookup failure, probe timeout, empty output, and
+nonzero exit are distinct diagnostic results; the provider boundary may map a
+settled unusable result to `installed: false`, but it must not erase the reason
+before logging and retry policy are chosen. A path that exists but cannot be
+launched is not advertised as installed merely to hide a probe failure.
+
+## Configuration, Security, And Observability
+
+- Existing `auto`, `notify`, and `off` choices remain authoritative. The
+  default remains `notify`. Adding an updater for another provider is a new
+  configurable, default-off product decision; Codex's stored choice does not
+  opt another installation into mutation.
+- Explicit provider paths remain authoritative through updates. An updater
+  must prove that its package manager owns the configured install; otherwise it
+  remains manual and does not drift to a different candidate.
+- Package-manager execution uses an argument-vector launch descriptor rather
+  than interpolating a discovered package name into a shell command. Package
+  identity is allowlisted by the provider update adapter.
+- Locks, status records, and bounded raw output live in private user runtime or
+  YA app-data storage. They contain no credentials, environment dumps, auth
+  files, or project paths beyond the minimum resolved executable evidence.
+- Structured logs record installation family, operation id, phase/duration,
+  update reason, prior and verified versions, wait/blocker counts, command exit
+  class, probe failure class, affected provider names, and cache generation.
+  Logs do not wait until the final success line to reveal that a mutation is in
+  progress.
+- Shutdown/reload does not casually kill a package manager mid-replacement.
+  The mutation owner and shared lock survive a replaceable Hono generation, or
+  replacement startup observes the live owner and waits. Full shutdown has a
+  bounded, explicit completion/recovery policy and never launches a competing
+  updater while ownership is uncertain.
+
+## Provider-Onboarding Rule
+
+Before any provider gains an in-app install/update command, its change must:
+
+1. declare the stable installation family and every provider alias/dependency
+   affected by the mutation;
+2. use the shared coordinator for checks, mutation, verification, launches,
+   runtime leases, and cache generations;
+3. define active-runtime and failure behavior for each supported platform and
+   package manager;
+4. preserve configured-path authority and a manual fallback;
+5. add the race/failure/cross-process tests in the tactical plan; and
+6. update this inventory and the provider's own topic.
+
+Copying `CodexUpdateChecker` and changing the command is not a supported
+provider-update architecture.

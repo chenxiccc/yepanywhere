@@ -117,6 +117,9 @@ section below for what would have to change at higher fan-out.
   host/worker protocols, stable same-user discovery, headless bootstrap,
   attach-or-start recovery, bounded session turns, receipts, and the
   authenticated Hono adapter.
+- [`topics/provider-installation-updates.md`](topics/provider-installation-updates.md)
+  — shared installation-family lifecycle for provider update mutation,
+  runtime leases, verified generations, and catalog/cache convergence.
 - [`topics/cross-host-delegation.md`](topics/cross-host-delegation.md) — broad
   product direction for browser-known hosts, directed server-to-server grants,
   and separate native worker sessions as a useful step before session

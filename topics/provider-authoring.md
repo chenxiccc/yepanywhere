@@ -14,6 +14,8 @@ normalization must produce), [provider-abstraction](provider-abstraction.md)
 provider/model conditional to the `AgentProvider` seam — distinct from *how to
 add a provider*), [stream-persisted-render-parity](stream-persisted-render-parity.md)
 (a contract every provider must satisfy), [provider-state-machine](provider-state-machine.md),
+[provider-installation-updates](provider-installation-updates.md) (mandatory
+coordination before a provider gains an in-app installer/updater),
 [provider-session-tree](provider-session-tree.md), [codex-sessions](codex-sessions.md),
 [pi-provider](pi-provider.md). Dev doc:
 `docs/project/multi-provider-integration.md` (the kzahel-organized architecture
@@ -79,6 +81,12 @@ candidates and then apply the launch mechanism's stronger requirements:
   shell script; and
 - explicit configured paths are authoritative. A missing or unsafe explicit
   target fails closed instead of drifting to another PATH installation.
+
+If YA can mutate the installation, discovery and launch are also readers of a
+shared installation family. The updater must use the coordinator in
+[provider-installation-updates](provider-installation-updates.md); do not add an
+independent `update()` method to one provider row when aliases may share the
+same executable.
 
 `parseCommandLookupOutput()` owns only CRLF/LF splitting, trimming, blank-line
 removal, and order. `selectCommandLookupTarget()` adds the coarse Windows
