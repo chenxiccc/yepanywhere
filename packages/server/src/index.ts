@@ -105,6 +105,7 @@ import {
   SharingService,
   WorkstreamService,
 } from "./services/index.js";
+import { providerInstallationCoordinator } from "./services/ProviderInstallationCoordinator.js";
 import { configureInboundWebSocketMessageLimit } from "./websocketLimits.js";
 import {
   type SpeechRegistryInitOptions,
@@ -196,6 +197,29 @@ async function gracefulShutdown(signal: string): Promise<void> {
   isShuttingDown = true;
 
   console.log(`[Shutdown] Received ${signal}, cleaning up...`);
+
+  // An admitted provider package mutation (npm install -g) must not be
+  // interrupted mid-replacement: hold reload/shutdown on a bounded drain.
+  // If the deadline passes, exit with an explicit recovery diagnostic —
+  // the abandoned writer lease is removed by owner-identity stale cleanup
+  // once this PID is gone, so the next server can update again.
+  const updateDrainMs = signal === "SIGHUP" ? 30_000 : 10_000;
+  try {
+    const pendingUpdates =
+      await providerInstallationCoordinator.waitForLocalUpdates(updateDrainMs);
+    if (pendingUpdates.length > 0) {
+      console.warn(
+        `[Shutdown] Provider installation update for ${pendingUpdates.join(", ")} ` +
+          `still running after ${updateDrainMs}ms; exiting anyway — stale-writer ` +
+          "owner verification recovers the lease on the next start",
+      );
+    }
+  } catch (error) {
+    console.error(
+      "[Shutdown] Error draining provider installation updates:",
+      error,
+    );
+  }
 
   if (attachmentStagingCleanupTimer) {
     clearInterval(attachmentStagingCleanupTimer);

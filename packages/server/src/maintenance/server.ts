@@ -28,6 +28,7 @@ import { getHeapSpaceStatistics, getHeapStatistics } from "node:v8";
 
 import { requestDevWrapperReload } from "../dev-wrapper-client.js";
 import { markDevReloadRequested } from "../dev-reload-signal.js";
+import { providerInstallationCoordinator } from "../services/ProviderInstallationCoordinator.js";
 import {
   LOG_LEVELS,
   type LogLevel,
@@ -485,9 +486,25 @@ async function handleReload(res: http.ServerResponse): Promise<void> {
     timestamp: new Date().toISOString(),
   });
 
-  // Exit after response is sent
+  // Exit after the response is sent, but never mid-package-mutation: an
+  // admitted provider update (npm install -g) gets a bounded drain first,
+  // and a timeout exits with an explicit recovery diagnostic.
   setTimeout(() => {
-    process.exit(0);
+    void providerInstallationCoordinator
+      .waitForLocalUpdates(30_000)
+      .then((pending) => {
+        if (pending.length > 0) {
+          console.warn(
+            `[Maintenance] Provider installation update for ${pending.join(", ")} ` +
+              "still running after 30000ms; exiting anyway — stale-writer " +
+              "owner verification recovers the lease on the next start",
+          );
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        process.exit(0);
+      });
   }, 100);
 }
 

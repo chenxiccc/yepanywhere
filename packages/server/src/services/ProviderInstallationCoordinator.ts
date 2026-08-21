@@ -255,6 +255,34 @@ export class ProviderInstallationCoordinator {
     return updatePromise;
   }
 
+  /**
+   * Wait up to timeoutMs for update transactions owned by this process to
+   * finish, returning the families still updating at the deadline (empty
+   * means drained). Reload and shutdown must not interrupt an admitted
+   * package mutation mid-replacement, so callers hold process replacement
+   * on this drain and report any remainder as an explicit recovery
+   * diagnostic instead of silently orphaning the package-manager child.
+   */
+  async waitForLocalUpdates(timeoutMs: number): Promise<string[]> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const active = [...this.familyStates.entries()].filter(
+        ([, state]) => state.updatePromise !== null,
+      );
+      if (active.length === 0) return [];
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return active.map(([family]) => family);
+      await Promise.race([
+        Promise.all(
+          active.map(([, state]) =>
+            (state.updatePromise as Promise<unknown>).catch(() => undefined),
+          ),
+        ),
+        delay(Math.min(remaining, 250)),
+      ]);
+    }
+  }
+
   async getSnapshot(family: string): Promise<ProviderInstallationSnapshot> {
     const familyDir = await this.prepareFamilyDirectory(family);
     return this.withGate(familyDir, async () => {

@@ -114,6 +114,62 @@ describe("Codex installation update coordination", () => {
     );
   });
 
+  it("holds reload replacement for an in-flight update transaction", async () => {
+    const coordinator = new ProviderInstallationCoordinator({
+      rootDir: join(tempDir, "coordination"),
+      heartbeatMs: 10,
+      leaseStaleMs: 100,
+      pollMs: 5,
+      readWaitMs: 1_000,
+    });
+    const codexPath = join(
+      tempDir,
+      process.platform === "win32" ? "codex.cmd" : "codex",
+    );
+    const retiredPath = `${codexPath}.retired`;
+    await writeFakeCodex(codexPath, "0.4.2");
+
+    const replacementOpen = deferred();
+    const finishReplacement = deferred();
+    const runInstall = vi.fn(async () => {
+      await rename(codexPath, retiredPath);
+      replacementOpen.resolve();
+      await finishReplacement.promise;
+      await writeFakeCodex(codexPath, "0.4.3");
+      return "installed @openai/codex";
+    });
+    const checker = new CodexUpdateChecker({
+      codexCliPath: codexPath,
+      installationCoordinator: coordinator,
+      fetchLatest: async () => ({ tagName: "v0.4.3", htmlUrl: null }),
+      detectInstallMetadata: async () => ({
+        installedPackage: "@openai/codex",
+        updateMethod: "npm",
+        manualInstallCommand: "npm install -g @openai/codex@latest",
+      }),
+      runInstall,
+    });
+
+    // With no update running the shutdown drain is immediate.
+    await expect(coordinator.waitForLocalUpdates(10)).resolves.toEqual([]);
+
+    const install = checker.install();
+    await replacementOpen.promise;
+
+    // A reload arriving inside the npm replacement window must observe the
+    // transaction and hold rather than exit into it.
+    await expect(coordinator.waitForLocalUpdates(50)).resolves.toEqual([
+      "codex-cli",
+    ]);
+
+    finishReplacement.resolve();
+    await expect(coordinator.waitForLocalUpdates(5_000)).resolves.toEqual([]);
+    await expect(install).resolves.toMatchObject({
+      success: true,
+      status: { installed: "0.4.3", installedPath: codexPath },
+    });
+  });
+
   it("refuses mutation until an active Codex runtime releases its lease", async () => {
     const coordinator = new ProviderInstallationCoordinator({
       rootDir: join(tempDir, "coordination"),
