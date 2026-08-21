@@ -1,10 +1,12 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type InstallationOwnerProbe,
   type ProviderInstallationBusyError,
   ProviderInstallationCoordinator,
+  defaultOwnerProbe,
 } from "../../src/services/ProviderInstallationCoordinator.js";
 
 const FAMILY = "codex-cli";
@@ -31,7 +33,9 @@ describe("ProviderInstallationCoordinator", () => {
     await rm(rootDir, { recursive: true, force: true });
   });
 
-  function createCoordinator(): ProviderInstallationCoordinator {
+  function createCoordinator(
+    ownerProbe?: InstallationOwnerProbe,
+  ): ProviderInstallationCoordinator {
     return new ProviderInstallationCoordinator({
       rootDir,
       heartbeatMs: 10,
@@ -39,7 +43,32 @@ describe("ProviderInstallationCoordinator", () => {
       pollMs: 5,
       readWaitMs: 500,
       readerDrainWaitMs: 500,
+      ...(ownerProbe ? { ownerProbe } : {}),
     });
+  }
+
+  /** Write a lease/writer record whose heartbeat mtime is long past stale. */
+  async function writeStaleRecord(
+    name: string,
+    record: Record<string, unknown>,
+  ): Promise<string> {
+    const familyDir = join(rootDir, FAMILY);
+    await mkdir(familyDir, { recursive: true, mode: 0o700 });
+    const recordPath = join(familyDir, name);
+    await writeFile(recordPath, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+    const past = new Date(Date.now() - 60_000);
+    await utimes(recordPath, past, past);
+    return recordPath;
+  }
+
+  function probe(
+    aliveState: "alive" | "missing" | "other-user",
+    startId: string | null,
+  ): InstallationOwnerProbe {
+    return {
+      aliveState: () => aliveState,
+      startId: async () => startId,
+    };
   }
 
   it("refuses an update while a runtime lease is active", async () => {
@@ -143,6 +172,115 @@ describe("ProviderInstallationCoordinator", () => {
     await expect(
       second.runExclusiveUpdate(FAMILY, async () => "updated"),
     ).resolves.toBe("updated");
+  });
+
+  it("keeps a delayed-heartbeat runtime lease while its owner is alive", async () => {
+    await writeStaleRecord("runtime-sleeping.json", {
+      id: "sleeping",
+      family: FAMILY,
+      kind: "runtime",
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    const coordinator = createCoordinator(probe("alive", "boot-100"));
+
+    await expect(
+      coordinator.runExclusiveUpdate(FAMILY, async () => "updated"),
+    ).rejects.toMatchObject({
+      name: "ProviderInstallationBusyError",
+      runtimes: 1,
+    });
+  });
+
+  it("removes a stale runtime lease whose owner PID is gone", async () => {
+    await writeStaleRecord("runtime-dead.json", {
+      id: "dead",
+      family: FAMILY,
+      kind: "runtime",
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    const coordinator = createCoordinator(probe("missing", null));
+
+    await expect(
+      coordinator.runExclusiveUpdate(FAMILY, async () => "updated"),
+    ).resolves.toBe("updated");
+  });
+
+  it("removes a stale runtime lease whose PID was reused", async () => {
+    await writeStaleRecord("runtime-reused.json", {
+      id: "reused",
+      family: FAMILY,
+      kind: "runtime",
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    // The PID is occupied again, but by a process started at another time.
+    const coordinator = createCoordinator(probe("alive", "boot-999"));
+
+    await expect(
+      coordinator.runExclusiveUpdate(FAMILY, async () => "updated"),
+    ).resolves.toBe("updated");
+  });
+
+  it("removes a stale runtime lease reoccupied by another user's process", async () => {
+    await writeStaleRecord("runtime-other.json", {
+      id: "other",
+      family: FAMILY,
+      kind: "runtime",
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    const coordinator = createCoordinator(probe("other-user", null));
+
+    await expect(
+      coordinator.runExclusiveUpdate(FAMILY, async () => "updated"),
+    ).resolves.toBe("updated");
+  });
+
+  it("honors a delayed-heartbeat writer while its owner is alive", async () => {
+    await writeStaleRecord("writer.json", {
+      operationId: "sleeping-writer",
+      family: FAMILY,
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    const coordinator = createCoordinator(probe("alive", "boot-100"));
+
+    await expect(
+      coordinator.withReadLease(FAMILY, async () => "read"),
+    ).rejects.toMatchObject({ name: "ProviderInstallationUpdatingError" });
+  });
+
+  it("recovers from a stale writer whose owner PID is gone", async () => {
+    await writeStaleRecord("writer.json", {
+      operationId: "dead-writer",
+      family: FAMILY,
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    const coordinator = createCoordinator(probe("missing", null));
+
+    await expect(
+      coordinator.withReadLease(FAMILY, async () => "read"),
+    ).resolves.toBe("read");
+  });
+
+  it("probes real process liveness and start identity", async () => {
+    expect(defaultOwnerProbe.aliveState(process.pid)).toBe("alive");
+    // Far beyond any realistic pid_max, so nothing occupies it.
+    expect(defaultOwnerProbe.aliveState(0x7fffffff)).toBe("missing");
+    if (process.platform !== "win32") {
+      await expect(
+        defaultOwnerProbe.startId(process.pid),
+      ).resolves.toBeTruthy();
+    }
   });
 
   it("publishes a cross-process source generation after failure", async () => {

@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   mkdir,
@@ -13,6 +14,7 @@ import {
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getLogger } from "../logging/logger.js";
 import { enforceOwnerOnlyPathPermissionsStrict } from "../utils/filePermissions.js";
@@ -43,6 +45,7 @@ interface LeaseRecord {
   family: string;
   kind: InstallationLeaseKind;
   pid: number;
+  ownerStartId: string | null;
   createdAt: number;
 }
 
@@ -50,7 +53,19 @@ interface WriterRecord {
   operationId: string;
   family: string;
   pid: number;
+  ownerStartId: string | null;
   createdAt: number;
+}
+
+/**
+ * How stale-record cleanup verifies the recorded owner process. Injectable so
+ * tests can model dead, sleeping, and PID-reused owners deterministically.
+ */
+export interface InstallationOwnerProbe {
+  /** Whether any process currently occupies the PID. */
+  aliveState(pid: number): "alive" | "missing" | "other-user";
+  /** Platform start identity for the PID; null when unavailable. */
+  startId(pid: number): Promise<string | null>;
 }
 
 interface FamilyState {
@@ -87,6 +102,8 @@ export interface ProviderInstallationCoordinatorOptions {
   readWaitMs?: number;
   readerDrainWaitMs?: number;
   pollMs?: number;
+  /** Owner-process verification for stale cleanup (injectable for tests). */
+  ownerProbe?: InstallationOwnerProbe;
 }
 
 export class ProviderInstallationBusyError extends Error {
@@ -151,6 +168,8 @@ export class ProviderInstallationCoordinator {
   private readonly familyStates = new Map<string, FamilyState>();
   private readonly context = new AsyncLocalStorage<InstallationContext>();
   private readonly preparedDirectories = new Map<string, Promise<string>>();
+  private readonly ownerProbe: InstallationOwnerProbe;
+  private ownStartId: Promise<string | null> | null = null;
 
   constructor(options: ProviderInstallationCoordinatorOptions = {}) {
     this.rootDir =
@@ -164,6 +183,14 @@ export class ProviderInstallationCoordinator {
     this.readerDrainWaitMs =
       options.readerDrainWaitMs ?? DEFAULT_READER_DRAIN_WAIT_MS;
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS;
+    this.ownerProbe = options.ownerProbe ?? defaultOwnerProbe;
+  }
+
+  private getOwnStartId(): Promise<string | null> {
+    if (!this.ownStartId) {
+      this.ownStartId = this.ownerProbe.startId(process.pid).catch(() => null);
+    }
+    return this.ownStartId;
   }
 
   getSourceVersion(family: string): string {
@@ -266,6 +293,7 @@ export class ProviderInstallationCoordinator {
             operationId,
             family,
             pid: process.pid,
+            ownerStartId: await this.getOwnStartId(),
             createdAt: startedAt,
           } satisfies WriterRecord);
           return null;
@@ -352,6 +380,7 @@ export class ProviderInstallationCoordinator {
           family,
           kind,
           pid: process.pid,
+          ownerStartId: await this.getOwnStartId(),
           createdAt: Date.now(),
         } satisfies LeaseRecord);
         return true;
@@ -444,8 +473,13 @@ export class ProviderInstallationCoordinator {
     const writerPath = join(familyDir, "writer.json");
     try {
       if (await this.isStale(writerPath, this.leaseStaleMs)) {
-        await unlink(writerPath).catch(() => undefined);
-        return false;
+        if (await this.staleRecordOwnerGone(writerPath)) {
+          await unlink(writerPath).catch(() => undefined);
+          return false;
+        }
+        // Delayed heartbeat with a live owner (sleep, event-loop stall):
+        // the writer still owns the mutation.
+        return true;
       }
       await stat(writerPath);
       return true;
@@ -453,6 +487,52 @@ export class ProviderInstallationCoordinator {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw error;
     }
+  }
+
+  /**
+   * A stale mtime alone does not prove a dead owner: laptop sleep or an
+   * event-loop stall delays heartbeats while the recorded process is still
+   * alive and may still be mutating or using the installation. Only remove
+   * a record whose owner is verifiably gone — the PID is unoccupied, the
+   * PID now belongs to another user's process, or the same-user PID has a
+   * different process start identity (PID reuse).
+   */
+  private async staleRecordOwnerGone(recordPath: string): Promise<boolean> {
+    let record: { pid?: unknown; ownerStartId?: unknown };
+    try {
+      record = JSON.parse(await readFile(recordPath, "utf8")) as {
+        pid?: unknown;
+        ownerStartId?: unknown;
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      return true;
+    }
+    const pid = typeof record.pid === "number" ? record.pid : null;
+    if (pid === null || !Number.isInteger(pid) || pid <= 0) return true;
+
+    switch (this.ownerProbe.aliveState(pid)) {
+      case "missing":
+        return true;
+      case "other-user":
+        // Records are written by same-user YA processes; a PID we may not
+        // signal belongs to another user, so the original owner is gone.
+        return true;
+      case "alive":
+        break;
+    }
+
+    const recordedStartId =
+      typeof record.ownerStartId === "string" ? record.ownerStartId : null;
+    if (recordedStartId) {
+      const currentStartId = await this.ownerProbe
+        .startId(pid)
+        .catch(() => null);
+      if (currentStartId && currentStartId !== recordedStartId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private async collectActiveLeases(
@@ -469,7 +549,10 @@ export class ProviderInstallationCoordinator {
           : null;
       if (!kind) continue;
       const leasePath = join(familyDir, entry.name);
-      if (await this.isStale(leasePath, this.leaseStaleMs)) {
+      if (
+        (await this.isStale(leasePath, this.leaseStaleMs)) &&
+        (await this.staleRecordOwnerGone(leasePath))
+      ) {
         await unlink(leasePath).catch(() => undefined);
         continue;
       }
@@ -570,6 +653,52 @@ export class ProviderInstallationCoordinator {
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+const execFileAsync = promisify(execFile);
+
+export const defaultOwnerProbe: InstallationOwnerProbe = {
+  aliveState(pid: number): "alive" | "missing" | "other-user" {
+    try {
+      process.kill(pid, 0);
+      return "alive";
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EPERM") {
+        return "other-user";
+      }
+      return "missing";
+    }
+  },
+
+  async startId(pid: number): Promise<string | null> {
+    if (process.platform === "linux") {
+      try {
+        const statLine = await readFile(`/proc/${pid}/stat`, "utf8");
+        // Fields after the parenthesized comm: overall field 22 is the
+        // process start time in clock ticks since boot.
+        const afterComm = statLine.slice(statLine.lastIndexOf(")") + 2);
+        const startTime = afterComm.split(" ")[19];
+        return startTime || null;
+      } catch {
+        return null;
+      }
+    }
+    if (process.platform !== "win32") {
+      // macOS and other POSIX hosts have no /proc; ps runs only on the rare
+      // stale-cleanup path, never per admission.
+      try {
+        const { stdout } = await execFileAsync(
+          "ps",
+          ["-p", String(pid), "-o", "lstart="],
+          { encoding: "utf8", timeout: 5_000 },
+        );
+        return stdout.trim() || null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  },
+};
 
 export const providerInstallationCoordinator =
   new ProviderInstallationCoordinator();
