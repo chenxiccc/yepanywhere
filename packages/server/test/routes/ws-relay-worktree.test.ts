@@ -42,6 +42,26 @@ function message() {
 }
 
 describe("WebSocket worktree subscriptions", () => {
+  it("rejects subscriptions while live monitoring is disabled", () => {
+    const manager = {
+      isEnabled: vi.fn(() => false),
+      subscribe: vi.fn(),
+    } as unknown as ProjectWorktreeSubscriptionManager;
+    const subscriptions = new Map<string, () => void>();
+    const send = vi.fn();
+
+    handleWorktreeSubscribe(subscriptions, message(), send, manager);
+
+    expect(manager.subscribe).not.toHaveBeenCalled();
+    expect(subscriptions.size).toBe(0);
+    expect(send).toHaveBeenCalledWith({
+      type: "response",
+      id: "worktree-1",
+      status: 503,
+      body: { error: "Live worktree monitoring is disabled" },
+    });
+  });
+
   it("validates coverage before acquiring a manager lease", () => {
     const manager = {
       subscribe: vi.fn(),

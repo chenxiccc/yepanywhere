@@ -10,6 +10,10 @@ import type {
   GitStatusInfo,
   GitWorkingTreeFile,
 } from "@yep-anywhere/shared";
+import {
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+} from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileVersionControlLinks } from "../../components/FileDiffViewLinks";
@@ -175,6 +179,10 @@ describe("useFileVersionControl", () => {
       current: "0.7.2",
       latest: null,
       updateAvailable: false,
+      capabilities: [
+        GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+        GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+      ],
     });
     const transport = new FakeSourceTransport();
     const hook = renderHook(
@@ -255,6 +263,10 @@ describe("useFileVersionControl", () => {
       current: "0.7.2",
       latest: null,
       updateAvailable: false,
+      capabilities: [
+        GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+        GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+      ],
     });
     mocks.getGitStatus.mockResolvedValue({
       ...STATUS,

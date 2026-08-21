@@ -11,6 +11,8 @@ import {
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GLOSSARY_TOOLTIPS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
@@ -114,10 +116,26 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(GIT_INCLUSIVE_TO_HEAD_CAPABILITY);
   });
 
-  it("advertises complete filesystem scan requests", () => {
+  it("advertises the default-off live worktree setting", () => {
     expect(getServerCapabilities()).toContain(
+      GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+    );
+  });
+
+  it("advertises live worktree protocols only while enabled", () => {
+    expect(getServerCapabilities()).not.toContain(
       GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
     );
+    expect(getServerCapabilities()).not.toContain(
+      GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+    );
+    const enabledCapabilities = getServerCapabilities({
+      isLiveWorktreeMonitoringEnabled: () => true,
+    });
+    expect(enabledCapabilities).toContain(
+      GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
+    );
+    expect(enabledCapabilities).toContain(GIT_WORKING_TREE_SECTIONS_CAPABILITY);
   });
 
   it("advertises the cache-billing ignore-after setting", () => {

@@ -876,6 +876,38 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts the experimental live worktree monitoring gate", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ liveWorktreeMonitoringEnabled: true }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        liveWorktreeMonitoringEnabled: true,
+      });
+    });
+
+    it("rejects a non-boolean live worktree monitoring gate", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ liveWorktreeMonitoringEnabled: "yes" }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("accepts the source-review opt-in and bounded response turns", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

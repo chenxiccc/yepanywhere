@@ -1,5 +1,6 @@
 import {
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_WORKING_TREE_SECTIONS_CAPABILITY,
   type GitFileChange,
@@ -190,10 +191,9 @@ export function useFileVersionControl(
     version,
     GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   );
-  const supportsLiveWorktree = serverHasCapability(
-    version,
-    GIT_WORKING_TREE_SECTIONS_CAPABILITY,
-  );
+  const supportsLiveWorktree =
+    serverHasCapability(version, GIT_LIVE_WORKTREE_SETTING_CAPABILITY) &&
+    serverHasCapability(version, GIT_WORKING_TREE_SECTIONS_CAPABILITY);
   const relativePath = useMemo(
     () => projectRelativeGitPath(filePath),
     [filePath],

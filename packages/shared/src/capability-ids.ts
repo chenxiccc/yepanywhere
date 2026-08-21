@@ -282,6 +282,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "cache-miss-billing-ignore-after",
     introducedIn: "0.7.2",
   },
+  gitLiveWorktreeSetting: {
+    id: 44,
+    direction: "server",
+    name: "git-live-worktree-setting",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

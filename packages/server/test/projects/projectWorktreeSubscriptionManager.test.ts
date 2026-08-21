@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import type * as fs from "node:fs";
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -46,7 +53,9 @@ describe("ProjectWorktreeSubscriptionManager", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    projectPath = await mkdtemp(join(tmpdir(), "ya-worktree-watch-"));
+    projectPath = await realpath(
+      await mkdtemp(join(tmpdir(), "ya-worktree-watch-")),
+    );
     await mkdir(join(projectPath, ".git", "objects"), { recursive: true });
     await mkdir(join(projectPath, "src", "nested"), { recursive: true });
     await writeFile(join(projectPath, "src", "a.ts"), "a\n");
@@ -55,6 +64,73 @@ describe("ProjectWorktreeSubscriptionManager", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await rm(projectPath, { recursive: true });
+  });
+
+  it("rejects subscriptions without scanning while monitoring is disabled", async () => {
+    const getProject = vi.fn();
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: { getProject },
+      enabled: false,
+    });
+
+    const subscription = manager.subscribe(
+      "project-a" as UrlProjectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+
+    await expect(subscription.ready).rejects.toThrow(
+      "Live worktree monitoring is disabled",
+    );
+    expect(getProject).not.toHaveBeenCalled();
+    expect(manager.isEnabled()).toBe(false);
+  });
+
+  it("releases every project resource when monitoring is disabled", async () => {
+    const projectId = "project-a" as UrlProjectId;
+    const watchers: FakeWatcher[] = [];
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-a",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      watchDirectory: () => {
+        const watcher = new FakeWatcher();
+        watchers.push(watcher);
+        return watcher as unknown as fs.FSWatcher;
+      },
+      scanWorktree: vi.fn(async () => ({
+        headSha: "head-a",
+        baseSha: "base-a",
+        files: mapFiles([file("src/a.ts", "tracked")]),
+      })),
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+
+    expect(watchers.length).toBeGreaterThan(0);
+    manager.setEnabled(false);
+
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+    expect(manager.diagnostics()).toEqual({
+      activeProjects: 0,
+      retainedProjects: 0,
+      subscribers: 0,
+      watchedDirectories: 0,
+    });
   });
 
   it("shares one dot-git-free watch set and loads ignored paths only on demand", async () => {

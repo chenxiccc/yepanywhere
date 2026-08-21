@@ -1,23 +1,37 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerSettings } from "../../../api/client";
 import { setSourceControlCleanLandingPreference } from "../../../hooks/useSourceControlCleanLanding";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { SourceControlSettings } from "../SourceControlSettings";
 
-const { state, updateSettings } = vi.hoisted(() => ({
+const { refetchVersion, state, updateSettings } = vi.hoisted(() => ({
   state: {
     settings: {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
+      liveWorktreeMonitoringEnabled: false,
       sourceReviewSubmissionsEnabled: false,
       sourceReviewResponseTurns: 8,
     } as ServerSettings,
-    capabilities: ["git-source-review-submissions"] as string[],
+    capabilities: [
+      "git-source-review-submissions",
+      "git-live-worktree-setting",
+    ] as string[],
   },
+  refetchVersion: vi.fn(),
   updateSettings: vi.fn(),
 }));
 
@@ -31,7 +45,10 @@ vi.mock("../../../hooks/useServerSettings", () => ({
 }));
 
 vi.mock("../../../hooks/useVersion", () => ({
-  useVersion: () => ({ version: { capabilities: state.capabilities } }),
+  useVersion: () => ({
+    version: { capabilities: state.capabilities },
+    refetch: refetchVersion,
+  }),
 }));
 
 vi.mock("../../../i18n", () => ({
@@ -53,10 +70,16 @@ describe("SourceControlSettings", () => {
     state.settings = {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
+      liveWorktreeMonitoringEnabled: false,
       sourceReviewSubmissionsEnabled: false,
       sourceReviewResponseTurns: 8,
     };
-    state.capabilities = [GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY];
+    state.capabilities = [
+      GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+      GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+    ];
+    refetchVersion.mockReset();
+    refetchVersion.mockResolvedValue(undefined);
     updateSettings.mockReset();
     updateSettings.mockResolvedValue(undefined);
   });
@@ -88,6 +111,21 @@ describe("SourceControlSettings", () => {
     expect(updateSettings).toHaveBeenCalledWith({
       sourceReviewSubmissionsEnabled: true,
     });
+  });
+
+  it("keeps live monitoring default-off and refreshes capabilities after opt-in", async () => {
+    render(<SourceControlSettings />);
+    const toggle = screen.getByRole("checkbox", {
+      name: "liveWorktreeMonitoringSettingTitle",
+    });
+
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(toggle);
+
+    expect(updateSettings).toHaveBeenCalledWith({
+      liveWorktreeMonitoringEnabled: true,
+    });
+    await waitFor(() => expect(refetchVersion).toHaveBeenCalledOnce());
   });
 
   it("keeps the response observation bound out of the user-facing pane", () => {

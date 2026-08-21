@@ -54,7 +54,10 @@ import { getLogger } from "../logging/logger.js";
 import { AUTHENTICATED_SRP_TRANSPORT } from "../middleware/authenticated-transport.js";
 import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type { ProjectGlossarySubscriptionManager } from "../projects/projectGlossarySubscriptionManager.js";
-import type { ProjectWorktreeSubscriptionManager } from "../projects/projectWorktreeSubscriptionManager.js";
+import {
+  type ProjectWorktreeSubscriptionManager,
+  WorktreeMonitoringDisabledError,
+} from "../projects/projectWorktreeSubscriptionManager.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -1449,6 +1452,15 @@ export function handleWorktreeSubscribe(
     });
     return;
   }
+  if (manager.isEnabled?.() === false) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 503,
+      body: { error: "Live worktree monitoring is disabled" },
+    });
+    return;
+  }
   if (!projectId || !isUrlProjectId(projectId)) {
     send({
       type: "response",
@@ -1508,9 +1520,11 @@ export function handleWorktreeSubscribe(
         type: "response",
         id: subscriptionId,
         status:
-          error instanceof Error && error.message === "Project not found"
-            ? 404
-            : 500,
+          error instanceof WorktreeMonitoringDisabledError
+            ? 503
+            : error instanceof Error && error.message === "Project not found"
+              ? 404
+              : 500,
         body: {
           error:
             error instanceof Error

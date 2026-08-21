@@ -62,6 +62,16 @@ export const OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS = {
     index: CAPABILITY_ID_ALLOCATIONS.providerHostControl.id,
     introducedIn: "0.7.1",
   },
+  gitWorkingTreeSections: {
+    name: "git-working-tree-sections",
+    index: CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeSections.id,
+    introducedIn: "0.7.2",
+  },
+  gitWorkingTreeCompleteScan: {
+    name: "git-working-tree-complete-scan",
+    index: CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeCompleteScan.id,
+    introducedIn: "0.7.2",
+  },
 } as const;
 
 export type OptionalServerCapabilityBitset = CapabilityBitset;
@@ -772,7 +782,11 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.7.2",
-    advertisement: { kind: "version-implied" },
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.gitWorkingTreeSections.index,
+    },
     description:
       "Server maintains one project-keyed, lease-owned Working Tree snapshot with requested tracked, untracked, ignored, and filesystem-directory coverage, lazy filesystem-only inventory outside Git repositories, embedded Git facts when available, and sequenced live deltas.",
     clientFallback:
@@ -821,7 +835,12 @@ export const SERVER_CAPABILITIES = {
     kind: "permanent",
     area: "gitStatus",
     introducedIn: "0.7.2",
-    advertisement: { kind: "version-implied" },
+    advertisement: {
+      kind: "optional-bit",
+      index:
+        OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS.gitWorkingTreeCompleteScan
+          .index,
+    },
     description:
       "Server reports total filesystem inventory sizes and accepts an explicit complete-scan worktree lease that removes the bounded client projection.",
     clientFallback:
@@ -862,6 +881,28 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Older servers interpret recentActivityMinutes as a lower no-alert window, so the upper cutoff requires an additive field and permanent client gate.",
+    },
+  },
+  gitLiveWorktreeSetting: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitLiveWorktreeSetting.id,
+    name: "git-live-worktree-setting",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server persists the default-off live worktree monitoring setting independently of whether the live protocol is active.",
+    clientFallback:
+      "Hide and omit the setting, use static working-tree paths, and do not activate a worktree subscription.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.liveWorktreeMonitoringEnabled"],
+      responseFields: ["settings.liveWorktreeMonitoringEnabled"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers lack the safety setting, so a current client must not interpret their source-ahead live capability as operator opt-in.",
     },
   },
   gitIncomingCommits: {
@@ -1827,6 +1868,8 @@ export const GIT_WORKING_TREE_SECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeSections.name;
 export const GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeCompleteScan.name;
+export const GIT_LIVE_WORKTREE_SETTING_CAPABILITY =
+  SERVER_CAPABILITIES.gitLiveWorktreeSetting.name;
 export const CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY =
   SERVER_CAPABILITIES.cacheMissBillingIgnoreAfter.name;
 export const GIT_INCOMING_COMMITS_CAPABILITY =

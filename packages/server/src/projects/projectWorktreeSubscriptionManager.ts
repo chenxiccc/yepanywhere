@@ -145,6 +145,13 @@ interface PendingSubscription {
   detach: (() => void) | null;
 }
 
+export class WorktreeMonitoringDisabledError extends Error {
+  constructor() {
+    super("Live worktree monitoring is disabled");
+    this.name = "WorktreeMonitoringDisabledError";
+  }
+}
+
 export interface ProjectWorktreeSubscription {
   ready: Promise<void>;
   release(): void;
@@ -152,6 +159,7 @@ export interface ProjectWorktreeSubscription {
 
 export interface ProjectWorktreeSubscriptionManagerOptions {
   scanner: Pick<ProjectScanner, "getProject">;
+  enabled?: boolean;
   debounceMs?: number;
   maxEventAgeMs?: number;
   fallbackPollMs?: number;
@@ -207,11 +215,14 @@ export class ProjectWorktreeSubscriptionManager {
     isGitRepository: boolean,
   ) => Promise<ProjectWorktreeScan>;
   private readonly projects = new Map<string, ProjectState>();
+  private readonly pendingSubscriptions = new Set<PendingSubscription>();
   private nextSubscriberId = 1;
+  private enabled: boolean;
   private disposed = false;
 
   constructor(options: ProjectWorktreeSubscriptionManagerOptions) {
     this.scanner = options.scanner;
+    this.enabled = options.enabled ?? true;
     this.debounceMs = Math.max(25, options.debounceMs ?? DEFAULT_DEBOUNCE_MS);
     this.maxEventAgeMs = Math.max(
       this.debounceMs,
@@ -258,6 +269,12 @@ export class ProjectWorktreeSubscriptionManager {
     coverage: GitWorktreeCoverage,
     listener: (event: GitWorktreeSubscriptionEvent) => void,
   ): ProjectWorktreeSubscription {
+    if (!this.isEnabled()) {
+      return {
+        ready: Promise.reject(new WorktreeMonitoringDisabledError()),
+        release() {},
+      };
+    }
     const normalizedCoverage: GitWorktreeCoverage = {
       tracked: coverage.tracked,
       untracked: coverage.untracked,
@@ -274,10 +291,12 @@ export class ProjectWorktreeSubscriptionManager {
         : {}),
     };
     const pending: PendingSubscription = { cancelled: false, detach: null };
+    this.pendingSubscriptions.add(pending);
     const release = () => {
       if (pending.cancelled) return;
       pending.cancelled = true;
       pending.detach?.();
+      this.pendingSubscriptions.delete(pending);
     };
     return {
       ready: this.startSubscription(
@@ -285,14 +304,39 @@ export class ProjectWorktreeSubscriptionManager {
         normalizedCoverage,
         listener,
         pending,
-      ),
+      ).finally(() => this.pendingSubscriptions.delete(pending)),
       release,
     };
+  }
+
+  isEnabled(): boolean {
+    return this.enabled && !this.disposed;
+  }
+
+  setEnabled(enabled: boolean): void {
+    if (this.disposed || this.enabled === enabled) return;
+    this.enabled = enabled;
+    if (enabled) return;
+    for (const pending of this.pendingSubscriptions) {
+      pending.cancelled = true;
+      pending.detach?.();
+    }
+    this.pendingSubscriptions.clear();
+    for (const state of this.projects.values()) {
+      state.subscribers.clear();
+      this.deactivate(state);
+    }
+    this.projects.clear();
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const pending of this.pendingSubscriptions) {
+      pending.cancelled = true;
+      pending.detach?.();
+    }
+    this.pendingSubscriptions.clear();
     for (const state of this.projects.values()) this.deactivate(state);
     this.projects.clear();
   }
@@ -496,6 +540,7 @@ export class ProjectWorktreeSubscriptionManager {
 
   private async activate(state: ProjectState): Promise<void> {
     await this.refresh(state, state.initialized);
+    if (state.subscribers.size === 0) return;
     if (hasExpandedProjectWorktreeCorpus(state.inventory)) {
       await this.syncWatchers(state);
       state.watchersNeedFullSync = false;
@@ -564,6 +609,7 @@ export class ProjectWorktreeSubscriptionManager {
   }
 
   private async syncWatchers(state: ProjectState): Promise<void> {
+    if (state.subscribers.size === 0) return;
     let complete = true;
     if (!state.watchers.has("")) complete = this.attachWatcher(state, "");
     // A bounded filesystem-only inventory watches exactly what it enumerated.

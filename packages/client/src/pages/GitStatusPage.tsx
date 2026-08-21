@@ -9,6 +9,7 @@ import type {
 import {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
@@ -699,14 +700,16 @@ export function GitStatusPage() {
     version,
     GIT_WORKING_TREE_FILES_CAPABILITY,
   );
-  const supportsWorkingTreeSections = serverHasCapability(
+  const supportsLiveWorktreeSetting = serverHasCapability(
     version,
-    GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+    GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   );
-  const supportsCompleteFilesystemScan = serverHasCapability(
-    version,
-    GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
-  );
+  const supportsWorkingTreeSections =
+    supportsLiveWorktreeSetting &&
+    serverHasCapability(version, GIT_WORKING_TREE_SECTIONS_CAPABILITY);
+  const supportsCompleteFilesystemScan =
+    supportsWorkingTreeSections &&
+    serverHasCapability(version, GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY);
   const supportsIncomingCommits = serverHasCapability(
     version,
     GIT_INCOMING_COMMITS_CAPABILITY,

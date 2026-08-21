@@ -21,6 +21,7 @@ import {
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
   GIT_WORKING_TREE_SECTIONS_CAPABILITY,
@@ -344,9 +345,8 @@ const BASE_CAPABILITIES: string[] = [
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
-  GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
-  GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
@@ -430,6 +430,8 @@ export interface VersionRouteOptions {
   desktopRuntime?: boolean;
   /** Whether this Hono generation is registered with a provider host. */
   providerHostControlAvailable?: boolean;
+  /** Whether the operator enabled experimental live worktree monitoring. */
+  isLiveWorktreeMonitoringEnabled?: () => boolean;
   /** Version-implied contracts deliberately unavailable in this generation. */
   deniedCapabilities?: readonly string[];
   /** Resolved local sandbox preflight used while constructing capabilities. */
@@ -492,6 +494,12 @@ export function getServerCapabilities(options?: VersionRouteOptions): string[] {
   }
   if (options?.providerHostControlAvailable) {
     capabilities.push(PROVIDER_HOST_CONTROL_CAPABILITY);
+  }
+  if (options?.isLiveWorktreeMonitoringEnabled?.() === true) {
+    capabilities.push(
+      GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+      GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
+    );
   }
   const deviceBridgeState = options?.getDeviceBridgeState?.() ?? "unavailable";
   const enabled = options?.isDeviceBridgeEnabled?.() ?? false;

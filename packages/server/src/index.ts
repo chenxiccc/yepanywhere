@@ -1013,7 +1013,29 @@ async function startServer() {
     });
   projectGlossarySubscriptionsForShutdown = projectGlossarySubscriptionManager;
   const projectWorktreeSubscriptionManager =
-    new ProjectWorktreeSubscriptionManager({ scanner });
+    new ProjectWorktreeSubscriptionManager({
+      scanner,
+      enabled: serverSettingsService.getSetting(
+        "liveWorktreeMonitoringEnabled",
+      ),
+    });
+  serverSettingsService.onSettingsChanged((settings, previousSettings) => {
+    if (
+      settings.liveWorktreeMonitoringEnabled ===
+      previousSettings.liveWorktreeMonitoringEnabled
+    ) {
+      return;
+    }
+    projectWorktreeSubscriptionManager.setEnabled(
+      settings.liveWorktreeMonitoringEnabled,
+    );
+    void updateRelayConnection().catch((error) => {
+      console.error(
+        "[Relay] Failed to refresh live worktree capability advertisement:",
+        error,
+      );
+    });
+  });
   projectWorktreeSubscriptionsForShutdown = projectWorktreeSubscriptionManager;
 
   // Set service references for graceful shutdown
@@ -1181,6 +1203,8 @@ async function startServer() {
         isDeviceBridgeEnabled: () =>
           serverSettingsService.getSetting("deviceBridgeEnabled") ?? false,
         providerHostControlAvailable: isProviderRuntimeHostAvailable(),
+        isLiveWorktreeMonitoringEnabled: () =>
+          serverSettingsService.getSetting("liveWorktreeMonitoringEnabled"),
       });
       relayClientService.start({
         relayUrl: relayConfig.url,

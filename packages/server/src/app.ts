@@ -1505,6 +1505,10 @@ export function createApp(options: AppOptions): AppResult {
         options.serverSettingsService?.getSetting("clientDefaults"),
       desktopRuntime: options.desktopRuntime,
       providerHostControlAvailable: isProviderRuntimeHostAvailable(),
+      isLiveWorktreeMonitoringEnabled: () =>
+        options.serverSettingsService?.getSetting(
+          "liveWorktreeMonitoringEnabled",
+        ) ?? false,
     }),
   );
 

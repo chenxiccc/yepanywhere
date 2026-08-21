@@ -9,6 +9,7 @@ import {
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
   GIT_WORKING_TREE_SECTIONS_CAPABILITY,
@@ -284,6 +285,33 @@ describe("server capability advertisements", () => {
       capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
       capabilityBits: [[1, 2 ** 11]],
     });
+  });
+
+  it("assigns the live worktree setting to permanent capability ID 44", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.gitLiveWorktreeSetting.id).toBe(44);
+    const advertisement = encodeVersionedServerCapabilities(
+      [GIT_LIVE_WORKTREE_SETTING_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 2 ** 12]],
+    });
+  });
+
+  it("does not infer optional live worktree protocols from the release", () => {
+    expect(
+      serverHasCapability(
+        { current: "0.7.2" },
+        GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(
+      serverHasCapability(
+        { current: "0.7.2" },
+        GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
+      ),
+    ).toBe(false);
   });
 
   it("encodes selective share freeze in the second capability word", () => {

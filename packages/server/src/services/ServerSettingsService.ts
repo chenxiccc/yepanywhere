@@ -103,6 +103,8 @@ export interface ServerSettings {
   publicSharesEnabled: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */
   workstreamsEnabled?: boolean;
+  /** Whether experimental live Source Control filesystem monitoring is enabled. */
+  liveWorktreeMonitoringEnabled: boolean;
   /** Whether captured source-review submissions and outcomes are enabled. */
   sourceReviewSubmissionsEnabled?: boolean;
   /** Completed assistant turns that may ingest one submission response. */
@@ -243,6 +245,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   approvalAuditLogEnabled: false,
   publicSharesEnabled: false,
   workstreamsEnabled: false,
+  liveWorktreeMonitoringEnabled: false,
   sourceReviewSubmissionsEnabled: true,
   sourceReviewResponseTurns: DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS,
   hostProcessObservabilityEnabled: true,
@@ -475,6 +478,10 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     typeof settings.sourceReviewSubmissionsEnabled === "boolean"
       ? settings.sourceReviewSubmissionsEnabled
       : DEFAULT_SERVER_SETTINGS.sourceReviewSubmissionsEnabled;
+  normalized.liveWorktreeMonitoringEnabled =
+    typeof settings.liveWorktreeMonitoringEnabled === "boolean"
+      ? settings.liveWorktreeMonitoringEnabled
+      : DEFAULT_SERVER_SETTINGS.liveWorktreeMonitoringEnabled;
   normalized.sourceReviewResponseTurns =
     typeof settings.sourceReviewResponseTurns === "number" &&
     Number.isInteger(settings.sourceReviewResponseTurns) &&

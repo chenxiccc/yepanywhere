@@ -247,6 +247,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       if (typeof body.workstreamsEnabled === "boolean") {
         updates.workstreamsEnabled = body.workstreamsEnabled;
       }
+      if ("liveWorktreeMonitoringEnabled" in body) {
+        if (typeof body.liveWorktreeMonitoringEnabled !== "boolean") {
+          return c.json(
+            { error: "liveWorktreeMonitoringEnabled must be a boolean" },
+            400,
+          );
+        }
+        updates.liveWorktreeMonitoringEnabled =
+          body.liveWorktreeMonitoringEnabled;
+      }
       if ("sourceReviewSubmissionsEnabled" in body) {
         if (typeof body.sourceReviewSubmissionsEnabled !== "boolean") {
           return c.json(

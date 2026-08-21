@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
+  GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -713,6 +714,7 @@ describe("GitStatusPage source header", () => {
           GIT_SOURCE_REVIEW_CAPABILITY,
           GIT_STATUS_ENHANCED_CAPABILITY,
           GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+          GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
           GIT_WORKING_TREE_SECTIONS_CAPABILITY,
         ],
       },
@@ -883,6 +885,7 @@ describe("GitStatusPage source header", () => {
           GIT_SOURCE_REVIEW_CAPABILITY,
           GIT_STATUS_ENHANCED_CAPABILITY,
           GIT_WORKING_TREE_FILES_CAPABILITY,
+          GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
           GIT_WORKING_TREE_SECTIONS_CAPABILITY,
         ],
       },
@@ -1151,6 +1154,7 @@ describe("GitStatusPage filesystem-only projects", () => {
       version: {
         capabilities: [
           GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
           GIT_WORKING_TREE_SECTIONS_CAPABILITY,
           GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
         ],
@@ -1185,6 +1189,7 @@ describe("GitStatusPage filesystem-only projects", () => {
       version: {
         capabilities: [
           GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
           GIT_WORKING_TREE_SECTIONS_CAPABILITY,
         ],
       },

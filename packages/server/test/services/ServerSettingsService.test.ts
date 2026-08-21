@@ -76,6 +76,34 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
+  it("keeps live worktree monitoring disabled by default and persists opt-in", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("liveWorktreeMonitoringEnabled")).toBe(false);
+    await service.updateSettings({ liveWorktreeMonitoringEnabled: true });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("liveWorktreeMonitoringEnabled")).toBe(true);
+  });
+
+  it("normalizes invalid live worktree monitoring state to disabled", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: { liveWorktreeMonitoringEnabled: "yes" },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("liveWorktreeMonitoringEnabled")).toBe(false);
+  });
+
   it("defaults project writes to app data and tool media to on demand", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

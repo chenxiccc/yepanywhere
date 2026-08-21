@@ -1829,6 +1829,8 @@ export interface ServerSettings {
   publicSharesEnabled?: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */
   workstreamsEnabled?: boolean;
+  /** Whether experimental live Source Control filesystem monitoring is enabled. */
+  liveWorktreeMonitoringEnabled?: boolean;
   /** Whether captured source-review submissions and outcomes are enabled */
   sourceReviewSubmissionsEnabled?: boolean;
   /** Completed assistant turns that may ingest one submission response */
