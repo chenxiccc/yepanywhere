@@ -5,6 +5,12 @@ amendment to these instructions: read it before acting in this repo — it
 defines request verbs such as `push` and `publish` and their standing
 constraints. A clone without the file loses nothing.
 
+Before planning or implementing new work, search both `tasks/` and the
+relevant enclosing `gaps/` directories for pending defects, follow-ups, or
+already-planned work. Read and cite matches before defining a new task. A gap
+is not generic authorization to expand scope; follow `gaps/README.md`,
+including deleting an entry in the commit that closes it.
+
 ## Cross-Platform Behavior And Tests
 
 Treat Linux, macOS, and Windows as supported development targets. Code and
