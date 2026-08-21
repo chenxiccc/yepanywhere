@@ -5,7 +5,7 @@
 
 Topic: provider-installation-updates
 
-Status: proposed after the 2026-08-21 Codex startup false-negative.
+Status: implemented for the current Codex updater on 2026-08-21.
 
 Related contracts and plans:
 
@@ -79,6 +79,42 @@ generation or mutation boundary.
    does not weaken detection to “a path exists.”
 8. Existing update-policy values and the `notify` default do not change. No
    other provider gains an updater in this work.
+
+## Implementation Result
+
+The current Codex updater now uses a shared `codex-cli` installation family.
+Its filesystem-backed reader, runtime, and writer leases coordinate Hono
+generations, provider workers, and other YA processes for the same OS user.
+Codex and Codex OSS discovery, model/catalog helpers, and session runtimes all
+join that boundary. A YA-owned npm replacement window therefore cannot be
+observed as an uninstall or reached by a new provider subprocess.
+
+The update transaction now admits one allowlisted npm mutation, verifies the
+result with production CLI discovery, publishes a persistent generation, and
+invalidates both aliases and their server-owned catalogs. It waits briefly for
+short readers and returns a retryable busy result instead of interrupting a
+live runtime. A later automatic check or manual request can retry after the
+runtime drains; the server does not keep a polling loop alive for an
+indefinitely retained provider session.
+
+External package managers remain outside YA's lock. Recovery now combines
+typed probe failures, one bounded retry, Apple Silicon and npm-global fallback
+candidates, a 15-second negative provider TTL, and a Settings refresh that
+forces the server probe. Existing paths still have to execute successfully;
+the implementation does not weaken `installed` into a filesystem-existence
+claim.
+
+Manual success forces the existing provider route and updates the shared
+client cache. No automatic-completion activity event was added: a request
+that starts during mutation already waits for the verified generation, while
+a client holding an earlier healthy catalog may safely use the existing TTL.
+Adding immediate cross-client invalidation remains the compatibility-gated
+optimization described below, not part of the incident fix.
+
+The updater uses an argument-vector command descriptor on POSIX and a fixed
+`cmd.exe /d /s /c npm.cmd` prefix with allowlisted arguments on Windows. Unit
+coverage exercises both launch descriptors; this implementation was not run
+on a native Windows host.
 
 ## Why Narrow Fixes Are Insufficient
 
@@ -267,8 +303,9 @@ and phone-width browser captures plus `pnpm console:scan`.
   mutated, including provider-host and auxiliary launches.
 - Active provider runtimes are not interrupted by automatic or ordinary
   manual updates.
-- Shared aliases and every server/client cache converge on one verified
-  generation without waiting for a five-minute negative TTL.
+- Shared aliases and every server cache converge on one verified generation;
+  a replacement-window negative is never retained for five minutes, and a
+  manual update refreshes the initiating client's shared cache immediately.
 - Auto/manual requests and multiple YA profiles cannot run competing updates
   for one installation.
 - Success means the production launch descriptor works; failure is classified,

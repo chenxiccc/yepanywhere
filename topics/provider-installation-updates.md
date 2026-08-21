@@ -138,14 +138,13 @@ verification proved the installation unusable.
 
 ## Catalog And Cache Convergence
 
-One verified installation generation invalidates every dependent cache as one
-ordered transition:
+One verified installation generation invalidates every server-side dependent
+cache as one ordered transition:
 
 - all affected provider-route rows (`codex` and `codex-oss` together);
 - provider-owned model, command, version, auth, and launch-descriptor caches;
-- update-checker installed version/path metadata;
-- model observations derived from the superseded catalog; and
-- client in-memory and retained provider snapshots.
+- update-checker installed version/path metadata; and
+- model observations derived from the superseded catalog.
 
 The server generation/fingerprint participates in the provider catalog source
 key, so an accepted pre-update computation cannot publish after verification.
@@ -154,12 +153,14 @@ the updater does not create a second independent catalog cache.
 
 The client that requested a manual update immediately forces the existing
 provider refresh path and publishes the result to all mounted consumers for
-that source. Automatic completion also invalidates connected clients. If this
-requires a new activity event or response field, it is an optional
-compatibility-gated optimization: newer clients retain the existing TTL
-fallback against older servers (and may add focus revalidation through the
-existing route), and older clients must continue to tolerate the new server. A
-seven-day display snapshot is never treated as current launch authority.
+that source. A catalog request that begins during an automatic mutation waits
+for verification and therefore cannot cache a replacement-window negative.
+A client that already holds a healthy pre-update catalog may retain it until
+the existing TTL or a later refresh; it is stale display data, not launch
+authority. Immediate automatic invalidation of every connected client would
+require a new activity event or response field and remains an optional,
+compatibility-gated optimization. A seven-day display snapshot is likewise
+never treated as current launch authority.
 
 Negative provider facts use a materially shorter retention than verified
 successes. `not found`, lookup failure, probe timeout, empty output, and
