@@ -5,6 +5,10 @@ import { promisify } from "node:util";
 import { getLogger } from "../logging/logger.js";
 import { detectCodexCli } from "../sdk/cli-detection.js";
 import {
+  buildNpmCommandArgs,
+  resolveNpmCommandTarget,
+} from "../utils/npmCommand.js";
+import {
   CODEX_INSTALLATION_FAMILY,
   ProviderInstallationBusyError,
   type ProviderInstallationCoordinator,
@@ -379,10 +383,15 @@ export function inferManualInstallCommand(
 
 async function getNpmGlobalRoot(): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync(npmCommand(), ["root", "-g"], {
-      encoding: "utf-8",
-      windowsHide: true,
-    });
+    const target = resolveNpmCommandTarget();
+    const { stdout } = await execFileAsync(
+      target.command,
+      buildNpmCommandArgs(target, ["root", "-g"]),
+      {
+        encoding: "utf-8",
+        windowsHide: true,
+      },
+    );
     const npmGlobalRoot = stdout.trim();
     if (!npmGlobalRoot) return null;
     try {
@@ -425,9 +434,10 @@ async function runNpmGlobalInstall(pkg: string): Promise<string> {
   if (!ALLOWED_NPM_PACKAGES.has(pkg)) {
     throw new Error(`Unsupported Codex npm package: ${pkg}`);
   }
+  const target = resolveNpmCommandTarget();
   const { stdout, stderr } = await execFileAsync(
-    npmCommand(),
-    ["install", "-g", `${pkg}@latest`],
+    target.command,
+    buildNpmCommandArgs(target, ["install", "-g", `${pkg}@latest`]),
     {
       timeout: 5 * 60 * 1000,
       maxBuffer: 10 * 1024 * 1024,
@@ -436,10 +446,6 @@ async function runNpmGlobalInstall(pkg: string): Promise<string> {
     },
   );
   return [stdout, stderr].filter(Boolean).join("\n").trim();
-}
-
-function npmCommand(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
 async function fetchLatestFromGitHub(): Promise<{

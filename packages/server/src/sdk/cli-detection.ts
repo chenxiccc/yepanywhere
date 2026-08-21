@@ -9,6 +9,10 @@ import {
   type ProviderInstallationCoordinator,
   providerInstallationCoordinator,
 } from "../services/ProviderInstallationCoordinator.js";
+import {
+  buildNpmCommandArgs,
+  resolveNpmCommandTarget,
+} from "../utils/npmCommand.js";
 
 export type InstallationReadCoordinator = Pick<
   ProviderInstallationCoordinator,
@@ -521,13 +525,17 @@ async function getNpmGlobalCodexPaths(): Promise<string[]> {
 }
 
 async function resolveNpmGlobalCodexPaths(): Promise<string[]> {
-  const npmCommand = isWindows ? "npm.cmd" : "npm";
   try {
-    const { stdout } = await execFileAsync(npmCommand, ["prefix", "-g"], {
-      encoding: "utf8",
-      timeout: CODEX_VERSION_PROBE_TIMEOUT_MS,
-      windowsHide: true,
-    });
+    const target = resolveNpmCommandTarget();
+    const { stdout } = await execFileAsync(
+      target.command,
+      buildNpmCommandArgs(target, ["prefix", "-g"]),
+      {
+        encoding: "utf8",
+        timeout: CODEX_VERSION_PROBE_TIMEOUT_MS,
+        windowsHide: true,
+      },
+    );
     const prefix = stdout.trim();
     if (!prefix) return [];
     return isWindows
