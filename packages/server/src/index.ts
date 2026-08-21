@@ -1694,6 +1694,7 @@ async function startServer() {
         },
         background: {
           externalSessionTracker: externalTracker?.getDiagnostics() ?? null,
+          liveWorktree: projectWorktreeSubscriptionManager.diagnostics(),
         },
       }),
     });

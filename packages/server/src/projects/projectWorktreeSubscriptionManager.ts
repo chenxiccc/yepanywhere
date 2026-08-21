@@ -40,6 +40,8 @@ const DEFAULT_DEBOUNCE_MS = 150;
 const DEFAULT_MAX_EVENT_AGE_MS = 5_000;
 const DEFAULT_FALLBACK_POLL_MS = 30_000;
 const DEFAULT_MAX_RETAINED_PROJECTS = 32;
+const DEFAULT_MAX_NATIVE_WATCHERS = 256;
+const DEFAULT_MAX_WATCHED_PROJECTS = 4;
 const DEFAULT_FILE_LIMIT = 100_000;
 /**
  * A project outside Git has no ignore rules to thin its tree, so its inventory
@@ -103,6 +105,13 @@ interface WatchedGitMetadata extends WatchedDirectory {
 }
 
 type ReconciliationMode = "full" | "fingerprint";
+type NativeWatcherCircuitReason =
+  | "watcher-limit"
+  | "active-project-limit"
+  | "EMFILE"
+  | "ENFILE"
+  | "ENOSPC"
+  | "ENOMEM";
 
 interface ProjectState {
   projectId: UrlProjectId;
@@ -164,6 +173,8 @@ export interface ProjectWorktreeSubscriptionManagerOptions {
   maxEventAgeMs?: number;
   fallbackPollMs?: number;
   maxRetainedProjects?: number;
+  maxNativeWatchers?: number;
+  maxWatchedProjects?: number;
   fileLimit?: number;
   platform?: NodeJS.Platform;
   watchDirectory?: (
@@ -194,12 +205,30 @@ function pathIsAtOrBelow(path: string, parent: string): boolean {
   return path === parent || (parent !== "" && path.startsWith(`${parent}/`));
 }
 
+function nativeWatcherErrorReason(
+  error: unknown,
+): Extract<
+  NativeWatcherCircuitReason,
+  "EMFILE" | "ENFILE" | "ENOSPC" | "ENOMEM"
+> | null {
+  if (!error || typeof error !== "object" || !("code" in error)) return null;
+  const code = error.code;
+  return code === "EMFILE" ||
+    code === "ENFILE" ||
+    code === "ENOSPC" ||
+    code === "ENOMEM"
+    ? code
+    : null;
+}
+
 export class ProjectWorktreeSubscriptionManager {
   private readonly scanner: ProjectWorktreeSubscriptionManagerOptions["scanner"];
   private readonly debounceMs: number;
   private readonly maxEventAgeMs: number;
   private readonly fallbackPollMs: number;
   private readonly maxRetainedProjects: number;
+  private readonly maxNativeWatchers: number;
+  private readonly maxWatchedProjects: number;
   private readonly fileLimit: number;
   private readonly filesystemFileLimit: number;
   private readonly platform: NodeJS.Platform;
@@ -218,6 +247,7 @@ export class ProjectWorktreeSubscriptionManager {
   private readonly pendingSubscriptions = new Set<PendingSubscription>();
   private nextSubscriberId = 1;
   private enabled: boolean;
+  private watcherCircuitReason: NativeWatcherCircuitReason | null = null;
   private disposed = false;
 
   constructor(options: ProjectWorktreeSubscriptionManagerOptions) {
@@ -235,6 +265,14 @@ export class ProjectWorktreeSubscriptionManager {
     this.maxRetainedProjects = Math.max(
       1,
       options.maxRetainedProjects ?? DEFAULT_MAX_RETAINED_PROJECTS,
+    );
+    this.maxNativeWatchers = Math.max(
+      1,
+      options.maxNativeWatchers ?? DEFAULT_MAX_NATIVE_WATCHERS,
+    );
+    this.maxWatchedProjects = Math.max(
+      1,
+      options.maxWatchedProjects ?? DEFAULT_MAX_WATCHED_PROJECTS,
     );
     this.fileLimit = Math.max(1, options.fileLimit ?? DEFAULT_FILE_LIMIT);
     this.filesystemFileLimit = Math.min(
@@ -316,7 +354,10 @@ export class ProjectWorktreeSubscriptionManager {
   setEnabled(enabled: boolean): void {
     if (this.disposed || this.enabled === enabled) return;
     this.enabled = enabled;
-    if (enabled) return;
+    if (enabled) {
+      this.watcherCircuitReason = null;
+      return;
+    }
     for (const pending of this.pendingSubscriptions) {
       pending.cancelled = true;
       pending.detach?.();
@@ -342,25 +383,44 @@ export class ProjectWorktreeSubscriptionManager {
   }
 
   diagnostics(): {
+    mode: "off" | "watching" | "polling";
+    circuitOpen: boolean;
+    circuitReason: NativeWatcherCircuitReason | null;
     activeProjects: number;
+    watchedProjects: number;
     retainedProjects: number;
     subscribers: number;
     watchedDirectories: number;
+    maxWatchedDirectories: number;
+    maxWatchedProjects: number;
   } {
     let activeProjects = 0;
+    let watchedProjects = 0;
     let subscribers = 0;
     let watchedDirectories = 0;
     for (const state of this.projects.values()) {
       if (state.subscribers.size > 0) activeProjects += 1;
       subscribers += state.subscribers.size;
-      watchedDirectories +=
+      const projectWatchers =
         state.watchers.size + state.gitMetadataWatchers.size;
+      watchedDirectories += projectWatchers;
+      if (projectWatchers > 0) watchedProjects += 1;
     }
     return {
+      mode: !this.isEnabled()
+        ? "off"
+        : this.watcherCircuitReason
+          ? "polling"
+          : "watching",
+      circuitOpen: this.watcherCircuitReason !== null,
+      circuitReason: this.watcherCircuitReason,
       activeProjects,
+      watchedProjects,
       retainedProjects: this.projects.size,
       subscribers,
       watchedDirectories,
+      maxWatchedDirectories: this.maxNativeWatchers,
+      maxWatchedProjects: this.maxWatchedProjects,
     };
   }
 
@@ -470,6 +530,76 @@ export class ProjectWorktreeSubscriptionManager {
     }
   }
 
+  private nativeWatcherCount(): number {
+    let count = 0;
+    for (const state of this.projects.values()) {
+      count += state.watchers.size + state.gitMetadataWatchers.size;
+    }
+    return count;
+  }
+
+  private watchedProjectCount(): number {
+    let count = 0;
+    for (const state of this.projects.values()) {
+      if (state.watchers.size + state.gitMetadataWatchers.size > 0) count += 1;
+    }
+    return count;
+  }
+
+  private preflightWatcherReplacement(
+    state: ProjectState,
+    currentCount: number,
+    wantedCount: number,
+  ): boolean {
+    if (this.watcherCircuitReason) return false;
+    const totalAfter = this.nativeWatcherCount() - currentCount + wantedCount;
+    if (totalAfter > this.maxNativeWatchers) {
+      this.openWatcherCircuit("watcher-limit");
+      return false;
+    }
+    const stateWatcherCount =
+      state.watchers.size + state.gitMetadataWatchers.size;
+    const stateCountAfter = stateWatcherCount - currentCount + wantedCount;
+    if (
+      stateWatcherCount === 0 &&
+      stateCountAfter > 0 &&
+      this.watchedProjectCount() >= this.maxWatchedProjects
+    ) {
+      this.openWatcherCircuit("active-project-limit");
+      return false;
+    }
+    return true;
+  }
+
+  private openWatcherCircuit(reason: NativeWatcherCircuitReason): void {
+    if (this.watcherCircuitReason) return;
+    const watchedDirectories = this.nativeWatcherCount();
+    const watchedProjects = this.watchedProjectCount();
+    this.watcherCircuitReason = reason;
+    for (const state of this.projects.values()) {
+      for (const watched of state.watchers.values()) watched.watcher.close();
+      state.watchers.clear();
+      this.closeGitMetadataWatchers(state);
+      state.watchComplete = false;
+      state.gitMetadataWatchComplete = false;
+      state.pendingWatchPaths.clear();
+      state.watchSyncQueued = false;
+      state.watchSyncNeedsRefresh = false;
+      state.watchSyncFull = false;
+      this.syncReconciliationPoll(state);
+    }
+    getLogger().warn(
+      {
+        reason,
+        watchedDirectories,
+        watchedProjects,
+        maxWatchedDirectories: this.maxNativeWatchers,
+        maxWatchedProjects: this.maxWatchedProjects,
+      },
+      "WORKTREE_WATCH: native watcher circuit opened; using bounded reconciliation",
+    );
+  }
+
   private getOrCreateState(
     projectId: UrlProjectId,
     projectPath: string,
@@ -541,6 +671,10 @@ export class ProjectWorktreeSubscriptionManager {
   private async activate(state: ProjectState): Promise<void> {
     await this.refresh(state, state.initialized);
     if (state.subscribers.size === 0) return;
+    if (this.watcherCircuitReason) {
+      this.syncReconciliationPoll(state);
+      return;
+    }
     if (hasExpandedProjectWorktreeCorpus(state.inventory)) {
       await this.syncWatchers(state);
       state.watchersNeedFullSync = false;
@@ -560,6 +694,10 @@ export class ProjectWorktreeSubscriptionManager {
     full: boolean,
   ): void {
     if (state.subscribers.size === 0) return;
+    if (this.watcherCircuitReason) {
+      this.syncReconciliationPoll(state);
+      return;
+    }
     state.watchSyncQueued = true;
     state.watchSyncNeedsRefresh ||= refreshAfter;
     state.watchSyncFull ||= full;
@@ -581,6 +719,7 @@ export class ProjectWorktreeSubscriptionManager {
 
   private async runWatcherSyncLoop(state: ProjectState): Promise<void> {
     do {
+      if (this.watcherCircuitReason) return;
       state.watchSyncQueued = false;
       const refreshAfter = state.watchSyncNeedsRefresh;
       const full = state.watchSyncFull;
@@ -610,22 +749,49 @@ export class ProjectWorktreeSubscriptionManager {
 
   private async syncWatchers(state: ProjectState): Promise<void> {
     if (state.subscribers.size === 0) return;
-    let complete = true;
-    if (!state.watchers.has("")) complete = this.attachWatcher(state, "");
+    if (this.watcherCircuitReason) {
+      state.watchComplete = false;
+      this.syncReconciliationPoll(state);
+      return;
+    }
     // A bounded filesystem-only inventory watches exactly what it enumerated.
     // Walking the rest to watch it would spend the traversal the bound avoids,
     // and its files are not published, so their events would say nothing.
-    const listed =
-      projectWorktreeWatchScope(state.inventory) ??
-      (await this.listDirectories(state.projectPath));
-    const wanted = listed.directories;
-    complete &&= listed.complete;
+    const otherWatcherCount = this.nativeWatcherCount() - state.watchers.size;
+    const availableForProject = this.maxNativeWatchers - otherWatcherCount;
+    if (
+      !this.preflightWatcherReplacement(
+        state,
+        state.watchers.size,
+        Math.max(1, state.watchers.size),
+      ) ||
+      availableForProject < 1
+    ) {
+      if (!this.watcherCircuitReason) this.openWatcherCircuit("watcher-limit");
+      return;
+    }
+    const inventoryScope = projectWorktreeWatchScope(state.inventory);
+    const listed = inventoryScope
+      ? { ...inventoryScope, limitExceeded: false }
+      : await this.listDirectories(state.projectPath, "", availableForProject);
+    const wanted = new Set(listed.directories);
+    wanted.add("");
+    if (listed.limitExceeded) {
+      this.openWatcherCircuit("watcher-limit");
+      return;
+    }
+    if (
+      !this.preflightWatcherReplacement(state, state.watchers.size, wanted.size)
+    ) {
+      return;
+    }
     if (state.subscribers.size === 0) return;
     for (const [path, watched] of state.watchers) {
       if (wanted.has(path)) continue;
       watched.watcher.close();
       state.watchers.delete(path);
     }
+    let complete = listed.complete;
     for (const directory of wanted) {
       if (state.watchers.has(directory)) continue;
       if (!this.attachWatcher(state, directory)) complete = false;
@@ -634,6 +800,7 @@ export class ProjectWorktreeSubscriptionManager {
   }
 
   private attachWatcher(state: ProjectState, directory: string): boolean {
+    if (this.watcherCircuitReason) return false;
     const absolute = directory
       ? join(state.projectPath, directory)
       : state.projectPath;
@@ -648,6 +815,11 @@ export class ProjectWorktreeSubscriptionManager {
       watcher.on("error", (error) => {
         watcher.close();
         if (state.subscribers.size === 0) return;
+        const circuitReason = nativeWatcherErrorReason(error);
+        if (circuitReason) {
+          this.openWatcherCircuit(circuitReason);
+          return;
+        }
         getLogger().warn(
           { directory, error, projectId: state.projectId },
           "WORKTREE_WATCH: directory watch failed; using bounded reconciliation",
@@ -662,6 +834,11 @@ export class ProjectWorktreeSubscriptionManager {
       return true;
     } catch (error) {
       state.watchComplete = false;
+      const circuitReason = nativeWatcherErrorReason(error);
+      if (circuitReason) {
+        this.openWatcherCircuit(circuitReason);
+        return false;
+      }
       getLogger().debug(
         { directory, error, projectId: state.projectId },
         "WORKTREE_WATCH: directory not watchable; polling covers it",
@@ -674,6 +851,7 @@ export class ProjectWorktreeSubscriptionManager {
     state: ProjectState,
     path: string,
   ): Promise<boolean> {
+    if (this.watcherCircuitReason) return false;
     if (!path || isDotGitPath(path)) return false;
     const absolute = join(state.projectPath, path);
     let directoryExists = false;
@@ -701,7 +879,30 @@ export class ProjectWorktreeSubscriptionManager {
       return true;
     }
 
-    const listed = await this.listDirectories(absolute, path);
+    const currentPaths = [...state.watchers.keys()].filter((watchedPath) =>
+      pathIsAtOrBelow(watchedPath, path),
+    );
+    const otherWatcherCount = this.nativeWatcherCount() - currentPaths.length;
+    const availableForPath = this.maxNativeWatchers - otherWatcherCount;
+    if (availableForPath < 1) {
+      this.openWatcherCircuit("watcher-limit");
+      return false;
+    }
+    const listed = await this.listDirectories(absolute, path, availableForPath);
+    if (listed.limitExceeded) {
+      this.openWatcherCircuit("watcher-limit");
+      return false;
+    }
+    if (
+      !this.preflightWatcherReplacement(
+        state,
+        currentPaths.length,
+        listed.directories.size,
+      )
+    ) {
+      return false;
+    }
+    if (state.subscribers.size === 0) return false;
     if (!listed.complete) state.watchComplete = false;
     let changed = false;
     for (const [watchedPath, watched] of state.watchers) {
@@ -725,8 +926,16 @@ export class ProjectWorktreeSubscriptionManager {
   private async listDirectories(
     projectPath: string,
     initialRelative = "",
-  ): Promise<{ directories: Set<string>; complete: boolean }> {
+    limit = this.maxNativeWatchers,
+  ): Promise<{
+    directories: Set<string>;
+    complete: boolean;
+    limitExceeded: boolean;
+  }> {
     const directories = new Set<string>([initialRelative]);
+    if (directories.size > limit) {
+      return { directories, complete: false, limitExceeded: true };
+    }
     const pending = [{ absolute: projectPath, relative: initialRelative }];
     let complete = true;
     while (pending.length > 0) {
@@ -746,13 +955,16 @@ export class ProjectWorktreeSubscriptionManager {
           : entry.name;
         if (isDotGitPath(childRelative)) continue;
         directories.add(childRelative);
+        if (directories.size > limit) {
+          return { directories, complete: false, limitExceeded: true };
+        }
         pending.push({
           absolute: join(current.absolute, entry.name),
           relative: childRelative,
         });
       }
     }
-    return { directories, complete };
+    return { directories, complete, limitExceeded: false };
   }
 
   private async syncGitMetadataWatchers(state: ProjectState): Promise<void> {
@@ -777,10 +989,24 @@ export class ProjectWorktreeSubscriptionManager {
       state.gitMetadataWatchComplete = true;
       return;
     }
+    if (this.watcherCircuitReason) {
+      this.closeGitMetadataWatchers(state);
+      state.gitMetadataWatchComplete = false;
+      return;
+    }
 
     const specs = await gitMetadataWatchSpecs(state.gitMetadata);
     if (state.subscribers.size === 0) return;
     const wanted = new Map(specs.map((spec) => [spec.path, spec]));
+    if (
+      !this.preflightWatcherReplacement(
+        state,
+        state.gitMetadataWatchers.size,
+        wanted.size,
+      )
+    ) {
+      return;
+    }
     for (const [path, watched] of state.gitMetadataWatchers) {
       const spec = wanted.get(path);
       if (
@@ -807,6 +1033,7 @@ export class ProjectWorktreeSubscriptionManager {
     state: ProjectState,
     spec: GitMetadataWatchSpec,
   ): boolean {
+    if (this.watcherCircuitReason) return false;
     try {
       const watcher = this.watchDirectory(
         spec.path,
@@ -818,6 +1045,11 @@ export class ProjectWorktreeSubscriptionManager {
       watcher.on("error", (error) => {
         watcher.close();
         if (state.subscribers.size === 0) return;
+        const circuitReason = nativeWatcherErrorReason(error);
+        if (circuitReason) {
+          this.openWatcherCircuit(circuitReason);
+          return;
+        }
         getLogger().warn(
           { error, path: spec.path, projectId: state.projectId },
           "WORKTREE_WATCH: Git metadata watch failed; using bounded reconciliation",
@@ -832,6 +1064,11 @@ export class ProjectWorktreeSubscriptionManager {
       return true;
     } catch (error) {
       state.gitMetadataWatchComplete = false;
+      const circuitReason = nativeWatcherErrorReason(error);
+      if (circuitReason) {
+        this.openWatcherCircuit(circuitReason);
+        return false;
+      }
       getLogger().debug(
         { error, path: spec.path, projectId: state.projectId },
         "WORKTREE_WATCH: Git metadata directory not watchable; polling covers it",
@@ -1127,7 +1364,14 @@ export class ProjectWorktreeSubscriptionManager {
   }
 
   private syncReconciliationPoll(state: ProjectState): void {
+    if (state.subscribers.size === 0) {
+      if (state.pollTimer) clearInterval(state.pollTimer);
+      state.pollTimer = null;
+      state.pollMode = null;
+      return;
+    }
     const watchesAreTruth =
+      !this.watcherCircuitReason &&
       this.platform === GIT_METADATA_PLATFORM &&
       state.watchComplete &&
       state.gitMetadataWatchComplete &&

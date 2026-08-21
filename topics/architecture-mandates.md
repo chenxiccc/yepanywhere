@@ -61,9 +61,10 @@ directory count, client count, or project layout controlled outside YA may not
 map one-for-one onto unbounded file descriptors, native watcher registrations,
 threads, timers, or subprocesses. Every watcher owner has a process-level
 ceiling and a degraded mode that preserves core use without further native
-allocation. `EMFILE`, `ENFILE`, and allocation failure open a circuit; they do
-not schedule attempts to reconstruct the same oversized watcher set. An
-experimental or opt-in label never substitutes for that invariant.
+allocation. `EMFILE`, `ENFILE`, `ENOSPC`, and allocation failure open a
+circuit; they do not schedule attempts to reconstruct the same oversized
+watcher set. An experimental or opt-in label never substitutes for that
+invariant.
 
 ## Review Checklist
 

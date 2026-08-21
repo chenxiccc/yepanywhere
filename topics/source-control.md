@@ -419,11 +419,18 @@ remain component state and therefore survive ordinary corpus replacement.
 
 YA enforces one process-level live-worktree watcher ceiling before native
 acquisition. Directory discovery stops when the desired set cannot fit. A
-limit, `EMFILE`, `ENFILE`, or native allocation failure opens one circuit,
-closes the manager's native watchers, and permits no further watcher allocation
-attempt until restart or an explicit monitoring-mode reset. The owner remains
-usable through bounded reconciliation and manual refresh; failure never retries
-construction of the same oversized set.
+limit, `EMFILE`, `ENFILE`, `ENOSPC`, or native allocation failure opens one
+circuit, closes the manager's native watchers, and permits no further watcher
+allocation attempt until restart or an explicit monitoring-mode reset. The
+owner remains usable through bounded reconciliation and manual refresh; failure
+never retries construction of the same oversized set.
+
+The shipped process ceiling is 256 native watches total across content and Git
+metadata, with at most four projects holding native watches concurrently. These
+are safety bounds, not completeness promises: reaching either opens the same
+process-generation circuit before YA partially constructs the over-budget set.
+Diagnostics report the effective mode, circuit state and reason, subscriber and
+project counts, native-watch count, and both ceilings without exposing paths.
 
 On Linux, YA watches content directories non-recursively. Git repositories and
 the omitted-prefix compatibility walk cover each enumerated content directory;

@@ -22,6 +22,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import { ProjectWorktreeSubscriptionManager } from "../../src/projects/projectWorktreeSubscriptionManager.js";
 
 const execFileAsync = promisify(execFile);
@@ -121,16 +122,251 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     );
     await subscription.ready;
 
-    expect(watchers.length).toBeGreaterThan(0);
+    await vi.waitFor(() => expect(watchers.length).toBeGreaterThan(0));
     manager.setEnabled(false);
 
     expect(watchers.every((watcher) => watcher.closed)).toBe(true);
     expect(manager.diagnostics()).toEqual({
+      mode: "off",
+      circuitOpen: false,
+      circuitReason: null,
       activeProjects: 0,
+      watchedProjects: 0,
       retainedProjects: 0,
       subscribers: 0,
       watchedDirectories: 0,
+      maxWatchedDirectories: 256,
+      maxWatchedProjects: 4,
     });
+  });
+
+  it("opens the circuit before a directory set can exceed the watcher budget", async () => {
+    const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
+    const projectId = "project-budget" as UrlProjectId;
+    const watchDirectory = vi.fn(() => {
+      const watcher = new FakeWatcher();
+      return watcher as unknown as fs.FSWatcher;
+    });
+    const scanWorktree = vi.fn(async () => ({
+      headSha: "head-a",
+      baseSha: "base-a",
+      files: mapFiles([file("src/a.ts", "tracked")]),
+    }));
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-budget",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      fallbackPollMs: 1_000,
+      maxNativeWatchers: 2,
+      platform: "darwin",
+      watchDirectory,
+      scanWorktree,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+
+    await vi.waitFor(() =>
+      expect(manager.diagnostics().circuitOpen).toBe(true),
+    );
+    expect(watchDirectory).not.toHaveBeenCalled();
+    expect(manager.diagnostics()).toMatchObject({
+      mode: "polling",
+      circuitOpen: true,
+      circuitReason: "watcher-limit",
+      activeProjects: 1,
+      watchedProjects: 0,
+      watchedDirectories: 0,
+      maxWatchedDirectories: 2,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    const scanCount = scanWorktree.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(scanCount + 1),
+    );
+    expect(watchDirectory).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    subscription.release();
+    warn.mockRestore();
+  });
+
+  it("closes every watcher and stops allocations after EMFILE", async () => {
+    const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
+    const projectId = "project-emfile" as UrlProjectId;
+    const watchers: FakeWatcher[] = [];
+    const watchDirectory = vi.fn(() => {
+      const watcher = new FakeWatcher();
+      watchers.push(watcher);
+      return watcher as unknown as fs.FSWatcher;
+    });
+    const scanWorktree = vi.fn(async () => ({
+      headSha: "head-a",
+      baseSha: "base-a",
+      files: mapFiles([file("src/a.ts", "tracked")]),
+    }));
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async () => ({
+          id: projectId,
+          path: projectPath,
+          name: "project-emfile",
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      fallbackPollMs: 1_000,
+      maxNativeWatchers: 10,
+      platform: "darwin",
+      watchDirectory,
+      scanWorktree,
+    });
+    const subscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await subscription.ready;
+    await vi.waitFor(() => expect(watchers.length).toBeGreaterThan(1));
+    const allocationCount = watchDirectory.mock.calls.length;
+
+    watchers[0]?.emit(
+      "error",
+      Object.assign(new Error("Too many open files"), { code: "EMFILE" }),
+    );
+
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+    expect(manager.diagnostics()).toMatchObject({
+      mode: "polling",
+      circuitOpen: true,
+      circuitReason: "EMFILE",
+      watchedDirectories: 0,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    watchers[1]?.emit(
+      "error",
+      Object.assign(new Error("Too many open files"), { code: "EMFILE" }),
+    );
+    const scanCount = scanWorktree.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() =>
+      expect(scanWorktree).toHaveBeenCalledTimes(scanCount + 1),
+    );
+    expect(watchDirectory).toHaveBeenCalledTimes(allocationCount);
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    manager.setEnabled(false);
+    manager.setEnabled(true);
+    expect(manager.diagnostics()).toMatchObject({
+      mode: "watching",
+      circuitOpen: false,
+      circuitReason: null,
+    });
+    const resetSubscription = manager.subscribe(
+      projectId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await resetSubscription.ready;
+    await vi.waitFor(() =>
+      expect(watchDirectory.mock.calls.length).toBeGreaterThan(allocationCount),
+    );
+    resetSubscription.release();
+    subscription.release();
+    warn.mockRestore();
+  });
+
+  it("opens the circuit before watching more than the active-project cap", async () => {
+    const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
+    const secondPath = await realpath(
+      await mkdtemp(join(tmpdir(), "ya-worktree-watch-second-")),
+    );
+    await mkdir(join(secondPath, "src"), { recursive: true });
+    const firstId = "project-first" as UrlProjectId;
+    const secondId = "project-second" as UrlProjectId;
+    const watchers: FakeWatcher[] = [];
+    const manager = new ProjectWorktreeSubscriptionManager({
+      scanner: {
+        getProject: vi.fn(async (projectId) => ({
+          id: projectId,
+          path: projectId === firstId ? projectPath : secondPath,
+          name: projectId,
+          sessionCount: 0,
+          sessionDir: "",
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+          lastActivity: null,
+          provider: "claude" as const,
+        })),
+      },
+      maxNativeWatchers: 20,
+      maxWatchedProjects: 1,
+      platform: "darwin",
+      watchDirectory: () => {
+        const watcher = new FakeWatcher();
+        watchers.push(watcher);
+        return watcher as unknown as fs.FSWatcher;
+      },
+      scanWorktree: vi.fn(async () => ({
+        headSha: "head-a",
+        baseSha: "base-a",
+        files: mapFiles([file("src/a.ts", "tracked")]),
+      })),
+    });
+    const first = manager.subscribe(
+      firstId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await first.ready;
+    await vi.waitFor(() => expect(watchers.length).toBeGreaterThan(0));
+    const firstProjectAllocations = watchers.length;
+
+    const second = manager.subscribe(
+      secondId,
+      { tracked: true, untracked: true, ignored: false },
+      vi.fn(),
+    );
+    await second.ready;
+    await vi.waitFor(() =>
+      expect(manager.diagnostics().circuitOpen).toBe(true),
+    );
+
+    expect(watchers).toHaveLength(firstProjectAllocations);
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+    expect(manager.diagnostics()).toMatchObject({
+      mode: "polling",
+      circuitOpen: true,
+      circuitReason: "active-project-limit",
+      activeProjects: 2,
+      watchedProjects: 0,
+      watchedDirectories: 0,
+      maxWatchedProjects: 1,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    first.release();
+    second.release();
+    warn.mockRestore();
+    await rm(secondPath, { recursive: true });
   });
 
   it("shares one dot-git-free watch set and loads ignored paths only on demand", async () => {
@@ -195,7 +431,6 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       type: "git-worktree-snapshot",
       files: [file("notes.txt", "untracked"), file("src/a.ts", "tracked")],
     });
-    expect(watchedPaths).toEqual([projectPath]);
     await vi.waitFor(() => {
       expect(watchedPaths).toContain(projectPath);
       expect(watchedPaths).toContain(join(projectPath, "src"));
@@ -697,6 +932,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
   });
 
   it("reconciles on the clock until a failed scan succeeds again", async () => {
+    const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
     const projectId = "project-scan-failure" as UrlProjectId;
     const gitDir = join(projectPath, ".git");
     const headRefPath = join(gitDir, "refs", "heads", "main");
@@ -788,9 +1024,11 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     await Promise.resolve();
     expect(scanWorktree).toHaveBeenCalledTimes(recoveredScanCount);
+    expect(warn).toHaveBeenCalledTimes(2);
 
     subscription.release();
     manager.dispose();
+    warn.mockRestore();
   });
 
   it("falls back to full polling when a Git metadata directory is not watchable", async () => {
