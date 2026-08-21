@@ -88,7 +88,7 @@ selected-tree-to-HEAD and ignore-whitespace meaning; a separately available
 direct per-file action continues to use only those older routes. It is
 version-implied from `0.7.1`.
 
-`git-working-tree-sections` owns the lease-backed project snapshot and
+`git-working-tree-sections` owns the optional lease-backed project snapshot and
 sequenced live-delta contract, including requested Tracked / Untracked /
 Ignored coverage, lazy opened-directory coverage for filesystem-only projects,
 embedded dirty and cumulative Git facts when available, and the sectioned
@@ -102,8 +102,10 @@ filesystem inventory, and omitting the new response fields remains readable by
 a current client. Without permanent ID 41, the client keeps the released static
 `git-working-tree-files` behavior, sends no worktree subscription, does no
 ignored enumeration, and retains the focused 30-second fallback refresh. It is
-version-implied from `0.7.2`; the Maintainer approved expanding this unpublished
-capability before its first stable release.
+an optional bit from `0.7.2`, advertised only while the default-off server
+setting is effectively enabled. The Maintainer approved correcting this
+unpublished capability before its first stable release after native watcher
+exhaustion crashed the server.
 
 `git-working-tree-complete-scan` owns exact filesystem file totals on worktree
 snapshots, deltas, and directory rows plus the optional
@@ -112,7 +114,17 @@ corpus is `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); neither contains ID
 41's live subscription or these fields. Without permanent ID 42, the client
 keeps the bounded opened-directory projection and its truncation notice, hides
 **Show all N**, and sends no complete request. Existing capability meanings and
-older capable behavior remain unchanged. It is version-implied from `0.7.2`.
+older capable behavior remain unchanged. It is an optional bit from `0.7.2`
+and is advertised only with active ID 41.
+
+`git-live-worktree-setting` owns the additive
+`settings.liveWorktreeMonitoringEnabled` field on `GET /api/settings` and
+`PUT /api/settings`. The ordinary optional-feature corpus is `v0.7.0`
+(2026-07-25) and `v0.6.2` (2026-07-11); neither contains IDs 41/42 or the
+setting. Without the permanent setting capability, a current client hides the
+control, omits the field, and refuses to activate a live subscription even if a
+source-ahead server advertises pre-stabilization ID 41. The setting capability
+does not mean monitoring is active: optional IDs 41/42 carry that fact.
 
 `cache-miss-billing-ignore-after` owns the additive
 `settings.cacheMissBilling.ignoreAfterMinutes` field on `GET /api/settings` and
@@ -322,9 +334,10 @@ the same ledger:
 | 41 | server | 0.7.2 | `git-working-tree-sections` |
 | 42 | server | 0.7.2 | `git-working-tree-complete-scan` |
 | 43 | server | 0.7.2 | `cache-miss-billing-ignore-after` |
+| 44 | server | 0.7.2 | `git-live-worktree-setting` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 44; retired rows stay in the ledger as reserved IDs.
+ID 45; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

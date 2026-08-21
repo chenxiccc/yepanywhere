@@ -371,19 +371,27 @@ does not stat every nested child. Persisted paths must remain canonical
 repository-relative paths, bounds and truncation are explicit, and concurrent
 refresh callers share one refresh.
 
-### Live project worktree ownership
+### Optional live project worktree ownership
 
-With `git-working-tree-sections`, one project-keyed server owner replaces the
-static file corpus as the current Source Control truth while any capable view
-holds a lease. Identical subscribers across direct and relay transports share
-one snapshot, watcher set, and reconciliation computation. Subscriber coverage
-is unioned: Tracked and Untracked are present by default, while Ignored paths
-are neither enumerated nor retained until at least one subscriber requests
-them. For filesystem-only projects, explicitly opened directory prefixes are
-unioned as well, then projected back to each subscriber's own lease. Releasing
-a prefix narrows the retained file corpus and watcher set; releasing the final
-lease closes every watcher and timer. Inactive snapshots may then remain only
-as bounded least-recently-used state.
+Live monitoring is an experimental server-wide Source Control option and is
+Off when no explicit stored choice exists. Off advertises no
+`git-working-tree-sections` or complete-scan availability, accepts no worktree
+subscription, and owns no content watcher, Git-metadata watcher,
+reconciliation timer, or retry timer. ID 38's static inventory, cache-backed
+status, explicit refresh, and legacy file projections remain the default core
+behavior.
+
+When enabled, one project-keyed server owner replaces the static file corpus as
+the current Source Control truth while a visible and focused Source Control
+view holds a lease. Identical subscribers across direct and relay transports
+share one snapshot, watcher set, and reconciliation computation. Subscriber
+coverage is unioned: Tracked and Untracked are present by default, while
+Ignored paths are neither enumerated nor retained until explicitly requested.
+For filesystem-only projects, explicitly opened directory prefixes are unioned
+as well, then projected back to each subscriber's own lease. Leaving Source
+Control, hiding or unfocusing the document, pressing Pause, or releasing the
+final prefix closes the lease and every watcher and timer. Inactive snapshots
+may then remain only as bounded least-recently-used state.
 
 The first subscriber receives one complete snapshot with project-root
 `{ epoch, sequence }` generation, resolved `HEAD` / `HEAD^1` endpoints, present
@@ -394,10 +402,10 @@ state. That payload ends Loading immediately. Fresh query metadata without a
 retained payload never stands in for it, and no query identity serializes the
 file corpus. File-level diff links first reuse a non-polling status query with
 untracked enumeration omitted to establish that the project is a Git
-repository. They retain live coverage only for a repository and then read
-projection availability from the resident row rather than requesting a
-projection manifest. Multiple links share both the status query and live
-subscription.
+repository. File-level diff links and standalone file viewers do not retain
+live coverage: their passive availability affordance uses the released
+non-polling status and static projection paths. A transcript or file view must
+not activate whole-project native observation.
 
 Filesystem changes publish create, modify, and delete deltas. If subscriber
 coverage widens while a narrower scan is active, the owner scans again before
@@ -408,6 +416,14 @@ applies only contiguous deltas, preserves untouched row object identity,
 ignores stale events, and requests one full snapshot after a generation gap or
 reconnect. Selection, detail mode, scroll, and explicit outline disclosure
 remain component state and therefore survive ordinary corpus replacement.
+
+YA enforces one process-level live-worktree watcher ceiling before native
+acquisition. Directory discovery stops when the desired set cannot fit. A
+limit, `EMFILE`, `ENFILE`, or native allocation failure opens one circuit,
+closes the manager's native watchers, and permits no further watcher allocation
+attempt until restart or an explicit monitoring-mode reset. The owner remains
+usable through bounded reconciliation and manual refresh; failure never retries
+construction of the same oversized set.
 
 On Linux, YA watches content directories non-recursively. Git repositories and
 the omitted-prefix compatibility walk cover each enumerated content directory;
@@ -452,8 +468,8 @@ A 150 ms quiet timer coalesces an ordinary burst. A separate five-second
 maximum deadline is pinned to the first unprocessed filesystem event; later
 events never move it forward. Five seconds is not a polling cadence or an
 initial-load delay. The Source Control Pause control freezes visible client
-application while retaining the lease and continuing server maintenance; Play
-applies the queued current snapshot. Pause and Play use the same reserved
+application and releases the live lease; Play reacquires it and applies the
+next current snapshot. Pause and Play use the same reserved
 leading glyph slot as Pull, Push, and Check: a pair of vertical bars or a
 right-pointing triangle, drawn as a 16×16 SVG and optically centered in that
 slot. They are not text or numeral glyphs. Pointer motion over the Working
@@ -906,14 +922,18 @@ meanings and older capable behavior remain unchanged.
 static working-tree inventory, persistent untracked-cache route family, and
 cache-backed status request described above. Its absence preserves tracked-only
 Files plus legacy compact untracked expansion and sends none of those requests.
-`git-working-tree-sections` (permanent ID 41, version-implied from `0.7.2`) owns
+`git-working-tree-sections` (permanent ID 41, optional from `0.7.2`) owns
 the expanded live snapshot and delta contract described above. Its absence
 keeps ID 38's static behavior and sends no worktree subscription. The Maintainer
-approved expanding ID 41 before its first published release rather than
-allocating another capability. `git-working-tree-complete-scan` (permanent ID
-42, version-implied from `0.7.2`) separately owns exact filesystem totals and
-complete projection requests; its absence preserves ID 41's bounded inventory
-without a Show-all action. `git-incoming-commits` (permanent ID 39,
+approved changing unpublished ID 41 to opt-in availability after the watcher
+exhaustion incident rather than publishing its unsafe version-implied default.
+`git-working-tree-complete-scan` (permanent ID 42, optional from `0.7.2`)
+separately owns exact filesystem totals and complete projection requests; its
+absence preserves ID 41's bounded inventory without a Show-all action. The
+permanent live-worktree-setting capability owns the additive default-off server
+setting; current clients require it as well as active ID 41 so a source-ahead
+server predating the kill switch cannot activate monitoring.
+`git-incoming-commits` (permanent ID 39,
 version-implied from `0.7.1`) owns the local tracking-ref preview; its absence
 keeps upstream inert. None broadens a published Source Control capability. See
 [server capabilities](server-capabilities.md) and

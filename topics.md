@@ -327,3 +327,5 @@
 - cache-miss-accounting - Provider-normalized cache hit/miss evidence, human-turn idle gaps, empirical rate/provider views, and grouped event inspection.
 - provider-installation-updates - Cross-provider coordination for installation
   mutation, runtime leases, verified generations, and cache convergence.
+- live-worktree-resource-safety - Default-off live Source Control monitoring,
+  bounded native watchers, and fail-closed resource-exhaustion fallback.

@@ -243,6 +243,19 @@ behind a configurable compose-time join window
 control someday (a slice or duration budget), rather than riding on
 queue mechanics.
 
+## Worked instance: live worktree monitoring
+
+Source Control's lease-backed live filesystem snapshot is default-off. Core YA
+sessions, static Git status, bounded working-tree inventory, explicit refresh,
+and file viewing do not require a server to retain native project watchers.
+Continuous monitoring is YA-novel, may scale with an externally controlled
+directory tree, and has no first-party-harness expectation that justifies
+background activation from transcript file links. An explicit server-wide
+Source Control setting may enable it; even then, hard watcher ceilings and
+resource-exhaustion fallback remain mandatory. See
+[source-control](source-control.md) and
+[live-worktree-resource-safety](../docs/tactical/113-live-worktree-resource-safety.md).
+
 ## Related topics
 
 - [hard-development-rules](hard-development-rules.md) — explicit user
