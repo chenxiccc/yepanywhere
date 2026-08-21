@@ -6,7 +6,7 @@
 
 Topic: live-worktree-resource-safety
 
-Status: stabilization approved 2026-08-21; implementation in progress.
+Status: implemented and validated 2026-08-21.
 
 Related contracts:
 
@@ -193,3 +193,33 @@ Run focused client/server tests, capability audit, server and client typechecks,
 repository lint, format check, and the warning-sensitive touched suites. Record
 that native macOS, Windows, and Linux watcher behavior cannot be inferred from
 one host; platform-specific native validation remains explicit.
+
+## Validation
+
+The completed implementation keeps monitoring Off by default, removes passive
+file-viewer subscriptions, releases Source Control leases on pause or lost page
+attention, and enforces process ceilings of 256 native worktree watchers and
+four watched projects. A budget or native resource failure opens the
+process-generation circuit before further allocations; explicit Off-to-On
+reset or process restart is required to try native watching again.
+
+The full `pnpm test` run passed, including 3,804 client tests. Focused client
+and server suites covering settings, capability advertisement, ownership,
+pause/resume, attention loss, budget rejection, `EMFILE`, polling fallback,
+and circuit reset also passed without runtime warnings. `pnpm lint`,
+`pnpm format:check`, `pnpm typecheck`, `pnpm capabilities:audit`,
+`pnpm i18n:check`, `pnpm i18n:scan`, `pnpm console:scan`, and
+`pnpm css:touched` completed successfully; the advisory i18n and console scans
+remained at their existing baselines with no findings introduced by this work.
+
+The Source Control setting was rendered from a fresh isolated dev server and
+reviewed at 1000×600 and 375×812. Both captures show the experimental control
+grouped with its explanation, visibly Off, without overflow or a stale-runtime
+banner. They are archived under
+`.artifacts/ui-testing/2026-08-21-live-worktree-setting/`.
+
+Native allocation behavior was exercised on macOS and deterministic injected
+failures cover the platform-independent circuit contract. A native runtime pass
+was not available on Linux or Windows; their portable fallback paths remain
+covered by the shared tests, but host-specific watcher behavior is not claimed
+as independently validated here.
