@@ -69,9 +69,16 @@ hardening—important, but not a new general trust boundary—specifically for a
 provider process running inside that project-write sandbox. If the operator
 opens such a document on YA's authenticated origin, its script can borrow the
 operator browser's ambient YA authority and act outside the process's
-filesystem confinement. This is not a distinct authority boundary for an
-ordinary unsandboxed provider or an SSH-backed provider: each already has the
-corresponding local or remote account authority.
+filesystem confinement. For an ordinary unsandboxed local provider the borrowed
+authority is not new: that provider already runs as the local server account.
+
+An SSH-backed provider is different. It holds only the remote SSH account and
+its selected session environment, but a document it authored, served from the
+local YA origin, would act as the local YA operator—creating or controlling
+local sessions, changing settings, and reaching the local server account.
+Remote-authored active content served locally is therefore a cross-host
+privilege escalation, and the scriptless response policy below is load-bearing
+for SSH executors, not redundant hardening.
 
 YA applies the cheap backstop everywhere: active HTML, XHTML, SVG, XML, and
 XSLT file responses are downloads with `nosniff` and a scriptless response
