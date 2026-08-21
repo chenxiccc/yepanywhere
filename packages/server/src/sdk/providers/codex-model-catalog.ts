@@ -13,6 +13,7 @@ const PREFERRED_MODEL_ORDER = [
   "gpt-5.5",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
+  "gpt-daybreak-blue-latest",
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.3-codex",
@@ -486,8 +487,9 @@ function getModelSortRank(
 function formatModelName(value: string): string {
   return value
     .trim()
-    .split("-")
+    .split(/([-\s]+)/u)
     .map((part) => {
+      if (/^[-\s]+$/u.test(part)) return part;
       const lower = part.toLowerCase();
       if (lower === "gpt") return "GPT";
       if (lower === "codex") return "Codex";
@@ -496,5 +498,5 @@ function formatModelName(value: string): string {
       if (lower.length === 0) return "";
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
-    .join("-");
+    .join("");
 }

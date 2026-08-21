@@ -175,6 +175,13 @@ describe("Codex model catalog", () => {
         ],
       },
       {
+        id: "gpt-daybreak-blue-latest",
+        model: "gpt-daybreak-blue-latest",
+        displayName: "Daybreak Blue",
+        description: "Defensive cybersecurity model.",
+        isDefault: false,
+      },
+      {
         id: "gpt-5.3-codex",
         model: "gpt-5.3-codex",
         upgrade: "gpt-5.4",
@@ -190,6 +197,7 @@ describe("Codex model catalog", () => {
     expect(models.map((model) => model.id)).toEqual([
       "gpt-5.6-sol",
       "gpt-5.5",
+      "gpt-daybreak-blue-latest",
       "gpt-5.4",
       "gpt-5.3-codex",
     ]);
@@ -214,7 +222,11 @@ describe("Codex model catalog", () => {
         },
       ],
     });
-    expect(models[2]).toMatchObject({ inputModalities: ["text", "image"] });
+    expect(models[3]).toMatchObject({ inputModalities: ["text", "image"] });
+    expect(models[2]).toMatchObject({
+      name: "Daybreak Blue",
+      description: "Defensive cybersecurity model.",
+    });
   });
 
   it("keeps GPT-5.5 preferred when Sol is unavailable", () => {

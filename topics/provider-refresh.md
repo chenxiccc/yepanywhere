@@ -157,6 +157,38 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-08-21:
+
+- Installed Codex is `0.149.0`; the official `rust-v0.149.0` source is commit
+  `758ef40f50c1a458425c7cfbf1eb12cbc07af0b0`. Root compatibility and
+  expected-protocol markers now record `0.149.0`.
+- Regeneration adds three files and changes seven in YA's checked-in app-server
+  subset. Agent messages can identify asynchronous delivery, image generation
+  can report a usage-limit failure, and errors add a non-retryable
+  `misalignmentPolicyViolation` kind. Thread project assignment and section
+  appearance are additive metadata; turn start, steer, interrupt, approval,
+  user-input, and completion controls used by YA are unchanged.
+- YA already renders an asynchronously delivered agent message without using
+  item completion as a turn boundary, matching Codex's contract that the
+  message is visible while the current turn continues. Image-generation items
+  remain outside YA's current thread-item renderer; adopting their result or
+  failure UI is a separate feature rather than a compatibility fallback.
+- The no-token `model/list` probe adds account-visible
+  `gpt-daybreak-blue-latest` to the existing seven-model catalog. YA preserves
+  its two-word provider display name and places this specialized model after
+  the general GPT-5.6 choices. It remains live-catalog-only rather than an
+  auth/probe-failure fallback because specialized availability can vary by
+  account.
+- The first local 0.149.0 rollout parses all 330 entries through the strict
+  session schema with no malformed lines or schema failures. Its one authored
+  user turn remains paired and provenanced; it contains no asynchronous agent
+  delivery or image-generation failure sample, so those two classifications
+  remain grounded in the tagged protocol and app-server contract rather than a
+  local persisted example.
+
+Status: Codex 0.149.0 app-server, live model-catalog, and persisted-transcript
+compatibility is refreshed.
+
 Current source refresh, 2026-08-10:
 
 - Installed Codex is `0.147.0`; the official `rust-v0.147.0` source is commit

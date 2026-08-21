@@ -3493,6 +3493,44 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("renders asynchronously delivered agent messages", () => {
+    const provider = createTestProvider() as unknown as {
+      normalizeThreadItem: (item: unknown) => Record<string, unknown> | null;
+      convertItemToSDKMessages: (
+        item: unknown,
+        sessionId: string,
+        turnId: string,
+        sourceEvent: "item/started" | "item/completed",
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const normalized = provider.normalizeThreadItem({
+      id: "async-message-1",
+      type: "agentMessage",
+      text: "Asynchronous update",
+      delivery: "async",
+    });
+
+    expect(normalized).toMatchObject({
+      id: "async-message-1",
+      type: "agent_message",
+      text: "Asynchronous update",
+    });
+    expect(
+      provider.convertItemToSDKMessages(
+        normalized,
+        "session-1",
+        "turn-1",
+        "item/completed",
+      ),
+    ).toMatchObject([
+      {
+        type: "assistant",
+        message: { role: "assistant", content: "Asynchronous update" },
+      },
+    ]);
+  });
+
   it("surfaces subagent activity items as visible system messages", () => {
     const provider = createTestProvider() as unknown as {
       normalizeThreadItem: (item: unknown) => Record<string, unknown> | null;
