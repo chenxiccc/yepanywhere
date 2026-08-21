@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { getLogger } from "../logging/logger.js";
@@ -278,6 +278,18 @@ export class CodexUpdateChecker {
               "Codex update completed but the production CLI probe could not launch the installation",
             );
           }
+          // A launchable CLI is not success by itself: npm can exit zero
+          // while the old version stays installed. The admitted target
+          // version must actually be reached before success publishes.
+          const target = admitted.latest;
+          if (
+            target !== null &&
+            compareVersions(refreshed.installed, target) < 0
+          ) {
+            throw new Error(
+              `Codex update completed but the installed CLI still reports ${refreshed.installed}; expected at least ${target}`,
+            );
+          }
           return { success: true, output, status: refreshed };
         },
       );
@@ -344,9 +356,15 @@ async function detectInstallMetadataFromPath(
   }
 
   const npmGlobalRoot = await getNpmGlobalRoot();
-  const installedPackage = npmGlobalRoot
+  let installedPackage = npmGlobalRoot
     ? extractNpmGlobalPackageName(resolvedInstalledPath, npmGlobalRoot)
     : null;
+  if (!installedPackage && npmGlobalRoot) {
+    installedPackage = await resolveNpmPrefixShimPackage(
+      resolvedInstalledPath,
+      npmGlobalRoot,
+    );
+  }
 
   if (installedPackage) {
     return {
@@ -402,6 +420,55 @@ async function getNpmGlobalRoot(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+const MAX_SHIM_FILE_BYTES = 64 * 1024;
+
+/**
+ * Resolve the npm package behind a launcher shim that sits in the npm
+ * prefix directory beside `node_modules`. A normal Windows global install
+ * exposes `%APPDATA%\npm\codex.cmd` — a generated cmd/PowerShell/sh shim,
+ * not a symlink — so realpath never lands below `npm root -g` and prefix
+ * membership has to be recognized from the shim itself.
+ */
+async function resolveNpmPrefixShimPackage(
+  resolvedInstalledPath: string,
+  npmGlobalRoot: string,
+): Promise<string | null> {
+  if (path.basename(npmGlobalRoot) !== "node_modules") return null;
+  const prefixDir = path.dirname(npmGlobalRoot);
+  if (path.dirname(resolvedInstalledPath) !== prefixDir) return null;
+
+  let shim: string;
+  try {
+    const stats = await stat(resolvedInstalledPath);
+    if (!stats.isFile() || stats.size > MAX_SHIM_FILE_BYTES) return null;
+    shim = await readFile(resolvedInstalledPath, { encoding: "utf-8" });
+  } catch {
+    return null;
+  }
+
+  // Generated shims reference the target as
+  // node_modules\@scope\name\bin\entry.js (cmd) or with forward slashes
+  // (sh/PowerShell); either separator identifies the owning package.
+  const match = shim.match(
+    /node_modules[\\/](@[^\\/\s"']+[\\/][^\\/\s"']+|[^\\/\s"']+)/,
+  );
+  const candidate = match?.[1];
+  if (!candidate) return null;
+  const segments = candidate.split(/[\\/]/);
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return null;
+  }
+
+  try {
+    const packageDir = path.join(npmGlobalRoot, ...segments);
+    const packageStats = await stat(packageDir);
+    if (!packageStats.isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  return segments.join("/");
 }
 
 function extractNpmGlobalPackageName(
@@ -511,4 +578,5 @@ export const __testing__ = {
   compareVersions,
   extractNpmGlobalPackageName,
   inferManualInstallCommand,
+  resolveNpmPrefixShimPackage,
 };

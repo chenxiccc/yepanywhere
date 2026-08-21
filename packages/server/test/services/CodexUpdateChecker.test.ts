@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CodexUpdateChecker,
   __testing__,
@@ -6,6 +9,7 @@ import {
 
 const { normalizeVersion, compareVersions } = __testing__;
 const { extractNpmGlobalPackageName, inferManualInstallCommand } = __testing__;
+const { resolveNpmPrefixShimPackage } = __testing__;
 
 const immediateInstallationCoordinator = {
   async withReadLease<T>(
@@ -79,6 +83,91 @@ describe("CodexUpdateChecker version helpers", () => {
         "/usr/local/lib/node_modules",
       ),
     ).toBeNull();
+  });
+});
+
+describe("npm prefix shim resolution", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /** Build the Windows npm-global layout: shims beside node_modules. */
+  function makeNpmPrefix(): { prefix: string; root: string } {
+    const prefix = mkdtempSync(path.join(tmpdir(), "ya-npm-prefix-"));
+    tempDirs.push(prefix);
+    const root = path.join(prefix, "node_modules");
+    mkdirSync(path.join(root, "@openai", "codex", "bin"), { recursive: true });
+    return { prefix, root };
+  }
+
+  const CMD_SHIM = [
+    "@ECHO off",
+    "SETLOCAL",
+    'SET "NODE_EXE=node.exe"',
+    '"%NODE_EXE%"  "%~dp0\\node_modules\\@openai\\codex\\bin\\codex.js" %*',
+    "",
+  ].join("\r\n");
+
+  it("resolves the package behind a Windows cmd shim beside node_modules", async () => {
+    const { prefix, root } = makeNpmPrefix();
+    const shimPath = path.join(prefix, "codex.cmd");
+    writeFileSync(shimPath, CMD_SHIM);
+
+    await expect(resolveNpmPrefixShimPackage(shimPath, root)).resolves.toBe(
+      "@openai/codex",
+    );
+  });
+
+  it("resolves forward-slash sh/PowerShell shim references", async () => {
+    const { prefix, root } = makeNpmPrefix();
+    const shimPath = path.join(prefix, "codex");
+    writeFileSync(
+      shimPath,
+      '#!/bin/sh\nexec node  "$basedir/node_modules/@openai/codex/bin/codex.js" "$@"\n',
+    );
+
+    await expect(resolveNpmPrefixShimPackage(shimPath, root)).resolves.toBe(
+      "@openai/codex",
+    );
+  });
+
+  it("rejects a shim naming a package absent from the npm root", async () => {
+    const { prefix, root } = makeNpmPrefix();
+    const shimPath = path.join(prefix, "other.cmd");
+    writeFileSync(
+      shimPath,
+      '"%NODE_EXE%" "%~dp0\\node_modules\\missing-package\\bin\\cli.js" %*',
+    );
+
+    await expect(
+      resolveNpmPrefixShimPackage(shimPath, root),
+    ).resolves.toBeNull();
+  });
+
+  it("rejects executables that do not sit beside node_modules", async () => {
+    const { prefix, root } = makeNpmPrefix();
+    const elsewhere = path.join(prefix, "bin");
+    mkdirSync(elsewhere);
+    const shimPath = path.join(elsewhere, "codex.cmd");
+    writeFileSync(shimPath, CMD_SHIM);
+
+    await expect(
+      resolveNpmPrefixShimPackage(shimPath, root),
+    ).resolves.toBeNull();
+  });
+
+  it("rejects roots that are not a node_modules directory", async () => {
+    const { prefix } = makeNpmPrefix();
+    const shimPath = path.join(prefix, "codex.cmd");
+    writeFileSync(shimPath, CMD_SHIM);
+
+    await expect(
+      resolveNpmPrefixShimPackage(shimPath, path.join(prefix, "lib")),
+    ).resolves.toBeNull();
   });
 });
 
@@ -293,6 +382,30 @@ describe("CodexUpdateChecker", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/unrecognized/i);
     expect(runInstall).not.toHaveBeenCalled();
+  });
+
+  it("fails an npm success that leaves the old version installed", async () => {
+    const checker = new CodexUpdateChecker({
+      detectInstalled: async () => ({
+        version: "0.4.2",
+        path: "/usr/local/bin/codex",
+      }),
+      fetchLatest: async () => ({ tagName: "v0.4.3", htmlUrl: null }),
+      detectInstallMetadata: async () => ({
+        installedPackage: "@openai/codex",
+        updateMethod: "npm",
+        manualInstallCommand: "npm install -g @openai/codex@latest",
+      }),
+      runInstall: async () => "npm exited zero",
+      installationCoordinator: immediateInstallationCoordinator,
+    });
+
+    const result = await checker.install();
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/still reports 0\.4\.2/);
+    expect(result.error).toMatch(/expected at least 0\.4\.3/);
+    expect(result.status.installed).toBe("0.4.2");
+    expect(result.status.updateAvailable).toBe(true);
   });
 
   it("fails an npm success whose production CLI verification is unavailable", async () => {
