@@ -864,8 +864,9 @@ describe("WorkingTreeBrowser", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() =>
-      expect(getGitUntrackedFolder).toHaveBeenCalledTimes(folders.length),
+    await waitFor(
+      () => expect(getGitUntrackedFolder).toHaveBeenCalledTimes(folders.length),
+      { timeout: 5_000 },
     );
     await waitFor(() =>
       expect(

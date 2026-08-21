@@ -698,14 +698,19 @@ describe("FileViewer", () => {
     );
 
     const includePath = await screen.findByText("_introduction.qmd");
+    const viewerBody =
+      container.querySelector<HTMLElement>(".file-viewer-body");
+    await waitFor(() =>
+      expect(viewerBody?.getAttribute("data-markdown-copy-source")).toBe(
+        "true",
+      ),
+    );
     const range = document.createRange();
     range.selectNodeContents(includePath);
     const selection = document.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
 
-    const viewerBody =
-      container.querySelector<HTMLElement>(".file-viewer-body");
     expect(extractMarkdownSnippetsFromSelection(viewerBody!)).toMatchObject([
       {
         markdown: "_introduction.qmd",
