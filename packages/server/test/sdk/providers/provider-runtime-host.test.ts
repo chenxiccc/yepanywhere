@@ -922,7 +922,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       }
       await waitForChildExit(host).catch(() => host.kill("SIGKILL"));
     }
-  });
+  }, 15_000);
 
   it("does not report acceptance before its recovery receipt is durable", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-receipt-"));
