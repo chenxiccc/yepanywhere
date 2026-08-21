@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -57,7 +64,7 @@ describe("scanGitWorktree", () => {
 
   beforeEach(async () => {
     fsReadFailure.typedDirectory = null;
-    repo = await mkdtemp(join(tmpdir(), "ya-worktree-scan-"));
+    repo = await realpath(await mkdtemp(join(tmpdir(), "ya-worktree-scan-")));
     await runGit(repo, ["init"]);
     await runGit(repo, ["config", "user.email", "ya-test@example.com"]);
     await runGit(repo, ["config", "user.name", "YA Test"]);
