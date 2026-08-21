@@ -292,7 +292,11 @@ export interface ProcessAbortResult {
 export type ProcessEvent =
   | { type: "message"; message: SDKMessage }
   | { type: "user-turn-accepted"; startedAtMs: number }
-  | { type: "provider-turn-started"; startedAtMs: number }
+  | {
+      type: "provider-turn-started";
+      startedAtMs: number;
+      turnKind: "human" | "automatic";
+    }
   | { type: "state-change"; state: ProcessState }
   | { type: "liveness-update" }
   | {

@@ -110,7 +110,8 @@ describe("CacheMissBillingMonitor", () => {
         codex: 10,
       },
       minimumWastedTokens: 10_000,
-      recentActivityMinutes: 0,
+      recentActivityMinutes: 10,
+      ignoreAfterMinutes: 0,
     });
   });
 
@@ -271,6 +272,7 @@ describe("CacheMissBillingMonitor", () => {
         cache_read_input_tokens: 100_000,
       }),
     );
+    monitor.observeUserTurnStarted(process);
     // Prompt grew by 1000 tokens but nothing was served from cache: 100,005
     // uncached, of which only 1000 was expected.
     monitor.observeMessage(
@@ -295,12 +297,13 @@ describe("CacheMissBillingMonitor", () => {
     });
   });
 
-  it("flags a miss inside the configured idle cutoff", async () => {
+  it("records but does not flag a miss inside recent activity", async () => {
     const { monitor, addCacheMissBillingEvent, emit } = monitorWith({
       enabled: true,
       showToasts: true,
       minimumWastedTokens: 10_000,
       recentActivityMinutes: 10,
+      ignoreAfterMinutes: 30,
     });
     const process = fakeProcess();
 
@@ -325,17 +328,59 @@ describe("CacheMissBillingMonitor", () => {
     );
     const record = addCacheMissBillingEvent.mock.calls.at(-1)?.[1];
     expect(record?.outcome).toBe("unexpected-recompute");
-    expect(record?.exception).toBe(true);
+    expect(record?.exception).toBe(false);
     expect(record?.elapsedSinceExpectedCacheMs).toBeLessThan(10 * 60_000);
     expect(record?.completeProbabilitySample).toBe(true);
-    expect(emit.mock.calls.at(-1)?.[0]).toMatchObject({ showToast: true });
+    expect(emit.mock.calls.at(-1)?.[0]).toMatchObject({ showToast: false });
+  });
+
+  it("flags a miss after recent activity but inside the idle cutoff", async () => {
+    const { monitor, addCacheMissBillingEvent, emit } = monitorWith({
+      enabled: true,
+      showToasts: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 10,
+      ignoreAfterMinutes: 30,
+    });
+    const process = fakeProcess();
+    const startedAt = Date.now();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(startedAt)
+      .mockReturnValue(startedAt + 12 * 60_000);
+    try {
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 5,
+          cache_read_input_tokens: 100_000,
+        }),
+      );
+      monitor.observeUserTurnStarted(process, startedAt + 11 * 60_000);
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 100_005,
+          cache_read_input_tokens: 0,
+        }),
+      );
+
+      await waitFor(() =>
+        expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(1),
+      );
+      expect(addCacheMissBillingEvent.mock.calls[0]?.[1].exception).toBe(true);
+      expect(emit.mock.calls.at(-1)?.[0]).toMatchObject({ showToast: true });
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("ignores both hits and misses after a positive idle cutoff", async () => {
     const { monitor, addCacheMissBillingEvent } = monitorWith({
       enabled: true,
       minimumWastedTokens: 10_000,
-      recentActivityMinutes: 10,
+      recentActivityMinutes: 0,
+      ignoreAfterMinutes: 10,
     });
     const process = fakeProcess();
     const startedAt = Date.now();
@@ -372,6 +417,7 @@ describe("CacheMissBillingMonitor", () => {
       enabled: true,
       minimumWastedTokens: 10_000,
       recentActivityMinutes: 0,
+      ignoreAfterMinutes: 0,
     });
     const process = fakeProcess();
     const startedAt = Date.now();
@@ -492,6 +538,55 @@ describe("CacheMissBillingMonitor", () => {
     ).toBeUndefined();
   });
 
+  it("does not attribute an automatic turn to the preceding human turn", async () => {
+    const { monitor, addCacheMissBillingEvent, emit } = monitorWith({
+      enabled: true,
+      showToasts: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 0,
+      ignoreAfterMinutes: 0,
+    });
+    const process = fakeProcess();
+    const startedAt = Date.now();
+
+    monitor.observeProviderTurnStarted(process, "automatic", startedAt);
+    monitor.observeMessage(
+      process,
+      claudeAssistantMessage({
+        input_tokens: 5,
+        cache_read_input_tokens: 100_000,
+      }),
+    );
+    monitor.observeProviderTurnStarted(process, "human", startedAt + 60_000);
+    monitor.observeMessage(
+      process,
+      claudeAssistantMessage({
+        input_tokens: 100_005,
+        cache_read_input_tokens: 0,
+      }),
+    );
+    await waitFor(() =>
+      expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(1),
+    );
+
+    monitor.observeProviderTurnStarted(
+      process,
+      "automatic",
+      startedAt + 2 * 60_000,
+    );
+    monitor.observeMessage(
+      process,
+      claudeAssistantMessage({
+        input_tokens: 101_005,
+        cache_read_input_tokens: 0,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledTimes(1);
+  });
+
   it("never flags a session's first turn, which has no measured prefix", async () => {
     const { monitor, addCacheMissBillingEvent } = monitorWith({
       enabled: true,
@@ -524,8 +619,10 @@ describe("CacheMissBillingMonitor", () => {
       { forkedFromSessionId: "parent-1" },
     );
 
+    const process = fakeProcess();
+    monitor.observeUserTurnStarted(process);
     monitor.observeMessage(
-      fakeProcess(),
+      process,
       claudeAssistantMessage({
         input_tokens: 150_000,
         cache_read_input_tokens: 0,

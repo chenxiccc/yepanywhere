@@ -114,6 +114,16 @@ keeps the bounded opened-directory projection and its truncation notice, hides
 **Show all N**, and sends no complete request. Existing capability meanings and
 older capable behavior remain unchanged. It is version-implied from `0.7.2`.
 
+`cache-miss-billing-ignore-after` owns the additive
+`settings.cacheMissBilling.ignoreAfterMinutes` field on `GET /api/settings` and
+`PUT /api/settings`. The ordinary optional-feature corpus is `v0.7.0`
+(2026-07-25) and `v0.6.2` (2026-07-11); both lack the field and capability.
+Without permanent ID 43, the client keeps presenting and writing the legacy
+`recentActivityMinutes` lower no-alert window, hides the ignore-after control,
+and omits the additive field from writes and undo restores. Existing capability
+meanings and older behavior remain unchanged. It is version-implied from
+`0.7.2`.
+
 `codex-reasoning-summary-setting` owns `settings.codexReasoningSummary` on
 `GET /api/settings` and `PUT /api/settings`. The ordinary optional-feature
 corpus was `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other stable
@@ -311,9 +321,10 @@ the same ledger:
 | 40 | server | 0.7.1 | `git-inclusive-to-head` |
 | 41 | server | 0.7.2 | `git-working-tree-sections` |
 | 42 | server | 0.7.2 | `git-working-tree-complete-scan` |
+| 43 | server | 0.7.2 | `cache-miss-billing-ignore-after` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 43; retired rows stay in the ledger as reserved IDs.
+ID 44; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

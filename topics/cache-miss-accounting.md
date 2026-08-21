@@ -7,15 +7,13 @@
 
 Topic: cache-miss-accounting
 
-Status: checkpoint implementation as of 2026-08-20 in
+Status: implemented as of 2026-08-21 in
 `packages/server/src/services/CacheMissBillingMonitor.ts`, surfaced in
-Settings → Cache Billing. Default off. The checkpoint corrects the idle-gap
-boundary and adds rate/provider charts plus grouped event inspection, but is
-not release-ready: `recentActivityMinutes` still carries the opposite meaning
-in older clients and servers. Mixed-version support must add a distinct
-ignore-after field and capability gate before this setting is published. Final
-desktop/mobile rendered validation also remains. The per-project boot baseline
-described under [Session boot](#session-boot) is not built; it is tracked in
+Settings → Cache Billing. Default off. The idle-gap boundary distinguishes
+human from automatic provider turns, and mixed-version support keeps the
+legacy recent-activity meaning while gating the additive ignore-after field.
+The per-project boot baseline described under [Session boot](#session-boot) is
+not built; it is tracked in
 [`gaps/cache-miss-boot-baseline.md`](../gaps/cache-miss-boot-baseline.md).
 
 Related topics: [session usage accounting](session-usage-accounting.md) (the
@@ -80,23 +78,28 @@ assistant observation and ends when the next real human message is yielded to
 the provider. It therefore excludes the provider's work on the new turn. A
 reload-safe worker that predates yield reporting temporarily uses server receipt
 of the human message; a current worker replaces that fallback with the provider
-boundary before usage arrives. Additional provider requests within the same
-human turn have no human idle interval and occupy the zero end of the 0–10
-minute bucket. Only the first provider request after a human message is a
-complete human-turn probability sample.
+boundary before usage arrives. Automatic heartbeat, wake, and project-queue
+turns advance the warm-prefix baseline but never create cache evidence or
+popups. Additional provider requests within the same human turn have no human
+idle interval and occupy the zero end of the 0–10 minute bucket. Only the first
+provider request after a human message is a complete human-turn probability
+sample.
 
 Within the provider freshness window, every measurable clean hit and every
 miss above the wasted-token floor is **recorded**. Clean hits are the
 denominator: a duration bucket where one turn in twenty missed means something
-different from one where every turn missed. Every recorded miss is **flagged**
-(`exception: true`, eligible for a popup when popups are enabled), because a
-short-delay miss is the surprising case.
+different from one where every turn missed. The legacy recent-activity window
+records a miss but does not flag it (`exception: false`) or show a popup; its
+default is 10 minutes. Later eligible misses are flagged because they represent
+an unexpected recompute after local activity has settled.
 
 The optional ignore-after cutoff excludes both hits and misses beyond its
 duration so the event list, totals, and probability denominators describe the
 same population. Zero means no additional cutoff beyond the provider freshness
-window. The field remains temporarily serialized as `recentActivityMinutes`;
-that wire-compatibility defect is the checkpoint's release blocker.
+window. It is serialized separately as `ignoreAfterMinutes` and exposed only
+when the server advertises `cache-miss-billing-ignore-after`. Without the
+capability, the client keeps the legacy recent-activity control and omits the
+new field from writes and undo restores.
 
 The UI's separate recency filter limits records by event timestamp. Its 1–96h
 slider ends in an unlimited notch, and a blank numeric value also means
@@ -112,9 +115,10 @@ provider id remains available on hover.
 
 - `minimumWastedTokens` 10,000 — above per-turn noise (breakpoint shuffles,
   re-written trailing segments), well below a prefix recompute worth seeing.
+- `recentActivityMinutes` 10 — record short-delay misses for the distribution,
+  but do not flag them or show popups.
 - ignore-after 0 — do not impose another measurement cutoff inside the
-  provider freshness window. This is temporarily stored under the legacy
-  `recentActivityMinutes` name and must be replaced before release.
+  provider freshness window.
 - `providerFreshWindowMinutes` claude 60 / codex 10 — how long YA expects a
   cache to exist at all. Beyond it, no expectation is formed and nothing is
   recorded.

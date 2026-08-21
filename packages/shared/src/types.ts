@@ -205,9 +205,8 @@ export const DEFAULT_CACHE_MISS_BILLING_MINIMUM_WASTED_TOKENS = 10_000;
  * observation inside the provider freshness window eligible.
  */
 export const DEFAULT_CACHE_MISS_BILLING_IGNORE_AFTER_MINUTES = 0;
-/** @deprecated Wire-compatible name retained for older clients and servers. */
-export const DEFAULT_CACHE_MISS_BILLING_RECENT_ACTIVITY_MINUTES =
-  DEFAULT_CACHE_MISS_BILLING_IGNORE_AFTER_MINUTES;
+/** Lower no-alert window retained as the stable legacy wire contract. */
+export const DEFAULT_CACHE_MISS_BILLING_RECENT_ACTIVITY_MINUTES = 10;
 
 export interface CacheMissBillingSettings {
   /** Enable usage-accounting detection and durable server-side evidence logs. */
@@ -221,10 +220,11 @@ export interface CacheMissBillingSettings {
   /** Wasted-token floor, measured as excess over the expected new content. */
   minimumWastedTokens?: number;
   /**
-   * Ignore observations after this many idle minutes. Zero disables this
-   * additional cutoff. The wire name is retained for stable-server support.
+   * Record but do not flag misses inside this many idle minutes.
    */
   recentActivityMinutes?: number;
+  /** Ignore observations after this many idle minutes. Zero disables it. */
+  ignoreAfterMinutes?: number;
 }
 
 export type CacheMissBillingReason =
@@ -330,6 +330,7 @@ export const DEFAULT_CACHE_MISS_BILLING_SETTINGS: Required<CacheMissBillingSetti
       DEFAULT_CACHE_MISS_BILLING_PROVIDER_FRESH_WINDOW_MINUTES,
     minimumWastedTokens: DEFAULT_CACHE_MISS_BILLING_MINIMUM_WASTED_TOKENS,
     recentActivityMinutes: DEFAULT_CACHE_MISS_BILLING_RECENT_ACTIVITY_MINUTES,
+    ignoreAfterMinutes: DEFAULT_CACHE_MISS_BILLING_IGNORE_AFTER_MINUTES,
   };
 
 export interface PromptCacheKeepaliveProviderInfo {

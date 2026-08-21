@@ -3,6 +3,7 @@ import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BANG_COMMANDS_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
@@ -116,6 +117,12 @@ describe("Version Routes", () => {
   it("advertises complete filesystem scan requests", () => {
     expect(getServerCapabilities()).toContain(
       GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
+    );
+  });
+
+  it("advertises the cache-billing ignore-after setting", () => {
+    expect(getServerCapabilities()).toContain(
+      CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
     );
   });
 

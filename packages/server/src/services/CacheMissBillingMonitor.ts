@@ -20,6 +20,8 @@ interface ProcessUsageState {
   messageIndex: number;
   assistantUsageCount: number;
   lastExpectedWarmAtMs?: number;
+  /** Kind of provider turn currently producing usage observations. */
+  activeTurnKind?: "human" | "automatic";
   /** Provider-input time for the next usage-bearing human turn. */
   humanTurnStartedAtMs?: number;
   /** Whether the first usage observation for that human turn was consumed. */
@@ -192,11 +194,20 @@ export class CacheMissBillingMonitor {
   }
 
   observeUserTurnStarted(process: Process, startedAtMs = Date.now()): void {
+    this.observeProviderTurnStarted(process, "human", startedAtMs);
+  }
+
+  observeProviderTurnStarted(
+    process: Process,
+    turnKind: "human" | "automatic",
+    startedAtMs = Date.now(),
+  ): void {
     const state = this.processStates.get(process.id) ?? {
       messageIndex: 0,
       assistantUsageCount: 0,
     };
-    state.humanTurnStartedAtMs = startedAtMs;
+    state.activeTurnKind = turnKind;
+    state.humanTurnStartedAtMs = turnKind === "human" ? startedAtMs : undefined;
     state.humanTurnUsageObserved = false;
     this.processStates.set(process.id, state);
   }
@@ -243,6 +254,12 @@ export class CacheMissBillingMonitor {
       state.humanTurnUsageObserved = true;
     }
 
+    // Automatic provider turns still advance the warm-prefix baseline, but
+    // they are never evidence about a human turn and must never raise popups.
+    if (state.activeTurnKind !== "human") {
+      return;
+    }
+
     const settings = normalizeCacheMissBillingSettings(
       this.options.getSettings?.(),
     );
@@ -283,7 +300,7 @@ export class CacheMissBillingMonitor {
     if (!forkExpected && !warmExpected) {
       return;
     }
-    const ignoreAfterMinutes = settings.recentActivityMinutes;
+    const ignoreAfterMinutes = settings.ignoreAfterMinutes;
     if (
       ignoreAfterMinutes > 0 &&
       elapsedSinceExpectedCacheMs !== undefined &&
@@ -342,7 +359,11 @@ export class CacheMissBillingMonitor {
     if (!outcome) {
       return;
     }
-    const exception = outcome === "unexpected-recompute";
+    const withinRecentActivity =
+      elapsedSinceExpectedCacheMs !== undefined &&
+      elapsedSinceExpectedCacheMs <= settings.recentActivityMinutes * 60_000;
+    const exception =
+      outcome === "unexpected-recompute" && !withinRecentActivity;
 
     const record: CacheMissBillingRecord = {
       id: randomUUID(),

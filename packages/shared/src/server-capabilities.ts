@@ -842,6 +842,28 @@ export const SERVER_CAPABILITIES = {
         "Older servers ignore the new request field and cannot honor a visible request to replace a bounded filesystem listing with its complete contents.",
     },
   },
+  cacheMissBillingIgnoreAfter: {
+    id: CAPABILITY_ID_ALLOCATIONS.cacheMissBillingIgnoreAfter.id,
+    name: "cache-miss-billing-ignore-after",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server separates the cache-billing upper idle cutoff from the legacy recent-activity no-alert window.",
+    clientFallback:
+      "Keep the legacy recent-activity control and omit the ignore-after field and control.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.cacheMissBilling.ignoreAfterMinutes"],
+      responseFields: ["settings.cacheMissBilling.ignoreAfterMinutes"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers interpret recentActivityMinutes as a lower no-alert window, so the upper cutoff requires an additive field and permanent client gate.",
+    },
+  },
   gitIncomingCommits: {
     id: CAPABILITY_ID_ALLOCATIONS.gitIncomingCommits.id,
     name: "git-incoming-commits",
@@ -1805,6 +1827,8 @@ export const GIT_WORKING_TREE_SECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeSections.name;
 export const GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeCompleteScan.name;
+export const CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY =
+  SERVER_CAPABILITIES.cacheMissBillingIgnoreAfter.name;
 export const GIT_INCOMING_COMMITS_CAPABILITY =
   SERVER_CAPABILITIES.gitIncomingCommits.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =

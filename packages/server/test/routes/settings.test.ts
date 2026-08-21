@@ -1600,6 +1600,7 @@ describe("Settings Routes", () => {
             },
             minimumWastedTokens: 25_000,
             recentActivityMinutes: 5,
+            ignoreAfterMinutes: 45,
           },
         }),
       });
@@ -1616,6 +1617,7 @@ describe("Settings Routes", () => {
           },
           minimumWastedTokens: 25_000,
           recentActivityMinutes: 5,
+          ignoreAfterMinutes: 45,
         },
       });
     });

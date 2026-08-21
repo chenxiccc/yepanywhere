@@ -276,6 +276,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "git-working-tree-complete-scan",
     introducedIn: "0.7.2",
   },
+  cacheMissBillingIgnoreAfter: {
+    id: 43,
+    direction: "server",
+    name: "cache-miss-billing-ignore-after",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

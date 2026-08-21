@@ -1194,6 +1194,24 @@ export function parseCacheMissBilling(
       parsed.recentActivityMinutes = raw.recentActivityMinutes;
     }
   }
+  if ("ignoreAfterMinutes" in raw) {
+    if (
+      raw.ignoreAfterMinutes === undefined ||
+      raw.ignoreAfterMinutes === null
+    ) {
+      parsed.ignoreAfterMinutes =
+        DEFAULT_CACHE_MISS_BILLING_SETTINGS.ignoreAfterMinutes;
+    } else if (
+      typeof raw.ignoreAfterMinutes !== "number" ||
+      !Number.isInteger(raw.ignoreAfterMinutes) ||
+      raw.ignoreAfterMinutes < 0 ||
+      raw.ignoreAfterMinutes > 1440
+    ) {
+      return null;
+    } else {
+      parsed.ignoreAfterMinutes = raw.ignoreAfterMinutes;
+    }
+  }
 
   const result = {
     ...DEFAULT_CACHE_MISS_BILLING_SETTINGS,

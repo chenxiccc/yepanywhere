@@ -1224,16 +1224,25 @@ export class Process {
 
     this.unsubscribeMessageQueueYielded = this.messageQueue?.subscribeYielded?.(
       (messages) => {
-        const includesHumanTurn = messages.some(
+        const turnKind = messages.some(
           (message) =>
             !isHiddenInjectedMessage(message) &&
             message.automaticSource === undefined &&
             message.metadata?.serverReceivedAt !== undefined,
-        );
-        if (includesHumanTurn) {
+        )
+          ? "human"
+          : messages.some(
+                (message) =>
+                  !isHiddenInjectedMessage(message) &&
+                  message.automaticSource !== undefined,
+              )
+            ? "automatic"
+            : undefined;
+        if (turnKind) {
           this.emit({
             type: "provider-turn-started",
             startedAtMs: Date.now(),
+            turnKind,
           });
         }
       },

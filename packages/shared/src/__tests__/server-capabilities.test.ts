@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CAPABILITY_ID_ALLOCATIONS,
   CAPABILITY_ID_ENCODING_VERSION,
+  CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
@@ -270,6 +271,18 @@ describe("server capability advertisements", () => {
     expect(advertisement).toEqual({
       capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
       capabilityBits: [[1, 2 ** 10]],
+    });
+  });
+
+  it("assigns cache-billing ignore-after to permanent capability ID 43", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.cacheMissBillingIgnoreAfter.id).toBe(43);
+    const advertisement = encodeVersionedServerCapabilities(
+      [CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 2 ** 11]],
     });
   });
 

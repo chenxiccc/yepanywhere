@@ -4467,8 +4467,9 @@ export class Supervisor {
     this.observedProcessIds.add(process.id);
     process.subscribe((event) => {
       if (event.type === "provider-turn-started") {
-        this.cacheMissBillingMonitor.observeUserTurnStarted(
+        this.cacheMissBillingMonitor.observeProviderTurnStarted(
           process,
+          event.turnKind,
           event.startedAtMs,
         );
       } else if (event.type === "user-turn-accepted") {
