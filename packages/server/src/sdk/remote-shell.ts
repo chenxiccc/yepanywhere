@@ -1,7 +1,4 @@
-/** Quote one value as a single POSIX shell word. */
-export function quoteShellWord(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
+import { quoteShellWord } from "../utils/posixShell.js";
 
 /**
  * Quote a remote path while preserving only the deliberate $HOME expansion.

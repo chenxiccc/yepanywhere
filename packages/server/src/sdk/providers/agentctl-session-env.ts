@@ -1,6 +1,7 @@
 import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { quoteShellWord } from "../../utils/posixShell.js";
 
 const AGENTCTL_SESSION_ID_ENV = "AGENTCTL_SESSION_ID";
 const ORIGINAL_BASH_ENV_ENV = "YEP_ORIGINAL_BASH_ENV";
@@ -36,10 +37,6 @@ export function pickBrowserDebugAgentEnvironment(
   );
 }
 
-function shellSingleQuote(value: string): string {
-  return `'${value.replace(/'/gu, `'\\''`)}'`;
-}
-
 export function createAgentctlSessionEnvBridge(
   initialSessionId?: string,
   getSessionEnv?: (sessionId: string) => Record<string, string>,
@@ -55,8 +52,8 @@ export function createAgentctlSessionEnvBridge(
       `if [ -n "\${${ORIGINAL_BASH_ENV_ENV}:-}" ] && [ -r "\${${ORIGINAL_BASH_ENV_ENV}}" ]; then`,
       `  . "\${${ORIGINAL_BASH_ENV_ENV}}"`,
       "fi",
-      `if [ -r ${shellSingleQuote(sessionEnvPath)} ]; then`,
-      `  . ${shellSingleQuote(sessionEnvPath)}`,
+      `if [ -r ${quoteShellWord(sessionEnvPath)} ]; then`,
+      `  . ${quoteShellWord(sessionEnvPath)}`,
       "fi",
       "",
     ].join("\n"),
@@ -80,7 +77,7 @@ export function createAgentctlSessionEnvBridge(
           if (!/^[A-Z_][A-Z0-9_]*$/u.test(name)) {
             throw new Error(`Invalid child environment variable name: ${name}`);
           }
-          return [`${name}=${shellSingleQuote(value)}`, `export ${name}`];
+          return [`${name}=${quoteShellWord(value)}`, `export ${name}`];
         }),
         "",
       ].join("\n"),

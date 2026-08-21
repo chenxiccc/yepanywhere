@@ -44,6 +44,7 @@ import {
   getModelContextWindow,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import { quoteShellWord } from "../../utils/posixShell.js";
 import { detectClaudeCli } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
@@ -491,10 +492,6 @@ function quotePowerShellDoubleQuoted(value: string): string {
     .replace(/"/g, '`"')}"`;
 }
 
-function quotePosixSingleQuoted(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
 export function formatClaudeLoginCommand(
   executablePath?: string,
   platform: NodeJS.Platform = process.platform,
@@ -507,7 +504,7 @@ export function formatClaudeLoginCommand(
   const executable =
     platform === "win32"
       ? quotePowerShellDoubleQuoted(trimmedPath)
-      : quotePosixSingleQuoted(trimmedPath);
+      : quoteShellWord(trimmedPath);
   const invocation = platform === "win32" ? `& ${executable}` : executable;
   return `${invocation} auth login --claudeai`;
 }

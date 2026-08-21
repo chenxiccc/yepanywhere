@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { join, posix } from "node:path";
 import { getLogger } from "../logging/logger.js";
 import { getRemoteHome } from "./remote-spawn.js";
-import { quoteShellWord } from "./remote-shell.js";
+import { quoteShellWord } from "../utils/posixShell.js";
 
 /**
  * Options for session sync operations.

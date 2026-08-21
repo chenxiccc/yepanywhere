@@ -9,7 +9,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import type { Readable, Writable } from "node:stream";
 import { getLogger } from "../logging/logger.js";
-import { quoteRemotePath, quoteShellWord } from "./remote-shell.js";
+import { quoteShellWord } from "../utils/posixShell.js";
+import { quoteRemotePath } from "./remote-shell.js";
 
 /**
  * Options passed to the spawn function (from SDK).
