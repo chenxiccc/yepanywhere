@@ -174,6 +174,12 @@ describe("SpeechSettings", () => {
 
     const selector = screen.getByLabelText("speechSettingsMessagePrefixTitle");
     expect((selector as HTMLSelectElement).value).toBe("microphone");
+    expect(selector.parentElement?.querySelector("svg")).not.toBeNull();
+    expect(
+      screen.getByRole("option", {
+        name: "appearanceToolbarCollapsedButtonMicrophone",
+      }).textContent,
+    ).not.toContain("🎤");
     fireEvent.change(selector, { target: { value: "stt" } });
     expect(
       speechCaptureSettings.setSpeechMessagePrefixMode,

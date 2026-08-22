@@ -9,6 +9,24 @@
   gap: 0.35rem;
 }
 
+.selectShell {
+  position: relative;
+  width: 100%;
+}
+
+.selectIcon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.55rem;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.selectShell[data-disabled="true"] .selectIcon {
+  opacity: 0.5;
+}
+
 .select,
 .textInput {
   width: 100%;
@@ -25,6 +43,10 @@
 .textInput:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 1px;
+}
+
+.selectWithIcon {
+  padding-left: 1.9rem;
 }
 
 .preview {

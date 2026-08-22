@@ -362,9 +362,12 @@ Current streaming command semantics:
 
 The browser-local **Speech message prefix** selector defaults to the `🎤`
 preset. Its other presets are `[ASR]`, `[STT]`, and `[Dictation]`; Custom
-accepts one trimmed, non-empty line up to 64 characters and adds no brackets. An enabled prefix is
-added only to the provider-bound message, never the editable draft, to tell the
-agent that the text may contain speech-recognition errors. The preference is
+accepts one trimmed, non-empty line up to 64 characters and adds no brackets.
+The selector represents the microphone preset with the same monochrome outline
+glyph as the composer microphone control; that display glyph does not replace
+the provider-bound `🎤`. An enabled prefix is added only to the provider-bound
+message, never the editable draft, to tell the agent that the text may contain
+speech-recognition errors. The preference is
 backend-independent: browser-native Web Speech and configured STT backends use
 the same selection. Off guarantees verbatim provider-bound text for both
 manual and speech-triggered delivery.

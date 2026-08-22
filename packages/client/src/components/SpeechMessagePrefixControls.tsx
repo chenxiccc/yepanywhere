@@ -7,6 +7,7 @@ import {
 } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
 import { RangeNumberRow } from "./ui/RangeNumberRow";
+import { MicrophoneIcon } from "./MicrophoneIcon";
 import styles from "./SpeechMessagePrefixControls.module.css";
 
 interface SpeechMessagePrefixControlsProps {
@@ -40,25 +41,37 @@ export function SpeechMessagePrefixControls({
   return (
     <div className={styles.root}>
       <div className={styles.control}>
-        <select
-          id={`${id}-prefix`}
-          className={styles.select}
-          value={speechMessagePrefixMode}
-          disabled={disabled}
-          aria-label={t("speechSettingsMessagePrefixTitle")}
-          onChange={handlePrefixModeChange}
+        <div
+          className={styles.selectShell}
+          data-disabled={disabled || undefined}
         >
-          <option value="off">{t("commonOff")}</option>
-          <option value="microphone">
-            🎤 {t("appearanceToolbarCollapsedButtonMicrophone")}
-          </option>
-          <option value="asr">[ASR]</option>
-          <option value="stt">[STT]</option>
-          <option value="dictation">[Dictation]</option>
-          <option value="custom">
-            {t("speechSettingsMessagePrefixCustom")}
-          </option>
-        </select>
+          {speechMessagePrefixMode === "microphone" && (
+            <MicrophoneIcon className={styles.selectIcon} />
+          )}
+          <select
+            id={`${id}-prefix`}
+            className={`${styles.select} ${
+              speechMessagePrefixMode === "microphone"
+                ? styles.selectWithIcon
+                : ""
+            }`}
+            value={speechMessagePrefixMode}
+            disabled={disabled}
+            aria-label={t("speechSettingsMessagePrefixTitle")}
+            onChange={handlePrefixModeChange}
+          >
+            <option value="off">{t("commonOff")}</option>
+            <option value="microphone">
+              {t("appearanceToolbarCollapsedButtonMicrophone")}
+            </option>
+            <option value="asr">[ASR]</option>
+            <option value="stt">[STT]</option>
+            <option value="dictation">[Dictation]</option>
+            <option value="custom">
+              {t("speechSettingsMessagePrefixCustom")}
+            </option>
+          </select>
+        </div>
         {speechMessagePrefixMode === "custom" && (
           <input
             className={styles.textInput}
