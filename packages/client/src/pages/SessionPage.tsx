@@ -17,6 +17,7 @@ import {
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY,
   SYNTHETIC_DONE_COMMAND_CAPABILITY,
+  SYNTHETIC_TERMINATE_COMMAND_CAPABILITY,
   getCanonicalInvocationToken,
   isClaudeProviderName,
   serverHasCapability,
@@ -461,6 +462,10 @@ function SessionPageContent({
   const supportsSyntheticArchive = serverHasCapability(
     versionInfo,
     SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY,
+  );
+  const supportsSyntheticTerminate = serverHasCapability(
+    versionInfo,
+    SYNTHETIC_TERMINATE_COMMAND_CAPABILITY,
   );
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const supportsProjectSessionDefaults = serverHasCapability(
@@ -1015,7 +1020,9 @@ function SessionPageContent({
               (command !== "btw" || supportsBtwAsides) &&
               (command !== "done" ||
                 mainComposerForAside ||
-                syntheticDoneEnabled),
+                syntheticDoneEnabled) &&
+              (command !== "terminate" ||
+                (syntheticDoneEnabled && supportsSyntheticTerminate)),
           ).map(createClientSlashCommand)
         : [];
     if (supportsManualCompact) {
@@ -1052,6 +1059,7 @@ function SessionPageContent({
     status.owner,
     supportsBtwAsides,
     supportsManualCompact,
+    supportsSyntheticTerminate,
     syntheticDoneEnabled,
   ]);
 
@@ -1957,6 +1965,7 @@ function SessionPageContent({
         syntheticDoneEnabled,
         syntheticDoneSupported: supportsSyntheticDone,
         syntheticArchiveSupported: supportsSyntheticArchive,
+        syntheticTerminateSupported: supportsSyntheticTerminate,
         hasAttachments:
           attachmentsRef.current.length > 0 ||
           pendingUploadsRef.current.size > 0,
@@ -2098,18 +2107,20 @@ function SessionPageContent({
   );
 
   const handleSyntheticSessionBoundary = useCallback(
-    async (command: "done" | "archive") => {
+    async (command: "done" | "archive" | "terminate") => {
       try {
         const result =
-          command === "archive"
-            ? await api.archiveSession(actualSessionId)
-            : await api.markSessionDone(actualSessionId);
+          command === "terminate"
+            ? await api.terminateSession(actualSessionId)
+            : command === "archive"
+              ? await api.archiveSession(actualSessionId)
+              : await api.markSessionDone(actualSessionId);
         // The composer cleared the command optimistically but kept the
         // localStorage recovery copy. Without this the text is restored on
         // remount and the session keeps a "Draft" badge for a command it
         // already consumed.
         draftControlsRef.current?.confirmInputClear();
-        if (command === "archive") {
+        if (command !== "done") {
           setLocalIsArchived(true);
           activityBus.emitLocal("session-metadata-changed", {
             type: "session-metadata-changed",
@@ -2129,9 +2140,11 @@ function SessionPageContent({
         draftControlsRef.current?.restoreFromStorage();
         showToast(
           t(
-            command === "archive"
-              ? "syntheticArchiveFailed"
-              : "syntheticDoneFailed",
+            command === "terminate"
+              ? "syntheticTerminateFailed"
+              : command === "archive"
+                ? "syntheticArchiveFailed"
+                : "syntheticDoneFailed",
           ),
           "error",
         );
@@ -3482,6 +3495,7 @@ function SessionPageContent({
         syntheticDoneEnabled,
         syntheticDoneSupported: supportsSyntheticDone,
         syntheticArchiveSupported: supportsSyntheticArchive,
+        syntheticTerminateSupported: supportsSyntheticTerminate,
         hasAttachments: false,
       });
       if (
@@ -3513,6 +3527,7 @@ function SessionPageContent({
       showToast,
       supportsSyntheticArchive,
       supportsSyntheticDone,
+      supportsSyntheticTerminate,
       syntheticDoneEnabled,
     ],
   );

@@ -5,28 +5,27 @@ import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { EventBus } from "../watcher/EventBus.js";
 import { sessionQueueSummaries } from "./session-queue-summaries.js";
 
-export interface SessionArchiveRoutesDeps {
+export interface SessionTerminateRoutesDeps {
   sessionMetadataService?: SessionMetadataService;
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
   supervisor: Supervisor;
   eventBus?: EventBus;
 }
 
-export function createSessionArchiveRoutes(
-  deps: SessionArchiveRoutesDeps,
+export function createSessionTerminateRoutes(
+  deps: SessionTerminateRoutesDeps,
 ): Hono {
   const routes = new Hono();
 
-  routes.post("/:sessionId/archive", async (c) => {
-    const { sessionMetadataService } = deps;
-    if (!sessionMetadataService) {
+  routes.post("/:sessionId/terminate", async (c) => {
+    if (!deps.sessionMetadataService) {
       return c.json({ error: "Session metadata service unavailable" }, 503);
     }
 
     const sessionId = c.req.param("sessionId");
     const result = await deps.supervisor.requestSessionBoundaryAndAbort(
       sessionId,
-      "/archive",
+      "/terminate",
     );
     deps.eventBus?.emit({
       type: "session-metadata-changed",
@@ -34,10 +33,9 @@ export function createSessionArchiveRoutes(
       archived: true,
       timestamp: new Date().toISOString(),
     });
-    const process = deps.supervisor.getProcessForSession(sessionId);
     return c.json({
       ...result,
-      deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+      deferredMessages: sessionQueueSummaries(deps, sessionId, undefined),
     });
   });
 

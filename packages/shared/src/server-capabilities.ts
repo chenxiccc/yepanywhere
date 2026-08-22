@@ -1590,7 +1590,7 @@ export const SERVER_CAPABILITIES = {
     introducedIn: "0.7.1",
     advertisement: { kind: "version-implied" },
     description:
-      "Server persists a YA-only /done transcript row and pauses automatic session-waking work until the next real user turn.",
+      "Server persists a YA-only /done transcript row, pauses automatic session-waking work until the next real user turn, and verifies that the owned provider process stopped.",
     clientFallback:
       "Hide the toolbar setting and action, treat typed /done as an ordinary provider command, and make no done request.",
     serverContract: {
@@ -1599,6 +1599,7 @@ export const SERVER_CAPABILITIES = {
       responseFields: [
         "message",
         "paused",
+        "termination",
         "settings.clientDefaults.sessionToolbarPresence.syntheticDone",
       ],
     },
@@ -1616,18 +1617,40 @@ export const SERVER_CAPABILITIES = {
     introducedIn: "0.7.1",
     advertisement: { kind: "version-implied" },
     description:
-      "Server archives a session and applies the same durable, non-interrupting session boundary as /done while preserving /archive in the queued and transcript projections.",
+      "Server archives a session, applies the same durable stop boundary as /done, and preserves /archive in the queued and transcript projections.",
     clientFallback:
       "Translate typed /archive to the established synthetic /done operation before queue projection and make no archive request.",
     serverContract: {
       routes: ["POST /api/sessions/:sessionId/archive"],
       routeModules: ["packages/server/src/routes/session-archive.ts"],
-      responseFields: ["message", "paused"],
+      responseFields: ["message", "paused", "termination"],
     },
     lifecycle: {
       kind: "permanent",
       reason:
         "Older servers cannot atomically archive with the durable session boundary, but can preserve the user's done intent through the established /done route.",
+    },
+  },
+  syntheticTerminateCommand: {
+    id: CAPABILITY_ID_ALLOCATIONS.syntheticTerminateCommand.id,
+    name: "synthetic-terminate-command",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server archives a session, persists a /terminate boundary, blocks automatic resume, and verifies that the owned provider process stopped.",
+    clientFallback:
+      "Hide the command, treat typed /terminate as an ordinary provider command, and make no terminate request.",
+    serverContract: {
+      routes: ["POST /api/sessions/:sessionId/terminate"],
+      routeModules: ["packages/server/src/routes/session-terminate.ts"],
+      responseFields: ["message", "paused", "termination", "resumeExemption"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers do not combine archival, durable resume exemption, and verified process termination.",
     },
   },
   projectQueueNewSessionShortcutSetting: {
@@ -1844,6 +1867,8 @@ export const SYNTHETIC_DONE_COMMAND_CAPABILITY =
   SERVER_CAPABILITIES.syntheticDoneCommand.name;
 export const SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY =
   SERVER_CAPABILITIES.syntheticArchiveCommand.name;
+export const SYNTHETIC_TERMINATE_COMMAND_CAPABILITY =
+  SERVER_CAPABILITIES.syntheticTerminateCommand.name;
 export const PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.projectQueueNewSessionShortcutSetting.name;
 

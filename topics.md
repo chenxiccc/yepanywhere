@@ -9,6 +9,8 @@
 - core-service-api - Proposal to expose YA's provider/session runtime as a headless service and extractable core for external scripts and OpenAI-style proxy clients.
 - prompt-suggestions - Next-user-turn suggestion surface and native/simulated split.
 - session-liveness - Provider/session cache state, stale entries, and recovery.
+- session-context-actions - Clear, fork, handoff, compaction, and durable
+  done/archive/terminate session boundaries.
 - pluggable-speech-recognition - YA server-routed speech backends and browser-native fallback.
 - cost-efficiency - Preferring subscription/local over metered APIs; billing footgun masking.
 - ya-env-vars - Catalog of YA env vars and the canonical YEP_/YEP_MODULE_

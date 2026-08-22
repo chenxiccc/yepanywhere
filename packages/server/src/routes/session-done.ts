@@ -20,7 +20,8 @@ export function createSessionDoneRoutes(deps: SessionDoneRoutesDeps): Hono {
     }
 
     const sessionId = c.req.param("sessionId");
-    const result = await deps.supervisor.requestSessionDone(sessionId);
+    const result =
+      await deps.supervisor.requestSessionBoundaryAndAbort(sessionId);
     const process = deps.supervisor.getProcessForSession(sessionId);
     return c.json({
       ...result,

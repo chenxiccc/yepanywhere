@@ -143,6 +143,7 @@ import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionArchiveRoutes } from "./routes/session-archive.js";
 import { createSessionDoneRoutes } from "./routes/session-done.js";
 import { createSessionIndexRoutes } from "./routes/session-index.js";
+import { createSessionTerminateRoutes } from "./routes/session-terminate.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSessionWakeRoutes } from "./routes/session-wake.js";
 import { createSettingsRoutes } from "./routes/settings.js";
@@ -228,7 +229,6 @@ import { ClaudeSessionReader } from "./sessions/reader.js";
 import {
   isAutomaticSessionResumeAllowed,
   isUnownedHeartbeatResumeEligible,
-  type ResumeExemptionResult,
 } from "./sessions/resume-exemption.js";
 import type { SummaryParserWorkerMode } from "./sessions/summary-parser-worker-protocol.js";
 import type {
@@ -1768,6 +1768,15 @@ export function createApp(options: AppOptions): AppResult {
     }),
   );
   app.route(
+    "/api/sessions",
+    createSessionTerminateRoutes({
+      supervisor,
+      sessionMetadataService: options.sessionMetadataService,
+      sessionQueuePersistenceService: options.sessionQueuePersistenceService,
+      eventBus: options.eventBus,
+    }),
+  );
+  app.route(
     "/api",
     createToolResultMediaRoutes({
       scanner,
@@ -1816,21 +1825,7 @@ export function createApp(options: AppOptions): AppResult {
       // Explicit Kill blocks YA's automatic resume gate while preserving the
       // provider transcript for history and deliberate manual continuation.
       blockSessionResume: async ({ sessionId }) => {
-        const metadata = options.sessionMetadataService;
-        if (!metadata) {
-          throw new Error("Session metadata service is unavailable");
-        }
-        const heartbeatWasEnabled =
-          metadata.getMetadata(sessionId)?.heartbeatTurnsEnabled === true;
-        await metadata.updateMetadata(sessionId, {
-          heartbeatTurnsEnabled: false,
-          autoResumeDisabled: true,
-        });
-
-        const result: ResumeExemptionResult = {
-          heartbeatDisabled: heartbeatWasEnabled,
-          autoResumeDisabled: true,
-        };
+        const result = await supervisor.disableSessionAutoResume(sessionId);
         console.log(
           `[Processes] Blocked auto-resume for killed session ${sessionId}` +
             ` (heartbeatDisabled=${result.heartbeatDisabled})`,

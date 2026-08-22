@@ -3800,6 +3800,173 @@ describe("Supervisor", () => {
       );
     });
 
+    it("finalizes a retained /terminate boundary before verified abort", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      let sessionMetadata: Record<string, unknown> | undefined;
+      metadata.service.getMetadata = (() =>
+        sessionMetadata) as SessionMetadataService["getMetadata"];
+      metadata.writes.updateMetadata.mockImplementation(
+        async (_sessionId, updates) => {
+          sessionMetadata = { ...sessionMetadata, ...updates };
+        },
+      );
+      metadata.writes.recordSyntheticDone.mockImplementation(
+        async (_sessionId, _message, options) => {
+          sessionMetadata = {
+            ...sessionMetadata,
+            automationPausedUntilUserTurn: true,
+            pendingSyntheticDone: undefined,
+            ...(options?.archived ? { isArchived: true } : {}),
+          };
+        },
+      );
+      let providerAborted = false;
+      const provider = testProvider(async (options) => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          yield {
+            type: "system" as const,
+            subtype: "init" as const,
+            session_id: options.resumeSessionId ?? "terminate-session",
+          };
+          for await (const message of queue) {
+            if (providerAborted) return;
+            void message;
+          }
+        }
+        return {
+          iterator: iterator(),
+          queue,
+          abort: () => {
+            providerAborted = true;
+            queue.push({ text: "__abort__" });
+          },
+        };
+      });
+      const doneSupervisor = new Supervisor({
+        provider,
+        sessionMetadataService: metadata.service,
+      });
+      const process = await doneSupervisor.reactivateSession(
+        "/tmp/test",
+        "terminate-session",
+        undefined,
+        { providerName: "claude" },
+      );
+      vi.spyOn(process, "isRetainingProviderWork").mockReturnValue(true);
+
+      const result = await doneSupervisor.requestSessionBoundaryAndAbort(
+        "terminate-session",
+        "/terminate",
+      );
+
+      expect(result).toMatchObject({
+        queued: false,
+        message: { content: "/terminate" },
+        resumeExemption: { autoResumeDisabled: true },
+        termination: { sessionId: "terminate-session" },
+      });
+      expect(metadata.writes.recordSyntheticDone).toHaveBeenCalledWith(
+        "terminate-session",
+        expect.objectContaining({ content: "/terminate" }),
+        { archived: true },
+      );
+      expect(metadata.writes.updateMetadata).toHaveBeenCalledWith(
+        "terminate-session",
+        expect.objectContaining({
+          heartbeatTurnsEnabled: false,
+          autoResumeDisabled: true,
+        }),
+      );
+      expect(providerAborted).toBe(true);
+      expect(doneSupervisor.getProcessForSession("terminate-session")).toBe(
+        undefined,
+      );
+    });
+
+    it("still aborts when a durable stop boundary cannot be finalized", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      metadata.service.getMetadata = (() => ({
+        automationPausedUntilUserTurn: true,
+        pendingSyntheticDone: {
+          message: {
+            type: "user",
+            content: "/done",
+            message: { role: "user", content: "/done" },
+            timestamp: "2026-08-22T10:00:00.000Z",
+            uuid: "durable-stop-boundary",
+            id: "durable-stop-boundary",
+            isSynthetic: true,
+            yaSyntheticSource: "done",
+          },
+          userTurnVersion: 1,
+        },
+      })) as SessionMetadataService["getMetadata"];
+      const doneSupervisor = new Supervisor({
+        provider: testProvider(async () => {
+          throw new Error("provider should not start");
+        }),
+        sessionMetadataService: metadata.service,
+      });
+      const finalizeError = new Error("synthetic row write failed");
+      (
+        doneSupervisor as unknown as {
+          sessionDone: {
+            requestSessionBoundaryForStop: () => Promise<never>;
+          };
+        }
+      ).sessionDone.requestSessionBoundaryForStop = vi.fn(async () => {
+        throw finalizeError;
+      });
+      const abortSessionWithVerification = vi
+        .spyOn(doneSupervisor, "abortSessionWithVerification")
+        .mockResolvedValue(null);
+
+      await expect(
+        doneSupervisor.requestSessionBoundaryAndAbort(
+          "failed-finalize-session",
+        ),
+      ).rejects.toBe(finalizeError);
+      expect(abortSessionWithVerification).toHaveBeenCalledWith(
+        "failed-finalize-session",
+      );
+    });
+
+    it("reports a terminate resume-exemption failure after process cleanup", async () => {
+      const metadata = createLaunchSettingsMetadata();
+      metadata.writes.updateMetadata.mockRejectedValue(
+        new Error("metadata is read-only"),
+      );
+      const doneSupervisor = new Supervisor({
+        provider: testProvider(async () => {
+          throw new Error("provider should not start");
+        }),
+        sessionMetadataService: metadata.service,
+      });
+      const abortSessionWithVerification = vi
+        .spyOn(doneSupervisor, "abortSessionWithVerification")
+        .mockResolvedValue(null);
+
+      const result = await doneSupervisor.requestSessionBoundaryAndAbort(
+        "terminate-exemption-failure",
+        "/terminate",
+      );
+
+      expect(result.resumeExemption).toEqual({
+        heartbeatDisabled: false,
+        autoResumeDisabled: false,
+        error: "metadata is read-only",
+      });
+      expect(abortSessionWithVerification).toHaveBeenCalledWith(
+        "terminate-exemption-failure",
+      );
+      expect(metadata.writes.recordSyntheticDone).toHaveBeenCalledWith(
+        "terminate-exemption-failure",
+        expect.objectContaining({ content: "/terminate" }),
+        { archived: true },
+      );
+    });
+
     it("queues /done locally during a turn and commits it at the boundary", async () => {
       const metadata = createLaunchSettingsMetadata();
       let automationPaused = false;

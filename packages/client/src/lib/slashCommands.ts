@@ -10,6 +10,7 @@ export const CLIENT_SLASH_COMMANDS = [
   "btw",
   "done",
   "archive",
+  "terminate",
   "title",
   "model",
 ] as const;
@@ -37,11 +38,14 @@ export type ComposerDoneTarget =
 export type ComposerSessionOperation =
   | { kind: "provider" }
   | { kind: "focused-aside"; command: "done"; argument: string }
-  | { kind: "session-boundary"; command: "done" | "archive" }
+  | {
+      kind: "session-boundary";
+      command: "done" | "archive" | "terminate";
+    }
   | { kind: "title"; title: string | null }
   | {
       kind: "blocked";
-      command: "archive" | "title";
+      command: "archive" | "terminate" | "title";
       message: string;
     };
 
@@ -51,6 +55,7 @@ export function resolveComposerSessionOperation({
   syntheticDoneEnabled,
   syntheticDoneSupported,
   syntheticArchiveSupported,
+  syntheticTerminateSupported,
   hasAttachments,
 }: {
   text: string;
@@ -58,6 +63,7 @@ export function resolveComposerSessionOperation({
   syntheticDoneEnabled: boolean;
   syntheticDoneSupported: boolean;
   syntheticArchiveSupported: boolean;
+  syntheticTerminateSupported: boolean;
   hasAttachments: boolean;
 }): ComposerSessionOperation {
   const parsed = parseComposerSlashCommand(text);
@@ -104,6 +110,27 @@ export function resolveComposerSessionOperation({
     return { kind: "provider" };
   }
 
+  if (parsed.command === "terminate") {
+    if (routesToFocusedAside) {
+      return {
+        kind: "blocked",
+        command: "terminate",
+        message:
+          "/terminate is unavailable while the composer targets a /btw aside.",
+      };
+    }
+    if (parsed.argument.trim() || hasAttachments) {
+      return {
+        kind: "blocked",
+        command: "terminate",
+        message: "Use /terminate by itself without attachments.",
+      };
+    }
+    return syntheticDoneEnabled && syntheticTerminateSupported
+      ? { kind: "session-boundary", command: "terminate" }
+      : { kind: "provider" };
+  }
+
   if (parsed.command === "title") {
     if (routesToFocusedAside) {
       return {
@@ -143,6 +170,7 @@ export function resolveComposerDoneTarget({
     syntheticDoneEnabled,
     syntheticDoneSupported: syntheticDoneEnabled,
     syntheticArchiveSupported: false,
+    syntheticTerminateSupported: false,
     hasAttachments,
   });
   if (operation.kind === "focused-aside") {
@@ -160,6 +188,7 @@ const COMMAND_DISPLAY: Record<string, { label: string; shortcut: string }> = {
   btw: { label: "btw aside", shortcut: "/b" },
   done: { label: "done with aside", shortcut: "/d" },
   archive: { label: "archive session", shortcut: "/archive" },
+  terminate: { label: "terminate session", shortcut: "/terminate" },
   title: { label: "title session", shortcut: "/title" },
   model: { label: "model", shortcut: "/m" },
 };
@@ -242,6 +271,9 @@ export function parseComposerSlashCommand(
   }
   if (command === "archive") {
     return { kind: "custom", command: "archive", argument };
+  }
+  if (command === "terminate") {
+    return { kind: "custom", command: "terminate", argument };
   }
   if (command === "title") {
     return { kind: "custom", command: "title", argument };

@@ -81,6 +81,7 @@ describe("slashCommands", () => {
         syntheticDoneEnabled: true,
         syntheticDoneSupported: true,
         syntheticArchiveSupported: true,
+        syntheticTerminateSupported: true,
         hasAttachments: false,
         ...overrides,
       });
@@ -113,6 +114,25 @@ describe("slashCommands", () => {
       kind: "blocked",
       command: "archive",
     });
+    expect(parseComposerSlashCommand("/terminate")).toEqual({
+      kind: "custom",
+      command: "terminate",
+      argument: "",
+    });
+    expect(resolve("/terminate")).toEqual({
+      kind: "session-boundary",
+      command: "terminate",
+    });
+    expect(
+      resolve("/terminate", { syntheticTerminateSupported: false }),
+    ).toEqual({ kind: "provider" });
+    expect(resolve("/terminate", { syntheticDoneEnabled: false })).toEqual({
+      kind: "provider",
+    });
+    expect(resolve("/terminate later")).toMatchObject({
+      kind: "blocked",
+      command: "terminate",
+    });
     expect(resolve("/title A concise title")).toEqual({
       kind: "title",
       title: "A concise title",
@@ -128,12 +148,17 @@ describe("slashCommands", () => {
         syntheticDoneEnabled: true,
         syntheticDoneSupported: true,
         syntheticArchiveSupported: true,
+        syntheticTerminateSupported: true,
         hasAttachments: false,
       });
 
     expect(resolve("/archive")).toMatchObject({
       kind: "blocked",
       command: "archive",
+    });
+    expect(resolve("/terminate")).toMatchObject({
+      kind: "blocked",
+      command: "terminate",
     });
     expect(resolve("/title New title")).toMatchObject({
       kind: "blocked",
@@ -232,6 +257,11 @@ describe("slashCommands", () => {
       shortcut: "/archive",
       rest: " session",
       label: "/archive session",
+    });
+    expect(getSlashCommandMenuParts("terminate")).toEqual({
+      shortcut: "/terminate",
+      rest: " session",
+      label: "/terminate session",
     });
     expect(getSlashCommandMenuParts("title")).toEqual({
       shortcut: "/title",

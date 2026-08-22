@@ -171,6 +171,35 @@ describe("SessionDoneCoordinator", () => {
     });
   });
 
+  it("keeps /terminate stronger than queued done or archive boundaries", async () => {
+    const process = coordinatorProcess();
+    const state = new SessionDoneCoordinator({
+      sessionMetadataService: {
+        getMetadata: () => undefined,
+        updateMetadata: async () => {},
+      } as unknown as SessionMetadataService,
+      getProcessForSession: () => process,
+      cancelInFlightForkedRecap: () => {},
+      requestHeartbeatSweep: () => {},
+    });
+
+    const done = await state.requestSessionDone("session-1", "/done");
+    const terminate = await state.requestSessionDone("session-1", "/terminate");
+    const laterArchive = await state.requestSessionDone(
+      "session-1",
+      "/archive",
+    );
+
+    expect(terminate.message).toMatchObject({
+      uuid: done.message.uuid,
+      content: "/terminate",
+    });
+    expect(laterArchive.message).toMatchObject({
+      uuid: done.message.uuid,
+      content: "/terminate",
+    });
+  });
+
   it("serializes an archive request behind queued-boundary finalization", async () => {
     const process = coordinatorProcess();
     let releaseFirstWrite: () => void = () => {};
@@ -292,7 +321,56 @@ describe("SessionDoneCoordinator", () => {
     });
   });
 
-  it.each(["/done", "/archive"] as const)(
+  it("finalizes a persisted boundary when its process is already gone", async () => {
+    const message = {
+      type: "user" as const,
+      content: "/done" as const,
+      message: { role: "user" as const, content: "/done" as const },
+      timestamp: "2026-08-16T10:00:00.000Z",
+      uuid: "durable-boundary-1",
+      id: "durable-boundary-1",
+      isSynthetic: true as const,
+      yaSyntheticSource: "done" as const,
+    };
+    let pendingMessage = message;
+    const recordSyntheticDone = vi.fn(async () => {});
+    const state = new SessionDoneCoordinator({
+      sessionMetadataService: {
+        getMetadata: () => ({
+          automationPausedUntilUserTurn: true,
+          pendingSyntheticDone: {
+            message: pendingMessage,
+            userTurnVersion: 4,
+          },
+        }),
+        updateMetadata: async (_sessionId, updates) => {
+          pendingMessage =
+            updates.pendingSyntheticDone?.message ?? pendingMessage;
+        },
+        recordSyntheticDone,
+      } as unknown as SessionMetadataService,
+      getProcessForSession: () => undefined,
+      cancelInFlightForkedRecap: () => {},
+      requestHeartbeatSweep: () => {},
+    });
+
+    const result = await state.requestSessionBoundaryForStop(
+      "session-1",
+      "/terminate",
+    );
+
+    expect(result).toMatchObject({
+      queued: false,
+      message: { content: "/terminate", uuid: "durable-boundary-1" },
+    });
+    expect(recordSyntheticDone).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ content: "/terminate" }),
+      { archived: true },
+    );
+  });
+
+  it.each(["/done", "/archive", "/terminate"] as const)(
     "recovers and finalizes a queued %s boundary on a replacement process",
     async (command) => {
       const process = coordinatorProcess();
@@ -336,7 +414,7 @@ describe("SessionDoneCoordinator", () => {
       await expect(state.finalizePendingDone(process)).resolves.toEqual(
         message,
       );
-      if (command === "/archive") {
+      if (command !== "/done") {
         expect(recordSyntheticDone).toHaveBeenCalledWith("session-1", message, {
           archived: true,
         });

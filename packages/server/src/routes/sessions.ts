@@ -7027,6 +7027,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     await deps.sessionMetadataService.updateMetadata(sessionId, patch);
 
+    // Archive is a stop boundary, including for older clients that only know
+    // the generic metadata route. Provider-owned background jobs can outlive a
+    // graceful turn interrupt, so verify the whole owned process is gone.
+    if (patch.archived === true) {
+      await deps.supervisor.abortSessionWithVerification(sessionId);
+    }
+
     if (patch.heartbeatTurnText) {
       const savedProjectId =
         deps.sessionMetadataService.getMetadata(sessionId)?.workingProjectId ??

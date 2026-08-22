@@ -224,59 +224,71 @@ compact command on an idle process, show the `Compacting` busy state
 per [provider-state-machine](provider-state-machine.md), and surface
 failure without retry loops.
 
-## Synthetic done and archive
+## Synthetic done, archive, and terminate
 
-YA's optional `/done` command and typed `/archive` command are local session
-boundaries, not provider commands. When enabled, an exact attachment-free
-submission persists a synthetic user row in YA metadata, marks the session
-read, and sends no provider turn. `/archive` additionally archives the session
-in the same metadata mutation. The row is merged into session history by
-timestamp without mutating the provider transcript, so it remains visible on a
-later visit.
+YA's optional `/done`, `/archive`, and `/terminate` commands are local session
+boundaries, not provider commands. An exact attachment-free submission persists
+a synthetic user row in YA metadata, marks the session read, sends no provider
+turn, and verifiably aborts the whole YA-owned provider process. `/archive` and
+`/terminate` additionally archive the session in the same metadata mutation.
+The row is merged into session history by timestamp without mutating the
+provider transcript, so it remains visible on a later visit.
 
-During an active turn (including provider-retained background work), the action
+During an active turn, including provider-retained background work, the action
 first persists the complete pending boundary—command, UUID, request timestamp,
 and request-time user-turn version—together with
-`automationPausedUntilUserTurn`, then appears in the canonical queued-message
-projection as a `ya-command` chip. `/archive` persists archive in that same
-mutation before the chip appears. The same Process-local done lane owns both
-actions, but its visible content is `/done` or `/archive`; there is no second
-scheduler or provider queue. It never enters the deferred, patient, direct, or
-provider queues and does not interrupt the current turn.
+`automationPausedUntilUserTurn`. It uses the Process-local done lane only as a
+durable transition: YA immediately promotes the boundary to the synthetic
+transcript row, clears the pending record, and then aborts and verifies the
+owned process. `/archive` and `/terminate` persist archive before termination.
+The command never enters the deferred, patient, direct, or provider queues.
 
-The pending boundary and pause are session metadata. A restart or process reap
-therefore retains the chip even before a replacement process exists; registering
-a replacement restores the same command, UUID, timestamp, and user-turn version
-to its done lane. At the first unretained idle boundary, YA promotes that
-boundary to the durable synthetic transcript row and clears the pending record
-before removing the chip; only then may already-accepted ordinary queued turns
-resume their normal delivery. A failed metadata persist fails the request
-without queuing a chip. A later synthetic-row or read-state failure leaves the
-already-persisted state in force and the command visibly queued for an explicit
-retry, and still sends no provider input.
+This is deliberately a process abort rather than the provider's graceful turn
+interrupt. A graceful interrupt can leave provider-owned background jobs and
+watchdogs registered, allowing them to wake a session after the user declared
+it finished. Process abort owns those jobs as one lifecycle unit. YA's process
+abort verifies the captured provider process or process group is gone on its
+supported host path; a verification failure fails the request without rolling
+back the already-durable boundary.
 
-Both durable boundaries pause YA-driven provider work until a later real user
+The pending boundary and pause remain session metadata so a crash between
+persist and finalize is recoverable. Registering a replacement restores the
+same command, UUID, timestamp, and user-turn version to the done lane for
+explicit retry. A failed initial metadata persist fails without queuing or
+aborting. A later synthetic-row or read-state failure leaves the persisted
+pause and pending boundary visible for retry, still runs verified process
+cleanup, and does not send provider input.
+
+All three boundaries pause YA-driven provider work until a later real user
 turn. They block automatic compaction, recaps (including forked and cold
 recaps), heartbeat/session-wake turns, prompt-cache keepalive, patient queue
-promotion, and automatic Project Queue revival for that session. They do not
-interrupt current provider work, retract already accepted turns, or block
-message-less Activate. A real user Send clears the pause; automatically sourced
-heartbeat, wake, and Project Queue messages do not. If that real Send is
-accepted while either boundary is still queued, its later intent wins after the
-synthetic row commits, so the already-accepted user turn does not leave
-automation paused.
+promotion, and automatic Project Queue revival. `/terminate` also sets the
+durable explicit-kill resume exemption (`autoResumeDisabled`) and disables
+heartbeat turns; automatic paths cannot restart it until a deliberate user
+action clears that exemption. `/done` can be deliberately continued by a later
+user Send, and `/archive` can be unarchived and continued.
+If `/terminate` cannot persist the additional resume exemption after its
+archive boundary is durable, process termination still proceeds and the
+response reports `resumeExemption.error`; the already-persisted archive and
+automation pause remain in force.
 
-`/done` and `/archive` are consumed on submit, including while they sit queued.
+The ordinary UI Archive action uses the generic archive metadata route rather
+than adding a synthetic transcript row. The server nevertheless treats every
+`archived: true` transition as a stop boundary: it persists archive first and
+then verifiably aborts any YA-owned provider process. This covers older clients,
+sidebar archive, and bulk/global archive callers without relying on client
+cleanup.
+
+`/done`, `/archive`, and `/terminate` are consumed on submit.
 The composer clears the text optimistically and the settled request drops the
 localStorage recovery copy, so the session shows no "Draft" badge and a later
 visit does not restore a command already consumed; a failed request restores it
-for retry. The aside-closing `/done` variant clears the same way. `/archive` is
-a Mother-session operation and fails visibly instead of reaching a focused
-`/btw` aside.
+for retry. The aside-closing `/done` variant clears the same way. `/archive` and
+`/terminate` are Mother-session operations and fail visibly instead of reaching
+a focused `/btw` aside.
 
-Because the user has declared the session finished, either queued boundary also
-stops that session from blocking Project Queue promotion for its project, even
-while the agent completes a final action. See
+Because the user has declared the session finished, every durable boundary also
+stops that session from blocking Project Queue promotion for its project. See
 [project-queue](project-queue.md) § Project Idle Predicate.
 
 The `/done` feature is server-capability gated (`synthetic-done-command`) and
@@ -294,8 +306,17 @@ present, the client immediately canonicalizes exact typed `/archive` to the
 ordinary `/done` operation: the queued chip and durable row both read `/done`,
 and no archive request is made. When neither capability is present, the
 existing provider-command fallback remains. Stable `v0.7.0` and `v0.6.2` lack
-the archive capability and route; neither existing capability's meaning is
-broadened.
+the archive capability and route. The source-ahead `v0.7.1` done/archive
+contracts now include verified process termination; no stable release
+advertised either capability.
+
+`/terminate` has its own permanent `synthetic-terminate-command` capability and
+route. It shares Synthetic Done's default-off activation setting: with that
+setting Off, the client hides it from suggestions and passes typed text to the
+provider. When the capability is absent, the same provider-command fallback
+makes no unsupported request. It never degrades to `/archive` or `/done`,
+because those operations do not set the durable explicit-kill resume exemption.
+Stable `v0.7.0` and `v0.6.2` lack this capability and route.
 
 A source-ahead server with the original immediate done route may omit the
 additive `queued` and `deferredMessages` response fields; the client treats both
@@ -313,8 +334,9 @@ configurable per [session-ui-customization](session-ui-customization.md):
 | Fork | Provider-native prefix fork at a real user-turn boundary | claude, codex, pi |
 | Handoff to agent | Existing restart-handoff with provider/model picker | all |
 | Compact now | Queue advertised compact command; busy state | claude, codex |
-| Done | YA-only transcript overlay plus durable automation pause | all |
-| Archive | Done boundary plus atomic session archive | all |
+| Done | Transcript boundary, automation pause, verified provider-process stop | all |
+| Archive | Done boundary plus atomic archive; UI archive also stops the process | all |
+| Terminate | Archive boundary, explicit-kill resume exemption, verified stop | all |
 
 The fork point lives in the inline menu on each real user prompt; the right-side
 turn rail is an accelerator for the same actions. Remaining questions are

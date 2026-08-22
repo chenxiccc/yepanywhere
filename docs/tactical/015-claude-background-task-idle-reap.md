@@ -363,6 +363,10 @@ unmodeled messages degrade safely to "no wake".
 - Keep client subscription retention separate. Live delta subscribers can
   retain an idle process for replay/UX reasons; Claude background tasks retain
   it because the provider itself may still continue work.
+- Explicit completion overrides retention. `/done`, `/archive`, `/terminate`,
+  and the UI Archive action are user stop boundaries; after their durable state
+  is written, YA must terminate the owned provider process rather than wait for
+  background tasks or session crons to settle.
 
 ## Test Plan
 

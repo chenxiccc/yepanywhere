@@ -476,7 +476,10 @@ export interface DurableRecapMessage extends AppMessageExtensions {
   yaRecapSource: "provider-native" | "ya-synthetic";
 }
 
-export type SyntheticSessionBoundaryCommand = "/done" | "/archive";
+export type SyntheticSessionBoundaryCommand =
+  | "/done"
+  | "/archive"
+  | "/terminate";
 
 /** YA-only user row that records an explicit local session-boundary action. */
 export interface DurableSyntheticDoneMessage extends AppMessageExtensions {

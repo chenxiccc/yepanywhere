@@ -1445,6 +1445,16 @@ export const api = {
       method: "POST",
     }),
 
+  terminateSession: (sessionId: string) =>
+    fetchJSON<{
+      message: DurableSyntheticDoneMessage;
+      paused: true;
+      queued?: boolean;
+      deferredMessages?: SessionQueuedMessageSummary[];
+    }>(`/sessions/${sessionId}/terminate`, {
+      method: "POST",
+    }),
+
   getLastSeen: () =>
     fetchJSON<{
       lastSeen: Record<string, { timestamp: string; messageId?: string }>;

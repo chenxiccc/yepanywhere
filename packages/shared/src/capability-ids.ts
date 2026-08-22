@@ -288,6 +288,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "git-live-worktree-setting",
     introducedIn: "0.7.2",
   },
+  syntheticTerminateCommand: {
+    id: 45,
+    direction: "server",
+    name: "synthetic-terminate-command",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [
