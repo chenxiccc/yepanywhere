@@ -329,3 +329,5 @@
   mutation, runtime leases, verified generations, and cache convergence.
 - live-worktree-resource-safety - Default-off live Source Control monitoring,
   bounded native watchers, and fail-closed resource-exhaustion fallback.
+- at-session-launching - Opt-in scanner that launches due at/ queue jobs
+  across projects through at-queue.
