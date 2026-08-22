@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getModelIndicatorModelLabel } from "../modelIndicatorText";
+import {
+  getModelIndicatorModelLabel,
+  getModelIndicatorModelParts,
+} from "../modelIndicatorText";
 
 describe("getModelIndicatorModelLabel", () => {
   describe("claude models", () => {
@@ -47,6 +50,15 @@ describe("getModelIndicatorModelLabel", () => {
   });
 
   describe("codex models", () => {
+    it("abbreviates Daybreak and gives it an independent accent", () => {
+      expect(
+        getModelIndicatorModelLabel("codex", "gpt-daybreak-blue-latest"),
+      ).toBe("Cd Db");
+      expect(
+        getModelIndicatorModelParts("codex", "gpt-daybreak-blue-latest"),
+      ).toMatchObject({ modelLabel: "Db", modelAccent: "daybreak" });
+    });
+
     it.each([
       ["gpt-5.6-sol", "Cd ☀"],
       ["gpt-5.6-terra", "Cd ♁"],
@@ -128,6 +140,19 @@ describe("getModelIndicatorModelLabel", () => {
       expect(
         getModelIndicatorModelLabel("opencode", "github-copilot/gpt-5.4"),
       ).toBe("OC copilot ◇ 5.4");
+    });
+    it("keeps a routed Daybreak model's abbreviation and accent", () => {
+      expect(
+        getModelIndicatorModelParts(
+          "opencode",
+          "github-copilot/gpt-daybreak-blue-latest",
+        ),
+      ).toMatchObject({
+        providerGlyph: "OC",
+        subProvider: "copilot",
+        modelLabel: "Db",
+        modelAccent: "daybreak",
+      });
     });
     it("unknown sub-provider falls back to the cleaned path segment", () => {
       expect(

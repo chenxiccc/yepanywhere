@@ -91,6 +91,7 @@ Model sub-family abbreviations (appended after provider abbrev):
 | gpt-5.6-sol  | `☀`   | `Cd ☀`                    |
 | gpt-5.6-terra| `♁`   | `Cd ♁`                    |
 | gpt-5.6-luna | `☾`   | `Cd ☾`                    |
+| gpt-daybreak-blue-latest | `Db` | `Cd Db` (blue model text) |
 | gpt-5.4-spark | `⚡`   | `Cd ⚡`                    |
 | gpt-5.4-codex-spark | `⚡`   | `Cd ⚡`                |
 | gpt-5.3-codex-spark | `⚡`   | `Cd ⚡`                |
@@ -108,6 +109,8 @@ for all common cases. Tooltip shows the raw full model ID (already wired).
 Named variants use a recognizable semantic glyph where the name supplies one;
 the GPT-5.6 Sol/Terra/Luna family is the current example. Sol's `☀` is
 deliberately a sun-with-rays glyph that remains legible at status-badge size.
+Daybreak uses `Db` rather than another sun glyph, and colors that model token
+blue independently of the Codex-green provider text, dot, and outline.
 
 ## SVG option (medium effort, higher quality)
 

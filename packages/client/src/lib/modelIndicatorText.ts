@@ -16,6 +16,7 @@ const providerGlyphMap: Record<string, string> = {
 type ModelGlyphMatch = {
   glyph: string;
   suffix: string;
+  accent?: "daybreak";
 };
 
 type ModelGlyphRule = {
@@ -23,9 +24,16 @@ type ModelGlyphRule = {
   glyph: string;
   fixedSuffix?: string;
   match?: "contains" | "exact";
+  accent?: "daybreak";
 };
 
 const codexModelGlyphRules: ReadonlyArray<ModelGlyphRule> = [
+  {
+    patterns: ["gpt-daybreak-blue-latest"],
+    glyph: "Db",
+    fixedSuffix: "",
+    accent: "daybreak",
+  },
   { patterns: ["gpt-5.6-sol"], glyph: "☀", fixedSuffix: "" },
   { patterns: ["gpt-5.6-terra"], glyph: "♁", fixedSuffix: "" },
   { patterns: ["gpt-5.6-luna"], glyph: "☾", fixedSuffix: "" },
@@ -175,7 +183,11 @@ function deriveModelGlyphMatch(
         );
 
         if (rule.fixedSuffix !== undefined) {
-          return { glyph: rule.glyph, suffix: rule.fixedSuffix };
+          return {
+            glyph: rule.glyph,
+            suffix: rule.fixedSuffix,
+            accent: rule.accent,
+          };
         }
 
         if (pattern.startsWith("gpt-")) {
@@ -183,14 +195,15 @@ function deriveModelGlyphMatch(
           return {
             glyph: rule.glyph,
             suffix: suffix ? `${base}-${suffix}` : base,
+            accent: rule.accent,
           };
         }
 
         if (suffix) {
-          return { glyph: rule.glyph, suffix };
+          return { glyph: rule.glyph, suffix, accent: rule.accent };
         }
 
-        return { glyph: rule.glyph, suffix: "" };
+        return { glyph: rule.glyph, suffix: "", accent: rule.accent };
       }
     }
 
@@ -241,7 +254,10 @@ function formatGlyphAndSuffix(match: ModelGlyphMatch): string {
 }
 
 /** Model glyph + suffix only (no provider abbrev prefix). */
-function formatModelGlyphOnly(familyKey: string, modelPart: string): string {
+function formatModelGlyphOnly(
+  familyKey: string,
+  modelPart: string,
+): { label: string; accent?: "daybreak" } {
   const normalized = normalizeForModelGlyphMatching(modelPart);
   const normalizedForMatching = normalizeForCodexModelAliasMatching(
     normalized,
@@ -249,9 +265,9 @@ function formatModelGlyphOnly(familyKey: string, modelPart: string): string {
   );
   const match = deriveModelGlyphMatch(familyKey, normalizedForMatching);
   if (!match) {
-    return normalizedForMatching;
+    return { label: normalizedForMatching };
   }
-  return formatGlyphAndSuffix(match);
+  return { label: formatGlyphAndSuffix(match), accent: match.accent };
 }
 
 export interface ModelIndicatorParts {
@@ -261,6 +277,8 @@ export interface ModelIndicatorParts {
   subProvider?: string;
   /** Model glyph + version, e.g. "◐ 4.8" (may be a bare name on no match). */
   modelLabel: string;
+  /** Model-specific accent independent of the running provider's badge hue. */
+  modelAccent?: "daybreak";
   /**
    * Provider key whose color cues the model — the sub-badge the model implies
    * (e.g. "claude" for a copilot-routed claude-opus). Lets renderers color the
@@ -310,10 +328,12 @@ export function getModelIndicatorModelParts(
       };
     }
     const familyKey = inferModelFamilyProviderKey(innerModel) ?? providerKey;
+    const modelGlyph = formatModelGlyphOnly(familyKey, innerModel);
     return {
       providerGlyph,
       subProvider,
-      modelLabel: formatModelGlyphOnly(familyKey, innerModel),
+      modelLabel: modelGlyph.label,
+      modelAccent: modelGlyph.accent,
       modelFamilyKey: familyKey,
     };
   }
@@ -335,6 +355,7 @@ export function getModelIndicatorModelParts(
   return {
     providerGlyph,
     modelLabel: formatGlyphAndSuffix(match),
+    modelAccent: match.accent,
     modelFamilyKey: providerKey,
   };
 }

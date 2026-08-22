@@ -33,6 +33,10 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   pi: "pi",
 };
 
+const MODEL_ACCENT_COLORS = {
+  daybreak: "var(--provider-gemini)",
+} as const;
+
 interface ProviderBadgeProps {
   provider: ProviderName;
   /** Show as small dot only (for sidebar) vs full badge (for header) */
@@ -99,10 +103,12 @@ export function ProviderBadge({
     familyKey && familyKey in PROVIDER_COLORS
       ? PROVIDER_COLORS[familyKey as ProviderName]
       : undefined;
+  const modelAccentColor = modelParts?.modelAccent
+    ? MODEL_ACCENT_COLORS[modelParts.modelAccent]
+    : undefined;
+  const modelColor = modelAccentColor ?? modelFamilyColor;
   const modelColorStyle =
-    modelFamilyColor && modelFamilyColor !== color
-      ? { color: modelFamilyColor }
-      : undefined;
+    modelColor && modelColor !== color ? { color: modelColor } : undefined;
 
   const fullTitle = effectiveModel ?? label;
 
