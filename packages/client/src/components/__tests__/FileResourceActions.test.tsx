@@ -25,6 +25,7 @@ function renderMenu(
   const handlers = {
     onCopyAbsolutePath: vi.fn(),
     onCopyContents: vi.fn(),
+    onCopyRenderedContents: vi.fn(),
     onCopyProjectRelativePath: vi.fn(),
     onCopyViewerLink: vi.fn(),
     onOpen: vi.fn(),
@@ -76,6 +77,7 @@ describe("FilePathContextMenu", () => {
       "Copy absolute file path",
       "Copy viewer link",
       "Copy contents",
+      "Copy rendered contents",
     ]);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
@@ -93,6 +95,7 @@ describe("FilePathContextMenu", () => {
       "Copy absolute file path",
       "Copy viewer link",
       "Copy contents",
+      "Copy rendered contents",
     ]);
   });
 
@@ -159,6 +162,7 @@ describe("FilePathContextMenu", () => {
       canStartNewSession: false,
       onCopyAbsolutePath: undefined,
       onCopyContents: undefined,
+      onCopyRenderedContents: undefined,
       onCopyProjectRelativePath: undefined,
       onCopyViewerLink: undefined,
       onOpenPreview: undefined,
@@ -174,6 +178,7 @@ describe("FilePathContextMenu", () => {
     renderMenu({
       onCopyAbsolutePath: undefined,
       onCopyContents: undefined,
+      onCopyRenderedContents: undefined,
       onCopyFilePath: vi.fn(),
       onCopyProjectRelativePath: undefined,
       onCopyViewerLink: undefined,
@@ -218,7 +223,7 @@ describe("FilePathContextMenu", () => {
 
     const menu = screen.getByRole("menu");
     expect(menu.style.left).toBe(`${window.innerWidth - 230}px`);
-    expect(menu.style.top).toBe(`${window.innerHeight - 289}px`);
+    expect(menu.style.top).toBe(`${window.innerHeight - 333}px`);
   });
 
   it("keeps the inline position off the viewport edges", () => {

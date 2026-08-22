@@ -597,17 +597,27 @@ describe("FileViewer", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Raw source" })).toBeTruthy();
     });
 
     expect(await screen.findByRole("heading", { name: "Title" })).toBeTruthy();
     expect(
       container.querySelector(".markdown-preview-span-start"),
     ).toBeTruthy();
+    const selectAll = screen.getByRole("button", { name: "Select all" });
+    expect(selectAll.closest(".file-viewer-actions")).not.toBeNull();
+    fireEvent.click(selectAll);
+    expect(document.getSelection()?.toString()).toContain("Title");
+    expect(document.getSelection()?.toString()).toContain("Selected text");
+    document.getSelection()?.removeAllRanges();
 
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    const rawSource = screen.getByRole("button", { name: "Raw source" });
+    expect(rawSource.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(rawSource);
     expect(container.querySelector(".shiki-container")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(rawSource.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(rawSource);
+    expect(rawSource.getAttribute("aria-pressed")).toBe("false");
 
     const heading = await screen.findByRole("heading", { name: "Title" });
     const headingText = heading.firstChild;
@@ -755,21 +765,26 @@ describe("FileViewer", () => {
       </I18nProvider>,
     );
 
-    expect(await screen.findByRole("button", { name: "Preview" })).toBeTruthy();
+    const rawSource = await screen.findByRole("button", {
+      name: "Raw source",
+    });
+    expect(rawSource.getAttribute("aria-pressed")).toBe("true");
     expect(container.querySelector("iframe")).toBeNull();
     expect(screen.getByText(/Preview heading/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(rawSource);
     const frame = container.querySelector<HTMLIFrameElement>("iframe");
     expect(frame).toBeTruthy();
+    expect(rawSource.getAttribute("aria-pressed")).toBe("false");
     expect(frame?.getAttribute("sandbox")).toBe("");
     expect(frame?.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(frame?.srcdoc).toContain("Content-Security-Policy");
     expect(frame?.srcdoc).toContain("default-src 'none'");
     expect(document.body.dataset.pwned).toBeUndefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    fireEvent.click(rawSource);
     expect(container.querySelector("iframe")).toBeNull();
+    expect(rawSource.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("honors an HTML preview selected before the project viewer opens", async () => {
@@ -799,9 +814,11 @@ describe("FileViewer", () => {
     );
 
     await waitFor(() => expect(container.querySelector("iframe")).toBeTruthy());
-    expect(screen.getByRole("button", { name: "Preview" }).classList).toContain(
-      "active",
-    );
+    expect(
+      screen
+        .getByRole("button", { name: "Raw source" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
   it("opens image previews as raw image tabs", async () => {

@@ -33,14 +33,18 @@ function removePresentation(fragment: DocumentFragment): void {
   removeKatexVisualBranches(fragment);
 
   for (const stylesheet of fragment.querySelectorAll(
-    'style, link[rel~="stylesheet"]',
+    'script, style, link[rel~="stylesheet"], meta, template, noscript',
   )) {
     stylesheet.remove();
   }
 
   for (const element of fragment.querySelectorAll("*")) {
     for (const attribute of element.getAttributeNames()) {
-      if (PRESENTATION_ATTRIBUTES.has(attribute.toLowerCase())) {
+      const normalizedAttribute = attribute.toLowerCase();
+      if (
+        PRESENTATION_ATTRIBUTES.has(normalizedAttribute) ||
+        normalizedAttribute.startsWith("on")
+      ) {
         element.removeAttribute(attribute);
       }
     }
@@ -80,6 +84,16 @@ function cloneWithTableContext(
 export interface SemanticHtmlClipboardPayload {
   html: string;
   text: string;
+}
+
+/** Build the payload a rendered-document select-all would produce. */
+export function getSemanticHtmlClipboardPayloadFromHtml(
+  html: string,
+): SemanticHtmlClipboardPayload | null {
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const range = parsed.createRange();
+  range.selectNodeContents(parsed.body);
+  return getSemanticHtmlClipboardPayload(parsed.body, [range]);
 }
 
 export function getSemanticHtmlClipboardPayload(

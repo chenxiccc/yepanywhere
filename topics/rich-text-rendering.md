@@ -157,6 +157,21 @@ file links should therefore inherit the same source/preview controls,
 large-file windowing, hline span markers, scrollbars, copy affordance, media
 hydration, and public-share capability scoping.
 
+When both source and preview exist, the file viewer toolbar uses one **Raw
+source** icon toggle instead of a two-label Source/Preview switch. Pressed
+means raw source is visible; unpressed means the rendered preview is visible.
+The initial source-first HTML and preview-first Markdown defaults remain
+unchanged.
+
+Textual file viewers and expanded Edit/Read/Run-style detail viewers expose a
+**Select all** control in their top toolbar. `Ctrl/Cmd+A` invokes the same
+action while focus belongs to that visible viewer; editable inputs retain
+their native select-all behavior. The action creates an ordinary browser
+selection spanning the viewer body, so registered source regions immediately
+feed the existing floating copy/quote/new-session action cluster. Static HTML
+iframe previews do not offer the control because their opaque sandbox is not a
+selectable trusted-DOM body.
+
 Ordinary copy from a rendered document uses the registered pre-render source
 mapping and writes the best aligned authored span to `text/plain`. For a
 Markdown preview that is Markdown; for a rendered math selection it includes
@@ -170,6 +185,12 @@ projection. If the browser cannot write multiple clipboard representations,
 the rich action falls back to its visible plain-text representation. These
 buttons are default-off; their visibility never changes the keyboard-copy
 contract.
+
+The file resource menu's **Copy rendered contents** command is the whole-file
+counterpart to the purple rich-selection action. For Markdown it consumes the
+server render result; for static HTML it parses the document in a detached DOM.
+It serializes semantic body HTML and visible plain text as though the rendered
+body had been selected and copied, without visibly opening the preview.
 
 Semantic rich-text copy from Σ-rendered fixed-font/diff views must not carry
 YA's display presentation into the destination. Its handler serializes the

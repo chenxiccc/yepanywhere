@@ -30,6 +30,7 @@ export interface ResourceContextMenuProps {
   onClose: () => void;
   onCopyAbsolutePath?: () => void;
   onCopyContents?: () => void;
+  onCopyRenderedContents?: () => void;
   onCopyFilePath?: () => void;
   onCopyImage?: () => void;
   onCopyProjectRelativePath?: () => void;
@@ -176,6 +177,7 @@ export function ResourceContextMenu({
   onClose,
   onCopyAbsolutePath,
   onCopyContents,
+  onCopyRenderedContents,
   onCopyFilePath,
   onCopyImage,
   onCopyProjectRelativePath,
@@ -195,7 +197,8 @@ export function ResourceContextMenu({
       onCopyFilePath ||
       onCopyImage ||
       onCopyViewerLink ||
-      onCopyContents,
+      onCopyContents ||
+      onCopyRenderedContents,
   );
   const usesHoverFlyout =
     window.innerWidth >= 520 &&
@@ -210,7 +213,8 @@ export function ResourceContextMenu({
     Number(Boolean(onCopyAbsolutePath)) +
     Number(Boolean(onCopyFilePath)) +
     Number(Boolean(onCopyViewerLink)) +
-    Number(Boolean(onCopyContents));
+    Number(Boolean(onCopyContents)) +
+    Number(Boolean(onCopyRenderedContents));
 
   // The right-click that opened this menu came from a link that was almost
   // certainly showing its hover tooltip, and the pointer then holds still — so
@@ -367,6 +371,16 @@ export function ResourceContextMenu({
             >
               <CopyActionLabel>
                 {t("fileLinkMenuCopyContents" as never)}
+              </CopyActionLabel>
+            </FilePathContextMenuItem>
+          ) : null}
+          {onCopyRenderedContents ? (
+            <FilePathContextMenuItem
+              onHover={usesHoverFlyout ? () => setPanel("root") : undefined}
+              onSelect={() => select(onCopyRenderedContents)}
+            >
+              <CopyActionLabel>
+                {t("fileLinkMenuCopyRenderedContents" as never)}
               </CopyActionLabel>
             </FilePathContextMenuItem>
           ) : null}

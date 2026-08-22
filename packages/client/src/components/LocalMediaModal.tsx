@@ -20,9 +20,17 @@ import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useInlineMedia } from "../hooks/useInlineMedia";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
-import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
+import {
+  writeClipboardRichTextLater,
+  writeClipboardText,
+  writeClipboardTextLater,
+} from "../lib/clipboard";
 import { downloadBlob, writeClipboardImageLater } from "../lib/imageActions";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
+import {
+  requireRenderedFileClipboardPayload,
+  requireRenderedHtmlClipboardPayload,
+} from "../lib/renderedFileClipboard";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { toSourceTransportApiPath } from "../lib/sourceTransportPaths";
 import {
@@ -976,6 +984,38 @@ function LocalResourceContextMenu({
                   localResourceApiPath(resource, false),
                   transport,
                 ).then(readBlobText),
+              );
+            }
+      }
+      onCopyRenderedContents={
+        isMedia || !hasPresentationChoice
+          ? undefined
+          : () => {
+              const { projectFileTarget, resource } = contextMenu;
+              if (projectFileTarget) {
+                void writeClipboardRichTextLater(
+                  api
+                    .getFile(
+                      projectFileTarget.projectId,
+                      projectFileTarget.filePath,
+                      true,
+                    )
+                    .then((file) =>
+                      requireRenderedFileClipboardPayload(
+                        projectFileTarget.filePath,
+                        file,
+                      ),
+                    ),
+                );
+                return;
+              }
+              void writeClipboardRichTextLater(
+                fetchLocalResourceBlob(
+                  localResourceApiPath(resource, true),
+                  transport,
+                )
+                  .then(readBlobText)
+                  .then(requireRenderedHtmlClipboardPayload),
               );
             }
       }

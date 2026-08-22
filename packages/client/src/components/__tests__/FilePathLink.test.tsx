@@ -611,6 +611,62 @@ describe("FilePathLink", () => {
     });
   });
 
+  it("copies rendered file contents as HTML and plain text", async () => {
+    const clipboardItems: Array<Record<string, Promise<Blob>>> = [];
+    class FakeClipboardItem {
+      constructor(data: Record<string, Promise<Blob>>) {
+        clipboardItems.push(data);
+      }
+    }
+    const write = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("ClipboardItem", FakeClipboardItem);
+    Object.assign(navigator, { clipboard: { write } });
+    const fetchFile = vi.fn(async (_input: RequestInfo | URL) => {
+      return new Response(
+        JSON.stringify({
+          metadata: {
+            path: "docs/guide.md",
+            size: 9,
+            mimeType: "text/markdown",
+            isText: true,
+          },
+          rawUrl: "",
+          content: "# Guide\n",
+          renderedMarkdownHtml: '<h1 class="rendered">Guide</h1>',
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    });
+    vi.stubGlobal("fetch", fetchFile);
+
+    render(
+      <I18nProvider>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          displayText="guide.md"
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: "guide.md" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Copy rendered contents" }),
+    );
+
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    expect(String(fetchFile.mock.calls[0]?.[0])).toContain("highlight=true");
+    await expect(clipboardItems[0]?.["text/html"]).resolves.toMatchObject({
+      type: "text/html",
+    });
+    await expect(clipboardItems[0]?.["text/plain"]).resolves.toMatchObject({
+      type: "text/plain",
+    });
+  });
+
   it("uses share-scoped file routes when rendered in a public share", () => {
     const projectId = toUrlProjectId("/local/graehl/yepanywhere");
 

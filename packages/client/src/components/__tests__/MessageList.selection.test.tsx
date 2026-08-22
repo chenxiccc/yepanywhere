@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import { UI_KEYS } from "../../lib/storageKeys";
+import { extractMarkdownSnippetsFromSelection } from "../../lib/markdownSelectionCopy";
 import {
   installMessageListTestEnvironment,
   SessionTranscriptHarness,
@@ -13,6 +14,7 @@ import {
   recapMessage,
   userMessage,
 } from "./MessageList.test-support";
+import { ActivityDetailModal } from "../ActivityDetailModal";
 import { MarkdownPreview } from "../MarkdownPreview";
 import { MessageList } from "../MessageList";
 import { Modal } from "../ui/Modal";
@@ -38,6 +40,21 @@ function QuoteableMarkdownModal() {
         <MarkdownPreview html="<h1>Modal heading</h1>" />
       </div>
     </Modal>
+  );
+}
+
+function SelectableActivityModal() {
+  const textRef = useQuoteableTextSource<HTMLParagraphElement>(
+    "Selectable run output",
+  );
+  return (
+    <ActivityDetailModal
+      title="Run output"
+      label="Run output"
+      onClose={() => {}}
+    >
+      <p ref={textRef}>Selectable run output</p>
+    </ActivityDetailModal>
   );
 }
 
@@ -626,6 +643,67 @@ describe("MessageList selection and copy", () => {
     fireEvent.click(quoteButton);
 
     expect(onQuoteSelection).toHaveBeenCalledWith("> Modal selected text\n");
+  });
+
+  it("opens the selection action circle after viewer select-all", async () => {
+    mockPointerCoarse(false);
+    const originalRangeRect = Object.getOwnPropertyDescriptor(
+      Range.prototype,
+      "getBoundingClientRect",
+    );
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        top: 100,
+        right: 300,
+        bottom: 120,
+        left: 100,
+        width: 200,
+        height: 20,
+        x: 100,
+        y: 100,
+        toJSON: () => ({}),
+      }),
+    });
+
+    try {
+      render(
+        <>
+          <MessageList
+            messages={[assistantMessage("assistant-1", "Transcript text")]}
+            onQuoteSelection={() => "> Selectable run output\n"}
+          />
+          <SelectableActivityModal />
+        </>,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+
+      const modal = document.querySelector<HTMLElement>(".modal");
+      expect(document.getSelection()?.toString()).toBe("Selectable run output");
+      expect(modal).toBeTruthy();
+      expect(extractMarkdownSnippetsFromSelection(modal!)).toMatchObject([
+        { markdown: "Selectable run output" },
+      ]);
+
+      const quoteButton = await screen.findByRole("button", {
+        name: "Quote reply",
+      });
+      expect(
+        quoteButton.closest('[data-selection-action-cluster="true"]'),
+      ).toBeTruthy();
+      expect(quoteButton.closest(".modal")).toBeTruthy();
+    } finally {
+      if (originalRangeRect) {
+        Object.defineProperty(
+          Range.prototype,
+          "getBoundingClientRect",
+          originalRangeRect,
+        );
+      } else {
+        Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+      }
+    }
   });
 
   it("keeps a modal selection fallback beside the range, not the tall source", async () => {

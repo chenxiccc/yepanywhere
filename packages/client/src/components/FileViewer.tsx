@@ -24,12 +24,17 @@ import { useRegisterQuoteableTextSource } from "../hooks/useQuoteableTextSource"
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
-import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
+import {
+  writeClipboardRichText,
+  writeClipboardText,
+  writeClipboardTextLater,
+} from "../lib/clipboard";
 import { createCommentAnchor } from "../lib/commentAnchors";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { downloadBlob } from "../lib/imageActions";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { getMarkdownSnippetForSubElement } from "../lib/markdownSelectionCopy";
+import { getRenderedFileClipboardPayload } from "../lib/renderedFileClipboard";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
 import {
   annotateShikiSourceOffsets,
@@ -74,10 +79,10 @@ import {
   FileViewerDensityControls,
   getSourceViewStyle,
   MarkdownPreview,
-  MarkdownViewToggle,
   useFileViewerDensity,
 } from "./MarkdownPreview";
 import { Modal } from "./ui/Modal";
+import { ViewerSelectAllButton } from "./ViewerSelectAllButton";
 
 export interface FileViewerSource {
   loadFile: (
@@ -539,6 +544,17 @@ export const FileViewer = memo(function FileViewer({
         )
       : fileData.renderedMarkdownHtml;
   }, [fileData, source]);
+  const renderedClipboardPayload = useMemo(
+    () =>
+      fileData
+        ? getRenderedFileClipboardPayload(
+            filePath,
+            fileData,
+            renderedMarkdownHtml ?? undefined,
+          )
+        : null,
+    [fileData, filePath, renderedMarkdownHtml],
+  );
   const highlightedHtml = useMemo(() => {
     const annotated = annotateHighlightedHtmlLines(
       fileData?.highlightedHtml,
@@ -721,6 +737,13 @@ export const FileViewer = memo(function FileViewer({
         .then((file) => file.content ?? ""),
     );
   }, [filePath, projectId, source]);
+  const handleCopyRenderedContentsFromMenu = useCallback(() => {
+    if (!renderedClipboardPayload) return;
+    void writeClipboardRichText(
+      renderedClipboardPayload.html,
+      renderedClipboardPayload.text,
+    );
+  }, [renderedClipboardPayload]);
 
   const displayPath = useMemo(
     () => makeDisplayPath(filePath, projectPath),
@@ -1142,13 +1165,16 @@ export const FileViewer = memo(function FileViewer({
           />
         )}
         {!diffActive && hasFilePreview && (
-          <MarkdownViewToggle
-            sourceLabel={t("fileViewerSource" as never)}
-            previewLabel={t("fileViewerPreview" as never)}
-            showPreview={showPreview}
-            onShowSource={() => setShowPreview(false)}
-            onShowPreview={() => setShowPreview(true)}
-          />
+          <button
+            type="button"
+            className={`file-viewer-action ${viewerStyles.rawToggle}`}
+            aria-label={t("fileViewerRawSource" as never)}
+            aria-pressed={!showPreview}
+            title={t("fileViewerRawSource" as never)}
+            onClick={() => setShowPreview((visible) => !visible)}
+          >
+            <RawSourceIcon />
+          </button>
         )}
         {!diffActive && metadata?.isText && content !== undefined && (
           <FileViewerDensityControls
@@ -1157,6 +1183,15 @@ export const FileViewer = memo(function FileViewer({
             canZoomOut={viewerDensity.canZoomOut}
             onZoomIn={viewerDensity.zoomIn}
             onZoomOut={viewerDensity.zoomOut}
+          />
+        )}
+        {(diffActive ||
+          (!isImage &&
+            content !== undefined &&
+            !(showPreview && hasHtmlPreview))) && (
+          <ViewerSelectAllButton
+            className="file-viewer-action"
+            contentRef={fileViewerBodyRef}
           />
         )}
         {!diffActive && content !== undefined && (
@@ -1295,6 +1330,11 @@ export const FileViewer = memo(function FileViewer({
             )
           }
           onCopyContents={handleCopyContentsFromMenu}
+          onCopyRenderedContents={
+            renderedClipboardPayload
+              ? handleCopyRenderedContentsFromMenu
+              : undefined
+          }
         />
       )}
       {localResourceContextMenu}
@@ -1342,6 +1382,24 @@ export const FileViewer = memo(function FileViewer({
 });
 
 // Icons
+function RawSourceIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4M9.5 2.5l-3 11" />
+    </svg>
+  );
+}
+
 function CopyIcon() {
   return (
     <svg

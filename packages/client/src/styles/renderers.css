@@ -4608,13 +4608,6 @@ pre.code-highlighter-plain code {
   background: var(--bg-secondary);
 }
 
-.file-viewer-actions .markdown-view-toggle {
-  margin-right: 0.125rem;
-  padding: 0;
-  border-bottom: none;
-  background: transparent;
-}
-
 .markdown-view-toggle .toggle-btn {
   padding: 0.375rem 0.75rem;
   border: 1px solid var(--border-color);
@@ -4623,11 +4616,6 @@ pre.code-highlighter-plain code {
   font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.15s ease;
-}
-
-.file-viewer-actions .markdown-view-toggle .toggle-btn {
-  padding: 0.25rem 0.55rem;
-  font-size: var(--font-size-xs);
 }
 
 .markdown-view-toggle .toggle-btn:first-child {

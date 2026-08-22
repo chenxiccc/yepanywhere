@@ -185,41 +185,6 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
   },
 );
 
-interface MarkdownViewToggleProps {
-  onShowPreview: () => void;
-  onShowSource: () => void;
-  previewLabel: string;
-  showPreview: boolean;
-  sourceLabel: string;
-}
-
-export function MarkdownViewToggle({
-  onShowPreview,
-  onShowSource,
-  previewLabel,
-  showPreview,
-  sourceLabel,
-}: MarkdownViewToggleProps) {
-  return (
-    <div className="markdown-view-toggle">
-      <button
-        type="button"
-        className={`toggle-btn ${!showPreview ? "active" : ""}`}
-        onClick={onShowSource}
-      >
-        {sourceLabel}
-      </button>
-      <button
-        type="button"
-        className={`toggle-btn ${showPreview ? "active" : ""}`}
-        onClick={onShowPreview}
-      >
-        {previewLabel}
-      </button>
-    </div>
-  );
-}
-
 interface FileViewerDensityControlsProps {
   canZoomIn: boolean;
   canZoomOut: boolean;

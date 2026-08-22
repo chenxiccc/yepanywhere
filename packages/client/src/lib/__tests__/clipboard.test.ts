@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { writeClipboardRichText } from "../clipboard";
+import {
+  writeClipboardRichText,
+  writeClipboardRichTextLater,
+} from "../clipboard";
 
 describe("writeClipboardRichText", () => {
   afterEach(() => {
@@ -55,5 +58,39 @@ describe("writeClipboardRichText", () => {
       writeClipboardRichText("<strong>Rich</strong>", "Rich"),
     ).resolves.toBe(true);
     expect(writeText).toHaveBeenCalledWith("Rich");
+  });
+
+  it("starts a deferred rich write during the selecting gesture", async () => {
+    let resolvePayload!: (value: { html: string; text: string }) => void;
+    const payload = new Promise<{ html: string; text: string }>((resolve) => {
+      resolvePayload = resolve;
+    });
+    const clipboardItems: Array<Record<string, Promise<Blob>>> = [];
+    class FakeClipboardItem {
+      constructor(data: Record<string, Promise<Blob>>) {
+        clipboardItems.push(data);
+      }
+    }
+    const write = vi.fn(async () => {});
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: FakeClipboardItem,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write },
+    });
+
+    const result = writeClipboardRichTextLater(payload);
+    expect(write).toHaveBeenCalledTimes(1);
+
+    resolvePayload({ html: "<strong>Rich</strong>", text: "Rich" });
+    await expect(result).resolves.toBe(true);
+    await expect(clipboardItems[0]?.["text/html"]).resolves.toMatchObject({
+      type: "text/html",
+    });
+    await expect(clipboardItems[0]?.["text/plain"]).resolves.toMatchObject({
+      type: "text/plain",
+    });
   });
 });

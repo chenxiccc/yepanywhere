@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useSyncExternalStore } from "react";
 
 interface SessionViewerBase {
@@ -13,6 +13,7 @@ export interface PanelViewerRegistration extends SessionViewerBase {
   kind: "panel";
   title: ReactNode;
   actions?: ReactNode;
+  contentRef?: RefObject<HTMLDivElement | null>;
   content: ReactNode;
 }
 

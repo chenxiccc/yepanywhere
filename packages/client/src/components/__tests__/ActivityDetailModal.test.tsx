@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../i18n";
 import {
@@ -75,6 +75,7 @@ function SessionHarness() {
 describe("ActivityDetailModal", () => {
   afterEach(() => {
     act(() => clearCurrentSessionViewer());
+    document.getSelection()?.removeAllRanges();
     cleanup();
   });
 
@@ -97,6 +98,41 @@ describe("ActivityDetailModal", () => {
         .getByRole("button", { name: "Copy file path" })
         .closest(".modal-header-actions"),
     ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Select all" })
+        .closest(".modal-header-actions"),
+    ).not.toBeNull();
+  });
+
+  it("selects the detail body from its toolbar or Ctrl+A", () => {
+    const onSelectionChange = vi.fn();
+    document.addEventListener("selectionchange", onSelectionChange);
+    render(
+      <I18nProvider>
+        <ActivityDetailModal
+          title="Run output"
+          label="Run output"
+          onClose={() => {}}
+        >
+          <p>Selectable run output</p>
+        </ActivityDetailModal>
+      </I18nProvider>,
+    );
+
+    const selectAll = screen.getByRole("button", { name: "Select all" });
+    fireEvent.click(selectAll);
+    expect(document.getSelection()?.toString()).toBe("Selectable run output");
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+
+    document.getSelection()?.removeAllRanges();
+    selectAll.focus();
+    expect(fireEvent.keyDown(selectAll, { key: "a", ctrlKey: true })).toBe(
+      false,
+    );
+    expect(document.getSelection()?.toString()).toBe("Selectable run output");
+
+    document.removeEventListener("selectionchange", onSelectionChange);
   });
 
   it("keeps one mounted detail subtree across parking and source removal", async () => {
@@ -107,6 +143,9 @@ describe("ActivityDetailModal", () => {
         ".modal-header-actions",
       ),
     ).not.toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Select all" }));
+    expect(document.getSelection()?.toString()).toBe("Detail count 0");
+    document.getSelection()?.removeAllRanges();
     fireEvent.click(
       await screen.findByRole("button", { name: "Detail count 0" }),
     );

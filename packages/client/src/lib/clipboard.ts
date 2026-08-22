@@ -32,6 +32,33 @@ export async function writeClipboardRichText(
 }
 
 /**
+ * Copy rich text whose rendered forms are still being assembled. As with
+ * writeClipboardTextLater, constructing ClipboardItem before awaiting keeps
+ * the selecting gesture's browser activation alive across a server fetch.
+ */
+export async function writeClipboardRichTextLater(
+  payload: Promise<{ html: string; text: string }>,
+): Promise<boolean> {
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    const item = new ClipboardItem({
+      "text/html": payload.then(
+        ({ html }) => new Blob([html], { type: "text/html" }),
+      ),
+      "text/plain": payload.then(
+        ({ text }) => new Blob([text], { type: "text/plain" }),
+      ),
+    });
+    try {
+      await navigator.clipboard.write([item]);
+      return true;
+    } catch {
+      return writeResolvedClipboardRichText(payload);
+    }
+  }
+  return writeResolvedClipboardRichText(payload);
+}
+
+/**
  * Copy text that is not available yet (it arrives from a server round-trip).
  * Passing the pending value as a Promise lets us invoke navigator.clipboard
  * .write() synchronously inside the click handler, so the browser captures the
@@ -68,6 +95,17 @@ async function writeResolvedClipboardText(
 ): Promise<boolean> {
   try {
     return await writeClipboardText(await text);
+  } catch {
+    return false;
+  }
+}
+
+async function writeResolvedClipboardRichText(
+  payload: Promise<{ html: string; text: string }>,
+): Promise<boolean> {
+  try {
+    const { html, text } = await payload;
+    return await writeClipboardRichText(html, text);
   } catch {
     return false;
   }

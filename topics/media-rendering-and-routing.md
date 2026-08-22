@@ -141,14 +141,21 @@ vocabulary even though their authorization routes remain distinct:
 - HTML is source-first. Its explicit Preview is a client-owned `srcdoc`
   document under an empty iframe sandbox, no-referrer policy, and restrictive
   meta CSP. Markdown remains preview-first and may be opened as source. Both
-  representations remain toggleable inside the project `FileViewer`; the
-  local-file modal takes its initial representation from the context menu in
-  this first convergence step.
+  representations remain toggleable inside the project `FileViewer` through
+  one **Raw source** icon button whose pressed state means the source is
+  showing; the local-file modal takes its initial representation from the
+  context menu in this first convergence step.
 - Copy actions are direct root-menu rows with a copy glyph and a full command
   label: **Copy project-relative path**, **Copy absolute file path**, **Copy
   file path** when the client cannot classify it more strongly, **Copy viewer
-  link**, and **Copy contents**. Only available, non-duplicate coordinates
-  appear; copying never requires entering a second panel.
+  link**, **Copy contents**, and, for files with a static preview, **Copy
+  rendered contents**. **Copy contents** writes the authored source bytes as
+  plain text. **Copy rendered contents** runs the existing static render path
+  without navigating or mounting active content, then writes semantic
+  `text/html` plus the same result's visible `text/plain`. Presentation-only
+  attributes, scripts, stylesheet elements, and event handlers are absent from
+  that clipboard HTML. Only available, non-duplicate coordinates appear;
+  copying never requires entering a second panel.
 - **Viewer link** means a stable YA application viewer route. A raw
   `/api/local-file` or project raw-file response is never presented as a
   viewer link. Relay and direct clients therefore use the same meaning rather

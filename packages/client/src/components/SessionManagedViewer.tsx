@@ -1,6 +1,7 @@
 import {
   createContext,
   type ReactNode,
+  type RefObject,
   useContext,
   useEffect,
   useId,
@@ -18,6 +19,7 @@ interface SessionManagedPanelProps {
   sessionId: string;
   title: ReactNode;
   actions?: ReactNode;
+  contentRef?: RefObject<HTMLDivElement | null>;
   label: string;
   briefLabel?: string;
   children: ReactNode;
@@ -36,6 +38,7 @@ export function SessionManagedPanel({
   sessionId,
   title,
   actions,
+  contentRef,
   label,
   briefLabel,
   children,
@@ -61,6 +64,7 @@ export function SessionManagedPanel({
       sessionId,
       title,
       actions,
+      contentRef,
       label,
       briefLabel,
       content: children,
@@ -68,7 +72,16 @@ export function SessionManagedPanel({
         if (mountedRef.current) onCloseRef.current();
       },
     });
-  }, [actions, briefLabel, children, label, sessionId, title, viewerId]);
+  }, [
+    actions,
+    briefLabel,
+    children,
+    contentRef,
+    label,
+    sessionId,
+    title,
+    viewerId,
+  ]);
 
   return null;
 }
@@ -128,6 +141,7 @@ export function SessionManagedPanelHost({
     <Modal
       title={panel.title}
       actions={panel.actions}
+      contentRef={panel.contentRef}
       onClose={panel.close}
       onMinimize={panel.minimize}
       minimized={panel.minimized || inactive}

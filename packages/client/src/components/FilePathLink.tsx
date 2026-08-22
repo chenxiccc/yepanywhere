@@ -18,8 +18,13 @@ import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../lib/appHref";
-import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
+import {
+  writeClipboardRichTextLater,
+  writeClipboardText,
+  writeClipboardTextLater,
+} from "../lib/clipboard";
 import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../lib/markdownSelectionCopy";
+import { requireRenderedFileClipboardPayload } from "../lib/renderedFileClipboard";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useFileViewerController } from "../lib/fileViewerController";
 import {
@@ -257,6 +262,16 @@ export const FilePathLink = memo(function FilePathLink({
       : api.getFile(projectId, viewerFilePath);
     void writeClipboardTextLater(loadFile.then((file) => file.content ?? ""));
   }, [projectId, publicShareFileViewerSource, viewerFilePath]);
+  const handleCopyRenderedContentsFromMenu = useCallback(() => {
+    const loadFile = publicShareFileViewerSource
+      ? publicShareFileViewerSource.loadFile(projectId, viewerFilePath, true)
+      : api.getFile(projectId, viewerFilePath, true);
+    void writeClipboardRichTextLater(
+      loadFile.then((file) =>
+        requireRenderedFileClipboardPayload(viewerFilePath, file),
+      ),
+    );
+  }, [projectId, publicShareFileViewerSource, viewerFilePath]);
 
   // Format the display text
   const fileName = showFullPath ? filePath : getPathBasename(filePath);
@@ -328,6 +343,11 @@ export const FilePathLink = memo(function FilePathLink({
             fileViewUrl ? handleCopyViewerLinkFromMenu : undefined
           }
           onCopyContents={handleCopyContentsFromMenu}
+          onCopyRenderedContents={
+            hasPresentationChoice
+              ? handleCopyRenderedContentsFromMenu
+              : undefined
+          }
         />
       )}
       {showModal && (

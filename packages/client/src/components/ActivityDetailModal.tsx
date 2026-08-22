@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import {
   SessionManagedPanel,
   useSessionViewerSessionId,
 } from "./SessionManagedViewer";
 import { Modal } from "./ui/Modal";
+import { ViewerSelectAllButton } from "./ViewerSelectAllButton";
 
 interface ActivityDetailModalProps {
   title: ReactNode;
@@ -27,10 +28,25 @@ export function ActivityDetailModal({
   onClose,
 }: ActivityDetailModalProps) {
   const sessionId = useSessionViewerSessionId();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const headerActions = (
+    <>
+      {actions}
+      <ViewerSelectAllButton
+        className="source-detail-action source-detail-icon-action"
+        contentRef={contentRef}
+      />
+    </>
+  );
 
   if (!sessionId) {
     return (
-      <Modal title={title} actions={actions} onClose={onClose}>
+      <Modal
+        title={title}
+        actions={headerActions}
+        contentRef={contentRef}
+        onClose={onClose}
+      >
         {children}
       </Modal>
     );
@@ -40,7 +56,8 @@ export function ActivityDetailModal({
     <SessionManagedPanel
       sessionId={sessionId}
       title={title}
-      actions={actions}
+      actions={headerActions}
+      contentRef={contentRef}
       label={label}
       briefLabel={briefLabel}
       onClose={onClose}

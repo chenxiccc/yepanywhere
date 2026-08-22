@@ -30,7 +30,7 @@ context actions and source-cited new-session transfer landed 2026-08-13;
 exact formatted-source selection and activity-overlay placement landed
 2026-08-14; mobile long-press selection ownership restored 2026-08-15;
 session-file Markdown block clicks and live-drag deferral landed
-2026-08-20.**
+2026-08-20; viewer toolbar select-all landed 2026-08-22.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -224,6 +224,12 @@ The quote block itself:
   composer visible directly below its reading region; other modal surfaces may
   still place it behind the modal. Modal headers, buttons, labels, and other
   unregistered chrome remain ineligible.
+- Textual file viewers and expanded activity details expose **Select all** in
+  their top toolbar. It and viewer-scoped `Ctrl/Cmd+A` create a native range
+  across the content body, which publishes through the same
+  `selectionchange` path and therefore shows the ordinary floating selection
+  actions. An input, textarea, select, or editable region keeps native
+  `Ctrl/Cmd+A`; a viewer that does not own focus does not intercept it.
 - While a primary pointer is dragging a selection, selection controls remain
   absent and do not chase the changing range. Pointer release publishes the
   completed range once, including for upward drags. Keyboard and programmatic

@@ -1,7 +1,8 @@
 # File Viewer Action Modes
 
 Status: implemented and verified on 2026-08-09; copy layout revised on
-2026-08-13.
+2026-08-13; rendered copy, viewer select-all, and the compact raw-source
+toggle added on 2026-08-22.
 
 Topic: media-rendering-and-routing
 Topic: active-content-security
@@ -33,7 +34,8 @@ ownership discovery, a new viewer route, or an executable-content service.
 - Copy variants are direct top-level commands with a copy glyph and precise
   labels: **Copy project-relative path**, **Copy absolute file path**, **Copy
   file path** when the stronger classification is unavailable, **Copy viewer
-  link**, and **Copy contents**.
+  link**, **Copy contents**, and **Copy rendered contents** when a static
+  preview exists.
 - A **Viewer link** is a stable YA application route. A raw API URL is not
   relabeled or copied as a viewer link.
 - The Source/Preview panel is selected rather than hover-only, so the same
@@ -43,6 +45,9 @@ ownership discovery, a new viewer route, or an executable-content service.
 - Ordinary Markdown behavior remains preview-first. Ordinary HTML behavior is
   source-first. An explicit HTML preview stays scriptless and opaque-origin;
   selecting Preview never navigates to the raw file response.
+- Inside the file viewer, one **Raw source** icon replaces the labeled
+  Source/Preview switch. Its pressed state shows source; its unpressed state
+  shows the preview.
 - Images and other single-presentation resources do not acquire a meaningless
   source/preview choice.
 
@@ -95,8 +100,13 @@ applications.
   no-referrer policy.
 - Copy labels distinguish path coordinates from stable viewer links, and raw
   local API URLs are absent from the menu.
-- Desktop and phone-width captures show usable flat copy rows and the
-  Source/Preview panel.
+- **Copy rendered contents** writes semantic HTML plus visible plain text from
+  the existing safe preview pipeline without opening that preview.
+- Textual file and activity-detail viewers put **Select all** in the top
+  toolbar; `Ctrl/Cmd+A` invokes it within the viewer and the resulting native
+  selection activates the existing floating selection actions.
+- Desktop and phone-width captures show usable flat copy rows, the context
+  menu's Source/Preview panel, and the viewer toolbar's raw-source icon.
 - Desktop **Open** hover opens the adjacent flyout without a click; click/tap
   remains a complete path through the same presentation actions.
 - Focused tests, lint, formatting, typecheck, and CSS checks pass. Advisory
@@ -146,3 +156,18 @@ menu command with a copy glyph and a full **Copy …** label. **Open** retains i
 Source/Preview panel because those entries select one presentation mode rather
 than performing independent copy operations. Touch and narrow layouts use the
 same flat copy commands and retain **Back** only inside the Open panel.
+
+## Interaction follow-up — 2026-08-22
+
+Files with a static preview now add **Copy rendered contents** directly after
+**Copy contents**. It uses the same Markdown/static-HTML render output and
+places semantic HTML plus visible plain text on the clipboard without visibly
+opening a preview. Textual file viewers and the shared expanded
+Edit/Read/Run-style detail modal also add **Select all** to their top toolbar.
+The control and viewer-scoped `Ctrl/Cmd+A` create a native body selection, so
+the established floating copy/quote/new-session circles appear in their normal
+selection-relative placement.
+
+The file viewer's two-label Source/Preview toolbar switch is now one **Raw
+source** code icon. It is pressed only while source is showing, and toggling it
+returns to the rendered preview without changing HTML/Markdown default modes.
