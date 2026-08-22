@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,8 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuoteReplyProvider } from "../../contexts/QuoteReplyContext";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import { extractMarkdownSnippetsFromSelection } from "../../lib/markdownSelectionCopy";
 import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
+import { UI_KEYS } from "../../lib/storageKeys";
 import { FileViewer, type FileViewerSource } from "../FileViewer";
 
 const mocks = vi.hoisted(() => ({
@@ -636,6 +639,85 @@ describe("FileViewer", () => {
         selectedText: "Title",
       },
     ]);
+  });
+
+  it("keeps select-all active while standalone selection actions mount", async () => {
+    const originalRangeRect = Object.getOwnPropertyDescriptor(
+      Range.prototype,
+      "getBoundingClientRect",
+    );
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        top: 100,
+        right: 300,
+        bottom: 120,
+        left: 100,
+        width: 200,
+        height: 20,
+        x: 100,
+        y: 100,
+        toJSON: () => ({}),
+      }),
+    });
+    localStorage.setItem(UI_KEYS.selectionTextCopyActionEnabled, "true");
+    invalidateLocalStorageValues(UI_KEYS.selectionTextCopyActionEnabled);
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "notes.md",
+          size: 21,
+          mimeType: "text/markdown",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "# Title\n\nSelected text",
+        renderedMarkdownHtml: "<h1>Title</h1><p>Selected text</p>",
+      })),
+    };
+
+    try {
+      render(
+        <I18nProvider>
+          <FileViewer
+            projectId="project-id"
+            filePath="notes.md"
+            initialPresentation="preview"
+            source={source}
+            standalone
+          />
+        </I18nProvider>,
+      );
+
+      await screen.findByRole("heading", { name: "Title" });
+      const selectAll = screen.getByRole("button", { name: "Select all" });
+      expect(fireEvent.pointerDown(selectAll)).toBe(false);
+      await act(async () => {
+        fireEvent.click(selectAll);
+      });
+
+      const copyText = await screen.findByRole("button", {
+        name: "Copy text",
+      });
+      fireEvent.mouseMove(copyText);
+      expect(document.getSelection()?.toString()).toContain("Title");
+      expect(document.getSelection()?.toString()).toContain("Selected text");
+    } finally {
+      await act(async () => {
+        localStorage.removeItem(UI_KEYS.selectionTextCopyActionEnabled);
+        invalidateLocalStorageValues(UI_KEYS.selectionTextCopyActionEnabled);
+        document.getSelection()?.removeAllRanges();
+      });
+      if (originalRangeRect) {
+        Object.defineProperty(
+          Range.prototype,
+          "getBoundingClientRect",
+          originalRangeRect,
+        );
+      } else {
+        Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+      }
+    }
   });
 
   it("quotes a clicked rendered Markdown block into the session", async () => {

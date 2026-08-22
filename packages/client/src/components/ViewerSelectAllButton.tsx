@@ -97,6 +97,8 @@ export function ViewerSelectAllButton({
     <button
       type="button"
       className={className}
+      onMouseDown={(event) => event.preventDefault()}
+      onPointerDown={(event) => event.preventDefault()}
       onClick={selectAll}
       title={title}
       aria-label={label}

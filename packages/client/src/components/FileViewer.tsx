@@ -8,6 +8,7 @@ import {
   memo,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -449,21 +450,6 @@ export const FileViewer = memo(function FileViewer({
     },
     [projectId, startNewSessionWithPrefill],
   );
-  const {
-    floatingSelectionActions: standaloneSelectionActions,
-    selectionContextMenu: standaloneSelectionContextMenu,
-  } = useSelectionActions({
-    containerRef: fileViewerBodyRef,
-    inert: !standalone,
-    onStartNewSessionFromSelection:
-      publicShareContext === null ? startNewSessionFromSelection : undefined,
-    quoteClearSignal: 0,
-    isInteractiveTarget: (target) =>
-      target instanceof Element &&
-      target.closest(
-        "button, input, textarea, select, a[href], [contenteditable='true']",
-      ) !== null,
-  });
   const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const {
     modal: localMediaModal,
@@ -1339,13 +1325,21 @@ export const FileViewer = memo(function FileViewer({
       )}
       {localResourceContextMenu}
       {loadedIsImage ? imageActions.contextMenuElement : null}
-      {standaloneSelectionContextMenu}
       <div
         className={`file-viewer-body ${viewerStyles.body}`}
         ref={fileViewerBodyRef}
       >
-        {standaloneSelectionActions}
         {renderContent()}
+        {standalone ? (
+          <FileViewerSelectionActions
+            containerRef={fileViewerBodyRef}
+            onStartNewSessionFromSelection={
+              publicShareContext === null
+                ? startNewSessionFromSelection
+                : undefined
+            }
+          />
+        ) : null}
       </div>
       {localMediaModal ? (
         <LocalMediaModal
@@ -1380,6 +1374,34 @@ export const FileViewer = memo(function FileViewer({
     </div>
   );
 });
+
+function FileViewerSelectionActions({
+  containerRef,
+  onStartNewSessionFromSelection,
+}: {
+  containerRef: RefObject<HTMLDivElement | null>;
+  onStartNewSessionFromSelection?: (prefill: string) => void;
+}) {
+  const { floatingSelectionActions, selectionContextMenu } =
+    useSelectionActions({
+      containerRef,
+      inert: false,
+      onStartNewSessionFromSelection,
+      quoteClearSignal: 0,
+      isInteractiveTarget: (target) =>
+        target instanceof Element &&
+        target.closest(
+          "button, input, textarea, select, a[href], [contenteditable='true']",
+        ) !== null,
+    });
+
+  return (
+    <>
+      {floatingSelectionActions}
+      {selectionContextMenu}
+    </>
+  );
+}
 
 // Icons
 function RawSourceIcon() {

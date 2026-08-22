@@ -229,7 +229,10 @@ The quote block itself:
   across the content body, which publishes through the same
   `selectionchange` path and therefore shows the ordinary floating selection
   actions. An input, textarea, select, or editable region keeps native
-  `Ctrl/Cmd+A`; a viewer that does not own focus does not intercept it.
+  `Ctrl/Cmd+A`; a viewer that does not own focus does not intercept it. The
+  floating controls mount outside the content-owning render subtree, so their
+  appearance and pointer hover must not remount that content or collapse the
+  native selection before an action is reached.
 - While a primary pointer is dragging a selection, selection controls remain
   absent and do not chase the changing range. Pointer release publishes the
   completed range once, including for upward drags. Keyboard and programmatic
