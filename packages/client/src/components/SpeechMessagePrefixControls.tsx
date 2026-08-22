@@ -49,6 +49,9 @@ export function SpeechMessagePrefixControls({
           onChange={handlePrefixModeChange}
         >
           <option value="off">{t("commonOff")}</option>
+          <option value="microphone">
+            🎤 {t("appearanceToolbarCollapsedButtonMicrophone")}
+          </option>
           <option value="asr">[ASR]</option>
           <option value="stt">[STT]</option>
           <option value="dictation">[Dictation]</option>

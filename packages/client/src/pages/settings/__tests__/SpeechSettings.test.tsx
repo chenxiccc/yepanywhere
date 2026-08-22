@@ -40,11 +40,11 @@ const speechCaptureSettings = vi.hoisted(() => ({
   setFollowUpListenMs: vi.fn(),
   asrAttributionMs: 0,
   setAsrAttributionMs: vi.fn(),
-  speechMessagePrefixMode: "off" as const,
+  speechMessagePrefixMode: "microphone" as const,
   setSpeechMessagePrefixMode: vi.fn(),
   speechMessageCustomPrefix: "",
   setSpeechMessageCustomPrefix: vi.fn(),
-  speechMessagePrefix: null,
+  speechMessagePrefix: "🎤",
 }));
 const browserXaiKey = vi.hoisted(() => ({
   browserXaiSttApiKey: "",
@@ -169,11 +169,11 @@ describe("SpeechSettings", () => {
     );
   });
 
-  it("offers the default-off speech prefix selector", () => {
+  it("offers the microphone speech prefix by default", () => {
     render(<SpeechSettings />);
 
     const selector = screen.getByLabelText("speechSettingsMessagePrefixTitle");
-    expect((selector as HTMLSelectElement).value).toBe("off");
+    expect((selector as HTMLSelectElement).value).toBe("microphone");
     fireEvent.change(selector, { target: { value: "stt" } });
     expect(
       speechCaptureSettings.setSpeechMessagePrefixMode,

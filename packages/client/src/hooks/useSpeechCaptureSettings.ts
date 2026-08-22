@@ -10,13 +10,18 @@ export const MAX_SPEECH_MESSAGE_CUSTOM_PREFIX_LENGTH = 64;
 
 export type SpeechMessagePrefixMode =
   | "off"
+  | "microphone"
   | "asr"
   | "stt"
   | "dictation"
   | "custom";
 
+export const DEFAULT_SPEECH_MESSAGE_PREFIX_MODE: SpeechMessagePrefixMode =
+  "microphone";
+
 const SPEECH_MESSAGE_PREFIX_MODES = new Set<SpeechMessagePrefixMode>([
   "off",
+  "microphone",
   "asr",
   "stt",
   "dictation",
@@ -80,10 +85,11 @@ export function getSpeechAsrAttributionMsSetting(): number {
 }
 
 export function getSpeechMessagePrefixModeSetting(): SpeechMessagePrefixMode {
-  if (!canUseLocalStorage()) return "off";
+  if (!canUseLocalStorage()) return DEFAULT_SPEECH_MESSAGE_PREFIX_MODE;
   const stored = globalThis.localStorage.getItem(
     UI_KEYS.speechMessagePrefixMode,
   );
+  if (stored === null) return DEFAULT_SPEECH_MESSAGE_PREFIX_MODE;
   return SPEECH_MESSAGE_PREFIX_MODES.has(stored as SpeechMessagePrefixMode)
     ? (stored as SpeechMessagePrefixMode)
     : "off";
@@ -111,6 +117,7 @@ export function resolveSpeechMessagePrefix(
   mode: SpeechMessagePrefixMode,
   customPrefix: string,
 ): string | null {
+  if (mode === "microphone") return "🎤";
   if (mode === "asr") return "[ASR]";
   if (mode === "stt") return "[STT]";
   if (mode === "dictation") return "[Dictation]";

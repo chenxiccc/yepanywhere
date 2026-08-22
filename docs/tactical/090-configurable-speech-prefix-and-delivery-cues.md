@@ -3,7 +3,7 @@
 Topic: mic-button-speech-ui
 Topic: vanilla-defaults
 
-Status: Implemented 2026-08-05.
+Status: Implemented 2026-08-05. Default amended to `🎤` 2026-08-22.
 
 ## Goal
 
@@ -23,8 +23,8 @@ Related contracts:
 - [`topics/mic-button-speech-ui.md`](../../topics/mic-button-speech-ui.md) —
   composer insertion, delivery timing, speech commands, and current `[ASR]`
   behavior;
-- [`topics/vanilla-defaults.md`](../../topics/vanilla-defaults.md) — novel
-  provider-bound text transforms are explicit and default-off; and
+- [`topics/vanilla-defaults.md`](../../topics/vanilla-defaults.md) — records
+  the deliberate default-on `🎤` provider-text exception; and
 - [`topics/pluggable-speech-recognition.md`](../../topics/pluggable-speech-recognition.md)
   — browser-native and configured STT backend boundaries.
 
@@ -48,13 +48,14 @@ payload decoration, and cue rendering need one shared decision.
 
 ## Agreed behavior
 
-### Configurable prefix, default Off
+### Configurable prefix, default `🎤`
 
 Add one browser-local **Speech message prefix** selector:
 
 | Choice | Provider-bound prefix |
 | --- | --- |
-| **Off** (default) | none |
+| **`🎤`** (default) | `🎤` plus one separating space |
+| **Off** | none |
 | **`[ASR]`** | `[ASR]` |
 | **`[STT]`** | `[STT]` |
 | **`[Dictation]`** | `[Dictation]` |
@@ -104,8 +105,9 @@ does not consume it. One successful eligible delivery consumes it. With the
 timer at `0`, browser-native Web Speech followed by a manual click gets neither
 a prefix nor a prefix cue.
 
-No migration is required. The new prefix selection defaults to Off. The
-existing timer stays as configured but has no effect while prefixing is Off.
+No migration is required. Browsers without a stored selection default to
+`🎤`; explicit stored choices remain unchanged. The existing timer stays as
+configured but has no effect while prefixing is Off.
 
 ### Spoken and manual send are ordinary deliveries
 
@@ -237,8 +239,9 @@ Overview** near the top of
 7. stop, cancellation, failure, and visible feedback.
 
 Update the detailed prefix section so it no longer promises unconditional
-`[ASR]`. Reconcile `topics/vanilla-defaults.md`: the prefix is now an explicit
-default-off preference rather than a default-on exception. Keep backend
+`[ASR]`. Reconcile `topics/vanilla-defaults.md`: the prefix is an explicit
+configurable preference, with its current `🎤` default recorded as a product
+exception. Keep backend
 plumbing in `pluggable-speech-recognition.md` instead of duplicating it.
 
 ## Acceptance

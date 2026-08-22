@@ -42,9 +42,10 @@ capture live after the endpoint so resumed speech reclaims the turn. Optional
 follow-up listening can start another streaming transaction after a speech-
 triggered delivery.
 
-The browser-local **Speech message prefix** setting is Off by default. When
-enabled, it can prepend `[ASR]`, `[STT]`, `[Dictation]`, or a custom one-line
-prefix to warn the agent that submitted text may contain transcription errors.
+The browser-local **Speech message prefix** setting defaults to `🎤`. It can
+instead prepend `[ASR]`, `[STT]`, `[Dictation]`, a custom one-line prefix, or
+nothing when Off. The prefix warns the agent that submitted text may contain
+transcription errors.
 Speech-triggered delivery always uses the selected prefix. The optional 0–5000
 ms **Quick-send speech-prefix window** extends it to one rapid manual delivery
 after finalized speech. Every visible delivery cue is derived from the same
@@ -359,9 +360,9 @@ Current streaming command semantics:
   idle warm stream remains. Only a streaming backend that advertises Smart
   Turn can use this option.
 
-The browser-local **Speech message prefix** selector is Off by default. Its
-presets are `[ASR]`, `[STT]`, and `[Dictation]`; Custom accepts one trimmed,
-non-empty line up to 64 characters and adds no brackets. An enabled prefix is
+The browser-local **Speech message prefix** selector defaults to the `🎤`
+preset. Its other presets are `[ASR]`, `[STT]`, and `[Dictation]`; Custom
+accepts one trimmed, non-empty line up to 64 characters and adds no brackets. An enabled prefix is
 added only to the provider-bound message, never the editable draft, to tell the
 agent that the text may contain speech-recognition errors. The preference is
 backend-independent: browser-native Web Speech and configured STT backends use

@@ -19,14 +19,15 @@ import { UI_KEYS } from "../storageKeys";
 describe("speech message prefixes", () => {
   afterEach(() => localStorage.clear());
 
-  it("defaults to Off and rejects unknown stored modes", () => {
-    expect(getSpeechMessagePrefixModeSetting()).toBe("off");
+  it("defaults to the microphone prefix and rejects unknown stored modes", () => {
+    expect(getSpeechMessagePrefixModeSetting()).toBe("microphone");
     localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "unexpected");
     expect(getSpeechMessagePrefixModeSetting()).toBe("off");
   });
 
   it.each([
     ["off", null],
+    ["microphone", "🎤"],
     ["asr", "[ASR]"],
     ["stt", "[STT]"],
     ["dictation", "[Dictation]"],
@@ -83,6 +84,7 @@ describe("speech message prefixes", () => {
   });
 
   it("decorates once and exposes concise preset cue labels", () => {
+    expect(prependSpeechMessagePrefix("hello", "🎤")).toBe("🎤 hello");
     expect(prependSpeechMessagePrefix("  hello  ", "[Dictation]")).toBe(
       "[Dictation] hello",
     );

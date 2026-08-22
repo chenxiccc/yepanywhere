@@ -2906,7 +2906,7 @@ describe("MessageInput", () => {
   });
 
   it("shows no speech prefix cue and sends verbatim when prefixing is Off", async () => {
-    window.localStorage.removeItem(UI_KEYS.speechMessagePrefixMode);
+    window.localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "off");
     window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "1000");
     const onSend = vi.fn();
     renderMessageInput(vi.fn(), {
@@ -3023,7 +3023,8 @@ describe("MessageInput", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("auto-sends when only speech (not manual typing) filled the draft", async () => {
+  it("auto-sends with the default microphone prefix for a speech-only draft", async () => {
+    window.localStorage.removeItem(UI_KEYS.speechMessagePrefixMode);
     const onSend = vi.fn();
     const textarea = renderMessageInput(vi.fn(), {
       onSend,
@@ -3040,7 +3041,7 @@ describe("MessageInput", () => {
       });
     });
     await waitFor(() => {
-      expectSubmission(onSend, "[ASR] Ship it.", "direct");
+      expectSubmission(onSend, "🎤 Ship it.", "direct");
       expect(textarea.value).toBe("");
     });
   });
