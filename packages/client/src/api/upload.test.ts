@@ -34,6 +34,7 @@ class MockWebSocket implements WebSocketLike {
 
   // biome-ignore lint/suspicious/noExplicitAny: Test helper needs flexibility
   private listeners = new Map<string, Set<(ev: any) => void>>();
+  private sendWaiters = new Set<{ count: number; resolve: () => void }>();
 
   constructor(public url: string) {
     // Simulate async open
@@ -46,6 +47,23 @@ class MockWebSocket implements WebSocketLike {
   send(data: string | ArrayBuffer | Uint8Array): void {
     this.sentMessages.push(data);
     this.onSend?.(data);
+    for (const waiter of this.sendWaiters) {
+      if (this.sentMessages.length >= waiter.count) {
+        this.sendWaiters.delete(waiter);
+        waiter.resolve();
+      }
+    }
+  }
+
+  /**
+   * Resolve once at least `count` messages have been sent. Event-driven wait
+   * for the open/start handshake; a fixed sleep raced CI-loaded event loops.
+   */
+  waitForSentMessages(count: number): Promise<void> {
+    if (this.sentMessages.length >= count) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.sendWaiters.add({ count, resolve });
+    });
   }
 
   close(_code?: number, _reason?: string): void {
@@ -137,8 +155,8 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    // Wait for connection and messages
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait for the full start/chunks/end handshake
+    await mockWs.waitForSentMessages(4);
 
     // Verify start message
     expect(mockWs.sentMessages.length).toBeGreaterThan(0);
@@ -168,7 +186,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     // Should have: start, chunk1, chunk2, end
     expect(mockWs.sentMessages.length).toBe(4);
@@ -209,13 +227,15 @@ describe("uploadChunks", () => {
       }
     };
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Pin to the chunk-1 send so the 15ms probe sits well inside the mock's
+    // 35ms buffered window regardless of how slowly the handshake started.
+    await mockWs.waitForSentMessages(2);
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(
       mockWs.sentMessages.filter((msg) => msg instanceof Uint8Array),
     ).toHaveLength(1);
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await mockWs.waitForSentMessages(4);
     expect(
       mockWs.sentMessages.filter((msg) => msg instanceof Uint8Array),
     ).toHaveLength(2);
@@ -239,7 +259,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     // Simulate progress
     mockWs.simulateMessage({
@@ -271,7 +291,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     mockWs.simulateMessage({ type: "complete", file: testFile });
 
@@ -288,7 +308,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     const startMsg = JSON.parse(mockWs.sentMessages[0] as string);
     expect(startMsg).toEqual({
@@ -317,7 +337,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     mockWs.simulateMessage({
       type: "error",
@@ -343,7 +363,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     controller.abort();
 
@@ -386,7 +406,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     mockWs.simulateError();
 
@@ -406,7 +426,7 @@ describe("uploadChunks", () => {
       createMockWebSocket,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await mockWs.waitForSentMessages(4);
 
     mockWs.simulateClose(1006, "Connection lost");
 
