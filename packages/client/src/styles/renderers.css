@@ -1580,13 +1580,9 @@ details[open] .collapsible__icon {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-secondary, var(--text-muted));
-  /* The preview budget is visual (wrapped) lines, so the clamp — not a
-     fixed max-height or a character cut — decides where display stops.
-     The count comes from the output-preview-lines appearance setting. */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--bash-preview-line-count, 4);
-  line-clamp: var(--bash-preview-line-count, 4);
+  /* Height clipping preserves native text selection; Chromium does not form
+     mouse selections inside a line-clamped pre. */
+  max-height: calc(1.4em * var(--bash-preview-line-count, 4));
   overflow: hidden;
 }
 
@@ -3692,11 +3688,8 @@ details[open] .collapsible__icon {
   color: var(--text-secondary, var(--text-muted));
   white-space: pre-wrap;
   word-break: break-word;
-  /* Like the shell preview, the visual clamp decides where display stops. */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--webrun-preview-line-count, 4);
-  line-clamp: var(--webrun-preview-line-count, 4);
+  /* Height clipping keeps the collapsed text natively selectable. */
+  max-height: calc(var(--webrun-preview-line-count, 4) * 1lh);
   overflow: hidden;
 }
 

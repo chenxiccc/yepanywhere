@@ -215,3 +215,67 @@ test("places activity selection actions beside the selected range", async ({
   expect(clusterBox.y).toBeLessThanOrEqual(geometry.selectedBottom + 60);
   expect(geometry.sourceBottom - clusterBox.y).toBeGreaterThan(250);
 });
+
+test("keeps a backward drag selected in a collapsed activity preview", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await page.goto(`/projects/${projectId}/sessions/activity-selection-001`);
+  await page.locator(".conversation-activity-summary").click();
+  const preview = page.locator(".bash-collapsed-preview");
+  await expect(preview).toBeVisible();
+  const output = preview.locator(".bash-preview-output pre").first();
+  const { start, end } = await output.evaluate((element) => {
+    const text = document
+      .createTreeWalker(element, NodeFilter.SHOW_TEXT)
+      .nextNode() as Text | null;
+    if (!text) throw new Error("Collapsed activity output has no text");
+    const point = (offset: number, horizontalBias: number) => {
+      const range = document.createRange();
+      range.setStart(text, offset);
+      range.setEnd(text, offset + 1);
+      const rect = range.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width * horizontalBias,
+        y: rect.top + rect.height / 2,
+      };
+    };
+    const start = point(text.data.indexOf("near bottom") + 5, 0.8);
+    const end = point(text.data.indexOf("anchor") + 2, 0.2);
+    return {
+      start,
+      end,
+    };
+  });
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 12; step += 1) {
+    await page.mouse.move(
+      start.x + ((end.x - start.x) * step) / 12,
+      start.y + ((end.y - start.y) * step) / 12,
+    );
+    await page.waitForTimeout(30);
+  }
+  await expect
+    .poll(() => page.evaluate(() => document.getSelection()?.isCollapsed))
+    .toBe(false);
+  await page.mouse.up();
+
+  await expect(page.locator(".modal")).not.toBeVisible();
+  await expect
+    .poll(() =>
+      output.evaluate((element) => {
+        const selection = document.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+          return false;
+        }
+        const range = selection.getRangeAt(0);
+        return (
+          element.contains(range.startContainer) &&
+          element.contains(range.endContainer)
+        );
+      }),
+    )
+    .toBe(true);
+});

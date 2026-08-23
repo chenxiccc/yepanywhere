@@ -9,9 +9,9 @@ import { useCallback, useState } from "react";
  * prose font).
  */
 
-/** Character budget per preview line. Display truncation is the CSS
- * line-clamp (which counts wrapped visual lines); this only bounds how much
- * text enters the DOM, so it must exceed any plausible visual line width. */
+/** Character budget per preview line. CSS height clipping counts wrapped
+ * visual lines; this only bounds how much text enters the DOM, so it must
+ * exceed any plausible visual line width. */
 export const PREVIEW_MAX_CHARS_PER_LINE = 320;
 
 export function getPreviewLimits(lineCount: number): {

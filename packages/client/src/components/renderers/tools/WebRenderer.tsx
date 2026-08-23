@@ -5,6 +5,7 @@ import {
   useTextTooltipAttributes,
   useVisibilityAwareTextTooltip,
 } from "../../../hooks/useTooltipAppearance";
+import { selectionIntersectsElement } from "../../../lib/domSelection";
 import { ActivityDetailModal } from "../../ActivityDetailModal";
 import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
 import {
@@ -26,7 +27,7 @@ const MAX_TOOLTIP_PAGES = 20;
  * provider's text blob into CodexWebRunResult; page content is prose, so it
  * renders in the prose output font rather than the code font, while the
  * collapsed preview mirrors the shell-output affordances (first-N-lines
- * clamp, tail tooltip, +N badge, copy button, click-for-full-content modal).
+ * clip, tail tooltip, +N badge, copy button, click-for-full-content modal).
  */
 interface WebSearchQueryOp {
   q?: string;
@@ -309,6 +310,9 @@ function WebCollapsedPreview({
   const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as Element | null;
     if (target?.closest?.("button,a")) {
+      return;
+    }
+    if (selectionIntersectsElement(event.currentTarget)) {
       return;
     }
     setIsModalOpen(true);

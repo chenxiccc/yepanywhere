@@ -1417,6 +1417,66 @@ describe("MessageList scroll and follow", () => {
     expect(container.scrollTop).toBe(320);
   });
 
+  it("lets a transcript selection cancel live follow before resize catch-up", () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    class CapturingResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: CapturingResizeObserver,
+    });
+
+    const onFollowingBottomChange = vi.fn();
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        onFollowingBottomChange={onFollowingBottomChange}
+      />,
+    );
+    let scrollHeight = 1000;
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    container.scrollTo = vi.fn((options: ScrollToOptions) => {
+      container.scrollTop = Number(options.top ?? 0);
+    }) as typeof container.scrollTo;
+    fireEvent.scroll(container);
+
+    const output = screen.getByText("current response");
+    const range = document.createRange();
+    range.selectNodeContents(output);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    act(() => document.dispatchEvent(new Event("selectionchange")));
+
+    scrollHeight = 1400;
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+
+    expect(container.scrollTop).toBe(500);
+    expect(onFollowingBottomChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("lets an upward scroll movement cancel live follow", async () => {
     const animationFrames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

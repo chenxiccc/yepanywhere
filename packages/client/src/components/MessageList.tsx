@@ -44,6 +44,7 @@ import {
   recordBrowserDebugPerformanceMetric,
 } from "../lib/browserDebugPerformance";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
+import { selectionIntersectsElement } from "../lib/domSelection";
 import { getMessageId } from "../lib/mergeMessages";
 import {
   formatCompactRelativeAge,
@@ -2902,8 +2903,9 @@ export const MessageList = memo(function MessageList({
     if (inert) {
       return;
     }
-    const container = containerRef.current?.parentElement;
-    if (!container) return;
+    const content = containerRef.current;
+    const container = content?.parentElement;
+    if (!content || !container) return;
 
     const handleWheel = (event: WheelEvent) => {
       if (event.deltaY < 0 && !isInteractiveScrollTarget(event.target)) {
@@ -2947,6 +2949,12 @@ export const MessageList = memo(function MessageList({
         // the explicit transcript gesture own subsequent native page keys
         // instead of leaving them attached to the composer or document body.
         container.focus({ preventScroll: true });
+      }
+    };
+
+    const handleSelectionChange = () => {
+      if (selectionIntersectsElement(content)) {
+        stopFollowingForUserScroll(container);
       }
     };
 
@@ -3002,6 +3010,7 @@ export const MessageList = memo(function MessageList({
       passive: true,
     });
     container.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("keydown", handleKeyDown, true);
 
     return () => {
@@ -3011,6 +3020,7 @@ export const MessageList = memo(function MessageList({
       container.removeEventListener("touchend", handleTouchEnd);
       container.removeEventListener("touchcancel", handleTouchEnd);
       container.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("keydown", handleKeyDown, true);
       if (keyboardOlderLoadFrameRef.current !== null) {
         cancelAnimationFrame(keyboardOlderLoadFrameRef.current);

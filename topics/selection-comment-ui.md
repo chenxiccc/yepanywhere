@@ -30,7 +30,8 @@ context actions and source-cited new-session transfer landed 2026-08-13;
 exact formatted-source selection and activity-overlay placement landed
 2026-08-14; mobile long-press selection ownership restored 2026-08-15;
 session-file Markdown block clicks and live-drag deferral landed
-2026-08-20; viewer toolbar select-all landed 2026-08-22.**
+2026-08-20; viewer toolbar select-all landed 2026-08-22; collapsed-preview
+selection and live-tail suspension landed 2026-08-23.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -238,6 +239,12 @@ The quote block itself:
   completed range once, including for upward drags. Keyboard and programmatic
   selections still publish from `selectionchange`, and pressing an already
   visible selection control does not dismiss it before its action fires.
+- In a collapsed textual activity preview, a non-collapsed native selection
+  wins over click-to-expand. Forward and upward drags both leave the detail
+  closed and preserve the selected text for copying. Forming a transcript
+  selection also suspends live-tail following before later output or layout
+  changes can move the viewport under the gesture; explicit **Follow** resumes
+  it.
 - Hover tooltips never activate while any pointer button is held. In
   particular, dragging a native text selection across a glossary term keeps
   the glossary text selectable and cannot insert a passive tooltip into the

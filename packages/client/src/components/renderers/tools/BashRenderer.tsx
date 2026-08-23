@@ -15,6 +15,7 @@ import {
   getDisplayBashCommandFromInput,
   isCodexProvider,
 } from "../../../lib/bashCommand";
+import { selectionIntersectsElement } from "../../../lib/domSelection";
 import {
   formatCommandDuration,
   parseShellToolOutput,
@@ -613,6 +614,9 @@ function BashCollapsedPreview({
   const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as Element | null;
     if (target?.closest?.("button,a")) {
+      return;
+    }
+    if (selectionIntersectsElement(event.currentTarget)) {
       return;
     }
     setIsModalOpen(true);

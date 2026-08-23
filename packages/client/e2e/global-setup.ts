@@ -753,10 +753,11 @@ export default async function globalSetup() {
     "activity-selection-001.jsonl",
   );
   const activityOutput = [
-    `selection anchor near top ${"wide-output ".repeat(20)}`,
+    "selection anchor near top",
+    "backward drag anchor near bottom",
     ...Array.from(
       { length: 70 },
-      (_, index) => `activity output line ${index + 2}`,
+      (_, index) => `activity output line ${index + 3}`,
     ),
   ].join("\n");
   writeFileSync(

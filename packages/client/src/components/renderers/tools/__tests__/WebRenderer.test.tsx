@@ -54,6 +54,7 @@ describe("WebRenderer", () => {
 
   afterEach(() => {
     cleanup();
+    document.getSelection()?.removeAllRanges();
     window.localStorage.removeItem(UI_KEYS.tooltipMode);
   });
 
@@ -120,6 +121,30 @@ describe("WebRenderer", () => {
     const link = screen.getByRole("link", { name: "arxiv.org" });
     expect(link.getAttribute("href")).toBe("https://arxiv.org/abs/2412.04205");
     expect(screen.getByText("Second hit")).toBeDefined();
+  });
+
+  it("keeps a selected preview collapsed", () => {
+    render(
+      <div>
+        {webRenderer.renderCollapsedPreview?.(
+          {},
+          searchResult,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+    const preview = screen.getByRole("button", {
+      name: "View web page content",
+    });
+    const selectedText = screen.getByText(/Snippet prose/);
+    const range = document.createRange();
+    range.selectNodeContents(selectedText);
+    document.getSelection()?.addRange(range);
+
+    fireEvent.click(preview);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("shows shell-style preview affordances for long content", () => {
