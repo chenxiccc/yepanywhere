@@ -24,6 +24,8 @@ vi.mock("../../i18n", () => ({
           "Right-click: expand all thinking blocks, including earlier ones",
         processingThinkingRightClickLatestOnly:
           "Right-click: auto-expand only the latest thinking block",
+        processingAnimationPause: "Pause processing text animation",
+        processingAnimationResume: "Resume processing text animation",
       })[key] ?? key,
   }),
 }));
@@ -77,6 +79,42 @@ describe("ProcessingIndicator", () => {
     const content = textElement?.textContent ?? "";
     expect(content).toMatch(/^T/); // Starts with T
     expect(content.length).toBeGreaterThan(1); // Has typed something
+  });
+
+  it("pauses and resumes the typewriter when clicked", async () => {
+    render(<ProcessingIndicator isProcessing={true} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    const toggle = screen.getByRole("button", {
+      name: "Pause processing text animation",
+    });
+    const pausedText = toggle.textContent;
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe(
+      "Resume processing text animation",
+    );
+    expect(
+      document.querySelector<HTMLElement>(".processing-cursor")?.style
+        .animationPlayState,
+    ).toBe("paused");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(toggle.textContent).toBe(pausedText);
+
+    fireEvent.click(toggle);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25);
+    });
+
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.textContent).not.toBe(pausedText);
   });
 
   it("has processing indicator container", () => {

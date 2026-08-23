@@ -98,6 +98,11 @@ stable component identity, and lower update cadence.
   cross-tab `storage` events reconcile the cached value.
 - Composer text is user data. Streaming/render work must not steal focus,
   defeat normal browser key buffering, or delay page-lifecycle draft flushes.
+- The processing phrase typewriter is local leaf state. Clicking its text (or
+  focusing it and pressing Enter/Space) pauses phrase progress and cursor
+  blinking at the current character; repeating the action resumes it. The
+  pause lasts only for the mounted processing cycle and never pauses the agent.
+  **Fun Phrases** controls the phrase pool, not whether the typewriter animates.
 
 ## Design decisions
 

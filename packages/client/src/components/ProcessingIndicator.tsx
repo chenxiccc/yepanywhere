@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent,
   type MouseEvent,
   type TouchEvent,
   memo,
@@ -101,6 +102,7 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [displayedText, setDisplayedText] = useState("");
   const [isTyping, setIsTyping] = useState(true);
+  const [isAnimationPaused, setIsAnimationPaused] = useState(false);
   const showThinkingToggle = Boolean(
     onToggleThinkingItemsVisible && (isProcessing || hasThinkingItems),
   );
@@ -156,6 +158,19 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
     onToggleThinkingItemsVisible?.();
   }, [onToggleThinkingItemsVisible]);
 
+  const toggleAnimationPaused = useCallback(() => {
+    setIsAnimationPaused((paused) => !paused);
+  }, []);
+
+  const handleAnimationKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLSpanElement>) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggleAnimationPaused();
+    },
+    [toggleAnimationPaused],
+  );
+
   // Check setting and shuffle phrases when processing starts
   const phrases = useMemo(() => {
     if (!isProcessing) return ["Thinking..."];
@@ -170,8 +185,11 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
       setPhraseIndex(0);
       setDisplayedText("");
       setIsTyping(true);
+      setIsAnimationPaused(false);
       return;
     }
+
+    if (isAnimationPaused) return;
 
     const interval = setInterval(() => {
       setPhraseIndex((prev) => (prev + 1) % phrases.length);
@@ -180,11 +198,11 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
     }, ROTATION_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isProcessing, phrases.length]);
+  }, [isProcessing, isAnimationPaused, phrases.length]);
 
   // Typewriter effect
   useEffect(() => {
-    if (!isProcessing || !isTyping) return;
+    if (!isProcessing || !isTyping || isAnimationPaused) return;
 
     const phrase = phrases[phraseIndex] ?? "";
     if (displayedText.length >= phrase.length) {
@@ -197,7 +215,14 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
     }, TYPEWRITER_SPEED_MS);
 
     return () => clearTimeout(timeout);
-  }, [isProcessing, isTyping, phraseIndex, displayedText, phrases]);
+  }, [
+    isProcessing,
+    isTyping,
+    isAnimationPaused,
+    phraseIndex,
+    displayedText,
+    phrases,
+  ]);
 
   if (!isProcessing && !showThinkingToggle) {
     return null;
@@ -219,6 +244,9 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
   const thinkingToggleTitle = modeHint
     ? `${visibilityTitle}\n${modeHint}`
     : visibilityTitle;
+  const animationToggleLabel = isAnimationPaused
+    ? t("processingAnimationResume")
+    : t("processingAnimationPause");
 
   return (
     <div
@@ -250,9 +278,25 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
           <div className="processing-dot-container">
             <ThinkingIndicator />
           </div>
-          <span className="processing-text">
+          <span
+            className="processing-text"
+            role="button"
+            tabIndex={0}
+            aria-pressed={isAnimationPaused}
+            aria-label={animationToggleLabel}
+            title={animationToggleLabel}
+            onClick={toggleAnimationPaused}
+            onKeyDown={handleAnimationKeyDown}
+          >
             {displayedText}
-            <span className="processing-cursor">|</span>
+            <span
+              className="processing-cursor"
+              style={
+                isAnimationPaused ? { animationPlayState: "paused" } : undefined
+              }
+            >
+              |
+            </span>
           </span>
         </>
       )}

@@ -352,6 +352,8 @@
   "processingThinkingRightClickShowExpandAll": "Right-click: show thinking and expand all blocks",
   "processingThinkingRightClickExpandAll": "Right-click: expand all thinking blocks, including earlier ones",
   "processingThinkingRightClickLatestOnly": "Right-click: auto-expand only the latest thinking block",
+  "processingAnimationPause": "Pause processing text animation",
+  "processingAnimationResume": "Resume processing text animation",
   "composerModelChipTitle": "Model for this session — click to change",
   "floatingComposerModelChipTitle": "Model a new session will start with — adjust it on the New Session page",
   "localeNameEn": "English",
