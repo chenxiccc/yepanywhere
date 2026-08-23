@@ -32,7 +32,6 @@ interface Props {
   projection: ExplorationProjection;
   sessionProvider?: string;
   staleNowMs?: number;
-  latestVisibleTimestampMs?: number | null;
 }
 
 function statusGlyph(status: ToolCallItem["status"]): string {
@@ -113,7 +112,6 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
   projection,
   sessionProvider,
   staleNowMs,
-  latestVisibleTimestampMs,
 }: Props) {
   const [expanded, setExpanded] = useRememberedDisclosureState(
     projection.disclosureOwnerId,
@@ -131,8 +129,7 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
   const items = projection.parents.map((parent) => parent.item);
   const timestampMs = getLatestRenderItemsTimestampMs(items);
   const hasTimestamp = timestampMs !== null;
-  const isLatestVisibleTimestamp =
-    hasTimestamp && latestVisibleTimestampMs === timestampMs;
+  const isLatestVisibleTimestamp = hasTimestamp && staleNowMs !== undefined;
   const ageNowMs = isLatestVisibleTimestamp
     ? (staleNowMs ?? Date.now())
     : staticAgeNowMsRef.current;

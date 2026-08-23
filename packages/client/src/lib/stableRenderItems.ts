@@ -1,4 +1,8 @@
-import type { RenderItem } from "../types/renderItems";
+import type {
+  ConversationRecentActivity,
+  ConversationThinkingPreview,
+  RenderItem,
+} from "../types/renderItems";
 
 function getRenderItemKey(item: RenderItem): string {
   return `${item.type}:${item.id}`;
@@ -21,6 +25,44 @@ function sameArrayItems<T>(
 
 function sameSourceMessages(previous: RenderItem, next: RenderItem): boolean {
   return sameArrayItems(previous.sourceMessages, next.sourceMessages);
+}
+
+function sameOptionalArrayItems<T>(
+  previous: readonly T[] | undefined,
+  next: readonly T[] | undefined,
+  sameItem: (previousItem: T, nextItem: T) => boolean,
+): boolean {
+  if (previous === next) return true;
+  if (!previous || !next || previous.length !== next.length) return false;
+  return previous.every((item, index) => {
+    const nextItem = next[index];
+    return nextItem !== undefined && sameItem(item, nextItem);
+  });
+}
+
+function sameThinkingPreview(
+  previous: ConversationThinkingPreview,
+  next: ConversationThinkingPreview,
+): boolean {
+  return (
+    previous.id === next.id &&
+    previous.kind === next.kind &&
+    previous.slot === next.slot &&
+    previous.thinking === next.thinking &&
+    previous.status === next.status &&
+    previous.endedAtMs === next.endedAtMs
+  );
+}
+
+function sameRecentActivity(
+  previous: ConversationRecentActivity,
+  next: ConversationRecentActivity,
+): boolean {
+  return (
+    previous.label === next.label &&
+    previous.detail === next.detail &&
+    previous.preview === next.preview
+  );
 }
 
 export function canReuseRenderItem(
@@ -54,11 +96,14 @@ export function canReuseRenderItem(
       );
 
     case "tool_call":
+      // Source-message identity is checked above. Inputs, results, and display
+      // actions are pure projections of those messages but are rebuilt as
+      // fresh objects; comparing their references would invalidate history on
+      // every tail update. Status is the one projection augmented by live
+      // approval state, so keep it explicit.
       return (
         next.type === "tool_call" &&
         previous.toolName === next.toolName &&
-        previous.toolInput === next.toolInput &&
-        previous.toolResult === next.toolResult &&
         previous.status === next.status
       );
 
@@ -96,6 +141,23 @@ export function canReuseRenderItem(
         previous.activityCount === next.activityCount &&
         previous.active === next.active &&
         previous.expanded === next.expanded &&
+        previous.hasFollowingConversationText ===
+          next.hasFollowingConversationText &&
+        sameOptionalArrayItems(
+          previous.thinkingPreviews,
+          next.thinkingPreviews,
+          sameThinkingPreview,
+        ) &&
+        sameOptionalArrayItems(
+          previous.recentActivities,
+          next.recentActivities,
+          sameRecentActivity,
+        ) &&
+        sameOptionalArrayItems(
+          previous.tooltipActivities,
+          next.tooltipActivities,
+          sameRecentActivity,
+        ) &&
         previous.startedAtMs === next.startedAtMs &&
         previous.endedAtMs === next.endedAtMs
       );

@@ -79,8 +79,11 @@ stable component identity, and lower update cadence.
 - When fixing one high-rate path, keep tracing. A throttled markdown path does
   not prove text placeholders, tool previews, activity/freshness state,
   queued-message UI, or composer-adjacent state are also covered.
-- Long transcript work must preserve row identity for unchanged history and
-  should avoid front-to-back scans on hot current-message updates.
+- Long transcript work must preserve render-item, turn-group, and display-row
+  identity for unchanged history and avoid front-to-back scans on hot
+  current-message updates. User and assistant timeline entries are memoized at
+  the turn boundary: a live-tail replacement may enter the changed current
+  turn, but must not re-enter historical turn galleries or render items.
 - Native transcript scroll handlers perform only constant-time follow/intent
   bookkeeping and schedule one trailing position read. Transcript-position
   context is measured after 200 ms of scroll rest, indexes rendered rows once,
@@ -112,6 +115,12 @@ stable component identity, and lower update cadence.
   message-driven transcript path and lets urgent input preempt it. A cadence
   controller would duplicate the existing token/markdown throttles while still
   needing a separate path for full activity messages.
+- **Use immutable source-message identity for tool projection stability** (vs.
+  deep-comparing rebuilt tool payloads): tool input, result, and display actions
+  are pure projections of the source messages already checked by identity.
+  Live approval can change the projected status, so status remains an explicit
+  comparison. This avoids deep walks over old, potentially large tool results
+  on every tail update.
 
 ## Transcript Layout Stability
 
@@ -203,6 +212,18 @@ frame in 12.3 ms, and had one 76.7 ms long animation frame in the following
 five seconds. These were contended diagnostic samples rather than calibrated
 ratchet measurements; they support the scheduling decision and do not define a
 portable latency ceiling.
+
+A later 2026-08-23 real-work trace found the remaining identity leak: with
+7,543 DOM elements, active stream updates produced `MessageList` commits up to
+181 ms in one renewed sample (and 276 ms in the preceding lease), while
+preprocessing remained at or below 20.5 ms. A deterministic 40-turn update
+probe reproduced the structural cause: one changed live tail re-entered all 40
+historical assistant galleries. Stabilizing Conversation projection items,
+turn groups, display rows, and the derived thinking-preview set reduces that
+update to exactly one gallery and one render item—the changed live tail. These
+render counts are the regression contract; a separate 20-turn tool-heavy probe
+also records zero historical explored-tool group renders. The real-work timings
+remain diagnostic rather than portable ceilings.
 
 The same consented tab later isolated scrolled-back position tracking as a
 separate scroll-rate owner. With roughly 980 rendered rows, one scroll event

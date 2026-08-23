@@ -39,6 +39,16 @@ to the single latest-visible row (item 3). Items 2–3 target re-render churn
 that measurement shows does not occur; they are at most defensive hardening for
 a future where `MessageList` re-renders often again.
 
+2026-08-23 (active-stream follow-up): the idle conclusion above still holds,
+but active output is exactly the case where `MessageList` renders often again.
+In a 7,543-element real-work tab, one changed live tail re-entered all 40
+historical assistant galleries. The defensive boundary from items 2–3 is now
+landed: projected render items, turn groups, and display rows retain identity,
+and memoized user/assistant turn entries receive only row-local age state. A
+40-turn text probe and a 20-turn explored-tool probe now enter only the changed
+current turn. Real-tab key-to-frame confirmation remains tracked in
+`gaps/streaming-agent-activity-typing-frame-latency.md`.
+
 The **actual** residual per-second re-render was elsewhere: the
 `AgentContentContext` provider built a fresh `value` object every render, so
 each SessionPage status-timer tick (~1/s) changed the context value and

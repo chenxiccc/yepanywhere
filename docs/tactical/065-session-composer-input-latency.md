@@ -490,6 +490,11 @@ Repeat with:
 The quote-line deletion may render the quote layer and queued controls as
 applicable, but it must not render historical rows.
 
+Separately, keep the long history mounted and replace only the actively
+streaming tail item. Exactly that current turn may render. Historical user
+turns, assistant turn galleries, render items, and explored-tool groups must
+retain identity and record zero renders.
+
 ### Preference-store contract
 
 Tests must prove:
@@ -550,6 +555,7 @@ On the affected Chromebook, use the same long session that originally lagged:
 - hold a hardware key long enough to expose buffering/backlog;
 - type and backspace rapidly with streaming disabled;
 - repeat with streaming enabled while the session is idle;
+- repeat while an agent turn is actively streaming output;
 - verify the first character and the final deletion are not special stalls;
 - quote assistant text, type an ordinary comment, then delete the quote lines
   and confirm tint behavior;

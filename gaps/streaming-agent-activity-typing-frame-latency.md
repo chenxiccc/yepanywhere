@@ -45,25 +45,31 @@ active. Existing `ProcessingIndicator.test.tsx` setup explicitly disables Fun
 Phrases, so it does not cover the enabled scheduler or its interaction with
 streaming and typing.
 
-## Likely ownership and next check
+## Implementation status and remaining check
 
-Treat the 275.9 ms `MessageList` commit as the primary lead. Profile which
-render items and layout effects execute for each streamed update, keeping the
-composer-local invariant intact. Run the same controlled streaming-and-typing
-trace with Fun Phrases enabled and disabled; add an explicit metric for
-`ProcessingIndicator` renders so its local commits are distinguishable from
-parent transcript commits. If it contributes materially, replace the 25 ms
-React typewriter loop with a compositor-friendly or substantially lower-rate
-presentation rather than merely hiding its timers.
+The primary ownership is now isolated to historical transcript rendering, not
+the Fun Phrases typewriter or render-item preprocessing. One live-tail update
+in a 40-turn full transcript re-entered all 40 historical assistant galleries.
+The same identity leak existed after Conversation View projection.
+
+The 2026-08-23 implementation stabilizes Conversation View render items, turn
+groups, display rows, and the derived thinking-preview slot set, then memoizes
+the user and assistant turn boundaries. Deterministic full-transcript and
+tool-heavy Conversation View tests now show exactly one gallery and one render
+item entering for a live-tail replacement: the changed current turn. Focused
+client coverage passes without warnings; lint, typecheck, format checks, and
+the client console budget are clean.
 
 Acceptance is comparable key-to-frame latency while the session is settled or
 actively streaming, without weakening stream freshness or draft recovery. Add
 a real-browser active-stream case alongside the settled matrix in
 `docs/tactical/065-session-composer-input-latency.md`.
 
-This was filed rather than fixed because the request was to preserve the
-observed contrast and inspect Fun Phrases; the causal split still needs the
-controlled A/B above.
+The original tab's diagnostic lease disappeared before an after-sample could
+be collected. Keep this gap until a comparable real-work trace confirms that
+active-stream key-to-frame latency is now close to the settled case without
+weakening stream freshness or draft recovery. The deterministic render-count
+contract remains required even after that measurement passes.
 
 Found 2026-08-23 while typing in a Codex session during streamed agent
 activity.

@@ -121,6 +121,62 @@ export function groupRenderItemsIntoTurns(
   return groups;
 }
 
+function canReuseRenderTurnGroup(
+  previous: RenderTurnGroup,
+  next: RenderTurnGroup,
+): boolean {
+  if (
+    previous.isUserPrompt !== next.isUserPrompt ||
+    previous.isStandalone !== next.isStandalone ||
+    previous.items.length !== next.items.length
+  ) {
+    return false;
+  }
+
+  return previous.items.every((item, index) => item === next.items[index]);
+}
+
+function getRenderTurnGroupKey(group: RenderTurnGroup, index: number): string {
+  const firstItem = group.items[0];
+  return firstItem
+    ? `${group.isUserPrompt ? "user" : "assistant"}:${firstItem.type}:${firstItem.id}`
+    : `empty:${index}`;
+}
+
+/** Keep unchanged turn arrays stable when only a live tail item changed. */
+export function stabilizeRenderTurnGroups(
+  previousGroups: readonly RenderTurnGroup[],
+  nextGroups: readonly RenderTurnGroup[],
+): RenderTurnGroup[] {
+  if (previousGroups.length === 0 || nextGroups.length === 0) {
+    return [...nextGroups];
+  }
+
+  const previousByKey = new Map<string, RenderTurnGroup[]>();
+  previousGroups.forEach((group, index) => {
+    const key = getRenderTurnGroupKey(group, index);
+    const bucket = previousByKey.get(key);
+    if (bucket) {
+      bucket.push(group);
+    } else {
+      previousByKey.set(key, [group]);
+    }
+  });
+
+  return nextGroups.map((nextGroup, index) => {
+    const candidates = previousByKey.get(
+      getRenderTurnGroupKey(nextGroup, index),
+    );
+    if (!candidates) return nextGroup;
+    const candidateIndex = candidates.findIndex((previousGroup) =>
+      canReuseRenderTurnGroup(previousGroup, nextGroup),
+    );
+    if (candidateIndex === -1) return nextGroup;
+    const [reused] = candidates.splice(candidateIndex, 1);
+    return reused ?? nextGroup;
+  });
+}
+
 export function getLatestRenderItemsTimestampMs(
   items: readonly RenderItem[],
 ): number | null {

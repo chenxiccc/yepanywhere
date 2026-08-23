@@ -376,3 +376,108 @@ export function buildTimelineEntryDisplayRows<
     };
   });
 }
+
+function sameAssistantTimelineRowMetadata(
+  previous: AssistantTimelineRow,
+  next: AssistantTimelineRow,
+): boolean {
+  if (previous.kind !== next.kind) return false;
+  if (previous.kind === "explored") {
+    return (
+      next.kind === "explored" &&
+      previous.id === next.id &&
+      previous.segmentTimestampMs === next.segmentTimestampMs &&
+      previous.staleNowMs === next.staleNowMs
+    );
+  }
+  return (
+    next.kind === "item" &&
+    previous.item === next.item &&
+    previous.itemIndex === next.itemIndex &&
+    previous.allowsPromptActions === next.allowsPromptActions &&
+    previous.allowsTextQuote === next.allowsTextQuote &&
+    previous.allowsThinkingToggle === next.allowsThinkingToggle &&
+    previous.staleNowMs === next.staleNowMs &&
+    previous.thinkingDurationMs === next.thinkingDurationMs
+  );
+}
+
+function canReuseTimelineEntryDisplayRow<
+  TTurnGroup extends RenderTurnGroup,
+  TAside extends RenderTimelineAside,
+>(
+  previous: TimelineEntryDisplayRow<TTurnGroup, TAside>,
+  next: TimelineEntryDisplayRow<TTurnGroup, TAside>,
+): boolean {
+  if (previous.kind !== next.kind) return false;
+  switch (previous.kind) {
+    case "btw":
+      return next.kind === "btw" && previous.aside === next.aside;
+    case "empty":
+      return next.kind === "empty" && previous.group === next.group;
+    case "standalone":
+      return (
+        next.kind === "standalone" &&
+        previous.group === next.group &&
+        previous.item === next.item
+      );
+    case "user":
+      return (
+        next.kind === "user" &&
+        previous.group === next.group &&
+        previous.item === next.item &&
+        previous.allowsPromptActions === next.allowsPromptActions &&
+        previous.isLatestCorrectable === next.isLatestCorrectable &&
+        previous.staleNowMs === next.staleNowMs
+      );
+    case "assistant":
+      return (
+        next.kind === "assistant" &&
+        previous.group === next.group &&
+        previous.rows.length === next.rows.length &&
+        previous.rows.every((row, index) => {
+          const nextRow = next.rows[index];
+          return nextRow
+            ? sameAssistantTimelineRowMetadata(row, nextRow)
+            : false;
+        })
+      );
+  }
+}
+
+/** Reuse presentation rows whose turn and row-local derived state are unchanged. */
+export function stabilizeTimelineEntryDisplayRows<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+  TAside extends RenderTimelineAside = RenderTimelineAside,
+>(
+  previousRows: readonly TimelineEntryDisplayRow<TTurnGroup, TAside>[],
+  nextRows: readonly TimelineEntryDisplayRow<TTurnGroup, TAside>[],
+): Array<TimelineEntryDisplayRow<TTurnGroup, TAside>> {
+  if (previousRows.length === 0 || nextRows.length === 0) {
+    return [...nextRows];
+  }
+
+  const previousByKey = new Map<
+    string,
+    Array<TimelineEntryDisplayRow<TTurnGroup, TAside>>
+  >();
+  for (const row of previousRows) {
+    const bucket = previousByKey.get(row.key);
+    if (bucket) {
+      bucket.push(row);
+    } else {
+      previousByKey.set(row.key, [row]);
+    }
+  }
+
+  return nextRows.map((nextRow) => {
+    const candidates = previousByKey.get(nextRow.key);
+    if (!candidates) return nextRow;
+    const candidateIndex = candidates.findIndex((previousRow) =>
+      canReuseTimelineEntryDisplayRow(previousRow, nextRow),
+    );
+    if (candidateIndex === -1) return nextRow;
+    const [reused] = candidates.splice(candidateIndex, 1);
+    return reused ?? nextRow;
+  });
+}

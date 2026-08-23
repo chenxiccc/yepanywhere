@@ -315,9 +315,12 @@ The history-window projection and `projectConversationView` run after the
 stable provider transcript projection and before turn grouping, timeline rows,
 search, and React rendering. The window selects a user-turn-aligned suffix;
 `projectConversationView` then adds a synthetic `conversation_activity` render
-item rather than hiding DOM nodes. This keeps owner/public behavior, ordering,
-media retention, search scope, progressive rendering, and scroll anchoring
-attached to the same render-item model as the full transcript.
+item rather than hiding DOM nodes. Its output is identity-stabilized before turn
+grouping: an unchanged synthetic activity summary must keep its render-item
+identity while the live tail changes. This keeps owner/public behavior,
+ordering, media retention, search scope, progressive rendering, scroll
+anchoring, and historical turn memoization attached to the same render-item
+model as the full transcript.
 
 **Grow within a block, reset between blocks** (vs. an exponential moving
 average over recent blocks): a complete thinking turn is normally only a few

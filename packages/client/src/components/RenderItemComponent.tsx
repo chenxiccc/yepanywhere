@@ -76,7 +76,6 @@ interface Props {
   alwaysShowQuoteCircle?: boolean;
   paragraphQuoteCirclesEnabled?: boolean;
   staleNowMs?: number;
-  latestVisibleTimestampMs?: number | null;
   thinkingDurationMs?: number;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
   onCancelForkSummary?: (objectId: string) => void;
@@ -943,7 +942,6 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   alwaysShowQuoteCircle,
   paragraphQuoteCirclesEnabled,
   staleNowMs,
-  latestVisibleTimestampMs,
   thinkingDurationMs,
   getForkSummaryTargetHref,
   onCancelForkSummary,
@@ -960,8 +958,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
   const hasTimestamp =
     item.type !== "conversation_activity" && timestampMs !== null;
-  const isLatestVisibleTimestamp =
-    hasTimestamp && latestVisibleTimestampMs === timestampMs;
+  const isLatestVisibleTimestamp = hasTimestamp && staleNowMs !== undefined;
   const ageNowMs = isLatestVisibleTimestamp
     ? (staleNowMs ?? Date.now())
     : staticAgeNowMsRef.current;
