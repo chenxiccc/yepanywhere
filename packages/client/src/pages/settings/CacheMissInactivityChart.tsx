@@ -2,19 +2,11 @@ import type { CacheMissBillingRecord } from "@yep-anywhere/shared";
 import { useI18n } from "../../i18n";
 import styles from "./CacheMissInactivityChart.module.css";
 
-/**
- * Minute buckets for the inactivity axis. Cache lifetimes are discussed in
- * minutes and the interesting structure is at the short end — a miss two
- * minutes after the last turn means something quite different from one at two
- * hours — so the buckets are fine early and coarse later.
- */
-const BUCKET_EDGES_MINUTES = [10, 20, 30, 60] as const;
-
 export interface InactivityBucket {
   /** Inclusive lower edge in minutes. */
   fromMinutes: number;
-  /** Exclusive upper edge in minutes; undefined for the final open bucket. */
-  toMinutes?: number;
+  /** Exclusive upper edge in minutes. */
+  toMinutes: number;
   misses: number;
   hits: number;
   wastedTokens: number;
@@ -24,36 +16,27 @@ export interface InactivityBucket {
 export function bucketByInactivity(
   events: CacheMissBillingRecord[],
 ): InactivityBucket[] {
-  const buckets: InactivityBucket[] = [];
-  let previousEdge = 0;
-  for (const edge of BUCKET_EDGES_MINUTES) {
-    buckets.push({
-      fromMinutes: previousEdge,
-      toMinutes: edge,
-      misses: 0,
-      hits: 0,
-      wastedTokens: 0,
-      events: [],
-    });
-    previousEdge = edge;
-  }
-  buckets.push({
-    fromMinutes: previousEdge,
-    misses: 0,
-    hits: 0,
-    wastedTokens: 0,
-    events: [],
-  });
+  const buckets = new Map<number, InactivityBucket>();
 
   for (const event of events) {
     if (event.elapsedSinceExpectedCacheMs === undefined) continue;
     const minutes = event.elapsedSinceExpectedCacheMs / 60_000;
-    const bucket =
-      buckets.find(
-        (candidate) =>
-          candidate.toMinutes !== undefined && minutes < candidate.toMinutes,
-      ) ?? buckets[buckets.length - 1];
-    if (!bucket) continue;
+    if (!Number.isFinite(minutes) || minutes < 0) continue;
+    const fromMinutes =
+      minutes < 0.5
+        ? 0
+        : minutes < 1
+          ? 0.5
+          : 2 ** Math.floor(Math.log2(minutes));
+    const toMinutes = fromMinutes === 0 ? 0.5 : fromMinutes * 2;
+    const bucket = buckets.get(fromMinutes) ?? {
+      fromMinutes,
+      toMinutes,
+      misses: 0,
+      hits: 0,
+      wastedTokens: 0,
+      events: [],
+    };
     bucket.events.push(event);
     if (event.outcome === "unexpected-recompute") {
       bucket.misses += 1;
@@ -61,8 +44,11 @@ export function bucketByInactivity(
     } else {
       bucket.hits += 1;
     }
+    buckets.set(fromMinutes, bucket);
   }
-  return buckets;
+  return [...buckets.values()].sort(
+    (left, right) => left.fromMinutes - right.fromMinutes,
+  );
 }
 
 function formatTokens(tokens: number): string {
@@ -71,20 +57,15 @@ function formatTokens(tokens: number): string {
   return String(tokens);
 }
 
-function bucketLabel(bucket: InactivityBucket): string {
-  if (bucket.toMinutes === undefined) return `${bucket.fromMinutes}m+`;
-  return `${bucket.fromMinutes}–${bucket.toMinutes}m`;
+function formatBucketEdge(minutes: number): string {
+  if (minutes === 0) return "0";
+  if (minutes < 1) return `${minutes * 60}s`;
+  return `${minutes}m`;
 }
 
-function populatedBuckets(buckets: InactivityBucket[]): InactivityBucket[] {
-  let lastPopulatedIndex = -1;
-  for (let index = buckets.length - 1; index >= 0; index -= 1) {
-    if (buckets[index]?.events.length) {
-      lastPopulatedIndex = index;
-      break;
-    }
-  }
-  return lastPopulatedIndex < 0 ? [] : buckets.slice(0, lastPopulatedIndex + 1);
+function bucketLabel(bucket: InactivityBucket): string {
+  const from = formatBucketEdge(bucket.fromMinutes);
+  return `${from}–${formatBucketEdge(bucket.toMinutes)}`;
 }
 
 function providerModelTuple(
@@ -144,7 +125,7 @@ export function CacheMissInactivityChart({
       t("cacheMissTupleTooltipHeading"),
       t("cacheMissTupleTooltipEmpty"),
     );
-  const buckets = populatedBuckets(bucketByInactivity(events));
+  const buckets = bucketByInactivity(events);
   if (buckets.length === 0) {
     return <p className="settings-empty">{t("cacheMissChartEmpty")}</p>;
   }
@@ -210,7 +191,7 @@ export function CacheMissProbabilityChart({
   const completeEvents = events.filter(
     (event) => event.completeProbabilitySample === true,
   );
-  const buckets = populatedBuckets(bucketByInactivity(completeEvents));
+  const buckets = bucketByInactivity(completeEvents);
   if (buckets.length === 0) {
     return <p className="settings-empty">{t("cacheMissProbabilityEmpty")}</p>;
   }

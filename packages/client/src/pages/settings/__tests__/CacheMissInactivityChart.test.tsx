@@ -47,7 +47,7 @@ function record(
 describe("bucketByInactivity", () => {
   it("sums wasted tokens into the bucket holding the idle gap", () => {
     const buckets = bucketByInactivity([
-      record({ elapsedSinceExpectedCacheMs: 30_000, wastedInputTokens: 5000 }),
+      record({ elapsedSinceExpectedCacheMs: 29_999, wastedInputTokens: 5000 }),
       record({ elapsedSinceExpectedCacheMs: 90_000, wastedInputTokens: 7000 }),
       record({
         elapsedSinceExpectedCacheMs: 45 * 60_000,
@@ -56,10 +56,13 @@ describe("bucketByInactivity", () => {
     ]);
 
     expect(
-      buckets.find((bucket) => bucket.toMinutes === 10)?.wastedTokens,
-    ).toBe(12_000);
+      buckets.find((bucket) => bucket.toMinutes === 0.5)?.wastedTokens,
+    ).toBe(5000);
+    expect(buckets.find((bucket) => bucket.toMinutes === 2)?.wastedTokens).toBe(
+      7000,
+    );
     expect(
-      buckets.find((bucket) => bucket.toMinutes === 60)?.wastedTokens,
+      buckets.find((bucket) => bucket.toMinutes === 64)?.wastedTokens,
     ).toBe(120_000);
   });
 
@@ -73,26 +76,43 @@ describe("bucketByInactivity", () => {
       }),
     ]);
 
-    const bucket = buckets.find((candidate) => candidate.toMinutes === 10);
+    const bucket = buckets.find((candidate) => candidate.toMinutes === 8);
     expect(bucket).toMatchObject({ misses: 1, hits: 1 });
   });
 
-  it("puts anything past the last edge in the open bucket", () => {
+  it("creates a doubling bucket for arbitrarily long gaps", () => {
     const buckets = bucketByInactivity([
       record({
-        elapsedSinceExpectedCacheMs: 8 * 60 * 60_000,
+        elapsedSinceExpectedCacheMs: 40 * 60 * 60_000,
         wastedInputTokens: 42,
       }),
     ]);
 
-    const open = buckets[buckets.length - 1];
-    expect(open?.toMinutes).toBeUndefined();
-    expect(open?.wastedTokens).toBe(42);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]).toMatchObject({
+      fromMinutes: 2048,
+      toMinutes: 4096,
+      wastedTokens: 42,
+    });
+  });
+
+  it("returns only ranges containing observations", () => {
+    const buckets = bucketByInactivity([
+      record({ elapsedSinceExpectedCacheMs: 20_000 }),
+      record({ elapsedSinceExpectedCacheMs: 3 * 60_000 }),
+    ]);
+
+    expect(
+      buckets.map(({ fromMinutes, toMinutes }) => [fromMinutes, toMinutes]),
+    ).toEqual([
+      [0, 0.5],
+      [2, 4],
+    ]);
   });
 
   it("ignores observations with no measured gap", () => {
     const buckets = bucketByInactivity([record({ wastedInputTokens: 999 })]);
-    expect(buckets.every((bucket) => bucket.wastedTokens === 0)).toBe(true);
+    expect(buckets).toEqual([]);
   });
 });
 
@@ -118,26 +138,31 @@ describe("CacheMissInactivityChart", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByText("30–60m")).toBeTruthy();
+    expect(screen.getByText("32m–64m")).toBeTruthy();
+    expect(screen.queryByText("16m–32m")).toBeNull();
     expect(screen.getByText("120K")).toBeTruthy();
     expect(screen.getByText("1/2 missed")).toBeTruthy();
   });
 
-  it("includes zero and sub-minute gaps in the 0–10m bin", () => {
+  it("splits zero, sub-30-second, and 30-second gaps at the first edge", () => {
     render(
       <I18nProvider>
         <CacheMissInactivityChart
           events={[
             record({ elapsedSinceExpectedCacheMs: 0 }),
+            record({ elapsedSinceExpectedCacheMs: 29_999 }),
             record({ elapsedSinceExpectedCacheMs: 30_000 }),
           ]}
         />
       </I18nProvider>,
     );
 
-    const firstBin = screen.getByText("0–10m").closest("li");
+    const firstBin = screen.getByText("0–30s").closest("li");
     expect(firstBin).toBeTruthy();
     expect(firstBin?.textContent).toContain("2/2 missed");
+    expect(screen.getByText("30s–1m").closest("li")?.textContent).toContain(
+      "1/1 missed",
+    );
   });
 
   it("lists the exact provider/model tuples represented by a bar", () => {
@@ -159,7 +184,7 @@ describe("CacheMissInactivityChart", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByText("0–10m").closest("li")?.title).toBe(
+    expect(screen.getByText("30s–1m").closest("li")?.title).toBe(
       "Provider / model tuples with events:\nclaude / opus\ncodex / gpt-5.6",
     );
   });

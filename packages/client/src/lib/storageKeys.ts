@@ -86,6 +86,7 @@ export const UI_KEYS = {
   selectionNewSessionActionEnabled:
     "yep-anywhere-selection-new-session-action-enabled",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
+  cacheMissEventOutcomeFilter: "yep-anywhere-cache-miss-event-outcome-filter",
   settingsSearchMatchValues: "yep-anywhere-settings-search-match-values",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",

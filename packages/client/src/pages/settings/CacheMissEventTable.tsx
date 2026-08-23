@@ -1,7 +1,17 @@
 import type { CacheMissBillingRecord } from "@yep-anywhere/shared";
-import { useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
 import { MessageAge } from "../../components/MessageAge";
+import {
+  type CacheMissEventOutcomeFilter,
+  useCacheMissEventOutcomeFilter,
+} from "../../hooks/useCacheMissEventOutcomeFilter";
 import { useRelativeNow } from "../../hooks/useRelativeNow";
 import { useI18n } from "../../i18n";
 import styles from "./CacheMissEventTable.module.css";
@@ -83,6 +93,46 @@ function eventMessageReference(event: CacheMissBillingRecord): string {
   return "—";
 }
 
+function eventMatchesOutcomeFilter(
+  event: CacheMissBillingRecord,
+  filter: CacheMissEventOutcomeFilter,
+): boolean {
+  if (filter === "all") return true;
+  return filter === "misses"
+    ? event.outcome === "unexpected-recompute"
+    : event.outcome === "expected-cache-hit";
+}
+
+function sessionColorStyles(
+  events: CacheMissBillingRecord[],
+): Map<string, CSSProperties> {
+  const sessionIds = [
+    ...new Set(events.map((event) => event.sessionId)),
+  ].sort();
+  return new Map(
+    sessionIds.map((sessionId, index) => [
+      sessionId,
+      {
+        "--cache-session-color": `hsl(${(index * 137.508 + 12) % 360} 70% 52%)`,
+      } as CSSProperties,
+    ]),
+  );
+}
+
+function compareNewestFirst(
+  left: CacheMissBillingRecord,
+  right: CacheMissBillingRecord,
+): number {
+  if (
+    left.messageIndex !== undefined &&
+    right.messageIndex !== undefined &&
+    left.messageIndex !== right.messageIndex
+  ) {
+    return right.messageIndex - left.messageIndex;
+  }
+  return right.timestamp.localeCompare(left.timestamp);
+}
+
 export function CacheMissEventTable({
   events,
   basePath,
@@ -94,16 +144,68 @@ export function CacheMissEventTable({
 }) {
   const { t } = useI18n();
   const nowMs = useRelativeNow(60_000);
+  const { outcomeFilter, setOutcomeFilter } = useCacheMissEventOutcomeFilter();
   const [tupleFilter, setTupleFilter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(),
   );
+  const [pendingJumpEventId, setPendingJumpEventId] = useState<string | null>(
+    null,
+  );
+  const eventRows = useRef(new Map<string, HTMLTableRowElement>());
+  const outcomeFilteredEvents = useMemo(
+    () =>
+      events.filter((event) => eventMatchesOutcomeFilter(event, outcomeFilter)),
+    [events, outcomeFilter],
+  );
   const groups = useMemo(() => {
     const query = tupleFilter.trim().toLocaleLowerCase();
-    return groupCacheMissEvents(events, t("cacheMissUnknownModel")).filter(
+    return groupCacheMissEvents(
+      outcomeFilteredEvents,
+      t("cacheMissUnknownModel"),
+    ).filter(
       (group) => !query || group.tuple.toLocaleLowerCase().includes(query),
     );
-  }, [events, t, tupleFilter]);
+  }, [outcomeFilteredEvents, t, tupleFilter]);
+  const sessionStyles = useMemo(() => sessionColorStyles(events), [events]);
+  const eventNavigation = useMemo(() => {
+    const eventsBySession = new Map<string, CacheMissBillingRecord[]>();
+    const groupByEventId = new Map<string, string>();
+    for (const group of groups) {
+      for (const event of group.events) {
+        groupByEventId.set(event.id, group.key);
+        if (event.messageIndex === undefined) continue;
+        const sessionEvents = eventsBySession.get(event.sessionId) ?? [];
+        sessionEvents.push(event);
+        eventsBySession.set(event.sessionId, sessionEvents);
+      }
+    }
+
+    const previousByEventId = new Map<string, string>();
+    for (const sessionEvents of eventsBySession.values()) {
+      sessionEvents.sort(compareNewestFirst);
+      for (let index = 0; index + 1 < sessionEvents.length; index += 1) {
+        const event = sessionEvents[index];
+        const previousEvent = sessionEvents[index + 1];
+        if (event && previousEvent) {
+          previousByEventId.set(event.id, previousEvent.id);
+        }
+      }
+    }
+    return { groupByEventId, previousByEventId };
+  }, [groups]);
+
+  useEffect(() => {
+    if (!pendingJumpEventId) return;
+    const row = eventRows.current.get(pendingJumpEventId);
+    if (!row) {
+      setPendingJumpEventId(null);
+      return;
+    }
+    row.scrollIntoView?.({ block: "center" });
+    row.focus({ preventScroll: true });
+    setPendingJumpEventId(null);
+  }, [pendingJumpEventId]);
 
   const toggleGroup = (key: string) => {
     setCollapsedGroups((current) => {
@@ -112,6 +214,20 @@ export function CacheMissEventTable({
       else next.add(key);
       return next;
     });
+  };
+  const jumpToPreviousSessionEvent = (eventId: string) => {
+    const previousEventId = eventNavigation.previousByEventId.get(eventId);
+    if (!previousEventId) return;
+    const targetGroup = eventNavigation.groupByEventId.get(previousEventId);
+    if (targetGroup) {
+      setCollapsedGroups((current) => {
+        if (!current.has(targetGroup)) return current;
+        const next = new Set(current);
+        next.delete(targetGroup);
+        return next;
+      });
+    }
+    setPendingJumpEventId(previousEventId);
   };
   const shownEventCount = groups.reduce(
     (sum, group) => sum + group.events.length,
@@ -132,15 +248,32 @@ export function CacheMissEventTable({
   return (
     <div className={styles.viewer}>
       <div className={styles.toolbar}>
-        <label className={styles.filterLabel}>
-          <span>{t("cacheMissEventFilterLabel")}</span>
-          <input
-            type="search"
-            value={tupleFilter}
-            onChange={(event) => setTupleFilter(event.currentTarget.value)}
-            placeholder={t("cacheMissEventFilterPlaceholder")}
-          />
-        </label>
+        <div className={styles.filterControls}>
+          <label className={styles.outcomeLabel}>
+            <span>{t("cacheMissEventResultHeader")}</span>
+            <select
+              value={outcomeFilter}
+              onChange={(event) =>
+                setOutcomeFilter(
+                  event.currentTarget.value as CacheMissEventOutcomeFilter,
+                )
+              }
+            >
+              <option value="misses">{t("cacheMissEventResultMiss")}</option>
+              <option value="hits">{t("cacheMissEventResultHit")}</option>
+              <option value="all">{t("cacheMissEventResultAll")}</option>
+            </select>
+          </label>
+          <label className={styles.filterLabel}>
+            <span>{t("cacheMissEventFilterLabel")}</span>
+            <input
+              type="search"
+              value={tupleFilter}
+              onChange={(event) => setTupleFilter(event.currentTarget.value)}
+              placeholder={t("cacheMissEventFilterPlaceholder")}
+            />
+          </label>
+        </div>
         <span className={styles.matchCount}>{visibleCountLabel}</span>
       </div>
 
@@ -148,7 +281,9 @@ export function CacheMissEventTable({
         <p className="settings-empty">
           {events.length === 0
             ? t("cacheMissBillingEventsEmpty")
-            : t("cacheMissEventFilterEmpty")}
+            : outcomeFilteredEvents.length === 0
+              ? t("activityNoMatches")
+              : t("cacheMissEventFilterEmpty")}
         </p>
       ) : (
         <div className={styles.scroller}>
@@ -236,62 +371,98 @@ export function CacheMissEventTable({
                     </td>
                   </tr>
                   {!collapsed &&
-                    group.events.map((event) => (
-                      <tr className={styles.eventRow} key={event.id}>
-                        <td aria-hidden="true" />
-                        <td>
-                          <MessageAge
-                            timestampMs={Date.parse(event.timestamp)}
-                            nowMs={nowMs}
-                            className={styles.age}
-                            formatLabel={(age) =>
-                              age === "now"
-                                ? t("cacheMissEventAgeNow")
-                                : t("cacheMissEventAgeAgo", { age })
+                    group.events.map((event) => {
+                      const previousEventId =
+                        eventNavigation.previousByEventId.get(event.id);
+                      const navigationTitle = previousEventId
+                        ? t("cacheMissPrev")
+                        : undefined;
+                      const referenceTitle = [event.messageId, navigationTitle]
+                        .filter(Boolean)
+                        .join("\n");
+                      return (
+                        <tr
+                          className={styles.eventRow}
+                          key={event.id}
+                          style={sessionStyles.get(event.sessionId)}
+                          tabIndex={-1}
+                          ref={(row) => {
+                            if (row) eventRows.current.set(event.id, row);
+                            else eventRows.current.delete(event.id);
+                          }}
+                        >
+                          <td aria-hidden="true" />
+                          <td>
+                            <MessageAge
+                              timestampMs={Date.parse(event.timestamp)}
+                              nowMs={nowMs}
+                              className={styles.age}
+                              formatLabel={(age) =>
+                                age === "now"
+                                  ? t("cacheMissEventAgeNow")
+                                  : t("cacheMissEventAgeAgo", { age })
+                              }
+                            />
+                          </td>
+                          <td
+                            className={
+                              event.outcome === "unexpected-recompute"
+                                ? styles.miss
+                                : styles.hit
                             }
-                          />
-                        </td>
-                        <td
-                          className={
-                            event.outcome === "unexpected-recompute"
-                              ? styles.miss
-                              : styles.hit
-                          }
-                        >
-                          {event.outcome === "unexpected-recompute"
-                            ? t("cacheMissEventResultMiss")
-                            : t("cacheMissEventResultHit")}
-                        </td>
-                        <td>
-                          {formatIdleDuration(
-                            event.elapsedSinceExpectedCacheMs,
-                          )}
-                        </td>
-                        <td className={styles.numeric}>
-                          {formatTokenCount(eventTokenCount(event))}
-                        </td>
-                        <td>
-                          {event.expectedCacheSource === "fork"
-                            ? t("cacheMissEventKindFork")
-                            : t("cacheMissEventKindWarm")}
-                        </td>
-                        <td
-                          className={styles.messageReference}
-                          title={event.messageId}
-                        >
-                          {eventMessageReference(event)}
-                        </td>
-                        <td>
-                          <Link
-                            className={styles.openLink}
-                            to={`${basePath}${event.sessionPath}`}
-                            title={t("cacheMissBillingOpenSession")}
                           >
-                            {t("cacheMissEventOpen")}
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
+                            {event.outcome === "unexpected-recompute"
+                              ? t("cacheMissEventResultMiss")
+                              : t("cacheMissEventResultHit")}
+                          </td>
+                          <td>
+                            {formatIdleDuration(
+                              event.elapsedSinceExpectedCacheMs,
+                            )}
+                          </td>
+                          <td className={styles.numeric}>
+                            {formatTokenCount(eventTokenCount(event))}
+                          </td>
+                          <td>
+                            {event.expectedCacheSource === "fork"
+                              ? t("cacheMissEventKindFork")
+                              : t("cacheMissEventKindWarm")}
+                          </td>
+                          <td className={styles.messageReference}>
+                            <span
+                              className={styles.sessionMarker}
+                              aria-hidden="true"
+                            />
+                            {previousEventId ? (
+                              <button
+                                type="button"
+                                className={styles.messageJump}
+                                title={referenceTitle || undefined}
+                                aria-label={navigationTitle}
+                                onClick={() =>
+                                  jumpToPreviousSessionEvent(event.id)
+                                }
+                              >
+                                {eventMessageReference(event)}
+                              </button>
+                            ) : (
+                              <span title={referenceTitle || undefined}>
+                                {eventMessageReference(event)}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <Link
+                              className={styles.openLink}
+                              to={`${basePath}${event.sessionPath}`}
+                              title={t("cacheMissBillingOpenSession")}
+                            >
+                              {t("cacheMissEventOpen")}
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               );
             })}

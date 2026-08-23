@@ -106,10 +106,24 @@ slider ends in an unlimited notch, and a blank numeric value also means
 unlimited. The visible summary, all charts, provider/model hover contents, and
 grouped wrapping table consume that same explicitly filtered event set. A
 finite window is repeated beside the table row count; unlimited adds no suffix.
-The first duration bucket is 0–10 minutes, including exact-zero observations.
-Table columns distinguish when YA recorded an event (`Seen`) from its measured
-human-turn delay (`Gap`), while `Msg` is a compact message reference whose full
-provider id remains available on hover.
+Duration buckets double from `0–30s`, `30s–1m`, `1–2m`, and onward with no
+terminal cap, so short cache lifetimes remain visible without losing the long
+tail. The charts omit ranges containing no observations.
+
+The table adds a browser-local result filter, defaulting to misses and
+persisting Misses / Hits / All across revisits. It does not filter the charts:
+clean hits remain the denominator for miss probability even when the table is
+showing misses only. Table columns distinguish when YA recorded an event
+(`Seen`) from its measured human-turn delay (`Gap`). Rows from one session
+share a color marker, while clicking a numbered `Msg` jumps to the next older
+visible event from that session; the full provider id remains available on
+hover.
+
+## Design decisions
+
+- **Keep hit/miss filtering table-local** (versus filtering every evidence
+  view): the table is a row-browsing surface, while the probability charts
+  require retained hits as their denominator.
 
 ## Defaults
 

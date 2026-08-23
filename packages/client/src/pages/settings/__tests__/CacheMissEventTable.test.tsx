@@ -3,9 +3,13 @@
 import type { CacheMissBillingRecord } from "@yep-anywhere/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetCacheMissEventOutcomeFilterPreference } from "../../../hooks/useCacheMissEventOutcomeFilter";
 import { I18nProvider } from "../../../i18n";
+import { UI_KEYS } from "../../../lib/storageKeys";
 import { CacheMissEventTable } from "../CacheMissEventTable";
+
+const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
 function record(
   id: string,
@@ -61,7 +65,18 @@ function renderTable(
 }
 
 describe("CacheMissEventTable", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    resetCacheMissEventOutcomeFilterPreference();
+    if (originalScrollIntoView) {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+    }
+  });
 
   it("groups rows by provider/model with count, misses, and newest age", () => {
     renderTable([
@@ -71,6 +86,9 @@ describe("CacheMissEventTable", () => {
         reason: "warm-session-cache-hit",
       }),
     ]);
+    fireEvent.change(screen.getByRole("combobox", { name: "Result" }), {
+      target: { value: "all" },
+    });
 
     expect(screen.getByText("claude / opus")).toBeTruthy();
     expect(screen.getByText(/2 events · 1 misses/)).toBeTruthy();
@@ -122,6 +140,76 @@ describe("CacheMissEventTable", () => {
 
     expect(screen.getByText("Msg")).toBeTruthy();
     const reference = screen.getByText("#211");
-    expect(reference.title).toBe("provider-message-identifier");
+    expect(reference.title).toContain("provider-message-identifier");
+  });
+
+  it("persists the result filter across revisits and defaults to misses", () => {
+    const events = [
+      record("miss"),
+      record("hit", {
+        outcome: "expected-cache-hit",
+        reason: "warm-session-cache-hit",
+      }),
+    ];
+    const first = renderTable(events);
+
+    const resultFilter = screen.getByRole<HTMLSelectElement>("combobox", {
+      name: "Result",
+    });
+    expect(resultFilter.value).toBe("misses");
+    expect(screen.getByRole("cell", { name: "Miss" })).toBeTruthy();
+    expect(screen.queryByRole("cell", { name: "Hit" })).toBeNull();
+
+    fireEvent.change(resultFilter, { target: { value: "hits" } });
+    expect(screen.getByRole("cell", { name: "Hit" })).toBeTruthy();
+    expect(localStorage.getItem(UI_KEYS.cacheMissEventOutcomeFilter)).toBe(
+      "hits",
+    );
+
+    first.unmount();
+    renderTable(events);
+    expect(
+      screen.getByRole<HTMLSelectElement>("combobox", { name: "Result" }).value,
+    ).toBe("hits");
+  });
+
+  it("color-codes sessions and jumps to their previous visible turn", () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    renderTable([
+      record("newest", {
+        sessionId: "session-shared",
+        messageIndex: 211,
+        timestamp: "2026-08-23T12:00:00.000Z",
+      }),
+      record("previous", {
+        sessionId: "session-shared",
+        messageIndex: 198,
+        timestamp: "2026-08-23T11:00:00.000Z",
+      }),
+      record("other", {
+        sessionId: "session-other",
+        messageIndex: 77,
+        timestamp: "2026-08-23T10:00:00.000Z",
+      }),
+    ]);
+
+    const newestRow = screen.getByText("#211").closest("tr");
+    const previousRow = screen.getByText("#198").closest("tr");
+    const otherRow = screen.getByText("#77").closest("tr");
+    expect(newestRow?.style.getPropertyValue("--cache-session-color")).toBe(
+      previousRow?.style.getPropertyValue("--cache-session-color"),
+    );
+    expect(newestRow?.style.getPropertyValue("--cache-session-color")).not.toBe(
+      otherRow?.style.getPropertyValue("--cache-session-color"),
+    );
+
+    fireEvent.click(screen.getByText("#211"));
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    expect(document.activeElement).toBe(previousRow);
   });
 });
