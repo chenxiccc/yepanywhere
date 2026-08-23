@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
 import { setStableToolPreviewRenderingPreference } from "../../../hooks/useStableToolPreviewRendering";
@@ -13,10 +20,15 @@ import {
   ToolCallRow,
 } from "../ToolCallRow";
 
+const schemaValidationMocks = vi.hoisted(() => ({
+  enabled: false,
+  reportValidationError: vi.fn(),
+}));
+
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({
-    enabled: false,
-    reportValidationError: vi.fn(),
+    enabled: schemaValidationMocks.enabled,
+    reportValidationError: schemaValidationMocks.reportValidationError,
     isToolIgnored: vi.fn(() => false),
   }),
 }));
@@ -70,6 +82,8 @@ function setElementBox(
 
 describe("ToolCallRow", () => {
   beforeEach(() => {
+    schemaValidationMocks.enabled = false;
+    schemaValidationMocks.reportValidationError.mockReset();
     window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
   });
 
@@ -99,6 +113,91 @@ describe("ToolCallRow", () => {
     expect(screen.getByText("npm run test:e2e:pipeline-v2")).toBeDefined();
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
     expect(container.querySelector(".tool-use-expanded")).toBeNull();
+  });
+
+  it("pauses pending row activity outside the viewport", () => {
+    let notifyIntersection: IntersectionObserverCallback = () => {};
+    class TestIntersectionObserver {
+      constructor(callback: IntersectionObserverCallback) {
+        notifyIntersection = callback;
+      }
+
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: TestIntersectionObserver,
+    });
+    const { container } = render(
+      <ToolCallRow
+        id="tool-offscreen"
+        toolName="Bash"
+        toolInput={{ command: "sleep 5" }}
+        status="pending"
+      />,
+    );
+    const row = container.querySelector(".tool-row") as HTMLElement;
+
+    expect(row.style.getPropertyValue("--ya-activity-play")).toBe("paused");
+
+    act(() => {
+      notifyIntersection(
+        [
+          { target: row, isIntersecting: true },
+        ] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
+    });
+    expect(row.style.getPropertyValue("--ya-activity-play")).toBe("running");
+
+    act(() => {
+      notifyIntersection(
+        [
+          { target: row, isIntersecting: false },
+        ] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
+    });
+    expect(row.style.getPropertyValue("--ya-activity-play")).toBe("paused");
+  });
+
+  it("validates a complete result while its rich renderer is deferred", async () => {
+    class NeverIntersectingObserver {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: NeverIntersectingObserver,
+    });
+    schemaValidationMocks.enabled = true;
+    setStableToolPreviewRenderingPreference(false);
+
+    render(
+      <ToolCallRow
+        id="tool-schema-offscreen"
+        toolName="Read"
+        toolInput={{ file_path: "/tmp/example" }}
+        toolResult={{
+          content: "",
+          isError: false,
+          structured: { type: "invalid" },
+        }}
+        status="complete"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(schemaValidationMocks.reportValidationError).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+    expect(schemaValidationMocks.reportValidationError.mock.calls[0]?.[0]).toBe(
+      "Read",
+    );
   });
 
   it("shows the provider-reported runtime in the Ran label tooltip", () => {

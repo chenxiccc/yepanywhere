@@ -3,10 +3,16 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import type { ZodError } from "zod";
+import {
+  type SchemaValidationGap,
+  SchemaValidationSummary,
+} from "../components/SchemaValidationSummary";
 import { useSchemaValidation } from "../hooks/useSchemaValidation";
 import { useToastContext } from "./ToastContext";
 
@@ -37,6 +43,10 @@ export function SchemaValidationProvider({
 }: SchemaValidationProviderProps) {
   const { settings, setIgnoredTools } = useSchemaValidation();
   const { showToast } = useToastContext();
+  const [validationGaps, setValidationGaps] = useState<SchemaValidationGap[]>(
+    [],
+  );
+  const validationGapKeysRef = useRef<Set<string>>(new Set());
 
   // Track which tools have already shown an error toast this session
   // Using ref to avoid re-renders when updating the set
@@ -62,6 +72,12 @@ export function SchemaValidationProvider({
     setIgnoredTools([]);
   }, [setIgnoredTools]);
 
+  useEffect(() => {
+    if (settings.enabled || validationGapKeysRef.current.size === 0) return;
+    validationGapKeysRef.current.clear();
+    setValidationGaps([]);
+  }, [settings.enabled]);
+
   const reportValidationError = useCallback(
     (toolName: string, errors: ZodError) => {
       // Always log to console
@@ -69,6 +85,29 @@ export function SchemaValidationProvider({
 
       // Don't show toast if validation is disabled
       if (!settings.enabled) return;
+
+      const newGaps: SchemaValidationGap[] = [];
+      for (const issue of errors.issues) {
+        const path = issue.path.map(String).join(".") || "(root)";
+        const missing =
+          issue.code === "invalid_type" &&
+          (issue.message.toLowerCase().includes("required") ||
+            issue.message.toLowerCase().includes("received undefined"));
+        const gap: SchemaValidationGap = {
+          code: issue.code,
+          kind: missing ? "missing" : "invalid",
+          message: issue.message,
+          path,
+          toolName,
+        };
+        const key = `${toolName}\u0000${path}\u0000${issue.code}\u0000${issue.message}`;
+        if (validationGapKeysRef.current.has(key)) continue;
+        validationGapKeysRef.current.add(key);
+        newGaps.push(gap);
+      }
+      if (newGaps.length > 0) {
+        setValidationGaps((current) => [...current, ...newGaps]);
+      }
 
       // Don't show toast if tool is ignored
       if (settings.ignoredTools.includes(toolName)) return;
@@ -110,6 +149,12 @@ export function SchemaValidationProvider({
   return (
     <SchemaValidationContext.Provider value={value}>
       {children}
+      {settings.enabled && validationGaps.length > 0 && (
+        <SchemaValidationSummary
+          gaps={validationGaps}
+          ignoredTools={settings.ignoredTools}
+        />
+      )}
     </SchemaValidationContext.Provider>
   );
 }

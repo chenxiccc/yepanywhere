@@ -3,7 +3,8 @@
   height: 8px;
   border-radius: 50%;
   background: var(--thinking-color);
-  animation: thinking-indicator-pulse 1.5s ease-in-out infinite;
+  animation: thinking-indicator-pulse 1.5s ease-in-out infinite
+    var(--ya-activity-play, paused);
   flex-shrink: 0;
 }
 
@@ -45,7 +46,8 @@
 .iconSvg {
   width: 15px;
   height: 15px;
-  animation: thinking-indicator-pulse 1.5s ease-in-out infinite;
+  animation: thinking-indicator-pulse 1.5s ease-in-out infinite
+    var(--ya-activity-play, paused);
 }
 
 @keyframes thinking-indicator-pulse {

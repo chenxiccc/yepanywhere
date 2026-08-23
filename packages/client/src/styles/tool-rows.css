@@ -82,7 +82,7 @@
 /* Tool row status-specific dot colors */
 .tool-row.timeline-item.status-pending::before {
   background: var(--timeline-dot-working);
-  animation: pulse 1.5s ease-in-out infinite;
+  animation: pulse 1.5s ease-in-out infinite var(--ya-activity-play, paused);
 }
 
 .tool-row.timeline-item.status-complete::before {
@@ -220,9 +220,9 @@
   text-align: center;
 }
 
-.spinner {
+.tool-spinner .spinner {
   color: var(--app-spinner-foreground);
-  animation: spin 1s linear infinite;
+  animation: spin 1s linear infinite var(--ya-activity-play, paused);
 }
 
 @keyframes spin {

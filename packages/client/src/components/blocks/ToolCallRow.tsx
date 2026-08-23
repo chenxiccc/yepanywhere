@@ -23,6 +23,7 @@ import {
   useTooltipMode,
 } from "../../hooks/useTooltipAppearance";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
+import { useSchemaValidationContext } from "../../contexts/SchemaValidationContext";
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
 import { readProjectPathLinkTargets } from "../../lib/projectPathLinks";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
@@ -35,7 +36,9 @@ import {
   getVisibilityAwareTooltipText,
   isElementFullyScrollVisible,
 } from "../../lib/tooltipVisibility";
+import { validateToolResult } from "../../lib/validateToolResult";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
+import { observeViewportActivityAnimation } from "../../lib/viewportActivityAnimation";
 import { ProjectPathLinkedText } from "../ProjectPathLinkedText";
 import {
   getToolResultImageSourcePath,
@@ -544,6 +547,8 @@ export const ToolCallRow = memo(function ToolCallRow({
   );
   const [bashCommandExpanded, setBashCommandExpanded] =
     useRememberedDisclosureState(id, "bash-command", false);
+  const { enabled: schemaValidationEnabled, reportValidationError } =
+    useSchemaValidationContext();
   const sessionMetadata = useOptionalSessionMetadata();
   const outputToolPreviewLineCount = useOutputToolPreviewLineCount();
   const deferredPreviewTypography = useDeferredPreviewTypographyMetrics();
@@ -588,6 +593,10 @@ export const ToolCallRow = memo(function ToolCallRow({
     hydrateNow,
     rowWidthPx,
   } = useNearViewportHydration(status, !stableToolPreviewRendering);
+  useEffect(() => {
+    if (status !== "pending" || !rowRef.current) return;
+    return observeViewportActivityAnimation(rowRef.current);
+  }, [rowRef, status]);
 
   // Check if this tool renders inline (bypasses entire tool-row structure)
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
@@ -605,6 +614,26 @@ export const ToolCallRow = memo(function ToolCallRow({
     noOutputBashResult !== null,
   );
   const rendererToolName = toolRegistry.get(toolName).tool;
+  useEffect(() => {
+    if (
+      !schemaValidationEnabled ||
+      shouldHydrateRichContent ||
+      !structuredResult ||
+      (rendererToolName === "Bash" && typeof structuredResult !== "object")
+    ) {
+      return;
+    }
+    const validation = validateToolResult(rendererToolName, structuredResult);
+    if (!validation.valid && validation.errors) {
+      reportValidationError(rendererToolName, validation.errors);
+    }
+  }, [
+    rendererToolName,
+    reportValidationError,
+    schemaValidationEnabled,
+    shouldHydrateRichContent,
+    structuredResult,
+  ]);
   const mayHaveCollapsedPreview =
     toolRegistry.hasCollapsedPreview(toolName) && !suppressCollapsedPreview;
   const isEditTool = rendererToolName === "Edit";

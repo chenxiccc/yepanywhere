@@ -8,6 +8,17 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProcessingIndicator } from "../ProcessingIndicator";
 
+let nextAnimationFrameId = 1;
+let animationFrames = new Map<number, FrameRequestCallback>();
+
+function flushAnimationFrames() {
+  const pending = Array.from(animationFrames.values());
+  animationFrames.clear();
+  for (const callback of pending) {
+    callback(performance.now());
+  }
+}
+
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
     t: (key: string) =>
@@ -33,6 +44,23 @@ vi.mock("../../i18n", () => ({
 describe("ProcessingIndicator", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    nextAnimationFrameId = 1;
+    animationFrames = new Map();
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        const id = nextAnimationFrameId;
+        nextAnimationFrameId += 1;
+        animationFrames.set(id, callback);
+        return id;
+      }),
+    );
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn((id: number) => {
+        animationFrames.delete(id);
+      }),
+    );
     // Mock localStorage for useFunPhrases hook - disable fun phrases for predictable tests
     vi.stubGlobal("localStorage", {
       getItem: vi.fn().mockReturnValue("false"),
@@ -68,16 +96,81 @@ describe("ProcessingIndicator", () => {
 
     expect(textElement?.textContent).toBe("");
 
-    // Each state update schedules the next typewriter tick.
+    // The timer only queues work; text changes on the next visual frame.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(25);
     });
+    expect(textElement?.textContent).toBe("");
+    act(flushAnimationFrames);
     expect(textElement?.textContent).toBe("T");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(25);
     });
+    act(flushAnimationFrames);
     expect(textElement?.textContent).toBe("Th");
+  });
+
+  it("coalesces simultaneous animation timers into one visual frame", async () => {
+    render(<ProcessingIndicator isProcessing={true} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(".processing-text")?.textContent).toBe("");
+
+    act(flushAnimationFrames);
+    expect(document.querySelector(".processing-text")?.textContent).toBe("");
+  });
+
+  it("does not schedule text frames while outside the viewport", async () => {
+    let notifyIntersection: IntersectionObserverCallback = () => {};
+    class TestIntersectionObserver {
+      constructor(callback: IntersectionObserverCallback) {
+        notifyIntersection = callback;
+      }
+
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+    vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
+
+    const { container } = render(<ProcessingIndicator isProcessing={true} />);
+    const indicator = container.querySelector(
+      ".processing-indicator",
+    ) as HTMLElement;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500);
+    });
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+
+    act(() => {
+      notifyIntersection(
+        [
+          { target: indicator, isIntersecting: true },
+        ] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25);
+    });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      notifyIntersection(
+        [
+          { target: indicator, isIntersecting: false },
+        ] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
+    });
+    expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(animationFrames.size).toBe(0);
   });
 
   it("pauses and resumes the typewriter when clicked", async () => {
@@ -108,6 +201,7 @@ describe("ProcessingIndicator", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(25);
     });
+    act(flushAnimationFrames);
 
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(toggle.textContent).not.toBe(pausedText);

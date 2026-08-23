@@ -106,7 +106,16 @@ stable component identity, and lower update cadence.
   character; repeating the action resumes it. The processing text has no
   typewriter cursor. The pause lasts only for the mounted processing cycle and
   never pauses the agent. **Fun Phrases** controls the phrase pool, not whether
-  the typewriter animates.
+  the typewriter animates. Timer expirations queue through one pending animation
+  frame, so phrase rotation and character progress produce at most one React
+  update per painted frame. The timer and frame stop while the indicator is
+  outside the viewport or the document is hidden; resuming does not replay
+  missed progress.
+- Activity pulses and spinners inherit one viewport-owned CSS animation play
+  state. A shared `IntersectionObserver` pauses them outside the viewport, and
+  document visibility pauses every observed activity animation while the tab is
+  hidden. Adding another activity indicator must reuse that observer rather than
+  create a per-indicator observer or JavaScript animation loop.
 
 ## Design decisions
 

@@ -14,6 +14,8 @@
  *   <ThinkingIndicator variant="icon" />     // Icon-only thinking badge
  */
 
+import { useEffect, useRef } from "react";
+import { observeViewportActivityAnimation } from "../lib/viewportActivityAnimation";
 import styles from "./ThinkingIndicator.module.css";
 
 interface ThinkingIndicatorProps {
@@ -23,18 +25,28 @@ interface ThinkingIndicatorProps {
   label?: string;
   /** Optional className for additional styling */
   className?: string;
+  /** The parent observes visibility and supplies the inherited play state. */
+  animationVisibilityManaged?: boolean;
 }
 
 export function ThinkingIndicator({
   variant = "dot",
   label = "Thinking",
   className,
+  animationVisibilityManaged = false,
 }: ThinkingIndicatorProps) {
+  const rootRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (animationVisibilityManaged || !rootRef.current) return;
+    return observeViewportActivityAnimation(rootRef.current);
+  }, [animationVisibilityManaged]);
+
   const dot = <span className={styles.dot} />;
 
   if (variant === "icon") {
     return (
       <span
+        ref={rootRef}
         className={`${styles.icon} ${className ?? ""}`}
         title={label}
         aria-label={label}
@@ -67,12 +79,16 @@ export function ThinkingIndicator({
 
   if (variant === "pill") {
     return (
-      <span className={`${styles.pill} ${className ?? ""}`}>
+      <span ref={rootRef} className={`${styles.pill} ${className ?? ""}`}>
         {dot}
         <span className={styles.label}>{label}</span>
       </span>
     );
   }
 
-  return <span className={`${styles.root} ${className ?? ""}`}>{dot}</span>;
+  return (
+    <span ref={rootRef} className={`${styles.root} ${className ?? ""}`}>
+      {dot}
+    </span>
+  );
 }

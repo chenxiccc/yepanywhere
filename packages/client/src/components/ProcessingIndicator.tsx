@@ -11,6 +11,7 @@ import {
 } from "react";
 import { getFunPhrasesEnabled } from "../hooks/useFunPhrases";
 import { useI18n } from "../i18n";
+import { observeViewportActivityAnimation } from "../lib/viewportActivityAnimation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
 const PROCESSING_PHRASES = [
@@ -38,6 +39,22 @@ const PROCESSING_PHRASES = [
 
 const ROTATION_INTERVAL_MS = 2000;
 const TYPEWRITER_SPEED_MS = 25; // ~40 chars/second = ~240 WPM
+
+interface ProcessingAnimationState {
+  phraseIndex: number;
+  displayedText: string;
+  isTyping: boolean;
+}
+
+const INITIAL_ANIMATION_STATE: ProcessingAnimationState = {
+  phraseIndex: 0,
+  displayedText: "",
+  isTyping: true,
+};
+
+type AnimationFrameAction = (
+  state: ProcessingAnimationState,
+) => ProcessingAnimationState;
 
 /** Fisher-Yates shuffle */
 function shuffle<T>(array: T[]): T[] {
@@ -99,13 +116,37 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
   onToggleThinkingLatestOnly,
 }: Props) {
   const { t } = useI18n();
-  const [phraseIndex, setPhraseIndex] = useState(0);
-  const [displayedText, setDisplayedText] = useState("");
-  const [isTyping, setIsTyping] = useState(true);
+  const [animationState, setAnimationState] = useState(INITIAL_ANIMATION_STATE);
   const [isAnimationPaused, setIsAnimationPaused] = useState(false);
+  const [isInViewport, setIsInViewport] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const queuedFrameActionsRef = useRef<AnimationFrameAction[]>([]);
+  const { phraseIndex, displayedText, isTyping } = animationState;
   const showThinkingToggle = Boolean(
     onToggleThinkingItemsVisible && (isProcessing || hasThinkingItems),
   );
+  const isRendered = isProcessing || showThinkingToggle;
+
+  const cancelQueuedFrame = useCallback(() => {
+    queuedFrameActionsRef.current = [];
+    if (animationFrameRef.current === null) return;
+    window.cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = null;
+  }, []);
+
+  const queueFrameAction = useCallback((action: AnimationFrameAction) => {
+    queuedFrameActionsRef.current.push(action);
+    if (animationFrameRef.current !== null) return;
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      const actions = queuedFrameActionsRef.current;
+      queuedFrameActionsRef.current = [];
+      setAnimationState((current) =>
+        actions.reduce((next, applyAction) => applyAction(next), current),
+      );
+    });
+  }, []);
 
   // Right-click (desktop) / long-press (touch) flips the auto-expand policy;
   // left-click still toggles visibility. suppressTouchClickRef stops a
@@ -179,52 +220,90 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
     return shuffle(PROCESSING_PHRASES);
   }, [isProcessing]);
 
+  useEffect(() => {
+    if (!isRendered) {
+      setIsInViewport(false);
+      return;
+    }
+    const root = rootRef.current;
+    if (!root) {
+      setIsInViewport(false);
+      return;
+    }
+    return observeViewportActivityAnimation(root, setIsInViewport);
+  }, [isRendered]);
+
+  const shouldAnimateText = isProcessing && isInViewport && !isAnimationPaused;
+
+  useEffect(() => {
+    if (shouldAnimateText) return;
+    cancelQueuedFrame();
+  }, [cancelQueuedFrame, shouldAnimateText]);
+
+  useEffect(() => cancelQueuedFrame, [cancelQueuedFrame]);
+
   // Rotate phrases
   useEffect(() => {
     if (!isProcessing) {
-      setPhraseIndex(0);
-      setDisplayedText("");
-      setIsTyping(true);
+      setAnimationState(INITIAL_ANIMATION_STATE);
       setIsAnimationPaused(false);
       return;
     }
 
-    if (isAnimationPaused) return;
+    if (!shouldAnimateText) return;
 
-    const interval = setInterval(() => {
-      setPhraseIndex((prev) => (prev + 1) % phrases.length);
-      setIsTyping(true);
-      setDisplayedText("");
-    }, ROTATION_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [isProcessing, isAnimationPaused, phrases.length]);
-
-  // Typewriter effect
-  useEffect(() => {
-    if (!isProcessing || !isTyping || isAnimationPaused) return;
-
-    const phrase = phrases[phraseIndex] ?? "";
-    if (displayedText.length >= phrase.length) {
-      setIsTyping(false);
-      return;
-    }
-
+    const scheduledPhraseIndex = phraseIndex;
     const timeout = setTimeout(() => {
-      setDisplayedText(phrase.slice(0, displayedText.length + 1));
-    }, TYPEWRITER_SPEED_MS);
+      queueFrameAction((current) =>
+        current.phraseIndex === scheduledPhraseIndex
+          ? {
+              phraseIndex: (scheduledPhraseIndex + 1) % phrases.length,
+              displayedText: "",
+              isTyping: true,
+            }
+          : current,
+      );
+    }, ROTATION_INTERVAL_MS);
 
     return () => clearTimeout(timeout);
   }, [
     isProcessing,
+    phraseIndex,
+    phrases.length,
+    queueFrameAction,
+    shouldAnimateText,
+  ]);
+
+  // Typewriter effect
+  useEffect(() => {
+    if (!shouldAnimateText || !isTyping) return;
+
+    const phrase = phrases[phraseIndex] ?? "";
+    if (displayedText.length >= phrase.length) return;
+
+    const timeout = setTimeout(() => {
+      queueFrameAction((current) => {
+        if (current.phraseIndex !== phraseIndex) return current;
+        const nextText = phrase.slice(0, current.displayedText.length + 1);
+        return {
+          ...current,
+          displayedText: nextText,
+          isTyping: nextText.length < phrase.length,
+        };
+      });
+    }, TYPEWRITER_SPEED_MS);
+
+    return () => clearTimeout(timeout);
+  }, [
     isTyping,
-    isAnimationPaused,
     phraseIndex,
     displayedText,
     phrases,
+    queueFrameAction,
+    shouldAnimateText,
   ]);
 
-  if (!isProcessing && !showThinkingToggle) {
+  if (!isRendered) {
     return null;
   }
 
@@ -250,6 +329,7 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
 
   return (
     <div
+      ref={rootRef}
       className={`processing-indicator ${
         !isProcessing ? "processing-indicator--control-only" : ""
       } ${!thinkingItemsVisible && hasThinkingItems ? "processing-indicator--thinking-hidden" : ""}`}
@@ -276,7 +356,7 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
       {isProcessing && (
         <>
           <div className="processing-dot-container">
-            <ThinkingIndicator />
+            <ThinkingIndicator animationVisibilityManaged />
           </div>
           <span
             className="processing-text"

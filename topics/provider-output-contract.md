@@ -99,6 +99,26 @@ so the doc, the type, and the validator cannot drift three ways. A new
 normalized shape gets a named exported type in `packages/shared` and a
 mention here.
 
+### Optional client schema diagnostics
+
+The browser's developer **Schema Validation** setting is default-off. When it
+is off, tool renderers do not run their result schemas and the client shows no
+schema-diagnostic chrome. It is a provider-contract diagnostic, not a stream
+health check or a response-delivery mechanism.
+
+When enabled, mounted tool results run their renderer-owned schemas. Every
+distinct issue detected during the browser page lifetime is retained even when
+its row is outside the scroll viewport, keyed by tool name, issue path, code,
+and message. A fixed center-bottom warning summarizes the unique issues by
+sorted tool type and opens their details. Ignoring a tool suppresses its inline
+warning/toast but does not remove its issues from the global summary; the
+detail marks that group ignored. Disabling validation clears the diagnostic
+registry. When rich offscreen row content is deferred, the mounted tool row
+runs the same schema so deferral does not leave a summary gap; the renderer
+still owns its inline warning once hydrated. Results that have never entered
+the mounted transcript have not been parsed and therefore cannot appear in the
+summary.
+
 ## The normalized message envelope
 
 What a provider's normalization must attempt to supply per message. Unknown
