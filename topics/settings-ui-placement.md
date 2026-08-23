@@ -155,7 +155,10 @@ UI should state directly.
   broad allow-set: their separate route permits only transcript-linked project
   files and bounded assets referenced by a linked Markdown or HTML file. The
   built-in hostname allow-set includes localhost, private-network IP addresses,
-  and Tailscale MagicDNS names ending in `.ts.net`.
+  and Tailscale MagicDNS names ending in `.ts.net`. File-access toggles save
+  immediately. Custom folders save when the editor loses focus or when the user
+  chooses **Save folders**; the pane-header **Undo** restores the file-access
+  values from when the pane opened.
 - **Local Access → Approval audit log.** Saves explicit approve and deny
   decisions, including the associated tool inputs or commands, to
   `logs/approval-decisions.jsonl`. It does not currently audit bypass-mode

@@ -2,7 +2,7 @@ import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   DEFAULT_FILE_ACCESS,
@@ -22,6 +22,7 @@ import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { HideInSettingsSearch } from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndo } from "./SettingsUndoContext";
+import styles from "./LocalAccessSettings.module.css";
 
 /** File-access form state — `custom` is edited as newline-separated text. */
 interface FileAccessForm {
@@ -67,6 +68,12 @@ function fileAccessEquals(
     a.custom.length === b.custom.length &&
     a.custom.every((value, index) => value === b.custom[index])
   );
+}
+
+function cloneFileAccessSettings(
+  settings: FileAccessSettings,
+): FileAccessSettings {
+  return { ...settings, custom: [...settings.custom] };
 }
 
 /** A custom line that grants whole-disk read, so the UI can flag it. */
@@ -126,6 +133,12 @@ export function LocalAccessSettings() {
   const [fileAccessInfo, setFileAccessInfo] = useState<FileAccessInfo | null>(
     null,
   );
+  const [fileAccessError, setFileAccessError] = useState<string | null>(null);
+  const [fileAccessSaving, setFileAccessSaving] = useState(false);
+  const fileAccessBaselineRef = useRef<FileAccessSettings | null>(null);
+  const fileAccessSavedRef = useRef<FileAccessSettings | null>(null);
+  const fileAccessSaveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const fileAccessSaveSequenceRef = useRef(0);
 
   // Form state
   const [formError, setFormError] = useState<string | null>(null);
@@ -171,11 +184,12 @@ export function LocalAccessSettings() {
       setAllowAllHostsToggle(false);
       setAllowedHostsText(ah ?? "");
     }
-    setFileAccess(
-      settingsToFileAccessForm(
-        serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
-      ),
+    const loadedFileAccess = cloneFileAccessSettings(
+      serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
     );
+    fileAccessBaselineRef.current ??= loadedFileAccess;
+    fileAccessSavedRef.current = loadedFileAccess;
+    setFileAccess(settingsToFileAccessForm(loadedFileAccess));
     setFormInitialized(true);
   }, [auth, binding, formInitialized, serverSettings]);
 
@@ -186,13 +200,21 @@ export function LocalAccessSettings() {
       return;
     }
 
-    setFileAccess(
-      settingsToFileAccessForm(
-        serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
-      ),
+    const loadedFileAccess = cloneFileAccessSettings(
+      serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
     );
+    fileAccessBaselineRef.current ??= loadedFileAccess;
+    fileAccessSavedRef.current = loadedFileAccess;
+    setFileAccess(settingsToFileAccessForm(loadedFileAccess));
     setFormInitialized(true);
   }, [auth, formInitialized, remoteConnection, serverSettings]);
+
+  useEffect(() => {
+    if (!serverSettings) return;
+    fileAccessSavedRef.current = cloneFileAccessSettings(
+      serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
+    );
+  }, [serverSettings]);
 
   // Compute the effective allowedHosts value for comparison/saving
   const getAllowedHostsValue = (
@@ -214,15 +236,10 @@ export function LocalAccessSettings() {
     newAllowAllHosts: boolean,
     newAllowedHostsText: string,
     newLocalhostOpen: boolean,
-    newFileAccess: FileAccessForm,
   ) => {
     if (!serverSettings) return false;
-    const fileAccessChanged = !fileAccessEquals(
-      fileAccessFormToSettings(newFileAccess),
-      serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
-    );
 
-    if (!binding || !auth) return fileAccessChanged;
+    if (!binding || !auth) return false;
 
     const portChanged = newPort !== String(binding.localhost.port);
     const networkEnabledChanged = newNetworkEnabled !== binding.network.enabled;
@@ -243,8 +260,7 @@ export function LocalAccessSettings() {
       authChanged ||
       passwordEntered ||
       localhostOpenChanged ||
-      allowedHostsChanged ||
-      fileAccessChanged
+      allowedHostsChanged
     );
   };
 
@@ -258,7 +274,6 @@ export function LocalAccessSettings() {
     allowAll?: boolean;
     hostsText?: string;
     localhostOpen?: boolean;
-    fileAccess?: FileAccessForm;
   }) => {
     setHasChanges(
       checkForChanges(
@@ -270,35 +285,84 @@ export function LocalAccessSettings() {
         overrides.allowAll ?? allowAllHostsToggle,
         overrides.hostsText ?? allowedHostsText,
         overrides.localhostOpen ?? localhostOpenToggle,
-        overrides.fileAccess ?? fileAccess,
       ),
     );
   };
 
-  // Patch a file-access field and recompute change state from the new value.
-  const patchFileAccess = (patch: Partial<FileAccessForm>) => {
-    setFileAccess((prev) => {
-      const next = { ...prev, ...patch };
-      updateHasChanges({ fileAccess: next });
-      return next;
-    });
+  const saveFileAccess = useCallback(
+    (nextForm: FileAccessForm): Promise<void> => {
+      if (!serverSettings || fileAccessInfo?.envPinned) {
+        return Promise.resolve();
+      }
+
+      const nextSettings = fileAccessFormToSettings(nextForm);
+      const sequence = ++fileAccessSaveSequenceRef.current;
+      setFileAccessError(null);
+      setFileAccessSaving(true);
+
+      const pending = fileAccessSaveChainRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (
+            fileAccessSavedRef.current &&
+            fileAccessEquals(fileAccessSavedRef.current, nextSettings)
+          ) {
+            return;
+          }
+          await updateServerSettings({ fileAccess: nextSettings });
+          fileAccessSavedRef.current = cloneFileAccessSettings(nextSettings);
+        })
+        .catch((err) => {
+          setFileAccessError(
+            err instanceof Error
+              ? err.message
+              : t("localAccessErrorApplyFailed"),
+          );
+        })
+        .finally(() => {
+          if (fileAccessSaveSequenceRef.current === sequence) {
+            setFileAccessSaving(false);
+          }
+        });
+
+      fileAccessSaveChainRef.current = pending;
+      return pending;
+    },
+    [fileAccessInfo?.envPinned, serverSettings, t, updateServerSettings],
+  );
+
+  const patchAndSaveFileAccess = (patch: Partial<FileAccessForm>) => {
+    const next = { ...fileAccess, ...patch };
+    setFileAccess(next);
+    void saveFileAccess(next);
   };
 
-  // Header undo discards unapplied form edits back to the live server state.
-  // Unlike snapshot panes, it never re-applies an old binding: applying is a
-  // network-rebind action and must stay behind the explicit Apply button.
+  const serverFileAccess = serverSettings
+    ? (serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS)
+    : null;
+  const draftFileAccess = fileAccessFormToSettings(fileAccess);
+  const baselineFileAccess = fileAccessBaselineRef.current;
+  const fileAccessDraftChanged =
+    serverFileAccess !== null &&
+    !fileAccessEquals(draftFileAccess, serverFileAccess);
+  const fileAccessBaselineChanged =
+    serverFileAccess !== null &&
+    baselineFileAccess !== null &&
+    !fileAccessEquals(serverFileAccess, baselineFileAccess);
+  const customFoldersChanged =
+    serverFileAccess !== null &&
+    (draftFileAccess.custom.length !== serverFileAccess.custom.length ||
+      draftFileAccess.custom.some(
+        (value, index) => value !== serverFileAccess.custom[index],
+      ));
+
+  // Network/auth edits remain staged because applying them can rebind or
+  // redirect the server. File-access edits save immediately and Undo restores
+  // their pane-open snapshot through the same server setting.
   const resetFormFromServer = useCallback(() => {
     if (!serverSettings) return;
 
-    const resetFileAccess = () =>
-      setFileAccess(
-        settingsToFileAccessForm(
-          serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
-        ),
-      );
-
     if (!binding || !auth) {
-      resetFileAccess();
       setFormError(null);
       setHasChanges(false);
       return;
@@ -320,11 +384,35 @@ export function LocalAccessSettings() {
       setAllowAllHostsToggle(false);
       setAllowedHostsText(ah ?? "");
     }
-    resetFileAccess();
     setFormError(null);
     setHasChanges(false);
   }, [auth, binding, serverSettings]);
-  useSettingsUndo(hasChanges, resetFormFromServer);
+
+  const undoLocalAccessChanges = useCallback(async () => {
+    await fileAccessSaveChainRef.current;
+    const baseline = fileAccessBaselineRef.current;
+    setFileAccessError(null);
+    if (
+      baseline &&
+      !fileAccessInfo?.envPinned &&
+      (fileAccessDraftChanged || fileAccessBaselineChanged)
+    ) {
+      const baselineForm = settingsToFileAccessForm(baseline);
+      setFileAccess(baselineForm);
+      await saveFileAccess(baselineForm);
+    }
+    resetFormFromServer();
+  }, [
+    fileAccessBaselineChanged,
+    fileAccessDraftChanged,
+    fileAccessInfo?.envPinned,
+    resetFormFromServer,
+    saveFileAccess,
+  ]);
+  useSettingsUndo(
+    hasChanges || fileAccessDraftChanged || fileAccessBaselineChanged,
+    undoLocalAccessChanges,
+  );
 
   const renderFileAccessSettings = () => {
     const hasWholeDiskCustomPath = fileAccess.customText
@@ -378,7 +466,7 @@ export function LocalAccessSettings() {
                     aria-label={t("fileAccessProjects")}
                     checked={fileAccess.projects}
                     onChange={(e) =>
-                      patchFileAccess({ projects: e.target.checked })
+                      patchAndSaveFileAccess({ projects: e.target.checked })
                     }
                   />
                   <span className="toggle-slider" />
@@ -394,7 +482,7 @@ export function LocalAccessSettings() {
                     aria-label={t("fileAccessUploads")}
                     checked={fileAccess.uploads}
                     onChange={(e) =>
-                      patchFileAccess({ uploads: e.target.checked })
+                      patchAndSaveFileAccess({ uploads: e.target.checked })
                     }
                   />
                   <span className="toggle-slider" />
@@ -415,7 +503,7 @@ export function LocalAccessSettings() {
                     aria-label={t("fileAccessTemp")}
                     checked={fileAccess.temp}
                     onChange={(e) =>
-                      patchFileAccess({ temp: e.target.checked })
+                      patchAndSaveFileAccess({ temp: e.target.checked })
                     }
                   />
                   <span className="toggle-slider" />
@@ -437,7 +525,7 @@ export function LocalAccessSettings() {
                     aria-label={t("fileAccessHome")}
                     checked={fileAccess.home}
                     onChange={(e) =>
-                      patchFileAccess({ home: e.target.checked })
+                      patchAndSaveFileAccess({ home: e.target.checked })
                     }
                   />
                   <span className="toggle-slider" />
@@ -448,18 +536,43 @@ export function LocalAccessSettings() {
                   <strong>{t("fileAccessCustomTitle")}</strong>
                   <p>{t("fileAccessCustomDescription")}</p>
                 </div>
-                <textarea
-                  className="settings-input"
-                  rows={3}
-                  aria-label={t("fileAccessCustomTitle")}
-                  value={fileAccess.customText}
-                  placeholder={t("fileAccessCustomPlaceholder")}
-                  onChange={(e) =>
-                    patchFileAccess({ customText: e.target.value })
-                  }
-                />
+                <div className={styles.customFoldersControls}>
+                  <textarea
+                    className={`${styles.customFoldersInput} settings-input`}
+                    rows={3}
+                    aria-label={t("fileAccessCustomTitle")}
+                    value={fileAccess.customText}
+                    placeholder={t("fileAccessCustomPlaceholder")}
+                    onChange={(e) =>
+                      setFileAccess((previous) => ({
+                        ...previous,
+                        customText: e.target.value,
+                      }))
+                    }
+                    onBlur={() => {
+                      if (customFoldersChanged) void saveFileAccess(fileAccess);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`${styles.customFoldersButton} settings-button`}
+                    disabled={!customFoldersChanged || fileAccessSaving}
+                    onClick={() => void saveFileAccess(fileAccess)}
+                  >
+                    {fileAccessSaving && customFoldersChanged
+                      ? t("fileAccessCustomSaving")
+                      : customFoldersChanged
+                        ? t("fileAccessCustomSave")
+                        : t("fileAccessCustomSaved")}
+                  </button>
+                </div>
               </div>
             </div>
+            {fileAccessError && (
+              <p className="form-error file-access-settings-warning">
+                {fileAccessError}
+              </p>
+            )}
             {hasWholeDiskCustomPath && (
               <p className="form-warning file-access-settings-warning">
                 {t("fileAccessWholeDiskWarning")}
@@ -564,10 +677,6 @@ export function LocalAccessSettings() {
       );
       await updateServerSettings({
         allowedHosts: newAllowedHosts ?? "",
-        // Skip when env-pinned (server ignores it, but avoid a confusing write).
-        ...(fileAccessInfo?.envPinned
-          ? {}
-          : { fileAccess: fileAccessFormToSettings(fileAccess) }),
       });
 
       if (result.redirectUrl) {
@@ -579,25 +688,6 @@ export function LocalAccessSettings() {
       } else {
         setHasChanges(false);
       }
-    } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : t("localAccessErrorApplyFailed"),
-      );
-    } finally {
-      setIsApplying(false);
-    }
-  };
-
-  const handleApplyRemoteFileAccess = async () => {
-    if (!serverSettings || fileAccessInfo?.envPinned) return;
-    setFormError(null);
-    setIsApplying(true);
-
-    try {
-      await updateServerSettings({
-        fileAccess: fileAccessFormToSettings(fileAccess),
-      });
-      setHasChanges(false);
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : t("localAccessErrorApplyFailed"),
@@ -1011,31 +1101,11 @@ export function LocalAccessSettings() {
     return (
       <SettingsSection description={t("localAccessRemoteDescription")}>
         {remoteFileAccessReady ? (
-          <form
-            className="settings-group"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleApplyRemoteFileAccess();
-            }}
-          >
+          <div className="settings-group">
             <HideInSettingsSearch>
               {renderFileAccessSettings()}
-              <div className="settings-item">
-                {formError && <p className="form-error">{formError}</p>}
-                <button
-                  type="submit"
-                  className="settings-button"
-                  disabled={
-                    !hasChanges || isApplying || fileAccessInfo?.envPinned
-                  }
-                >
-                  {isApplying
-                    ? t("localAccessApplying")
-                    : t("localAccessApply")}
-                </button>
-              </div>
             </HideInSettingsSearch>
-          </form>
+          </div>
         ) : (
           <HideInSettingsSearch>
             <div className="settings-group">

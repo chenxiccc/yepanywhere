@@ -1,0 +1,32 @@
+.customFoldersControls {
+  display: flex;
+  flex: 1 1 20rem;
+  align-items: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: min(100%, 18rem);
+  max-width: 28rem;
+}
+
+.customFoldersInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.customFoldersButton {
+  flex: 0 0 7rem;
+}
+
+@media (max-width: 699px) {
+  .customFoldersControls {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: none;
+  }
+
+  .customFoldersButton {
+    flex-basis: auto;
+    width: 100%;
+  }
+}

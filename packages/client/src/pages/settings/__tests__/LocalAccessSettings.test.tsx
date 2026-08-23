@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,8 +10,16 @@ import {
 } from "@testing-library/react";
 import { APPROVAL_AUDIT_LOG_CAPABILITY } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FileAccessInfo, ServerSettings } from "../../../api/client";
+import type {
+  FileAccessInfo,
+  FileAccessSettings,
+  ServerSettings,
+} from "../../../api/client";
 import { LocalAccessSettings } from "../LocalAccessSettings";
+import {
+  type SettingsUndoRegistration,
+  SettingsUndoProvider,
+} from "../SettingsUndoContext";
 
 const {
   hookState,
@@ -106,16 +115,18 @@ const fileAccessInfo: FileAccessInfo = {
   homeDir: "/home/alice",
 };
 
+const baseFileAccess: FileAccessSettings = {
+  projects: true,
+  uploads: true,
+  temp: true,
+  home: false,
+  custom: [],
+};
+
 const baseSettings: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
-  fileAccess: {
-    projects: true,
-    uploads: true,
-    temp: true,
-    home: false,
-    custom: [],
-  },
+  fileAccess: baseFileAccess,
 };
 
 function checkboxFor(labelKey: string): HTMLInputElement {
@@ -126,13 +137,24 @@ function checkboxFor(labelKey: string): HTMLInputElement {
 
 describe("LocalAccessSettings", () => {
   beforeEach(() => {
-    hookState.settings = { ...baseSettings };
+    hookState.settings = {
+      ...baseSettings,
+      fileAccess: {
+        ...baseFileAccess,
+        custom: [...baseFileAccess.custom],
+      },
+    };
     hookState.isLoading = false;
     hookState.error = null;
     remoteState.connection = { disconnect: mockDisconnect };
     mockGetFileAccessInfo.mockResolvedValue(fileAccessInfo);
     mockUpdateSetting.mockResolvedValue(undefined);
-    mockUpdateSettings.mockResolvedValue(undefined);
+    mockUpdateSettings.mockImplementation(
+      async (updates: Partial<ServerSettings>) => {
+        if (!hookState.settings) throw new Error("settings not initialized");
+        hookState.settings = { ...hookState.settings, ...updates };
+      },
+    );
     versionState.capabilities = [APPROVAL_AUDIT_LOG_CAPABILITY];
   });
 
@@ -156,18 +178,10 @@ describe("LocalAccessSettings", () => {
     expect(screen.queryByText("localAccessListeningPortTitle")).toBeNull();
   });
 
-  it("saves relay-mode file access changes through server settings", async () => {
+  it("saves relay-mode file access toggles immediately", async () => {
     render(<LocalAccessSettings />);
 
-    const saveButton = await screen.findByRole("button", {
-      name: "localAccessApply",
-    });
-    expect(saveButton).toHaveProperty("disabled", true);
-
     fireEvent.click(checkboxFor("fileAccessHome"));
-
-    expect(saveButton).toHaveProperty("disabled", false);
-    fireEvent.click(saveButton);
 
     await waitFor(() =>
       expect(mockUpdateSettings).toHaveBeenCalledWith({
@@ -178,6 +192,86 @@ describe("LocalAccessSettings", () => {
           home: true,
           custom: [],
         },
+      }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "localAccessApply" }),
+    ).toBeNull();
+  });
+
+  it("saves custom folders on blur or explicit save", async () => {
+    render(<LocalAccessSettings />);
+
+    const customFolders = await screen.findByRole("textbox", {
+      name: "fileAccessCustomTitle",
+    });
+    fireEvent.change(customFolders, {
+      target: { value: " /srv/first \n/srv/second" },
+    });
+    fireEvent.blur(customFolders);
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenLastCalledWith({
+        fileAccess: {
+          projects: true,
+          uploads: true,
+          temp: true,
+          home: false,
+          custom: ["/srv/first", "/srv/second"],
+        },
+      }),
+    );
+
+    fireEvent.change(customFolders, {
+      target: { value: "/srv/clicked" },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "fileAccessCustomSave" }),
+    );
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenLastCalledWith({
+        fileAccess: {
+          projects: true,
+          uploads: true,
+          temp: true,
+          home: false,
+          custom: ["/srv/clicked"],
+        },
+      }),
+    );
+  });
+
+  it("undoes an immediately saved custom folder edit", async () => {
+    let undoRegistration: SettingsUndoRegistration | null = null;
+    render(
+      <SettingsUndoProvider
+        value={(registration) => {
+          undoRegistration = registration;
+        }}
+      >
+        <LocalAccessSettings />
+      </SettingsUndoProvider>,
+    );
+
+    const customFolders = await screen.findByRole("textbox", {
+      name: "fileAccessCustomTitle",
+    });
+    fireEvent.change(customFolders, {
+      target: { value: "/srv/undo-me" },
+    });
+    fireEvent.blur(customFolders);
+
+    await waitFor(() => expect(undoRegistration?.canUndo).toBe(true));
+    const undo = (undoRegistration as SettingsUndoRegistration | null)?.undo;
+    expect(undo).toBeTypeOf("function");
+    await act(async () => {
+      await undo?.();
+    });
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenLastCalledWith({
+        fileAccess: baseFileAccess,
       }),
     );
   });
