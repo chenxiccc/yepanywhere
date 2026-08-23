@@ -1683,6 +1683,48 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("emits task_complete as a durable turn completion boundary", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Done" }],
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "task_complete",
+          turn_id: "turn-1",
+          last_agent_message: "Done",
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:03Z",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Later" }],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[1]).toMatchObject({
+      type: "system",
+      subtype: "turn_complete",
+      session_id: "test-session",
+      codexTurnId: "turn-1",
+    });
+    expect(result.messages[2]?.uuid).toBe("codex-1-2024-01-01T00:00:03Z");
+  });
+
   it("emits persisted subagent activity as a visible system entry", () => {
     const entries: CodexSessionEntry[] = [
       {

@@ -388,6 +388,7 @@ function convertCodexEntries(
       const shouldIncludeUserMessage =
         isCodexUserMessageEventEntry(entry) &&
         !userTurnProvenance.pairedUserEvents.has(entry);
+      const shouldIncludeTaskComplete = entry.payload.type === "task_complete";
       const shouldIncludeTurnAborted = entry.payload.type === "turn_aborted";
       const shouldIncludeSubagentActivity =
         entry.payload.type === "sub_agent_activity";
@@ -401,16 +402,23 @@ function convertCodexEntries(
       // those are streaming artifacts that duplicate full response data.
       if (
         shouldIncludeUserMessage ||
+        shouldIncludeTaskComplete ||
         shouldIncludeTurnAborted ||
         shouldIncludeSubagentActivity ||
         shouldIncludeContextCompacted ||
         shouldIncludeExecCommandEnd
       ) {
+        const eventMessageIndex = messageIndex;
+        // The turn-based completion ID must not renumber later positional IDs.
+        if (!shouldIncludeTaskComplete) {
+          messageIndex++;
+        }
         const msg = convertCodexEventMsg(
           entry,
-          messageIndex++,
+          eventMessageIndex,
           toolCallContexts,
           closedToolResultIds,
+          sessionId,
         );
         if (msg) {
           if (isCodexCorrelationDebugEnabled()) {
@@ -1314,6 +1322,7 @@ function convertCodexEventMsg(
   index: number,
   toolCallContexts: Map<string, CodexToolCallContext>,
   closedToolResultIds: Set<string>,
+  sessionId: string,
 ): Message | null {
   const payloadUnknown: unknown = entry.payload;
   const uuid = `codex-event-${index}-${entry.timestamp}`;
@@ -1369,6 +1378,16 @@ function convertCodexEventMsg(
           role: "assistant",
           content: [{ type: "thinking", thinking: payload.text }],
         },
+        timestamp: entry.timestamp,
+      };
+
+    case "task_complete":
+      return {
+        uuid: `codex-turn-complete-${payload.turn_id}-${entry.timestamp}`,
+        type: "system",
+        subtype: "turn_complete",
+        session_id: sessionId,
+        codexTurnId: payload.turn_id,
         timestamp: entry.timestamp,
       };
 

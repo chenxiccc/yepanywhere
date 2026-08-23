@@ -191,7 +191,7 @@ describe("Codex subagent sessions", () => {
 
     const agentSession = await reader.getAgentSession(childId);
     expect(agentSession?.status).toBe("completed");
-    expect(agentSession?.messages).toHaveLength(1);
+    expect(agentSession?.messages).toHaveLength(2);
     expect(agentSession?.messages[0]).toMatchObject({
       type: "assistant",
       isSubagent: true,
@@ -199,6 +199,12 @@ describe("Codex subagent sessions", () => {
     expect(agentSession?.messages[0]?.message?.content).toEqual([
       { type: "text", text: "Child result" },
     ]);
+    expect(agentSession?.messages[1]).toMatchObject({
+      type: "system",
+      subtype: "turn_complete",
+      codexTurnId: "turn-child",
+      isSubagent: true,
+    });
   });
 
   it("coalesces and incrementally refreshes bounded child projections", async () => {

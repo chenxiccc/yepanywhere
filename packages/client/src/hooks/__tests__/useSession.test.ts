@@ -1335,6 +1335,35 @@ describe("useSession completion reconciliation", () => {
     });
   });
 
+  it("repairs a missed idle transition from the stream heartbeat", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    expect(result.current.processState).toBe("in-turn");
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "heartbeat",
+        liveness: mockLiveness({
+          derivedStatus: "verified-idle",
+          activeWorkKind: "none",
+          state: "idle",
+          lastVerifiedIdleAt: "2026-04-24T00:06:00.000Z",
+        }),
+      });
+    });
+
+    expect(result.current.processState).toBe("idle");
+    expect(result.current.sessionLiveness).toMatchObject({
+      derivedStatus: "verified-idle",
+      state: "idle",
+    });
+  });
+
   it("moves stale liveness to live on user-visible stream progress", () => {
     const eventStart = new Date("2026-04-24T01:00:00.000Z");
     vi.setSystemTime(eventStart);

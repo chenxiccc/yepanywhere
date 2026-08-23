@@ -24,6 +24,15 @@ load, the client must reconcile current ownership and `processState` even when
 the process remains self-owned; browser history can replay an old navigation
 hint after that process has become idle.
 
+The session heartbeat repeats the authoritative process state inside its
+liveness snapshot. Each heartbeat reconciles `processState`, so a missed
+one-shot status or activity event cannot leave active controls and animation
+stuck indefinitely. Provider-retained work remains active through the liveness
+derived status even when the underlying process state is idle. Codex's durable
+`task_complete` event normalizes to the same hidden `turn_complete` boundary as
+the live stream, allowing transcript reload and catch-up to settle stale active
+presentation without inferring completion from assistant text.
+
 `terminated` is a derived/diagnostic condition for unhealthy termination; it is
 shown through liveness status (`needs-attention`) and server recovery workflows
 rather than as a first-class interactive state.

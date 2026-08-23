@@ -2016,6 +2016,15 @@ export function useSession(
         };
         if (heartbeatData.liveness) {
           setSessionLiveness(heartbeatData.liveness);
+          const heartbeatProcessState = parseProcessState(
+            heartbeatData.liveness.state,
+          );
+          if (heartbeatProcessState) {
+            setProcessState(heartbeatProcessState);
+            if (heartbeatProcessState !== "waiting-input") {
+              setPendingInputRequest(null);
+            }
+          }
         }
       } else if (data.eventType === "deferred-queue") {
         const deferredData = data as {

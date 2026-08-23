@@ -206,6 +206,12 @@ describe("Codex provider child route contract", () => {
           type: "assistant",
           isSubagent: true,
         }),
+        expect.objectContaining({
+          type: "system",
+          subtype: "turn_complete",
+          codexTurnId: "turn-child",
+          isSubagent: true,
+        }),
       ],
     });
   });
