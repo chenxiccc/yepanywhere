@@ -22,6 +22,17 @@ afterEach(() => {
 });
 
 describe("useFileActivity event buffering", () => {
+  it("does not retain activity callbacks while disabled", () => {
+    const onFileChange = vi.fn();
+    renderHook(() => useFileActivity({ enabled: false, onFileChange }));
+
+    act(() => {
+      activityBus.emitLocal("file-change", makeFileChange("hidden.txt"));
+    });
+
+    expect(onFileChange).not.toHaveBeenCalled();
+  });
+
   it("does not buffer events for callback-only consumers", () => {
     const onFileChange = vi.fn();
     const { result } = renderHook(() => useFileActivity({ onFileChange }));

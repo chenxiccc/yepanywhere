@@ -119,9 +119,12 @@ function usePreviewToolbarControls(previewNowMs: number) {
       },
       browserDebugControl: {
         active: false,
+        connected: false,
         remainingFraction: 0,
         title: t("toolbarBrowserDebugEnable"),
         onToggle: noop,
+        onReactivate: noop,
+        onReload: noop,
       },
       nudgeControl: {
         enabled: true,

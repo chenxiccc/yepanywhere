@@ -88,6 +88,14 @@ function acceptPublicShareStatusSnapshot(
     return;
   }
 
+  if (
+    current !== undefined &&
+    JSON.stringify(current.status) === JSON.stringify(status) &&
+    current.error === null
+  ) {
+    return;
+  }
+
   publicShareStatusSnapshotsBySource.set(sourceKey, {
     status,
     observedAt,

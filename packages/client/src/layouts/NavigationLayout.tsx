@@ -201,13 +201,7 @@ export function SessionDomLingerRouteMarker() {
  * Renders the Sidebar once so it persists across route changes.
  */
 export function NavigationLayout(props: NavigationLayoutProps) {
-  // The provider, not the layout, mounts the sidebar feeds: a feed update then
-  // re-renders `Sidebar` alone instead of the route stack and session layer.
-  return (
-    <SidebarSessionFeedsProvider>
-      <NavigationLayoutFrame {...props} />
-    </SidebarSessionFeedsProvider>
-  );
+  return <NavigationLayoutFrame {...props} />;
 }
 
 function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
@@ -475,119 +469,125 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     element.inert = sessionLayerParked;
   }, [sessionLayerParked]);
 
+  const sidebarFeedsEnabled =
+    !isContentFrameRoute &&
+    ((isWideScreen && !isMinimized) || (!isWideScreen && sidebarOpen));
+
   return (
-    <div
-      ref={layoutFrameRef}
-      className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${
-        isContentFrameRoute ? "content-frame-layout" : ""
-      } ${isResizing ? "resizing" : ""}`}
-      style={containerStyle}
-    >
-      {/* Desktop sidebar - always visible on wide screens; the minimized mode
-          renders the floating restore toggle in its place */}
-      {isWideScreen &&
-        !isContentFrameRoute &&
-        (isMinimized ? (
-          <Link
-            to={{
-              pathname: location.pathname,
-              search: location.search,
-              hash: location.hash,
-            }}
-            className="sidebar-toggle sidebar-floating-restore"
-            role="button"
-            onClick={(event) => {
-              if (
-                event.button !== 0 ||
-                event.metaKey ||
-                event.ctrlKey ||
-                event.shiftKey ||
-                event.altKey
-              ) {
-                return;
-              }
-              event.preventDefault();
-              restoreCollapsedSidebar();
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== " ") {
-                return;
-              }
-              event.preventDefault();
-              restoreCollapsedSidebar();
-            }}
-            title={t("actionRestoreSidebar")}
-            aria-label={t("actionRestoreSidebar")}
-          >
-            <SidebarToggleIcon />
-          </Link>
-        ) : (
-          <aside
-            className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
-            style={desktopSidebarStyle}
-          >
-            <Sidebar
-              isOpen={true}
-              onClose={NOOP}
-              onNavigate={NOOP}
-              currentSessionId={sidebarSessionMatch?.sessionId}
-              isDesktop={true}
-              isCollapsed={effectivelyCollapsed}
-              onToggleExpanded={handleToggleExpanded}
-              onMinimize={minimizeToFloatingToggle}
-              sidebarWidth={sidebarWidth}
-              onResizeStart={handleResizeStart}
-              onResize={setSidebarWidth}
-              onResizeEnd={handleResizeEnd}
-            />
-          </aside>
-        ))}
-
-      {/* Mobile sidebar - modal overlay (also used for constrained desktop overlay) */}
-      {!isContentFrameRoute && (!isWideScreen || sidebarOpen) && (
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={closeSidebar}
-          onNavigate={closeSidebar}
-          currentSessionId={sidebarSessionMatch?.sessionId}
-        />
-      )}
-
-      <GlossaryProjectProvider
-        projectId={currentProjectId ?? ""}
-        enabled={currentProjectId !== null}
+    <SidebarSessionFeedsProvider enabled={sidebarFeedsEnabled}>
+      <div
+        ref={layoutFrameRef}
+        className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${
+          isContentFrameRoute ? "content-frame-layout" : ""
+        } ${isResizing ? "resizing" : ""}`}
+        style={containerStyle}
       >
-        <NavigationLayoutReactContext.Provider value={context}>
-          <div className="navigation-route-stack">
-            {renderedSessionRoute && sessionElement && (
-              <div
-                key={renderedSessionRoute.key}
-                ref={sessionLayerRef}
-                className={`navigation-route-layer session-dom-linger-layer ${
-                  sessionLayerVisible ? "is-active" : "is-parked"
-                }`}
-                aria-hidden={sessionLayerParked ? true : undefined}
-                data-session-dom-linger={
-                  sessionLayerVisible ? "active" : "parked"
+        {/* Desktop sidebar - always visible on wide screens; the minimized mode
+          renders the floating restore toggle in its place */}
+        {isWideScreen &&
+          !isContentFrameRoute &&
+          (isMinimized ? (
+            <Link
+              to={{
+                pathname: location.pathname,
+                search: location.search,
+                hash: location.hash,
+              }}
+              className="sidebar-toggle sidebar-floating-restore"
+              role="button"
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  return;
                 }
-              >
-                {sessionElement(renderedSessionRoute, {
-                  parked: sessionLayerParked,
-                })}
-              </div>
-            )}
-            <div
-              className={`navigation-route-layer navigation-route-foreground ${
-                sessionLayerVisible ? "is-hidden" : "is-active"
-              }`}
-              aria-hidden={sessionLayerVisible ? true : undefined}
+                event.preventDefault();
+                restoreCollapsedSidebar();
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== " ") {
+                  return;
+                }
+                event.preventDefault();
+                restoreCollapsedSidebar();
+              }}
+              title={t("actionRestoreSidebar")}
+              aria-label={t("actionRestoreSidebar")}
             >
-              <Outlet context={context} />
+              <SidebarToggleIcon />
+            </Link>
+          ) : (
+            <aside
+              className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
+              style={desktopSidebarStyle}
+            >
+              <Sidebar
+                isOpen={true}
+                onClose={NOOP}
+                onNavigate={NOOP}
+                currentSessionId={sidebarSessionMatch?.sessionId}
+                isDesktop={true}
+                isCollapsed={effectivelyCollapsed}
+                onToggleExpanded={handleToggleExpanded}
+                onMinimize={minimizeToFloatingToggle}
+                sidebarWidth={sidebarWidth}
+                onResizeStart={handleResizeStart}
+                onResize={setSidebarWidth}
+                onResizeEnd={handleResizeEnd}
+              />
+            </aside>
+          ))}
+
+        {/* Mobile sidebar - modal overlay (also used for constrained desktop overlay) */}
+        {!isContentFrameRoute && (!isWideScreen || sidebarOpen) && (
+          <Sidebar
+            isOpen={sidebarOpen}
+            onClose={closeSidebar}
+            onNavigate={closeSidebar}
+            currentSessionId={sidebarSessionMatch?.sessionId}
+          />
+        )}
+
+        <GlossaryProjectProvider
+          projectId={currentProjectId ?? ""}
+          enabled={currentProjectId !== null}
+        >
+          <NavigationLayoutReactContext.Provider value={context}>
+            <div className="navigation-route-stack">
+              {renderedSessionRoute && sessionElement && (
+                <div
+                  key={renderedSessionRoute.key}
+                  ref={sessionLayerRef}
+                  className={`navigation-route-layer session-dom-linger-layer ${
+                    sessionLayerVisible ? "is-active" : "is-parked"
+                  }`}
+                  aria-hidden={sessionLayerParked ? true : undefined}
+                  data-session-dom-linger={
+                    sessionLayerVisible ? "active" : "parked"
+                  }
+                >
+                  {sessionElement(renderedSessionRoute, {
+                    parked: sessionLayerParked,
+                  })}
+                </div>
+              )}
+              <div
+                className={`navigation-route-layer navigation-route-foreground ${
+                  sessionLayerVisible ? "is-hidden" : "is-active"
+                }`}
+                aria-hidden={sessionLayerVisible ? true : undefined}
+              >
+                <Outlet context={context} />
+              </div>
             </div>
-          </div>
-        </NavigationLayoutReactContext.Provider>
-      </GlossaryProjectProvider>
-    </div>
+          </NavigationLayoutReactContext.Provider>
+        </GlossaryProjectProvider>
+      </div>
+    </SidebarSessionFeedsProvider>
   );
 }
 

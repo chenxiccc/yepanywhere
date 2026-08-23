@@ -83,7 +83,7 @@ const PROCESS_LIST_REVALIDATE_EVENTS = [
   "process-state-changed",
   "session-created",
   "session-metadata-changed",
-  "session-updated",
+  "provider-runtime-status-changed",
 ] as const;
 
 const processSnapshotsBySource = new Map<

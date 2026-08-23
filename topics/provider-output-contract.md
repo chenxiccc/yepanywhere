@@ -174,6 +174,11 @@ Display rules (client, `getCommandResultMeta`/`formatCommandDuration` in
   both the normalized fields and raw provider spellings
   (`exit_code`, `wall_time_seconds`), so a provider whose normalization
   lags still displays correctly once its fields pass through structured.
+- A pending command call reads **Run**. A pending `write_stdin`/`wait` poll
+  reads **Waiting**, while a completed poll keeps the historical **Shell**
+  label. Its linked command/session summary supplies the execution context, so
+  a long-lived command and the current wait are visible as distinct activity
+  rather than two apparently equivalent running commands.
 
 ## Web browsing results (Codex `web.run`)
 

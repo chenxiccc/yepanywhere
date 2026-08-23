@@ -163,8 +163,11 @@ or queued rows are interchangeable, so it could hide a real active session.
 Stale rotated activity must instead be expired or remapped at the collection
 store/source-event boundary once the replacement identity is known. Until that
 upstream proof exists, the fail-open behavior is to show the extra pinned row.
-A dev-only (`import.meta.env.DEV`) console log in `Sidebar` reports duplicate-
-title groups and any truly repeated id to keep that upstream defect observable.
+A dev-only (`import.meta.env.DEV`) console log in `Sidebar` reports only truly
+repeated ids. It deliberately omits duplicate-title groups: active-session
+metadata refreshes make that a hot path, and a grouping key may contain an
+entire prompt. Duplicate-title behavior remains observable through the UI's
+hidden-count affordance and focused tests.
 
 ## Non-Goals
 

@@ -1023,6 +1023,7 @@ export function useSession(
     updateSession,
     handleStreamingUpdate,
     handleStreamMessageEvent,
+    flushPendingStreamMessage,
     handleStreamSubagentMessage,
     registerToolUseAgent,
     mergeLoadedAgentContent,
@@ -1986,6 +1987,9 @@ export function useSession(
           statusData.state === "in-turn" ||
           statusData.state === "waiting-input"
         ) {
+          if (statusData.state !== "in-turn") {
+            flushPendingStreamMessage();
+          }
           logSessionUiTrace("stream-status", {
             sessionId,
             state: statusData.state,
@@ -2067,6 +2071,7 @@ export function useSession(
           completeData.sessionId ?? sessionId,
           completeData.providerRuntimeStatus,
         );
+        flushPendingStreamMessage();
         setProcessState("idle");
         setStatus({ owner: "none" });
         setSessionLiveness(null);
@@ -2306,6 +2311,7 @@ export function useSession(
       removePendingMessage,
       streamingMarkdownCallbacks,
       handleStreamMessageEvent,
+      flushPendingStreamMessage,
       handleStreamSubagentMessage,
       registerToolUseAgent,
       clearAgentStreamingPlaceholders,

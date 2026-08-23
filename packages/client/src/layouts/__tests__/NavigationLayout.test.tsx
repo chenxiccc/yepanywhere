@@ -32,8 +32,19 @@ const mocks = vi.hoisted(() => ({
     ),
   ),
   SidebarSessionFeedsProvider: vi.fn(
-    ({ children }: { children: React.ReactNode }) => (
-      <div data-testid="sidebar-session-feeds-provider">{children}</div>
+    ({
+      children,
+      enabled,
+    }: {
+      children: React.ReactNode;
+      enabled?: boolean;
+    }) => (
+      <div
+        data-testid="sidebar-session-feeds-provider"
+        data-enabled={enabled === false ? "false" : "true"}
+      >
+        {children}
+      </div>
     ),
   ),
   Sidebar: vi.fn(
@@ -344,6 +355,9 @@ describe("NavigationLayout", () => {
     fireEvent.click(screen.getByText("Minimize sidebar"));
 
     expect(screen.queryByTestId("desktop-sidebar")).toBeNull();
+    expect(
+      screen.getByTestId("sidebar-session-feeds-provider").dataset.enabled,
+    ).toBe("false");
     const restoreButton = screen.getByRole("button", {
       name: "Restore sidebar",
     });
@@ -355,6 +369,9 @@ describe("NavigationLayout", () => {
     fireEvent.click(restoreButton);
 
     expect(screen.getByTestId("desktop-sidebar")).toBeTruthy();
+    expect(
+      screen.getByTestId("sidebar-session-feeds-provider").dataset.enabled,
+    ).toBe("true");
     expect(
       screen.queryByRole("button", { name: "Restore sidebar" }),
     ).toBeNull();

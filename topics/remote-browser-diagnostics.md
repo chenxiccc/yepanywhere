@@ -67,22 +67,25 @@ prerequisite for the client to stop polling or accepting commands. The control
 remains visible while active even if its stored toolbar preference changes.
 Its timer performs the same local close at expiry, and navigation to a
 different YA session closes it immediately as well. A response from a poll
-that was already in flight at local close is ignored. A page hide makes a
-keepalive revocation request. A new enable action creates new secrets; one
-tab's grant never identifies or authorizes another tab.
+that was already in flight at local close is ignored. A page hide suspends the
+tab's poll and instrumentation without revoking the lease; a new enable action
+creates new secrets, and one tab's grant never identifies or authorizes another
+tab.
 
-The tab keeps a versioned session-storage revocation marker containing the
+The tab keeps a versioned session-storage continuation marker containing the
 controller factor, source identity, session identity, and expiry, but not the
 agent's grant secret. Enabling fails closed when that marker cannot be stored.
-After a browser reload, the client immediately restores the red active warning
-from the marker and attempts revocation against the originating source. It
-clears the warning only after the server confirms revocation or reports that
-the lease is already absent or expired. A transport failure leaves the warning
-active so clicking it can retry; the warning clears locally at the server-side
-expiry. Thus a reload cannot silently present an inactive control while an old
-grant may remain reachable. A closed tab has no surviving marker owner, so its
-page-hide revocation is best-effort and the server-side expiry remains the hard
-backstop.
+After a browser reload, the client immediately restores the red active warning,
+reinstalls collection, and resumes the existing lease against its originating
+source. The lease id, grant, and original expiry remain unchanged; reload never
+renews or extends access. The client automatically retries the bounded conflict
+caused by a pre-reload long poll that the transport could not abort. Other
+reconnect failures leave the warning visibly disconnected until the user
+chooses **Reconnect existing debug link** or the server-side expiry clears the
+marker. Right-clicking, keyboard-opening, or long-pressing the active toolbar
+control also offers **Reload app code (keep debugging)** and explicit disable.
+Closing the tab leaves no JavaScript capable of polling or executing commands;
+the memory-only server lease remains bounded by its original expiry.
 
 ## Granted access
 
@@ -325,8 +328,8 @@ weaken or ambiguously redefine the deliberately full-access v1 contract.
   best-effort server revocation is unresolved or an earlier poll returns late.
 - Explicitly confirmed revoke, local close, expiry, or server restart prevents
   further grant use.
-- Reload shows the active red warning before attempting to revoke the retained
-  lease marker; failed revocation leaves that warning active until retry or
-  expiry.
+- Reload keeps the same lease id and original expiry, resumes its poll without
+  retaining the agent grant secret, and offers explicit reconnect when that
+  continuation is disconnected.
 - Connecting the same client to 0.7.0 or 0.6.2 exposes no control and sends no
   browser-debug request.

@@ -309,6 +309,7 @@ export const writeStdinRenderer: ToolRenderer<
 > = {
   tool: "WriteStdin",
   displayName: "Shell",
+  pendingDisplayName: "Waiting",
 
   renderToolUse(input, _context) {
     const summaryContext = { projectPath: _context.projectPath };

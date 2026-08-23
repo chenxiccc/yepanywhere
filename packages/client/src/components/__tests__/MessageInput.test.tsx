@@ -664,6 +664,11 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     toolbarSteerTooltip: "Steer current turn\nEnter",
     toolbarSend: "Send",
     toolbarOverflowMenu: "More toolbar controls",
+    toolbarBrowserDebugMenu: "Browser debugging actions",
+    toolbarBrowserDebugDismissMenu: "Dismiss browser debugging actions",
+    toolbarBrowserDebugReload: "Reload app code (keep debugging)",
+    toolbarBrowserDebugReactivate: "Reconnect existing debug link",
+    toolbarBrowserDebugDisableNow: "Disable browser debugging",
     toolbarRelativeAgeNow: "now",
     toolbarRelativeAgePast: `${params?.age ?? ""} ago`,
     toolbarPositionAge: `at ${params?.age ?? ""}`,
@@ -5379,9 +5384,11 @@ describe("MessageInput", () => {
     expect(button.getAttribute("data-tooltip")).toBeNull();
   });
 
-  it("opens a bottom-row overflow strip for lower-priority controls", () => {
+  it("opens a bottom-row overflow strip for lower-priority controls", async () => {
     const onRenderToggle = vi.fn();
     const onBrowserDebugToggle = vi.fn();
+    const onBrowserDebugReactivate = vi.fn();
+    const onBrowserDebugReload = vi.fn();
     const onNudgeClick = vi.fn();
     const setShortcutsOpen = vi.fn();
     const onBtwClick = vi.fn();
@@ -5418,10 +5425,13 @@ describe("MessageInput", () => {
         }}
         browserDebugControl={{
           active: true,
+          connected: true,
           remainingFraction: 0.5,
           performanceLabel: "max 84ms · long 2",
           title: "Disable browser debugging",
           onToggle: onBrowserDebugToggle,
+          onReactivate: onBrowserDebugReactivate,
+          onReload: onBrowserDebugReload,
         }}
         nudgeControl={{
           enabled: true,
@@ -5483,6 +5493,22 @@ describe("MessageInput", () => {
     expect(screen.getByText("max 84ms · long 2")).toBeTruthy();
     expect(overflow.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("menu")).toBeNull();
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-browser-debug-context-menu="true"]'),
+      ).toBeTruthy(),
+    );
+    fireEvent.contextMenu(
+      container.querySelector('[data-browser-debug-context-menu="true"]')!,
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", {
+        name: "Reload app code (keep debugging)",
+      }),
+    );
+    expect(onBrowserDebugReload).toHaveBeenCalledTimes(1);
+    expect(onBrowserDebugReactivate).not.toHaveBeenCalled();
 
     fireEvent.click(overflow);
 

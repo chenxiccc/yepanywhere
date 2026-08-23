@@ -49,6 +49,7 @@ import {
 } from "../lib/sessionDetail/shadowDiagnostics";
 import {
   selectSessionDetailLastMessageId,
+  selectSessionDetailMessages,
   selectSessionDetailRuntimeSnapshot,
   selectSessionDetailSession,
 } from "../lib/sessionDetail/selectors";
@@ -76,6 +77,7 @@ export type { AgentContent, AgentContentMap } from "../lib/sessionDetail/types";
 const DEFAULT_INITIAL_TAIL_TURNS = 20;
 const INCREMENTAL_REFRESH_DIAGNOSTIC_INTERVAL_MS = 30_000;
 const OLDER_USER_TURN_LOAD_PAGE_LIMIT = 8;
+const SAME_ID_STREAM_REPLACEMENT_DELAY_MS = 100;
 
 export type SessionMetadataUpdate =
   | SessionMetadata
@@ -124,6 +126,8 @@ export interface UseSessionMessagesResult {
   handleStreamingUpdate: (message: Message, agentId?: string) => void;
   /** Handle stream message event (buffered until initial load completes) */
   handleStreamMessageEvent: (incoming: Message) => void;
+  /** Publish the latest queued same-id stream replacement immediately. */
+  flushPendingStreamMessage: () => void;
   /** Handle stream subagent message event */
   handleStreamSubagentMessage: (incoming: Message, agentId: string) => void;
   /** Register toolUse → agent mapping */
@@ -530,6 +534,17 @@ export function useSessionMessages(
     },
     [coordinator],
   );
+  const pendingStreamReplacementRef = useRef<{
+    message: Message;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const flushPendingStreamMessage = useCallback(() => {
+    const pending = pendingStreamReplacementRef.current;
+    if (!pending) return;
+    pendingStreamReplacementRef.current = null;
+    clearTimeout(pending.timer);
+    processStreamMessage(pending.message);
+  }, [processStreamMessage]);
 
   // Process a buffered stream subagent message
   const processStreamSubagentMessage = useCallback(
@@ -879,10 +894,45 @@ export function useSessionMessages(
   // Handle stream message event (with buffering)
   const handleStreamMessageEvent = useCallback(
     (incoming: Message) => {
+      const incomingId = getMessageId(incoming);
+      const pending = pendingStreamReplacementRef.current;
+      if (pending && getMessageId(pending.message) !== incomingId) {
+        flushPendingStreamMessage();
+      }
+
+      const currentMessages = coordinator.readSelected(
+        selectSessionDetailMessages,
+      );
+      const replacesPublishedMessage =
+        incoming._isStreaming !== true &&
+        incomingId.length > 0 &&
+        currentMessages?.some(
+          (message) => getMessageId(message) === incomingId,
+        ) === true;
+      if (replacesPublishedMessage) {
+        const currentPending = pendingStreamReplacementRef.current;
+        if (
+          currentPending &&
+          getMessageId(currentPending.message) === incomingId
+        ) {
+          currentPending.message = incoming;
+          return;
+        }
+        pendingStreamReplacementRef.current = {
+          message: incoming,
+          timer: setTimeout(
+            flushPendingStreamMessage,
+            SAME_ID_STREAM_REPLACEMENT_DELAY_MS,
+          ),
+        };
+        return;
+      }
       coordinator.handleStreamMessage(incoming, processStreamMessage);
     },
-    [coordinator, processStreamMessage],
+    [coordinator, flushPendingStreamMessage, processStreamMessage],
   );
+
+  useEffect(() => flushPendingStreamMessage, [flushPendingStreamMessage]);
 
   // Handle stream subagent message event (with buffering)
   const handleStreamSubagentMessage = useCallback(
@@ -1262,6 +1312,7 @@ export function useSessionMessages(
     updateSession,
     handleStreamingUpdate,
     handleStreamMessageEvent,
+    flushPendingStreamMessage,
     handleStreamSubagentMessage,
     registerToolUseAgent,
     mergeLoadedAgentContent,

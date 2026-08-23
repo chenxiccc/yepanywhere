@@ -17,6 +17,8 @@ import type { CSSProperties, MouseEvent, RefObject, TouchEvent } from "react";
 import {
   type Dispatch,
   type SetStateAction,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -64,6 +66,7 @@ import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import { writeClipboardTextLater } from "../lib/clipboard";
 import { BROWSER_DEBUG_LEASE_TTL_MS } from "../lib/browserDebugLease";
+import { buildFrontendReloadUrl } from "../lib/frontendReload";
 import {
   type SessionViewerControllerState,
   useSessionViewerController,
@@ -133,6 +136,12 @@ import {
 } from "./VoiceInputButton";
 
 type ToolbarTranslate = ReturnType<typeof useI18n>["t"];
+
+const BrowserDebugToolbarButton = lazy(() =>
+  import("./BrowserDebugToolbarButton").then((module) => ({
+    default: module.BrowserDebugToolbarButton,
+  })),
+);
 
 // Maps a control's narrowing priority to its overflow-tier CSS class. `first`
 // collapses first (early), `mid` next, `last` collapses last; `pin` yields no
@@ -605,11 +614,14 @@ interface ToolbarStatusControl {
 
 interface ToolbarBrowserDebugControl {
   active: boolean;
+  connected: boolean;
   enabling?: boolean;
   remainingFraction: number;
   performanceLabel?: string | null;
   title: string;
   onToggle: () => void;
+  onReactivate: () => void;
+  onReload: () => void;
 }
 
 interface ToolbarShortcutsControl {
@@ -797,6 +809,61 @@ function BrowserDebugLeaseIcon({
         </span>
       ) : null}
     </>
+  );
+}
+
+function LazyBrowserDebugToolbarButton({
+  t,
+  control,
+  className,
+  menuItem = false,
+}: {
+  t: ToolbarTranslate;
+  control: ToolbarBrowserDebugControl;
+  className: string;
+  menuItem?: boolean;
+}) {
+  const icon = (
+    <BrowserDebugLeaseIcon
+      active={control.active}
+      remainingFraction={control.remainingFraction}
+      performanceLabel={control.performanceLabel}
+    />
+  );
+  const ariaProps = menuItem
+    ? ({ role: "menuitemcheckbox", "aria-checked": control.active } as const)
+    : ({ "aria-pressed": control.active } as const);
+  const fallback = (
+    <button
+      type="button"
+      className={className}
+      onClick={control.onToggle}
+      title={control.title}
+      aria-label={control.title}
+      {...ariaProps}
+      disabled={control.enabling}
+    >
+      {icon}
+    </button>
+  );
+
+  return (
+    <Suspense fallback={fallback}>
+      <BrowserDebugToolbarButton
+        t={t}
+        active={control.active}
+        connected={control.connected}
+        disabled={control.enabling}
+        className={className}
+        title={control.title}
+        menuItem={menuItem}
+        onToggle={control.onToggle}
+        onReactivate={control.onReactivate}
+        onReload={control.onReload}
+      >
+        {icon}
+      </BrowserDebugToolbarButton>
+    </Suspense>
   );
 }
 
@@ -1699,8 +1766,9 @@ export function MessageInputToolbarView({
             </button>
           )}
           {visibility.browserDebug && browserDebugControl && (
-            <button
-              type="button"
+            <LazyBrowserDebugToolbarButton
+              t={t}
+              control={browserDebugControl}
               className={[
                 inlineTierClass("browserDebug"),
                 toolbarModuleStyles.browserDebugButton,
@@ -1710,18 +1778,7 @@ export function MessageInputToolbarView({
               ]
                 .filter(Boolean)
                 .join(" ")}
-              onClick={browserDebugControl.onToggle}
-              title={browserDebugControl.title}
-              aria-label={browserDebugControl.title}
-              aria-pressed={browserDebugControl.active}
-              disabled={browserDebugControl.enabling}
-            >
-              <BrowserDebugLeaseIcon
-                active={browserDebugControl.active}
-                remainingFraction={browserDebugControl.remainingFraction}
-                performanceLabel={browserDebugControl.performanceLabel}
-              />
-            </button>
+            />
           )}
           {visibility.nudge && nudgeControl && (
             <button
@@ -2019,8 +2076,10 @@ export function MessageInputToolbarView({
                 {visibility.browserDebug &&
                   browserDebugControl &&
                   isPriorityCollapsible("browserDebug") && (
-                    <button
-                      type="button"
+                    <LazyBrowserDebugToolbarButton
+                      t={t}
+                      control={browserDebugControl}
+                      menuItem
                       className={[
                         menuTierClass("browserDebug"),
                         toolbarModuleStyles.browserDebugButton,
@@ -2030,21 +2089,7 @@ export function MessageInputToolbarView({
                       ]
                         .filter(Boolean)
                         .join(" ")}
-                      onClick={browserDebugControl.onToggle}
-                      title={browserDebugControl.title}
-                      aria-label={browserDebugControl.title}
-                      role="menuitemcheckbox"
-                      aria-checked={browserDebugControl.active}
-                      disabled={browserDebugControl.enabling}
-                    >
-                      <BrowserDebugLeaseIcon
-                        active={browserDebugControl.active}
-                        remainingFraction={
-                          browserDebugControl.remainingFraction
-                        }
-                        performanceLabel={browserDebugControl.performanceLabel}
-                      />
-                    </button>
+                    />
                   )}
                 {visibility.nudge &&
                   nudgeControl &&
@@ -3011,6 +3056,22 @@ export function MessageInputToolbar({
         );
       });
   }, [browserDebugActive, browserDebugLease, sessionId, showToast, t]);
+  const reactivateBrowserDebug = useCallback(() => {
+    void browserDebugLease.reactivate().catch((error) => {
+      showToast?.(
+        t("browserDebugReactivateFailed", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+        "error",
+      );
+    });
+  }, [browserDebugLease, showToast, t]);
+  const reloadWithBrowserDebug = useCallback(() => {
+    if (!browserDebugActive) return;
+    window.location.replace(
+      buildFrontendReloadUrl(window.location.href, String(Date.now())),
+    );
+  }, [browserDebugActive]);
   const hasPotentialDualActions = !!(onSend && onQueue && onSteer);
   const effectivePrimaryActionKind =
     primaryActionKind ?? (hasPotentialDualActions ? "steer" : "send");
@@ -3441,11 +3502,14 @@ export function MessageInputToolbar({
         supportsBrowserDebug && sessionId
           ? {
               active: browserDebugActive,
+              connected: browserDebugLease.connected,
               enabling: browserDebugLease.phase === "enabling",
               remainingFraction: browserDebugRemainingFraction,
               performanceLabel: browserDebugPerformanceLabel,
               title: browserDebugTitle,
               onToggle: toggleBrowserDebug,
+              onReactivate: reactivateBrowserDebug,
+              onReload: reloadWithBrowserDebug,
             }
           : null
       }

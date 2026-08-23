@@ -1553,6 +1553,54 @@ describe("useSessionMessages cache", () => {
     ]);
   });
 
+  it("coalesces same-id stream replacements before publishing", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      ...sessionResponse("assistant-1"),
+      messages: [],
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      rendered.result.current.handleStreamMessageEvent({
+        uuid: "assistant-1",
+        type: "assistant",
+        message: { role: "assistant", content: "draft" },
+      });
+    });
+    expect(rendered.result.current.messages[0]?.message?.content).toBe("draft");
+
+    act(() => {
+      rendered.result.current.handleStreamMessageEvent({
+        uuid: "assistant-1",
+        type: "assistant",
+        message: { role: "assistant", content: "enriching" },
+      });
+      rendered.result.current.handleStreamMessageEvent({
+        uuid: "assistant-1",
+        type: "assistant",
+        message: { role: "assistant", content: "enriched" },
+      });
+    });
+
+    expect(rendered.result.current.messages[0]?.message?.content).toBe("draft");
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
+
+    expect(rendered.result.current.messages[0]?.message?.content).toBe(
+      "enriched",
+    );
+  });
+
   it("keeps store-selected messages authoritative across catch-up", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
 

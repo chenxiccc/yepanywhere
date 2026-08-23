@@ -38,14 +38,35 @@ describe("SidebarSessionFeedsProvider", () => {
 
     expect(mocks.useGlobalSessionsFeed).toHaveBeenCalledTimes(2);
     expect(mocks.useGlobalSessionsFeed).toHaveBeenNthCalledWith(1, {
+      enabled: true,
       limit: SIDEBAR_SESSION_FEED_LIMIT,
       includeStats: false,
     });
     expect(mocks.useGlobalSessionsFeed).toHaveBeenNthCalledWith(2, {
+      enabled: true,
       starred: true,
       limit: SIDEBAR_SESSION_FEED_LIMIT,
       includeStats: false,
     });
+  });
+
+  it("suspends both feed owners while its sidebar surface is hidden", () => {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SidebarSessionFeedsProvider enabled={false}>
+        {children}
+      </SidebarSessionFeedsProvider>
+    );
+
+    renderHook(() => useSidebarSessionFeeds(), { wrapper });
+
+    expect(mocks.useGlobalSessionsFeed).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(mocks.useGlobalSessionsFeed).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ enabled: false }),
+    );
   });
 
   it("mounts one feed pair however many consumers read it", () => {

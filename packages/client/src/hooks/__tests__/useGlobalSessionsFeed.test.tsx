@@ -144,6 +144,19 @@ afterEach(() => {
 });
 
 describe("useGlobalSessionsFeed", () => {
+  it("releases query and activity work while disabled", () => {
+    const { result } = renderHook(() =>
+      useGlobalSessionsFeed({ enabled: false, limit: 50 }),
+    );
+
+    expect(result.current.loading).toBe(false);
+    expect(mocks.getGlobalSessions).not.toHaveBeenCalled();
+    expect(getClientQueryStates()).toHaveLength(0);
+    expect(mocks.useFileActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+  });
+
   it("coalesces compatible row coverage under the shared base query", async () => {
     const request = deferred<GlobalSessionsResponse>();
     mocks.getGlobalSessions.mockReturnValue(request.promise);

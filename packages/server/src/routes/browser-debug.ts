@@ -91,6 +91,8 @@ export function createBrowserDebugClientRoutes(
       const command = await service.poll(
         c.req.param("leaseId"),
         controllerToken(c),
+        undefined,
+        c.req.raw.signal,
       );
       return c.json({ command });
     } catch (error) {

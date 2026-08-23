@@ -44,7 +44,10 @@ the direct/LAN path or make origin delivery/versioning correct.
 Both browser entrypoints are now route-split at semantic page and shell
 boundaries. In the 2026-08-10 warning cleanup, the hosted entry's eager
 JavaScript fell from 2,938,667 bytes to 477,061 bytes. The local entry fell from
-about 2.84 MB to 472,214 bytes; its largest deferred chunk is 491,994 bytes.
+about 2.84 MB to 472,214 bytes. The 2026-08-23 builds isolate the shared React
+runtime: the local build emits a 193,530-byte runtime, a 304,690-byte entry, and
+a 432,570-byte largest deferred chunk; the hosted build emits a 193,580-byte
+runtime, a 310,990-byte main entry, and a 432,820-byte largest deferred chunk.
 Every emitted JavaScript chunk from both builds remains below Vite's 500 kB
 warning boundary, and every future Vite warning fails the owning production
 build. Both builds bind `tssrp6a`'s Node `crypto` probe to the browser Web

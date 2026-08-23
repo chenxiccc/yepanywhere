@@ -36,6 +36,15 @@ function getGitVersion(): string {
 export default defineConfig(({ command }) => ({
   build: {
     assetsInlineLimit: shouldInlineClientAsset,
+    rollupOptions: {
+      output: {
+        // Match the hosted build's stable framework boundary so application
+        // growth does not rebuild one near-limit entry chunk.
+        manualChunks: {
+          "react-runtime": ["react", "react-dom/client"],
+        },
+      },
+    },
   },
   clearScreen: false,
   customLogger:

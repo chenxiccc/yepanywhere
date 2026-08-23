@@ -178,6 +178,25 @@ describe("useProcesses", () => {
     expect(mocks.fetchJSON).toHaveBeenCalledTimes(2);
   });
 
+  it("does not refetch processes for session content updates", async () => {
+    const hook = renderHook(() => useProcesses());
+    await settle();
+    expect(hook.result.current.loading).toBe(false);
+
+    await act(async () => {
+      mocks.activityBus.emit("session-updated", {
+        type: "session-updated",
+        sessionId: "session-1",
+        projectId: "project-1",
+        messageCount: 3,
+        timestamp: "2026-08-23T00:00:00.000Z",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(mocks.fetchJSON).toHaveBeenCalledTimes(1);
+  });
+
   it("patches custom titles from metadata events before refetching", async () => {
     mocks.fetchJSON.mockResolvedValue(
       processesResponse([

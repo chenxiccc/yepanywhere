@@ -877,6 +877,38 @@ describe("Sidebar collapsed toggle", () => {
     expect(screen.queryByTestId("session-thin")).toBeNull();
   });
 
+  it("does not send duplicate-title prompt text to the console", () => {
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const privatePrompt = "private prompt marker";
+    const now = Date.now();
+    globalSessionsState.sessions = [
+      makeSession("first", new Date(now).toISOString(), {
+        fullTitle: privatePrompt,
+      }),
+      makeSession("second", new Date(now - 60_000).toISOString(), {
+        fullTitle: privatePrompt,
+      }),
+    ];
+
+    try {
+      render(
+        <MemoryRouter>
+          <Sidebar
+            isOpen={true}
+            onClose={() => {}}
+            onNavigate={() => {}}
+            isDesktop={true}
+            isCollapsed={false}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(JSON.stringify(debugSpy.mock.calls)).not.toContain(privatePrompt);
+    } finally {
+      debugSpy.mockRestore();
+    }
+  });
+
   it("keeps the current same-title fork visible even with fewer messages", () => {
     const sharedTitle = "Bug hunt";
     const now = Date.now();

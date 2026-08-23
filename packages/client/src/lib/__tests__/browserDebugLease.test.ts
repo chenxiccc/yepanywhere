@@ -416,49 +416,77 @@ describe("browserDebugLeaseController", () => {
     );
   });
 
-  it("shows a reloaded lease as active until revocation is confirmed", async () => {
+  it("resumes a reloaded lease with its original expiry", async () => {
     await browserDebugLeaseController.enable("session-1");
+    const expiresAtMs = browserDebugLeaseController.getSnapshot().expiresAtMs;
+    const livePoll = mocks.calls.find((call) => call.path.endsWith("/poll"));
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(livePoll?.options?.signal?.aborted).toBe(true);
     const reloadedController = new BrowserDebugLeaseController();
     extraControllers.push(reloadedController);
 
     expect(reloadedController.getSnapshot()).toMatchObject({
       phase: "active",
+      connected: false,
       sessionId: "session-1",
+      expiresAtMs,
     });
 
     await reloadedController.reconcilePersistedLease();
-
-    expect(reloadedController.getSnapshot().phase).toBe("inactive");
-    expect(
-      window.sessionStorage.getItem("ya:browser-debug-active-lease-v1"),
-    ).toBeNull();
-  });
-
-  it("keeps the reload warning when revocation cannot be confirmed", async () => {
-    await browserDebugLeaseController.enable("session-1");
-    mocks.failDelete(new Error("source disconnected"));
-    window.dispatchEvent(new Event("pagehide"));
+    expect(reloadedController.getSnapshot()).toMatchObject({
+      phase: "active",
+      connected: false,
+      expiresAtMs,
+    });
     await vi.waitFor(() => {
-      expect(mocks.calls.at(-1)).toMatchObject({
-        options: { method: "DELETE", keepalive: true },
+      expect(reloadedController.getSnapshot()).toMatchObject({
+        phase: "active",
+        connected: true,
+        expiresAtMs,
       });
     });
-    const reloadedController = new BrowserDebugLeaseController();
-    extraControllers.push(reloadedController);
+    mocks.releasePoll();
+    expect(
+      window.sessionStorage.getItem("ya:browser-debug-active-lease-v1"),
+    ).not.toBeNull();
+    expect(mocks.calls.some((call) => call.options?.method === "DELETE")).toBe(
+      false,
+    );
+  });
 
-    await reloadedController.reconcilePersistedLease();
+  it("suspends on page hide and reconnects on page show", async () => {
+    await browserDebugLeaseController.enable("session-1");
+    const expiresAtMs = browserDebugLeaseController.getSnapshot().expiresAtMs;
+    const livePoll = mocks.calls.find((call) => call.path.endsWith("/poll"));
+    window.dispatchEvent(new Event("pagehide"));
 
-    expect(reloadedController.getSnapshot()).toMatchObject({
+    expect(livePoll?.options?.signal?.aborted).toBe(true);
+    expect(browserDebugLeaseController.getSnapshot()).toMatchObject({
       phase: "active",
+      connected: false,
       sessionId: "session-1",
-      error: "source disconnected",
+      expiresAtMs,
     });
     expect(
       window.sessionStorage.getItem("ya:browser-debug-active-lease-v1"),
     ).not.toBeNull();
+    expect(mocks.calls.some((call) => call.options?.method === "DELETE")).toBe(
+      false,
+    );
 
-    mocks.failDelete(null);
-    await reloadedController.disable();
-    expect(reloadedController.getSnapshot().phase).toBe("inactive");
+    window.dispatchEvent(new Event("pageshow"));
+    mocks.releasePoll();
+    await vi.waitFor(() => {
+      expect(browserDebugLeaseController.getSnapshot()).toMatchObject({
+        phase: "active",
+        connected: true,
+        expiresAtMs,
+      });
+    });
+
+    expect(
+      mocks.calls.filter((call) => call.path.endsWith("/poll")),
+    ).toHaveLength(3);
   });
 });

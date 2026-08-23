@@ -16,6 +16,11 @@ describe("toolRegistry.getDisplayName tense", () => {
     expect(toolRegistry.getDisplayName("AskUserQuestion", "complete")).toBe(
       "Asked",
     );
+
+    expect(toolRegistry.getDisplayName("WriteStdin", "pending")).toBe(
+      "Waiting",
+    );
+    expect(toolRegistry.getDisplayName("WriteStdin", "complete")).toBe("Shell");
   });
 
   it("falls back to the raw tool name when no display name is registered", () => {

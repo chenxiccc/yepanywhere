@@ -530,6 +530,25 @@ describe("mergeStreamMessage", () => {
       // JSONL is authoritative, so SDK doesn't overwrite
       expect(result.messages).toBe(existing);
     });
+
+    it("retains the transcript identity for an equal SDK replacement", () => {
+      const existingMessage: Message = {
+        id: "msg-1",
+        type: "assistant",
+        message: { role: "assistant", content: "same" },
+        _source: "sdk",
+      };
+      const existing = [existingMessage];
+
+      const result = mergeStreamMessage(existing, {
+        id: "msg-1",
+        type: "assistant",
+        message: { role: "assistant", content: "same" },
+      });
+
+      expect(result.messages).toBe(existing);
+      expect(result.messages[0]).toBe(existingMessage);
+    });
   });
 
   describe("adding new messages", () => {

@@ -58,6 +58,8 @@ interface PendingEvaluation {
 interface PollWaiter {
   resolve: (command: BrowserDebugCommand | null) => void;
   timeout: ReturnType<typeof setTimeout>;
+  signal?: AbortSignal;
+  abortHandler?: () => void;
 }
 
 interface BrowserDebugLease {
@@ -240,6 +242,7 @@ export class BrowserDebugService {
     leaseId: string,
     controllerToken: string,
     waitMs = MAX_POLL_MS,
+    signal?: AbortSignal,
   ): Promise<BrowserDebugCommand | null> {
     const lease = this.authorizeController(leaseId, controllerToken);
     if (lease.queuedCommand) {
@@ -257,16 +260,28 @@ export class BrowserDebugService {
       0,
       Math.min(waitMs, MAX_POLL_MS, lease.expiresAtMs - this.now()),
     );
-    if (boundedWaitMs === 0) return null;
+    if (boundedWaitMs === 0 || signal?.aborted) return null;
     return await new Promise<BrowserDebugCommand | null>((resolve) => {
-      const timeout = setTimeout(() => {
-        if (lease.pollWaiter?.resolve === resolve) {
-          lease.pollWaiter = undefined;
-        }
-        resolve(null);
-      }, boundedWaitMs);
-      timeout.unref?.();
-      lease.pollWaiter = { resolve, timeout };
+      const waiter: PollWaiter = {
+        resolve,
+        timeout: setTimeout(() => {
+          if (lease.pollWaiter === waiter) {
+            this.resolvePollWaiter(lease, null);
+          }
+        }, boundedWaitMs),
+        ...(signal ? { signal } : {}),
+      };
+      waiter.timeout.unref?.();
+      if (signal) {
+        waiter.abortHandler = () => {
+          if (lease.pollWaiter === waiter) {
+            this.resolvePollWaiter(lease, null);
+          }
+        };
+        signal.addEventListener("abort", waiter.abortHandler, { once: true });
+      }
+      lease.pollWaiter = waiter;
+      if (signal?.aborted) waiter.abortHandler?.();
     });
   }
 
@@ -312,10 +327,7 @@ export class BrowserDebugService {
       timeout.unref?.();
       lease.pendingEvaluation = { command, resolve, reject, timeout };
       if (lease.pollWaiter) {
-        const waiter = lease.pollWaiter;
-        lease.pollWaiter = undefined;
-        clearTimeout(waiter.timeout);
-        waiter.resolve(command);
+        this.resolvePollWaiter(lease, command);
       } else {
         lease.queuedCommand = command;
       }
@@ -403,9 +415,7 @@ export class BrowserDebugService {
   private endLease(lease: BrowserDebugLease, error: Error): void {
     this.leases.delete(lease.leaseId);
     if (lease.pollWaiter) {
-      clearTimeout(lease.pollWaiter.timeout);
-      lease.pollWaiter.resolve(null);
-      lease.pollWaiter = undefined;
+      this.resolvePollWaiter(lease, null);
     }
     if (lease.pendingEvaluation) {
       clearTimeout(lease.pendingEvaluation.timeout);
@@ -413,5 +423,19 @@ export class BrowserDebugService {
       lease.pendingEvaluation = undefined;
     }
     lease.queuedCommand = undefined;
+  }
+
+  private resolvePollWaiter(
+    lease: BrowserDebugLease,
+    command: BrowserDebugCommand | null,
+  ): void {
+    const waiter = lease.pollWaiter;
+    if (!waiter) return;
+    lease.pollWaiter = undefined;
+    clearTimeout(waiter.timeout);
+    if (waiter.signal && waiter.abortHandler) {
+      waiter.signal.removeEventListener("abort", waiter.abortHandler);
+    }
+    waiter.resolve(command);
   }
 }

@@ -136,6 +136,10 @@ The **Older** section needs no active handling: an active session has a fresh
   is safe and is the desired recency behavior, subject to the stricter
   representative-safety rules in
   [session-list-hidden-duplicates](session-list-hidden-duplicates.md).
+- Sidebar visibility owns its feed interest. A minimized desktop sidebar or a
+  closed mobile sidebar releases both global/starred query owners and their
+  activity callbacks; cached collection rows may remain, but hidden chrome must
+  not keep polling, revalidating, or animating session state.
 
 ## Regression history
 

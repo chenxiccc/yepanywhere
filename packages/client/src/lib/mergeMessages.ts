@@ -266,7 +266,10 @@ export function mergeStreamMessage(
     const merged = mergeMessage(existingMsg, incoming, "sdk");
 
     // Only update if actually different
-    if (existingMsg === merged) {
+    if (
+      existingMsg === merged ||
+      JSON.stringify(existingMsg) === JSON.stringify(merged)
+    ) {
       return {
         messages: existing,
         index: existingIdx,

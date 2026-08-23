@@ -90,6 +90,28 @@ describe("BrowserDebugService", () => {
     await expect(evaluation).resolves.toEqual({ ok: true, value: "YA" });
   });
 
+  it("releases an abandoned browser poll for a reloaded client", async () => {
+    const service = new BrowserDebugService();
+    const lease = service.createLease("session-1", "tab-1");
+    const abandonedRequest = new AbortController();
+    const abandonedPoll = service.poll(
+      lease.leaseId,
+      lease.controllerToken,
+      1_000,
+      abandonedRequest.signal,
+    );
+
+    await expect(
+      service.poll(lease.leaseId, lease.controllerToken, 0),
+    ).rejects.toThrow("already active");
+    abandonedRequest.abort();
+
+    await expect(abandonedPoll).resolves.toBeNull();
+    await expect(
+      service.poll(lease.leaseId, lease.controllerToken, 0),
+    ).resolves.toBeNull();
+  });
+
   it("keeps a bounded event tail and rejects crossed credentials", () => {
     const service = new BrowserDebugService();
     const first = service.createLease("session-1", "tab-1");

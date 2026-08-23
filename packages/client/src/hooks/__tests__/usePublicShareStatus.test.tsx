@@ -179,6 +179,23 @@ describe("usePublicShareStatus", () => {
     expect(second.result.current.status?.canCreate).toBe(false);
   });
 
+  it("retains the snapshot when a poll returns equal status", async () => {
+    const status = shareStatus({ canCreate: true });
+    mocks.getPublicShareStatus.mockResolvedValue(status);
+
+    const hook = renderHook(() => usePublicShareStatus({ poll: true }));
+    await settle();
+    const initialSnapshot = hook.result.current.status;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    await settle();
+
+    expect(mocks.getPublicShareStatus).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.status).toBe(initialSnapshot);
+  });
+
   it("coalesces refresh and reconnect across mounted consumers", async () => {
     const revalidation = deferred<PublicShareStatusResponse>();
     mocks.getPublicShareStatus

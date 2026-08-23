@@ -17,6 +17,10 @@ export function useBrowserDebugLease() {
     [],
   );
   const disable = useCallback(() => browserDebugLeaseController.disable(), []);
+  const reactivate = useCallback(
+    () => browserDebugLeaseController.reactivate(),
+    [],
+  );
 
   useEffect(() => {
     void browserDebugLeaseController.reconcilePersistedLease();
@@ -28,13 +32,6 @@ export function useBrowserDebugLease() {
     return () => window.clearInterval(interval);
   }, [snapshot.phase]);
 
-  useEffect(
-    () => () => {
-      void browserDebugLeaseController.disable();
-    },
-    [],
-  );
-
   const performanceSummary =
     snapshot.phase === "active"
       ? browserDebugLeaseController.getPerformanceSummary()
@@ -45,5 +42,6 @@ export function useBrowserDebugLease() {
     performanceSummary,
     enable,
     disable,
+    reactivate,
   };
 }

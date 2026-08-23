@@ -33,18 +33,22 @@ const SidebarSessionFeedsContext = createContext<SidebarSessionFeeds | null>(
  * re-renders its context consumers rather than everything the layout renders.
  */
 export function SidebarSessionFeedsProvider({
+  enabled = true,
   limit = SIDEBAR_SESSION_FEED_LIMIT,
   children,
 }: {
+  enabled?: boolean;
   limit?: number;
   children: ReactNode;
 }) {
   const globalFeed = useGlobalSessionsFeed({
+    enabled,
     limit,
     includeStats: false,
   });
 
   const starredFeed = useGlobalSessionsFeed({
+    enabled,
     starred: true,
     limit,
     includeStats: false,

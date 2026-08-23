@@ -163,6 +163,14 @@ and route snapshots retain the map. Duplicate updates remain no-ops, live IDs
 can migrate to durable IDs, and active-window pruning removes stale entries.
 Token-rate pending/block Markdown remains on the ref-backed streaming path.
 
+The client preserves transcript identity for structurally equal same-id SDK
+messages. Once an identified raw message is visible, later same-id replacements
+are held for a bounded 100 ms window and only the latest replacement is
+published; a different message id, waiting-input/idle status, or turn completion
+flushes the pending replacement first. This keeps raw-first latency and event
+order while preventing a raw/enriched burst from reconciling the complete
+detailed transcript once per intermediate snapshot.
+
 Focused regressions in `packages/server/test/subscriptions.test.ts` prove raw
 order while the first finalizer is blocked, independent later finalization,
 latest-generation suppression, atomic enriched-message/event order, immediate
@@ -201,6 +209,10 @@ equality is graded by whether the live item has a durable counterpart:
   item while it is active. Prefer changes that do not alter row count, group
   boundaries, navigation anchors, or stable identity. Once the persisted
   counterpart is available, the item settles to the durable representation.
+- **No-effect replacements do not publish.** A structurally equal same-id SDK
+  snapshot preserves the existing transcript array and message identity.
+  Replaceable same-id enrichment bursts publish their latest bounded snapshot,
+  not every intermediate representation.
 - **Reload-safe snapshots are reconciliation, not replay.** A native provider
   snapshot may contain the whole completed active-turn prefix. Reattaching YA
   must not publish that prefix as freshly observed live activity. Browser

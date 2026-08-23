@@ -37,6 +37,7 @@ type SourceFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
 
 export interface BrowserDebugLeaseSnapshot {
   phase: "inactive" | "enabling" | "active";
+  connected: boolean;
   sessionId: string | null;
   expiresAtMs: number | null;
   error: string | null;
@@ -53,6 +54,8 @@ const SERIALIZED_STRING_BUDGET = 50_000;
 const SERIALIZED_ENTRY_BUDGET = 1_000;
 const FLUSH_BODY_BUDGET = 220 * 1024;
 const EVENT_KIND_LIMIT = 80;
+const POLL_CONNECTED_GRACE_MS = 500;
+const POLL_RECONNECT_RETRY_MS = 250;
 
 interface StoredBrowserDebugLease {
   version: 1;
@@ -309,12 +312,14 @@ export class BrowserDebugLeaseController {
   private snapshot: BrowserDebugLeaseSnapshot = this.persistedLease
     ? {
         phase: "active",
+        connected: false,
         sessionId: this.persistedLease.sessionId,
         expiresAtMs: Date.parse(this.persistedLease.expiresAt),
         error: null,
       }
     : {
         phase: "inactive",
+        connected: false,
         sessionId: null,
         expiresAtMs: null,
         error: null,
@@ -324,11 +329,16 @@ export class BrowserDebugLeaseController {
   private sourceFetch: SourceFetch | null = null;
   private events: BrowserDebugEventInput[] = [];
   private stopped = true;
+  private pollGeneration = 0;
+  private pollAbortController: AbortController | null = null;
   private enableAttempt = 0;
   private cleanupInstrumentation: (() => void) | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private pageHideHandler = () => {
-    void this.disable({ notifyServer: true, keepalive: true });
+    this.suspendLocalLease();
+  };
+  private pageShowHandler = () => {
+    void this.reconcilePersistedLease();
   };
 
   constructor() {
@@ -349,7 +359,68 @@ export class BrowserDebugLeaseController {
 
   async reconcilePersistedLease(): Promise<void> {
     if (this.lease || !this.persistedLease) return;
-    await this.revokePersistedLease(this.persistedLease);
+    const persistedLease = this.persistedLease;
+    const expiresAtMs = Date.parse(persistedLease.expiresAt);
+    if (expiresAtMs <= Date.now()) {
+      this.finishPersistedLease(persistedLease);
+      return;
+    }
+
+    try {
+      const runtime = getSourceRuntimeRegistry().getOrCreateSourceRuntime(
+        asClientSummarySourceKey(persistedLease.sourceKey),
+      );
+      const sourceFetch = runtime.transport.fetch.bind(
+        runtime.transport,
+      ) as SourceFetch;
+      this.lease = {
+        leaseId: persistedLease.leaseId,
+        controllerToken: persistedLease.controllerToken,
+        grantUrl: "",
+        sessionId: persistedLease.sessionId,
+        tabId: persistedLease.tabId,
+        expiresAt: persistedLease.expiresAt,
+      };
+      this.sourceFetch = sourceFetch;
+      this.stopped = false;
+      this.cleanupInstrumentation = this.installInstrumentation();
+      window.addEventListener("pagehide", this.pageHideHandler);
+      window.addEventListener("pageshow", this.pageShowHandler);
+      if (this.expiryTimer) clearTimeout(this.expiryTimer);
+      this.expiryTimer = setTimeout(
+        () => {
+          void this.disable({ notifyServer: true });
+        },
+        Math.max(0, expiresAtMs - Date.now()),
+      );
+      this.setSnapshot({
+        phase: "active",
+        connected: false,
+        sessionId: persistedLease.sessionId,
+        expiresAtMs,
+        error: null,
+      });
+      const pollGeneration = ++this.pollGeneration;
+      void this.pollLoop(pollGeneration);
+    } catch (error) {
+      this.showPersistedWarning(
+        persistedLease,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  reactivate(): Promise<void> {
+    if (this.lease && this.persistedLease) {
+      this.pollAbortController?.abort();
+      this.pollAbortController = null;
+      this.stopped = false;
+      this.setSnapshot({ ...this.snapshot, connected: false, error: null });
+      const pollGeneration = ++this.pollGeneration;
+      void this.pollLoop(pollGeneration);
+      return Promise.resolve();
+    }
+    return this.reconcilePersistedLease();
   }
 
   async enable(sessionId: string): Promise<string> {
@@ -362,6 +433,7 @@ export class BrowserDebugLeaseController {
     const enableAttempt = ++this.enableAttempt;
     this.setSnapshot({
       phase: "enabling",
+      connected: false,
       sessionId,
       expiresAtMs: null,
       error: null,
@@ -415,6 +487,7 @@ export class BrowserDebugLeaseController {
       this.stopped = false;
       this.cleanupInstrumentation = this.installInstrumentation();
       window.addEventListener("pagehide", this.pageHideHandler);
+      window.addEventListener("pageshow", this.pageShowHandler);
       this.expiryTimer = setTimeout(
         () => {
           void this.disable({ notifyServer: true });
@@ -423,11 +496,13 @@ export class BrowserDebugLeaseController {
       );
       this.setSnapshot({
         phase: "active",
+        connected: true,
         sessionId,
         expiresAtMs,
         error: null,
       });
-      void this.pollLoop();
+      const pollGeneration = ++this.pollGeneration;
+      void this.pollLoop(pollGeneration);
       return buildAgentPrompt(response.lease);
     } catch (error) {
       if (this.enableAttempt !== enableAttempt) throw error;
@@ -435,6 +510,7 @@ export class BrowserDebugLeaseController {
       const message = error instanceof Error ? error.message : String(error);
       this.setSnapshot({
         phase: "inactive",
+        connected: false,
         sessionId: null,
         expiresAtMs: null,
         error: message,
@@ -467,11 +543,15 @@ export class BrowserDebugLeaseController {
     }
     this.enableAttempt += 1;
     this.stopped = true;
+    this.pollGeneration += 1;
+    this.pollAbortController?.abort();
+    this.pollAbortController = null;
     this.lease = null;
     this.sourceFetch = null;
     this.cleanupInstrumentation?.();
     this.cleanupInstrumentation = null;
     window.removeEventListener("pagehide", this.pageHideHandler);
+    window.removeEventListener("pageshow", this.pageShowHandler);
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
     this.events = [];
@@ -519,6 +599,24 @@ export class BrowserDebugLeaseController {
   private setSnapshot(snapshot: BrowserDebugLeaseSnapshot): void {
     this.snapshot = snapshot;
     for (const listener of this.listeners) listener();
+  }
+
+  private suspendLocalLease(): void {
+    const persistedLease = this.persistedLease;
+    if (!persistedLease) return;
+    this.enableAttempt += 1;
+    this.stopped = true;
+    this.pollGeneration += 1;
+    this.pollAbortController?.abort();
+    this.pollAbortController = null;
+    this.lease = null;
+    this.sourceFetch = null;
+    this.cleanupInstrumentation?.();
+    this.cleanupInstrumentation = null;
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = null;
+    this.events = [];
+    this.showPersistedWarning(persistedLease, null);
   }
 
   private async revokePersistedLease(
@@ -580,6 +678,7 @@ export class BrowserDebugLeaseController {
     this.schedulePersistedExpiry(persistedLease);
     this.setSnapshot({
       phase: "active",
+      connected: false,
       sessionId: persistedLease.sessionId,
       expiresAtMs,
       error,
@@ -612,6 +711,7 @@ export class BrowserDebugLeaseController {
     this.expiryTimer = null;
     this.setSnapshot({
       phase: "inactive",
+      connected: false,
       sessionId: null,
       expiresAtMs: null,
       error: null,
@@ -622,26 +722,67 @@ export class BrowserDebugLeaseController {
     return { "X-YA-Browser-Debug-Controller": lease.controllerToken };
   }
 
-  private async pollLoop(): Promise<void> {
-    while (!this.stopped) {
+  private async pollLoop(generation: number): Promise<void> {
+    while (!this.stopped && generation === this.pollGeneration) {
       const lease = this.lease;
       const sourceFetch = this.sourceFetch;
       if (!lease || !sourceFetch) return;
+      const pollAbortController = new AbortController();
+      this.pollAbortController = pollAbortController;
+      const connectedTimer = setTimeout(() => {
+        if (
+          !this.stopped &&
+          generation === this.pollGeneration &&
+          this.lease?.leaseId === lease.leaseId &&
+          !this.snapshot.connected
+        ) {
+          this.setSnapshot({ ...this.snapshot, connected: true, error: null });
+        }
+      }, POLL_CONNECTED_GRACE_MS);
       try {
         const response = await sourceFetch<{
           command: BrowserDebugCommand | null;
         }>(`/browser-debug/leases/${lease.leaseId}/poll`, {
           method: "POST",
           headers: this.headers(lease),
+          signal: pollAbortController.signal,
         });
-        if (this.stopped || this.lease?.leaseId !== lease.leaseId) return;
+        if (
+          this.stopped ||
+          generation !== this.pollGeneration ||
+          this.lease?.leaseId !== lease.leaseId
+        )
+          return;
+        if (!this.snapshot.connected || this.snapshot.error) {
+          this.setSnapshot({ ...this.snapshot, connected: true, error: null });
+        }
         if (response.command)
           await this.execute(response.command, lease, sourceFetch);
       } catch (error) {
-        if (!this.stopped) {
+        if (
+          responseStatus(error) === 409 &&
+          !this.stopped &&
+          generation === this.pollGeneration
+        ) {
+          this.setSnapshot({
+            ...this.snapshot,
+            connected: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          await new Promise((resolve) =>
+            setTimeout(resolve, POLL_RECONNECT_RETRY_MS),
+          );
+          continue;
+        }
+        if (!this.stopped && generation === this.pollGeneration) {
           await this.disable({ notifyServer: false, unconfirmedError: error });
         }
         return;
+      } finally {
+        clearTimeout(connectedTimer);
+        if (this.pollAbortController === pollAbortController) {
+          this.pollAbortController = null;
+        }
       }
     }
   }

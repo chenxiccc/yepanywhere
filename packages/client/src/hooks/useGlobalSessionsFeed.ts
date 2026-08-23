@@ -65,6 +65,7 @@ const GLOBAL_SESSION_STATS_QUERY_KEY = createClientQueryKey({
 });
 
 export interface UseGlobalSessionsOptions {
+  enabled?: boolean;
   projectId?: string | null;
   searchQuery?: string;
   limit?: number;
@@ -281,6 +282,7 @@ export function useGlobalSessionsFeed(
   options: UseGlobalSessionsOptions = {},
 ): UseGlobalSessionsFeedResult {
   const {
+    enabled = true,
     projectId,
     searchQuery,
     limit,
@@ -290,8 +292,9 @@ export function useGlobalSessionsFeed(
   } = options;
   const remoteConnection = useOptionalRemoteConnection();
   const ready =
-    !isRemoteClient() ||
-    (remoteConnection !== null && remoteConnection.connection !== null);
+    enabled &&
+    (!isRemoteClient() ||
+      (remoteConnection !== null && remoteConnection.connection !== null));
   const query = useMemo(
     () =>
       createGlobalSessionsCollectionQueryDescriptor({
@@ -345,27 +348,26 @@ export function useGlobalSessionsFeed(
     // subscriber on a source/query change already drops it when nobody else
     // wants it.
     setError(null);
-    setLoading(!queryStateRef.current);
-  }, [sourceKey, queryKey]);
-
-  useEffect(
-    () =>
-      retainClientQuery({
-        sourceKey,
-        key: queryKey,
-      }),
-    [sourceKey, queryKey],
-  );
+    setLoading(enabled && !queryStateRef.current);
+  }, [enabled, sourceKey, queryKey]);
 
   useEffect(() => {
-    if (!includeStats || projectId) {
+    if (!enabled) return undefined;
+    return retainClientQuery({
+      sourceKey,
+      key: queryKey,
+    });
+  }, [enabled, sourceKey, queryKey]);
+
+  useEffect(() => {
+    if (!enabled || !includeStats || projectId) {
       return undefined;
     }
     return retainClientQuery({
       sourceKey,
       key: GLOBAL_SESSION_STATS_QUERY_KEY,
     });
-  }, [includeStats, projectId, sourceKey]);
+  }, [enabled, includeStats, projectId, sourceKey]);
 
   const knownGenerationForRequest = useCallback((): number | undefined => {
     const state = queryStateRef.current;
@@ -594,6 +596,7 @@ export function useGlobalSessionsFeed(
   );
 
   useEffect(() => {
+    if (!enabled) return undefined;
     const handle = retainQueryRevalidation({
       sourceKey,
       key: queryKey,
@@ -604,7 +607,7 @@ export function useGlobalSessionsFeed(
       revalidationRef.current = null;
       handle.release();
     };
-  }, [sourceKey, queryKey, revalidationSubscriber]);
+  }, [enabled, sourceKey, queryKey, revalidationSubscriber]);
 
   // Coverage and closures change between renders; the owner needs the current
   // ones without the retention itself churning.
@@ -687,6 +690,7 @@ export function useGlobalSessionsFeed(
   );
 
   useFileActivity({
+    enabled,
     maxEvents: 0,
     onSessionCreated: handleSessionCreated,
     onProcessStateChange: handleProcessStateChange,
@@ -719,7 +723,7 @@ export function useGlobalSessionsFeed(
   return {
     query,
     ready,
-    loading: loading || (!ready && !queryState),
+    loading: enabled && (loading || (!ready && !queryState)),
     error,
     hasMore: queryState?.hasMore ?? false,
     loadMore,

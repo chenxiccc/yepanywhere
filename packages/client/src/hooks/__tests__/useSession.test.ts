@@ -179,6 +179,7 @@ vi.mock("../useSessionMessages", () => ({
       updateSession,
       handleStreamingUpdate: vi.fn(),
       handleStreamMessageEvent: vi.fn(),
+      flushPendingStreamMessage: vi.fn(),
       handleStreamSubagentMessage,
       registerToolUseAgent,
       mergeLoadedAgentContent,
