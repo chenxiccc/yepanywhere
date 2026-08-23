@@ -467,10 +467,17 @@ export function ToolbarSettings() {
         placementPresence[control.key] === "off") &&
       control.side === "right",
   );
-  const shownControls = toolbarControls.filter(
+  const shownLeft = toolbarControls.filter(
     (control) =>
       placementPresence[control.key] !== "hidden" &&
-      placementPresence[control.key] !== "off",
+      placementPresence[control.key] !== "off" &&
+      control.side === "left",
+  );
+  const shownRight = toolbarControls.filter(
+    (control) =>
+      placementPresence[control.key] !== "hidden" &&
+      placementPresence[control.key] !== "off" &&
+      control.side === "right",
   );
 
   const commitPresenceNotch = useCallback(
@@ -554,15 +561,19 @@ export function ToolbarSettings() {
     </div>
   );
 
-  const renderHiddenGroup = (label: string, controls: ToolbarControlMeta[]) => (
-    <div className="session-toolbar-hidden-group">
-      <div className="session-toolbar-hidden-group-title">{label}</div>
-      {controls.length === 0 ? (
-        <p className="session-toolbar-hidden-empty">
+  const renderSideGroup = (
+    label: string,
+    controls: ToolbarControlMeta[],
+    placement: "hidden" | "shown",
+  ) => (
+    <div className={toolbarSettingsStyles.sideGroup}>
+      <div className={toolbarSettingsStyles.sideGroupTitle}>{label}</div>
+      {controls.length === 0 && placement === "hidden" ? (
+        <p className={toolbarSettingsStyles.sideGroupEmpty}>
           {t("appearanceToolbarSideNoneHidden")}
         </p>
       ) : (
-        controls.map((control) => renderControlRow(control, "hidden"))
+        controls.map((control) => renderControlRow(control, placement))
       )}
     </div>
   );
@@ -648,7 +659,7 @@ export function ToolbarSettings() {
         </SettingsItem>
 
         <HideInSettingsSearch>
-          <div className="settings-item session-toolbar-settings">
+          <div className={`settings-item ${toolbarSettingsStyles.settings}`}>
             <SessionToolbarPreview />
 
             <div className="session-toolbar-zone">
@@ -656,11 +667,16 @@ export function ToolbarSettings() {
                 <strong>{t("appearanceToolbarHiddenHeading")}</strong>
                 <span>{t("appearanceToolbarHiddenDescription")}</span>
               </div>
-              <div className="session-toolbar-hidden-groups">
-                {renderHiddenGroup(t("appearanceToolbarSideLeft"), hiddenLeft)}
-                {renderHiddenGroup(
+              <div className={toolbarSettingsStyles.sideGroups}>
+                {renderSideGroup(
+                  t("appearanceToolbarSideLeft"),
+                  hiddenLeft,
+                  "hidden",
+                )}
+                {renderSideGroup(
                   t("appearanceToolbarSideRight"),
                   hiddenRight,
+                  "hidden",
                 )}
               </div>
             </div>
@@ -672,9 +688,16 @@ export function ToolbarSettings() {
                 <strong>{t("appearanceToolbarShownHeading")}</strong>
                 <span>{t("appearanceToolbarShownDescription")}</span>
               </div>
-              <div className="session-toolbar-control-list">
-                {shownControls.map((control) =>
-                  renderControlRow(control, "shown"),
+              <div className={toolbarSettingsStyles.sideGroups}>
+                {renderSideGroup(
+                  t("appearanceToolbarSideLeft"),
+                  shownLeft,
+                  "shown",
+                )}
+                {renderSideGroup(
+                  t("appearanceToolbarSideRight"),
+                  shownRight,
+                  "shown",
                 )}
               </div>
             </div>

@@ -46,10 +46,11 @@ The pane is three stacked pieces, top to bottom:
    them up top makes them scannable even though the live preview already
    locates the *visible* ones.
 3. A thin **separator**, then the **Shown zone** — visible controls in
-   left-to-right toolbar order, one column that matches a single Hidden-zone
-   column once that width can fit the shown-row controls, otherwise using the
-   row's practical floor (capped by the pane). Each row has a specimen preview,
-   copy, and the **presence slider**.
+   left-to-right toolbar order, split into the same **left-side** and
+   **right-side** groups as Hidden. Both zones render their side groups as two
+   columns when there is room and stack them when narrow. Each side keeps its
+   heading when empty; Hidden also says "None hidden." Each row has a specimen
+   preview, copy, and the **presence slider**.
 
 Both zones show a **per-row specimen** (`ToolbarControlPreview`) so a row is
 identified by the actual element, not just text. The specimen is also an

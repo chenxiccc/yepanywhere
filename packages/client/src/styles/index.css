@@ -7775,13 +7775,6 @@ a.sidebar-nav-item {
   margin: 0;
 }
 
-.session-toolbar-settings {
-  flex-direction: column;
-  align-items: stretch;
-  container-name: session-toolbar-settings;
-  container-type: inline-size;
-}
-
 .output-appearance-settings {
   container-name: output-appearance;
   container-type: inline-size;
@@ -8116,14 +8109,6 @@ a.sidebar-nav-item {
   box-shadow: none;
 }
 
-.session-toolbar-control-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: 100%;
-  max-width: 100%;
-}
-
 .session-toolbar-zone {
   display: flex;
   flex-direction: column;
@@ -8151,41 +8136,6 @@ a.sidebar-nav-item {
   height: 1px;
   margin: var(--space-2) 0;
   background: var(--border-color);
-}
-
-.session-toolbar-hidden-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-3);
-}
-
-/* Match one Hidden column when it fits; 26rem keeps priority controls readable. */
-@container session-toolbar-settings (min-width: 492px) {
-  .session-toolbar-control-list {
-    width: min(100%, max(26rem, calc(50% - 6px)));
-  }
-}
-
-.session-toolbar-hidden-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.session-toolbar-hidden-group-title {
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.session-toolbar-hidden-empty {
-  margin: 0;
-  color: var(--text-dimmed);
-  font-size: var(--font-size-xs);
-  font-style: italic;
 }
 
 .session-toolbar-control-row {

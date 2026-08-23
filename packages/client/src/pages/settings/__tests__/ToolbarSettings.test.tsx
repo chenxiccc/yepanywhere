@@ -424,6 +424,36 @@ describe("ToolbarSettings", () => {
     );
   });
 
+  it("groups shown controls by toolbar side", () => {
+    render(<ToolbarSettings />);
+
+    const shownZone = screen
+      .getByText("Shown")
+      .closest(".session-toolbar-zone");
+    expect(shownZone).toBeTruthy();
+
+    const leftGroup = within(shownZone as HTMLElement).getByText(
+      "Left side",
+    ).parentElement;
+    const rightGroup = within(shownZone as HTMLElement).getByText(
+      "Right side",
+    ).parentElement;
+    expect(leftGroup).toBeTruthy();
+    expect(rightGroup).toBeTruthy();
+    expect(
+      within(leftGroup as HTMLElement).getByText("Mode Selector"),
+    ).toBeTruthy();
+    expect(
+      within(leftGroup as HTMLElement).queryByText("Session Status"),
+    ).toBeNull();
+    expect(
+      within(rightGroup as HTMLElement).getByText("Session Status"),
+    ).toBeTruthy();
+    expect(
+      within(rightGroup as HTMLElement).queryByText("Mode Selector"),
+    ).toBeNull();
+  });
+
   it("keeps rows in their entry section after visibility changes", () => {
     render(<ToolbarSettings />);
 

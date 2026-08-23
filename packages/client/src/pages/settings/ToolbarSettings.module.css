@@ -1,3 +1,36 @@
+.settings {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.sideGroups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.sideGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sideGroupTitle {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sideGroupEmpty {
+  margin: 0;
+  color: var(--text-dimmed);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+
 .waveformOpacityControl {
   display: flex;
   min-width: 0;
