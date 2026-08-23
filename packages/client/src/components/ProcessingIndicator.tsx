@@ -289,14 +289,6 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
             onKeyDown={handleAnimationKeyDown}
           >
             {displayedText}
-            <span
-              className="processing-cursor"
-              style={
-                isAnimationPaused ? { animationPlayState: "paused" } : undefined
-              }
-            >
-              |
-            </span>
           </span>
         </>
       )}

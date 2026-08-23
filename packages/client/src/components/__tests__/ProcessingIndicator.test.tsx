@@ -51,12 +51,11 @@ describe("ProcessingIndicator", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders dot and cursor when processing", () => {
+  it("renders the activity dot without a text cursor", () => {
     render(<ProcessingIndicator isProcessing={true} />);
 
-    const cursor = document.querySelector(".processing-cursor");
-    expect(cursor).not.toBeNull();
-    expect(cursor?.textContent).toBe("|");
+    expect(document.querySelector(".processing-cursor")).toBeNull();
+    expect(document.querySelector(".processing-text")?.textContent).toBe("");
 
     const dotContainer = document.querySelector(".processing-dot-container");
     expect(dotContainer?.firstElementChild?.firstElementChild).not.toBeNull();
@@ -67,18 +66,18 @@ describe("ProcessingIndicator", () => {
 
     const textElement = document.querySelector(".processing-text");
 
-    // Initially just cursor
-    expect(textElement?.textContent).toBe("|");
+    expect(textElement?.textContent).toBe("");
 
-    // Advance enough time to type several characters (500ms = 20 chars worth)
+    // Each state update schedules the next typewriter tick.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(25);
     });
+    expect(textElement?.textContent).toBe("T");
 
-    // Should have typed some text (starts with T from "Thinking...")
-    const content = textElement?.textContent ?? "";
-    expect(content).toMatch(/^T/); // Starts with T
-    expect(content.length).toBeGreaterThan(1); // Has typed something
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25);
+    });
+    expect(textElement?.textContent).toBe("Th");
   });
 
   it("pauses and resumes the typewriter when clicked", async () => {
@@ -98,10 +97,7 @@ describe("ProcessingIndicator", () => {
     expect(toggle.getAttribute("aria-label")).toBe(
       "Resume processing text animation",
     );
-    expect(
-      document.querySelector<HTMLElement>(".processing-cursor")?.style
-        .animationPlayState,
-    ).toBe("paused");
+    expect(document.querySelector(".processing-cursor")).toBeNull();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
@@ -282,8 +278,8 @@ describe("ProcessingIndicator", () => {
     // Start processing again
     rerender(<ProcessingIndicator isProcessing={true} />);
 
-    // Should be visible again with cursor
+    // Should be visible again without reintroducing a cursor.
     expect(document.querySelector(".processing-indicator")).not.toBeNull();
-    expect(document.querySelector(".processing-cursor")).not.toBeNull();
+    expect(document.querySelector(".processing-cursor")).toBeNull();
   });
 });

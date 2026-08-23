@@ -46,8 +46,12 @@ historical assistant galleries. The defensive boundary from items 2–3 is now
 landed: projected render items, turn groups, and display rows retain identity,
 and memoized user/assistant turn entries receive only row-local age state. A
 40-turn text probe and a 20-turn explored-tool probe now enter only the changed
-current turn. Real-tab key-to-frame confirmation remains tracked in
-`gaps/streaming-agent-activity-typing-frame-latency.md`.
+current turn. A post-fix real-tab trace during continued assistant text,
+thinking, tool, and processing-typewriter updates recorded a 46.6 ms maximum
+key-to-frame delay across 193 keystrokes, with no delayed keystrokes or long
+tasks. One isolated frame gap reached 100.7 ms rather than the earlier sustained
+200-plus-ms delays. That confirmation closed the associated active-stream
+typing-latency gap.
 
 The **actual** residual per-second re-render was elsewhere: the
 `AgentContentContext` provider built a fresh `value` object every render, so

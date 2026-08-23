@@ -744,6 +744,29 @@ speech, connection, sidebar, and floating-action-button tests. None originates
 from the touched composer, storage, or draft paths, whose focused runs are
 quiet.
 
+### Active-stream follow-up (2026-08-23)
+
+Contributing-model: Daybreak Blue
+
+Commit `180e2ab8` preserves render-item, turn-group, and display-row identity
+for unchanged history and memoizes the user/assistant turn boundaries. The
+40-turn text and 20-turn tool-heavy regression probes enter only the current
+turn during a live-tail replacement; historical galleries, render items, and
+explored-tool groups record zero renders.
+
+A consented real-work tab then recorded 193 keystrokes over 90 seconds during
+continued assistant text, thinking, tool, and processing-typewriter updates.
+Key-to-frame latency reached 46.6 ms, with no delayed keystrokes or long tasks;
+one isolated frame gap reached 100.7 ms and the maximum `MessageList` commit was
+36.8 ms. This replaces the earlier sustained 200-plus-ms delays and passes the
+user-approved approximately-100-ms heavy-redraw target without changing stream
+freshness or draft recovery, so the active-stream typing-latency gap is closed.
+
+The cursor-free processing text was also verified on a fresh isolated server
+at 1000×600 and 375×812. The reviewed captures are
+`.artifacts/ui-testing/2026-08-23-processing-no-cursor/desktop.png` and
+`.artifacts/ui-testing/2026-08-23-processing-no-cursor/mobile.png`.
+
 ### Remaining validation and independent risk
 
 The reported lag occurred on a different Chromebook from the configured

@@ -102,10 +102,11 @@ stable component identity, and lower update cadence.
 - Composer text is user data. Streaming/render work must not steal focus,
   defeat normal browser key buffering, or delay page-lifecycle draft flushes.
 - The processing phrase typewriter is local leaf state. Clicking its text (or
-  focusing it and pressing Enter/Space) pauses phrase progress and cursor
-  blinking at the current character; repeating the action resumes it. The
-  pause lasts only for the mounted processing cycle and never pauses the agent.
-  **Fun Phrases** controls the phrase pool, not whether the typewriter animates.
+  focusing it and pressing Enter/Space) pauses phrase progress at the current
+  character; repeating the action resumes it. The processing text has no
+  typewriter cursor. The pause lasts only for the mounted processing cycle and
+  never pauses the agent. **Fun Phrases** controls the phrase pool, not whether
+  the typewriter animates.
 
 ## Design decisions
 
@@ -225,7 +226,17 @@ render counts are the regression contract; a separate 20-turn tool-heavy probe
 also records zero historical explored-tool group renders. The real-work timings
 remain diagnostic rather than portable ceilings.
 
-The same consented tab later isolated scrolled-back position tracking as a
+The post-fix active-stream sample in the same real-work session ran for 90
+seconds and recorded 193 keystrokes with no delayed keystrokes, a 46.6 ms
+maximum key-to-frame delay, and no long tasks while assistant text, thinking,
+tool activity, and the processing typewriter continued updating. The trace had
+one isolated 100.7 ms frame gap and a 36.8 ms maximum `MessageList` commit,
+rather than the earlier sustained 200-plus-ms delays. This satisfies the
+user-approved approximately-100-ms heavy-redraw target and closes the specific
+active-stream typing-latency gap. These values remain diagnostic, not a
+portable ceiling.
+
+The same consented tab separately isolated scrolled-back position tracking as a
 separate scroll-rate owner. With roughly 980 rendered rows, one scroll event
 performed 165 full render-row queries while the bottom-follow path performed
 none. An 8,000-pixel out-and-back probe took about 5.3 seconds normally; a

@@ -6790,22 +6790,6 @@ a.sidebar-nav-item {
   stroke-width: 2.4;
 }
 
-.processing-cursor {
-  animation: blink 0.7s step-start infinite;
-  margin-left: 1px;
-}
-
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  51%,
-  100% {
-    opacity: 0;
-  }
-}
-
 /* ==========================================================================
    Load Older Messages - Pagination button for long sessions
    ========================================================================== */
