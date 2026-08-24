@@ -17,7 +17,6 @@ import {
 } from "../../lib/sessionScrollBehavior";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
-import { HideInSettingsSearch } from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
@@ -320,62 +319,51 @@ export function DevelopmentSettings() {
         </SettingsItem>
       </div>
 
-      <HideInSettingsSearch>
-        <div className="settings-group">
-          <details>
-            <summary className="settings-hint">
+      <div className="settings-group">
+        <SettingsItem
+          label={t("developmentSessionScrollMemoryTitle")}
+          description={t("developmentSessionScrollMemoryDescription")}
+          valueText={t(
+            sessionScrollMemoryModeLabelKeys[sessionScrollBehaviorMode],
+          )}
+          className="settings-item--wide-control"
+          info={
+            <>
               <strong>{t("developmentSessionScrollMemoryTitle")}</strong>
-            </summary>
-            <SettingsItem
-              label={t("developmentSessionScrollMemoryControlTitle")}
-              description={t("developmentSessionScrollMemoryDescription")}
-              valueText={t(
-                sessionScrollMemoryModeLabelKeys[sessionScrollBehaviorMode],
-              )}
-              className="settings-item--wide-control"
-              info={
-                <>
-                  <strong>
-                    {t("developmentSessionScrollMemoryControlTitle")}
-                  </strong>
-                  <p>{t("developmentSessionScrollMemoryDescription")}</p>
-                  <ul className="settings-option-description-list">
-                    {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
-                      <li key={mode}>
-                        <strong>
-                          {t(sessionScrollMemoryModeLabelKeys[mode])}
-                        </strong>
-                        <span>
-                          {t(sessionScrollMemoryModeDescriptionKeys[mode])}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
+              <p>{t("developmentSessionScrollMemoryDescription")}</p>
+              <ul className="settings-option-description-list">
+                {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
+                  <li key={mode}>
+                    <strong>{t(sessionScrollMemoryModeLabelKeys[mode])}</strong>
+                    <span>
+                      {t(sessionScrollMemoryModeDescriptionKeys[mode])}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          }
+        >
+          <div className="settings-item-actions">
+            <select
+              className="settings-select"
+              value={sessionScrollBehaviorMode}
+              onChange={(event) =>
+                setSessionScrollBehaviorMode(
+                  event.target.value as SessionScrollBehaviorMode,
+                )
               }
+              aria-label={t("developmentSessionScrollMemoryControlTitle")}
             >
-              <div className="settings-item-actions">
-                <select
-                  className="settings-select"
-                  value={sessionScrollBehaviorMode}
-                  onChange={(event) =>
-                    setSessionScrollBehaviorMode(
-                      event.target.value as SessionScrollBehaviorMode,
-                    )
-                  }
-                  aria-label={t("developmentSessionScrollMemoryControlTitle")}
-                >
-                  {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {t(sessionScrollMemoryModeLabelKeys[mode])}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </SettingsItem>
-          </details>
-        </div>
-      </HideInSettingsSearch>
+              {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {t(sessionScrollMemoryModeLabelKeys[mode])}
+                </option>
+              ))}
+            </select>
+          </div>
+        </SettingsItem>
+      </div>
 
       {isManualReloadMode && (
         <div className="settings-group">

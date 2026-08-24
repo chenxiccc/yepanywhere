@@ -16,6 +16,7 @@ import {
 import { saveHost } from "../../../lib/hostStorage";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { DevelopmentSettings } from "../DevelopmentSettings";
+import { SettingsSearchScopeProvider } from "../SettingsSearchContext";
 
 let isManualReloadMode = true;
 let interruptibleSessionCount = 0;
@@ -194,6 +195,9 @@ describe("DevelopmentSettings", () => {
   it("exposes the session cursor behavior debug setting", () => {
     renderSettings();
 
+    expect(
+      screen.getByText("Session Scroll Memory").closest("[data-settings-item]"),
+    ).not.toBeNull();
     const select = screen.getByLabelText("Restore mode") as HTMLSelectElement;
     expect(select.value).toBe("live-tail");
 
@@ -204,6 +208,26 @@ describe("DevelopmentSettings", () => {
       "remember-place",
     );
     expect(screen.getByText("Reopen at last viewed row")).toBeTruthy();
+  });
+
+  it("finds session scroll memory in settings search", () => {
+    render(
+      <MemoryRouter>
+        <SettingsSearchScopeProvider
+          value={{
+            query: "session scroll memory",
+            matchValues: false,
+            sectionMatched: false,
+            categoryLabel: "Development",
+            jumpToItem: vi.fn(),
+          }}
+        >
+          <DevelopmentSettings />
+        </SettingsSearchScopeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("Restore mode")).toBeTruthy();
   });
 
   it("toggles relay debug logging from development settings", () => {

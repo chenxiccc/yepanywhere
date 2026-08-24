@@ -36,11 +36,12 @@ provider-like behavior.
   and follow-button behavior.
 - The default mode is `live-tail`: ordinary session opens and bottom snapshots
   load at the current bottom and keep following.
-- New/non-default modes may be hidden or advanced settings first. The policy
-  surface should exist before all modes are exposed in the settings UI.
-- The first UI exposure is a collapsed Development-settings debug control, not
-  a polished user preference. Its purpose is to make scroll bug reports
-  explicit about the active restore expectation.
+- The policy remains an advanced Development setting while the non-default mode
+  names settle. It is a normal searchable row: an advanced setting must not be
+  collapsed or excluded from Settings search when users need to refind it.
+- The control's purpose is to make scroll bug reports explicit about the active
+  restore expectation while also providing the `remember-place` recovery
+  preference.
 
 ## Policy Modes
 
@@ -76,13 +77,14 @@ provider-like behavior.
   fallback order.
 - [x] Suppress scroll snapshot writes while progressive hydration is active and
   publish one settled snapshot after the reveal completes.
-- [x] Expose the policy as a collapsed Development-settings debug control so
+- [x] Expose the policy as a visible, searchable Development setting so
   maintainers can ask which restore mode was active during scroll reports.
 
 ## Follow-Up Work
 
-- Promote or redesign the policy as a normal user-facing preference only after
-  the behavior names and defaults are settled.
+- Keep the policy in Development until the behavior names and defaults are
+  settled; do not hide it behind a disclosure or exclude it from Settings
+  search.
 - Add diagnostics for non-exact scroll restores so anchor misses can be counted
   by reason instead of inferred from user reports.
 - Tighten fast-stream bottom-follow tests around large bursts and async row
