@@ -717,7 +717,7 @@ class ActivityBus {
   }
 
   resetForTests(): void {
-    for (const [sourceKey, record] of [...this.streamRecords]) {
+    for (const [sourceKey, record] of Array.from(this.streamRecords)) {
       this.closeStreamRecord(sourceKey, record);
     }
     this.listeners.clear();

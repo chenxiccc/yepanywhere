@@ -410,7 +410,7 @@ class DefaultManagedStream implements ManagedStream {
   }
 
   private emit(): void {
-    for (const listener of [...this.listeners]) {
+    for (const listener of Array.from(this.listeners)) {
       listener();
     }
   }
