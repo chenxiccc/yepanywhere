@@ -294,6 +294,8 @@ export interface NewSessionFormProps {
   preferredThinking?: ThinkingOption;
   /** Seed approval behavior from an existing session. */
   preferredPermissionMode?: PermissionMode;
+  /** One PWA image-share batch claimed by the owning route. */
+  incomingShareFiles?: readonly File[];
   /** Seed the execution host from an existing session. */
   preferredExecutor?: string;
   /**
@@ -346,6 +348,7 @@ export function NewSessionForm({
   preferredThinking,
   preferredPermissionMode,
   preferredExecutor,
+  incomingShareFiles,
   launch,
 }: NewSessionFormProps) {
   const { t } = useI18n();
@@ -863,6 +866,19 @@ export function NewSessionForm({
       t,
     ],
   );
+
+  const consumedIncomingShareFilesRef = useRef<readonly File[] | null>(null);
+  useEffect(() => {
+    if (
+      !allowAttachments ||
+      !incomingShareFiles?.length ||
+      consumedIncomingShareFilesRef.current === incomingShareFiles
+    ) {
+      return;
+    }
+    consumedIncomingShareFilesRef.current = incomingShareFiles;
+    addPendingFiles(incomingShareFiles);
+  }, [addPendingFiles, allowAttachments, incomingShareFiles]);
 
   // Fetch available providers
   const {

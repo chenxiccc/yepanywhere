@@ -1730,6 +1730,31 @@ describe("NewSessionForm", () => {
     expect(screen.getByText("notes.txt")).toBeTruthy();
   });
 
+  it("stages an image batch claimed by the New Session route", async () => {
+    serverSettingsState.isLoading = false;
+    mockUploadStagedAttachment.mockResolvedValue(stagedRef);
+    const screenshot = new File(["pixels"], "tablet-screenshot.png", {
+      type: "image/png",
+    });
+
+    render(
+      <NewSessionForm
+        incomingShareFiles={[screenshot]}
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockUploadStagedAttachment).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "tablet-screenshot.png" }),
+        expect.any(Object),
+      );
+    });
+    expect(screen.getByText("tablet-screenshot.png")).toBeTruthy();
+  });
+
   it("shows duplicate new-session attachment names with numeric suffixes", async () => {
     serverSettingsState.isLoading = false;
     mockUploadStagedAttachment.mockImplementation(async (file: File) => ({

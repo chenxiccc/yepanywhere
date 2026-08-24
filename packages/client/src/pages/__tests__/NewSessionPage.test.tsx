@@ -47,15 +47,20 @@ const { projectsState, recentSessionsState } = vi.hoisted(() => ({
 
 vi.mock("../../components/NewSessionForm", () => ({
   NewSessionForm: ({
+    incomingShareFiles,
     projectId,
     selectedProject,
     onProjectChange,
   }: {
+    incomingShareFiles?: readonly File[];
     projectId?: string;
     selectedProject?: { name: string } | null;
     onProjectChange?: (projectId: string | null) => void;
   }) => (
     <div>
+      <div data-testid="incoming-share-files">
+        {incomingShareFiles?.length ?? 0}
+      </div>
       <div data-testid="form-project-id">{projectId ?? "none"}</div>
       <div data-testid="form-project-name">
         {selectedProject?.name ?? "none"}
@@ -72,6 +77,10 @@ vi.mock("../../components/NewSessionForm", () => ({
 
 vi.mock("../../components/PageHeader", () => ({
   PageHeader: ({ title }: { title: string }) => <div>{title}</div>,
+}));
+
+vi.mock("../../contexts/ToastContext", () => ({
+  useToastContext: () => ({ showToast: vi.fn() }),
 }));
 
 vi.mock("../../hooks/useDocumentTitle", () => ({
@@ -193,6 +202,7 @@ describe("NewSessionPage", () => {
       );
     });
     expect(screen.getByTestId("form-project-name").textContent).toBe("Beta");
+    expect(screen.getByTestId("incoming-share-files").textContent).toBe("0");
   });
 
   it("records an explicit query project as the recent project", async () => {

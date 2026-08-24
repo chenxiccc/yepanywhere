@@ -18,9 +18,15 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.8";
+const SW_VERSION = "1.0.9";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
+const INCOMING_SHARE_QUERY_PARAM = "__ya_share";
+const INCOMING_SHARE_DB_NAME = "ya-incoming-shares";
+const INCOMING_SHARE_STORE_NAME = "shares";
+const INCOMING_SHARE_DB_VERSION = 1;
+const INCOMING_SHARE_TTL_MS = 60 * 60 * 1000;
+const MAX_PENDING_INCOMING_SHARES = 4;
 
 // Resolve asset URLs relative to SW scope (handles /remote/ deployment)
 function assetUrl(path) {
@@ -152,6 +158,164 @@ async function clearSwLogs() {
   }
 }
 
+function openIncomingShareDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(
+      INCOMING_SHARE_DB_NAME,
+      INCOMING_SHARE_DB_VERSION,
+    );
+    request.onerror = () => reject(request.error);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(INCOMING_SHARE_STORE_NAME)) {
+        db.createObjectStore(INCOMING_SHARE_STORE_NAME, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+function generateIncomingShareId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+async function storeIncomingShare(files) {
+  const db = await openIncomingShareDb();
+  const id = generateIncomingShareId();
+  const now = Date.now();
+  const record = {
+    id,
+    createdAt: now,
+    files: files.map((file, index) => ({
+      blob: file,
+      name: file.name || `shared-image-${index + 1}.png`,
+      type: file.type,
+      lastModified: file.lastModified || now,
+    })),
+  };
+
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(INCOMING_SHARE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(INCOMING_SHARE_STORE_NAME);
+    const request = store.getAll();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const retained = request.result
+        .filter((candidate) => {
+          const fresh =
+            typeof candidate?.createdAt === "number" &&
+            now - candidate.createdAt <= INCOMING_SHARE_TTL_MS;
+          if (!fresh && typeof candidate?.id === "string") {
+            store.delete(candidate.id);
+          }
+          return fresh;
+        })
+        .sort((left, right) => left.createdAt - right.createdAt);
+      while (retained.length >= MAX_PENDING_INCOMING_SHARES) {
+        const oldest = retained.shift();
+        if (oldest?.id) store.delete(oldest.id);
+      }
+      store.put(record);
+    };
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+    transaction.oncomplete = resolve;
+  }).finally(() => db.close());
+
+  return id;
+}
+
+function isImageShare(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    typeof value.type === "string" &&
+    value.type.startsWith("image/") &&
+    typeof value.arrayBuffer === "function"
+  );
+}
+
+function clientPriority(client) {
+  if (client.focused) return 2;
+  if (client.visibilityState === "visible") return 1;
+  return 0;
+}
+
+function clientUrlWithinScope(client, scopeUrl) {
+  try {
+    const url = new URL(client.url);
+    return (
+      url.origin === scopeUrl.origin &&
+      url.pathname.startsWith(scopeUrl.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isSessionClient(client, scopeUrl) {
+  if (!clientUrlWithinScope(client, scopeUrl)) return false;
+  const url = new URL(client.url);
+  return /\/projects\/[^/]+\/sessions\/[^/]+\/?$/.test(url.pathname);
+}
+
+function appBasePathForClient(client, scopeUrl) {
+  if (!client || !clientUrlWithinScope(client, scopeUrl)) {
+    return scopeUrl.pathname.replace(/\/$/, "");
+  }
+
+  const pathname = new URL(client.url).pathname;
+  const relayMarker = "/-/relay/";
+  const relayStart = pathname.indexOf(relayMarker);
+  if (relayStart < 0) return scopeUrl.pathname.replace(/\/$/, "");
+  const usernameStart = relayStart + relayMarker.length;
+  const usernameEnd = pathname.indexOf("/", usernameStart);
+  return usernameEnd < 0 ? pathname : pathname.slice(0, usernameEnd);
+}
+
+function chooseIncomingShareTarget(clients, scopeUrl) {
+  const ordered = [...clients].sort(
+    (left, right) => clientPriority(right) - clientPriority(left),
+  );
+  // Android hides the source PWA while its system share sheet is open. Keep
+  // matchAll()'s recency order as the tiebreaker so that hidden-but-open
+  // session still receives the screenshot.
+  const activeSession = ordered.find((client) =>
+    isSessionClient(client, scopeUrl),
+  );
+  if (activeSession) return new URL(activeSession.url);
+
+  const contextClient = ordered.find((client) =>
+    clientUrlWithinScope(client, scopeUrl),
+  );
+  const basePath = appBasePathForClient(contextClient, scopeUrl);
+  return new URL(`${basePath}/new-session`, scopeUrl.origin);
+}
+
+async function handleShareTargetRequest(request) {
+  const formData = await request.formData();
+  const files = formData.getAll("images").filter(isImageShare);
+  if (files.length === 0) {
+    return new Response("No shared image was received.", { status: 415 });
+  }
+
+  const shareId = await storeIncomingShare(files);
+  const clients = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+  const target = chooseIncomingShareTarget(
+    clients,
+    new URL(self.registration.scope),
+  );
+  target.searchParams.set(INCOMING_SHARE_QUERY_PARAM, shareId);
+  return Response.redirect(target.href, 303);
+}
+
 /**
  * Network-first fetch for navigation requests (HTML pages).
  *
@@ -166,10 +330,20 @@ async function clearSwLogs() {
  * - Only intercepts navigation (HTML) — hashed assets are immutable and don't need this
  */
 self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  const scopeUrl = new URL(self.registration.scope);
+  const scopePath = scopeUrl.pathname.replace(/\/$/, "");
+  const shareTargetPath = `${scopePath}/share-target`;
+  if (
+    event.request.method === "POST" &&
+    url.origin === scopeUrl.origin &&
+    (url.pathname === shareTargetPath || url.pathname === `${shareTargetPath}/`)
+  ) {
+    event.respondWith(handleShareTargetRequest(event.request));
+    return;
+  }
+
   if (event.request.mode === "navigate") {
-    const url = new URL(event.request.url);
-    const scopeUrl = new URL(self.registration.scope);
-    const scopePath = scopeUrl.pathname.replace(/\/$/, "");
     const hostPickerPath = `${scopePath}/login`;
     const isHostPicker =
       url.origin === scopeUrl.origin &&

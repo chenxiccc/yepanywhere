@@ -159,6 +159,7 @@
   "projectsDeleteFailed": "No se pudo eliminar el proyecto",
   "projectsEmptyTitle": "Todavía no hay proyectos",
   "projectsEmptyDescription": "Agrega un proyecto arriba o inicia una sesión en una carpeta y aparecerá automáticamente aquí.",
+  "incomingShareAttachmentUnavailable": "No se pudo adjuntar la imagen compartida. Vuelve a compartirla.",
   "inboxTitle": "Bandeja de entrada",
   "inboxTitleWithProject": "Bandeja de entrada de {project}",
   "inboxFilterProject": "Proyecto",

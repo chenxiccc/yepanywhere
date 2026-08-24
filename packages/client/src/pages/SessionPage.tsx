@@ -94,6 +94,7 @@ import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { useBtwAsides } from "../hooks/useBtwAsides";
 import { useGeneratedTitleEnabled } from "../hooks/useGeneratedTitleEnabled";
 import { useGeneratedTitleLength } from "../hooks/useGeneratedTitleLength";
+import { useIncomingShareFiles } from "../hooks/useIncomingShareFiles";
 import {
   getModelSetting,
   getThinkingSetting,
@@ -4061,6 +4062,11 @@ function SessionPageContent({
       t,
     ],
   );
+
+  useIncomingShareFiles(handleAttach, {
+    enabled: !isDomLingerParked,
+    onError: () => showToast(t("incomingShareAttachmentUnavailable"), "error"),
+  });
 
   const handleRemoveAttachment = useCallback(
     (id: string) => {

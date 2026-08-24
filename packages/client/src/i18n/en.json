@@ -490,6 +490,7 @@
   "projectSettingsMessageHint": "Up to 2,000 characters; grows to four lines.",
   "projectSettingsLoadFailed": "Failed to load project settings",
   "projectSettingsSaveFailed": "Failed to save project settings",
+  "incomingShareAttachmentUnavailable": "The shared image could not be attached. Share it again.",
   "inboxTitle": "Inbox",
   "inboxTitleWithProject": "{project} Inbox",
   "inboxFilterProject": "Project",
