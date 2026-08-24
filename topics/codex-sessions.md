@@ -74,6 +74,39 @@ head metadata for observed rollout files under
 for replacement detection. These layers reduce duplicate reads, but only
 provider-owned files are authoritative.
 
+### Detail entry-cache concurrency
+
+`CodexSessionReader` may retain parsed detail entries for a rollout and extend
+that cache when the provider appends JSONL. The cache update is a read as well
+as a write: a detail request that observes cached byte boundary `S` and source
+size `T` reads `[S, T)`, parses it, appends the entries, and advances the cached
+boundary.
+
+That transition has one in-flight owner per reader and session id. Concurrent
+detail requests join the owner and recheck the cache after it finishes; they
+must not independently read and append the same source range. The owner covers
+the source check, bounded file read, parse, and cache publication. The retained
+flat entry array is internal to the reader: only the owner mutates it, and
+callers receive array copies.
+
+Plain-JSONL cold and incremental reads consume exactly the byte count from the
+source stat used for that pass. Bytes appended after that observation belong to
+a later pass. A short read fails rather than publishing entries under a byte
+boundary the reader did not consume. A complete JSON record without its final
+newline may be accepted; an incomplete trailing record remains provisional and
+is combined with the next append.
+
+Cache invalidation advances the reader's cache revision before clearing
+retained entries. Work started under an older revision may finish its file read
+but cannot publish; the active request re-observes the source and retries. An
+invalidation does not remove the in-flight owner and thereby permit a second
+writer to race it.
+
+Compressed rollouts remain full-read snapshots because their representation is
+not append-derived. Cache retention is still bounded separately by the reader
+memory work in tactical 038; eviction policy and concurrency ownership are
+independent contracts.
+
 ## Compression And Representation
 
 Upstream Codex can compress cold rollout files from:

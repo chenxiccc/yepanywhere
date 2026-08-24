@@ -249,7 +249,7 @@ The 2026-08-05 audit supplies the initial registry backlog:
 
 | Owner | Current risk | Required pressure contract |
 |---|---|---|
-| App session readers | 500-entry FIFO without hit retouch; individual Codex readers may retain full parsed transcripts and mapping/file caches | Byte/rebuild-cost bound and access retouch; close and release cold project readers |
+| App session readers | 500-entry FIFO without hit retouch; individual Codex readers may retain full parsed transcripts and mapping/file caches. Codex detail updates added per-session in-flight ownership, bounded plain-file reads, and invalidation-fenced publication on 2026-08-24 | Byte/rebuild-cost bound and access retouch; close and release cold project readers without interrupting active owners |
 | Claude parsed transcripts | Added 2026-08-07 (`claude-transcript-cache.ts`): process-wide, source-byte LRU (default 192 MB, `YEP_CLAUDE_PARSE_CACHE_MB`), in-flight coalescing, incremental append parsing; a file over the whole budget is never retained | Register with a future pressure coordinator as rebuildable; entries plus WeakMap-linked normalized copies release together |
 | Pi parsed transcripts | Resolved 2026-08-07: one current version per file, 64-file LRU with access retouch | One current version per canonical file plus byte-bounded LRU |
 | Session summary index | 10,000 scopes by FIFO count, each holding all summaries; FIFO eviction leaves validation/persisted-scope metadata behind, including another UTC-day cutoff key per scope/day | Evict the complete scope/cutoff record, preserve 10,000-project discovery, and cap live bytes; release disk-rebuildable cold scopes |
@@ -271,6 +271,14 @@ Eviction is containment. Identical snapshot reads must still share one
 in-flight parse; growing transcripts need incremental or otherwise bounded
 read work; abandoned generations must become collectible. Pressure events
 should make those defects visible instead of normalizing continual eviction.
+
+For the Codex detail entry cache, cache-miss ownership is now process-local to
+each reader and session. Equivalent overlapping detail requests share the
+physical append read, waiters recheck the accepted byte boundary, and cache
+invalidation prevents an older completion from repopulating retained entries.
+This correctness owner does not resolve the remaining FIFO/byte-pressure work
+in the table above or the distinct read-only summary/projection coordination
+tracked by tacticals 038 and 056.
 
 ## Cache-event distinctions
 

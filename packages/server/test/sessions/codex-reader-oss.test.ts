@@ -15,6 +15,7 @@ import type { UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeProjectId } from "../../src/projects/paths.js";
 import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
+import { normalizeSession } from "../../src/sessions/normalization.js";
 import type { SummaryParserClient } from "../../src/sessions/summary-parser-worker-client.js";
 import { isZstdJsonlSupported } from "../../src/utils/jsonl.js";
 
@@ -30,6 +31,15 @@ const hasNativeZstd =
 const itIfNativeZstd = hasNativeZstd ? it : it.skip;
 const itIfNoNativeZstd = hasNativeZstd ? it.skip : it;
 const itIfWindows = process.platform === "win32" ? it : it.skip;
+
+interface CodexEntryReadInternals {
+  entryReadOwners: Map<string, { joinedCallers: number }>;
+  readFileRange(
+    filePath: string,
+    start: number,
+    length: number,
+  ): Promise<string>;
+}
 
 function zstdCompressed(content: string): Buffer {
   if (!zstdCompressSync) {
@@ -1388,6 +1398,392 @@ describe("CodexSessionReader - OSS Support", () => {
           entry.type === "event_msg" && entry.payload.type === "user_message",
       ),
     ).toHaveLength(2);
+  });
+
+  it("accepts a complete final entry without a trailing newline", async () => {
+    const sessionId = "complete-unterminated-entry";
+    const now = new Date().toISOString();
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: now,
+          payload: { type: "user_message", message: "complete" },
+        }),
+      ].join("\n"),
+    );
+
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(loaded?.data.session.entries).toHaveLength(2);
+    expect(reader.getEntryCacheStats().partialLineBytes).toBe(0);
+  });
+
+  it("finishes an incomplete final entry on the next append", async () => {
+    const sessionId = "provisional-final-entry";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    const message = JSON.stringify({
+      type: "event_msg",
+      timestamp: now,
+      payload: { type: "user_message", message: "completed later" },
+    });
+    const splitAt = Math.floor(message.length / 2);
+    await writeFile(
+      sessionPath,
+      `${JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      })}\n${message.slice(0, splitAt)}`,
+    );
+
+    await expect(
+      reader.getSession(sessionId, "test-project" as UrlProjectId),
+    ).resolves.toBeNull();
+    expect(reader.getEntryCacheStats().partialLineBytes).toBeGreaterThan(0);
+
+    await appendFile(sessionPath, `${message.slice(splitAt)}\n`);
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(loaded?.data.session.entries).toHaveLength(2);
+    expect(
+      loaded?.data.session.entries.filter(
+        (entry) =>
+          entry.type === "event_msg" &&
+          entry.payload.type === "user_message" &&
+          entry.payload.message === "completed later",
+      ),
+    ).toHaveLength(1);
+    expect(reader.getEntryCacheStats().partialLineBytes).toBe(0);
+  });
+
+  it("coalesces overlapping appends without duplicating the final response", async () => {
+    const sessionId = "concurrent-append-cache";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${[
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          timestamp: now,
+          payload: {
+            id: "user-1",
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "start" }],
+          },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    await expect(
+      reader.getSession(sessionId, "test-project" as UrlProjectId),
+    ).resolves.toMatchObject({
+      data: { session: { entries: expect.any(Array) } },
+    });
+
+    const finalResponse = {
+      type: "response_item",
+      timestamp: new Date().toISOString(),
+      payload: {
+        id: "assistant-final",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "final response" }],
+      },
+    };
+    const completion = {
+      type: "event_msg",
+      timestamp: new Date().toISOString(),
+      payload: {
+        type: "task_complete",
+        turn_id: "turn-1",
+        last_agent_message: "final response",
+      },
+    };
+    await appendFile(
+      sessionPath,
+      `${[
+        JSON.stringify({
+          type: "response_item",
+          timestamp: new Date().toISOString(),
+          payload: {
+            id: "reasoning-1",
+            type: "reasoning",
+            summary: [{ type: "summary_text", text: "checking" }],
+          },
+        }),
+        JSON.stringify(finalResponse),
+        JSON.stringify(completion),
+      ].join("\n")}\n`,
+    );
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalReadFileRange = internals.readFileRange.bind(reader);
+    let signalRangeStarted!: () => void;
+    const rangeStarted = new Promise<void>((resolve) => {
+      signalRangeStarted = resolve;
+    });
+    let releaseRange!: () => void;
+    const rangeGate = new Promise<void>((resolve) => {
+      releaseRange = resolve;
+    });
+    let blocked = false;
+    const rangeSpy = vi
+      .spyOn(internals, "readFileRange")
+      .mockImplementation(async (filePath, start, length) => {
+        if (!blocked && start > 0) {
+          blocked = true;
+          signalRangeStarted();
+          await rangeGate;
+        }
+        return originalReadFileRange(filePath, start, length);
+      });
+
+    const firstRead = reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    await rangeStarted;
+    const secondRead = reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    await vi.waitFor(() => {
+      expect(
+        internals.entryReadOwners.get(sessionId)?.joinedCallers,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    releaseRange();
+
+    const [first, second] = await Promise.all([firstRead, secondRead]);
+    expect(first?.data.session.entries).toEqual(second?.data.session.entries);
+    expect(first?.data.session.entries).toHaveLength(5);
+    expect(
+      first?.data.session.entries.filter(
+        (entry) =>
+          entry.type === "response_item" &&
+          entry.payload.type === "message" &&
+          entry.payload.role === "assistant" &&
+          entry.payload.id === "assistant-final",
+      ),
+    ).toHaveLength(1);
+    expect(
+      first?.data.session.entries.filter(
+        (entry) =>
+          entry.type === "event_msg" && entry.payload.type === "task_complete",
+      ),
+    ).toHaveLength(1);
+    expect(first).not.toBeNull();
+    if (!first) throw new Error("Expected the first concurrent detail read");
+    const normalized = normalizeSession(first);
+    expect(
+      normalized.messages.filter(
+        (message) => message.uuid === "assistant-final",
+      ),
+    ).toHaveLength(1);
+    expect(
+      normalized.messages.filter(
+        (message) =>
+          message.type === "system" && message.subtype === "turn_complete",
+      ),
+    ).toHaveLength(1);
+
+    const retained = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(retained?.data.session.entries).toEqual(first?.data.session.entries);
+    expect(rangeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds a cold read when the transcript grows during file I/O", async () => {
+    const sessionId = "bounded-cold-read";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${[
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: now,
+          payload: { type: "user_message", message: "initial" },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalReadFileRange = internals.readFileRange.bind(reader);
+    let signalRangeStarted!: () => void;
+    const rangeStarted = new Promise<void>((resolve) => {
+      signalRangeStarted = resolve;
+    });
+    let releaseRange!: () => void;
+    const rangeGate = new Promise<void>((resolve) => {
+      releaseRange = resolve;
+    });
+    let blocked = false;
+    vi.spyOn(internals, "readFileRange").mockImplementation(
+      async (filePath, start, length) => {
+        if (!blocked && start === 0) {
+          blocked = true;
+          signalRangeStarted();
+          await rangeGate;
+        }
+        return originalReadFileRange(filePath, start, length);
+      },
+    );
+
+    const coldRead = reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    await rangeStarted;
+    await appendFile(
+      sessionPath,
+      `${JSON.stringify({
+        type: "event_msg",
+        timestamp: new Date().toISOString(),
+        payload: { type: "user_message", message: "appended" },
+      })}\n`,
+    );
+    releaseRange();
+
+    const beforeAppendPass = await coldRead;
+    expect(beforeAppendPass?.data.session.entries).toHaveLength(2);
+
+    const afterAppendPass = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(afterAppendPass?.data.session.entries).toHaveLength(3);
+    expect(
+      afterAppendPass?.data.session.entries.filter(
+        (entry) =>
+          entry.type === "event_msg" &&
+          entry.payload.type === "user_message" &&
+          entry.payload.message === "appended",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not publish an entry read invalidated while it is in flight", async () => {
+    const sessionId = "invalidated-entry-read";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${[
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: now,
+          payload: { type: "user_message", message: "initial" },
+        }),
+      ].join("\n")}\n`,
+    );
+    await reader.getSession(sessionId, "test-project" as UrlProjectId);
+    await appendFile(
+      sessionPath,
+      `${JSON.stringify({
+        type: "event_msg",
+        timestamp: new Date().toISOString(),
+        payload: { type: "user_message", message: "after invalidation" },
+      })}\n`,
+    );
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalReadFileRange = internals.readFileRange.bind(reader);
+    let signalRangeStarted!: () => void;
+    const rangeStarted = new Promise<void>((resolve) => {
+      signalRangeStarted = resolve;
+    });
+    let releaseRange!: () => void;
+    const rangeGate = new Promise<void>((resolve) => {
+      releaseRange = resolve;
+    });
+    let blocked = false;
+    const rangeSpy = vi
+      .spyOn(internals, "readFileRange")
+      .mockImplementation(async (filePath, start, length) => {
+        if (!blocked && start > 0) {
+          blocked = true;
+          signalRangeStarted();
+          await rangeGate;
+        }
+        return originalReadFileRange(filePath, start, length);
+      });
+
+    const inFlight = reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    await rangeStarted;
+    reader.invalidateCache();
+    releaseRange();
+
+    const loaded = await inFlight;
+    expect(loaded?.data.session.entries).toHaveLength(3);
+    expect(
+      loaded?.data.session.entries.filter(
+        (entry) =>
+          entry.type === "event_msg" &&
+          entry.payload.type === "user_message" &&
+          entry.payload.message === "after invalidation",
+      ),
+    ).toHaveLength(1);
+    expect(rangeSpy).toHaveBeenCalledTimes(2);
   });
 
   it("preserves identical Codex messages at distinct log positions", async () => {

@@ -335,3 +335,6 @@
   across projects through at-queue.
 - mobile-ime-delivery - Android IME-safe composer delivery and the default-off
   preference for retaining keyboard focus afterward.
+- server-cache-concurrency-safety - Per-key async ownership, bounded source
+  snapshots, invalidation fences, and serialized publication for retained
+  server caches.
