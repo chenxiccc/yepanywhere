@@ -214,7 +214,7 @@ export interface SessionsDeps {
   projectMetadataService?: ProjectMetadataService;
   projectQueueScheduler?: Pick<
     ProjectQueueScheduler,
-    "reserveUserSessionStart"
+    "reserveUserSessionStart" | "sessionProjectChanged"
   >;
   eventBus?: EventBus;
   codexScanner?: CodexSessionScanner;
@@ -2686,6 +2686,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const metadata = deps.sessionMetadataService.getMetadata(sessionId);
     const process = deps.supervisor.getProcessForSession(sessionId);
+    const previousWorkingProjectId =
+      metadata?.workingProjectId ??
+      process?.projectId ??
+      (projectId as UrlProjectId);
     const transcriptProjectId =
       metadata?.transcriptProjectId ??
       process?.projectId ??
@@ -2725,6 +2729,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sessionId,
       storedWorkingProjectId,
       storedTranscriptProjectId,
+    );
+    deps.projectQueueScheduler?.sessionProjectChanged(
+      previousWorkingProjectId,
+      targetProjectId,
     );
 
     deps.eventBus?.emit({

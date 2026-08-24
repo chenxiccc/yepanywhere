@@ -126,6 +126,9 @@ export interface ProjectQueueSchedulerOptions {
   idleGraceMs?: number;
   blockedRetryMs?: number;
   getIdleGraceMs?: () => number;
+  getEffectiveProcessProjectId?: (
+    process: ProjectWorkProcessSnapshot,
+  ) => UrlProjectId;
   getGlobalInstructions?: () => string | undefined;
   isSessionAutomationPaused?: (sessionId: string) => boolean;
   onSessionStarted?: (args: {
@@ -244,6 +247,7 @@ export class ProjectQueueScheduler {
       externalTracker: this.externalTracker,
       getRecoveredPatientQueueCount: (candidateProjectId) =>
         this.getRecoveredPatientQueueCount(candidateProjectId),
+      getEffectiveProcessProjectId: this.options.getEffectiveProcessProjectId,
       ignoreSessionsPendingDone: true,
     });
     const reservations = this.userSessionStartReservations.get(projectId);
@@ -352,6 +356,16 @@ export class ProjectQueueScheduler {
       ...result,
       status: await this.getProjectStatus(projectId),
     };
+  }
+
+  sessionProjectChanged(
+    previousProjectId: UrlProjectId,
+    nextProjectId: UrlProjectId,
+  ): void {
+    this.scheduleProjectIfDispatchable(previousProjectId);
+    if (nextProjectId !== previousProjectId) {
+      this.scheduleProjectIfDispatchable(nextProjectId);
+    }
   }
 
   private readonly handleEvent = (event: BusEvent): void => {

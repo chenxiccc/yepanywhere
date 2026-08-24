@@ -1654,6 +1654,7 @@ describe("Sessions metadata route", () => {
       },
     );
     const emit = vi.fn();
+    const sessionProjectChanged = vi.fn();
     const reader = {
       getSessionSummary: vi.fn(async (_sessionId: string, projectId) =>
         projectId === transcriptProject.id ? createSummary() : null,
@@ -1699,6 +1700,10 @@ describe("Sessions metadata route", () => {
         eventBus: {
           emit,
         } as unknown as NonNullable<SessionsDeps["eventBus"]>,
+        projectQueueScheduler: {
+          reserveUserSessionStart: vi.fn(),
+          sessionProjectChanged,
+        },
         sessionMetadataService: {
           getMetadata: vi.fn(() => metadata),
           getProvider: vi.fn(() => "grok"),
@@ -1725,6 +1730,10 @@ describe("Sessions metadata route", () => {
         "sess-1",
         workingProject.id,
         transcriptProject.id,
+      );
+      expect(sessionProjectChanged).toHaveBeenCalledWith(
+        transcriptProject.id,
+        workingProject.id,
       );
       expect(emit).toHaveBeenCalledWith(
         expect.objectContaining({

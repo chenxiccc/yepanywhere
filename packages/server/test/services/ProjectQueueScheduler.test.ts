@@ -647,6 +647,53 @@ describe("ProjectQueueScheduler", () => {
     await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
   });
 
+  it("blocks the relocated working project instead of the launch project", async () => {
+    await scheduler.dispose();
+    const destinationProjectId = toUrlProjectId("/tmp/relocated-project");
+    const process = createProcess(projectId, { state: { type: "in-turn" } });
+    supervisor.processes = [process];
+    let effectiveProjectId = destinationProjectId;
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 1,
+      blockedRetryMs: 10,
+      getEffectiveProcessProjectId: () => effectiveProjectId,
+    });
+
+    await expect(scheduler.getProjectIdleStatus(projectId)).resolves.toEqual({
+      idle: true,
+      blockers: [],
+    });
+    await expect(
+      scheduler.getProjectIdleStatus(destinationProjectId),
+    ).resolves.toMatchObject({
+      idle: false,
+      blockers: ["session-1:in-turn", "session-1:liveness-recently-active"],
+    });
+
+    await service.createItem({
+      projectId: destinationProjectId,
+      projectPath: "/tmp/relocated-project",
+      request: {
+        target: { type: "existing-session", sessionId: "queued-session" },
+        message: { text: "wait for relocated work" },
+      },
+    });
+    await wait(25);
+    expect(supervisor.resumeCalls).toHaveLength(0);
+
+    effectiveProjectId = projectId;
+    scheduler.sessionProjectChanged(destinationProjectId, projectId);
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+    expect(supervisor.resumeCalls[0]).toMatchObject({
+      sessionId: "queued-session",
+      projectPath: "/tmp/relocated-project",
+    });
+  });
+
   it("reports project readiness blockers and keeps retrying blocked backlog", async () => {
     await scheduler.dispose();
     const process = createProcess(projectId, { state: { type: "in-turn" } });

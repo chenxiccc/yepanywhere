@@ -38,6 +38,9 @@ export async function getProjectWorkIdleStatus(
   options: {
     supervisor: ProjectWorkSupervisor;
     externalTracker?: ProjectWorkExternalTracker;
+    getEffectiveProcessProjectId?: (
+      process: ProjectWorkProcessSnapshot,
+    ) => UrlProjectId;
     getRecoveredPatientQueueCount?: (projectId: UrlProjectId) => number;
     /**
      * Treat a session with a queued `/done` as finished work rather than as a
@@ -52,7 +55,9 @@ export async function getProjectWorkIdleStatus(
   const blockers: string[] = [];
 
   for (const process of options.supervisor.getAllProcesses()) {
-    if (process.projectId !== projectId) continue;
+    const effectiveProjectId =
+      options.getEffectiveProcessProjectId?.(process) ?? process.projectId;
+    if (effectiveProjectId !== projectId) continue;
     if (
       options.ignoreSessionsPendingDone &&
       process.hasPendingYaCommand("done")

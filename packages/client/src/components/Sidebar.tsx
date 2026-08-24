@@ -876,7 +876,9 @@ export function Sidebar({
         activity={getSidebarRowActivity(session)}
         onNavigate={onNavigate}
         showProjectName
-        projectName={session.projectName}
+        projectName={
+          projectNameById.get(session.projectId) ?? session.projectName
+        }
         basePath={basePath}
         messageCount={session.messageCount}
         hasDraft={drafts.has(session.id)}

@@ -155,6 +155,18 @@ not-idle, even when no live process currently owns those entries. External
 ownership is best-effort and can decay; UI copy must not promise perfect
 detection of all outside provider activity.
 
+## Design decisions
+
+- **Resolve effective working-project membership at the idle predicate (vs.
+  mutating a live process's launch project):** `Process.projectId` remains the
+  launch directory fact used by provider/runtime code. Project Queue overlays
+  `SessionMetadata.workingProjectId` when assigning that process's active turn,
+  retained work, and session queues to a project. Moving a session reschedules
+  both its previous and destination projects: the previous project may begin a
+  new quiet window, while the destination immediately inherits every live
+  blocker. This keeps transcript location, process launch directory, and the
+  user's explicit working-project classification as separate facts.
+
 ## UI Semantics
 
 The toolbar affordances are YA-novel behavior, so both are hidden/default-off

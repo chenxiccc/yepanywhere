@@ -1355,6 +1355,9 @@ export function createApp(options: AppOptions): AppResult {
         (clampProjectQueueQuietSeconds(
           options.serverSettingsService?.getSetting("projectQueueQuietSeconds"),
         ) ?? DEFAULT_PROJECT_QUEUE_QUIET_SECONDS) * 1000,
+      getEffectiveProcessProjectId: (process) =>
+        options.sessionMetadataService?.getMetadata(process.sessionId)
+          ?.workingProjectId ?? process.projectId,
       getGlobalInstructions: () =>
         buildEffectiveAgentContext({
           globalInstructions:

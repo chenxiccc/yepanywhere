@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { UrlProjectId } from "@yep-anywhere/shared";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { GlobalSessionItem } from "../../api/client";
 import { MemoryRouter } from "react-router-dom";
@@ -56,7 +57,26 @@ vi.mock("../../hooks/useProjectQueues", () => ({
 
 vi.mock("../../hooks/useProjects", () => ({
   useProjects: () => ({
-    projects: [],
+    projects: [
+      {
+        id: "project-1",
+        path: "/work/draft",
+        name: "draft",
+        sessionCount: 1,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: null,
+      },
+      {
+        id: "project-2",
+        path: "/work/yepanywhere",
+        name: "yepanywhere",
+        sessionCount: 1,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: null,
+      },
+    ],
     loading: false,
     error: null,
     refetch: vi.fn(),
@@ -133,13 +153,19 @@ vi.mock("../SessionListItem", () => ({
     sessionId,
     title,
     hasDraft,
+    projectId,
+    projectName,
   }: {
     sessionId: string;
     title: string;
     hasDraft?: boolean;
+    projectId: string;
+    projectName?: string;
   }) => (
     <li
       data-has-draft={String(hasDraft === true)}
+      data-project-id={projectId}
+      data-project-name={projectName}
       data-testid={`session-row-${sessionId}`}
     >
       <span>{title}</span>
@@ -340,5 +366,50 @@ describe("Sidebar client summary source registry", () => {
       ]);
     });
     expect(sectionRowIds(container, "sidebar-last-24-hours-list")).toEqual([]);
+  });
+
+  it("renders a relocated session under its destination project immediately", async () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+      reportGlobalSessionsCollectionSnapshot(
+        macbook,
+        {
+          query: { scope: "global-sessions" },
+          sessions: [
+            session("moved-session", "Moved session", {
+              projectId: "project-1",
+              projectName: "draft",
+            }),
+          ],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    renderSidebar();
+
+    const row = await screen.findByTestId("session-row-moved-session");
+    expect(row.getAttribute("data-project-name")).toBe("draft");
+
+    act(() => {
+      reportSessionCollectionMetadataChanged(
+        macbook,
+        {
+          type: "session-metadata-changed",
+          sessionId: "moved-session",
+          projectId: "project-2" as UrlProjectId,
+          timestamp: new Date(RECENT_MS + 60_000).toISOString(),
+        },
+        200,
+      );
+    });
+
+    await waitFor(() => {
+      expect(row.getAttribute("data-project-id")).toBe("project-2");
+      expect(row.getAttribute("data-project-name")).toBe("yepanywhere");
+    });
   });
 });

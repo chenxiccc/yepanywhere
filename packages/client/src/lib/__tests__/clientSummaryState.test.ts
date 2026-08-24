@@ -536,6 +536,59 @@ describe("clientSummaryState", () => {
     expect(item?.projectName).toBe("Readable Project");
   });
 
+  it("keeps relocated membership across later launch-project events", () => {
+    const relocatedProjectId = "project-2" as UrlProjectId;
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [globalSession("moved-session")],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applySessionCollectionMetadataChanged(
+      state,
+      {
+        type: "session-metadata-changed",
+        sessionId: "moved-session",
+        projectId: relocatedProjectId,
+        timestamp: "2026-06-27T11:01:00.000Z",
+      },
+      200,
+    );
+    state = applySessionCollectionProcessStateChanged(
+      state,
+      {
+        type: "process-state-changed",
+        sessionId: "moved-session",
+        projectId: PROJECT_ID,
+        activity: "in-turn",
+        timestamp: "2026-06-27T11:02:00.000Z",
+      },
+      300,
+    );
+    state = applySessionCollectionCreated(
+      state,
+      createdEvent("moved-session", {
+        projectId: PROJECT_ID,
+        projectName: "Launch project",
+      }),
+      400,
+    );
+
+    expect(selectSessionCollectionRecord(state, "moved-session")).toMatchObject(
+      {
+        projectId: relocatedProjectId,
+        activity: "in-turn",
+      },
+    );
+    expect(
+      selectSessionCollectionRecord(state, "moved-session")?.projectName,
+    ).toBeUndefined();
+  });
+
   it("keeps archived helpers out across either live-event ordering", () => {
     const query = { scope: "global-sessions" as const, limit: 50 };
     const helperCreated = createdEvent("recap-helper", {
