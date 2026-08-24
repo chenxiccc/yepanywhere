@@ -333,3 +333,5 @@
   bounded native watchers, and fail-closed resource-exhaustion fallback.
 - at-session-launching - Opt-in scanner that launches due at/ queue jobs
   across projects through at-queue.
+- mobile-ime-delivery - Android IME-safe composer delivery and the default-off
+  preference for retaining keyboard focus afterward.
