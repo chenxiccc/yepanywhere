@@ -172,4 +172,40 @@ describe("useSessionWatchStream", () => {
       closeCalls: 1,
     });
   });
+
+  it("requests catch-up after a watch subscription reconnects", () => {
+    const transport = new FakeSourceTransport();
+    const wrapper = createWrapper(createRuntime(transport));
+    const onReconnect = vi.fn();
+
+    renderHook(
+      () =>
+        useSessionWatchStream(
+          {
+            projectId: "project-1",
+            provider: "claude",
+            sessionId: "session-1",
+          },
+          { onChange: vi.fn(), onReconnect },
+        ),
+      { wrapper },
+    );
+
+    const first = transport.getSubscriptions("session-watch")[0];
+    act(() => {
+      transport.openSubscription(first!.id);
+    });
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    act(() => {
+      transport.setState("reconnecting");
+      transport.setState("ready");
+    });
+    const second = transport.getSubscriptions("session-watch")[1];
+    act(() => {
+      transport.openSubscription(second!.id);
+    });
+
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+  });
 });

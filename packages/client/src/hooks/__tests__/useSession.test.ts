@@ -55,6 +55,8 @@ let fileActivityOptions:
 let sessionWatchOptions:
   | {
       onChange?: (event: SessionWatchChangeEvent) => void;
+      onOpen?: () => void;
+      onReconnect?: () => void;
     }
   | undefined;
 
@@ -174,6 +176,7 @@ vi.mock("../useSessionMessages", () => ({
         projectId: "proj-1",
         provider: sessionMessagesMock.provider,
         model: "gpt-5.4",
+        updatedAt: "2026-04-24T00:00:00.000Z",
         messages: [],
       },
       updateSession,
@@ -401,6 +404,26 @@ describe("useSession completion reconciliation", () => {
       vi.advanceTimersByTime(500);
     });
     expect(fetchNewMessages).toHaveBeenCalledTimes(2);
+  });
+
+  it("catches up after the focused session watch reconnects", () => {
+    renderHook(() => useSession(PROJECT_ID, "sess-1", undefined));
+
+    act(() => {
+      sessionWatchOptions?.onReconnect?.();
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the initial snapshot-to-watch race when the watch opens", () => {
+    renderHook(() => useSession(PROJECT_ID, "sess-1", undefined));
+
+    act(() => {
+      sessionWatchOptions?.onOpen?.();
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces deferred effort configuration failures", () => {
@@ -1334,6 +1357,26 @@ describe("useSession completion reconciliation", () => {
       derivedStatus: "verified-progressing",
       lastVerifiedProgressAt: "2026-04-24T00:06:00.000Z",
     });
+  });
+
+  it("catches up when a heartbeat reports progress newer than durable state", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "heartbeat",
+        liveness: mockLiveness({
+          lastProviderMessageAt: "2026-04-24T00:06:00.000Z",
+        }),
+      });
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
   });
 
   it("repairs a missed idle transition from the stream heartbeat", () => {

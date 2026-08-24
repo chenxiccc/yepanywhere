@@ -12,6 +12,7 @@ import {
   createManagedStream,
   type ManagedStream,
   type ManagedStreamEvent,
+  SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
 } from "../lib/transport";
 import {
   getStreamingEnabled,
@@ -76,67 +77,72 @@ export function useSessionStream(
     }
 
     const transport = runtime.transport;
-    const stream = createManagedStream(transport, {
-      subscribe: ({ transport, handlers, lastEventId }) => {
-        logSessionUiTrace("session-stream-subscribe", {
-          sessionId,
-          lastEventId: lastEventId ?? lastEventIdRef.current ?? null,
-          wantsLiveDeltas,
-        });
-        return transport.subscribeSession(
-          sessionId,
-          handlers,
-          lastEventId ?? lastEventIdRef.current ?? undefined,
-          { wantsLiveDeltas },
-        );
-      },
-      captureEventId: (event) =>
-        event.eventType === "heartbeat" ? undefined : event.eventId,
-      onEvent: (event: ManagedStreamEvent) => {
-        if (event.eventType === "heartbeat") {
-          return;
-        }
-        logSessionUiTrace("session-stream-event", {
-          sessionId,
-          eventId: event.eventId ?? null,
-          ...summarizeStreamPayload(event.eventType, event.data),
-        });
-        if (event.eventId) {
-          lastEventIdRef.current = event.eventId;
-        }
-        optionsRef.current.onMessage({
-          ...(event.data as Record<string, unknown>),
-          eventType: event.eventType,
-        });
-      },
-      onOpen: () => {
-        logSessionUiTrace("session-stream-open", { sessionId });
-        setConnected(true);
-        optionsRef.current.onOpen?.();
-      },
-      onError: (error) => {
-        logSessionUiTrace("session-stream-error", {
-          sessionId,
-          message: error.message,
-          nonRetryable: isNonRetryableError(error),
-        });
-        setConnected(false);
-        optionsRef.current.onError?.(new Event("error"));
-        if (isNonRetryableError(error)) {
-          console.warn(
-            "[useSessionStream] Non-retryable error, not reconnecting:",
-            error.message,
+    const stream = createManagedStream(
+      transport,
+      {
+        subscribe: ({ transport, handlers, lastEventId }) => {
+          logSessionUiTrace("session-stream-subscribe", {
+            sessionId,
+            lastEventId: lastEventId ?? lastEventIdRef.current ?? null,
+            wantsLiveDeltas,
+          });
+          return transport.subscribeSession(
+            sessionId,
+            handlers,
+            lastEventId ?? lastEventIdRef.current ?? undefined,
+            { wantsLiveDeltas },
           );
-        }
+        },
+        captureEventId: (event) =>
+          event.eventType === "heartbeat" ? undefined : event.eventId,
+        onEvent: (event: ManagedStreamEvent) => {
+          if (event.eventType !== "heartbeat") {
+            logSessionUiTrace("session-stream-event", {
+              sessionId,
+              eventId: event.eventId ?? null,
+              ...summarizeStreamPayload(event.eventType, event.data),
+            });
+            if (event.eventId) {
+              lastEventIdRef.current = event.eventId;
+            }
+          }
+          optionsRef.current.onMessage({
+            ...(event.data as Record<string, unknown>),
+            eventType: event.eventType,
+          });
+        },
+        onOpen: () => {
+          logSessionUiTrace("session-stream-open", { sessionId });
+          setConnected(true);
+          optionsRef.current.onOpen?.();
+        },
+        onError: (error) => {
+          logSessionUiTrace("session-stream-error", {
+            sessionId,
+            message: error.message,
+            nonRetryable: isNonRetryableError(error),
+          });
+          setConnected(false);
+          optionsRef.current.onError?.(new Event("error"));
+          if (isNonRetryableError(error)) {
+            console.warn(
+              "[useSessionStream] Non-retryable error, not reconnecting:",
+              error.message,
+            );
+          }
+        },
+        onClose: (error) => {
+          logSessionUiTrace("session-stream-close", {
+            sessionId,
+            message: error?.message,
+          });
+          setConnected(false);
+        },
       },
-      onClose: (error) => {
-        logSessionUiTrace("session-stream-close", {
-          sessionId,
-          message: error?.message,
-        });
-        setConnected(false);
+      {
+        inactivityTimeoutMs: SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
       },
-    });
+    );
     streamRef.current = stream;
     const unsubscribe = stream.subscribe(() => {
       setConnected(stream.getSnapshot().connected);

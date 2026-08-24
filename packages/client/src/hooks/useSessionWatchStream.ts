@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { isNonRetryableError } from "../lib/connection/types";
-import { createManagedStream, type ManagedStream } from "../lib/transport";
+import {
+  createManagedStream,
+  type ManagedStream,
+  SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
+} from "../lib/transport";
 
 export interface SessionWatchTarget {
   sessionId: string;
@@ -27,6 +31,7 @@ interface UseSessionWatchStreamOptions {
   onChange: (event: SessionWatchChangeEvent) => void;
   onError?: (error: Event) => void;
   onOpen?: () => void;
+  onReconnect?: () => void;
 }
 
 function asOptionalString(value: unknown): string | undefined {
@@ -95,40 +100,52 @@ export function useSessionWatchStream(
       return undefined;
     }
 
-    const stream = createManagedStream(runtime.transport, {
-      subscribe: ({ transport, handlers }) =>
-        transport.subscribeSessionWatch(currentTarget.sessionId, handlers, {
-          projectId: currentTarget.projectId,
-          provider: currentTarget.provider,
-        }),
-      onEvent: (event) => {
-        if (event.eventType === "heartbeat") {
-          return;
-        }
-        if (event.eventType === "session-watch-change") {
-          optionsRef.current.onChange(
-            normalizeSessionWatchChangeEvent(event.data),
-          );
-        }
+    let hasOpened = false;
+    const stream = createManagedStream(
+      runtime.transport,
+      {
+        subscribe: ({ transport, handlers }) =>
+          transport.subscribeSessionWatch(currentTarget.sessionId, handlers, {
+            projectId: currentTarget.projectId,
+            provider: currentTarget.provider,
+          }),
+        onEvent: (event) => {
+          if (event.eventType === "heartbeat") {
+            return;
+          }
+          if (event.eventType === "session-watch-change") {
+            optionsRef.current.onChange(
+              normalizeSessionWatchChangeEvent(event.data),
+            );
+          }
+        },
+        onOpen: () => {
+          setConnected(true);
+          if (hasOpened) {
+            optionsRef.current.onReconnect?.();
+          } else {
+            hasOpened = true;
+            optionsRef.current.onOpen?.();
+          }
+        },
+        onError: (error) => {
+          setConnected(false);
+          optionsRef.current.onError?.(new Event("error"));
+          if (isNonRetryableError(error)) {
+            console.warn(
+              "[useSessionWatchStream] Non-retryable error, not reconnecting:",
+              error.message,
+            );
+          }
+        },
+        onClose: () => {
+          setConnected(false);
+        },
       },
-      onOpen: () => {
-        setConnected(true);
-        optionsRef.current.onOpen?.();
+      {
+        inactivityTimeoutMs: SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
       },
-      onError: (error) => {
-        setConnected(false);
-        optionsRef.current.onError?.(new Event("error"));
-        if (isNonRetryableError(error)) {
-          console.warn(
-            "[useSessionWatchStream] Non-retryable error, not reconnecting:",
-            error.message,
-          );
-        }
-      },
-      onClose: () => {
-        setConnected(false);
-      },
-    });
+    );
     streamRef.current = stream;
     const unsubscribe = stream.subscribe(() => {
       setConnected(stream.getSnapshot().connected);

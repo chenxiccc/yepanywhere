@@ -11,6 +11,7 @@ import type { ClientSummarySourceKey } from "./clientSummaryStore";
 import {
   createManagedStream,
   type ManagedStream,
+  SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
   type SourceTransport,
 } from "./transport";
 
@@ -187,7 +188,10 @@ class ProjectWorktreeStore {
           });
         },
       },
-      { autoStart: false },
+      {
+        autoStart: false,
+        inactivityTimeoutMs: SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
+      },
     );
     this.stream = stream;
     if (this.snapshot.generation === null) {

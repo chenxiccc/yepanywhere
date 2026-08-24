@@ -70,7 +70,7 @@ afterEach(() => {
 });
 
 describe("useSessionStream", () => {
-  it("subscribes through the source runtime and filters heartbeats", () => {
+  it("subscribes through the source runtime and forwards heartbeats", () => {
     const transport = new FakeSourceTransport();
     const onMessage = vi.fn();
     const onOpen = vi.fn();
@@ -102,7 +102,7 @@ describe("useSessionStream", () => {
         "heartbeat-1",
       );
     });
-    expect(onMessage).not.toHaveBeenCalled();
+    expect(onMessage).toHaveBeenCalledWith({ eventType: "heartbeat" });
 
     act(() => {
       transport.emitSubscriptionEvent(

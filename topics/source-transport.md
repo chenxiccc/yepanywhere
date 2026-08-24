@@ -366,11 +366,8 @@ reused unchanged. What moves is the wiring:
 One shared helper above the interface — not resubscription magic inside each
 transport implementation, and not three bespoke per-hook copies.
 
-`useSessionStream`, `useSessionWatchStream`, and the activity bus each
-hand-roll the same ~80 lines: staleness guards, resubscribe on manager
-`stateChange`, `lastEventId` resume, non-retryable terminal handling,
-teardown-once semantics. A single `createManagedStream(transport, spec)`
-helper owns, once:
+Session, focused-watch, activity, glossary, and worktree streams use one
+`createManagedStream(transport, spec)` helper. It owns:
 
 - wait-for-ready before first subscribe; resubscribe on ready transitions and
   across backing-connection swaps;
@@ -381,10 +378,23 @@ helper owns, once:
   (050's other deferred item): a subscription-level failure retries the
   subscription with its own small backoff instead of escalating to a full
   transport reconnect. Transport-level failures still flow to the manager via
-  the transport's own health feed.
+  the transport's own health feed;
+- a subscription-local inactivity deadline for server streams with a periodic
+  heartbeat. The deadline starts when the subscribe request is installed, and
+  an open or event rearms it. The current 30-second heartbeat uses a 75-second
+  deadline, so a request that never opens or two missed heartbeats plus
+  scheduling slack close and retry only that logical subscription even when
+  traffic from other subscriptions keeps the shared transport healthy.
 
 Raw `subscribe*` primitives on the transport stay dumb and return a plain
 `Subscription`, so fakes remain trivial.
+
+## Design decisions
+
+- **Use a subscription-local heartbeat deadline** (vs. relying only on shared
+  transport health): one active subscription must not conceal another dead
+  subscription on the same multiplexed WebSocket. Recovery stays at the
+  narrowest failed layer and does not tear down healthy peer subscriptions.
 
 ## Activity Stream Lifecycle
 
@@ -453,6 +463,7 @@ document**, never as a side effect of a move.
 | 16 | `forceReconnect()` overlapping an in-flight `ensureConnected()` joins the in-flight recovery before deciding whether forced teardown is still needed | `SecureConnection.forceReconnect()` serialization | `SecureConnection.compatibility.test.ts` |
 | 17 | Terminal disconnected demand traffic fails fast without blocking reconnecting or empty-slot behavior | multiplex facade demand guard | `MultiplexSourceTransport.test.ts` |
 | 18 | Same-server API redirects remain fetch-compatible through relay: `Location` is forwarded and followed within `/api`; missing, external, or excessive redirect chains fail instead of returning a null success body | `ws-relay-handlers` + `RelayProtocol.fetch` | `ws-relay-request-concurrency.test.ts`, `RelayProtocol.hooks.test.ts` |
+| 19 | A heartbeat-capable logical subscription that receives no events for 75 seconds retries itself even while peer traffic keeps the shared transport ready | `ManagedStream` inactivity deadline | `ManagedStream.test.ts` |
 
 Explicitly deferred semantic improvements (each its own future slice, opted
 into deliberately): per-source auth-required signaling replacing the global

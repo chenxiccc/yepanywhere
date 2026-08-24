@@ -125,6 +125,19 @@ function buildSessionFileChangePerfDetail(
   };
 }
 
+function hasUnreconciledHeartbeatProgress(
+  liveness: SessionLivenessSnapshot,
+  durableUpdatedAt: string | undefined,
+): boolean {
+  if (!liveness.lastProviderMessageAt) return false;
+  const progressAtMs = Date.parse(liveness.lastProviderMessageAt);
+  const durableUpdatedAtMs = Date.parse(durableUpdatedAt ?? "");
+  return (
+    Number.isFinite(progressAtMs) &&
+    (!Number.isFinite(durableUpdatedAtMs) || progressAtMs > durableUpdatedAtMs)
+  );
+}
+
 function scheduleAwayRecap(
   projectId: string,
   sessionId: string,
@@ -1679,6 +1692,12 @@ export function useSession(
       : null,
     {
       onChange: handleSessionWatchChange,
+      onOpen: () => {
+        throttledFetch({ route: "focused-session-watch-open" });
+      },
+      onReconnect: () => {
+        throttledFetch({ route: "focused-session-watch-reconnect" });
+      },
     },
   );
 
@@ -2020,6 +2039,19 @@ export function useSession(
         };
         if (heartbeatData.liveness) {
           setSessionLiveness(heartbeatData.liveness);
+          if (
+            hasUnreconciledHeartbeatProgress(
+              heartbeatData.liveness,
+              session?.updatedAt,
+            )
+          ) {
+            throttledFetch({
+              route: "session-heartbeat-progress",
+              lastProviderMessageAt:
+                heartbeatData.liveness.lastProviderMessageAt,
+              durableUpdatedAt: session?.updatedAt,
+            });
+          }
           const heartbeatProcessState = parseProcessState(
             heartbeatData.liveness.state,
           );
@@ -2324,6 +2356,7 @@ export function useSession(
       reportProviderRuntimeStatus,
       session?.provider,
       session?.model,
+      session?.updatedAt,
       options?.onConfigurationError,
     ],
   );

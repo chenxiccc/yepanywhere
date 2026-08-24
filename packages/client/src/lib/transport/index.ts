@@ -1,6 +1,9 @@
 export { FakeSourceTransport } from "./FakeSourceTransport";
 export { LocalhostSourceTransport } from "./LocalhostSourceTransport";
-export { createManagedStream } from "./ManagedStream";
+export {
+  createManagedStream,
+  SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
+} from "./ManagedStream";
 export {
   SecureSourceTransport,
   WebSocketSourceTransport,

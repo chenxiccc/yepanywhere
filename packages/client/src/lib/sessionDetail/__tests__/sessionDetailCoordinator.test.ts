@@ -279,15 +279,17 @@ describe("SessionDetailCoordinator", () => {
     expect(processed).toEqual(["kept:true", "still-buffered:true"]);
   });
 
-  it("coalesces incremental refresh work until the request settles", async () => {
+  it("preserves one trailing refresh while a request is in flight", async () => {
     const detail = coordinator();
     let resolveFirst!: () => void;
-    const task = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveFirst = resolve;
-        }),
-    );
+    const task = vi.fn(() => {
+      if (task.mock.calls.length > 1) {
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => {
+        resolveFirst = resolve;
+      });
+    });
 
     const first = detail.runExclusiveFetchNewMessages(task);
     const second = detail.runExclusiveFetchNewMessages(task);
@@ -298,10 +300,28 @@ describe("SessionDetailCoordinator", () => {
     resolveFirst();
     await first;
 
+    expect(task).toHaveBeenCalledTimes(2);
+
     const third = detail.runExclusiveFetchNewMessages(async () => {});
 
     expect(third).not.toBe(first);
     await third;
+  });
+
+  it("releases the refresh lane after a synchronous task failure", async () => {
+    const detail = coordinator();
+    const failure = new Error("synchronous failure");
+
+    await expect(
+      detail.runExclusiveFetchNewMessages(() => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+
+    const followUp = vi.fn(async () => {});
+    await detail.runExclusiveFetchNewMessages(followUp);
+
+    expect(followUp).toHaveBeenCalledTimes(1);
   });
 
   it("centralizes entry-scoped store operations", () => {

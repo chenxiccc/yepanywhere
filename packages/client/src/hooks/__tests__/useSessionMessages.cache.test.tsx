@@ -2809,7 +2809,7 @@ describe("useSessionMessages cache", () => {
     expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg", "msg-2"]);
   });
 
-  it("coalesces concurrent incremental refreshes", async () => {
+  it("coalesces concurrent incremental refreshes into one trailing pass", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -2848,7 +2848,18 @@ describe("useSessionMessages cache", () => {
     const refreshPromise = new Promise((resolve) => {
       resolveRefresh = resolve;
     });
-    apiMocks.getSession.mockReturnValueOnce(refreshPromise);
+    apiMocks.getSession
+      .mockReturnValueOnce(refreshPromise)
+      .mockResolvedValueOnce({
+        session: {
+          provider: "claude",
+          updatedAt: "2026-05-04T00:01:00.000Z",
+        },
+        messages: [],
+        ownership: { owner: "self" },
+        pendingInputRequest: null,
+        slashCommands: null,
+      });
 
     const first = result.current.fetchNewMessages();
     const second = result.current.fetchNewMessages();
@@ -2875,7 +2886,7 @@ describe("useSessionMessages cache", () => {
       await Promise.all([first, second]);
     });
 
-    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(2);
   });
 
   it("reconciles the bounded tail after an incremental refresh fails", async () => {

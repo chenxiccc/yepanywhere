@@ -18,6 +18,7 @@ import {
   createManagedStream,
   type ManagedStream,
   type ManagedStreamEvent,
+  SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
   type SourceTransport,
 } from "./transport";
 
@@ -474,7 +475,10 @@ class ActivityBus {
         onError: (error) => this.handleStreamError(record, error),
         onClose: (error) => this.handleStreamClose(record, error),
       },
-      { autoStart: false },
+      {
+        autoStart: false,
+        inactivityTimeoutMs: SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
+      },
     );
     record.stream = stream;
     record.unsubscribeStream = stream.subscribe(() => {

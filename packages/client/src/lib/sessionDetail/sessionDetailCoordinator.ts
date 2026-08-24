@@ -186,6 +186,7 @@ export class SessionDetailCoordinator {
   private initialLoadComplete = false;
   private initialLoadEpoch = 0;
   private fetchNewMessagesInFlight: Promise<void> | null = null;
+  private fetchNewMessagesPendingTask: (() => Promise<void>) | null = null;
   private readonly activeWindowTrimEnabled: () => boolean;
   private readonly activeWindowTrimNowMs: () => number;
   private readonly activeWindowTrimPlanner: ActiveWindowTrimPlanner;
@@ -792,22 +793,44 @@ export class SessionDetailCoordinator {
 
   runExclusiveFetchNewMessages(task: () => Promise<void>): Promise<void> {
     if (this.fetchNewMessagesInFlight) {
+      this.fetchNewMessagesPendingTask = task;
       return this.fetchNewMessagesInFlight;
     }
 
-    let request: Promise<void>;
-    try {
-      request = task();
-    } catch (error) {
-      request = Promise.reject(error);
-    }
-    this.fetchNewMessagesInFlight = request;
-    void request.finally(() => {
-      if (this.fetchNewMessagesInFlight === request) {
-        this.fetchNewMessagesInFlight = null;
-      }
+    let resolveRequest!: () => void;
+    let rejectRequest!: (reason: unknown) => void;
+    const request = new Promise<void>((resolve, reject) => {
+      resolveRequest = resolve;
+      rejectRequest = reject;
     });
+    this.fetchNewMessagesInFlight = request;
+    void this.drainFetchNewMessages(task).then(resolveRequest, rejectRequest);
     return request;
+  }
+
+  private async drainFetchNewMessages(
+    initialTask: () => Promise<void>,
+  ): Promise<void> {
+    let nextTask: (() => Promise<void>) | null = initialTask;
+    let firstError: unknown;
+    let failed = false;
+
+    while (nextTask) {
+      const task = nextTask;
+      this.fetchNewMessagesPendingTask = null;
+      try {
+        await task();
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          firstError = error;
+        }
+      }
+      nextTask = this.fetchNewMessagesPendingTask;
+    }
+
+    this.fetchNewMessagesInFlight = null;
+    if (failed) throw firstError;
   }
 
   private flushBufferedStream(processors: SessionDetailStreamProcessors): void {

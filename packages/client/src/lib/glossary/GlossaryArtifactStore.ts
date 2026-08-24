@@ -9,6 +9,7 @@ import type {
 import {
   createManagedStream,
   type ManagedStream,
+  SERVER_PUSH_INACTIVITY_TIMEOUT_MS,
   type SourceTransport,
 } from "../transport";
 
@@ -149,15 +150,19 @@ export class GlossaryArtifactStore {
     if (this.active) this.deactivate();
     const activationSerial = ++this.activationSerial;
     this.active = { projectId, transport, activationSerial };
-    this.stream = createManagedStream(transport, {
-      subscribe: ({ transport: activeTransport, handlers }) =>
-        activeTransport.subscribeGlossary(projectId, handlers),
-      onEvent: (event) => {
-        if (this.active?.activationSerial !== activationSerial) return;
-        if (!isGlossarySubscriptionEvent(event.data)) return;
-        this.handleSubscriptionEvent(event.data);
+    this.stream = createManagedStream(
+      transport,
+      {
+        subscribe: ({ transport: activeTransport, handlers }) =>
+          activeTransport.subscribeGlossary(projectId, handlers),
+        onEvent: (event) => {
+          if (this.active?.activationSerial !== activationSerial) return;
+          if (!isGlossarySubscriptionEvent(event.data)) return;
+          this.handleSubscriptionEvent(event.data);
+        },
       },
-    });
+      { inactivityTimeoutMs: SERVER_PUSH_INACTIVITY_TIMEOUT_MS },
+    );
   }
 
   deactivate(): void {

@@ -54,6 +54,7 @@ export interface ManagedStreamRetryOptions {
 
 export interface ManagedStreamOptions {
   readonly autoStart?: boolean;
+  readonly inactivityTimeoutMs?: number;
   readonly retry?: ManagedStreamRetryOptions;
   readonly scheduler?: ManagedStreamScheduler;
 }
@@ -69,6 +70,7 @@ export interface ManagedStream {
 const DEFAULT_RETRY_INITIAL_DELAY_MS = 250;
 const DEFAULT_RETRY_MAX_DELAY_MS = 5_000;
 const DEFAULT_RETRY_FACTOR = 2;
+export const SERVER_PUSH_INACTIVITY_TIMEOUT_MS = 75_000;
 
 const defaultScheduler: ManagedStreamScheduler = {
   setTimeout: (fn, delayMs) => setTimeout(fn, delayMs),
@@ -92,6 +94,7 @@ class DefaultManagedStream implements ManagedStream {
   private readonly retryInitialDelayMs: number;
   private readonly retryMaxDelayMs: number;
   private readonly retryFactor: number;
+  private readonly inactivityTimeoutMs: number | undefined;
   private readonly listeners = new Set<() => void>();
 
   private snapshot: ManagedStreamSnapshot = {
@@ -103,6 +106,7 @@ class DefaultManagedStream implements ManagedStream {
   private statusUnsubscribe: (() => void) | null = null;
   private activeSubscription: Subscription | null = null;
   private activeToken = 0;
+  private inactivityTimer: unknown | null = null;
   private retryTimer: unknown | null = null;
   private started = false;
   private closed = false;
@@ -122,6 +126,7 @@ class DefaultManagedStream implements ManagedStream {
     this.retryMaxDelayMs =
       options.retry?.maxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS;
     this.retryFactor = options.retry?.factor ?? DEFAULT_RETRY_FACTOR;
+    this.inactivityTimeoutMs = options.inactivityTimeoutMs;
 
     if (options.autoStart !== false) {
       this.start();
@@ -251,6 +256,7 @@ class DefaultManagedStream implements ManagedStream {
         return;
       }
       this.activeSubscription = subscription;
+      this.armInactivityTimer(token);
     } catch (error) {
       if (this.isCurrentToken(token)) {
         this.handleSubscriptionError(token, toError(error));
@@ -264,6 +270,7 @@ class DefaultManagedStream implements ManagedStream {
     return {
       onEvent: (eventType, eventId, data) => {
         if (!this.isCurrentToken(token)) return;
+        this.armInactivityTimer(token);
         const event = { eventType, eventId, data };
         const capturedEventId = this.spec.captureEventId
           ? this.spec.captureEventId(event)
@@ -279,6 +286,7 @@ class DefaultManagedStream implements ManagedStream {
       onOpen: () => {
         if (!this.isCurrentToken(token)) return;
         this.clearRetryTimer();
+        this.armInactivityTimer(token);
         this.setSnapshot({
           state: "open",
           connected: true,
@@ -358,6 +366,7 @@ class DefaultManagedStream implements ManagedStream {
   private dropActiveSubscription(options: { close: boolean }): void {
     const subscription = this.activeSubscription;
     this.activeSubscription = null;
+    this.clearInactivityTimer();
     this.nextActiveToken();
     if (options.close) {
       subscription?.close();
@@ -396,6 +405,25 @@ class DefaultManagedStream implements ManagedStream {
     if (this.retryTimer === null) return;
     this.scheduler.clearTimeout(this.retryTimer);
     this.retryTimer = null;
+  }
+
+  private armInactivityTimer(token: number): void {
+    this.clearInactivityTimer();
+    if (this.inactivityTimeoutMs === undefined) return;
+    this.inactivityTimer = this.scheduler.setTimeout(() => {
+      this.inactivityTimer = null;
+      if (!this.isCurrentToken(token)) return;
+      const error = new Error(
+        `Managed stream received no events for ${this.inactivityTimeoutMs}ms`,
+      );
+      this.handleSubscriptionError(token, error);
+    }, this.inactivityTimeoutMs);
+  }
+
+  private clearInactivityTimer(): void {
+    if (this.inactivityTimer === null) return;
+    this.scheduler.clearTimeout(this.inactivityTimer);
+    this.inactivityTimer = null;
   }
 
   private setSnapshot(

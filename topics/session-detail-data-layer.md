@@ -158,6 +158,17 @@ notification. The goal is to make the lifecycle of incoming messages explicit:
 received, normalized, maybe streaming, committed, reconciled with durable data,
 and selected for rendering.
 
+Incremental catch-up serializes reads per mounted session window, but
+serialization must not erase demand. Calls arriving during one in-flight read
+coalesce into one trailing read after it settles; calls during that trailing
+read preserve another trailing pass. This bounds concurrent parsing while
+ensuring that a file event, reconnect, or liveness heartbeat observed during a
+slow transcript read is eventually reconciled.
+
+The focused session watch requests catch-up on its initial open as well as
+after a reconnect. The initial read and watch subscription therefore do not
+leave an unobserved interval between snapshot hydration and live observation.
+
 ## Store Model
 
 The store should be a custom external store with keyed selectors, not a generic

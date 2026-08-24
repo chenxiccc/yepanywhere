@@ -321,6 +321,77 @@ describe("createManagedStream", () => {
     expect(reconnect).not.toHaveBeenCalled();
   });
 
+  it("retries a subscription that never opens", () => {
+    const timers = new MockTimers();
+    const reconnect = vi.fn();
+    const transport = new FakeSourceTransport({ reconnect });
+    const stream = createManagedStream(transport, createSessionSpec(), {
+      scheduler: schedulerFromTimers(timers),
+      inactivityTimeoutMs: 75,
+      retry: { initialDelayMs: 10, maxDelayMs: 10 },
+    });
+
+    getOnlySubscription(transport, "session");
+    timers.advance(75);
+
+    expect(stream.getSnapshot()).toMatchObject({
+      state: "retrying",
+      connected: false,
+    });
+    expect(transport.getSubscriptions("session")[0]).toMatchObject({
+      closed: true,
+      closeCalls: 1,
+    });
+    expect(reconnect).not.toHaveBeenCalled();
+
+    timers.advance(10);
+
+    expect(transport.getSubscriptions("session")).toHaveLength(2);
+    expect(getLastSubscription(transport, "session")).toMatchObject({
+      closed: false,
+    });
+  });
+
+  it("restarts only the inactive subscription after its heartbeat deadline", () => {
+    const timers = new MockTimers();
+    const reconnect = vi.fn();
+    const transport = new FakeSourceTransport({ reconnect });
+    const stream = createManagedStream(transport, createSessionSpec(), {
+      scheduler: schedulerFromTimers(timers),
+      inactivityTimeoutMs: 75,
+      retry: { initialDelayMs: 10, maxDelayMs: 10 },
+    });
+
+    const first = getOnlySubscription(transport, "session");
+    transport.openSubscription(first.id);
+
+    timers.advance(74);
+    transport.emitSubscriptionEvent(first.id, "heartbeat", {});
+    timers.advance(74);
+
+    expect(transport.getSubscriptions("session")).toHaveLength(1);
+    expect(first.closed).toBe(false);
+
+    timers.advance(1);
+
+    expect(stream.getSnapshot()).toMatchObject({
+      state: "retrying",
+      connected: false,
+    });
+    expect(transport.getSubscriptions("session")[0]).toMatchObject({
+      closed: true,
+      closeCalls: 1,
+    });
+    expect(reconnect).not.toHaveBeenCalled();
+
+    timers.advance(10);
+
+    expect(transport.getSubscriptions("session")).toHaveLength(2);
+    expect(getLastSubscription(transport, "session")).toMatchObject({
+      closed: false,
+    });
+  });
+
   it("isolates status churn between independent runtimes", () => {
     const firstTransport = new FakeSourceTransport();
     const secondTransport = new FakeSourceTransport();
