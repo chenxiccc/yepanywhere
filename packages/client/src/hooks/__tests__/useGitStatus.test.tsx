@@ -340,16 +340,20 @@ describe("useGitStatus", () => {
     await settle();
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
 
-    mocks.visibilityState = "hidden";
-    document.dispatchEvent(new Event("visibilitychange"));
-    act(() => clearRouteRetention());
+    act(() => {
+      mocks.visibilityState = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+      clearRouteRetention();
+    });
     await settle();
 
     expect(rendered.result.current.gitStatus).toBeNull();
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
 
-    mocks.visibilityState = "visible";
-    document.dispatchEvent(new Event("visibilitychange"));
+    act(() => {
+      mocks.visibilityState = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
     await settle();
 
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
@@ -386,22 +390,28 @@ describe("useGitStatus", () => {
     expect(rendered.result.current.gitStatus).toEqual(firstStatus);
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
 
-    mocks.visibilityState = "hidden";
-    document.dispatchEvent(new Event("visibilitychange"));
-    act(() => clearRouteRetention());
+    act(() => {
+      mocks.visibilityState = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+      clearRouteRetention();
+    });
     await settle();
     expect(rendered.result.current.gitStatus).toBeNull();
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
 
     // Visible but unfocused is not yet attention: still no recovery.
-    mocks.hasFocus = false;
-    mocks.visibilityState = "visible";
-    document.dispatchEvent(new Event("visibilitychange"));
+    act(() => {
+      mocks.hasFocus = false;
+      mocks.visibilityState = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
     await settle();
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
 
-    mocks.hasFocus = true;
-    window.dispatchEvent(new Event("focus"));
+    act(() => {
+      mocks.hasFocus = true;
+      window.dispatchEvent(new Event("focus"));
+    });
     await settle();
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
     expect(rendered.result.current.gitStatus).toEqual(recoveredStatus);

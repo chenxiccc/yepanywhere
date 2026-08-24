@@ -2,6 +2,8 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { SchemaValidationProvider } from "../../../../contexts/SchemaValidationContext";
+import { ToastProvider } from "../../../../contexts/ToastContext";
 import { I18nProvider } from "../../../../i18n";
 import { ToolCallRow } from "../../../blocks/ToolCallRow";
 
@@ -10,7 +12,11 @@ function renderGoalRow(
 ) {
   return render(
     <I18nProvider>
-      <ToolCallRow id="goal-call" sessionProvider="codex" {...props} />
+      <ToastProvider>
+        <SchemaValidationProvider>
+          <ToolCallRow id="goal-call" sessionProvider="codex" {...props} />
+        </SchemaValidationProvider>
+      </ToastProvider>
     </I18nProvider>,
   );
 }

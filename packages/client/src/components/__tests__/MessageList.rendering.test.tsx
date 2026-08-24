@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
-import { Profiler } from "react";
+import { Profiler, type ReactNode } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
+import { SchemaValidationProvider } from "../../contexts/SchemaValidationContext";
 import { SourceRuntimeProvider } from "../../contexts/SourceRuntimeContext";
+import { ToastProvider } from "../../contexts/ToastContext";
 import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
 import { buildCorrectionText } from "../../lib/correctionText";
 import type { YaSourceRuntime } from "../../lib/sourceRuntime";
@@ -22,11 +24,20 @@ import {
 } from "./MessageList.test-support";
 import { createComposerDraftSignal } from "../../lib/composerDraftSignal";
 import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
+import { I18nProvider } from "../../i18n";
 import type { Message } from "../../types";
 import { MessageList } from "../MessageList";
 import galleryStyles from "../TurnImageGallery.module.css";
 
 installMessageListTestEnvironment();
+
+function ToolProviders({ children }: { children: ReactNode }) {
+  return (
+    <ToastProvider>
+      <SchemaValidationProvider>{children}</SchemaValidationProvider>
+    </ToastProvider>
+  );
+}
 
 describe("MessageList rendering", () => {
   const galleryMediaHtml = (label: string, path: string) =>
@@ -89,6 +100,7 @@ describe("MessageList rendering", () => {
           },
         }}
       />,
+      { wrapper: I18nProvider },
     );
 
     expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
@@ -298,6 +310,7 @@ describe("MessageList rendering", () => {
           },
         }}
       />,
+      { wrapper: I18nProvider },
     );
     const links =
       container.querySelectorAll<HTMLAnchorElement>("a.local-media-link");
@@ -628,7 +641,7 @@ describe("MessageList rendering", () => {
         </SessionMetadataProvider>
       </SourceRuntimeProvider>
     );
-    const { rerender } = render(view(false));
+    const { rerender } = render(view(false), { wrapper: ToolProviders });
 
     fireEvent.click(
       screen.getByRole("button", { name: "toolResultMediaExpand" }),
@@ -687,7 +700,9 @@ describe("MessageList rendering", () => {
         messages={visibleMessages}
       />
     );
-    const { container, rerender } = render(view(false));
+    const { container, rerender } = render(view(false), {
+      wrapper: ToolProviders,
+    });
     const toolRow = () =>
       container.querySelector<HTMLElement>(
         '[data-render-id="tool-custom"] .tool-row',
