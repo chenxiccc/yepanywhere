@@ -16,6 +16,8 @@ writer on a provider transcript is never acceptable.
 Related topic: [YA environment variables](ya-env-vars.md) and
 [subprocess environment boundaries](subprocess-environment.md) — the
 injection channels.
+Related topic: [ask-session](ask-session.md) — proposed ask/reply
+consumer of the wake ladder.
 
 ## Motivation
 

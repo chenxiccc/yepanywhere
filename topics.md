@@ -342,3 +342,7 @@
   over the existing REST surface; steward supervision; fs/git mirror rejected.
 - new-session-agent-tooling - Launch-time PATH scripts, capability fragment,
   and vanilla instruction-scope option for supervised sessions.
+- ask-session - Agent-invocable ask-a-session command: dispatcher routing,
+  timeout/deferral reply contract, ask records, asks drawer.
+- boss-mode - Delegated-orchestration working mode: the user talks to one
+  boss agent session that creates and supervises the rest.

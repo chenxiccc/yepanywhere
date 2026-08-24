@@ -26,6 +26,8 @@ channels and namespace contract;
 per-session credential precedent;
 [`session-sandboxing.md`](session-sandboxing.md) — the existing
 per-session provider-state redirection precedent;
+[`ask-session.md`](ask-session.md) — the first planned consumer of the
+capability fragment and PATH scripts;
 [`vanilla-defaults.md`](vanilla-defaults.md).
 
 ## PATH and tool advertisement

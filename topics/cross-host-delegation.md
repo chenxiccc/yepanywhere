@@ -17,6 +17,7 @@ Related:
 [client source runtime topology](client-source-runtime-topology.md),
 [relay client mux](relay-client-mux.md),
 [core service API](core-service-api.md),
+[ask-session](ask-session.md),
 [Claude cross-session messaging](claude-cross-session-messaging.md),
 [federated super sessions](federated-super-sessions.md),
 [remote executors](../docs/project/remote-executors.md),
@@ -396,7 +397,9 @@ become a general API by accident.
 The [core service API](core-service-api.md) remains the adjacent proposal for
 making YA's local provider/session runtime deliberately controllable. The
 coordination service may reuse that runtime seam, but cross-host grants and
-delegation records remain a higher-level product boundary.
+delegation records remain a higher-level product boundary. The same-host ask
+flow in [ask-session](ask-session.md) proposes its ask records as the local
+form of those delegation records, not a second ledger.
 
 ## Relationship To Existing Directions
 

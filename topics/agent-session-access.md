@@ -1,6 +1,6 @@
 # Agent Session Access
 
-> Proposal: local agents — first consumer, a supervising steward agent —
+> Proposal: local agents — first consumer, a supervising boss agent —
 > search, browse, and message YA sessions through a small shipped script
 > layer over the existing localhost REST surface; a YA-written
 > filesystem/git mirror of session state is rejected.
@@ -8,7 +8,7 @@
 Topic: agent-session-access
 
 Status: direction proposal, 2026-08-24. Nothing is implemented; the
-script layer, the search route, and the steward conventions below are
+script layer, the search route, and the boss conventions below are
 candidate work, not contracts. The launch-time half (PATH injection,
 capability fragment, vanilla instruction scope) lives in
 [`new-session-agent-tooling.md`](new-session-agent-tooling.md).
@@ -17,6 +17,10 @@ See also:
 [`core-service-api.md`](core-service-api.md) — the external-consumer
 seam (D0 thin client, D3 API doc, resolved localhost posture) this
 proposal rides on;
+[`ask-session.md`](ask-session.md) — the packaged ask/reply flow built
+on these primitives;
+[`boss-mode.md`](boss-mode.md) — the delegated-orchestration working
+mode;
 [`session-wake.md`](session-wake.md) — implemented automation-to-session
 turn delivery;
 [`all-session-content-search.md`](all-session-content-search.md) — the
@@ -69,17 +73,19 @@ capability review before the shipped web client may depend on it. If the
 bounded scan proves too slow at real corpus sizes, the sketched index
 becomes its backing store rather than a competing design.
 
-## The steward use case
+## The boss use case
 
 The motivating consumer is an optional supervising agent session — the
-*steward agent* — that tracks other sessions' requests and deliverables.
+*boss agent* ([`boss-mode.md`](boss-mode.md)) — that tracks other
+sessions' requests and deliverables.
 Its bookkeeping conventions (request files in a watched directory,
-replies at a related path, git-committed or not) are steward policy, not
-YA features: the steward maintains its own repository using the
+replies at a related path, git-committed or not) are boss policy, not
+YA features: the boss maintains its own repository using the
 read/search/send primitives. YA deliberately does not write that
 directory — see the rejection below.
 
-Delivery paths the steward composes from existing YA machinery:
+Delivery paths the boss composes from existing YA machinery — packaged
+as the ask/reply flow in [`ask-session.md`](ask-session.md):
 
 - **Message a live or resumable session**: the messages route for
   ordinary sends; the wake endpoint (`session-wake.md`) when the target
@@ -88,25 +94,25 @@ Delivery paths the steward composes from existing YA machinery:
   wake text is the doorbell plus a path.
 - **Dispatch new work**: Project Queue enqueue, which already hands
   queued requests to an idle project (`project-queue.md`).
-- **File-based intake**: the request-intake half of the steward design
+- **File-based intake**: the request-intake half of the boss design
   overlaps the recorded missing feature in
   `gaps/at-session-launching.md` (YA launching due `at/` queue jobs);
-  a steward wanting YA-driven intake should extend that design rather
+  a boss wanting YA-driven intake should extend that design rather
   than invent a second file-watch convention.
 
 ## Authority and ownership boundaries
 
-Two existing contracts bound every steward interaction and must be
+Two existing contracts bound every boss interaction and must be
 restated in any implementation's docs:
 
-- **Steward text is agent-authored input, never human authority.** It
+- **Boss text is agent-authored input, never human authority.** It
   cannot approve permission requests, change the receiving session's
   settings, or raise any ceiling the user set — the same boundary
   `claude-cross-session-messaging.md` § The YA Authority Boundary draws
   for peer messages. This adds no new enforcement burden: a localhost
   process already holds single-operator power over YA (`security.md`),
   so the scripts add convenience, not authority.
-- **One writer per provider transcript.** A steward interacts with a
+- **One writer per provider transcript.** A boss agent interacts with a
   YA-supervised session only through YA. Driving it via provider-native
   resume/CLI risks a second writer forking or corrupting the transcript;
   the ownership rules in `session-wake.md` § Provider-CLI injection
@@ -126,7 +132,7 @@ bidirectional save/restore. Reasons:
   the global-sessions route.
 - The restore direction re-derives portable session bundles, which is
   `federated-super-sessions.md`, a separately designed problem.
-- The steward can maintain its own git conventions from the scripts, so
+- The boss can maintain its own git conventions from the scripts, so
   YA writing files adds no capability.
 - Any YA-owned writes near a project would still need the explicit
   opt-in `project-directory-storage.md` requires.
@@ -137,11 +143,10 @@ server), and then as a new proposal, not a revival of this one.
 
 ## Naming
 
-*Steward agent* (and *steward mailbox* for its request/deliverable
-store) is the tentative vocabulary: "supervisor" collides with the
-server's `Supervisor` class and YA's own product description, and
-"inbox" collides with YA's Inbox attention view (`inbox.md`). Glossary
-rows carry the unconfirmed marker until the terms are confirmed.
+*Boss agent* (and *boss mailbox* for its request/deliverable store) is
+the confirmed vocabulary; the collision analysis — `Supervisor` class,
+Inbox view, and *steward* being reserved for the `~/agents` on-deck
+queue-tending mode — lives in [`boss-mode.md`](boss-mode.md) § Naming.
 
 ## Compatibility and defaults
 
