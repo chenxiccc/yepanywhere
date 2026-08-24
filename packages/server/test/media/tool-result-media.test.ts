@@ -20,12 +20,19 @@ import { SESSION_COOKIE_NAME } from "../../src/auth/routes.js";
 import { ToolResultMediaStore } from "../../src/media/ToolResultMediaStore.js";
 import { grokSessionMediaRoots } from "../../src/projects/paths.js";
 import { createAuthMiddleware } from "../../src/middleware/auth.js";
+import {
+  createSessionsRoutes,
+  type SessionsDeps,
+} from "../../src/routes/sessions.js";
 import { createToolResultMediaRoutes } from "../../src/routes/tool-result-media.js";
 import { normalizeSession } from "../../src/sessions/normalization.js";
-import type { LoadedSession } from "../../src/sessions/types.js";
+import type {
+  ISessionReader,
+  LoadedSession,
+} from "../../src/sessions/types.js";
 import type { SDKMessage } from "../../src/sdk/types.js";
 import { Process } from "../../src/supervisor/Process.js";
-import { encodeProjectId } from "../../src/supervisor/types.js";
+import { encodeProjectId, type Project } from "../../src/supervisor/types.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 
@@ -472,6 +479,109 @@ describe("tool-result media storage", () => {
     await expect(access(join(dataDir, "tool-results"))).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("rematerializes persisted Codex media through session detail before fetch", async () => {
+    const projectId = encodeProjectId(projectDir);
+    const sourcePath = join(tempDir, "missing-view-image-source.png");
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2026-08-24T07:00:00Z",
+        payload: {
+          type: "custom_tool_call",
+          call_id: "call-route-codex",
+          name: "exec",
+          input: `const r = await tools.view_image({ path: ${JSON.stringify(sourcePath)} }); image(r.image_url);`,
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-08-24T07:00:01Z",
+        payload: {
+          type: "custom_tool_call_output",
+          call_id: "call-route-codex",
+          output: [
+            { type: "input_text", text: "Image loaded" },
+            { type: "input_image", image_url: DATA_URL },
+          ],
+        },
+      },
+    ];
+    const project: Project = {
+      id: projectId,
+      path: projectDir,
+      name: "project",
+      sessionCount: 1,
+      sessionDir: join(tempDir, "codex-sessions"),
+      activeOwnedCount: 0,
+      activeExternalCount: 0,
+      lastActivity: null,
+      provider: "codex",
+    };
+    const scanner = {
+      getProject: vi.fn(async (requestedId: string) =>
+        requestedId === projectId ? project : null,
+      ),
+      getOrCreateProject: vi.fn(async (requestedId: string) =>
+        requestedId === projectId ? project : null,
+      ),
+    } as unknown as ProjectScanner;
+    const store = new ToolResultMediaStore({ dataDir });
+    const loaded = buildCodexLoadedSession(entries, projectId);
+    const reader = {
+      getSession: vi.fn(async () => loaded),
+    } as unknown as ISessionReader;
+    const sessionRoutes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner,
+      readerFactory: vi.fn(() => reader),
+      toolResultMediaStore: store,
+    });
+
+    const detailResponse = await sessionRoutes.request(
+      `/projects/${projectId}/sessions/session-codex?fullHistory=1`,
+    );
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json();
+    expect(JSON.stringify(detail)).not.toContain("data:image");
+    const media = detail.messages[1]?.toolResultMedia?.[0] as
+      | ToolResultMedia
+      | undefined;
+    expect(media).toMatchObject({
+      state: "stored",
+      toolCallId: "call-route-codex",
+      mimeType: "image/png",
+      byteLength: PNG_BYTES.byteLength,
+    });
+    if (media?.state !== "stored") throw new Error("Expected stored media");
+
+    const revisitResponse = await sessionRoutes.request(
+      `/projects/${projectId}/sessions/session-codex?fullHistory=1`,
+    );
+    const revisitDetail = await revisitResponse.json();
+    expect(revisitResponse.status).toBe(200);
+    expect(revisitDetail.messages[1]?.toolResultMedia?.[0]).toMatchObject({
+      state: "stored",
+      id: media.id,
+    });
+    expect(
+      normalizeSession(loaded).messages[1]?.toolResultMedia,
+    ).toBeUndefined();
+
+    const mediaResponse = await createToolResultMediaRoutes({
+      scanner,
+      store,
+    }).request(
+      `/projects/${projectId}/sessions/session-codex/media/${media.id}`,
+    );
+    expect(mediaResponse.status).toBe(200);
+    expect(mediaResponse.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await mediaResponse.arrayBuffer())).toEqual(PNG_BYTES);
+    await expect(access(sourcePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("never preserves historical materialization when preservation is enabled", async () => {

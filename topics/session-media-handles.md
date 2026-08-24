@@ -76,6 +76,28 @@ A path-only result is available while its permitted source path exists. When
 the source disappears and preservation was not enabled, the media ref becomes
 unavailable with an explicit reason. YA does not snapshot it silently.
 
+## Session-detail projection boundary
+
+Provider normalization may carry extracted inline bytes as private ingest
+metadata while keeping them out of ordinary enumerable message fields. The
+authenticated session-detail route must consume that metadata after selecting
+the authorized history window and before any generic clone, serialization, or
+projection step that retains only public fields. A `stored` descriptor returned
+by session detail must already name a fetchable entry in the media catalog.
+
+Historical materialization is copy-on-write. It may return replacement
+tool-result messages, but it must not mutate provider-reader or normalization
+caches. After materialization, the route detaches the small descriptor-bearing
+window before task pruning, Markdown augmentation, or any other response-only
+mutation. This ordering both preserves cache isolation and keeps inline base64
+out of the detached clone.
+
+Route-level regression coverage must exercise the complete persisted path:
+provider entry normalization, private candidate consumption, response
+detachment, session-detail serialization, and a byte fetch through the returned
+media handle. A direct normalizer-to-materializer test alone does not cover the
+projection boundary.
+
 ## Public Shape And Fetch Route
 
 Session responses contain presentation metadata and handles, never retained
@@ -289,8 +311,8 @@ media id never grants public access.
 In the default configuration, loading live or historical image-bearing
 sessions leaves the project tree and Git metadata unchanged and creates no
 durable media copy. An expired transient handle can be rebuilt by
-rematerializing provider persistence; an expired path-only image may report
-unavailable.
+rematerializing provider persistence; the descriptor returned by that reload
+is immediately fetchable. An expired path-only image may report unavailable.
 
 With preservation explicitly enabled, tests cover new results emitted by
 managed sessions with and without a connected client, provider replay
