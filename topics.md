@@ -349,3 +349,5 @@
   boss agent session that creates and supervises the rest.
 - project-code-names - Unique editable project shorthand for browser titles
   and sidebar labels, with deterministic collision reassignment.
+- server-side-settings - Server-owned policy, cross-client coherence, demand
+  leases, warm retention, and environment fallback or pinning.
