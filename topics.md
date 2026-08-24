@@ -346,3 +346,5 @@
   timeout/deferral reply contract, ask records, asks drawer.
 - boss-mode - Delegated-orchestration working mode: the user talks to one
   boss agent session that creates and supervises the rest.
+- project-code-names - Unique editable project shorthand for browser titles
+  and sidebar labels, with deterministic collision reassignment.
