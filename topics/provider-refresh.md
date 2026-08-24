@@ -163,6 +163,27 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current no-op refresh, 2026-08-24:
+
+- Installed Codex and npm `@openai/codex` `latest` are `0.149.1`; the official
+  `rust-v0.149.1` source is commit
+  `ff29a44391deccde0aba0f8390337d7f3c319ea4`. Root compatibility is recorded
+  through `0.149.1`, while `expectedVersion` remains `0.149.0` because the
+  checked-in app-server protocol subset did not change.
+- The patch adds image-aware budgeting to an under-development remote
+  compaction path and a `--thread-source` option to `codex exec` and its
+  TypeScript SDK. YA uses `codex app-server`, whose generated types, turn
+  controls, notifications, and provider startup surface are unchanged.
+- Memory-consolidation requests now identify their source in internal response
+  metadata. YA's persisted session metadata already accepts provider-defined
+  `thread_source` strings, so this needs no schema or renderer change.
+- The no-token `model/list` probe returns the same eight account-visible models
+  and consumed metadata as 0.149.0, including Sol as default and Daybreak Blue
+  as a live-catalog-only specialized model.
+
+Status: Codex 0.149.1 app-server, model-catalog, and persisted-transcript
+compatibility is refreshed with no YA runtime source change.
+
 Current source refresh, 2026-08-21:
 
 - Installed Codex is `0.149.0`; the official `rust-v0.149.0` source is commit
