@@ -539,6 +539,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       file("notes.txt", "untracked"),
     ];
     const manager = new ProjectWorktreeSubscriptionManager({
+      platform: "linux",
       scanner: {
         getProject: vi.fn(async () => ({
           id: projectId,
@@ -676,6 +677,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       }),
     );
     const manager = new ProjectWorktreeSubscriptionManager({
+      platform: "linux",
       scanner: {
         getProject: vi.fn(async () => ({
           id: projectId,
@@ -792,6 +794,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       },
     );
     const manager = new ProjectWorktreeSubscriptionManager({
+      platform: "linux",
       scanner: {
         getProject: vi.fn(async () => ({
           id: projectId,
@@ -859,6 +862,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
       files: mapFiles([file("src/a.ts", "tracked")]),
     }));
     const manager = new ProjectWorktreeSubscriptionManager({
+      platform: "linux",
       scanner: {
         getProject: vi.fn(async () => ({
           id: projectId,
@@ -2092,6 +2096,7 @@ describe("ProjectWorktreeSubscriptionManager", () => {
         }
       | undefined;
     const manager = new ProjectWorktreeSubscriptionManager({
+      platform: "linux",
       scanner: {
         getProject: vi.fn(async () => ({
           id: projectId,
