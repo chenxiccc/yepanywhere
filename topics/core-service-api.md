@@ -18,6 +18,8 @@ See also: [`provider-abstraction.md`](provider-abstraction.md),
 [`session-liveness.md`](session-liveness.md),
 [`provider-state-machine.md`](provider-state-machine.md),
 [`trusted-client-packaging.md`](trusted-client-packaging.md),
+[`agent-session-access.md`](agent-session-access.md)
+(agent-facing scripts as a consumer of this seam),
 [`docs/tactical/053-sessions-route-refactor-ledger.md`](../docs/tactical/053-sessions-route-refactor-ledger.md)
 (running ledger of `sessions.ts` extraction refactors that reshape where
 this REST surface lives).

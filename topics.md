@@ -338,3 +338,7 @@
 - server-cache-concurrency-safety - Per-key async ownership, bounded source
   snapshots, invalidation fences, and serialized publication for retained
   server caches.
+- agent-session-access - Scripted local-agent session search/browse/messaging
+  over the existing REST surface; steward supervision; fs/git mirror rejected.
+- new-session-agent-tooling - Launch-time PATH scripts, capability fragment,
+  and vanilla instruction-scope option for supervised sessions.

@@ -37,7 +37,10 @@ background transcript walks.
 The candidate product surface, visible-text corpus, substring normalization,
 index structures, asynchronous coverage protocol, privacy rules, and
 measurement gates live only in the sketches companion. They are not an
-approved schema or performance commitment.
+approved schema or performance commitment. A smaller agent-facing bounded
+scan route is proposed in
+[`agent-session-access.md`](agent-session-access.md); it inherits this same
+boundary, corpus rules, and capability review.
 
 Related current contracts:
 [session-catalog-observation](session-catalog-observation.md),
