@@ -3,7 +3,7 @@
 Missing feature: a new-session launch option that gives the agent a
 provider-default instruction environment — no user-global
 `AGENTS.md`/`CLAUDE.md` layer — while keeping project instructions,
-auth, and provider configuration. Wanted so agent-tool and steward
+auth, and provider configuration. Wanted so agent-tool and boss
 launches (`topics/new-session-agent-tooling.md`) can start workers that
 are not conditioned by the operator's personal instruction corpus.
 
