@@ -119,6 +119,10 @@ export class SessionDiscoveryIndex {
   private readonly sourceRootPath: string;
   private readonly sourceRootHash: string;
   private readonly shardCache = new Map<string, SessionDiscoveryShardState>();
+  private readonly shardLoadPromises = new Map<
+    string,
+    Promise<SessionDiscoveryShardState>
+  >();
   private readonly dirtyShardKeys = new Set<string>();
   private readonly savePromises = new Map<string, Promise<void>>();
 
@@ -224,9 +228,20 @@ export class SessionDiscoveryIndex {
     const cached = this.shardCache.get(shardKey);
     if (cached) return cached;
 
-    const shard = await this.readShardFromDisk(shardKey);
-    this.shardCache.set(shardKey, shard);
-    return shard;
+    const existing = this.shardLoadPromises.get(shardKey);
+    if (existing) return existing;
+
+    const loadPromise = this.readShardFromDisk(shardKey).then((shard) => {
+      this.shardCache.set(shardKey, shard);
+      return shard;
+    });
+    const trackedPromise = loadPromise.finally(() => {
+      if (this.shardLoadPromises.get(shardKey) === trackedPromise) {
+        this.shardLoadPromises.delete(shardKey);
+      }
+    });
+    this.shardLoadPromises.set(shardKey, trackedPromise);
+    return trackedPromise;
   }
 
   private async readShardFromDisk(
@@ -295,7 +310,7 @@ export class SessionDiscoveryIndex {
       }
     });
     this.savePromises.set(shardKey, trackedPromise);
-    await savePromise;
+    await trackedPromise;
   }
 
   private async writeShard(shardKey: string): Promise<void> {
@@ -317,5 +332,31 @@ export class SessionDiscoveryIndex {
       });
       throw error;
     }
+  }
+}
+
+/**
+ * Process-local owner registry for durable discovery indexes.
+ *
+ * A shard is mutable derived state, so every scanner, reader, and watcher in
+ * one server process must resolve the same logical index to the same owner.
+ */
+export class SessionDiscoveryIndexRegistry {
+  private readonly indexes = new Map<string, SessionDiscoveryIndex>();
+
+  getOrCreate(options: SessionDiscoveryIndexOptions): SessionDiscoveryIndex {
+    const baseDir = path.resolve(options.baseDir ?? defaultBaseDir());
+    const sourceRoot = path.resolve(options.sourceRoot);
+    const key = JSON.stringify([baseDir, options.provider, sourceRoot]);
+    const existing = this.indexes.get(key);
+    if (existing) return existing;
+
+    const index = new SessionDiscoveryIndex({
+      ...options,
+      baseDir,
+      sourceRoot,
+    });
+    this.indexes.set(key, index);
+    return index;
   }
 }

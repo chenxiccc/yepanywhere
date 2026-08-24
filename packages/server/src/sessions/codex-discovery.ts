@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { CodexSessionMetaEntry } from "@yep-anywhere/shared";
 import {
   SessionDiscoveryIndex,
+  type SessionDiscoveryIndexRegistry,
   type SessionDiscoveryRecord,
   type SessionDiscoverySourceFingerprint,
 } from "../indexes/SessionDiscoveryIndex.js";
@@ -61,13 +62,17 @@ export interface ReadCodexRolloutMetadataOptions {
 export function createCodexSessionDiscoveryIndex(
   dataDir: string | undefined,
   sessionsDir: string,
+  registry?: SessionDiscoveryIndexRegistry,
 ): SessionDiscoveryIndex | undefined {
   if (!dataDir) return undefined;
-  return new SessionDiscoveryIndex({
+  const options = {
     baseDir: join(dataDir, "indexes", "session-discovery"),
     provider: "codex",
     sourceRoot: sessionsDir,
-  });
+  };
+  return registry
+    ? registry.getOrCreate(options)
+    : new SessionDiscoveryIndex(options);
 }
 
 export function createCodexRolloutDiscoveryStats(): CodexRolloutDiscoveryStats {

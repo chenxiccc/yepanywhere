@@ -8,6 +8,7 @@ export {
 } from "./SessionIndexService.js";
 export {
   SessionDiscoveryIndex,
+  SessionDiscoveryIndexRegistry,
   type SessionDiscoveryIndexOptions,
   type SessionDiscoveryRecord,
   type SessionDiscoveryShardState,

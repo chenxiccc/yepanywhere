@@ -27,7 +27,10 @@ import { createAuthRoutes } from "./auth/routes.js";
 import type { DesktopBootstrapService } from "./desktop/DesktopBootstrapService.js";
 import type { DeviceBridgeService } from "./device/DeviceBridgeService.js";
 import type { FrontendProxy } from "./frontend/index.js";
-import type { SessionIndexService } from "./indexes/index.js";
+import type {
+  SessionDiscoveryIndexRegistry,
+  SessionIndexService,
+} from "./indexes/index.js";
 import type {
   ProjectMetadataService,
   SessionMetadataService,
@@ -281,6 +284,8 @@ export interface AppOptions {
   dirtyFileEditorService?: DirtyFileEditorService;
   /** SessionIndexService for caching session summaries */
   sessionIndexService?: SessionIndexService;
+  /** Process-local owner registry for provider discovery shards. */
+  sessionDiscoveryIndexRegistry?: SessionDiscoveryIndexRegistry;
   /** Claude summary parser child-process mode. Default off. */
   claudeSummaryParserWorkerMode?: SummaryParserWorkerMode;
   /** Codex summary parser child-process mode. Default on when unset. */
@@ -644,6 +649,7 @@ export function createApp(options: AppOptions): AppResult {
     const created = createCodexSessionDiscoveryIndex(
       options.dataDir,
       sessionsDir,
+      options.sessionDiscoveryIndexRegistry,
     );
     if (created) {
       codexDiscoveryIndexes.set(sessionsDir, created);

@@ -1,7 +1,8 @@
 # Make Server Caches Safe Under Concurrent Async Work
 
-Status: Codex detail entry-cache correctness slice implemented and verified;
-broader server cache audit follow-ups remain planned (2026-08-24)
+Status: Codex detail plus mutable index/scanner/Gemini-store correctness slices
+implemented and verified; broader server cache audit follow-ups remain planned
+(2026-08-24)
 
 ## Goal
 
@@ -58,6 +59,9 @@ state remains app-data-only under
   stale-completion fencing, and owner-level failure/backoff behavior.
 - [`topics/server-performance-observability.md`](../../topics/server-performance-observability.md)
   owns cache inventory and operational cache metrics.
+- [`topics/server-cache-publication.md`](../../topics/server-cache-publication.md)
+  owns the durable publication, invalidation, and mutable-store contracts
+  established by the implemented slices.
 - [`topics/codex-sessions.md`](../../topics/codex-sessions.md) owns Codex
   transcript interpretation and should receive the durable detail-cache
   contract when this work lands.
@@ -308,14 +312,14 @@ a text search cannot prove exhaustive.
 | [Pi](../../packages/server/src/sessions/pi-reader.ts) and [Grok](../../packages/server/src/sessions/grok-reader.ts) session readers | Scan clears and repopulates shared maps across awaits | Concurrent scans can interleave into a mixed map and bless it with a fresh timestamp | High: private scan candidate plus atomic, generation-gated replacement |
 | [Gemini session reader](../../packages/server/src/sessions/gemini-reader.ts) | Scan incrementally adds to shared map; cached file hit lacks source revalidation | Concurrent scans can mix; deleted or moved sessions can remain indefinitely | High: private replacement snapshot and explicit source/TTL validation |
 | [Pi parsed-session LRU](../../packages/server/src/sessions/pi-reader.ts) | Async versioned parse publishes without an in-flight owner or current-version fence | Older parse can finish after newer parse and overwrite retained value; duplicate work | Medium: exact-version single-flight and current-source publication check |
-| [`SessionDiscoveryIndex` shards](../../packages/server/src/indexes/SessionDiscoveryIndex.ts) | Cold miss reads disk and installs a new mutable shard object; saves are serialized | Two cold upserts can mutate different canonical candidates; last cache install loses one update | High: single-owner load and per-shard mutation tail; keep atomic save |
-| [`SessionIndexService` load/update](../../packages/server/src/indexes/SessionIndexService.ts) | Separate high-level single-flights can call an unowned `loadIndex`; long updates clear dirtiness after awaits | Cross-API cold loads can publish different mutable indexes; changes during incremental/full validation can be erased | High: one load owner and revision-based dirty acknowledgement |
-| [`ProjectScanner`](../../packages/server/src/projects/scanner.ts) | One in-flight scan, mutable `cacheDirty`; completion always clears dirty and publishes | Watch event during scan is lost; forced refresh can join older ordinary scan | High: scan generation plus preserved trailing demand and force semantics |
-| [`ProjectScanner` disk snapshot](../../packages/server/src/projects/scanner.ts) | Fire-and-forget plain writes are not serialized or atomically published | Overlapping saves can finish out of order or expose a partial cache file | High: per-file write tail, unique temp, rename, trailing revision |
+| [`SessionDiscoveryIndex` shards](../../packages/server/src/indexes/SessionDiscoveryIndex.ts) | One registry owner per process/root, one cold-load promise per shard, serialized atomic saves | **Fixed in mutable-store slice:** concurrent cold upserts share the canonical shard; scanner, reader, and watcher paths no longer write through separate in-process owners | Landed: shared registry plus per-shard load owner; later byte/LRU release remains |
+| [`SessionIndexService` load/update](../../packages/server/src/indexes/SessionIndexService.ts) | One cold-load owner per scope; every dirty mark advances a revision | **Fixed in mutable-store slice:** cross-API cold calls share one index, and incremental/full/single validation cannot erase a newer invalidation | Landed: single-owner load and revision-based dirty acknowledgement |
+| [`ProjectScanner`](../../packages/server/src/projects/scanner.ts) | One in-flight scan plus monotonic invalidation and accepted revisions | **Fixed in mutable-store slice:** a watch event during scan prevents the older completion from becoming retained fresh state | Landed: revision-gated publication; an original caller may receive its coherent pre-event scan while the next read refreshes |
+| [`ProjectScanner` disk snapshot](../../packages/server/src/projects/scanner.ts) | One active writer with one latest trailing snapshot; unique temp plus rename | **Fixed in mutable-store slice:** writes cannot overlap or publish an invalidated revision | Landed: serialized coalesced atomic replacement |
 | [Global session statistics](../../packages/server/src/routes/global-sessions.ts) | One in-flight compute, mutable `statsDirty`; completion always clears dirty | Session event during compute is lost until the next TTL expiry | High: generation/revision-owned snapshot compute |
 | [`GlossaryIndexService`](../../packages/server/src/projects/glossaryIndexService.ts) | Request and canonical single-flights; invalidate deletes maps but cannot cancel old publication | Pre-invalidation work can repopulate parsed or compiled caches afterward | Medium: governing-source generation on every publication path |
 | [`GitUntrackedCacheService`](../../packages/server/src/services/GitUntrackedCacheService.ts) | Shared load/refresh and serialized persist, but selected rechecks replace a common snapshot | Concurrent disjoint selected rechecks can lose each other's removals or `checkedAt` updates; regressed snapshot can persist | High: per-project mutation tail or revision/CAS merge |
-| [Gemini project map](../../packages/server/src/projects/gemini-project-map.ts) | Mutable canonical mapping with unowned initial load and unsynchronized plain writes | Concurrent set/remove/save can finish out of order and lose durable mappings after restart | High: single load owner, mutation/write tail, atomic replacement |
+| [Gemini project map](../../packages/server/src/projects/gemini-project-map.ts) | One initial-load owner and one candidate-based mutation/write tail with atomic replacement | **Fixed in mutable-store slice:** overlapping process-local mutations cannot finish out of order or lose an accepted durable mapping | Landed: reads wait queued mutations; failed persistence leaves the previous accepted map and later mutations remain runnable |
 | [Session sandbox availability](../../packages/server/src/session-sandbox.ts) | Ordinary calls coalesce; forced call starts a second request; both publish unconditionally | Older ordinary completion can overwrite the forced result | Medium: forced generation owner, matching provider-info semantics |
 | [Git blame cache](../../packages/server/src/git/blame.ts) | Validator captured before async Git/highlight work; completion always inserts | Late result from older working-tree state can replace newer retained blame until next access | Medium: validator/current-source check at publication |
 | [Claude transcript cache](../../packages/server/src/sessions/claude-transcript-cache.ts) | Per-file owner and fixed ranges; invalidate only deletes retained entry | In-flight completion can undo invalidate; retained array mutates in place | Medium hardening: generation-fenced invalidate and immutable publication |
@@ -377,6 +381,53 @@ This slice closes the demonstrated in-reader double append. It does not close
 the audit rows for sibling projections, reader eviction, scanners, indexes, or
 other cache owners, and it does not claim that non-retaining summary reads join
 detail-cache work. Those remain in the work plan below.
+
+## Implemented mutable-store slice
+
+The second 2026-08-24 slice converted the two follow-up areas selected after
+the initial audit without introducing a universal cache framework.
+
+Barrier-controlled diagnostics first proved five schedules against the old
+implementation:
+
+1. an older Gemini save overwrote a newer map while memory concealed the lost
+   durable entry;
+2. concurrent cold discovery-shard upserts mutated separate objects and
+   persisted only one record;
+3. two independent in-process discovery-index owners overwrote each other's
+   complete shard state;
+4. list and single-summary APIs cold-loaded different mutable summary indexes,
+   after which one successful caller's rows disappeared; and
+5. invalidation during summary validation or project scanning was cleared by
+   the older completion.
+
+The landed mechanisms are intentionally small and surface-specific:
+
+- `SessionDiscoveryIndex` shares one cold-load promise per shard, while a
+  startup-owned registry supplies the same logical index to Codex scanners,
+  readers, and watcher-side resolution.
+- `SessionIndexService` shares one cold load across every API for a scope. Each
+  dirty mark advances a scope revision; incremental, full, and single-summary
+  work acknowledges dirty state only if that revision remains unchanged.
+- `ProjectScanner` publishes a completed scan only under the invalidation
+  revision it started with. Its disk writer serializes saves, coalesces the
+  latest trailing snapshot, discards invalidated revisions, and uses unique
+  temp files plus rename.
+- `GeminiProjectMap` shares its initial load and serializes complete
+  load/candidate-mutation/atomic-persist operations. Memory changes only after
+  durable replacement succeeds, and a failed operation does not poison the
+  mutation tail.
+
+Permanent regressions use barriers rather than sleeps. They cover one physical
+cold load, cross-API canonical state, invalidation during incremental and full
+validation, invalidation during a project scan, ordered project-snapshot
+writes, and restarted Gemini state after overlapping updates.
+
+These owners are process-local. Atomic replacement prevents partial files, but
+this slice does not claim that independent YA processes sharing one data
+directory form a distributed merge protocol. The discovery index is derived
+and non-authoritative; the Gemini map rejects failed local persistence instead
+of advertising an uncommitted mapping.
 
 ## Work plan
 
@@ -455,12 +506,15 @@ parser coordination rather than adding another independent queue.
 
 ### 5 — make indexes, scans, and statistics generation-safe
 
-Apply immutable snapshot ownership or revision acknowledgement to:
+Apply immutable snapshot ownership or revision acknowledgement to the
+remaining surfaces; the entries marked landed were completed in the mutable
+store slice:
 
 - Codex/Gemini provider scanners and Pi/Grok/Gemini session scans;
-- `SessionDiscoveryIndex` cold loads;
-- `SessionIndexService` loads, incremental dirtiness, and full validation;
-- `ProjectScanner` memory and disk snapshots; and
+- `SessionDiscoveryIndex` cold loads — **landed**;
+- `SessionIndexService` loads, incremental dirtiness, and full validation —
+  **landed**;
+- `ProjectScanner` memory and disk snapshots — **landed**; and
 - global session statistics.
 
 For every service, define what invalidation during work means, whether an old
@@ -471,9 +525,10 @@ with acknowledgement of the exact observed revision.
 ### 6 — serialize remaining mutable cache and derived-store writers
 
 Close the confirmed publication gaps in glossary indexes, Git untracked state,
-Gemini project mapping, sandbox availability, Git blame, and Claude transcript
-invalidation. Use per-key mutation/write tails where state is mutable and
-source-version owners where results are immutable.
+sandbox availability, Git blame, and Claude transcript invalidation. Gemini
+project mapping's process-local mutation and persistence owner is **landed**.
+Use per-key mutation/write tails where state is mutable and source-version
+owners where results are immutable.
 
 Treat Gemini project mapping carefully: it is durable identity state adjacent
 to the cache audit, not a disposable projection. Its concurrency tests must

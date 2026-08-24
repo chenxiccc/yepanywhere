@@ -32,7 +32,10 @@ import {
   getCodexRolloutSessionId,
 } from "../utils/codexRolloutFiles.js";
 import type { EventBus, FileChangeEvent } from "../watcher/index.js";
-import { SessionDiscoveryIndex } from "./SessionDiscoveryIndex.js";
+import {
+  SessionDiscoveryIndexRegistry,
+  type SessionDiscoveryIndex,
+} from "./SessionDiscoveryIndex.js";
 import type { ISessionIndexService, SessionIndexListOptions } from "./types.js";
 
 const LOG_CACHE_PERF = process.env.SESSION_INDEX_LOG_PERF === "true";
@@ -229,6 +232,8 @@ export interface SessionIndexServiceOptions {
   summaryParseConcurrency?: number;
   /** Interval for active cold-index progress logs. */
   warmupProgressLogIntervalMs?: number;
+  /** Shared process owner for provider discovery shards. */
+  sessionDiscoveryIndexRegistry?: SessionDiscoveryIndexRegistry;
 }
 
 /**
@@ -242,6 +247,8 @@ export class SessionIndexService implements ISessionIndexService {
   private dataDir: string;
   private projectsDir: string;
   private indexCache: Map<string, SessionIndexState> = new Map();
+  private indexLoadPromises: Map<string, Promise<SessionIndexState>> =
+    new Map();
   private savePromises: Map<string, Promise<void>> = new Map();
   private pendingSaves: Set<string> = new Set();
   private maxCacheSize: number;
@@ -253,6 +260,7 @@ export class SessionIndexService implements ISessionIndexService {
   private lastFullValidationAt: Map<string, number> = new Map();
   private dirtyDirs: Set<string> = new Set();
   private dirtySessionsByDir: Map<string, Set<string>> = new Map();
+  private dirtyRevisions: Map<string, number> = new Map();
   /** Scopes with a persisted index file (loaded or written this run). */
   private persistedIndexScopes: Set<string> = new Set();
   /** In-flight background full validations, keyed by validation key. */
@@ -268,7 +276,7 @@ export class SessionIndexService implements ISessionIndexService {
   private inFlightTitleLoads: Map<string, Promise<string | null>> = new Map();
   private inFlightSummaryParses: Map<string, Promise<SessionSummary | null>> =
     new Map();
-  private codexDiscoveryIndexes: Map<string, SessionDiscoveryIndex> = new Map();
+  private sessionDiscoveryIndexRegistry: SessionDiscoveryIndexRegistry;
   private summaryParseQueue: SummaryParseTask[] = [];
   private activeSummaryParses = 0;
   private warmupJobs: Map<string, SessionIndexWarmupJobState> = new Map();
@@ -310,6 +318,9 @@ export class SessionIndexService implements ISessionIndexService {
       options.warmupProgressLogIntervalMs ??
         DEFAULT_WARMUP_PROGRESS_LOG_INTERVAL_MS,
     );
+    this.sessionDiscoveryIndexRegistry =
+      options.sessionDiscoveryIndexRegistry ??
+      new SessionDiscoveryIndexRegistry();
 
     if (options.eventBus) {
       this.eventBus = options.eventBus;
@@ -381,6 +392,28 @@ export class SessionIndexService implements ISessionIndexService {
    * Load index from disk or create a new one.
    */
   private async loadIndex(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    reader?: ISessionReader,
+  ): Promise<SessionIndexState> {
+    const scopeKey = this.getScopeKey(sessionDir, reader);
+    const cached = this.indexCache.get(scopeKey);
+    if (cached) return cached;
+
+    const existing = this.indexLoadPromises.get(scopeKey);
+    if (existing) return existing;
+
+    const loadPromise = this.loadIndexFromDisk(sessionDir, projectId, reader);
+    const trackedPromise = loadPromise.finally(() => {
+      if (this.indexLoadPromises.get(scopeKey) === trackedPromise) {
+        this.indexLoadPromises.delete(scopeKey);
+      }
+    });
+    this.indexLoadPromises.set(scopeKey, trackedPromise);
+    return trackedPromise;
+  }
+
+  private async loadIndexFromDisk(
     sessionDir: string,
     projectId: UrlProjectId,
     reader?: ISessionReader,
@@ -642,14 +675,30 @@ export class SessionIndexService implements ISessionIndexService {
     const current = this.dirtySessionsByDir.get(scopeKey) ?? new Set();
     current.add(sessionId);
     this.dirtySessionsByDir.set(scopeKey, current);
+    this.advanceDirtyRevision(scopeKey);
+  }
+
+  private getDirtyRevision(scopeKey: string): number {
+    return this.dirtyRevisions.get(scopeKey) ?? 0;
+  }
+
+  private advanceDirtyRevision(scopeKey: string): void {
+    this.dirtyRevisions.set(scopeKey, this.getDirtyRevision(scopeKey) + 1);
   }
 
   private clearSessionDirty(
     sessionDir: string,
     sessionId: string,
     reader?: ISessionReader,
+    observedRevision?: number,
   ): void {
     const scopeKey = this.getScopeKey(sessionDir, reader);
+    if (
+      observedRevision !== undefined &&
+      this.getDirtyRevision(scopeKey) !== observedRevision
+    ) {
+      return;
+    }
     const dirty = this.dirtySessionsByDir.get(scopeKey);
     if (!dirty) return;
     dirty.delete(sessionId);
@@ -659,14 +708,26 @@ export class SessionIndexService implements ISessionIndexService {
   }
 
   private markDirDirty(sessionDir: string, reader?: ISessionReader): void {
-    this.dirtyDirs.add(this.getScopeKey(sessionDir, reader));
+    this.markDirDirtyByScopeKey(this.getScopeKey(sessionDir, reader));
+  }
+
+  private markDirDirtyByScopeKey(scopeKey: string): void {
+    this.dirtyDirs.add(scopeKey);
+    this.advanceDirtyRevision(scopeKey);
   }
 
   private clearDirDirtyState(
     sessionDir: string,
     reader?: ISessionReader,
+    observedRevision?: number,
   ): void {
     const scopeKey = this.getScopeKey(sessionDir, reader);
+    if (
+      observedRevision !== undefined &&
+      this.getDirtyRevision(scopeKey) !== observedRevision
+    ) {
+      return;
+    }
     this.dirtyDirs.delete(scopeKey);
     this.dirtySessionsByDir.delete(scopeKey);
   }
@@ -681,7 +742,7 @@ export class SessionIndexService implements ISessionIndexService {
 
     for (const knownKey of knownScopeKeys) {
       if (knownKey.startsWith(prefix)) {
-        this.dirtyDirs.add(this.getScopeKeyFromKnownKey(knownKey));
+        this.markDirDirtyByScopeKey(this.getScopeKeyFromKnownKey(knownKey));
       }
     }
   }
@@ -709,7 +770,7 @@ export class SessionIndexService implements ISessionIndexService {
     changeType: FileChangeEvent["changeType"],
   ): void {
     if (changeType === "create" || changeType === "delete") {
-      this.dirtyDirs.add(scopeKey);
+      this.markDirDirtyByScopeKey(scopeKey);
       return;
     }
 
@@ -1232,16 +1293,11 @@ export class SessionIndexService implements ISessionIndexService {
 
   private getCodexDiscoveryIndex(sessionsDir: string): SessionDiscoveryIndex {
     const resolvedSessionsDir = path.resolve(sessionsDir);
-    let discoveryIndex = this.codexDiscoveryIndexes.get(resolvedSessionsDir);
-    if (!discoveryIndex) {
-      discoveryIndex = new SessionDiscoveryIndex({
-        baseDir: path.join(this.dataDir, "session-discovery"),
-        provider: "codex",
-        sourceRoot: resolvedSessionsDir,
-      });
-      this.codexDiscoveryIndexes.set(resolvedSessionsDir, discoveryIndex);
-    }
-    return discoveryIndex;
+    return this.sessionDiscoveryIndexRegistry.getOrCreate({
+      baseDir: path.join(this.dataDir, "session-discovery"),
+      provider: "codex",
+      sourceRoot: resolvedSessionsDir,
+    });
   }
 
   private getCodexSessionsDirForEvent(event: FileChangeEvent): string {
@@ -1266,6 +1322,7 @@ export class SessionIndexService implements ISessionIndexService {
     if (!dirty || dirty.size === 0) {
       return { indexChanged: false, statCalls: 0, parseCalls: 0 };
     }
+    const observedDirtyRevision = this.getDirtyRevision(scopeKey);
 
     let indexChanged = false;
     let statCalls = 0;
@@ -1369,7 +1426,9 @@ export class SessionIndexService implements ISessionIndexService {
     if (warmupJobKey) {
       this.completeWarmupJob(warmupJobKey);
     }
-    this.dirtySessionsByDir.delete(scopeKey);
+    if (this.getDirtyRevision(scopeKey) === observedDirtyRevision) {
+      this.dirtySessionsByDir.delete(scopeKey);
+    }
     return { indexChanged, statCalls, parseCalls };
   }
 
@@ -1389,6 +1448,9 @@ export class SessionIndexService implements ISessionIndexService {
     cacheMissBytes: number;
     largestCacheMisses: SessionIndexLargestCacheMiss[];
   }> {
+    const observedDirtyRevision = this.getDirtyRevision(
+      this.getScopeKey(sessionDir, reader),
+    );
     const summaries: SessionSummary[] = [];
     const seenSessionIds = new Set<string>();
     let indexChanged = false;
@@ -1632,7 +1694,7 @@ export class SessionIndexService implements ISessionIndexService {
         this.getValidationKey(sessionDir, reader, options),
         Date.now(),
       );
-      this.clearDirDirtyState(sessionDir, reader);
+      this.clearDirDirtyState(sessionDir, reader, observedDirtyRevision);
 
       return {
         summaries,
@@ -2018,6 +2080,7 @@ export class SessionIndexService implements ISessionIndexService {
     this.indexCache.delete(sessionDir);
     this.persistedIndexScopes.delete(sessionDir);
     this.clearDirDirtyState(sessionDir);
+    this.dirtyRevisions.delete(sessionDir);
     this.lastFullValidationAt.delete(sessionDir);
   }
 
@@ -2071,6 +2134,7 @@ export class SessionIndexService implements ISessionIndexService {
     reader: ISessionReader,
   ): Promise<SessionSummary | null> {
     const scopeKey = this.getScopeKey(sessionDir, reader);
+    const observedDirtyRevision = this.getDirtyRevision(scopeKey);
     const index = await this.loadIndex(sessionDir, projectId, reader);
     const cached = index.sessions[sessionId];
     const dirtySessions = this.dirtySessionsByDir.get(scopeKey);
@@ -2089,7 +2153,12 @@ export class SessionIndexService implements ISessionIndexService {
       try {
         const summary = await reader.getSessionSummary(sessionId, projectId);
         if (summary) {
-          this.clearSessionDirty(sessionDir, sessionId, reader);
+          this.clearSessionDirty(
+            sessionDir,
+            sessionId,
+            reader,
+            observedDirtyRevision,
+          );
           return summary;
         }
       } catch {
@@ -2102,7 +2171,12 @@ export class SessionIndexService implements ISessionIndexService {
           // Save failures are already logged by saveIndex.
         });
       }
-      this.clearSessionDirty(sessionDir, sessionId, reader);
+      this.clearSessionDirty(
+        sessionDir,
+        sessionId,
+        reader,
+        observedDirtyRevision,
+      );
       return null;
     }
 
@@ -2136,13 +2210,23 @@ export class SessionIndexService implements ISessionIndexService {
       });
       if (summary) {
         index.sessions[sessionId] = this.toCachedSummary(summary, mtime, size);
-        this.clearSessionDirty(sessionDir, sessionId, reader);
+        this.clearSessionDirty(
+          sessionDir,
+          sessionId,
+          reader,
+          observedDirtyRevision,
+        );
         await this.saveIndex(sessionDir, reader);
         return summary;
       }
 
       index.sessions[sessionId] = this.toEmptyCachedSummary(mtime, size);
-      this.clearSessionDirty(sessionDir, sessionId, reader);
+      this.clearSessionDirty(
+        sessionDir,
+        sessionId,
+        reader,
+        observedDirtyRevision,
+      );
       await this.saveIndex(sessionDir, reader);
     } catch {
       // Reader errors should not break callers that only need display metadata.

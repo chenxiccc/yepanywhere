@@ -35,7 +35,10 @@ import {
   createStaticRoutes,
 } from "./frontend/index.js";
 import { ensureSelfSignedCertificate } from "./https/self-signed.js";
-import { SessionIndexService } from "./indexes/index.js";
+import {
+  SessionDiscoveryIndexRegistry,
+  SessionIndexService,
+} from "./indexes/index.js";
 import {
   getLogFilePath,
   getLogger,
@@ -537,6 +540,7 @@ const sessionQueuePersistenceService = new SessionQueuePersistenceService({
   dataDir: config.dataDir,
   eventBus,
 });
+const sessionDiscoveryIndexRegistry = new SessionDiscoveryIndexRegistry();
 const sessionIndexService = new SessionIndexService({
   projectsDir: config.claudeProjectsDir,
   dataDir: path.join(config.dataDir, "indexes"),
@@ -544,6 +548,7 @@ const sessionIndexService = new SessionIndexService({
   writeLockTimeoutMs: config.sessionIndexWriteLockTimeoutMs,
   writeLockStaleMs: config.sessionIndexWriteLockStaleMs,
   summaryParseConcurrency: config.sessionIndexSummaryParseConcurrency,
+  sessionDiscoveryIndexRegistry,
   eventBus,
 });
 const pushService = new PushService({ dataDir: config.dataDir });
@@ -954,6 +959,7 @@ async function startServer() {
     sessionQueuePersistenceService,
     dirtyFileEditorService,
     sessionIndexService,
+    sessionDiscoveryIndexRegistry,
     projectScanCacheTtlMs: config.projectScanCacheTtlMs,
     sessionAutoArchiveDays: config.sessionAutoArchiveDays,
     maxWorkers: config.maxWorkers,

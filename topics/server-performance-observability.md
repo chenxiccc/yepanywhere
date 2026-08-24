@@ -252,9 +252,9 @@ The 2026-08-05 audit supplies the initial registry backlog:
 | App session readers | 500-entry FIFO without hit retouch; individual Codex readers may retain full parsed transcripts and mapping/file caches. Codex detail updates added per-session in-flight ownership, bounded plain-file reads, and invalidation-fenced publication on 2026-08-24 | Byte/rebuild-cost bound and access retouch; close and release cold project readers without interrupting active owners |
 | Claude parsed transcripts | Added 2026-08-07 (`claude-transcript-cache.ts`): process-wide, source-byte LRU (default 192 MB, `YEP_CLAUDE_PARSE_CACHE_MB`), in-flight coalescing, incremental append parsing; a file over the whole budget is never retained | Register with a future pressure coordinator as rebuildable; entries plus WeakMap-linked normalized copies release together |
 | Pi parsed transcripts | Resolved 2026-08-07: one current version per file, 64-file LRU with access retouch | One current version per canonical file plus byte-bounded LRU |
-| Session summary index | 10,000 scopes by FIFO count, each holding all summaries; FIFO eviction leaves validation/persisted-scope metadata behind, including another UTC-day cutoff key per scope/day | Evict the complete scope/cutoff record, preserve 10,000-project discovery, and cap live bytes; release disk-rebuildable cold scopes |
+| Session summary index | Cold loads now share one mutable scope and validation cannot erase a newer dirty revision; 10,000 scopes remain bounded only by FIFO count, and eviction leaves validation/persisted-scope metadata behind, including another UTC-day cutoff key per scope/day | Evict the complete scope/cutoff record, preserve 10,000-project discovery, and cap live bytes; release disk-rebuildable cold scopes |
 | Codex shared session scans | Every UTC-day auto-archive cutoff can leave a provider-wide file array in the process-global scan cache | Retain only current/in-flight range generations under an entry/byte LRU |
-| Session discovery shards | A source-root index is retained per touched Codex root, and each loaded shard stays in memory for that index's lifetime | Release cold root indexes and byte/LRU-release clean shards; retain dirty/saving shards until durable |
+| Session discovery shards | Scanner, reader, and watcher paths now share one process owner per root and one cold load per shard; each loaded shard still stays in memory for that owner's lifetime | Release cold root indexes and byte/LRU-release clean shards; retain dirty/saving shards until durable |
 | Project path indexes | Resolved 2026-08-05: demand hydration, refcounted project claims, and 4 MiB per-project / 32 MiB process byte LRU (`project-path-links.md`) | Sparse demand hydration plus project byte/LRU release |
 | Glossary service | 512 parsed files, 128 graphs, and unbounded observed-path maps | Project/byte release; lower priority at typical sub-1,000-entry closure |
 | Git author palettes | Every touched project's author map remains process-global | Byte/LRU-release cold projects; reload durable app-data state on demand |
@@ -279,6 +279,14 @@ invalidation prevents an older completion from repopulating retained entries.
 This correctness owner does not resolve the remaining FIFO/byte-pressure work
 in the table above or the distinct read-only summary/projection coordination
 tracked by tacticals 038 and 056.
+
+The 2026-08-24 mutable-store slice also gave Codex discovery shards one shared
+process owner, made summary-index dirty acknowledgement revision-aware, fenced
+project-snapshot publication against invalidation, and serialized Gemini
+project-map persistence. These are correctness owners, not memory-pressure
+limits; their remaining retention work stays in the table above. The durable
+contract and deterministic test requirements live in
+[`server-cache-publication.md`](server-cache-publication.md).
 
 ## Cache-event distinctions
 

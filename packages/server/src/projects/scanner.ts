@@ -3,7 +3,9 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   stat,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -150,9 +152,15 @@ export class ProjectScanner {
   private workstreamFilePath: string | null;
   private projectScanCachePath: string | null;
   private cacheTtlMs: number;
-  private cacheDirty = false;
+  private cacheRevision = 0;
+  private cleanRevision = 0;
   private snapshot: ProjectSnapshot | null = null;
   private inFlightScan: Promise<ProjectSnapshot> | null = null;
+  private pendingSnapshotSave: {
+    snapshot: ProjectSnapshot;
+    revision: number;
+  } | null = null;
+  private snapshotSavePromise: Promise<void> | null = null;
   private unsubscribeEventBus: (() => void) | null = null;
 
   constructor(options: ScannerOptions = {}) {
@@ -210,14 +218,15 @@ export class ProjectScanner {
    * Mark the project snapshot stale so next read triggers a rescan.
    */
   invalidateCache(): void {
-    this.cacheDirty = true;
+    this.cacheRevision += 1;
   }
 
   private async getSnapshot(forceRefresh = false): Promise<ProjectSnapshot> {
     const now = Date.now();
+    const scanRevision = this.cacheRevision;
     const isFresh =
       this.snapshot &&
-      !this.cacheDirty &&
+      this.cleanRevision === scanRevision &&
       now - this.snapshot.timestamp < this.cacheTtlMs;
 
     if (!forceRefresh && isFresh && this.snapshot) {
@@ -228,10 +237,19 @@ export class ProjectScanner {
       return this.inFlightScan;
     }
 
-    const scanPromise = this.scanFromCacheOrFilesystem(now, forceRefresh)
-      .then((snapshot) => {
-        this.snapshot = snapshot;
-        this.cacheDirty = false;
+    const scanPromise = this.scanFromCacheOrFilesystem(
+      now,
+      forceRefresh,
+      scanRevision,
+    )
+      .then(({ snapshot, shouldPersist }) => {
+        if (this.cacheRevision === scanRevision) {
+          this.snapshot = snapshot;
+          this.cleanRevision = scanRevision;
+          if (shouldPersist) {
+            this.scheduleSnapshotSave(snapshot, scanRevision);
+          }
+        }
         return snapshot;
       })
       .finally(() => {
@@ -247,23 +265,18 @@ export class ProjectScanner {
   private async scanFromCacheOrFilesystem(
     now: number,
     forceRefresh: boolean,
-  ): Promise<ProjectSnapshot> {
-    if (!forceRefresh && !this.cacheDirty) {
+    scanRevision: number,
+  ): Promise<{ snapshot: ProjectSnapshot; shouldPersist: boolean }> {
+    if (!forceRefresh && this.cleanRevision === scanRevision) {
       const cached = await this.loadSnapshotFromDisk(now);
       if (cached) {
-        return cached;
+        return { snapshot: cached, shouldPersist: false };
       }
     }
 
     const projects = await this.scanProjects();
     const snapshot = this.buildSnapshot(projects);
-    void this.saveSnapshotToDisk(snapshot).catch((error) => {
-      console.warn(
-        "[ProjectScanner] failed to persist project scan cache:",
-        error,
-      );
-    });
-    return snapshot;
+    return { snapshot, shouldPersist: true };
   }
 
   private buildSnapshot(
@@ -353,8 +366,51 @@ export class ProjectScanner {
     }
   }
 
-  private async saveSnapshotToDisk(snapshot: ProjectSnapshot): Promise<void> {
+  private scheduleSnapshotSave(
+    snapshot: ProjectSnapshot,
+    revision: number,
+  ): void {
     if (!this.projectScanCachePath) return;
+    this.pendingSnapshotSave = { snapshot, revision };
+    this.startSnapshotSave();
+  }
+
+  private startSnapshotSave(): void {
+    if (this.snapshotSavePromise || !this.pendingSnapshotSave) return;
+
+    const savePromise = this.drainSnapshotSaves();
+    this.snapshotSavePromise = savePromise;
+    void savePromise
+      .catch((error) => {
+        console.warn(
+          "[ProjectScanner] failed to persist project scan cache:",
+          error,
+        );
+      })
+      .finally(() => {
+        if (this.snapshotSavePromise === savePromise) {
+          this.snapshotSavePromise = null;
+        }
+        this.startSnapshotSave();
+      });
+  }
+
+  private async drainSnapshotSaves(): Promise<void> {
+    while (this.pendingSnapshotSave) {
+      const pending = this.pendingSnapshotSave;
+      this.pendingSnapshotSave = null;
+      await this.saveSnapshotToDisk(pending.snapshot, pending.revision);
+    }
+  }
+
+  private async saveSnapshotToDisk(
+    snapshot: ProjectSnapshot,
+    revision: number,
+  ): Promise<void> {
+    if (!this.projectScanCachePath) return;
+    if (this.cacheRevision !== revision || this.cleanRevision !== revision) {
+      return;
+    }
 
     const sourceState = await this.getSourceState();
     const data: CachedProjectSnapshotData = {
@@ -365,7 +421,24 @@ export class ProjectScanner {
     };
 
     await mkdir(dirname(this.projectScanCachePath), { recursive: true });
-    await writeFile(this.projectScanCachePath, JSON.stringify(data), "utf-8");
+    const tempPath = `${this.projectScanCachePath}.tmp-${process.pid}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
+    try {
+      await writeFile(tempPath, JSON.stringify(data), "utf-8");
+      if (this.cacheRevision !== revision || this.cleanRevision !== revision) {
+        await unlink(tempPath).catch(() => {
+          // Best-effort cleanup for an invalidated snapshot.
+        });
+        return;
+      }
+      await rename(tempPath, this.projectScanCachePath);
+    } catch (error) {
+      await unlink(tempPath).catch(() => {
+        // Best-effort cleanup for failed atomic writes.
+      });
+      throw error;
+    }
   }
 
   private async getSourceState(): Promise<ProjectScanSourceState> {

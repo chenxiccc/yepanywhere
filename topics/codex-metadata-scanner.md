@@ -52,14 +52,20 @@ index:
   `{dataDir}/indexes/session-discovery/<provider>/<source-root-hash>/...`.
   Codex uses date-bucket shards such as `2026/06/25.json` and stores a small
   source fingerprint to distinguish ordinary append growth from common
-  same-path replacement cases.
+  same-path replacement cases. Startup supplies one process-local registry to
+  scanners, readers, and watcher-side resolution, so one logical durable index
+  has one mutable owner. Concurrent misses for the same cold shard join one
+  load before any caller mutates it.
 - `CodexSessionScanner` records per-scan metrics for duration, directories
   walked, rollout counts, plain/zstd precedence filtering, discovery-index
   hits/misses/suspect records, first-line reads by representation, and
   cache-backed compressed discovery. Normal scans log these metrics at debug;
   slow scans warn.
 - `ProjectScanner` keeps a short-lived project snapshot and coalesces
-  concurrent scans.
+  concurrent scans. Invalidation advances a change revision; a scan that
+  overlaps a newer file event may satisfy its original caller but cannot mark
+  that old result fresh. Snapshot-file writes are serialized, coalesce one
+  latest trailing result, and atomically replace the disposable cache file.
 - `SessionIndexService` persists normalized session summaries and avoids
   reparsing unchanged sessions, but full validation still enumerates files
   through the reader and stats discovered paths.

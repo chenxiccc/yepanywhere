@@ -19,6 +19,7 @@ See also:
 - [`client-global-store.md`](client-global-store.md)
 - [`inbox.md`](inbox.md)
 - [`architecture-mandates.md`](architecture-mandates.md)
+- [`server-cache-publication.md`](server-cache-publication.md)
 
 ## Continuous-observer model
 
@@ -76,6 +77,14 @@ Focused session targets in the same directory share one native watch while
 retaining per-target polling and trailing validation. Removing the final target
 closes that native watch, and an asynchronous file-resolution result arriving
 after the final unsubscribe must not recreate it.
+
+Cache publication follows the same ordering rule as watcher reconciliation.
+One mutable discovery or summary index scope has one process-local cold-load
+owner, and scans acknowledge only the invalidation revision they observed at
+start. A file event that arrives during a scan or summary parse remains pending
+even if the older request returns a coherent pre-event result. Derived disk
+snapshots publish through serialized atomic replacement; Gemini's durable
+project mapping additionally serializes its complete load/mutate/save cycle.
 
 Staleness is nevertheless an allowed state. An old, offscreen, unowned session
 may remain at its last durable compact observation until a file/process event,

@@ -30,6 +30,14 @@ See also:
   validation is older than `SESSION_INDEX_FULL_VALIDATION_MS` (default 30s).
   Every enumerated session is checked.
 
+List, title, cached-summary, and single-summary callers share one cold load per
+scope. They never install separate mutable index objects from the same disk
+revision. Each watcher or explicit invalidation also advances a scope change
+revision. Incremental, full, and single-summary validation clears dirty state
+only if that revision is unchanged when its async work finishes. An
+invalidation that arrives during parsing therefore remains pending for the
+next applicable validation instead of being erased by the older completion.
+
 ## Stale-while-revalidate
 
 The TTL walk is a consistency backstop for missed watcher events, so a

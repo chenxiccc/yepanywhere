@@ -527,6 +527,124 @@ describe("SessionIndexService", () => {
       expect(service.getDebugStats().requests).toBe(1);
     });
 
+    it("preserves invalidation that arrives during incremental validation", async () => {
+      const revisionService = new SessionIndexService({
+        dataDir: join(testDir, "revision-indexes"),
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await revisionService.initialize();
+      await Promise.all([
+        createSession("session-a", "Session A"),
+        createSession("session-b", "Session B"),
+      ]);
+      expect(
+        await revisionService.getSessionsWithCache(
+          sessionDir,
+          projectId,
+          reader,
+        ),
+      ).toHaveLength(2);
+
+      let signalParseStarted: (() => void) | null = null;
+      const parseStarted = new Promise<void>((resolve) => {
+        signalParseStarted = resolve;
+      });
+      let releaseParse: (() => void) | null = null;
+      const parseGate = new Promise<void>((resolve) => {
+        releaseParse = resolve;
+      });
+      const originalSummary = reader.getSessionSummary.bind(reader);
+      vi.spyOn(reader, "getSessionSummary").mockImplementation(
+        async (sessionId, currentProjectId, options) => {
+          if (sessionId === "session-a") {
+            signalParseStarted?.();
+            await parseGate;
+          }
+          return originalSummary(sessionId, currentProjectId, options);
+        },
+      );
+
+      revisionService.invalidateSession(sessionDir, "session-a");
+      const refresh = revisionService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      await parseStarted;
+      revisionService.invalidateSession(sessionDir, "session-b");
+      releaseParse?.();
+
+      expect((await refresh).map((session) => session.id)).toEqual([
+        "session-a",
+      ]);
+      expect(
+        (
+          await revisionService.getSessionsWithCache(
+            sessionDir,
+            projectId,
+            reader,
+          )
+        )
+          .map((session) => session.id)
+          .sort(),
+      ).toEqual(["session-a", "session-b"]);
+    });
+
+    it("preserves invalidation that arrives during full validation", async () => {
+      const revisionService = new SessionIndexService({
+        dataDir: join(testDir, "full-revision-indexes"),
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await revisionService.initialize();
+      await createSession("session-a", "Session A");
+
+      let signalParseStarted: (() => void) | null = null;
+      const parseStarted = new Promise<void>((resolve) => {
+        signalParseStarted = resolve;
+      });
+      let releaseParse: (() => void) | null = null;
+      const parseGate = new Promise<void>((resolve) => {
+        releaseParse = resolve;
+      });
+      const originalSummary = reader.getSessionSummary.bind(reader);
+      vi.spyOn(reader, "getSessionSummary").mockImplementation(
+        async (sessionId, currentProjectId, options) => {
+          if (sessionId === "session-a") {
+            signalParseStarted?.();
+            await parseGate;
+          }
+          return originalSummary(sessionId, currentProjectId, options);
+        },
+      );
+
+      const initialScan = revisionService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      await parseStarted;
+      await createSession("session-b", "Session B");
+      revisionService.invalidateSession(sessionDir, "session-b");
+      releaseParse?.();
+
+      expect((await initialScan).map((session) => session.id)).toEqual([
+        "session-a",
+      ]);
+      expect(
+        (
+          await revisionService.getSessionsWithCache(
+            sessionDir,
+            projectId,
+            reader,
+          )
+        )
+          .map((session) => session.id)
+          .sort(),
+      ).toEqual(["session-a", "session-b"]);
+    });
+
     it("limits concurrent summary parses across validation scopes", async () => {
       const queuedService = new SessionIndexService({
         dataDir: join(testDir, "queued-indexes"),

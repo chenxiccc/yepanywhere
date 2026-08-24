@@ -8,7 +8,7 @@ import { CodexSessionScanner } from "../../src/projects/codex-scanner.js";
 import { GeminiSessionScanner } from "../../src/projects/gemini-scanner.js";
 import { ProjectScanner } from "../../src/projects/scanner.js";
 import { WorkstreamService } from "../../src/services/WorkstreamService.js";
-import { encodeProjectId } from "../../src/supervisor/types.js";
+import { encodeProjectId, type Project } from "../../src/supervisor/types.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
 
 function encodePath(path: string): string {
@@ -185,6 +185,126 @@ describe("ProjectScanner cache", () => {
     ]);
 
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves invalidation that arrives during an active scan", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-one",
+      "sess-1",
+    );
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      cacheTtlMs: 60000,
+    });
+    const internals = scanner as unknown as {
+      scanProjects: () => Promise<Project[]>;
+    };
+    const originalScan = internals.scanProjects.bind(scanner);
+    let signalScanCaptured: (() => void) | null = null;
+    const scanCaptured = new Promise<void>((resolve) => {
+      signalScanCaptured = resolve;
+    });
+    let releaseScan: (() => void) | null = null;
+    const scanGate = new Promise<void>((resolve) => {
+      releaseScan = resolve;
+    });
+    vi.spyOn(internals, "scanProjects").mockImplementation(async () => {
+      const projects = await originalScan();
+      signalScanCaptured?.();
+      await scanGate;
+      return projects;
+    });
+
+    const firstScan = scanner.listProjects();
+    await scanCaptured;
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-two",
+      "sess-2",
+    );
+    scanner.invalidateCache();
+    releaseScan?.();
+
+    expect(await firstScan).toHaveLength(1);
+    expect(await scanner.listProjects()).toHaveLength(2);
+  });
+
+  it("serializes project snapshot persistence behind the active write", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-one",
+      "sess-1",
+    );
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      cacheTtlMs: 60000,
+      projectScanCachePath: join(projectsDir, "project-cache.json"),
+    });
+    const internals = scanner as unknown as {
+      saveSnapshotToDisk: (
+        snapshot: { projects: Project[] },
+        revision: number,
+      ) => Promise<void>;
+    };
+    let activeSaves = 0;
+    let maxActiveSaves = 0;
+    let saveCalls = 0;
+    let finalSavedProjectCount = 0;
+    let signalFirstSaveStarted: (() => void) | null = null;
+    const firstSaveStarted = new Promise<void>((resolve) => {
+      signalFirstSaveStarted = resolve;
+    });
+    let releaseFirstSave: (() => void) | null = null;
+    const firstSaveGate = new Promise<void>((resolve) => {
+      releaseFirstSave = resolve;
+    });
+    let signalSecondSaveDone: (() => void) | null = null;
+    const secondSaveDone = new Promise<void>((resolve) => {
+      signalSecondSaveDone = resolve;
+    });
+    vi.spyOn(internals, "saveSnapshotToDisk").mockImplementation(
+      async (snapshot) => {
+        saveCalls += 1;
+        activeSaves += 1;
+        maxActiveSaves = Math.max(maxActiveSaves, activeSaves);
+        if (saveCalls === 1) {
+          signalFirstSaveStarted?.();
+          await firstSaveGate;
+        }
+        finalSavedProjectCount = snapshot.projects.length;
+        activeSaves -= 1;
+        if (saveCalls === 2) signalSecondSaveDone?.();
+      },
+    );
+
+    await scanner.listProjects();
+    await firstSaveStarted;
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-two",
+      "sess-2",
+    );
+    scanner.invalidateCache();
+    await scanner.listProjects();
+
+    expect(saveCalls).toBe(1);
+    releaseFirstSave?.();
+    await secondSaveDone;
+    expect(maxActiveSaves).toBe(1);
+    expect(finalSavedProjectCount).toBe(2);
   });
 
   it("invalidates snapshot from watcher file-change events", async () => {
