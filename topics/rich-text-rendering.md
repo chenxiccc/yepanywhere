@@ -194,12 +194,15 @@ body had been selected and copied, without visibly opening the preview.
 
 Semantic rich-text copy from Σ-rendered fixed-font/diff views must not carry
 YA's display presentation into the destination. Its handler serializes the
-selected rendered fragment as semantic HTML, stripping CSS classes, inline
-styles, stylesheet elements, and legacy color attributes, while keeping the
-existing source-aware `text/plain` fallback. It does not rely on Chromium's
-default computed-style clipboard payload, which can transfer only part of a
-foreground/background pair into editors such as Jira. Table headers and
-inline/block code still declare paired themed colors for correct rendering
+selected rendered fragment through a positive allowlist of inert structural,
+text, table, and MathML elements and narrowly semantic attributes. URL-bearing
+attributes, forms and controls, event handlers, active embeds, images, scripts,
+styles, and unknown elements cannot enter the clipboard payload; unknown
+containers contribute only their safe descendant text and markup. The handler
+keeps the existing source-aware `text/plain` fallback. It does not rely on
+Chromium's default computed-style clipboard payload, which can transfer only
+part of a foreground/background pair into editors such as Jira. Table headers
+and inline/block code still declare paired themed colors for correct rendering
 inside YA; those declarations never enter the explicit clipboard HTML.
 
 KaTeX display output contains both an accessible MathML branch and its styled

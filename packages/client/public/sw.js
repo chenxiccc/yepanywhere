@@ -18,7 +18,7 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.9";
+const SW_VERSION = "1.0.10";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 const INCOMING_SHARE_QUERY_PARAM = "__ya_share";
@@ -27,6 +27,8 @@ const INCOMING_SHARE_STORE_NAME = "shares";
 const INCOMING_SHARE_DB_VERSION = 1;
 const INCOMING_SHARE_TTL_MS = 60 * 60 * 1000;
 const MAX_PENDING_INCOMING_SHARES = 4;
+const MAX_INCOMING_SHARE_FILES = 8;
+const MAX_INCOMING_SHARE_TOTAL_BYTES = 64 * 1024 * 1024;
 
 // Resolve asset URLs relative to SW scope (handles /remote/ deployment)
 function assetUrl(path) {
@@ -118,7 +120,7 @@ async function swLog(level, message, data = {}) {
 
     await tx.complete;
     db.close();
-  } catch (_e) {
+  } catch {
     // Silently fail if IndexedDB not available
   }
 }
@@ -301,6 +303,17 @@ async function handleShareTargetRequest(request) {
   const files = formData.getAll("images").filter(isImageShare);
   if (files.length === 0) {
     return new Response("No shared image was received.", { status: 415 });
+  }
+  if (files.length > MAX_INCOMING_SHARE_FILES) {
+    return new Response("Too many shared images were received.", {
+      status: 413,
+    });
+  }
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_INCOMING_SHARE_TOTAL_BYTES) {
+    return new Response("Shared images exceed the storage limit.", {
+      status: 413,
+    });
   }
 
   const shareId = await storeIncomingShare(files);

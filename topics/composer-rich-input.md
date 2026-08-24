@@ -41,28 +41,17 @@ provisional speech a **real inline text run**:
 
 ## Shipped image intake stays outside the text model
 
-Image attachments do not require a rich editor. Desktop clipboard paste keeps
-reading file items from the textarea's paste event. An installed browser PWA
-also advertises an Android image share target: its service worker stores the
-shared image briefly in browser-local IndexedDB, redirects to the most recently
-open session (including a session hidden by the system share sheet), and the
-mounted composer claims that image through the same attachment pipeline. With
-no open session, the share opens New Session in the current relay context when
-one exists. Claims are one-shot; subsequent intake purges expired entries and
-caps the pending-share count.
-
-Android keyboard image insertion is a separate native-editor contract. Gboard
-uses `InputConnection.commitContent`, whose accepted MIME types come from a
-native view's `EditorInfo`. A browser textarea cannot advertise those native
-MIME types from application JavaScript, so YA does not present keyboard image
-insertion as a supported web path.
+Image attachments do not require a rich editor. The shipped desktop-paste and
+installed-PWA image-share behavior, browser-local bounds, and consumer
+acknowledgement boundary are current product behavior owned by
+[attachment-intake.md](attachment-intake.md). A future rich editor must
+preserve that contract rather than reimplementing intake inside its text model.
 
 ## Design decisions
 
-- **Use the PWA share target and existing attachment pipeline** (vs. a server
-  upload endpoint or a `contenteditable` migration): Android gains a standard,
-  explicitly invoked screenshot path without adding a server capability,
-  changing submitted text, or taking on rich-editor input-method risks.
+- **Keep attachment intake outside a `contenteditable` migration:** Android
+  gains a standard, explicitly invoked screenshot path without changing
+  submitted text or taking on rich-editor input-method risks.
 
 ## Costs and risks (why "not for now")
 

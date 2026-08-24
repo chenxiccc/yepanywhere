@@ -159,7 +159,6 @@
   "projectsDeleteFailed": "Projekt konnte nicht entfernt werden",
   "projectsEmptyTitle": "Noch keine Projekte",
   "projectsEmptyDescription": "Füge oben ein Projekt hinzu oder starte eine Sitzung in einem Ordner, dann erscheint sie automatisch hier.",
-  "incomingShareAttachmentUnavailable": "Das geteilte Bild konnte nicht angehängt werden. Teile es erneut.",
   "inboxTitle": "Posteingang",
   "inboxTitleWithProject": "{project} Posteingang",
   "inboxFilterProject": "Projekt",

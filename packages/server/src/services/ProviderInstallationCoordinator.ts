@@ -57,6 +57,13 @@ interface WriterRecord {
   createdAt: number;
 }
 
+interface GateRecord {
+  id: string;
+  pid: number;
+  ownerStartId: string | null;
+  createdAt: number;
+}
+
 /**
  * How stale-record cleanup verifies the recorded owner process. Injectable so
  * tests can model dead, sleeping, and PID-reused owners deterministically.
@@ -169,6 +176,7 @@ export class ProviderInstallationCoordinator {
   private readonly context = new AsyncLocalStorage<InstallationContext>();
   private readonly preparedDirectories = new Map<string, Promise<string>>();
   private readonly ownerProbe: InstallationOwnerProbe;
+  private readonly ownerStartIdRequired: boolean;
   private ownStartId: Promise<string | null> | null = null;
 
   constructor(options: ProviderInstallationCoordinatorOptions = {}) {
@@ -184,11 +192,23 @@ export class ProviderInstallationCoordinator {
       options.readerDrainWaitMs ?? DEFAULT_READER_DRAIN_WAIT_MS;
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS;
     this.ownerProbe = options.ownerProbe ?? defaultOwnerProbe;
+    this.ownerStartIdRequired =
+      options.ownerProbe === undefined && process.platform === "win32";
   }
 
   private getOwnStartId(): Promise<string | null> {
     if (!this.ownStartId) {
-      this.ownStartId = this.ownerProbe.startId(process.pid).catch(() => null);
+      this.ownStartId = this.ownerProbe
+        .startId(process.pid)
+        .catch(() => null)
+        .then((startId) => {
+          if (this.ownerStartIdRequired && !startId) {
+            throw new Error(
+              "Cannot coordinate provider installation without Windows process start identity",
+            );
+          }
+          return startId;
+        });
     }
     return this.ownStartId;
   }
@@ -465,15 +485,15 @@ export class ProviderInstallationCoordinator {
     operation: () => Promise<T>,
   ): Promise<T> {
     const gatePath = join(familyDir, "gate.lock");
+    const gateOwnerPath = join(gatePath, "owner.json");
+    const gateId = randomUUID();
     const deadline = Date.now() + this.gateWaitMs;
     for (;;) {
       try {
         await mkdir(gatePath, { mode: 0o700 });
-        break;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        if (await this.isStale(gatePath, this.gateStaleMs)) {
-          await rmdir(gatePath).catch(() => undefined);
+        if (await this.clearStaleGate(gatePath)) {
           continue;
         }
         if (Date.now() >= deadline) {
@@ -482,18 +502,71 @@ export class ProviderInstallationCoordinator {
           );
         }
         await delay(this.pollMs);
+        continue;
+      }
+      try {
+        await this.writeExclusiveJson(gateOwnerPath, {
+          id: gateId,
+          pid: process.pid,
+          ownerStartId: await this.getOwnStartId(),
+          createdAt: Date.now(),
+        } satisfies GateRecord);
+        break;
+      } catch (error) {
+        await rmdir(gatePath).catch(() => undefined);
+        throw error;
       }
     }
 
+    const stopHeartbeat = this.startHeartbeat(gateOwnerPath);
     try {
       return await operation();
     } finally {
-      await rmdir(gatePath).catch((error) => {
+      stopHeartbeat();
+      await this.releaseGate(gatePath, gateId);
+    }
+  }
+
+  private async clearStaleGate(gatePath: string): Promise<boolean> {
+    const ownerPath = join(gatePath, "owner.json");
+    try {
+      if (!(await this.isStale(ownerPath, this.gateStaleMs))) return false;
+      if (!(await this.staleRecordOwnerGone(ownerPath))) return false;
+      await unlink(ownerPath);
+      await rmdir(gatePath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
+      if (!(await this.isStale(gatePath, this.gateStaleMs))) return false;
+      try {
+        await rmdir(gatePath);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  private async releaseGate(gatePath: string, gateId: string): Promise<void> {
+    const ownerPath = join(gatePath, "owner.json");
+    try {
+      const record = JSON.parse(await readFile(ownerPath, "utf8")) as {
+        id?: unknown;
+      };
+      if (record.id !== gateId) {
         log.warn(
-          { error, gatePath },
-          "Failed to release provider installation gate",
+          { gatePath, gateId },
+          "Provider installation gate ownership changed before release",
         );
-      });
+        return;
+      }
+      await unlink(ownerPath);
+      await rmdir(gatePath);
+    } catch (error) {
+      log.warn(
+        { error, gatePath, gateId },
+        "Failed to release provider installation gate",
+      );
     }
   }
 
@@ -684,49 +757,87 @@ function delay(ms: number): Promise<void> {
 
 const execFileAsync = promisify(execFile);
 
-export const defaultOwnerProbe: InstallationOwnerProbe = {
-  aliveState(pid: number): "alive" | "missing" | "other-user" {
-    try {
-      process.kill(pid, 0);
-      return "alive";
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EPERM") {
-        return "other-user";
-      }
-      return "missing";
-    }
-  },
+interface DefaultOwnerProbeOptions {
+  platform?: NodeJS.Platform;
+  execFile?: (
+    command: string,
+    args: string[],
+    options: { encoding: "utf8"; timeout: number },
+  ) => Promise<{ stdout: string }>;
+}
 
-  async startId(pid: number): Promise<string | null> {
-    if (process.platform === "linux") {
+export function createDefaultOwnerProbe(
+  options: DefaultOwnerProbeOptions = {},
+): InstallationOwnerProbe {
+  const platform = options.platform ?? process.platform;
+  const runFile =
+    options.execFile ??
+    (async (command, args, commandOptions) => {
+      const { stdout } = await execFileAsync(command, args, commandOptions);
+      return { stdout: String(stdout) };
+    });
+
+  return {
+    aliveState(pid: number): "alive" | "missing" | "other-user" {
       try {
-        const statLine = await readFile(`/proc/${pid}/stat`, "utf8");
-        // Fields after the parenthesized comm: overall field 22 is the
-        // process start time in clock ticks since boot.
-        const afterComm = statLine.slice(statLine.lastIndexOf(")") + 2);
-        const startTime = afterComm.split(" ")[19];
-        return startTime || null;
-      } catch {
-        return null;
+        process.kill(pid, 0);
+        return "alive";
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EPERM") {
+          return "other-user";
+        }
+        return "missing";
       }
-    }
-    if (process.platform !== "win32") {
-      // macOS and other POSIX hosts have no /proc; ps runs only on the rare
-      // stale-cleanup path, never per admission.
+    },
+
+    async startId(pid: number): Promise<string | null> {
+      if (platform === "linux") {
+        try {
+          const statLine = await readFile(`/proc/${pid}/stat`, "utf8");
+          // Fields after the parenthesized comm: overall field 22 is the
+          // process start time in clock ticks since boot.
+          const afterComm = statLine.slice(statLine.lastIndexOf(")") + 2);
+          const startTime = afterComm.split(" ")[19];
+          return startTime || null;
+        } catch {
+          return null;
+        }
+      }
+      if (platform !== "win32") {
+        // macOS and other POSIX hosts have no /proc; ps runs only on the rare
+        // stale-cleanup path, never per admission.
+        try {
+          const { stdout } = await runFile(
+            "ps",
+            ["-p", String(pid), "-o", "lstart="],
+            { encoding: "utf8", timeout: 5_000 },
+          );
+          return stdout.trim() || null;
+        } catch {
+          return null;
+        }
+      }
       try {
-        const { stdout } = await execFileAsync(
-          "ps",
-          ["-p", String(pid), "-o", "lstart="],
+        const { stdout } = await runFile(
+          "powershell.exe",
+          [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            `((Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks)`,
+          ],
           { encoding: "utf8", timeout: 5_000 },
         );
         return stdout.trim() || null;
       } catch {
         return null;
       }
-    }
-    return null;
-  },
-};
+    },
+  };
+}
+
+export const defaultOwnerProbe = createDefaultOwnerProbe();
 
 export const providerInstallationCoordinator =
   new ProviderInstallationCoordinator();

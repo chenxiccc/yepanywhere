@@ -236,6 +236,61 @@ describe("ProjectScanner cache", () => {
     expect(await scanner.listProjects()).toHaveLength(2);
   });
 
+  it("does not join an obsolete scan after invalidation", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-one",
+      "sess-1",
+    );
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      cacheTtlMs: 60000,
+    });
+    const internals = scanner as unknown as {
+      scanProjects: () => Promise<Project[]>;
+    };
+    const originalScan = internals.scanProjects.bind(scanner);
+    let releaseFirstScan: (() => void) | null = null;
+    const firstScanGate = new Promise<void>((resolve) => {
+      releaseFirstScan = resolve;
+    });
+    let firstScanStarted: (() => void) | null = null;
+    const firstScanStart = new Promise<void>((resolve) => {
+      firstScanStarted = resolve;
+    });
+    let invocation = 0;
+    vi.spyOn(internals, "scanProjects").mockImplementation(async () => {
+      invocation += 1;
+      if (invocation === 1) {
+        const projects = await originalScan();
+        firstScanStarted?.();
+        await firstScanGate;
+        return projects;
+      }
+      return originalScan();
+    });
+
+    const obsoleteScan = scanner.listProjects();
+    await firstScanStart;
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-two",
+      "sess-2",
+    );
+    scanner.invalidateCache();
+
+    await expect(scanner.listProjects()).resolves.toHaveLength(2);
+    expect(invocation).toBe(2);
+    releaseFirstScan?.();
+    await expect(obsoleteScan).resolves.toHaveLength(1);
+  });
+
   it("serializes project snapshot persistence behind the active write", async () => {
     const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
     tempDirs.push(projectsDir);

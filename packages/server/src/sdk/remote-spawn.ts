@@ -7,6 +7,7 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { homedir } from "node:os";
+import { posix as posixPath, win32 as win32Path } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { getLogger } from "../logging/logger.js";
 import { quoteShellWord } from "../utils/posixShell.js";
@@ -112,30 +113,24 @@ export async function getRemoteHome(host: string): Promise<string | null> {
  * Return the home-relative suffix (starting with a separator) when the path
  * is the home directory itself or a descendant of it, else null.
  *
- * String-prefix matching alone is wrong: /home/user-backup starts with
- * /home/user but is a sibling, not a descendant. Only a component boundary
- * (path exhausted, or a `/` or `\` immediately after the home prefix)
- * counts as containment.
+ * Containment follows the local path flavor. Windows drive paths compare
+ * case-insensitively; POSIX paths remain case-sensitive.
  */
 export function homeRelativeSuffix(
   localPath: string,
   home: string,
 ): string | null {
-  // Ignore a trailing separator on the home directory so "/home/user/" and
-  // "/home/user" match the same paths; keep a bare root ("/", "C:\") intact.
-  let base = home;
-  while (
-    base.length > 1 &&
-    (base.endsWith("/") || base.endsWith("\\")) &&
-    !/^[A-Za-z]:[\\/]$/.test(base)
+  const pathApi = /^[A-Za-z]:[\\/]/.test(home) ? win32Path : posixPath;
+  const relative = pathApi.relative(home, localPath);
+  if (relative === "") return "";
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${pathApi.sep}`) ||
+    pathApi.isAbsolute(relative)
   ) {
-    base = base.slice(0, -1);
+    return null;
   }
-  if (!localPath.startsWith(base)) return null;
-  const suffix = localPath.slice(base.length);
-  if (suffix === "") return "";
-  if (suffix.startsWith("/") || suffix.startsWith("\\")) return suffix;
-  return null;
+  return pathApi.sep + relative;
 }
 
 /**
@@ -154,7 +149,11 @@ export function translateHomePath(
   // or a descendant; a sibling like /home/user-backup stays unchanged.
   const suffix = homeRelativeSuffix(localPath, localHome);
   if (suffix !== null) {
-    return remoteHome + suffix;
+    if (suffix === "") return remoteHome;
+    const remoteSeparator = /^[A-Za-z]:[\\/]/.test(remoteHome) ? "\\" : "/";
+    const remoteBase = remoteHome.replace(/[\\/]+$/, "");
+    const remoteSuffix = suffix.slice(1).replace(/[\\/]+/g, remoteSeparator);
+    return `${remoteBase}${remoteSeparator}${remoteSuffix}`;
   }
   return localPath;
 }
@@ -361,7 +360,7 @@ function toRemotePath(localPath: string): string {
   const suffix = homeRelativeSuffix(localPath, homedir());
   if (suffix !== null) {
     // Replace home directory with $HOME for remote expansion
-    return `$HOME${suffix}`;
+    return `$HOME${suffix.replaceAll("\\", "/")}`;
   }
 
   return localPath;

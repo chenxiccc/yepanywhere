@@ -6,6 +6,7 @@ import {
   type InstallationOwnerProbe,
   type ProviderInstallationBusyError,
   ProviderInstallationCoordinator,
+  createDefaultOwnerProbe,
   defaultOwnerProbe,
 } from "../../src/services/ProviderInstallationCoordinator.js";
 
@@ -174,6 +175,63 @@ describe("ProviderInstallationCoordinator", () => {
     ).resolves.toBe("updated");
   });
 
+  it("renews the admission gate while stale-owner probes are slow", async () => {
+    for (let index = 0; index < 7; index++) {
+      await writeStaleRecord(`read-slow-${index}.json`, {
+        id: `slow-${index}`,
+        family: FAMILY,
+        kind: "read",
+        pid: 12345 + index,
+        ownerStartId: `boot-${index}`,
+        createdAt: Date.now() - 60_000,
+      });
+    }
+
+    let measure = false;
+    let activeProbes = 0;
+    let maxActiveProbes = 0;
+    const firstMeasuredProbe = deferred();
+    const slowProbe: InstallationOwnerProbe = {
+      aliveState: () => "alive",
+      startId: async (pid) => {
+        if (!measure) return `boot-${pid - 12345}`;
+        activeProbes++;
+        maxActiveProbes = Math.max(maxActiveProbes, activeProbes);
+        firstMeasuredProbe.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 12));
+        activeProbes--;
+        return pid >= 12345 && pid < 12352
+          ? `boot-${pid - 12345}`
+          : "current-owner";
+      },
+    };
+    const coordinatorOptions = {
+      rootDir,
+      heartbeatMs: 5,
+      leaseStaleMs: 10,
+      gateStaleMs: 25,
+      gateWaitMs: 1_000,
+      pollMs: 2,
+      ownerProbe: slowProbe,
+    };
+    const first = new ProviderInstallationCoordinator(coordinatorOptions);
+    const second = new ProviderInstallationCoordinator(coordinatorOptions);
+
+    const primingLease = await first.acquireRuntimeLease(FAMILY);
+    await primingLease.release();
+    measure = true;
+
+    const snapshot = first.getSnapshot(FAMILY);
+    await firstMeasuredProbe.promise;
+    await new Promise((resolve) => setTimeout(resolve, 35));
+    const competingLease = second.acquireRuntimeLease(FAMILY);
+
+    await expect(snapshot).resolves.toMatchObject({ readers: 7 });
+    const lease = await competingLease;
+    await lease.release();
+    expect(maxActiveProbes).toBe(1);
+  });
+
   it("keeps a delayed-heartbeat runtime lease while its owner is alive", async () => {
     await writeStaleRecord("runtime-sleeping.json", {
       id: "sleeping",
@@ -281,6 +339,24 @@ describe("ProviderInstallationCoordinator", () => {
         defaultOwnerProbe.startId(process.pid),
       ).resolves.toBeTruthy();
     }
+  });
+
+  it("uses Windows process creation time as the owner generation", async () => {
+    const execFile = vi.fn(async () => ({ stdout: "638916751234567890\r\n" }));
+    const probe = createDefaultOwnerProbe({ platform: "win32", execFile });
+
+    await expect(probe.startId(4242)).resolves.toBe("638916751234567890");
+    expect(execFile).toHaveBeenCalledWith(
+      "powershell.exe",
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "((Get-Process -Id 4242 -ErrorAction Stop).StartTime.ToUniversalTime().Ticks)",
+      ],
+      { encoding: "utf8", timeout: 5_000 },
+    );
   });
 
   it("publishes a cross-process source generation after failure", async () => {

@@ -155,7 +155,10 @@ export class ProjectScanner {
   private cacheRevision = 0;
   private cleanRevision = 0;
   private snapshot: ProjectSnapshot | null = null;
-  private inFlightScan: Promise<ProjectSnapshot> | null = null;
+  private inFlightScan: {
+    promise: Promise<ProjectSnapshot>;
+    revision: number;
+  } | null = null;
   private pendingSnapshotSave: {
     snapshot: ProjectSnapshot;
     revision: number;
@@ -233,8 +236,8 @@ export class ProjectScanner {
       return this.snapshot;
     }
 
-    if (this.inFlightScan) {
-      return this.inFlightScan;
+    if (this.inFlightScan?.revision === scanRevision) {
+      return this.inFlightScan.promise;
     }
 
     const scanPromise = this.scanFromCacheOrFilesystem(
@@ -253,12 +256,12 @@ export class ProjectScanner {
         return snapshot;
       })
       .finally(() => {
-        if (this.inFlightScan === scanPromise) {
+        if (this.inFlightScan?.promise === scanPromise) {
           this.inFlightScan = null;
         }
       });
 
-    this.inFlightScan = scanPromise;
+    this.inFlightScan = { promise: scanPromise, revision: scanRevision };
     return scanPromise;
   }
 

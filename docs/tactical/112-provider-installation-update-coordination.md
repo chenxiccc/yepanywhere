@@ -89,6 +89,12 @@ Codex and Codex OSS discovery, model/catalog helpers, and session runtimes all
 join that boundary. A YA-owned npm replacement window therefore cannot be
 observed as an uninstall or reached by a new provider subprocess.
 
+The admission gate carries its own renewed owner record, so slow stale-owner
+probes cannot let a second process expire the critical section that is running
+them. Lease, writer, and gate records use process-start identity as well as PID;
+Windows obtains that identity from process creation time and fails closed when
+it cannot identify a new owner.
+
 The update transaction now admits one allowlisted npm mutation, verifies the
 result with production CLI discovery, publishes a persistent generation, and
 invalidates both aliases and their server-owned catalogs. It waits briefly for

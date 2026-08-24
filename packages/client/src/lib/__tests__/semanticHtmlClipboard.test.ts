@@ -57,4 +57,26 @@ describe("getSemanticHtmlClipboardPayload", () => {
     expect(payload?.text).toContain("Guide");
     expect(payload?.text).toContain("Rich text");
   });
+
+  it("allows only inert semantic elements and attributes", () => {
+    const payload = getSemanticHtmlClipboardPayloadFromHtml(`
+      <form action="https://attacker.test/submit">
+        <a href="javascript:alert('no')">linked text</a>
+        <input name="secret" value="copied">
+        <button formaction="https://attacker.test/button">Send</button>
+      </form>
+      <iframe src="https://attacker.test/embed">frame fallback</iframe>
+      <img src="https://attacker.test/pixel" alt="tracking pixel">
+      <table><tr><th scope="col" colspan="2" style="color:red">Safe</th></tr></table>
+    `);
+
+    expect(payload?.html).toContain("<a>linked text</a>");
+    expect(payload?.html).toContain("Send");
+    expect(payload?.html).toContain(
+      '<table><tbody><tr><th scope="col" colspan="2">Safe</th></tr></tbody></table>',
+    );
+    expect(payload?.html).not.toMatch(
+      /(?:href|src|action|formaction|input|button|iframe|img)=?/i,
+    );
+  });
 });

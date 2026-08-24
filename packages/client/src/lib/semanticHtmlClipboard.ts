@@ -1,12 +1,94 @@
-const PRESENTATION_ATTRIBUTES = new Set([
-  "background",
-  "bgcolor",
-  "class",
-  "color",
-  "fill",
-  "style",
-  "stroke",
+const SEMANTIC_ELEMENTS = new Set([
+  "A",
+  "ABBR",
+  "B",
+  "BLOCKQUOTE",
+  "BR",
+  "CAPTION",
+  "CITE",
+  "CODE",
+  "COL",
+  "COLGROUP",
+  "DD",
+  "DEL",
+  "DL",
+  "DT",
+  "EM",
+  "FIGCAPTION",
+  "FIGURE",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "HR",
+  "I",
+  "INS",
+  "KBD",
+  "LI",
+  "MARK",
+  "MATH",
+  "MENCLOSE",
+  "MFENCED",
+  "MFRAC",
+  "MI",
+  "MMULTISCRIPTS",
+  "MN",
+  "MO",
+  "MOVER",
+  "MPADDED",
+  "MPHANTOM",
+  "MROOT",
+  "MROW",
+  "MS",
+  "SEMANTICS",
+  "MSPACE",
+  "MSQRT",
+  "MSTYLE",
+  "MSUB",
+  "MSUBSUP",
+  "MSUP",
+  "MTABLE",
+  "MTD",
+  "MTEXT",
+  "MTR",
+  "MUNDER",
+  "MUNDEROVER",
+  "OL",
+  "P",
+  "PRE",
+  "Q",
+  "S",
+  "SAMP",
+  "SMALL",
+  "SPAN",
+  "STRONG",
+  "SUB",
+  "SUP",
+  "TABLE",
+  "TBODY",
+  "TD",
+  "TFOOT",
+  "TH",
+  "THEAD",
+  "TIME",
+  "TR",
+  "U",
+  "UL",
+  "VAR",
+  "ANNOTATION",
 ]);
+const SEMANTIC_ATTRIBUTES = new Map([
+  ["COL", new Set(["span"])],
+  ["COLGROUP", new Set(["span"])],
+  ["OL", new Set(["reversed", "start", "type"])],
+  ["TD", new Set(["colspan", "rowspan"])],
+  ["TH", new Set(["colspan", "rowspan", "scope"])],
+  ["TIME", new Set(["datetime"])],
+]);
+const ACTIVE_CONTENT_ELEMENTS =
+  "applet, audio, canvas, embed, iframe, object, script, style, svg, template, video";
 const TABLE_CONTEXT_ELEMENTS = new Set([
   "COLGROUP",
   "TABLE",
@@ -32,19 +114,21 @@ function removeKatexVisualBranches(fragment: DocumentFragment): void {
 function removePresentation(fragment: DocumentFragment): void {
   removeKatexVisualBranches(fragment);
 
-  for (const stylesheet of fragment.querySelectorAll(
-    'script, style, link[rel~="stylesheet"], meta, template, noscript',
+  for (const activeContent of fragment.querySelectorAll(
+    ACTIVE_CONTENT_ELEMENTS,
   )) {
-    stylesheet.remove();
+    activeContent.remove();
   }
 
   for (const element of fragment.querySelectorAll("*")) {
+    const tagName = element.tagName.toUpperCase();
+    if (!SEMANTIC_ELEMENTS.has(tagName)) {
+      element.replaceWith(...element.childNodes);
+      continue;
+    }
+    const allowedAttributes = SEMANTIC_ATTRIBUTES.get(tagName);
     for (const attribute of element.getAttributeNames()) {
-      const normalizedAttribute = attribute.toLowerCase();
-      if (
-        PRESENTATION_ATTRIBUTES.has(normalizedAttribute) ||
-        normalizedAttribute.startsWith("on")
-      ) {
+      if (!allowedAttributes?.has(attribute.toLowerCase())) {
         element.removeAttribute(attribute);
       }
     }

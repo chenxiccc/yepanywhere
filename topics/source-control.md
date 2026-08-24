@@ -375,10 +375,10 @@ refresh callers share one refresh.
 
 Live monitoring is an experimental server-wide Source Control option with a
 platform-dependent default: when no explicit stored choice exists it is On
-everywhere except macOS, which stays Off. macOS is the one
-default-unsupported platform — the 2026-08-21 FSEvents watcher-exhaustion
-incident platform keeps its mitigation posture, and even an explicit macOS
-opt-in runs poll-only. An explicit stored choice always wins over the
+only on Linux, whose bounded native-watcher profile has been measured. macOS
+stays Off after the 2026-08-21 FSEvents watcher-exhaustion incident. Windows
+also stays Off pending native platform measurement. Explicit opt-in on either
+platform runs poll-only. An explicit stored choice always wins over the
 platform default. Off advertises no `git-working-tree-sections` or
 complete-scan availability, accepts no worktree subscription, and owns no
 content watcher, Git-metadata watcher, reconciliation timer, or retry timer.
@@ -463,8 +463,14 @@ watched tree held 205–246 active watchers under 800 real create/delete churn
 cycles, never exceeded the ceiling, grew RSS by 2.3 MB, tripped the
 registration-churn circuit under runaway-rate churn, and released to zero
 watchers and subscribers. That measurement is the basis for the Linux
-default-on decision; macOS and Windows defaults do not rely on it because
-they allocate no native watchers.
+default-on decision. macOS and Windows remain default-off and allocate no
+native watchers even when explicitly enabled.
+
+The validation harness treats every scenario's subscription, manager, timers,
+native watchers, and temporary tree as one cleanup scope. Setup, Git, scan,
+watch, churn, and assertion failures all release the subscription, dispose the
+manager, and remove the temporary tree before the process exits; successful
+samples use the same final owner rather than a separate happy-path teardown.
 
 On Linux, YA watches content directories non-recursively. Git repositories and
 the omitted-prefix compatibility walk cover each enumerated content directory;
@@ -968,15 +974,15 @@ the expanded live snapshot and delta contract described above. Its absence
 keeps ID 38's static behavior and sends no worktree subscription. The Maintainer
 approved changing unpublished ID 41 to opt-in availability after the watcher
 exhaustion incident rather than publishing its unsafe version-implied default.
-With the platform-dependent monitoring default, non-macOS servers advertise
-IDs 41/42 out of the box while the effective setting is On; the optional-bit
+With the platform-dependent monitoring default, Linux servers advertise IDs
+41/42 out of the box while the effective setting is On; the optional-bit
 mechanism and the server-side rejection while Off are unchanged.
 `git-working-tree-complete-scan` (permanent ID 42, optional from `0.7.2`)
 separately owns exact filesystem totals and complete projection requests; its
 absence preserves ID 41's bounded inventory without a Show-all action. The
-permanent live-worktree-setting capability owns the additive default-off server
-setting; current clients require it as well as active ID 41 so a source-ahead
-server predating the kill switch cannot activate monitoring.
+permanent live-worktree-setting capability owns the additive, platform-
+dependent server setting; current clients require it as well as active ID 41
+so a source-ahead server predating the kill switch cannot activate monitoring.
 `git-incoming-commits` (permanent ID 39,
 version-implied from `0.7.1`) owns the local tracking-ref preview; its absence
 keeps upstream inert. None broadens a published Source Control capability. See

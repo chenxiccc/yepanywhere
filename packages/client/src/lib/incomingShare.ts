@@ -57,15 +57,12 @@ function isStoredIncomingShare(value: unknown): value is StoredIncomingShare {
   );
 }
 
-/**
- * Atomically remove one service-worker share and return browser File objects
- * accepted by the existing composer attachment pipeline.
- */
-export async function claimIncomingShare(id: string): Promise<File[]> {
+/** Read one service-worker share without consuming it. */
+export async function readIncomingShare(id: string): Promise<File[]> {
   const db = await openIncomingShareDb();
 
   return new Promise<File[]>((resolve, reject) => {
-    const transaction = db.transaction(INCOMING_SHARE_STORE_NAME, "readwrite");
+    const transaction = db.transaction(INCOMING_SHARE_STORE_NAME, "readonly");
     const store = transaction.objectStore(INCOMING_SHARE_STORE_NAME);
     let stored: unknown;
 
@@ -73,7 +70,6 @@ export async function claimIncomingShare(id: string): Promise<File[]> {
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       stored = request.result;
-      store.delete(id);
     };
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
@@ -93,5 +89,21 @@ export async function claimIncomingShare(id: string): Promise<File[]> {
         ),
       );
     };
+  }).finally(() => db.close());
+}
+
+/** Remove a share only after its consumer has accepted the files. */
+export async function acknowledgeIncomingShare(id: string): Promise<void> {
+  const db = await openIncomingShareDb();
+
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(INCOMING_SHARE_STORE_NAME, "readwrite");
+    const request = transaction
+      .objectStore(INCOMING_SHARE_STORE_NAME)
+      .delete(id);
+    request.onerror = () => reject(request.error);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+    transaction.oncomplete = () => resolve();
   }).finally(() => db.close());
 }

@@ -79,10 +79,10 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
-  it("defaults live worktree monitoring off only on macOS", () => {
+  it("defaults live worktree monitoring on only on Linux", () => {
     expect(defaultLiveWorktreeMonitoringEnabled("darwin")).toBe(false);
     expect(defaultLiveWorktreeMonitoringEnabled("linux")).toBe(true);
-    expect(defaultLiveWorktreeMonitoringEnabled("win32")).toBe(true);
+    expect(defaultLiveWorktreeMonitoringEnabled("win32")).toBe(false);
   });
 
   it("applies the platform monitoring default and persists an explicit choice", async () => {

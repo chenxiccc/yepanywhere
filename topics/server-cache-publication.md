@@ -81,8 +81,9 @@ index.
 `ProjectScanner` assigns every invalidation a new cache revision. A scan may be
 returned to the caller that started it, but it becomes the retained fresh
 snapshot only if no invalidation arrived during the scan. Otherwise the next
-ordinary project read scans again; completion cannot turn the dirty cache back
-to clean.
+ordinary project read starts or joins work for the new revision rather than
+waiting for the obsolete scan; completion cannot turn the dirty cache back to
+clean.
 
 Project snapshot persistence has one writer and at most one latest trailing
 snapshot. Writes use unique temporary files and rename, and an invalidated

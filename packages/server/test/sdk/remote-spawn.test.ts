@@ -11,6 +11,7 @@ describe("home-relative path containment", () => {
     ["/home/user/a/b", "/home/user/", "/a/b"],
     ["C:\\Users\\dev", "C:\\Users\\dev", ""],
     ["C:\\Users\\dev\\repo", "C:\\Users\\dev", "\\repo"],
+    ["C:\\Users\\Dev\\repo", "C:\\Users\\dev", "\\repo"],
   ])("splits %j against home %j", (localPath, home, suffix) => {
     expect(homeRelativeSuffix(localPath, home)).toBe(suffix);
   });
@@ -47,5 +48,15 @@ describe("translateHomePath", () => {
     expect(translateHomePath("/var/www/p", "/home/kg", "/Users/kg")).toBe(
       "/var/www/p",
     );
+  });
+
+  it("maps differently cased Windows home paths to POSIX remote homes", () => {
+    expect(
+      translateHomePath(
+        "C:\\Users\\Dev\\repo\\nested",
+        "C:\\Users\\dev",
+        "/home/dev",
+      ),
+    ).toBe("/home/dev/repo/nested");
   });
 });

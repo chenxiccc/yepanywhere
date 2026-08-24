@@ -329,8 +329,9 @@
 - cache-miss-accounting - Provider-normalized cache hit/miss evidence, human-turn idle gaps, empirical rate/provider views, and grouped event inspection.
 - provider-installation-updates - Cross-provider coordination for installation
   mutation, runtime leases, verified generations, and cache convergence.
-- live-worktree-resource-safety - Default-off live Source Control monitoring,
-  bounded native watchers, and fail-closed resource-exhaustion fallback.
+- live-worktree-resource-safety - Platform-dependent live Source Control
+  monitoring, bounded native watchers, and fail-closed resource-exhaustion
+  fallback.
 - at-session-launching - Opt-in scanner that launches due at/ queue jobs
   across projects through at-queue.
 - mobile-ime-delivery - Android IME-safe composer delivery and the default-off
@@ -339,11 +340,11 @@
   snapshots, invalidation fences, and serialized publication for retained
   server caches.
 - agent-session-access - Scripted local-agent session search/browse/messaging
-  over the existing REST surface; steward supervision; fs/git mirror rejected.
-- new-session-agent-tooling - Launch-time PATH scripts, capability fragment,
-  and vanilla instruction-scope option for supervised sessions.
-- ask-session - Agent-invocable ask-a-session command: dispatcher routing,
-  timeout/deferral reply contract, ask records, asks drawer.
+  over a scoped REST channel; boss supervision; fs/git mirror rejected.
+- new-session-agent-tooling - Launch-time PATH scripts, scoped API channel,
+  capability fragment, and virgin instruction-scope option.
+- ask-session - Exact-id agent ask plus structured candidate search, bounded
+  timeout/deferral reply contract, ask records, and an asks drawer.
 - boss-mode - Delegated-orchestration working mode: the user talks to one
   boss agent session that creates and supervises the rest.
 - project-code-names - Unique editable project shorthand for browser titles

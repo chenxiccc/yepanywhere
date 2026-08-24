@@ -411,7 +411,6 @@
   "projectQueueAgeHours": "{count} 小时前",
   "projectQueueAgeDays": "{count} 天前",
   "projectCardQueueCount": "项目队列条目：{count}",
-  "incomingShareAttachmentUnavailable": "无法附加共享的图片。请重新分享。",
   "inboxTitle": "收件箱",
   "inboxTitleWithProject": "{project} 收件箱",
   "inboxFilterProject": "项目",

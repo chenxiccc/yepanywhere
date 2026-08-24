@@ -236,18 +236,16 @@ export const CODEX_UPDATE_POLICIES = ["auto", "notify", "off"] as const;
 export type CodexUpdatePolicy = (typeof CODEX_UPDATE_POLICIES)[number];
 
 /**
- * Live worktree monitoring defaults on everywhere its resource profile is
- * safe. Linux uses the perf-validated bounded native watcher set; other
- * non-macOS platforms run poll-only bounded reconciliation with no native
- * allocation at all. macOS — the FSEvents watcher-exhaustion incident
- * platform — is the one default-unsupported platform and stays Off until
- * explicitly enabled (which also runs poll-only). An explicit stored
- * choice always wins over this default.
+ * Live worktree monitoring defaults on only where its resource profile has
+ * been measured. Linux uses the perf-validated bounded native watcher set.
+ * macOS stays Off after the FSEvents watcher-exhaustion incident, and Windows
+ * stays Off pending platform measurement. Explicit opt-in on either platform
+ * runs poll-only with no native allocation. A stored choice always wins.
  */
 export function defaultLiveWorktreeMonitoringEnabled(
   platform: NodeJS.Platform = process.platform,
 ): boolean {
-  return platform !== "darwin";
+  return platform === "linux";
 }
 
 /** Default settings */

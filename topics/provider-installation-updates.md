@@ -76,6 +76,15 @@ race where a new provider launch begins after the updater checked for readers
 but before it replaces the command. Project directories and Git metadata are
 never used for these locks.
 
+The short admission gate is itself an identity-bearing renewable lease. Its
+owner record carries PID and process-start generation, and a heartbeat remains
+active for the entire critical section, including stale lease probes. Another
+process may recover the gate only after both the heartbeat deadline and owner-
+generation check prove the recorded process is gone. Windows obtains that
+generation from the process creation time and refuses to create new
+coordination records when it cannot obtain one; PID liveness alone is never
+sufficient there because Windows can reuse a PID.
+
 An external package manager or provider-native self-updater cannot be required
 to honor YA's lock. Detection therefore still needs typed transient failures,
 bounded retry, and short negative retention, but YA must not pretend it can

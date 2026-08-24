@@ -11,12 +11,13 @@ Status: implemented and validated 2026-08-21.
 Superseded in part on 2026-08-21 after the follow-up harsh review: native
 watchers are now Linux-only (every other platform runs enabled monitoring
 poll-only with zero native allocation), a registration-churn window feeds the
-circuit, and the default became platform-dependent — On everywhere except
-macOS — after a recorded Linux bounded-resource validation. The current
+circuit, and the default became platform-dependent — On only on Linux — after
+a recorded Linux bounded-resource validation. macOS remains Off after the
+incident, and Windows remains Off pending native measurement. The current
 contract lives in
 [`topics/source-control.md`](../../topics/source-control.md)
 § Optional live project worktree ownership; this document keeps the original
-incident analysis and default-off decision as history.
+incident analysis and the original universal default-off decision as history.
 
 Related contracts:
 
@@ -81,8 +82,9 @@ incident.
 
 Live worktree monitoring is an experimental Source Control enhancement, not a
 core server responsibility. It is server-wide, persisted, configurable, and
-default-off for both new and existing installations. Missing stored state is
-Off; no migration silently preserves the former source-ahead default.
+platform-dependent when no stored choice exists: On only on measured Linux,
+Off on macOS and Windows. An explicit stored choice wins; no migration silently
+preserves the former source-ahead default.
 
 Off means exactly:
 
@@ -142,18 +144,19 @@ absent, the client makes no subscription and keeps that ID 38 behavior.
 
 ### 1 — publish the low-resource worktree contract
 
-Record the incident evidence, the default-off product decision, the exact Off
-invariant, the Source-route-only owner, resource circuit behavior, and the
-stable-release compatibility corpus in the owning topics before changing code.
+Record the incident evidence, the original default-off product decision, the
+exact Off invariant, the Source-route-only owner, resource circuit behavior,
+and the stable-release compatibility corpus in the owning topics before
+changing code.
 
-### 2 — make monitoring a server-owned opt-in
+### 2 — make monitoring a server-owned setting
 
-Add the persisted boolean setting with a false default and strict settings
-parser. Construct the manager in a disabled state when Off. A live setting
-transition to Off cancels pending acquisitions, clears subscribers, closes
-every content and metadata watcher, and clears every timer before the settings
-request completes. New subscriptions fail with a typed unavailable response
-without scanning the project.
+Add the persisted boolean setting with a strict settings parser and the
+platform default above when no value is stored. Construct the manager in a
+disabled state when Off. A live setting transition to Off cancels pending
+acquisitions, clears subscribers, closes every content and metadata watcher,
+and clears every timer before the settings request completes. New subscriptions
+fail with a typed unavailable response without scanning the project.
 
 The version route and relay compatibility snapshot advertise IDs 41/42 only
 when the effective setting is On. Add the permanent setting capability and

@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  acknowledgeIncomingShare,
   INCOMING_SHARE_QUERY_PARAM,
-  claimIncomingShare,
+  readIncomingShare,
 } from "../lib/incomingShare";
 
 interface IncomingShareOptions {
@@ -10,9 +11,9 @@ interface IncomingShareOptions {
   onError?: (error: Error) => void;
 }
 
-/** Claim a PWA image-share exactly once after its destination composer mounts. */
+/** Consume a PWA image share only after its destination accepts the files. */
 export function useIncomingShareFiles(
-  onFiles: (files: File[]) => void,
+  onFiles: (files: File[]) => void | Promise<void>,
   options: IncomingShareOptions = {},
 ): void {
   const { enabled = true, onError } = options;
@@ -46,27 +47,18 @@ export function useIncomingShareFiles(
       );
     };
 
-    void claimIncomingShare(shareId)
-      .then(
-        (files) => {
-          if (!mounted) return;
-          if (files.length === 0) {
-            throw new Error("The shared image is no longer available");
-          }
-          onFilesRef.current(files);
-          removeShareParam();
-        },
-        (reason: unknown) => {
-          if (!mounted) return;
-          const error =
-            reason instanceof Error
-              ? reason
-              : new Error("The shared image could not be read");
-          onErrorRef.current?.(error);
-          removeShareParam();
-        },
-      )
-      .catch((reason: unknown) => {
+    void (async () => {
+      try {
+        const files = await readIncomingShare(shareId);
+        if (!mounted) return;
+        if (files.length === 0) {
+          throw new Error("The shared image is no longer available");
+        }
+        await onFilesRef.current(files);
+        if (!mounted) return;
+        await acknowledgeIncomingShare(shareId);
+        if (mounted) removeShareParam();
+      } catch (reason: unknown) {
         if (!mounted) return;
         const error =
           reason instanceof Error
@@ -74,7 +66,8 @@ export function useIncomingShareFiles(
             : new Error("The shared image could not be attached");
         onErrorRef.current?.(error);
         removeShareParam();
-      });
+      }
+    })();
 
     return () => {
       mounted = false;

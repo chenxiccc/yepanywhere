@@ -254,14 +254,16 @@ queue mechanics.
 
 ## Worked instance: live worktree monitoring
 
-Source Control's lease-backed live filesystem snapshot is default-off. Core YA
+Source Control's lease-backed live filesystem snapshot defaults on only on
+Linux, where its bounded native-watcher profile has been measured. macOS stays
+off after its watcher-exhaustion incident, and Windows stays off pending native
+measurement; explicit opt-in on either uses poll-only reconciliation. Core YA
 sessions, static Git status, bounded working-tree inventory, explicit refresh,
-and file viewing do not require a server to retain native project watchers.
-Continuous monitoring is YA-novel, may scale with an externally controlled
-directory tree, and has no first-party-harness expectation that justifies
-background activation from transcript file links. An explicit server-wide
-Source Control setting may enable it; even then, hard watcher ceilings and
-resource-exhaustion fallback remain mandatory. See
+and file viewing do not require live monitoring. Continuous monitoring is
+YA-novel and may scale with an externally controlled directory tree, so the
+Linux default is a deliberate measured exception rather than a general
+promotion. Hard watcher ceilings and resource-exhaustion fallback remain
+mandatory wherever native watchers run. See
 [source-control](source-control.md) and
 [live-worktree-resource-safety](../docs/tactical/113-live-worktree-resource-safety.md).
 

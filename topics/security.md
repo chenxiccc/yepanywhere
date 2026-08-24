@@ -167,8 +167,9 @@ Configured Remote Executors are aliases in the YA server account's
 `~/.ssh/config`. YA launches the remote Claude-family provider through the
 system SSH client with `BatchMode=yes`, runs it as the selected remote SSH
 account, and synchronizes Claude session files with `rsync`. A home-relative
-local project path is mapped to the remote account's home; that mapping selects
-a working directory and is not confinement.
+local project path is mapped to the remote account's home using the local
+platform's path identity, including case-insensitive Windows drive paths; that
+mapping selects a working directory and is not confinement.
 
 An SSH-backed agent has the authority of the remote SSH account, subject only
 to controls enforced on that remote host. Local **File access** settings do not

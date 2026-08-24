@@ -159,7 +159,6 @@
   "projectsDeleteFailed": "Échec de la suppression du projet",
   "projectsEmptyTitle": "Aucun projet pour le moment",
   "projectsEmptyDescription": "Ajoutez un projet ci-dessus ou lancez une session dans un dossier, elle apparaîtra automatiquement ici.",
-  "incomingShareAttachmentUnavailable": "L’image partagée n’a pas pu être jointe. Partagez-la à nouveau.",
   "inboxTitle": "Boîte de réception",
   "inboxTitleWithProject": "Boîte de réception de {project}",
   "inboxFilterProject": "Projet",

@@ -131,6 +131,25 @@ import {
 
 describe("browserDebugLeaseController", () => {
   const extraControllers: BrowserDebugLeaseController[] = [];
+  const heldPageLocks = new Set<string>();
+  const pageLockManager = {
+    async request(
+      name: string,
+      _options: { ifAvailable: true; mode: "exclusive" },
+      callback: (lock: unknown | null) => Promise<void> | void,
+    ): Promise<void> {
+      if (heldPageLocks.has(name)) {
+        await callback(null);
+        return;
+      }
+      heldPageLocks.add(name);
+      try {
+        await callback({ name });
+      } finally {
+        heldPageLocks.delete(name);
+      }
+    },
+  };
 
   async function uploadedEvents(
     controller: BrowserDebugLeaseController,
@@ -150,6 +169,11 @@ describe("browserDebugLeaseController", () => {
 
   beforeEach(() => {
     mocks.reset();
+    heldPageLocks.clear();
+    Object.defineProperty(window.navigator, "locks", {
+      configurable: true,
+      value: pageLockManager,
+    });
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn(() => 1),
@@ -166,6 +190,7 @@ describe("browserDebugLeaseController", () => {
     mocks.releaseLease();
     mocks.releaseDelete();
     mocks.releasePoll();
+    Reflect.deleteProperty(window.navigator, "locks");
     vi.unstubAllGlobals();
   });
 
@@ -421,9 +446,12 @@ describe("browserDebugLeaseController", () => {
     const expiresAtMs = browserDebugLeaseController.getSnapshot().expiresAtMs;
     const livePoll = mocks.calls.find((call) => call.path.endsWith("/poll"));
     window.dispatchEvent(new Event("pagehide"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(livePoll?.options?.signal?.aborted).toBe(true);
-    const reloadedController = new BrowserDebugLeaseController();
+    const reloadedController = new BrowserDebugLeaseController({
+      canRestorePersistedLease: () => true,
+    });
     extraControllers.push(reloadedController);
 
     expect(reloadedController.getSnapshot()).toMatchObject({
@@ -455,6 +483,24 @@ describe("browserDebugLeaseController", () => {
     );
   });
 
+  it("does not let two pages resume the same controller factor", async () => {
+    await browserDebugLeaseController.enable("session-1");
+    const pollCount = mocks.calls.filter((call) =>
+      call.path.endsWith("/poll"),
+    ).length;
+    const duplicatedController = new BrowserDebugLeaseController({
+      canRestorePersistedLease: () => true,
+    });
+    extraControllers.push(duplicatedController);
+
+    await duplicatedController.reconcilePersistedLease();
+
+    expect(duplicatedController.getSnapshot().phase).toBe("inactive");
+    expect(
+      mocks.calls.filter((call) => call.path.endsWith("/poll")),
+    ).toHaveLength(pollCount);
+  });
+
   it("suspends on page hide and reconnects on page show", async () => {
     await browserDebugLeaseController.enable("session-1");
     const expiresAtMs = browserDebugLeaseController.getSnapshot().expiresAtMs;
@@ -476,6 +522,11 @@ describe("browserDebugLeaseController", () => {
     );
 
     window.dispatchEvent(new Event("pageshow"));
+    await vi.waitFor(() => {
+      expect(
+        mocks.calls.filter((call) => call.path.endsWith("/poll")),
+      ).toHaveLength(2);
+    });
     mocks.releasePoll();
     await vi.waitFor(() => {
       expect(browserDebugLeaseController.getSnapshot()).toMatchObject({
@@ -485,8 +536,10 @@ describe("browserDebugLeaseController", () => {
       });
     });
 
-    expect(
-      mocks.calls.filter((call) => call.path.endsWith("/poll")),
-    ).toHaveLength(3);
+    await vi.waitFor(() => {
+      expect(
+        mocks.calls.filter((call) => call.path.endsWith("/poll")),
+      ).toHaveLength(3);
+    });
   });
 });

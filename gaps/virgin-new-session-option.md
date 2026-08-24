@@ -1,14 +1,16 @@
-# New session lacks a "vanilla (skip user AGENTS.md)" option
+# New session lacks a "virgin (skip user AGENTS.md)" option
 
 Missing feature: a new-session launch option that gives the agent a
-provider-default instruction environment — no user-global
+virgin instruction environment — no user-global
 `AGENTS.md`/`CLAUDE.md` layer — while keeping project instructions,
 auth, and provider configuration. Wanted so agent-tool and boss
 launches (`topics/new-session-agent-tooling.md`) can start workers that
 are not conditioned by the operator's personal instruction corpus.
 
-Opt-in per launch, default unchanged (vanilla-defaults; the option name
-deliberately reuses "vanilla" in that topic's provider-default sense).
+Opt-in per launch, default unchanged. `vanilla-defaults.md` still governs the
+default: ordinary first-party provider behavior includes the user's global
+instruction layer. *Virgin* names the deliberate removal and does not redefine
+*vanilla*.
 
 ## Per-provider mechanism
 
@@ -19,7 +21,7 @@ deliberately reuses "vanilla" in that topic's provider-default sense).
   implementation that the user tier covers user-global CLAUDE.md, not
   only user settings.
 - **Codex**: no per-file switch; redirect `CODEX_HOME` to a reused
-  replica root, e.g. `{dataDir}/codex-vanilla` (per-profile isolation
+  replica root, e.g. `{dataDir}/codex-virgin` (per-profile isolation
   for free), containing:
   - `auth.json` symlinked to the real `~/.codex/auth.json`, or
     copied-when-modified (freshness check at each launch). Verify how
@@ -30,7 +32,7 @@ deliberately reuses "vanilla" in that topic's provider-default sense).
   - `config.toml` symlinked or copied the same way (model/provider/MCP
     config is not the layer being removed).
   - no user `AGENTS.md` — the point of the replica.
-  - `sessions/` as a real directory: vanilla rollouts land here.
+  - `sessions/` as a real directory: virgin rollouts land here.
 
 ## Session discovery for the replica root
 
@@ -39,7 +41,7 @@ deliberately reuses "vanilla" in that topic's provider-default sense).
 replica is YA-owned at a well-known path, so teach the Codex scanner to
 include it as a second root whenever it exists. That also discovers
 sessions started *outside* YA by agent tools that exported
-`CODEX_HOME={dataDir}/codex-vanilla` themselves. Alternative: symlink
+`CODEX_HOME={dataDir}/codex-virgin` themselves. Alternative: symlink
 the replica's `sessions/` back to the real root so every rollout lands
 in one store and the scanner needs no change — simpler, but symlink
 semantics on Windows make the two-root scan the portable design
@@ -51,7 +53,7 @@ Thread it exactly like `sandboxLevel`, the existing per-session
 provider-environment option:
 
 1. Add an optional field to `StartSessionBody` (e.g.
-   `instructionScope?: "standard" | "vanilla"`), parsed and validated at
+   `instructionScope?: "standard" | "virgin"`), parsed and validated at
    the route boundary in `routes/sessions.ts` beside
    `parseSessionSandboxLevel`, on both the project-scoped and
    project-inferring create routes.
@@ -61,7 +63,7 @@ provider-environment option:
    Codex sets `CODEX_HOME` to the replica in the child spawn env (after
    ensuring/refreshing the replica). Precedent:
    `session-sandbox.ts` already sets `sandboxEnv.CODEX_HOME =
-   providerStateDir` for sandboxed sessions; a sandboxed vanilla launch
+   providerStateDir` for sandboxed sessions; a sandboxed virgin launch
    composes by omitting user instruction files from the sandbox state
    dir rather than double-redirecting.
 4. Persist the choice in session metadata and reapply on resume and

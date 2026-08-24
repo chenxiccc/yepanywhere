@@ -47,6 +47,7 @@ type ConsoleMethod = "debug" | "error" | "info" | "log" | "warn";
 
 const TAB_ID_STORAGE_KEY = "ya:browser-debug-tab-id";
 const LEASE_STORAGE_KEY = "ya:browser-debug-active-lease-v1";
+const LEASE_PAGE_LOCK_PREFIX = "ya:browser-debug-active-lease:";
 const FLUSH_INTERVAL_MS = 1_000;
 const EVENT_QUEUE_LIMIT = 500;
 const SERIALIZE_DEPTH = 4;
@@ -65,6 +66,27 @@ interface StoredBrowserDebugLease {
   tabId: string;
   expiresAt: string;
   sourceKey: string;
+}
+
+interface BrowserTabLockManager {
+  request(
+    name: string,
+    options: { ifAvailable: true; mode: "exclusive" },
+    callback: (lock: unknown | null) => Promise<void> | void,
+  ): Promise<unknown>;
+}
+
+function getBrowserTabLockManager(): BrowserTabLockManager | null {
+  const locks = (navigator as Navigator & { locks?: BrowserTabLockManager })
+    .locks;
+  return locks ?? null;
+}
+
+function navigationAllowsLeaseRestore(): boolean {
+  const navigation = performance.getEntriesByType?.("navigation")[0] as
+    | PerformanceNavigationTiming
+    | undefined;
+  return navigation?.type === "reload";
 }
 
 function clearStoredLease(expectedLeaseId?: string): void {
@@ -334,15 +356,23 @@ export class BrowserDebugLeaseController {
   private enableAttempt = 0;
   private cleanupInstrumentation: (() => void) | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private ownedPageLeaseId: string | null = null;
+  private releasePageOwnership: (() => void) | null = null;
   private pageHideHandler = () => {
     this.suspendLocalLease();
   };
   private pageShowHandler = () => {
-    void this.reconcilePersistedLease();
+    setTimeout(() => void this.reconcilePersistedLease(), 0);
   };
 
-  constructor() {
+  constructor(options: { canRestorePersistedLease?: () => boolean } = {}) {
     if (this.persistedLease) {
+      const canRestore =
+        options.canRestorePersistedLease?.() ?? navigationAllowsLeaseRestore();
+      if (!canRestore) {
+        this.finishPersistedLease(this.persistedLease);
+        return;
+      }
       this.schedulePersistedExpiry(this.persistedLease);
     }
   }
@@ -362,6 +392,10 @@ export class BrowserDebugLeaseController {
     const persistedLease = this.persistedLease;
     const expiresAtMs = Date.parse(persistedLease.expiresAt);
     if (expiresAtMs <= Date.now()) {
+      this.finishPersistedLease(persistedLease);
+      return;
+    }
+    if (!(await this.acquirePageOwnership(persistedLease.leaseId))) {
       this.finishPersistedLease(persistedLease);
       return;
     }
@@ -470,6 +504,17 @@ export class BrowserDebugLeaseController {
         expiresAt: response.lease.expiresAt,
         sourceKey: sourceRuntime.sourceKey,
       };
+      if (!(await this.acquirePageOwnership(persistedLease.leaseId))) {
+        await sourceFetch(`/browser-debug/leases/${response.lease.leaseId}`, {
+          method: "DELETE",
+          headers: {
+            "X-YA-Browser-Debug-Controller": response.lease.controllerToken,
+          },
+        }).catch(() => undefined);
+        throw new Error(
+          "Exclusive browser-tab ownership is unavailable; the diagnostic lease was not enabled",
+        );
+      }
       if (!writeStoredLease(persistedLease)) {
         await sourceFetch(`/browser-debug/leases/${response.lease.leaseId}`, {
           method: "DELETE",
@@ -609,6 +654,7 @@ export class BrowserDebugLeaseController {
     this.pollGeneration += 1;
     this.pollAbortController?.abort();
     this.pollAbortController = null;
+    this.releaseOwnedPage();
     this.lease = null;
     this.sourceFetch = null;
     this.cleanupInstrumentation?.();
@@ -706,6 +752,7 @@ export class BrowserDebugLeaseController {
     }
     if (persistedLease) clearStoredLease(persistedLease.leaseId);
     else clearStoredLease();
+    this.releaseOwnedPage();
     this.persistedLease = null;
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
@@ -716,6 +763,53 @@ export class BrowserDebugLeaseController {
       expiresAtMs: null,
       error: null,
     });
+  }
+
+  private async acquirePageOwnership(leaseId: string): Promise<boolean> {
+    if (this.ownedPageLeaseId === leaseId) return true;
+    if (this.ownedPageLeaseId) return false;
+    const locks = getBrowserTabLockManager();
+    if (!locks) return false;
+
+    let settleAcquired: (acquired: boolean) => void = () => undefined;
+    const acquired = new Promise<boolean>((resolve) => {
+      settleAcquired = resolve;
+    });
+    let releaseLock: () => void = () => undefined;
+    const holdLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    let settled = false;
+    const settle = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      settleAcquired(value);
+    };
+
+    void locks
+      .request(
+        `${LEASE_PAGE_LOCK_PREFIX}${leaseId}`,
+        { ifAvailable: true, mode: "exclusive" },
+        async (lock) => {
+          if (!lock) {
+            settle(false);
+            return;
+          }
+          this.ownedPageLeaseId = leaseId;
+          this.releasePageOwnership = releaseLock;
+          settle(true);
+          await holdLock;
+        },
+      )
+      .catch(() => settle(false));
+    return acquired;
+  }
+
+  private releaseOwnedPage(): void {
+    const release = this.releasePageOwnership;
+    this.releasePageOwnership = null;
+    this.ownedPageLeaseId = null;
+    release?.();
   }
 
   private headers(lease: BrowserDebugLeaseDescriptor): HeadersInit {

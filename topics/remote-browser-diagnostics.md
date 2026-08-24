@@ -74,7 +74,12 @@ tab.
 
 The tab keeps a versioned session-storage continuation marker containing the
 controller factor, source identity, session identity, and expiry, but not the
-agent's grant secret. Enabling fails closed when that marker cannot be stored.
+agent's grant secret. Enabling fails closed when that marker cannot be stored
+or the browser cannot provide an exclusive page lock for the lease. Only a
+browser navigation identified as a reload may restore the marker; a duplicated
+or newly opened tab discards its cloned marker. The restoring page must also
+acquire the lease's exclusive page lock before it receives the controller
+factor or begins polling, so two live page controllers cannot share authority.
 After a browser reload, the client immediately restores the red active warning,
 reinstalls collection, and resumes the existing lease against its originating
 source. The lease id, grant, and original expiry remain unchanged; reload never
@@ -331,5 +336,7 @@ weaken or ambiguously redefine the deliberately full-access v1 contract.
 - Reload keeps the same lease id and original expiry, resumes its poll without
   retaining the agent grant secret, and offers explicit reconnect when that
   continuation is disconnected.
+- Duplicating a tab does not restore the cloned continuation, and two page
+  controllers cannot poll with one controller factor.
 - Connecting the same client to 0.7.0 or 0.6.2 exposes no control and sends no
   browser-debug request.

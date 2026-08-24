@@ -26,7 +26,10 @@ import { mkdtemp } from "node:fs/promises";
 import * as os from "node:os";
 import { join } from "node:path";
 import type { UrlProjectId } from "../packages/shared/src/projectId.js";
-import { ProjectWorktreeSubscriptionManager } from "../packages/server/src/projects/projectWorktreeSubscriptionManager.js";
+import {
+  type ProjectWorktreeSubscription,
+  ProjectWorktreeSubscriptionManager,
+} from "../packages/server/src/projects/projectWorktreeSubscriptionManager.js";
 
 interface Sample {
   label: string;
@@ -151,63 +154,85 @@ async function settle(
   }
 }
 
+async function cleanupScenario(
+  root: string,
+  manager: ProjectWorktreeSubscriptionManager | null,
+  subscription: ProjectWorktreeSubscription | null,
+): Promise<void> {
+  try {
+    subscription?.release();
+    if (manager && subscription) await settle(manager, 1_000, 10_000);
+  } finally {
+    try {
+      manager?.dispose();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+}
+
 async function scenarioLargeTree(
   startedAt: number,
   samples: Sample[],
   findings: string[],
 ): Promise<void> {
   const root = await mkdtemp(join(os.tmpdir(), "ya-watch-large-"));
-  const directories = Number(process.env.LARGE_TREE_DIRS ?? 12_000);
-  console.log(`\n== large-tree: ${directories} directories ==`);
-  buildTree(join(root, "tree"), directories);
-  initGitRepo(root);
+  let manager: ProjectWorktreeSubscriptionManager | null = null;
+  let subscription: ProjectWorktreeSubscription | null = null;
+  try {
+    const directories = Number(process.env.LARGE_TREE_DIRS ?? 12_000);
+    console.log(`\n== large-tree: ${directories} directories ==`);
+    buildTree(join(root, "tree"), directories);
+    initGitRepo(root);
 
-  const manager = new ProjectWorktreeSubscriptionManager({
-    scanner: scannerFor(root),
-  });
-  samples.push(sample("large-tree:before-subscribe", startedAt, manager));
-  const subscription = manager.subscribe(
-    "large-tree" as UrlProjectId,
-    { tracked: true, untracked: true, ignored: false },
-    () => {},
-  );
-  await subscription.ready;
-  await settle(manager);
-  const active = sample("large-tree:active", startedAt, manager);
-  samples.push(active);
-  if (active.diagnostics.circuitReason !== "watcher-limit") {
-    findings.push(
-      `large-tree: expected watcher-limit circuit, saw ${active.diagnostics.circuitReason}`,
+    manager = new ProjectWorktreeSubscriptionManager({
+      scanner: scannerFor(root),
+    });
+    samples.push(sample("large-tree:before-subscribe", startedAt, manager));
+    subscription = manager.subscribe(
+      "large-tree" as UrlProjectId,
+      { tracked: true, untracked: true, ignored: false },
+      () => {},
     );
-  }
-  if (active.diagnostics.watchedDirectories !== 0) {
-    findings.push(
-      `large-tree: circuit left ${active.diagnostics.watchedDirectories} native watchers open`,
-    );
-  }
+    await subscription.ready;
+    await settle(manager);
+    const active = sample("large-tree:active", startedAt, manager);
+    samples.push(active);
+    if (active.diagnostics.circuitReason !== "watcher-limit") {
+      findings.push(
+        `large-tree: expected watcher-limit circuit, saw ${active.diagnostics.circuitReason}`,
+      );
+    }
+    if (active.diagnostics.watchedDirectories !== 0) {
+      findings.push(
+        `large-tree: circuit left ${active.diagnostics.watchedDirectories} native watchers open`,
+      );
+    }
 
-  // Hold through two 30-second polling fallback ticks; RSS must stay flat
-  // and cumulative registrations must not climb (no allocation retry).
-  const cumulativeBefore = active.diagnostics.cumulativeRegistrations;
-  await delay(65_000);
-  const held = sample("large-tree:after-two-poll-ticks", startedAt, manager);
-  samples.push(held);
-  if (held.diagnostics.cumulativeRegistrations !== cumulativeBefore) {
-    findings.push(
-      "large-tree: cumulative registrations climbed while the circuit was open",
-    );
-  }
-  if (held.rssMB > active.rssMB + 100) {
-    findings.push(
-      `large-tree: RSS grew ${Math.round(held.rssMB - active.rssMB)}MB on the polling fallback`,
-    );
-  }
+    // Hold through two 30-second polling fallback ticks; RSS must stay flat
+    // and cumulative registrations must not climb (no allocation retry).
+    const cumulativeBefore = active.diagnostics.cumulativeRegistrations;
+    await delay(65_000);
+    const held = sample("large-tree:after-two-poll-ticks", startedAt, manager);
+    samples.push(held);
+    if (held.diagnostics.cumulativeRegistrations !== cumulativeBefore) {
+      findings.push(
+        "large-tree: cumulative registrations climbed while the circuit was open",
+      );
+    }
+    if (held.rssMB > active.rssMB + 100) {
+      findings.push(
+        `large-tree: RSS grew ${Math.round(held.rssMB - active.rssMB)}MB on the polling fallback`,
+      );
+    }
 
-  subscription.release();
-  await settle(manager, 1_000, 10_000);
-  samples.push(sample("large-tree:released", startedAt, manager));
-  manager.dispose();
-  rmSync(root, { recursive: true, force: true });
+    subscription.release();
+    subscription = null;
+    await settle(manager, 1_000, 10_000);
+    samples.push(sample("large-tree:released", startedAt, manager));
+  } finally {
+    await cleanupScenario(root, manager, subscription);
+  }
 }
 
 async function scenarioWatchedChurn(
@@ -216,79 +241,86 @@ async function scenarioWatchedChurn(
   findings: string[],
 ): Promise<void> {
   const root = await mkdtemp(join(os.tmpdir(), "ya-watch-churn-"));
-  const directories = Number(process.env.WATCHED_TREE_DIRS ?? 200);
-  const rounds = Number(process.env.CHURN_ROUNDS ?? 20);
-  const batch = Number(process.env.CHURN_BATCH ?? 40);
-  console.log(
-    `\n== watched-churn: ${directories} directories, ${rounds}x${batch} churn ==`,
-  );
-  buildTree(join(root, "tree"), directories);
-  initGitRepo(root);
-
-  const manager = new ProjectWorktreeSubscriptionManager({
-    scanner: scannerFor(root),
-  });
-  const subscription = manager.subscribe(
-    "watched-churn" as UrlProjectId,
-    { tracked: true, untracked: true, ignored: false },
-    () => {},
-  );
-  await subscription.ready;
-  await settle(manager);
-  const active = sample("watched-churn:active", startedAt, manager);
-  samples.push(active);
-  if (active.diagnostics.circuitOpen) {
-    findings.push(
-      `watched-churn: unexpected circuit ${active.diagnostics.circuitReason}`,
+  let manager: ProjectWorktreeSubscriptionManager | null = null;
+  let subscription: ProjectWorktreeSubscription | null = null;
+  try {
+    const directories = Number(process.env.WATCHED_TREE_DIRS ?? 200);
+    const rounds = Number(process.env.CHURN_ROUNDS ?? 20);
+    const batch = Number(process.env.CHURN_BATCH ?? 40);
+    console.log(
+      `\n== watched-churn: ${directories} directories, ${rounds}x${batch} churn ==`,
     );
-  }
-  if (active.diagnostics.watchedDirectories === 0) {
-    findings.push("watched-churn: no native watchers were established");
-  }
-  if (
-    active.diagnostics.watchedDirectories >
-    active.diagnostics.maxWatchedDirectories
-  ) {
-    findings.push("watched-churn: active watchers exceeded the ceiling");
-  }
+    buildTree(join(root, "tree"), directories);
+    initGitRepo(root);
 
-  const churnParent = join(root, "tree", "churn-live");
-  for (let round = 0; round < rounds; round += 1) {
-    mkdirSync(churnParent, { recursive: true });
-    for (let index = 0; index < batch; index += 1) {
-      mkdirSync(join(churnParent, `c${index}`));
-    }
-    await delay(400);
-    rmSync(churnParent, { recursive: true, force: true });
-    await delay(400);
-    const current = manager.diagnostics();
-    if (current.watchedDirectories > current.maxWatchedDirectories) {
+    manager = new ProjectWorktreeSubscriptionManager({
+      scanner: scannerFor(root),
+    });
+    subscription = manager.subscribe(
+      "watched-churn" as UrlProjectId,
+      { tracked: true, untracked: true, ignored: false },
+      () => {},
+    );
+    await subscription.ready;
+    await settle(manager);
+    const active = sample("watched-churn:active", startedAt, manager);
+    samples.push(active);
+    if (active.diagnostics.circuitOpen) {
       findings.push(
-        `watched-churn: round ${round} exceeded the watcher ceiling`,
+        `watched-churn: unexpected circuit ${active.diagnostics.circuitReason}`,
       );
     }
-  }
-  await settle(manager);
-  const churned = sample("watched-churn:after-churn", startedAt, manager);
-  samples.push(churned);
-  if (churned.rssMB > active.rssMB + 100) {
-    findings.push(
-      `watched-churn: RSS grew ${Math.round(churned.rssMB - active.rssMB)}MB during churn`,
-    );
-  }
+    if (active.diagnostics.watchedDirectories === 0) {
+      findings.push("watched-churn: no native watchers were established");
+    }
+    if (
+      active.diagnostics.watchedDirectories >
+      active.diagnostics.maxWatchedDirectories
+    ) {
+      findings.push("watched-churn: active watchers exceeded the ceiling");
+    }
 
-  subscription.release();
-  await settle(manager, 1_000, 10_000);
-  const released = sample("watched-churn:released", startedAt, manager);
-  samples.push(released);
-  if (
-    released.diagnostics.watchedDirectories !== 0 ||
-    released.diagnostics.subscribers !== 0
-  ) {
-    findings.push("watched-churn: release left watchers or subscribers alive");
+    const churnParent = join(root, "tree", "churn-live");
+    for (let round = 0; round < rounds; round += 1) {
+      mkdirSync(churnParent, { recursive: true });
+      for (let index = 0; index < batch; index += 1) {
+        mkdirSync(join(churnParent, `c${index}`));
+      }
+      await delay(400);
+      rmSync(churnParent, { recursive: true, force: true });
+      await delay(400);
+      const current = manager.diagnostics();
+      if (current.watchedDirectories > current.maxWatchedDirectories) {
+        findings.push(
+          `watched-churn: round ${round} exceeded the watcher ceiling`,
+        );
+      }
+    }
+    await settle(manager);
+    const churned = sample("watched-churn:after-churn", startedAt, manager);
+    samples.push(churned);
+    if (churned.rssMB > active.rssMB + 100) {
+      findings.push(
+        `watched-churn: RSS grew ${Math.round(churned.rssMB - active.rssMB)}MB during churn`,
+      );
+    }
+
+    subscription.release();
+    subscription = null;
+    await settle(manager, 1_000, 10_000);
+    const released = sample("watched-churn:released", startedAt, manager);
+    samples.push(released);
+    if (
+      released.diagnostics.watchedDirectories !== 0 ||
+      released.diagnostics.subscribers !== 0
+    ) {
+      findings.push(
+        "watched-churn: release left watchers or subscribers alive",
+      );
+    }
+  } finally {
+    await cleanupScenario(root, manager, subscription);
   }
-  manager.dispose();
-  rmSync(root, { recursive: true, force: true });
 }
 
 async function main(): Promise<void> {

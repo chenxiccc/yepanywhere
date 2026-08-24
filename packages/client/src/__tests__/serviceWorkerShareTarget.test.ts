@@ -4,7 +4,10 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { indexedDB } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { claimIncomingShare } from "../lib/incomingShare";
+import {
+  acknowledgeIncomingShare,
+  readIncomingShare,
+} from "../lib/incomingShare";
 
 const serviceWorkerSource = readFileSync(
   new URL("../../public/sw.js", import.meta.url),
@@ -107,14 +110,15 @@ describe("service worker image share target", () => {
     expect(target.searchParams.get("tailTurns")).toBe("8");
     expect(shareId).toMatch(/^[a-f0-9]{32}$/);
 
-    const files = await claimIncomingShare(shareId ?? "");
+    const files = await readIncomingShare(shareId ?? "");
     expect(files).toHaveLength(1);
     expect(files[0]).toMatchObject({
       name: "tablet-screenshot.png",
       type: "image/png",
       size: 11,
     });
-    await expect(claimIncomingShare(shareId ?? "")).resolves.toEqual([]);
+    await acknowledgeIncomingShare(shareId ?? "");
+    await expect(readIncomingShare(shareId ?? "")).resolves.toEqual([]);
   });
 
   it("opens New Session in the focused relay context without an active session", async () => {
@@ -147,6 +151,27 @@ describe("service worker image share target", () => {
     const response = await handle({ formData: async () => formData });
 
     expect(response.status).toBe(415);
+  });
+
+  it("rejects shares that exceed the file-count or byte bounds", async () => {
+    const handle = loadServiceWorker([]);
+    const image = (size: number) => ({
+      arrayBuffer: async () => new ArrayBuffer(0),
+      lastModified: Date.now(),
+      name: "screen.png",
+      size,
+      type: "image/png",
+    });
+    const requestWith = (images: ReturnType<typeof image>[]) => ({
+      formData: async () => ({ getAll: () => images }) as unknown as FormData,
+    });
+
+    await expect(
+      handle(requestWith(Array.from({ length: 9 }, () => image(1)))),
+    ).resolves.toMatchObject({ status: 413 });
+    await expect(
+      handle(requestWith([image(64 * 1024 * 1024 + 1)])),
+    ).resolves.toMatchObject({ status: 413 });
   });
 });
 

@@ -1,8 +1,8 @@
 # Agent Session Access
 
-> Proposal: local agents — first consumer, a supervising boss agent —
-> search, browse, and message YA sessions through a small shipped script
-> layer over the existing localhost REST surface; a YA-written
+> Proposal: local agents — first consumer, a supervising boss agent — search,
+> browse, and message YA sessions through shipped scripts over a scoped channel
+> to the existing REST application service; a YA-written
 > filesystem/git mirror of session state is rejected.
 
 Topic: agent-session-access
@@ -10,7 +10,7 @@ Topic: agent-session-access
 Status: direction proposal, 2026-08-24. Nothing is implemented; the
 script layer, the search route, and the boss conventions below are
 candidate work, not contracts. The launch-time half (PATH injection,
-capability fragment, vanilla instruction scope) lives in
+capability fragment, scoped endpoint channel, virgin instruction scope) lives in
 [`new-session-agent-tooling.md`](new-session-agent-tooling.md).
 
 See also:
@@ -33,7 +33,7 @@ layering rule;
 [`project-queue.md`](project-queue.md);
 [`security.md`](security.md).
 
-## Direction: scripts over the existing REST surface
+## Direction: scripts over a scoped REST channel
 
 YA's `/api/*` routes already cover everything an agent-side consumer
 needs: the global session catalog (`createGlobalSessionsRoutes`), full
@@ -45,14 +45,26 @@ normalized transcript reads (the session detail route in
 reachable from localhost with no credential; the loopback bind is the
 trust boundary (`core-service-api.md`, resolved decision 3).
 
-The proposal is therefore not a new API but a supported consumer of the
-existing one: a handful of shipped scripts (indicative names —
+The proposal is therefore not a second orchestration API but a supported,
+scoped consumer of the existing application service: a handful of shipped
+scripts (indicative names —
 `ya-sessions`, `ya-transcript`, `ya-search`, `ya-send`, `ya-new`) that
 wrap those routes, plus the D3 API documentation deliverable already
 named in `core-service-api.md`. This matches the standing layering rule:
 REST, CLI, MCP, and skills are consumers or adapters over one
 application service, never independent orchestration implementations
 (`cross-host-delegation.md`).
+
+The scripts never guess `localhost`, a port, or the active profile. A launch
+with agent tooling enabled receives the originating server's exact child-
+reachable base URL and an ephemeral API token through the channel owned by
+`new-session-agent-tooling.md`. The token authorizes only the catalog,
+transcript/search, message, session-create, and Project Queue operations the
+shipped scripts expose. It is not the operator's general login credential and
+cannot call settings, permission approval, provider control, or other ambient
+administration routes. Multiple servers and auth-enabled loopback listeners
+therefore remain unambiguous even though the ordinary single-server default
+also happens to accept unauthenticated loopback requests.
 
 Scripts speak canonical YA session ids (usually equal to the provider
 session id), per `AGENTS.md` § Provider Session Identity. Provider-native
@@ -102,7 +114,7 @@ as the ask/reply flow in [`ask-session.md`](ask-session.md):
 
 ## Authority and ownership boundaries
 
-Two existing contracts bound every boss interaction and must be
+Three contracts bound every boss interaction and must be
 restated in any implementation's docs:
 
 - **Boss text is agent-authored input, never human authority.** It
@@ -117,6 +129,10 @@ restated in any implementation's docs:
   resume/CLI risks a second writer forking or corrupting the transcript;
   the ownership rules in `session-wake.md` § Provider-CLI injection
   fallback apply verbatim.
+- **Scoped launch authority.** A tool-enabled child receives only its own
+  short-lived API token and exact server endpoint. The scripts do not recover
+  another process's credentials, fall back to a guessed port, or broaden the
+  token when one operation is unavailable.
 
 ## Rejected: YA-written filesystem/git mirror
 
