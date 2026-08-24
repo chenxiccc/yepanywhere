@@ -2,6 +2,7 @@ import type { CodexSessionEntry } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
 import { normalizeSession } from "../../src/sessions/normalization.js";
+import { augmentEditToolUses } from "../../src/sessions/persisted-augments.js";
 import type { LoadedSession } from "../../src/sessions/types.js";
 
 function buildLoadedSession(entries: CodexSessionEntry[]): LoadedSession {
@@ -80,9 +81,9 @@ describe("Codex code-mode persisted normalization", () => {
     });
   });
 
-  it("maps apply_patch and attaches its adjacent structured change event", () => {
+  it("maps apply_patch and attaches a renderable diff", async () => {
     const patch =
-      "*** Begin Patch\n*** Update File: /repo/demo.txt\n@@\n-old\n+new\n*** End Patch";
+      "*** Begin Patch\n*** Add File: /repo/demo.txt\n+new\n*** End Patch";
     const entries: CodexSessionEntry[] = [
       {
         type: "response_item",
@@ -107,8 +108,8 @@ describe("Codex code-mode persisted normalization", () => {
           status: "completed",
           changes: {
             "/repo/demo.txt": {
-              type: "update",
-              unified_diff: "@@ -1 +1 @@\n-old\n+new",
+              type: "add",
+              unified_diff: "@@ -0,0 +1 @@\n+new",
             },
           },
         },
@@ -127,6 +128,7 @@ describe("Codex code-mode persisted normalization", () => {
     ];
 
     const result = normalizeSession(buildLoadedSession(entries));
+    await augmentEditToolUses(result.messages);
     expect(contentBlock(result.messages[0])).toMatchObject({
       type: "tool_use",
       name: "Edit",
@@ -135,8 +137,15 @@ describe("Codex code-mode persisted normalization", () => {
         changes: [
           {
             path: "/repo/demo.txt",
-            type: "update",
-            unified_diff: "@@ -1 +1 @@\n-old\n+new",
+            type: "add",
+            unified_diff: "@@ -0,0 +1 @@\n+new",
+          },
+        ],
+        _structuredPatch: [
+          {
+            oldLines: 0,
+            newLines: 1,
+            lines: ["+new"],
           },
         ],
       },

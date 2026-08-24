@@ -195,9 +195,12 @@ syntax-highlighted, word-level `diffHtml`. It is attached to the `Edit`
 `sessions/persisted-augments.ts`, so the renderer needs no provider knowledge.
 `EditRenderer.tsx` consumes `_structuredPatch` / `_diffHtml`, and for Codex
 falls back to a `_rawPatch` (`RawPatchPreview`) parsed from the V4A text via
-`computeStructuredPatchDiffHtml` when no old/new pair exists. Result: the same
-collapsed preview, expand-to-modal, "show full context", and copy-post-change
-affordances regardless of backend.
+`computeStructuredPatchDiffHtml` when no old/new pair exists. Code-mode Codex
+normalization stores its recovered `apply_patch` string under that canonical
+`_rawPatch` key; persisted augmentation must consume the same key, with
+`patch_apply_end`'s `unified_diff` rows as a fallback rather than requiring the
+older `diff` spelling. Result: the same collapsed preview, expand-to-modal,
+"show full context", and copy-post-change affordances regardless of backend.
 
 Read and Edit are **file-backed details by composition**, not a viewer class
 hierarchy. A Read path enters the canonical `FileViewer`. An expanded Edit

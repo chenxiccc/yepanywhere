@@ -106,6 +106,13 @@ describe("extractRawPatchFromEditInput", () => {
     expect(extracted).toBe(rawPatch);
   });
 
+  it("extracts the canonical raw patch field attached by Codex code mode", () => {
+    const rawPatch = "*** Begin Patch\n*** End Patch\n";
+    expect(extractRawPatchFromEditInput({ _rawPatch: rawPatch })).toBe(
+      rawPatch,
+    );
+  });
+
   it("extracts and combines diffs from codex file_change shapes", () => {
     const extracted = extractRawPatchFromEditInput({
       changes: [
@@ -125,5 +132,19 @@ describe("extractRawPatchFromEditInput", () => {
     expect(extracted).toContain("@@ -1 +1 @@");
     expect(extracted).toContain("-a");
     expect(extracted).toContain("+d");
+  });
+
+  it("extracts Codex patch_apply_end unified diffs", () => {
+    expect(
+      extractRawPatchFromEditInput({
+        changes: [
+          {
+            path: "src/a.ts",
+            type: "update",
+            unified_diff: "@@ -1 +1 @@\n-old\n+new\n",
+          },
+        ],
+      }),
+    ).toBe("@@ -1 +1 @@\n-old\n+new");
   });
 });

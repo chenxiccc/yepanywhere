@@ -84,7 +84,7 @@ function extractRawPatchFromChanges(changes: unknown): string | undefined {
   const diffs = changes
     .map((change) => {
       if (!isRecord(change)) return null;
-      const diff = change.diff;
+      const diff = change.diff ?? change.unified_diff;
       if (typeof diff !== "string") return null;
       const trimmed = diff.trim();
       return trimmed ? trimmed : null;
@@ -110,6 +110,7 @@ export function extractRawPatchFromEditInput(
   }
 
   const directKeys = [
+    "_rawPatch",
     "patch",
     "rawPatch",
     "raw_patch",
