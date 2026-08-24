@@ -1,6 +1,6 @@
 # Mobile IME delivery boundary
 
-Status: in progress (2026-08-24)
+Status: implemented and verified (2026-08-24)
 
 ## Goal
 
@@ -54,10 +54,12 @@ activate, but it also keeps Gboard attached to the old textarea transaction.
 The subsequent synchronous refocus means there is no delivery boundary at
 which the IME must retire that transaction.
 
-YA cannot directly flush Gboard's private buffer. The browser-visible boundary
-is to snapshot the delivery, blur the textarea, let composition/input events
-settle, clear and dispatch the captured snapshot, and only then refocus if the
-user opted into post-delivery keyboard retention.
+YA cannot directly flush Gboard's private buffer. The reliable browser-visible
+boundary is to capture the delivery action, blur the textarea, dispatch the
+current draft, and replace that textarea editing host. Late composition events
+remain attached to the retired DOM node. Only the replacement host may be
+refocused, and only after React commits it when the user opted into post-
+delivery keyboard retention.
 
 Relevant external behavior is documented by the
 [Input Events Level 2 composition rules](https://www.w3.org/TR/input-events-2/),
@@ -95,10 +97,10 @@ composer delivery without introducing a server contract.
 
 ### 3 — retire the old IME transaction before dispatch
 
-Capture the visible draft and intended action before blur can replace the
-compact row. Blur the textarea, allow the browser's pending composition work to
-settle, clear and dispatch the captured snapshot, and conditionally establish
-a fresh focus transaction for the opt-in behavior.
+Capture the intended action before blur can replace the compact row. Blur the
+textarea, dispatch through the action's ordinary draft/attachment/speech path,
+and replace the textarea so late composition events cannot target the next
+draft. Conditionally focus only the replacement editing host in the next frame.
 
 ### 4 — cover late composition and ordinary delivery
 
@@ -110,5 +112,33 @@ semantics covered.
 ### 5 — publish the observable contract and verify the UI
 
 Update the owning composer and settings topic contracts, run the client checks,
-and inspect fresh desktop and phone-width browser captures of the setting and
-composer states before pushing the series.
+and inspect fresh desktop and phone-width browser captures of the setting before
+pushing the series.
+
+## Result
+
+Pointer delivery on a coarse-pointer layout now blurs and replaces the
+textarea's DOM editing host while preserving the existing Send, Steer, Queue,
+Project Queue, fork, attachment, and pending-speech paths. Desktop delivery
+keeps its prior focus behavior. The new browser-local preference appears in
+Message Delivery, participates in pane Undo and portable browser-settings
+transfer, and defaults off. Opting in focuses only the replacement textarea in
+the next animation frame.
+
+The focused composer/settings suite passed 196 tests, including a regression
+that delivers the whole draft once, directs a late Gboard-style composition
+commit at the retired textarea, keeps the replacement draft empty, and accepts
+fresh next-turn input. The full client suite passed 3,862 tests. Root
+typechecking, lint, formatting, console-budget, and i18n scans passed without a
+task-caused warning or budget delta.
+
+Fresh settings captures were inspected at 1000×600 and 375×812. The default-off
+row remains grouped and readable without overflow at both widths; the reviewed
+files are `.artifacts/ui-testing/2026-08-24-mobile-ime-delivery/desktop.png` and
+`mobile.png`.
+
+The root unit command retained the existing macOS worktree-watcher failures
+documented in tactical 111: five tests still expect Linux native watchers on a
+poll-only platform. The unrelated lifecycle timer file also timed out under the
+initial concurrent load, then passed all 25 tests in isolation. No client test
+failed.

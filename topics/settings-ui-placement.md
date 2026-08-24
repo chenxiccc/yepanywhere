@@ -101,6 +101,12 @@ UI should state directly.
   instructions at provider launch. Claude uses its system-prompt extension;
   other adapters prefix the first provider-facing user message, with current
   resume coverage differing by provider.
+- **Message Delivery → Keep Mobile Keyboard Open After Delivery.** A portable
+  browser-local preference, off by default. Pointer delivery on a touch layout
+  always retires the old browser editing host so pending Android IME composition
+  cannot become a new draft. Off leaves the replacement composer unfocused and
+  lets the keyboard collapse; on refocuses the replacement host after the
+  delivery boundary. Desktop keyboard delivery is unaffected.
 - **Remote Access → Host Marker.** Optional and unset by default. Presets apply
   immediately; a valid custom emoji applies on Enter or blur; Clear removes it.
   Connected clients show the marker in host-identifying headers and browser

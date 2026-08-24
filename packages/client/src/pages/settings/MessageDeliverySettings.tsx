@@ -8,6 +8,7 @@ import {
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
+import { useKeepMobileKeyboardOpenAfterDelivery } from "../../hooks/useKeepMobileKeyboardOpenAfterDelivery";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
@@ -58,6 +59,7 @@ interface MessageDeliveryBaseline {
   steerNowDefault: boolean;
   patientQueueDefault: boolean;
   projectQueueCtrlEnterEnabled: boolean;
+  keepMobileKeyboardOpenAfterDelivery: boolean;
 }
 
 /**
@@ -72,6 +74,10 @@ export function MessageDeliverySettings() {
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
   const supportsBangCommands = serverSupportsBangCommands(version);
+  const {
+    keepMobileKeyboardOpenAfterDelivery,
+    setKeepMobileKeyboardOpenAfterDelivery,
+  } = useKeepMobileKeyboardOpenAfterDelivery();
 
   // null drafts mirror the server value; non-null while the user is editing
   // or a save is in flight, cleared once the server catches up.
@@ -134,9 +140,10 @@ export function MessageDeliverySettings() {
         projectQueueCtrlEnterEnabled:
           settings.clientDefaults?.projectQueueCtrlEnterEnabled ??
           DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
+        keepMobileKeyboardOpenAfterDelivery,
       };
     }
-  }, [settings]);
+  }, [keepMobileKeyboardOpenAfterDelivery, settings]);
 
   const shownJoinWindowText =
     draftJoinWindow ?? String(serverJoinWindowSeconds);
@@ -271,7 +278,9 @@ export function MessageDeliverySettings() {
       shownSteerNowDefault !== baseline.steerNowDefault ||
       shownPatientQueueDefault !== baseline.patientQueueDefault ||
       (supportsProjectQueue &&
-        shownProjectQueueCtrlEnter !== baseline.projectQueueCtrlEnterEnabled));
+        shownProjectQueueCtrlEnter !== baseline.projectQueueCtrlEnterEnabled) ||
+      keepMobileKeyboardOpenAfterDelivery !==
+        baseline.keepMobileKeyboardOpenAfterDelivery);
 
   const undo = useCallback(async () => {
     const snapshot = baselineRef.current;
@@ -285,6 +294,9 @@ export function MessageDeliverySettings() {
     setDraftSteerNow(null);
     setDraftPatientQueue(null);
     setDraftProjectQueueCtrlEnter(null);
+    setKeepMobileKeyboardOpenAfterDelivery(
+      snapshot.keepMobileKeyboardOpenAfterDelivery,
+    );
     await updateSettings({
       deferredJoinWindowSeconds: snapshot.joinWindowSeconds,
       ...(supportsProjectQueue
@@ -309,7 +321,12 @@ export function MessageDeliverySettings() {
     }).catch(() => {
       // surfaced via the hook's error state
     });
-  }, [supportsBangCommands, supportsProjectQueue, updateSettings]);
+  }, [
+    setKeepMobileKeyboardOpenAfterDelivery,
+    supportsBangCommands,
+    supportsProjectQueue,
+    updateSettings,
+  ]);
 
   useSettingsUndo(canUndo, undo);
 
@@ -469,6 +486,21 @@ export function MessageDeliverySettings() {
             />
           </SettingsItem>
         )}
+
+        <SettingsItem
+          as="label"
+          label={t("messageDeliveryKeepMobileKeyboardOpenTitle")}
+          description={t("messageDeliveryKeepMobileKeyboardOpenDescription")}
+        >
+          <input
+            type="checkbox"
+            checked={keepMobileKeyboardOpenAfterDelivery}
+            onChange={(event) =>
+              setKeepMobileKeyboardOpenAfterDelivery(event.target.checked)
+            }
+            aria-label={t("messageDeliveryKeepMobileKeyboardOpenTitle")}
+          />
+        </SettingsItem>
 
         <SettingsItem
           label={t("appearanceToolbarDefaultActionTitle")}

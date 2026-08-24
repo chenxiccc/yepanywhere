@@ -16,6 +16,8 @@ import {
   PROJECT_QUEUE_CAPABILITY,
 } from "@yep-anywhere/shared";
 import type { ServerSettings } from "../../../api/client";
+import { invalidateLocalStorageValues } from "../../../lib/localStorageValue";
+import { UI_KEYS } from "../../../lib/storageKeys";
 import { MessageDeliverySettings } from "../MessageDeliverySettings";
 import {
   SettingsUndoProvider,
@@ -70,6 +72,8 @@ describe("MessageDeliverySettings", () => {
     versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
     mockUpdateSettings.mockReset();
     mockUpdateSettings.mockResolvedValue(undefined);
+    window.localStorage.clear();
+    invalidateLocalStorageValues(UI_KEYS.keepMobileKeyboardOpenAfterDelivery);
   });
 
   afterEach(() => {
@@ -88,6 +92,23 @@ describe("MessageDeliverySettings", () => {
     expect(mockUpdateSettings).toHaveBeenCalledWith({
       composeAnchorsEnabled: true,
     });
+  });
+
+  it("keeps mobile keyboard retention browser-local and default-off", () => {
+    render(<MessageDeliverySettings />);
+
+    const toggle = screen.getByLabelText<HTMLInputElement>(
+      "messageDeliveryKeepMobileKeyboardOpenTitle",
+    );
+    expect(toggle.checked).toBe(false);
+
+    fireEvent.click(toggle);
+
+    expect(toggle.checked).toBe(true);
+    expect(
+      window.localStorage.getItem(UI_KEYS.keepMobileKeyboardOpenAfterDelivery),
+    ).toBe("true");
+    expect(mockUpdateSettings).not.toHaveBeenCalled();
   });
 
   it("debounce-saves the join window from the numeric input", () => {

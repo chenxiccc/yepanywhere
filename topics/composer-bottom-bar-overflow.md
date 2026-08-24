@@ -217,6 +217,16 @@ with slack**. Two latch/oscillation traps live here:
   This avoids the post-send jump from one enabled Send button to two disabled
   Queue/Steer buttons when clearing the draft and starting the provider turn
   happen together.
+- Pointer delivery on a coarse-pointer layout establishes a new browser editing
+  host after first blurring the composer. The submitted draft belongs to the
+  retired host, so a late Android IME composition event cannot repopulate the
+  cleared composer or its persisted draft. The browser-local **Keep Mobile
+  Keyboard Open After Delivery** preference is off by default; off leaves the
+  replacement composer unfocused so the software keyboard can collapse, while
+  on focuses the replacement in the next animation frame. Desktop delivery
+  keeps its existing focus behavior, and fresh input on the replacement host is
+  never suppressed. The boundary applies to Send, Steer, Queue, Project Queue,
+  and fork delivery actions in both the compact and ordinary toolbar surfaces.
 - With submittable content, the configured primary action remains right
   aligned. Send, Queue, fork, and Steer actions use the large remaining-width
   target after stable queue slots are reserved. Steer shows its short label and

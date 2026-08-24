@@ -28,6 +28,7 @@ import {
   type ComposerToolbarOverflowLayoutSignatureInput,
 } from "../../hooks/useMessageInputToolbarLayout";
 import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import type { SpeechCommitOutcome } from "../../lib/speechDraftTransaction";
 import { createClientSlashCommand } from "../../lib/slashCommands";
 import { UI_KEYS } from "../../lib/storageKeys";
@@ -767,6 +768,7 @@ describe("MessageInput", () => {
     window.localStorage.clear();
     window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
     window.localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "asr");
+    invalidateLocalStorageValues(UI_KEYS.keepMobileKeyboardOpenAfterDelivery);
   });
 
   afterEach(() => {
@@ -843,6 +845,7 @@ describe("MessageInput", () => {
       fireEvent.click(keyboardAction as HTMLButtonElement);
 
       expectSubmission(onSend, "mobile send", "direct");
+      expect(document.activeElement).not.toBe(textarea);
       expect(
         document.querySelector(".message-input-keyboard-primary"),
       ).toBeNull();
@@ -854,6 +857,87 @@ describe("MessageInput", () => {
         document.querySelector(".message-input-keyboard-primary"),
       ).toBeNull();
       expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("retires a Gboard composition when the mobile action delivers", () => {
+    const viewport = installMobileKeyboardViewport();
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      { onSend },
+    ) as HTMLTextAreaElement;
+
+    try {
+      act(() => textarea.focus());
+      act(() => viewport.setHeight(480));
+      fireEvent.change(textarea, {
+        target: { value: "We need to do something smarter" },
+      });
+      fireEvent.compositionStart(textarea);
+
+      const keyboardAction = document.querySelector(
+        ".message-input-keyboard-primary",
+      ) as HTMLButtonElement;
+      fireEvent.pointerDown(keyboardAction);
+      fireEvent.click(keyboardAction);
+
+      expectSubmission(onSend, "We need to do something smarter", "direct");
+      const replacement = screen.getByPlaceholderText(
+        "Message",
+      ) as HTMLTextAreaElement;
+      expect(replacement).not.toBe(textarea);
+      expect(replacement.value).toBe("");
+      expect(document.activeElement).not.toBe(replacement);
+
+      // Gboard may commit its final composing region after the controlled
+      // draft was cleared. That event belongs to the retired editing host.
+      fireEvent.change(textarea, {
+        target: { value: "do something smarter" },
+      });
+      fireEvent.compositionEnd(textarea);
+      expect(replacement.value).toBe("");
+      expect(onSend).toHaveBeenCalledTimes(1);
+
+      fireEvent.change(replacement, { target: { value: "Fresh next turn" } });
+      expect(replacement.value).toBe("Fresh next turn");
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("refocuses a fresh mobile editing host when retention is enabled", async () => {
+    window.localStorage.setItem(
+      UI_KEYS.keepMobileKeyboardOpenAfterDelivery,
+      "true",
+    );
+    invalidateLocalStorageValues(UI_KEYS.keepMobileKeyboardOpenAfterDelivery);
+    const viewport = installMobileKeyboardViewport();
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      { onSend },
+    ) as HTMLTextAreaElement;
+
+    try {
+      act(() => textarea.focus());
+      act(() => viewport.setHeight(480));
+      fireEvent.change(textarea, { target: { value: "Keep composing" } });
+
+      fireEvent.click(
+        document.querySelector(
+          ".message-input-keyboard-primary",
+        ) as HTMLButtonElement,
+      );
+
+      expectSubmission(onSend, "Keep composing", "direct");
+      const replacement = screen.getByPlaceholderText(
+        "Message",
+      ) as HTMLTextAreaElement;
+      expect(replacement).not.toBe(textarea);
+      await waitFor(() => expect(document.activeElement).toBe(replacement));
     } finally {
       viewport.restore();
     }
@@ -888,7 +972,7 @@ describe("MessageInput", () => {
     }
   });
 
-  it("shows the alternate beside the primary mobile keyboard action", () => {
+  it("shows the alternate beside the primary mobile keyboard action", async () => {
     const viewport = installMobileKeyboardViewport();
     versionState.version = {
       ...versionState.version,
@@ -932,8 +1016,17 @@ describe("MessageInput", () => {
 
       fireEvent.click(actions[1] as HTMLButtonElement);
       expectSubmission(onQueue, "wait until done", "patient");
+      await act(
+        () => new Promise<void>((resolve) => window.setTimeout(resolve, 20)),
+      );
 
-      fireEvent.change(textarea, { target: { value: "steer now" } });
+      const nextTextarea = screen.getByPlaceholderText(
+        "Message",
+      ) as HTMLTextAreaElement;
+      act(() => viewport.setHeight(800));
+      act(() => nextTextarea.focus());
+      act(() => viewport.setHeight(480));
+      fireEvent.change(nextTextarea, { target: { value: "steer now" } });
       fireEvent.click(
         document.querySelector(
           ".message-input-keyboard-primary",

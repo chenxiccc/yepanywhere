@@ -34,6 +34,7 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
+import { useKeepMobileKeyboardOpenAfterDelivery } from "../hooks/useKeepMobileKeyboardOpenAfterDelivery";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useRecentSpeechAttribution } from "../hooks/useRecentSpeechAttribution";
@@ -168,8 +169,12 @@ type PendingSpeechDeliveryIntent =
       actionOverride?: "send" | "steer" | "queue";
       focusAfterSubmit: boolean;
     }
-  | { kind: "queue" }
-  | { kind: "project-queue"; newSession: boolean }
+  | { kind: "queue"; focusAfterSubmit: boolean }
+  | {
+      kind: "project-queue";
+      newSession: boolean;
+      focusAfterSubmit: boolean;
+    }
   | {
       kind: "fork-summary";
       focusAfterSubmit: boolean;
@@ -465,6 +470,8 @@ export function MessageInput({
 }: Props) {
   const { t } = useI18n();
   const { visibility: toolbarVisibility } = useSessionToolbarPresence();
+  const { keepMobileKeyboardOpenAfterDelivery } =
+    useKeepMobileKeyboardOpenAfterDelivery();
   const [text, setText, controls] = useDraftPersistence(draftKey, {
     sessionDraft: draftIndex,
   });
@@ -492,6 +499,7 @@ export function MessageInput({
   const composerEditedDuringSpeechRef = useRef(false);
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
+  const mobilePointerDeliveryPendingRef = useRef(false);
   const keyboardViewportBaselineRef = useRef<number | null>(null);
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
@@ -541,6 +549,7 @@ export function MessageInput({
     originalDraft: string;
   } | null>(null);
   const [textareaFocused, setTextareaFocused] = useState(false);
+  const [textareaImeGeneration, setTextareaImeGeneration] = useState(0);
   const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
   const [mobileKeyboardMoreOpen, setMobileKeyboardMoreOpen] = useState(false);
 
@@ -1483,7 +1492,11 @@ export function MessageInput({
           } catch {
             // The owner surfaces the run failure; retain the draft for retry.
           }
-          textareaRef.current?.focus();
+          if (focusAfterSubmit) {
+            textareaRef.current?.focus();
+          } else {
+            textareaRef.current?.blur();
+          }
           return;
         }
         if (bangDraft.kind === "escaped") {
@@ -1543,28 +1556,34 @@ export function MessageInput({
     ],
   );
 
-  const handleSteer = useCallback(() => {
-    handleSubmit(undefined, "steer");
-  }, [handleSubmit]);
-
   const handleQueue = useCallback(
     (
       messageOverride?: unknown,
       submissionSnapshot?: SubmissionCompositionSnapshot,
       preserveComposer = false,
+      focusAfterSubmit = true,
     ) => {
       const override =
         typeof messageOverride === "string" ? messageOverride : undefined;
       const queueHandler =
         onQueue ??
         (effectivePrimaryActionKind === "queue" ? onSend : undefined);
-      if (override === undefined && deferSpeechDelivery({ kind: "queue" })) {
+      if (
+        override === undefined &&
+        deferSpeechDelivery({ kind: "queue", focusAfterSubmit })
+      ) {
         return;
       }
 
       const finalText = (override ?? controls.getDraft()).trimEnd();
 
-      if (handleSyntheticDoneSubmission(finalText, preserveComposer)) {
+      if (
+        handleSyntheticDoneSubmission(
+          finalText,
+          preserveComposer,
+          focusAfterSubmit,
+        )
+      ) {
         return;
       }
 
@@ -1589,7 +1608,11 @@ export function MessageInput({
           metadata,
         );
         consumeSpeechAttribution();
-        textareaRef.current?.focus();
+        if (focusAfterSubmit) {
+          textareaRef.current?.focus();
+        } else {
+          textareaRef.current?.blur();
+        }
       }
     },
     [
@@ -1618,11 +1641,18 @@ export function MessageInput({
       messageOverride?: string,
       submissionSnapshot?: SubmissionCompositionSnapshot,
       preserveComposer = false,
+      focusAfterSubmit = true,
     ) => {
       if (!submit) return;
       const finalText = (messageOverride ?? controls.getDraft()).trimEnd();
 
-      if (handleSyntheticDoneSubmission(finalText, preserveComposer)) {
+      if (
+        handleSyntheticDoneSubmission(
+          finalText,
+          preserveComposer,
+          focusAfterSubmit,
+        )
+      ) {
         return;
       }
 
@@ -1647,7 +1677,11 @@ export function MessageInput({
           metadata,
         );
         consumeSpeechAttribution();
-        textareaRef.current?.focus();
+        if (focusAfterSubmit) {
+          textareaRef.current?.focus();
+        } else {
+          textareaRef.current?.blur();
+        }
       }
     },
     [
@@ -1663,19 +1697,49 @@ export function MessageInput({
     ],
   );
 
-  const handleProjectQueue = useCallback(() => {
-    if (deferSpeechDelivery({ kind: "project-queue", newSession: false })) {
-      return;
-    }
-    submitToProjectQueue(onProjectQueue);
-  }, [deferSpeechDelivery, onProjectQueue, submitToProjectQueue]);
+  const handleProjectQueue = useCallback(
+    (focusAfterSubmit = true) => {
+      if (
+        deferSpeechDelivery({
+          kind: "project-queue",
+          newSession: false,
+          focusAfterSubmit,
+        })
+      ) {
+        return;
+      }
+      submitToProjectQueue(
+        onProjectQueue,
+        undefined,
+        undefined,
+        false,
+        focusAfterSubmit,
+      );
+    },
+    [deferSpeechDelivery, onProjectQueue, submitToProjectQueue],
+  );
 
-  const handleProjectQueueNewSession = useCallback(() => {
-    if (deferSpeechDelivery({ kind: "project-queue", newSession: true })) {
-      return;
-    }
-    submitToProjectQueue(onProjectQueueNewSession);
-  }, [deferSpeechDelivery, onProjectQueueNewSession, submitToProjectQueue]);
+  const handleProjectQueueNewSession = useCallback(
+    (focusAfterSubmit = true) => {
+      if (
+        deferSpeechDelivery({
+          kind: "project-queue",
+          newSession: true,
+          focusAfterSubmit,
+        })
+      ) {
+        return;
+      }
+      submitToProjectQueue(
+        onProjectQueueNewSession,
+        undefined,
+        undefined,
+        false,
+        focusAfterSubmit,
+      );
+    },
+    [deferSpeechDelivery, onProjectQueueNewSession, submitToProjectQueue],
+  );
 
   const restorePendingSpeechDeliveryDraft = useCallback(() => {
     const pending = pendingSpeechDeliveryRef.current;
@@ -1713,7 +1777,12 @@ export function MessageInput({
     dispatchingSettledSpeechDeliveryRef.current = true;
     try {
       if (pending.intent.kind === "queue") {
-        handleQueue(pending.visibleTextSnapshot, pending.composition, true);
+        handleQueue(
+          pending.visibleTextSnapshot,
+          pending.composition,
+          true,
+          pending.intent.focusAfterSubmit,
+        );
         return;
       }
       if (pending.intent.kind === "project-queue") {
@@ -1722,6 +1791,7 @@ export function MessageInput({
           pending.visibleTextSnapshot,
           pending.composition,
           true,
+          pending.intent.focusAfterSubmit,
         );
         return;
       }
@@ -1797,6 +1867,81 @@ export function MessageInput({
     : effectivePrimaryActionKind === "queue"
       ? handleQueue
       : handleSubmit;
+  const runComposerPointerDelivery = useCallback(
+    (deliver: (focusAfterSubmit: boolean) => void) => {
+      if (!hasCoarsePointer()) {
+        deliver(true);
+        return;
+      }
+      if (mobilePointerDeliveryPendingRef.current) return;
+
+      mobilePointerDeliveryPendingRef.current = true;
+      const refocus = keepMobileKeyboardOpenAfterDelivery;
+      // A controlled clear does not retire Android's composing region. Blur
+      // and replace the editing host so late Gboard events stay attached to
+      // the old DOM node instead of becoming the next persisted draft.
+      textareaRef.current?.blur();
+      setTextareaImeGeneration((generation) => generation + 1);
+
+      const finishBoundary = () => {
+        mobilePointerDeliveryPendingRef.current = false;
+        if (!refocus) return;
+        const textarea = textareaRef.current;
+        if (textarea && !textarea.disabled) textarea.focus();
+      };
+      try {
+        deliver(false);
+      } finally {
+        // React commits discrete-event updates before the next frame, so an
+        // opt-in refocus targets only the replacement editing host.
+        if (typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(finishBoundary);
+        } else {
+          window.setTimeout(finishBoundary, 0);
+        }
+      }
+    },
+    [keepMobileKeyboardOpenAfterDelivery],
+  );
+  const handlePrimaryPointerDelivery = useCallback(() => {
+    runComposerPointerDelivery((focusAfterSubmit) => {
+      if (forkSummaryMode) {
+        handleForkSummarySubmit(undefined, focusAfterSubmit);
+      } else if (effectivePrimaryActionKind === "queue") {
+        handleQueue(undefined, undefined, false, focusAfterSubmit);
+      } else {
+        void handleSubmit(undefined, undefined, focusAfterSubmit);
+      }
+    });
+  }, [
+    effectivePrimaryActionKind,
+    forkSummaryMode,
+    handleForkSummarySubmit,
+    handleQueue,
+    handleSubmit,
+    runComposerPointerDelivery,
+  ]);
+  const handleQueuePointerDelivery = useCallback(() => {
+    runComposerPointerDelivery((focusAfterSubmit) => {
+      handleQueue(undefined, undefined, false, focusAfterSubmit);
+    });
+  }, [handleQueue, runComposerPointerDelivery]);
+  const handleSteerPointerDelivery = useCallback(() => {
+    runComposerPointerDelivery((focusAfterSubmit) => {
+      void handleSubmit(undefined, "steer", focusAfterSubmit);
+    });
+  }, [handleSubmit, runComposerPointerDelivery]);
+  const handleProjectQueuePointerDelivery = useCallback(() => {
+    runComposerPointerDelivery(handleProjectQueue);
+  }, [handleProjectQueue, runComposerPointerDelivery]);
+  const handleProjectQueueNewSessionPointerDelivery = useCallback(() => {
+    runComposerPointerDelivery(handleProjectQueueNewSession);
+  }, [handleProjectQueueNewSession, runComposerPointerDelivery]);
+  const handleForkWithoutSummaryPointerDelivery = useCallback(() => {
+    runComposerPointerDelivery((focusAfterSubmit) => {
+      handleForkWithoutSummary(undefined, focusAfterSubmit);
+    });
+  }, [handleForkWithoutSummary, runComposerPointerDelivery]);
   const visibleDeliveryDraft = getSpeechVisibleDraftText(
     controls.getDraft(),
     interimTranscript,
@@ -1845,7 +1990,7 @@ export function MessageInput({
         label: forkSummaryAlternateLabel,
         displayLabel: forkSummaryAlternateLabel,
         icon: forkSummaryMode.noSummaryIcon ?? "↱",
-        onClick: handleForkWithoutSummary,
+        onClick: handleForkWithoutSummaryPointerDelivery,
       }
     : hasActiveDualActions
       ? effectivePrimaryActionKind === "queue"
@@ -1854,14 +1999,14 @@ export function MessageInput({
             label: t("toolbarShortcutSteerCurrentTurn"),
             displayLabel: t("toolbarSteerShortLabel"),
             icon: "↗",
-            onClick: handleSteer,
+            onClick: handleSteerPointerDelivery,
           }
         : {
             kind: "queue" as const,
             label: t("toolbarQueueLabel"),
             displayLabel: t("toolbarQueueShortLabel"),
             icon: "→",
-            onClick: handleQueue,
+            onClick: handleQueuePointerDelivery,
           }
       : null;
   // Render session actions only when they are useful, so a neighboring visible
@@ -1886,12 +2031,12 @@ export function MessageInput({
       : effectivePrimaryActionKind;
   const collapsedSubmitAction =
     forkSummaryMode || collapsedActionKind === effectivePrimaryActionKind
-      ? submitPrimaryAction
+      ? handlePrimaryPointerDelivery
       : collapsedActionKind === "queue"
-        ? handleQueue
+        ? handleQueuePointerDelivery
         : collapsedActionKind === "steer"
-          ? handleSteer
-          : handleSubmit;
+          ? handleSteerPointerDelivery
+          : handlePrimaryPointerDelivery;
   const collapsedActionLabel = forkSummaryMode
     ? primaryActionLabel
     : collapsedActionKind === "steer"
@@ -3074,19 +3219,17 @@ export function MessageInput({
     onStop,
     onDone,
     doneTitle,
-    onSend: forkSummaryMode
-      ? handleForkSummarySubmit
-      : effectivePrimaryActionKind === "queue"
-        ? handleQueue
-        : handleSubmit,
-    onQueue: onQueue ? handleQueue : undefined,
+    onSend: handlePrimaryPointerDelivery,
+    onQueue: onQueue ? handleQueuePointerDelivery : undefined,
     onProjectQueue:
-      onProjectQueue && !forkSummaryMode ? handleProjectQueue : undefined,
+      onProjectQueue && !forkSummaryMode
+        ? handleProjectQueuePointerDelivery
+        : undefined,
     onProjectQueueNewSession:
       onProjectQueueNewSession && !forkSummaryMode
-        ? handleProjectQueueNewSession
+        ? handleProjectQueueNewSessionPointerDelivery
         : undefined,
-    onSteer: hasActiveDualActions ? handleSteer : undefined,
+    onSteer: hasActiveDualActions ? handleSteerPointerDelivery : undefined,
     primaryActionKind: effectivePrimaryActionKind,
     sendOverride: forkSummaryMode
       ? {
@@ -3104,7 +3247,7 @@ export function MessageInput({
             forkSummaryMode.noSummaryTooltip ??
             t("forkSummaryNoSummaryTooltip"),
           icon: forkSummaryMode.noSummaryIcon ?? "↱",
-          onClick: handleForkWithoutSummary,
+          onClick: handleForkWithoutSummaryPointerDelivery,
         }
       : undefined,
     canForkAfterSummary: !!onForkSummaryShortcut,
@@ -3192,6 +3335,7 @@ export function MessageInput({
               </div>
             )}
             <textarea
+              key={textareaImeGeneration}
               ref={textareaRef}
               data-composer-input
               value={text}
@@ -3735,7 +3879,7 @@ export function MessageInput({
                     type="button"
                     className="message-input-keyboard-action message-input-keyboard-secondary project-queue-mode"
                     onPointerDown={(event) => event.preventDefault()}
-                    onClick={handleProjectQueue}
+                    onClick={handleProjectQueuePointerDelivery}
                     disabled={disabled}
                     aria-label={describePrefixedDelivery(
                       t("toolbarProjectQueueLabel"),
@@ -3761,7 +3905,7 @@ export function MessageInput({
                     type="button"
                     className="message-input-keyboard-action message-input-keyboard-secondary project-queue-mode project-queue-new-session-button"
                     onPointerDown={(event) => event.preventDefault()}
-                    onClick={handleProjectQueueNewSession}
+                    onClick={handleProjectQueueNewSessionPointerDelivery}
                     disabled={disabled}
                     aria-label={describePrefixedDelivery(
                       t("toolbarProjectQueueNewSessionLabel"),
@@ -3895,7 +4039,7 @@ export function MessageInput({
                     : ""
                 }`}
                 onPointerDown={(event) => event.preventDefault()}
-                onClick={submitPrimaryAction}
+                onClick={handlePrimaryPointerDelivery}
                 disabled={disabled}
                 aria-label={describePrefixedDelivery(
                   mobileKeyboardActionLabel,

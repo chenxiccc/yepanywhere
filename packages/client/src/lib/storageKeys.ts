@@ -56,6 +56,8 @@ export const UI_KEYS = {
   speechMessageCustomPrefix: "yep-anywhere-speech-message-custom-prefix",
   speechMicDeviceId: "yep-anywhere-speech-mic-device-id",
   floatingActionButtonEnabled: "yep-anywhere-floating-action-button-enabled",
+  keepMobileKeyboardOpenAfterDelivery:
+    "yep-anywhere-keep-mobile-keyboard-open-after-delivery",
   developerMode: "yep-anywhere-developer-mode",
   conversationView: "yep-anywhere-conversation-view-enabled",
   conversationViewTurnLimit: "yep-anywhere-conversation-view-turn-limit",

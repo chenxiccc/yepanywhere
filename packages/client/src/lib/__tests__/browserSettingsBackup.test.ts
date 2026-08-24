@@ -26,6 +26,7 @@ describe("browser settings backup", () => {
     localStorage.setItem(UI_KEYS.speechMessageCustomPrefix, "Dictated:");
     localStorage.setItem(UI_KEYS.speechUnspokenPunctuation, "true");
     localStorage.setItem(UI_KEYS.waveformButtonBackgroundOpacityPercent, "70");
+    localStorage.setItem(UI_KEYS.keepMobileKeyboardOpenAfterDelivery, "true");
     localStorage.setItem(BROWSER_LOCAL_KEYS.model, "gpt-5.6");
     localStorage.setItem(BROWSER_LOCAL_KEYS.browserProfileId, "device-1");
     localStorage.setItem(BROWSER_LOCAL_KEYS.xaiSttApiKey, "secret");
@@ -46,6 +47,7 @@ describe("browser settings backup", () => {
       [UI_KEYS.speechMessageCustomPrefix]: "Dictated:",
       [UI_KEYS.speechUnspokenPunctuation]: "true",
       [UI_KEYS.waveformButtonBackgroundOpacityPercent]: "70",
+      [UI_KEYS.keepMobileKeyboardOpenAfterDelivery]: "true",
       [BROWSER_LOCAL_KEYS.model]: "gpt-5.6",
     });
   });

@@ -2453,6 +2453,8 @@
   "messageDeliveryPatientQueueDefaultDescription": "Claude sessions only — no effect on other providers. When a session is busy and you queue a message, YA delivers it as soon as the agent finishes its current response. Turn this on to wait until the agent has completely finished — including any follow-up or background tasks it started on its own — before delivering. Best for long autonomous Claude runs where your next instruction should land at a real stopping point, not the first pause. (Other providers don't report background work, so there's nothing extra to wait for.)",
   "messageDeliveryProjectQueueShortcutTitle": "Use Ctrl+Enter for Project Queue",
   "messageDeliveryProjectQueueShortcutDescription": "When the Project Queue button is visible, Ctrl+Enter uses it instead of the per-session queue shortcut.",
+  "messageDeliveryKeepMobileKeyboardOpenTitle": "Keep Mobile Keyboard Open After Delivery",
+  "messageDeliveryKeepMobileKeyboardOpenDescription": "Refocus the composer after Send, Steer, or Queue on touch devices. When off, delivery closes the mobile keyboard and safely ends any pending keyboard composition.",
   "appearanceToolbarSteerNowTitle": "\"Now\" steering selector",
   "appearanceToolbarSteerNowDescription": "Per-turn switch that delivers a steer immediately instead of after the current step.",
   "appearanceToolbarComposerRecallTitle": "Message recall button",
