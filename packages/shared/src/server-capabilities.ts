@@ -1556,6 +1556,38 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace installed servers, and project settings must never issue unsupported reads or writes to older servers.",
     },
   },
+  projectCodeNames: {
+    id: CAPABILITY_ID_ALLOCATIONS.projectCodeNames.id,
+    name: "project-code-names",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server allocates, persists, and atomically edits unique project code names for compact project identity in browser titles and session lists.",
+    clientFallback:
+      "Use full project names, keep legacy tab-title activity frames, hide code-name editing, and make no code-name request.",
+    serverContract: {
+      routes: [
+        "GET /api/projects",
+        "GET /api/projects/:projectId",
+        "POST /api/projects",
+        "PATCH /api/projects/:projectId/code-name",
+      ],
+      requestFields: ["projectCodeName.codeName"],
+      responseFields: [
+        "projects[].codeName",
+        "project.codeName",
+        "projectCodeName.assignments",
+      ],
+      events: ["project-code-names-changed"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, which neither return durable code names nor support conflict-safe edits.",
+    },
+  },
   sidebarSessionResume: {
     id: CAPABILITY_ID_ALLOCATIONS.sidebarSessionResume.id,
     name: "sidebar-session-resume",
@@ -1861,6 +1893,8 @@ export const PROJECT_QUEUE_CAPABILITY = SERVER_CAPABILITIES.projectQueue.name;
 
 export const PROJECT_SESSION_DEFAULTS_CAPABILITY =
   SERVER_CAPABILITIES.projectSessionDefaults.name;
+export const PROJECT_CODE_NAMES_CAPABILITY =
+  SERVER_CAPABILITIES.projectCodeNames.name;
 export const SIDEBAR_SESSION_RESUME_CAPABILITY =
   SERVER_CAPABILITIES.sidebarSessionResume.name;
 export const SYNTHETIC_DONE_COMMAND_CAPABILITY =

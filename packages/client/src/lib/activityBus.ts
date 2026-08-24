@@ -3,6 +3,7 @@ import type {
   CacheMissBillingRecord,
   ContextUsage,
   PendingInputType,
+  ProjectCodeNameChangedEvent,
   ProjectQueueChangedEvent,
   ProviderName,
   ProviderRuntimeStatus,
@@ -242,6 +243,7 @@ export interface ActivityEventMap {
   "review-response-changed": ReviewResponseChangedEvent;
   "provider-runtime-status-changed": ProviderRuntimeStatusChangedEvent;
   "project-queue-changed": ProjectQueueChangedEvent;
+  "project-code-names-changed": ProjectCodeNameChangedEvent;
   "workstreams-changed": WorkstreamsChangedEvent;
   "session-queue-persistence-changed": SessionQueuePersistenceChangedEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
@@ -605,6 +607,7 @@ class ActivityBus {
       "review-response-changed",
       "provider-runtime-status-changed",
       "project-queue-changed",
+      "project-code-names-changed",
       "workstreams-changed",
       "session-queue-persistence-changed",
       "session-metadata-changed",

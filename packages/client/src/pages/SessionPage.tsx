@@ -14,6 +14,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  PROJECT_CODE_NAMES_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY,
   SYNTHETIC_DONE_COMMAND_CAPABILITY,
@@ -472,6 +473,10 @@ function SessionPageContent({
   const supportsProjectSessionDefaults = serverHasCapability(
     versionInfo,
     PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  );
+  const supportsProjectCodeNames = serverHasCapability(
+    versionInfo,
+    PROJECT_CODE_NAMES_CAPABILITY,
   );
   const projectQueueProjectIds = useMemo(
     () =>
@@ -4167,7 +4172,12 @@ function SessionPageContent({
   }, [pendingElsewhereDismissKey]);
 
   // Update browser tab title
-  useDocumentTitle(project?.name, displayTitle, !isDomLingerParked);
+  useDocumentTitle(
+    project?.name,
+    supportsProjectCodeNames ? project?.codeName : undefined,
+    displayTitle,
+    !isDomLingerParked,
+  );
 
   const setRetitleState = (state: GeneratedRetitleState | null) => {
     generatedRetitleRef.current = state;

@@ -3,7 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { NewSessionForm } from "../components/NewSessionForm";
 import { PageHeader } from "../components/PageHeader";
+import {
+  PROJECT_CODE_NAMES_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useVersion } from "../hooks/useVersion";
 import { useIncomingShareFiles } from "../hooks/useIncomingShareFiles";
 import { useProject, useProjects } from "../hooks/useProjects";
 import {
@@ -39,6 +44,11 @@ export function NewSessionPage() {
   });
 
   const { projects, loading: projectsLoading } = useProjects();
+  const { version } = useVersion();
+  const supportsProjectCodeNames = serverHasCapability(
+    version,
+    PROJECT_CODE_NAMES_CAPABILITY,
+  );
   const { recentSessions, isLoading: recentSessionsLoading } =
     useRecentSessions({
       limit: RECENT_PROJECT_SESSION_LIMIT,
@@ -55,7 +65,11 @@ export function NewSessionPage() {
   );
 
   // Update browser tab title (must be called unconditionally before any early returns)
-  useDocumentTitle(selectedProject?.name, t("newSessionTitle"));
+  useDocumentTitle(
+    selectedProject?.name,
+    supportsProjectCodeNames ? selectedProject?.codeName : undefined,
+    t("newSessionTitle"),
+  );
 
   useEffect(() => {
     if (!projectId || !selectedProject) return;

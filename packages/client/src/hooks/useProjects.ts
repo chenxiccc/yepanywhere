@@ -28,6 +28,7 @@ const PROJECTS_REVALIDATE_EVENTS = [
   "process-state-changed",
   "session-status-changed",
   "session-created",
+  "project-code-names-changed",
 ] as const;
 
 type ProjectsResponse = Awaited<ReturnType<typeof api.getProjects>>;
@@ -114,11 +115,20 @@ export function useProject(projectId: string | undefined) {
       maybeRefresh,
     );
     const unsubscribeCreated = activityBus.on("session-created", maybeRefresh);
+    const unsubscribeCodeNames = activityBus.on(
+      "project-code-names-changed",
+      (event) => {
+        if (event.projectIds.includes(projectId)) {
+          scheduleRevalidation();
+        }
+      },
+    );
 
     return () => {
       unsubscribeProcess();
       unsubscribeStatus();
       unsubscribeCreated();
+      unsubscribeCodeNames();
     };
   }, [projectId, scheduleRevalidation]);
 

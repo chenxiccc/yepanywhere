@@ -20,6 +20,7 @@ import {
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
+  PROJECT_CODE_NAMES_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PROVIDER_HOST_CONTROL_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
@@ -74,6 +75,10 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(
       IDLE_REAP_HOURS_SETTING_CAPABILITY,
     );
+  });
+
+  it("advertises project code-name support", () => {
+    expect(getServerCapabilities()).toContain(PROJECT_CODE_NAMES_CAPABILITY);
   });
 
   it("advertises isolated Claude gateway configuration", () => {

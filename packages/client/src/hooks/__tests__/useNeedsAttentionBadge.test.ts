@@ -7,6 +7,7 @@ import {
   composeTabTitle,
   stripTabTitlePrefixes,
   TAB_TITLE_ACTIVITY_CADENCE_MS,
+  toMathematicalBold,
   useNeedsAttentionBadge,
 } from "../useNeedsAttentionBadge";
 
@@ -31,7 +32,8 @@ vi.mock("../useTabTitleActivityPreference", () => ({
 
 describe("tab title indicators", () => {
   beforeEach(() => {
-    document.title = "Project - Session";
+    document.title = "yep:Session";
+    document.querySelector("title")?.setAttribute("data-project-code-name", "");
     inboxCounts.needsAttention = 0;
     inboxCounts.active = 0;
     inboxCounts.total = 0;
@@ -44,8 +46,11 @@ describe("tab title indicators", () => {
   });
 
   it("composes attention and activity prefixes in stable order", () => {
-    expect(composeTabTitle("Project", 2, "(●)", "💻")).toBe(
+    expect(composeTabTitle("Project", 2, "bold", "💻")).toBe(
       "(2) (●) 💻 Project",
+    );
+    expect(composeTabTitle("yep:Session", 2, "bold", "💻")).toBe(
+      `(2) 💻 ${toMathematicalBold("yep")}:Session`,
     );
   });
 
@@ -55,16 +60,23 @@ describe("tab title indicators", () => {
     expect(stripTabTitlePrefixes("(2) (*) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("( ) (3) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("(2) (●) 💻 Project", "💻")).toBe("Project");
+    expect(
+      stripTabTitlePrefixes(
+        `${toMathematicalBold("yep")}:Session`,
+        undefined,
+        true,
+      ),
+    ).toBe("yep:Session");
   });
 
   it("derives activity frames from the configured cadence", () => {
-    expect(getTabTitleActivityFrame(1000, 1000)).toBe("(●)");
+    expect(getTabTitleActivityFrame(1000, 1000)).toBe("bold");
     expect(
       getTabTitleActivityFrame(1000, 1000 + TAB_TITLE_ACTIVITY_CADENCE_MS),
-    ).toBe("(○)");
+    ).toBe("plain");
     expect(
       getTabTitleActivityFrame(1000, 1000 + TAB_TITLE_ACTIVITY_CADENCE_MS * 2),
-    ).toBe("(●)");
+    ).toBe("bold");
   });
 
   it("shows all-session activity when enabled and sessions are active", () => {
@@ -74,7 +86,7 @@ describe("tab title indicators", () => {
 
     renderHook(() => useNeedsAttentionBadge());
 
-    expect(document.title).toBe("(●) Project - Session");
+    expect(document.title).toBe(`${toMathematicalBold("yep")}:Session`);
   });
 
   it("animates all-session activity on the configured cadence", () => {
@@ -85,13 +97,13 @@ describe("tab title indicators", () => {
 
     renderHook(() => useNeedsAttentionBadge());
 
-    expect(document.title).toBe("(●) Project - Session");
+    expect(document.title).toBe(`${toMathematicalBold("yep")}:Session`);
 
     act(() => {
       vi.advanceTimersByTime(TAB_TITLE_ACTIVITY_CADENCE_MS);
     });
 
-    expect(document.title).toBe("(○) Project - Session");
+    expect(document.title).toBe("yep:Session");
   });
 
   it("does not show activity while disabled", () => {
@@ -101,7 +113,7 @@ describe("tab title indicators", () => {
 
     renderHook(() => useNeedsAttentionBadge());
 
-    expect(document.title).toBe("Project - Session");
+    expect(document.title).toBe("yep:Session");
   });
 
   it("keeps the host marker after attention prefixes", () => {
@@ -109,7 +121,7 @@ describe("tab title indicators", () => {
 
     renderHook(() => useNeedsAttentionBadge("❤️"));
 
-    expect(document.title).toBe("(2) ❤️ Project - Session");
+    expect(document.title).toBe("(2) ❤️ yep:Session");
   });
 
   it("replaces a changed host marker without duplicating prefixes", () => {
@@ -117,10 +129,21 @@ describe("tab title indicators", () => {
       ({ icon }: { icon: string }) => useNeedsAttentionBadge(icon),
       { initialProps: { icon: "❤️" } },
     );
-    expect(document.title).toBe("❤️ Project - Session");
+    expect(document.title).toBe("❤️ yep:Session");
 
     view.rerender({ icon: "💻" });
 
-    expect(document.title).toBe("💻 Project - Session");
+    expect(document.title).toBe("💻 yep:Session");
+  });
+
+  it("keeps legacy activity frames when no code name is present", () => {
+    document.title = "Project - Session";
+    document.querySelector("title")?.removeAttribute("data-project-code-name");
+    inboxCounts.active = 1;
+    preferenceState.tabTitleActivityEnabled = true;
+
+    renderHook(() => useNeedsAttentionBadge());
+
+    expect(document.title).toBe("(●) Project - Session");
   });
 });

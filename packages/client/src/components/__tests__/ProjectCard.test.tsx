@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
@@ -71,6 +77,62 @@ describe("ProjectCard", () => {
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "Project settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it("commits a longer inline code name on blur", async () => {
+    const onUpdateCodeName = vi.fn().mockResolvedValue(undefined);
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectCard
+            project={{ ...project, codeName: "tst" }}
+            needsAttentionCount={0}
+            thinkingCount={0}
+            onUpdateCodeName={onUpdateCodeName}
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit code name" }));
+    const input = screen.getByRole("textbox", { name: "Project code name" });
+    fireEvent.change(input, { target: { value: "test-code" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(onUpdateCodeName).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "proj-1" }),
+        "test-code",
+      );
+    });
+  });
+
+  it("cancels an inline code-name edit with the x control", () => {
+    const onUpdateCodeName = vi.fn().mockResolvedValue(undefined);
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectCard
+            project={{ ...project, codeName: "tst" }}
+            needsAttentionCount={0}
+            thinkingCount={0}
+            onUpdateCodeName={onUpdateCodeName}
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit code name" }));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Project code name" }),
+      { target: { value: "discard-me" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel code name edit" }),
+    );
+
+    expect(onUpdateCodeName).not.toHaveBeenCalled();
+    expect(screen.getByText("tst")).toBeTruthy();
   });
 
   it("shows a project queue count badge", () => {

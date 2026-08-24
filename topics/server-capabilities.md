@@ -136,6 +136,17 @@ and omits the additive field from writes and undo restores. Existing capability
 meanings and older behavior remain unchanged. It is version-implied from
 `0.7.2`.
 
+`project-code-names` owns the additive `codeName` field on project list,
+detail, and create responses; `PATCH /api/projects/:projectId/code-name`; and
+the `project-code-names-changed` invalidation event. The ordinary optional
+feature corpus is `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other
+stable server release fell in the preceding 14 days as of 2026-08-24. Both
+lack the field, route, event, and permanent ID 46. Without it, clients use full
+project names, retain the released browser-title activity frames, hide
+code-name editing, and make no code-name request. Existing capability meanings
+and older capable behavior remain unchanged. It is version-implied from
+`0.7.2`.
+
 `codex-reasoning-summary-setting` owns `settings.codexReasoningSummary` on
 `GET /api/settings` and `PUT /api/settings`. The ordinary optional-feature
 corpus was `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); no other stable
@@ -335,9 +346,11 @@ the same ledger:
 | 42 | server | 0.7.2 | `git-working-tree-complete-scan` |
 | 43 | server | 0.7.2 | `cache-miss-billing-ignore-after` |
 | 44 | server | 0.7.2 | `git-live-worktree-setting` |
+| 45 | server | 0.7.2 | `synthetic-terminate-command` |
+| 46 | server | 0.7.2 | `project-code-names` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 45; retired rows stay in the ledger as reserved IDs.
+ID 47; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

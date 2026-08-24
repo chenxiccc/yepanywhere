@@ -211,6 +211,57 @@ describe("ProjectMetadataService", () => {
     });
   });
 
+  describe("project code names", () => {
+    it("allocates deterministic unique defaults and persists them", async () => {
+      const projects = [
+        { id: encodeProjectId("/alpha"), name: "Alpha" },
+        { id: encodeProjectId("/alpine"), name: "Alpine" },
+        { id: encodeProjectId("/alphanumeric"), name: "Alphanumeric" },
+      ];
+
+      const assignments = await service.ensureProjectCodeNames(projects);
+      expect(assignments).toEqual([
+        { projectId: projects[0].id, codeName: "alh" },
+        { projectId: projects[1].id, codeName: "alpi" },
+        { projectId: projects[2].id, codeName: "ala" },
+      ]);
+
+      const reloaded = new ProjectMetadataService({ dataDir: tempDir });
+      await reloaded.initialize();
+      expect(
+        await reloaded.ensureProjectCodeNames([...projects].reverse()),
+      ).toEqual([
+        { projectId: projects[2].id, codeName: "ala" },
+        { projectId: projects[1].id, codeName: "alpi" },
+        { projectId: projects[0].id, codeName: "alh" },
+      ]);
+    });
+
+    it("gives an explicit edit priority and reassigns its conflict", async () => {
+      const alpha = { id: encodeProjectId("/alpha"), name: "Alpha" };
+      const beta = { id: encodeProjectId("/beta"), name: "Beta" };
+      await service.ensureProjectCodeNames([alpha, beta]);
+
+      const assignments = await service.setProjectCodeName(beta.id, "ALP", [
+        alpha,
+        beta,
+      ]);
+
+      expect(assignments).toEqual([
+        { projectId: beta.id, codeName: "ALP" },
+        { projectId: alpha.id, codeName: "alph" },
+      ]);
+      expect(service.getProjectCodeName(beta.id)).toBe("ALP");
+      expect(service.getProjectCodeName(alpha.id)).toBe("alph");
+      await expect(
+        service.ensureProjectCodeNames([alpha, beta]),
+      ).resolves.toEqual([
+        { projectId: alpha.id, codeName: "alph" },
+        { projectId: beta.id, codeName: "ALP" },
+      ]);
+    });
+  });
+
   describe("removeProject", () => {
     it("removes a project from the list", async () => {
       const projectId1 = encodeProjectId("/path1");

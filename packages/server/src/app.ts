@@ -1633,6 +1633,7 @@ export function createApp(options: AppOptions): AppResult {
       notificationService: options.notificationService,
       sessionMetadataService: options.sessionMetadataService,
       projectMetadataService: options.projectMetadataService,
+      eventBus: options.eventBus,
       projectQueueService: options.projectQueueService,
       sessionIndexService: options.sessionIndexService,
       codexScanner,

@@ -9,8 +9,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  allocateProjectCodeName,
   MAX_HEARTBEAT_TURN_TEXT_LENGTH,
   MAX_PROJECT_HEARTBEAT_RECENT_TEXTS,
+  normalizeProjectCodeName,
+  projectCodeNameKey,
+  projectCodeNamePrefixesProjectName,
+  type ProjectCodeNameAssignment,
   type UpdateProjectSessionDefaultsRequest,
   type UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -43,6 +48,13 @@ export interface ProjectSessionDefaultsMetadata {
   updatedAt: string;
 }
 
+export interface ProjectCodeNameMetadata {
+  codeName: string;
+  projectName: string;
+  source: "generated" | "manual";
+  updatedAt: string;
+}
+
 export interface ProjectMetadataState {
   /** Map of projectId -> metadata */
   projects: Record<string, ProjectMetadata>;
@@ -50,11 +62,13 @@ export interface ProjectMetadataState {
   hiddenProjects?: Record<string, HiddenProjectMetadata>;
   /** Project-scoped defaults used to initialize new session metadata. */
   projectSessionDefaults?: Record<string, ProjectSessionDefaultsMetadata>;
+  /** Durable unique labels used in compact project identity surfaces. */
+  projectCodeNames?: Record<string, ProjectCodeNameMetadata>;
   /** Schema version for future migrations */
   version: number;
 }
 
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 4;
 
 export interface ProjectMetadataServiceOptions {
   /** Directory to store metadata state (defaults to ~/.yep-anywhere) */
@@ -79,6 +93,7 @@ export class ProjectMetadataService {
       projects: {},
       hiddenProjects: {},
       projectSessionDefaults: {},
+      projectCodeNames: {},
       version: CURRENT_VERSION,
     };
   }
@@ -109,6 +124,7 @@ export class ProjectMetadataService {
           projects: parsed.projects ?? {},
           hiddenProjects: parsed.hiddenProjects ?? {},
           projectSessionDefaults: parsed.projectSessionDefaults ?? {},
+          projectCodeNames: parsed.projectCodeNames ?? {},
           version: CURRENT_VERSION,
         });
         await this.save();
@@ -125,6 +141,7 @@ export class ProjectMetadataService {
         projects: {},
         hiddenProjects: {},
         projectSessionDefaults: {},
+        projectCodeNames: {},
         version: CURRENT_VERSION,
       };
     }
@@ -164,6 +181,102 @@ export class ProjectMetadataService {
             : undefined,
         }
       : undefined;
+  }
+
+  getProjectCodeName(projectId: string): string | undefined {
+    return this.state.projectCodeNames?.[this.canonicalProjectId(projectId)]
+      ?.codeName;
+  }
+
+  async ensureProjectCodeNames(
+    projects: readonly { id: string; name: string }[],
+  ): Promise<ProjectCodeNameAssignment[]> {
+    const changed = this.ensureProjectCodeNamesInMemory(projects);
+    if (changed) await this.save();
+    return projects.map((project) => {
+      const codeName = this.getProjectCodeName(project.id);
+      if (!codeName) {
+        throw new Error(
+          `Project code-name allocation failed for ${project.id}`,
+        );
+      }
+      return { projectId: project.id, codeName };
+    });
+  }
+
+  async setProjectCodeName(
+    projectId: string,
+    requestedCodeName: string,
+    projects: readonly { id: string; name: string }[],
+  ): Promise<ProjectCodeNameAssignment[]> {
+    const codeName = normalizeProjectCodeName(requestedCodeName);
+    this.ensureProjectCodeNamesInMemory(projects);
+
+    const canonicalProjectId = this.canonicalProjectId(projectId);
+    const project = projects.find(
+      (candidate) =>
+        this.canonicalProjectId(candidate.id) === canonicalProjectId,
+    );
+    if (!project) {
+      throw new RangeError("Project is not available for code-name editing");
+    }
+
+    this.state.projectCodeNames ??= {};
+    const records = this.state.projectCodeNames;
+    const requestedKey = projectCodeNameKey(codeName);
+    const displaced = Object.entries(records)
+      .filter(
+        ([candidateProjectId, metadata]) =>
+          candidateProjectId !== canonicalProjectId &&
+          projectCodeNameKey(metadata.codeName) === requestedKey,
+      )
+      .sort(([left], [right]) => left.localeCompare(right));
+    const changingIds = new Set([
+      canonicalProjectId,
+      ...displaced.map(([candidateProjectId]) => candidateProjectId),
+    ]);
+    const reserved = new Set(
+      Object.entries(records)
+        .filter(([candidateProjectId]) => !changingIds.has(candidateProjectId))
+        .map(([, metadata]) => metadata.codeName),
+    );
+    const updatedAt = new Date().toISOString();
+    records[canonicalProjectId] = {
+      codeName,
+      projectName: project.name,
+      source: "manual",
+      updatedAt,
+    };
+    reserved.add(codeName);
+
+    const assignments: ProjectCodeNameAssignment[] = [
+      { projectId: canonicalProjectId, codeName },
+    ];
+    for (const [displacedProjectId, metadata] of displaced) {
+      const replacement = allocateProjectCodeName(
+        metadata.projectName,
+        reserved,
+        Object.entries(records)
+          .filter(
+            ([candidateProjectId]) => candidateProjectId !== displacedProjectId,
+          )
+          .map(([, candidateMetadata]) => candidateMetadata.projectName),
+      );
+      records[displacedProjectId] = {
+        ...metadata,
+        codeName: replacement,
+        source: "generated",
+        updatedAt,
+      };
+      reserved.add(replacement);
+      assignments.push({
+        projectId: displacedProjectId,
+        codeName: replacement,
+      });
+    }
+
+    await this.save();
+    return assignments;
   }
 
   async updateProjectSessionDefaults(
@@ -265,6 +378,12 @@ export class ProjectMetadataService {
     const canonicalProjectId = encodeProjectId(canonicalPath);
     if (projectId !== canonicalProjectId) {
       delete this.state.projects[projectId];
+      const legacyCodeName = this.state.projectCodeNames?.[projectId];
+      if (legacyCodeName) {
+        this.state.projectCodeNames ??= {};
+        this.state.projectCodeNames[canonicalProjectId] = legacyCodeName;
+        delete this.state.projectCodeNames[projectId];
+      }
     }
     this.deleteProjectsByIdentity(canonicalPath);
     this.deleteHiddenProjectsByIdentity(canonicalPath);
@@ -279,9 +398,16 @@ export class ProjectMetadataService {
    * Remove a project from the added list.
    */
   async removeProject(projectId: string): Promise<void> {
+    const canonicalProjectId = this.canonicalProjectId(projectId);
+    const hadCodeName = Boolean(
+      this.state.projectCodeNames?.[canonicalProjectId],
+    );
+    delete this.state.projectCodeNames?.[canonicalProjectId];
     if (this.state.projects[projectId]) {
       const { [projectId]: _, ...rest } = this.state.projects;
       this.state.projects = rest;
+      await this.save();
+    } else if (hadCodeName) {
       await this.save();
     }
   }
@@ -300,6 +426,8 @@ export class ProjectMetadataService {
 
     this.deleteProjectsByIdentity(canonicalPath);
     this.deleteHiddenProjectsByIdentity(canonicalPath);
+    delete this.state.projectCodeNames?.[canonicalProjectId];
+    delete this.state.projectCodeNames?.[projectId];
     this.state.hiddenProjects ??= {};
     this.state.hiddenProjects[canonicalProjectId] = {
       path: canonicalPath,
@@ -363,6 +491,7 @@ export class ProjectMetadataService {
       string,
       ProjectSessionDefaultsMetadata
     >();
+    const projectCodeNames = new Map<string, ProjectCodeNameMetadata>();
 
     for (const [projectId, metadata] of Object.entries(state.projects ?? {})) {
       const canonicalPath = canonicalizeProjectPath(metadata.path);
@@ -440,6 +569,22 @@ export class ProjectMetadataService {
       }
     }
 
+    for (const [projectId, metadata] of Object.entries(
+      state.projectCodeNames ?? {},
+    )) {
+      const normalized = this.normalizeProjectCodeNameMetadata(metadata);
+      if (!normalized) continue;
+      const canonicalProjectId = this.canonicalProjectId(projectId);
+      const existing = projectCodeNames.get(canonicalProjectId);
+      if (
+        !existing ||
+        new Date(normalized.updatedAt).getTime() >=
+          new Date(existing.updatedAt).getTime()
+      ) {
+        projectCodeNames.set(canonicalProjectId, normalized);
+      }
+    }
+
     const projects: Record<string, ProjectMetadata> = {};
     for (const { projectId, metadata } of projectsByIdentity.values()) {
       projects[projectId] = metadata;
@@ -454,6 +599,7 @@ export class ProjectMetadataService {
       projects,
       hiddenProjects,
       projectSessionDefaults: Object.fromEntries(projectSessionDefaults),
+      projectCodeNames: Object.fromEntries(projectCodeNames),
       version: CURRENT_VERSION,
     };
   }
@@ -514,6 +660,116 @@ export class ProjectMetadataService {
           }),
       updatedAt,
     };
+  }
+
+  private normalizeProjectCodeNameMetadata(
+    metadata: ProjectCodeNameMetadata,
+  ): ProjectCodeNameMetadata | undefined {
+    if (!metadata || typeof metadata !== "object") return undefined;
+    try {
+      const codeName = normalizeProjectCodeName(metadata.codeName);
+      const projectName =
+        typeof metadata.projectName === "string" && metadata.projectName.trim()
+          ? metadata.projectName.trim()
+          : "project";
+      const updatedAt = Number.isFinite(new Date(metadata.updatedAt).getTime())
+        ? metadata.updatedAt
+        : new Date(0).toISOString();
+      const source = metadata.source === "manual" ? "manual" : "generated";
+      return { codeName, projectName, source, updatedAt };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private ensureProjectCodeNamesInMemory(
+    projects: readonly { id: string; name: string }[],
+  ): boolean {
+    this.state.projectCodeNames ??= {};
+    const records = this.state.projectCodeNames;
+    const projectNameById = new Map(
+      projects.map((project) => [
+        this.canonicalProjectId(project.id),
+        project.name,
+      ]),
+    );
+    const allProjectNamesById = new Map(
+      Object.entries(records).map(([projectId, metadata]) => [
+        projectId,
+        metadata.projectName,
+      ]),
+    );
+    for (const [projectId, projectName] of projectNameById) {
+      allProjectNamesById.set(projectId, projectName);
+    }
+    const reserved = new Set<string>();
+    const needsAllocation: Array<{ projectId: string; projectName: string }> =
+      [];
+    const needsAllocationIds = new Set<string>();
+    let changed = false;
+
+    for (const projectId of Object.keys(records).sort()) {
+      const metadata = records[projectId];
+      if (!metadata) continue;
+      const key = projectCodeNameKey(metadata.codeName);
+      const currentProjectName = projectNameById.get(projectId);
+      const prefixesAnotherProject = [...allProjectNamesById].some(
+        ([candidateProjectId, projectName]) =>
+          candidateProjectId !== projectId &&
+          projectCodeNamePrefixesProjectName(metadata.codeName, projectName),
+      );
+      if (
+        reserved.has(key) ||
+        (metadata.source !== "manual" && prefixesAnotherProject)
+      ) {
+        delete records[projectId];
+        needsAllocation.push({
+          projectId,
+          projectName: currentProjectName ?? metadata.projectName,
+        });
+        needsAllocationIds.add(projectId);
+        changed = true;
+        continue;
+      }
+      reserved.add(key);
+      if (currentProjectName && currentProjectName !== metadata.projectName) {
+        records[projectId] = { ...metadata, projectName: currentProjectName };
+        changed = true;
+      }
+    }
+
+    for (const project of projects) {
+      const projectId = this.canonicalProjectId(project.id);
+      if (!records[projectId] && !needsAllocationIds.has(projectId)) {
+        needsAllocation.push({ projectId, projectName: project.name });
+        needsAllocationIds.add(projectId);
+      }
+    }
+
+    needsAllocation.sort(
+      (left, right) =>
+        left.projectName.localeCompare(right.projectName) ||
+        left.projectId.localeCompare(right.projectId),
+    );
+    const updatedAt = new Date().toISOString();
+    for (const project of needsAllocation) {
+      const codeName = allocateProjectCodeName(
+        project.projectName,
+        reserved,
+        [...allProjectNamesById]
+          .filter(([projectId]) => projectId !== project.projectId)
+          .map(([, projectName]) => projectName),
+      );
+      records[project.projectId] = {
+        codeName,
+        projectName: project.projectName,
+        source: "generated",
+        updatedAt,
+      };
+      reserved.add(projectCodeNameKey(codeName));
+      changed = true;
+    }
+    return changed;
   }
 
   private withRecentHeartbeatText(

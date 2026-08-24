@@ -62,6 +62,7 @@ vi.mock("../../hooks/useProjects", () => ({
         id: "project-1",
         path: "/work/draft",
         name: "draft",
+        codeName: "dra",
         sessionCount: 1,
         activeOwnedCount: 0,
         activeExternalCount: 0,
@@ -71,6 +72,7 @@ vi.mock("../../hooks/useProjects", () => ({
         id: "project-2",
         path: "/work/yepanywhere",
         name: "yepanywhere",
+        codeName: "yep",
         sessionCount: 1,
         activeOwnedCount: 0,
         activeExternalCount: 0,
@@ -117,7 +119,7 @@ vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({
     version: {
-      capabilities: [],
+      capabilities: ["project-code-names"],
     },
   }),
 }));
@@ -392,7 +394,7 @@ describe("Sidebar client summary source registry", () => {
     renderSidebar();
 
     const row = await screen.findByTestId("session-row-moved-session");
-    expect(row.getAttribute("data-project-name")).toBe("draft");
+    expect(row.getAttribute("data-project-name")).toBe("dra");
 
     act(() => {
       reportSessionCollectionMetadataChanged(
@@ -409,7 +411,7 @@ describe("Sidebar client summary source registry", () => {
 
     await waitFor(() => {
       expect(row.getAttribute("data-project-id")).toBe("project-2");
-      expect(row.getAttribute("data-project-name")).toBe("yepanywhere");
+      expect(row.getAttribute("data-project-name")).toBe("yep");
     });
   });
 });

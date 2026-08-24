@@ -111,6 +111,11 @@ describe("Projects Routes", () => {
       } as unknown as Parameters<
         typeof createProjectsRoutes
       >[0]["projectQueueService"],
+      projectMetadataService: {
+        ensureProjectCodeNames: vi.fn(async () => [
+          { projectId: project.id, codeName: "prj" },
+        ]),
+      } as unknown as ProjectMetadataService,
     });
 
     const response = await routes.request("/");
@@ -119,6 +124,7 @@ describe("Projects Routes", () => {
     const json = await response.json();
     expect(json.projects[0]).toMatchObject({
       id: project.id,
+      codeName: "prj",
       projectQueueCount: 2,
     });
   });
@@ -262,6 +268,57 @@ describe("Projects Routes", () => {
       project.path,
     );
     expect(scanner.invalidateCache).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits a code name and publishes every atomic reassignment", async () => {
+    const project = {
+      ...createProject(),
+      id: toUrlProjectId("/tmp/project"),
+    };
+    const otherProject = {
+      ...createProject(),
+      id: toUrlProjectId("/tmp/other"),
+      path: "/tmp/other",
+      name: "other",
+    };
+    const assignments = [
+      { projectId: project.id, codeName: "oth" },
+      { projectId: otherProject.id, codeName: "otr" },
+    ];
+    const setProjectCodeName = vi.fn(async () => assignments);
+    const emit = vi.fn();
+    const routes = createProjectsRoutes({
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+        listProjects: vi.fn(async () => [project, otherProject]),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(),
+      projectMetadataService: {
+        ensureProjectCodeNames: vi.fn(async () => []),
+        setProjectCodeName,
+      } as unknown as ProjectMetadataService,
+      eventBus: { emit } as unknown as NonNullable<
+        Parameters<typeof createProjectsRoutes>[0]["eventBus"]
+      >,
+    });
+
+    const response = await routes.request(`/${project.id}/code-name`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codeName: "oth" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ assignments });
+    expect(setProjectCodeName).toHaveBeenCalledWith(project.id, "oth", [
+      project,
+      otherProject,
+    ]);
+    expect(emit).toHaveBeenCalledWith({
+      type: "project-code-names-changed",
+      projectIds: [project.id, otherProject.id],
+      timestamp: expect.any(String),
+    });
   });
 
   it("returns 404 when hiding an unknown project", async () => {

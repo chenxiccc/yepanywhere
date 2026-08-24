@@ -7,6 +7,7 @@ import type {
   CacheMissBillingRecord,
   ContextUsage,
   PendingInputType,
+  ProjectCodeNameChangedEvent,
   ProjectQueueChangedEvent,
   ProviderName,
   ProviderRuntimeStatus,
@@ -320,6 +321,7 @@ export type BusEvent =
   | SessionQueuePersistenceChangedEvent
   | SafeRestartChangedEvent
   | ProjectQueueChangedEvent
+  | ProjectCodeNameChangedEvent
   | SessionMetadataChangedEvent
   | SessionAbortedEvent
   | SessionUpdatedEvent

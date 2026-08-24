@@ -18,6 +18,9 @@ Progress:
   and made the animation cadence an explicit 1500 ms constant.
 - [x] 2026-05-31: Removed the focused-session/all-session selector. The
   remaining toggle now means all-session activity.
+- [x] 2026-08-24: Replaced capable-server circle frames with a zero-prefix
+  ordinary/Mathematical-Bold project-code-name cycle. Older servers retain the
+  released circle fallback.
 
 ## Context
 
@@ -44,11 +47,12 @@ The requested setting is:
   - `idle`;
   - `waiting-input`;
   - pending approvals or questions.
-- Use a quiet two-frame indicator with same-family circle glyphs:
-  - `(●) Project - Session`
-  - `(○) Project - Session`
-- Prefer the existing needs-attention count first, then the activity indicator:
-  - `(2) (●) Project - Session`
+- On servers with project code names, use two zero-prefix frames:
+  - `yep:Session`
+  - `𝐲𝐞𝐩:Session`
+- On an older server without the capability, retain the released circle frames.
+- Prefer the existing needs-attention count first:
+  - `(2) 𝐲𝐞𝐩:Session`
 - Compose tab-title prefixes from one place instead of adding another
   independent `document.title` mutator.
 - Use global active session state already maintained by the client
@@ -190,12 +194,13 @@ The requested setting is:
 ## Verification Checklist
 
 - Fresh browser profiles do not show activity in the tab title.
-- Enabling the setting starts showing `(●)` / `(○)` only during active work.
+- Enabling the setting alternates ordinary and bold code-name frames only
+  during active work; an older server retains `(●)` / `(○)`.
 - The tab title shows activity when any active session is working.
 - Pending approvals/questions still use the existing needs-attention badge and
   do not trigger the activity spinner by themselves.
-- Existing needs-attention title counts still work and compose with the new
-  activity indicator as `(N) (●) Title`.
+- Existing needs-attention title counts still work and compose as
+  `(N) 𝐲𝐞𝐩:Title` on a capable server.
 - Timers are cleaned up after disabling the feature, navigating away from a
   session, or unmounting the app.
 - Remote client routes behave consistently with local routes.

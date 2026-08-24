@@ -2,6 +2,7 @@ import {
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  PROJECT_CODE_NAMES_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   type ProjectQueueItemSummary,
   serverHasCapability,
@@ -382,6 +383,10 @@ export function Sidebar({
     serverSettings?.clientDefaults,
   );
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
+  const supportsProjectCodeNames = serverHasCapability(
+    versionInfo,
+    PROJECT_CODE_NAMES_CAPABILITY,
+  );
   const supportsSourceControl = serverHasCapability(
     versionInfo,
     GIT_STATUS_ENHANCED_CAPABILITY,
@@ -646,8 +651,16 @@ export function Sidebar({
     : EMPTY_PROJECT_QUEUE_SESSION_IDS;
   const knownProjectQueueItems = useKnownProjectQueueItems();
   const projectNameById = useMemo(
-    () => new Map(projects.map((project) => [project.id, project.name])),
-    [projects],
+    () =>
+      new Map(
+        projects.map((project) => [
+          project.id,
+          supportsProjectCodeNames && project.codeName
+            ? project.codeName
+            : project.name,
+        ]),
+      ),
+    [projects, supportsProjectCodeNames],
   );
   const pendingProjectQueueItems = useMemo(
     () =>

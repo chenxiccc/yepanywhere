@@ -1,4 +1,5 @@
 import {
+  PROJECT_CODE_NAMES_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   type ProjectQueueMessage,
   serverHasCapability,
@@ -30,6 +31,10 @@ export function ProjectsPage() {
   const supportsProjectSessionDefaults = serverHasCapability(
     version,
     PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  );
+  const supportsProjectCodeNames = serverHasCapability(
+    version,
+    PROJECT_CODE_NAMES_CAPABILITY,
   );
   const inboxCountsByProject = useInboxCountsByProject();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -134,6 +139,14 @@ export function ProjectsPage() {
     } finally {
       setDeletingProjectId(null);
     }
+  };
+
+  const handleUpdateProjectCodeName = async (
+    project: Project,
+    codeName: string,
+  ) => {
+    await api.updateProjectCodeName(project.id, codeName);
+    await refetch();
   };
 
   const handleDeleteQueueItem = async (projectId: string, itemId: string) => {
@@ -376,6 +389,11 @@ export function ProjectsPage() {
                   onOpenSettings={
                     supportsProjectSessionDefaults
                       ? setSettingsProject
+                      : undefined
+                  }
+                  onUpdateCodeName={
+                    supportsProjectCodeNames
+                      ? handleUpdateProjectCodeName
                       : undefined
                   }
                   isDeleting={deletingProjectId === project.id}

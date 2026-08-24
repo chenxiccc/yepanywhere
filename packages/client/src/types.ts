@@ -180,6 +180,8 @@ export interface Project {
   id: string;
   path: string;
   name: string;
+  /** Server-owned unique shorthand; absent on older servers. */
+  codeName?: string;
   sessionCount: number;
   sessionCountsByProvider?: Partial<Record<ProviderName, number>>;
   activeOwnedCount: number;

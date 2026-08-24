@@ -143,6 +143,11 @@ describe("useProjects", () => {
     await act(async () => {
       mocks.activityBus.emit("refresh");
       mocks.activityBus.emit("reconnect");
+      mocks.activityBus.emit("project-code-names-changed", {
+        type: "project-code-names-changed",
+        projectIds: ["project-a"],
+        timestamp: RECENT,
+      });
       await vi.advanceTimersByTimeAsync(499);
     });
     expect(mocks.getProjects).toHaveBeenCalledTimes(1);
@@ -188,7 +193,7 @@ describe("useProjects", () => {
     );
   });
 
-  it("only revalidates project detail for matching project activity", async () => {
+  it("revalidates project detail for matching activity and code-name changes", async () => {
     vi.useFakeTimers();
     mocks.getProject
       .mockResolvedValueOnce({
@@ -196,6 +201,12 @@ describe("useProjects", () => {
       })
       .mockResolvedValueOnce({
         project: project("project-a", { activeOwnedCount: 2 }),
+      })
+      .mockResolvedValueOnce({
+        project: project("project-a", {
+          activeOwnedCount: 2,
+          codeName: "alp",
+        }),
       });
 
     const detail = renderHook(() => useProject("project-a"));
@@ -232,5 +243,17 @@ describe("useProjects", () => {
 
     expect(mocks.getProject).toHaveBeenCalledTimes(2);
     expect(detail.result.current.project?.activeOwnedCount).toBe(2);
+
+    await act(async () => {
+      mocks.activityBus.emit("project-code-names-changed", {
+        type: "project-code-names-changed",
+        projectIds: ["project-a"],
+        timestamp: "2026-06-29T00:00:02.000Z",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.getProject).toHaveBeenCalledTimes(3);
   });
 });

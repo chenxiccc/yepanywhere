@@ -1,16 +1,74 @@
 import { useEffect, useRef } from "react";
 import { useInboxCounts } from "../lib/clientSummaryStore";
+import { PROJECT_CODE_NAME_TITLE_ATTRIBUTE } from "./useDocumentTitle";
 import { useTabTitleActivityPreference } from "./useTabTitleActivityPreference";
 
 // Regex to match and strip existing badge prefix like "(3) "
 const BADGE_PREFIX_REGEX = /^\(\d+\)\s*/;
 const ACTIVITY_PREFIX_REGEX = /^\((?:●|○|\*| )\)\s*/u;
-const ACTIVITY_FRAMES = ["(●)", "(○)"] as const;
+const ACTIVITY_FRAMES = ["bold", "plain"] as const;
+export type TabTitleActivityFrame = (typeof ACTIVITY_FRAMES)[number];
 export const TAB_TITLE_ACTIVITY_CADENCE_MS = 1500;
+
+function mapCodePoints(
+  value: string,
+  mapper: (codePoint: number) => number | undefined,
+): string {
+  return [...value]
+    .map((character) => {
+      const codePoint = character.codePointAt(0) as number;
+      const mapped = mapper(codePoint);
+      return mapped === undefined ? character : String.fromCodePoint(mapped);
+    })
+    .join("");
+}
+
+export function toMathematicalBold(value: string): string {
+  return mapCodePoints(value, (codePoint) => {
+    if (codePoint >= 0x41 && codePoint <= 0x5a) {
+      return 0x1d400 + codePoint - 0x41;
+    }
+    if (codePoint >= 0x61 && codePoint <= 0x7a) {
+      return 0x1d41a + codePoint - 0x61;
+    }
+    if (codePoint >= 0x30 && codePoint <= 0x39) {
+      return 0x1d7ce + codePoint - 0x30;
+    }
+    return undefined;
+  });
+}
+
+export function fromMathematicalBold(value: string): string {
+  return mapCodePoints(value, (codePoint) => {
+    if (codePoint >= 0x1d400 && codePoint <= 0x1d419) {
+      return 0x41 + codePoint - 0x1d400;
+    }
+    if (codePoint >= 0x1d41a && codePoint <= 0x1d433) {
+      return 0x61 + codePoint - 0x1d41a;
+    }
+    if (codePoint >= 0x1d7ce && codePoint <= 0x1d7d7) {
+      return 0x30 + codePoint - 0x1d7ce;
+    }
+    return undefined;
+  });
+}
+
+function renderActivityCodeFrame(
+  title: string,
+  frame: TabTitleActivityFrame | undefined,
+  projectCodeNameTitle: boolean,
+): string {
+  if (!projectCodeNameTitle) return title;
+  return title.replace(/^([^:]+):/u, (_match, codeName: string) => {
+    const ordinaryCodeName = fromMathematicalBold(codeName);
+    return `${frame === "bold" ? toMathematicalBold(ordinaryCodeName) : ordinaryCodeName}:`;
+  });
+}
 
 export function stripTabTitlePrefixes(
   title: string,
   hostIdentityIcon?: string,
+  projectCodeNameTitle = /^[A-Za-z0-9_-]{1,12}:/u.test(title),
 ): string {
   let next = title;
   for (;;) {
@@ -24,34 +82,44 @@ export function stripTabTitlePrefixes(
   }
 
   const hostPrefix = hostIdentityIcon ? `${hostIdentityIcon} ` : "";
-  return hostPrefix && next.startsWith(hostPrefix)
-    ? next.slice(hostPrefix.length)
-    : next;
+  const withoutHost =
+    hostPrefix && next.startsWith(hostPrefix)
+      ? next.slice(hostPrefix.length)
+      : next;
+  return renderActivityCodeFrame(withoutHost, "plain", projectCodeNameTitle);
 }
 
 export function composeTabTitle(
   baseTitle: string,
   count: number,
-  activityFrame?: string,
+  activityFrame?: TabTitleActivityFrame,
   hostIdentityIcon?: string,
+  projectCodeNameTitle = /^[A-Za-z0-9_-]{1,12}:/u.test(baseTitle),
 ): string {
   const prefixes: string[] = [];
   if (count > 0) {
     prefixes.push(`(${count})`);
   }
-  if (activityFrame) {
-    prefixes.push(activityFrame);
+  if (activityFrame && !projectCodeNameTitle) {
+    prefixes.push(activityFrame === "bold" ? "(●)" : "(○)");
   }
   if (hostIdentityIcon) {
     prefixes.push(hostIdentityIcon);
   }
-  return prefixes.length > 0 ? `${prefixes.join(" ")} ${baseTitle}` : baseTitle;
+  const renderedBaseTitle = renderActivityCodeFrame(
+    baseTitle,
+    activityFrame,
+    projectCodeNameTitle,
+  );
+  return prefixes.length > 0
+    ? `${prefixes.join(" ")} ${renderedBaseTitle}`
+    : renderedBaseTitle;
 }
 
 export function getTabTitleActivityFrame(
   activityStartedAtMs: number,
   nowMs = Date.now(),
-): string {
+): TabTitleActivityFrame {
   const elapsedMs = Math.max(0, nowMs - activityStartedAtMs);
   const frameIndex =
     Math.floor(elapsedMs / TAB_TITLE_ACTIVITY_CADENCE_MS) %
@@ -76,7 +144,14 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
 
   useEffect(() => {
     return () => {
-      document.title = stripTabTitlePrefixes(document.title, hostIdentityIcon);
+      const projectCodeNameTitle = document
+        .querySelector("title")
+        ?.hasAttribute(PROJECT_CODE_NAME_TITLE_ATTRIBUTE);
+      document.title = stripTabTitlePrefixes(
+        document.title,
+        hostIdentityIcon,
+        projectCodeNameTitle,
+      );
     };
   }, [hostIdentityIcon]);
 
@@ -94,8 +169,15 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
 
     const updateTitle = () => {
       isUpdating = true;
+      const projectCodeNameTitle = document
+        .querySelector("title")
+        ?.hasAttribute(PROJECT_CODE_NAME_TITLE_ATTRIBUTE);
       // Strip existing indicator prefixes before composing the next title.
-      const baseTitle = stripTabTitlePrefixes(document.title, hostIdentityIcon);
+      const baseTitle = stripTabTitlePrefixes(
+        document.title,
+        hostIdentityIcon,
+        projectCodeNameTitle,
+      );
       const activityStartedAt = activityStartedAtRef.current;
       const activityFrame =
         showSessionActivity && activityStartedAt !== null
@@ -107,6 +189,7 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
         count,
         activityFrame,
         hostIdentityIcon,
+        projectCodeNameTitle,
       );
       // Use setTimeout to reset flag after current mutation cycle completes
       setTimeout(() => {
@@ -129,7 +212,14 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
 
       // Check if the indicators need to be (re)applied
       const currentTitle = document.title;
-      const baseTitle = stripTabTitlePrefixes(currentTitle, hostIdentityIcon);
+      const projectCodeNameTitle = document
+        .querySelector("title")
+        ?.hasAttribute(PROJECT_CODE_NAME_TITLE_ATTRIBUTE);
+      const baseTitle = stripTabTitlePrefixes(
+        currentTitle,
+        hostIdentityIcon,
+        projectCodeNameTitle,
+      );
       const activityStartedAt = activityStartedAtRef.current;
       const activityFrame =
         showSessionActivity && activityStartedAt !== null
@@ -140,6 +230,7 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
         count,
         activityFrame,
         hostIdentityIcon,
+        projectCodeNameTitle,
       );
 
       if (currentTitle !== expectedTitle) {

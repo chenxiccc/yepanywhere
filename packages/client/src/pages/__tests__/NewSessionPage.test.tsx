@@ -87,6 +87,10 @@ vi.mock("../../hooks/useDocumentTitle", () => ({
   useDocumentTitle: vi.fn(),
 }));
 
+vi.mock("../../hooks/useVersion", () => ({
+  useVersion: () => ({ version: { capabilities: [] } }),
+}));
+
 vi.mock("../../hooks/useProjects", () => ({
   useProjects: () => projectsState,
   useProject: (projectId: string | undefined) => {

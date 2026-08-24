@@ -33,6 +33,7 @@ import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ProjectQueueService } from "../services/ProjectQueueService.js";
+import type { EventBus } from "../watcher/index.js";
 import {
   applyRecapOverlayToSummary,
   hasUnreadProviderContent,
@@ -58,6 +59,7 @@ export interface ProjectsDeps {
   sessionMetadataService?: SessionMetadataService;
   /** ProjectMetadataService for persisting added projects */
   projectMetadataService?: ProjectMetadataService;
+  eventBus?: EventBus;
   projectQueueService?: Pick<ProjectQueueService, "listAll" | "listProject">;
   sessionIndexService?: SessionIndexService;
   /** Codex scanner for checking if a project has Codex sessions */
@@ -230,6 +232,20 @@ async function getProjectActivityCounts(
 export function createProjectsRoutes(deps: ProjectsDeps): Hono {
   const routes = new Hono();
 
+  async function codeNamesForProjects(
+    projects: readonly Project[],
+  ): Promise<Map<string, string>> {
+    if (!deps.projectMetadataService) return new Map();
+    const assignments =
+      await deps.projectMetadataService.ensureProjectCodeNames(projects);
+    return new Map(
+      assignments.map((assignment) => [
+        assignment.projectId,
+        assignment.codeName,
+      ]),
+    );
+  }
+
   /**
    * Get owned sessions for a project that might not be in the file list yet.
    * New sessions may not have user/assistant messages written to disk yet.
@@ -388,12 +404,14 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       deps.supervisor,
       deps.externalTracker,
     );
+    const codeNameByProjectId = await codeNamesForProjects(rawProjects);
 
     // Enrich projects with active counts (all keyed by UrlProjectId now)
     const projects = rawProjects.map((project) => {
       const counts = getActivityCountsForProject(activityCounts, project.id);
       return {
         ...project,
+        codeName: codeNameByProjectId.get(project.id),
         activeOwnedCount: counts.activeOwnedCount,
         activeExternalCount: counts.activeExternalCount,
         projectQueueBlockingCount: counts.projectQueueBlockingCount,
@@ -438,6 +456,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       deps.externalTracker,
     );
     const counts = getActivityCountsForProject(activityCounts, project.id);
+    const codeNameByProjectId = await codeNamesForProjects([project]);
     const projectQueueCount = deps.projectQueueService
       ? getProjectQueueCountForProject(deps.projectQueueService, project.id)
       : 0;
@@ -445,6 +464,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     return c.json({
       project: {
         ...project,
+        codeName: codeNameByProjectId.get(project.id),
         activeOwnedCount: counts.activeOwnedCount,
         activeExternalCount: counts.activeExternalCount,
         projectQueueBlockingCount: counts.projectQueueBlockingCount,
@@ -501,7 +521,63 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       deps.scanner.invalidateCache();
     }
 
-    return c.json({ project });
+    const codeNameByProjectId = await codeNamesForProjects([project]);
+    return c.json({
+      project: {
+        ...project,
+        codeName: codeNameByProjectId.get(project.id),
+      },
+    });
+  });
+
+  routes.patch("/:projectId/code-name", async (c) => {
+    const projectId = c.req.param("projectId");
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!deps.projectMetadataService) {
+      return c.json({ error: "Project code-name editing is unavailable" }, 501);
+    }
+
+    let body: { codeName?: unknown };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (typeof body.codeName !== "string") {
+      return c.json({ error: "codeName is required" }, 400);
+    }
+
+    const project = await deps.scanner.getOrCreateProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+    const visibleProjects = (await deps.scanner.listProjects()).filter(
+      (candidate) => !isDetachedProjectPath(candidate.path),
+    );
+    if (!visibleProjects.some((candidate) => candidate.id === project.id)) {
+      visibleProjects.push(project);
+    }
+
+    try {
+      const assignments = await deps.projectMetadataService.setProjectCodeName(
+        project.id,
+        body.codeName,
+        visibleProjects,
+      );
+      deps.eventBus?.emit({
+        type: "project-code-names-changed",
+        projectIds: assignments.map((assignment) => assignment.projectId),
+        timestamp: new Date().toISOString(),
+      });
+      return c.json({ assignments });
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return c.json({ error: error.message }, 400);
+      }
+      throw error;
+    }
   });
 
   // DELETE /api/projects/:projectId - Hide a project from YA lists

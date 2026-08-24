@@ -442,6 +442,14 @@ export const api = {
   getProject: (projectId: string) =>
     fetchJSON<{ project: Project }>(`/projects/${projectId}`),
 
+  updateProjectCodeName: (projectId: string, codeName: string) =>
+    fetchJSON<{
+      assignments: Array<{ projectId: string; codeName: string }>;
+    }>(`/projects/${encodeURIComponent(projectId)}/code-name`, {
+      method: "PATCH",
+      body: JSON.stringify({ codeName }),
+    }),
+
   getProjectSessionDefaults: (projectId: string) =>
     fetchJSON<ProjectSessionDefaultsResponse>(
       `/projects/${projectId}/session-defaults`,

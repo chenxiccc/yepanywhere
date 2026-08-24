@@ -5,7 +5,14 @@ import type {
   ProjectQueueRecoveredSessionQueueSummary,
 } from "@yep-anywhere/shared";
 import { PROJECT_SESSION_DEFAULTS_CAPABILITY } from "@yep-anywhere/shared";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { PROJECT_CODE_NAMES_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +26,7 @@ const state = vi.hoisted(() => ({
     {
       id: "project-1",
       name: "Alpha",
+      codeName: "alp",
       path: "/tmp/alpha",
       sessionCount: 2,
       activeOwnedCount: 0,
@@ -42,12 +50,15 @@ const state = vi.hoisted(() => ({
   },
   isRemoteClient: false,
   mockUseProjectQueues: vi.fn(),
+  refetch: vi.fn(),
+  updateProjectCodeName: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
   api: {
     addProject: vi.fn(),
     deleteProject: vi.fn(),
+    updateProjectCodeName: state.updateProjectCodeName,
   },
 }));
 
@@ -60,7 +71,7 @@ vi.mock("../../hooks/useProjects", () => ({
     projects: state.projects,
     loading: false,
     error: null,
-    refetch: vi.fn(),
+    refetch: state.refetch,
   }),
 }));
 
@@ -167,6 +178,9 @@ describe("ProjectsPage", () => {
     state.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
     state.isRemoteClient = false;
     state.mockUseProjectQueues.mockReset();
+    state.refetch.mockReset();
+    state.updateProjectCodeName.mockReset();
+    state.updateProjectCodeName.mockResolvedValue({ assignments: [] });
   });
 
   afterEach(() => {
@@ -302,6 +316,42 @@ describe("ProjectsPage", () => {
     expect(
       screen.getByRole("menuitem", { name: "Project settings" }),
     ).toBeTruthy();
+  });
+
+  it("gates inline code-name editing on its server capability", async () => {
+    const { rerender } = render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByRole("button", { name: "Edit code name" })).toBe(null);
+    expect(screen.getByText("alp")).toBeTruthy();
+
+    state.version = {
+      capabilities: [PROJECT_QUEUE_CAPABILITY, PROJECT_CODE_NAMES_CAPABILITY],
+    };
+    rerender(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit code name" }));
+    const input = screen.getByRole("textbox", { name: "Project code name" });
+    fireEvent.change(input, { target: { value: "alpha-code" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(state.updateProjectCodeName).toHaveBeenCalledWith(
+        "project-1",
+        "alpha-code",
+      );
+    });
+    expect(state.refetch).toHaveBeenCalledOnce();
   });
 
   it("hides project queue UI for hosted remote servers below the compatible level", () => {

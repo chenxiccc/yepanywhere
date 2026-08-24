@@ -507,6 +507,15 @@ export {
   type UpdateProjectSessionDefaultsRequest,
 } from "./heartbeat.js";
 export {
+  MAX_PROJECT_CODE_NAME_LENGTH,
+  allocateProjectCodeName,
+  normalizeProjectCodeName,
+  projectCodeNameKey,
+  projectCodeNamePrefixesProjectName,
+  type ProjectCodeNameAssignment,
+  type ProjectCodeNameChangedEvent,
+} from "./project-code-names.js";
+export {
   getApplicableSubscriptionUsageWindows,
   getMostUsedSubscriptionUsageWindow,
   type ProviderSubscriptionUsage,
@@ -545,6 +554,7 @@ export {
   PROGRESSIVE_SESSION_CATALOG_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+  PROJECT_CODE_NAMES_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   SIDEBAR_SESSION_RESUME_CAPABILITY,
   SYNTHETIC_ARCHIVE_COMMAND_CAPABILITY,
