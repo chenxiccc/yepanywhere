@@ -2674,6 +2674,125 @@ describe("useSessionMessages cache", () => {
     expect(rendered.result.current.olderLoadContinuationRequired).toBe(false);
   });
 
+  it("recovers older history after a stale pagination cursor", async () => {
+    apiMocks.getSession
+      .mockResolvedValueOnce({
+        ...sessionResponse("stale-current"),
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "stale-cursor",
+          totalMessageCount: 3,
+          returnedMessageCount: 1,
+          totalCompactions: 2,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("empty"),
+        messages: [],
+        pagination: {
+          hasOlderMessages: false,
+          totalMessageCount: 3,
+          returnedMessageCount: 0,
+          totalCompactions: 0,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("fresh-current"),
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "fresh-cursor",
+          totalMessageCount: 3,
+          returnedMessageCount: 1,
+          totalCompactions: 2,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("older-user"),
+        messages: [
+          {
+            uuid: "older-user",
+            type: "user",
+            timestamp: "2026-05-03T23:58:00.000Z",
+            message: { role: "user", content: "visible older request" },
+          },
+        ],
+        pagination: {
+          hasOlderMessages: false,
+          totalMessageCount: 3,
+          returnedMessageCount: 2,
+          totalCompactions: 0,
+        },
+      });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    await act(async () => rendered.result.current.loadOlderMessages());
+
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      undefined,
+      { tailCompactions: 2, beforeMessageId: "stale-cursor" },
+    );
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      3,
+      "proj-1",
+      "sess-1",
+      undefined,
+      defaultInitialTailRequest(),
+    );
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      4,
+      "proj-1",
+      "sess-1",
+      undefined,
+      { tailCompactions: 2, beforeMessageId: "fresh-cursor" },
+    );
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["older-user", "fresh-current"]);
+    expect(rendered.result.current.pagination?.hasOlderMessages).toBe(false);
+  });
+
+  it("keeps older history available when cursor recovery is empty", async () => {
+    apiMocks.getSession
+      .mockResolvedValueOnce({
+        ...sessionResponse("stale-current"),
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "stale-cursor",
+          totalMessageCount: 2,
+          returnedMessageCount: 1,
+          totalCompactions: 2,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("empty-page"),
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("empty-refresh"),
+        messages: [],
+      });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    await act(async () => rendered.result.current.loadOlderMessages());
+
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(3);
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["stale-current"]);
+    expect(rendered.result.current.pagination?.hasOlderMessages).toBe(true);
+  });
+
   it("pauses a large assistant-only history span with a resumable warning", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       ...sessionResponse("current-user"),

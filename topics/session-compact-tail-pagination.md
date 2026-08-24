@@ -105,6 +105,15 @@ server response remains bounded to the existing compact-tail page contract;
 the client performs the continuation and older servers need no new route,
 field, or capability.
 
+An empty older-page response while the loaded window still claimed older
+history is a stale cursor, not proof that history ended. This can occur when a
+server reload changes normalized message identity while a client tab retains
+the prior cursor. The client performs one bounded uncursored tail refresh,
+replaces the current tail with that fresh truth, and continues the same older-
+history demand from the refreshed cursor. It never applies the empty terminal
+page or retries cursor recovery internally more than once. A failed recovery
+leaves the existing older-history control available for later explicit demand.
+
 The continuation pauses after eight pages or after retaining approximately one
 session-detail cache budget of additional transcript data, whichever happens
 first. If older history remains and no real user turn was reached, the client

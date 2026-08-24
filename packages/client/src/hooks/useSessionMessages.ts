@@ -1189,11 +1189,9 @@ export function useSessionMessages(
     );
     try {
       const seenCursors = new Set<string>();
-      for (
-        let pageCount = 0;
-        pageCount < OLDER_USER_TURN_LOAD_PAGE_LIMIT;
-        pageCount += 1
-      ) {
+      let pageCount = 0;
+      let staleCursorRecoveryAttempted = false;
+      while (pageCount < OLDER_USER_TURN_LOAD_PAGE_LIMIT) {
         const request = coordinator.buildOlderPageRequest();
         if (!request.requested) {
           break;
@@ -1208,6 +1206,38 @@ export function useSessionMessages(
         sourceSummary.reportProviderRuntimeStatusSnapshot(
           coordinator.buildProviderRuntimeStatusSnapshot(data),
         );
+
+        // A server/client identity change can leave a mounted transcript with
+        // a before-message cursor the freshly normalized transcript no longer
+        // contains. The API reports that miss as an empty terminal page.
+        // Refresh the bounded tail once to acquire its current cursor, then
+        // continue the same explicit older-history demand.
+        if (data.messages.length === 0) {
+          if (staleCursorRecoveryAttempted) {
+            break;
+          }
+          staleCursorRecoveryAttempted = true;
+          const refreshedTail = await sourceApi.getSession({
+            projectId,
+            sessionId,
+            tailCompactions: 2,
+            tailTurns: effectiveTailTurns,
+            tailFrom,
+          });
+          sourceSummary.reportProviderRuntimeStatusSnapshot(
+            coordinator.buildProviderRuntimeStatusSnapshot(refreshedTail),
+          );
+          if (refreshedTail.messages.length === 0) {
+            break;
+          }
+          coordinator.applyFullTailReconciliation(refreshedTail);
+          reportStoreDivergence("older-page-cursor-recovery", {
+            session: refreshedTail.session,
+          });
+          continue;
+        }
+
+        pageCount += 1;
         coordinator.applyOlderPage(data);
         reportStoreDivergence("older-page", { session: data.session });
 
@@ -1223,7 +1253,7 @@ export function useSessionMessages(
           (coordinator.getEntryApproxBytes() ?? initialBytes) - initialBytes,
         );
         const reachedSafetyBoundary =
-          pageCount + 1 >= OLDER_USER_TURN_LOAD_PAGE_LIMIT ||
+          pageCount >= OLDER_USER_TURN_LOAD_PAGE_LIMIT ||
           retainedAdditionalBytes >= additionalByteLimit;
         if (reachedSafetyBoundary) {
           setOlderLoadContinuation({
@@ -1240,10 +1270,14 @@ export function useSessionMessages(
     }
   }, [
     coordinator,
+    effectiveTailTurns,
+    projectId,
     reportStoreDivergence,
+    sessionId,
     snapshotKeyString,
     sourceApi,
     sourceSummary,
+    tailFrom,
   ]);
 
   const updateRouteScrollSnapshot = useCallback(
