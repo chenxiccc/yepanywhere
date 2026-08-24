@@ -347,6 +347,9 @@ describe("Process", () => {
         codexAdditionalDetails: "stream disconnected before completion",
         codexWillRetry: true,
         codexTurnId: "turn-1",
+        codexRetryDelayMs: 45_000,
+        codexRetryAttempt: 2,
+        codexRetryMaxRetries: 16,
       });
 
       await waitFor(() => {
@@ -360,9 +363,21 @@ describe("Process", () => {
         message: "Reconnecting... 2/5",
         details: "stream disconnected before completion",
         turnId: "turn-1",
+        retryDelayMs: 45_000,
+        attempt: 2,
+        maxRetries: 16,
         eventCount: 1,
         source: "codex.error",
       });
+      const retryStatus = process.getInfo().providerRuntimeStatus;
+      expect(
+        Date.parse(
+          retryStatus?.kind === "retrying" ? (retryStatus.retryAt ?? "") : "",
+        ) -
+          Date.parse(
+            retryStatus?.kind === "retrying" ? retryStatus.lastSeenAt : "",
+          ),
+      ).toBe(45_000);
 
       controller.push({
         type: "assistant",

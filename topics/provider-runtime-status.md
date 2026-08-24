@@ -31,7 +31,7 @@ Color follows recovery behavior rather than the underlying error taxonomy:
 
 | Runtime kind | Meaning | Surface tone | Clear condition |
 | --- | --- | --- | --- |
-| `retrying` | The provider says it will retry automatically. | Warning/yellow | Provider progress, completed turn, abort, or replacement status. |
+| `retrying` | The provider or YA's documented adapter policy will retry automatically. | Warning/yellow | Provider progress, completed turn, abort, or replacement status. |
 | `terminal` | The current turn ended and will not retry automatically. The session may still be usable. | Danger/red | The next user turn begins, or YA restarts. |
 
 “Terminal” is turn-scoped. UI copy should say that the provider stopped or the
@@ -94,10 +94,10 @@ it records terminal `rate_limit` status with the payload's message. Arbitrary
 local-command output containing quota-like text does not qualify. This failed
 turn does not imply that the retained provider process crashed.
 
-## Codex 0.144.1 source audit
+## Codex 0.149.0 source audit
 
 The findings in this section were checked against the official Codex source at
-tag `rust-v0.144.1`, matching root `package.json`
+tag `rust-v0.149.0`, matching root `package.json`
 `yepAnywhere.codexCli.expectedVersion`. Run `pnpm references:sync` to put the
 gitignored `references/codex` checkout at that tag, or `pnpm references:check`
 to verify an existing checkout without changing it.
@@ -125,6 +125,9 @@ The most useful upstream coordinates are:
 - `codex-rs/app-server-protocol/src/protocol/thread_history.rs`:
   `ThreadHistoryBuilder::handle_error` reconstructs failed turns when a durable
   core `ErrorEvent` is available.
+- `codex-rs/app-server/src/request_processors/turn_processor.rs` and
+  `codex-rs/core/src/session/turn_input.rs` preserve empty-input turn starts as
+  resampling without adding a user message.
 - `codex-rs/tui/src/chatwidget/streaming.rs`: `ChatWidget::on_stream_error`
   shows automatic retries in the status area.
 - `codex-rs/tui/src/chatwidget/turn_runtime.rs`:
@@ -136,8 +139,9 @@ checkout as evidence for the pinned runtime without first comparing its tag.
 
 ### Automatic retry pipeline
 
-Automatic retry is not inferred from an error name. The app-server's
-`ErrorNotification.willRetry` boolean is authoritative:
+Native Codex retry is not inferred from an error name. The app-server's
+`ErrorNotification.willRetry` boolean is authoritative for the native retry
+loop:
 
 1. A retryable `CodexErr` reaches
    `handle_retryable_response_stream_error`.
@@ -163,6 +167,22 @@ provider message and `additionalDetails` for diagnostics and clears retry state
 when provider progress resumes. No retry countdown is invented: app-server
 does not send the actual backoff delay.
 
+YA has one explicit adapter-owned exception for `serverOverloaded`. Codex
+classifies a selected model at capacity as non-retryable, but the failed turn
+has already recorded its user input. After consuming the matching failed
+`turn/completed`, YA starts a new turn with empty input; Codex treats that as a
+new sample over existing thread history without adding or resending a user
+message. The same selected model is retried up to 16 times after quadratic
+delays of `5 × (attempt + 1)²` seconds: 20, 45, 80, 125, and so on through
+1,445 seconds. The full wait budget is about 2 hours 29 minutes. Retry status
+includes the next delay, attempt, and limit. Stop or provider shutdown cancels
+the current timer immediately.
+
+This exception matches only the structured `serverOverloaded` category.
+`usageLimitExceeded`, `sessionBudgetExceeded`, HTTP 429 retry exhaustion, and
+all other terminal failures retain Codex's non-retry behavior. If all 16
+overload retries fail, the last error becomes terminal.
+
 ### Terminal error pipeline and classification
 
 Core `EventMsg::Error` values that affect turn status become app-server
@@ -176,7 +196,7 @@ copy, and suggested action.
 | `contextWindowExceeded` | Model context is full. | `context`; suggest clearing earlier history or starting a new thread. |
 | `sessionBudgetExceeded` | Configured shared rollout token budget is exhausted. | `budget`; do not describe it as subscription credits. |
 | `usageLimitExceeded` | Usage, quota, or plan inclusion limit. | `rate_limit`; retain provider/account guidance. |
-| `serverOverloaded` | Selected model is at capacity. Codex does not retry it automatically. | `overloaded`; changing model or retrying later is appropriate. |
+| `serverOverloaded` | Selected model is at capacity. Codex itself does not retry it. | `overloaded`; YA retries the same model under the bounded adapter policy above. |
 | `cyberPolicy` | Cyber-safety policy ended the turn. | `policy`; mirror the first-party dedicated safety notice. |
 | `httpConnectionFailed` | HTTP connection failed after retries. | `network`; retain `httpStatusCode`. |
 | `responseStreamConnectionFailed` | Response stream could not be established after retries. | `network`; retain `httpStatusCode`. |
@@ -246,8 +266,9 @@ snapshots, and activity events so reconnecting clients converge.
 
 A provider error may also appear at the live transcript tail, where it explains
 the exact turn boundary. Codex's first-party TUI renders `serverOverloaded` as
-a warning history row. YA may choose its stronger terminal/danger tone while
-preserving the provider message.
+a warning history row. During YA's bounded overload recovery, each failed
+attempt is a retry warning; only exhaustion becomes terminal/danger. The
+provider message remains intact.
 
 This row is live-only when the provider does not persist the notification. It
 must have a stable message id, but YA must not write a shadow provider turn to
@@ -279,6 +300,11 @@ status must never retain a provider process, watcher, heartbeat, or client
 subscription. The next user message clears the old incident before the new
 turn proceeds; a repeated failure records a new terminal incident.
 
+The overload timer is different from retained terminal status: it belongs to
+an unresolved active provider turn, has one timer at a time, and ends on
+success, explicit Stop/abort, app-server shutdown, or the 16-retry ceiling. It
+does not depend on heartbeat or a connected browser tab.
+
 ## Tests
 
 Coverage should prove:
@@ -297,6 +323,11 @@ Coverage should prove:
 Codex coverage should additionally prove:
 
 - `willRetry: true` becomes yellow retry status and is not styled as terminal;
+- structured `serverOverloaded` failures retry with 20, 45, 80… second timing,
+  expose their retry clock, and become terminal after the bounded limit;
+- overload retries start an empty-input turn and emit the original user message
+  only once;
+- Stop/abort tears down the overload wait, while quota failures never enter it;
 - terminal classification covers the source table above without string
   matching the recovery decision;
 - `sessionBudgetExceeded` is not called a subscription rate limit;

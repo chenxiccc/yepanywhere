@@ -230,9 +230,42 @@ const APP_SERVER_FORCE_KILL_WAIT_MS = 1000;
 const APP_SERVER_EXIT_POLL_MS = 25;
 const CODEX_FAILURE_TRACE_LIMIT = 12;
 const CODEX_FAILURE_PREVIEW_CHARS = 240;
+const CODEX_SERVER_OVERLOAD_RETRY_LIMIT = 16;
+const CODEX_SERVER_OVERLOAD_RETRY_SCALE_MS = 5000;
 const CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES = [
   "gpt-5.3-codex-spark",
 ] as const;
+
+type CodexOverloadRetryWait = (
+  delayMs: number,
+  signal: AbortSignal,
+) => Promise<boolean>;
+
+function getCodexOverloadRetryDelayMs(attempt: number): number {
+  return (attempt + 1) ** 2 * CODEX_SERVER_OVERLOAD_RETRY_SCALE_MS;
+}
+
+async function waitForCodexOverloadRetry(
+  delayMs: number,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted) return false;
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (elapsed: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      resolve(elapsed);
+    };
+    const onAbort = (): void => finish(false);
+    const timeout = setTimeout(() => finish(true), delayMs);
+    timeout.unref?.();
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 async function withCodexTimeout<T>(
   promise: Promise<T>,
@@ -589,6 +622,8 @@ export interface CodexProviderConfig {
   apiKey?: string;
   /** Shared installation owner (injectable for deterministic tests). */
   installationCoordinator?: ProviderInstallationCoordinator;
+  /** Overload retry timer (injectable for deterministic tests). */
+  overloadRetryWait?: CodexOverloadRetryWait;
 }
 
 class AsyncQueue<T> {
@@ -2233,7 +2268,11 @@ export class CodexProvider implements AgentProvider {
       const consumeTurn = async function* (
         provider: CodexProvider,
         turn: CodexThreadTurn,
-      ): AsyncIterableIterator<SDKMessage> {
+      ): AsyncGenerator<
+        SDKMessage,
+        { overloadError: SDKMessage | null },
+        void
+      > {
         const activeTurnId = turn.id;
         runtimeState.activeTurnId = activeTurnId;
         runtimeState.activeToolCallIds.clear();
@@ -2241,6 +2280,7 @@ export class CodexProvider implements AgentProvider {
         failureTrace.activeTurnId = activeTurnId;
         let turnComplete = turn.status !== "inProgress";
         let emittedTurnError = false;
+        let overloadError: SDKMessage | null = null;
 
         while (!turnComplete && !signal.aborted) {
           const notification = await appServer.nextNotification(signal);
@@ -2301,6 +2341,8 @@ export class CodexProvider implements AgentProvider {
             );
             runtimeState.activeTurnId = observedTurnId;
           }
+          const effectiveActiveTurnId =
+            runtimeState.activeTurnId ?? currentActiveTurnId;
 
           const messages = provider.convertNotificationToSDKMessages(
             notification,
@@ -2308,6 +2350,17 @@ export class CodexProvider implements AgentProvider {
             usageByTurnId,
             liveEventState,
           );
+          const isServerOverload = provider.isCodexServerOverloadedNotification(
+            notification,
+            effectiveActiveTurnId,
+          );
+          const suppressFailedOverloadCompletion =
+            overloadError !== null &&
+            notification.method === "turn/completed" &&
+            provider.isTurnTerminalNotification(
+              notification,
+              effectiveActiveTurnId,
+            );
           for (const rawMsg of messages) {
             const msg =
               rawMsg.type === "error"
@@ -2319,15 +2372,25 @@ export class CodexProvider implements AgentProvider {
                       provider.formatCodexFailureTrace(failureTrace),
                   } as SDKMessage)
                 : rawMsg;
+            if (isServerOverload && msg.type === "error") {
+              overloadError = msg;
+              continue;
+            }
+            if (suppressFailedOverloadCompletion) {
+              continue;
+            }
             failureTrace.lastEmittedMessage =
               provider.describeSDKMessageForFailureTrace(msg);
             yield msg;
           }
 
+          if (isServerOverload) {
+            continue;
+          }
           if (
             provider.isTurnTerminalNotification(
               notification,
-              currentActiveTurnId,
+              effectiveActiveTurnId,
             )
           ) {
             if (notification.method === "error") emittedTurnError = true;
@@ -2337,12 +2400,16 @@ export class CodexProvider implements AgentProvider {
         runtimeState.activeTurnId = null;
         failureTrace.activeTurnId = null;
 
+        if (signal.aborted) {
+          return { overloadError: null };
+        }
+
         if (
           !emittedTurnError &&
           turn.status === "failed" &&
           turn.error?.message
         ) {
-          yield {
+          const fallbackError = {
             type: "error",
             uuid: `codex-error-${turn.id}`,
             session_id: sessionId,
@@ -2359,12 +2426,21 @@ export class CodexProvider implements AgentProvider {
               turn.error.message,
             ),
           } as SDKMessage;
+          if (turn.error.codexErrorInfo === "serverOverloaded") {
+            return { overloadError: fallbackError };
+          }
+          yield fallbackError;
+        }
+
+        if (overloadError) {
+          return { overloadError };
         }
 
         yield {
           type: "result",
           session_id: sessionId,
         } as SDKMessage;
+        return { overloadError: null };
       };
 
       const messageGen = queue[Symbol.asyncIterator]();
@@ -2445,7 +2521,7 @@ export class CodexProvider implements AgentProvider {
             runtimeState.turnEffortOverride,
             message.uuid,
           );
-          const turnResult = await appServer.request<TurnStartResponse>(
+          let turnResult = await appServer.request<TurnStartResponse>(
             "turn/start",
             turnStartParams,
           );
@@ -2462,7 +2538,78 @@ export class CodexProvider implements AgentProvider {
             },
             "Started Codex app-server turn",
           );
-          yield* consumeTurn(this, turnResult.turn);
+          let overloadRetryAttempt = 0;
+          while (!signal.aborted) {
+            const { overloadError } = yield* consumeTurn(this, turnResult.turn);
+            if (!overloadError) break;
+
+            overloadRetryAttempt += 1;
+            if (overloadRetryAttempt > CODEX_SERVER_OVERLOAD_RETRY_LIMIT) {
+              yield {
+                ...overloadError,
+                codexWillRetry: false,
+                codexOverloadRetryExhausted: true,
+                codexRetryAttempt: CODEX_SERVER_OVERLOAD_RETRY_LIMIT,
+                codexRetryMaxRetries: CODEX_SERVER_OVERLOAD_RETRY_LIMIT,
+              } as SDKMessage;
+              yield {
+                type: "result",
+                session_id: sessionId,
+              } as SDKMessage;
+              break;
+            }
+
+            const retryDelayMs =
+              getCodexOverloadRetryDelayMs(overloadRetryAttempt);
+            yield {
+              ...overloadError,
+              codexWillRetry: true,
+              codexOverloadRetry: true,
+              codexRetryDelayMs: retryDelayMs,
+              codexRetryAttempt: overloadRetryAttempt,
+              codexRetryMaxRetries: CODEX_SERVER_OVERLOAD_RETRY_LIMIT,
+            } as SDKMessage;
+
+            log.info(
+              {
+                sessionId,
+                turnId: overloadError.codexTurnId,
+                model: options.model ?? runtimeState.resolvedModel,
+                retryAttempt: overloadRetryAttempt,
+                retryDelayMs,
+              },
+              "Codex model is overloaded; waiting to retry the turn",
+            );
+            const retryReady = await (
+              this.config.overloadRetryWait ?? waitForCodexOverloadRetry
+            )(retryDelayMs, signal);
+            if (!retryReady || signal.aborted) break;
+
+            const retryTurnStartParams = this.createTurnStartParams(
+              sessionId,
+              [],
+              options,
+              turnPolicy,
+              runtimeState.workspaceWriteSandboxPolicy,
+              runtimeState.turnEffortOverride,
+            );
+            turnResult = await appServer.request<TurnStartResponse>(
+              "turn/start",
+              retryTurnStartParams,
+            );
+            log.info(
+              {
+                sessionId,
+                turnId: turnResult.turn.id,
+                turnStatus: turnResult.turn.status,
+                model: options.model ?? runtimeState.resolvedModel,
+                retryAttempt: overloadRetryAttempt,
+                approvalPolicy: turnPolicy.approvalPolicy,
+                sandboxPolicy: retryTurnStartParams.sandboxPolicy,
+              },
+              "Retried Codex overloaded turn without resending user input",
+            );
+          }
         }
       } finally {
         signal.removeEventListener("abort", stopMessageWait);
@@ -2558,6 +2705,19 @@ export class CodexProvider implements AgentProvider {
     }
 
     return false;
+  }
+
+  private isCodexServerOverloadedNotification(
+    notification: JsonRpcNotification,
+    turnId: string,
+  ): boolean {
+    if (notification.method !== "error") return false;
+    const params = asCodexErrorNotification(notification.params);
+    return (
+      params?.turnId === turnId &&
+      params.willRetry === false &&
+      params.error.codexErrorInfo === "serverOverloaded"
+    );
   }
 
   private updateBackgroundProcessTracking(

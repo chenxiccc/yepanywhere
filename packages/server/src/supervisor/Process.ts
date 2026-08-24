@@ -629,6 +629,17 @@ function buildCodexRetryStatus(
   const details = readNonEmptyString(message.codexAdditionalDetails);
   const turnId = readNonEmptyString(message.codexTurnId);
   const requestId = readNonEmptyString(message.codexRequestId);
+  const retryDelayMs = readFiniteNumber(message.codexRetryDelayMs);
+  const nonNegativeRetryDelayMs =
+    retryDelayMs !== undefined && retryDelayMs >= 0
+      ? Math.trunc(retryDelayMs)
+      : undefined;
+  const retryAt =
+    nonNegativeRetryDelayMs !== undefined
+      ? new Date(receivedAt.getTime() + nonNegativeRetryDelayMs).toISOString()
+      : undefined;
+  const attempt = readPositiveInteger(message.codexRetryAttempt);
+  const maxRetries = readPositiveInteger(message.codexRetryMaxRetries);
 
   return {
     kind: "retrying",
@@ -637,6 +648,12 @@ function buildCodexRetryStatus(
     ...(httpStatus !== undefined ? { httpStatus } : {}),
     startedAt: previous?.kind === "retrying" ? previous.startedAt : lastSeenAt,
     lastSeenAt,
+    ...(retryAt ? { retryAt } : {}),
+    ...(nonNegativeRetryDelayMs !== undefined
+      ? { retryDelayMs: nonNegativeRetryDelayMs }
+      : {}),
+    ...(attempt !== undefined ? { attempt } : {}),
+    ...(maxRetries !== undefined ? { maxRetries } : {}),
     eventCount: previous?.kind === "retrying" ? previous.eventCount + 1 : 1,
     source: "codex.error",
     ...(providerMessage ? { message: providerMessage } : {}),

@@ -73,6 +73,15 @@ adding chrome; visible narrowing tiers also show its toolbar button.
 
 ## Known Exceptions
 
+[provider-runtime-status](provider-runtime-status.md) gives Codex
+`serverOverloaded` turns a built-in, bounded same-model retry. Codex itself
+ends these turns, but the failure is transient and the recovery adds no new
+user concept or submitted text: YA resamples the already-recorded turn after
+20, 45, 80, 125… seconds, exposes the existing retry status, and stops after
+16 attempts or an explicit abort. Quota and other terminal errors are
+unchanged. Authorized by graehl on 2026-08-24 in the originating request, with
+the five-times-slower schedule supplied as a follow-up.
+
 The server-wide **Subagent nesting limit** defaults to depth `1`, rather than
 Claude Code's first-party default of `3`. Native subagent fan-out can multiply
 token and quota use before an operator can see or stop the deeper work, so this

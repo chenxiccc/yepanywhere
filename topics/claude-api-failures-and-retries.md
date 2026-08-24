@@ -327,4 +327,6 @@ supervisor timer or resend path:
 - Whether `isApiErrorMessage` presence on the **live** stream varies by SDK
   version (it was absent for 2.1.170 / sdk 0.3.170; the L2676 hook and its tests
   imply some path expects it).
-- Codex's actual retry mechanism — reported anecdotally, not inspected here.
+- Codex retry behavior is now source-audited separately in
+  [provider-runtime-status](provider-runtime-status.md); selected-model
+  overload recovery includes a bounded YA-owned exception there.
