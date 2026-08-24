@@ -236,6 +236,7 @@ describe("CodexSessionReader - OSS Support", () => {
       type: "response_item",
       timestamp: now,
       payload: {
+        id: "msg-user-1",
         type: "message",
         role: "user",
         content: [{ type: "input_text", text: "response title" }],
@@ -283,7 +284,10 @@ describe("CodexSessionReader - OSS Support", () => {
         },
       }),
       JSON.stringify(responseUser),
-      JSON.stringify(responseUser),
+      JSON.stringify({
+        ...responseUser,
+        payload: { ...responseUser.payload, id: "msg-user-2" },
+      }),
       JSON.stringify({
         type: "event_msg",
         timestamp: now,
@@ -389,8 +393,8 @@ describe("CodexSessionReader - OSS Support", () => {
       compressed: false,
       lineCount: lines.length,
       parsedEntries: lines.length,
-      dedupedEntries: lines.length - 1,
-      skippedDuplicateEntries: 1,
+      dedupedEntries: lines.length,
+      skippedDuplicateEntries: 0,
       entryCache: {
         sessions: 0,
         entries: 0,
@@ -1386,7 +1390,7 @@ describe("CodexSessionReader - OSS Support", () => {
     ).toHaveLength(2);
   });
 
-  it("deduplicates exact cached Codex JSONL records", async () => {
+  it("preserves identical Codex messages at distinct log positions", async () => {
     const sessionId = "duplicate-records";
     const now = new Date().toISOString();
     const sessionPath = join(testDir, `${sessionId}.jsonl`);
@@ -1394,6 +1398,7 @@ describe("CodexSessionReader - OSS Support", () => {
       type: "response_item",
       timestamp: now,
       payload: {
+        id: "msg-user-1",
         type: "message",
         role: "user",
         content: [{ type: "input_text", text: "start here" }],
@@ -1413,7 +1418,10 @@ describe("CodexSessionReader - OSS Support", () => {
           },
         }),
         JSON.stringify(userMessage),
-        JSON.stringify(userMessage),
+        JSON.stringify({
+          ...userMessage,
+          payload: { ...userMessage.payload, id: "msg-user-2" },
+        }),
       ].join("\n")}\n`,
     );
 
@@ -1422,7 +1430,7 @@ describe("CodexSessionReader - OSS Support", () => {
       "test-project" as UrlProjectId,
     );
 
-    expect(loaded?.data.session.entries).toHaveLength(2);
+    expect(loaded?.data.session.entries).toHaveLength(3);
     expect(
       loaded?.data.session.entries.filter(
         (entry) =>
@@ -1430,7 +1438,7 @@ describe("CodexSessionReader - OSS Support", () => {
           entry.payload.type === "message" &&
           entry.payload.role === "user",
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it("does not expose the mutable Codex entry cache", async () => {

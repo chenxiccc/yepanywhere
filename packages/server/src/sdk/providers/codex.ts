@@ -1655,6 +1655,7 @@ export class CodexProvider implements AgentProvider {
                 "turn/steer",
                 {
                   threadId: runtimeState.threadId,
+                  clientUserMessageId: message.uuid ?? null,
                   input: prepared.input,
                   expectedTurnId,
                 } satisfies TurnSteerParams,
@@ -2442,6 +2443,7 @@ export class CodexProvider implements AgentProvider {
             turnPolicy,
             runtimeState.workspaceWriteSandboxPolicy,
             runtimeState.turnEffortOverride,
+            message.uuid,
           );
           const turnResult = await appServer.request<TurnStartResponse>(
             "turn/start",
@@ -2991,9 +2993,11 @@ export class CodexProvider implements AgentProvider {
     turnPolicy: CodexThreadPolicy | null = null,
     workspaceWriteSandboxPolicy: CodexSandboxPolicy | null = null,
     effortOverride: EffortLevel | null | undefined = options.effort,
+    clientUserMessageId?: string,
   ): TurnStartParams {
     return {
       threadId,
+      ...(clientUserMessageId ? { clientUserMessageId } : {}),
       model: options.model ?? null,
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
       input,
@@ -4978,8 +4982,8 @@ export class CodexProvider implements AgentProvider {
     return `${turnId}:${itemId}`;
   }
 
-  private buildItemMessageUuid(turnId: string, itemId: string): string {
-    return `${itemId}-${turnId}`;
+  private buildItemMessageUuid(itemId: string): string {
+    return itemId;
   }
 
   // Native tool thread items carry Codex's globally-unique call_id as item.id,
@@ -5061,7 +5065,7 @@ export class CodexProvider implements AgentProvider {
     const message = withCodexTimestamp({
       type: "assistant",
       session_id: sessionId,
-      uuid: this.buildItemMessageUuid(turnId, itemId),
+      uuid: this.buildItemMessageUuid(itemId),
       _isStreaming: true,
       message: {
         role: "assistant",
@@ -5096,7 +5100,7 @@ export class CodexProvider implements AgentProvider {
     const message = withCodexTimestamp({
       type: "assistant",
       session_id: sessionId,
-      uuid: this.buildItemMessageUuid(turnId, itemId),
+      uuid: this.buildItemMessageUuid(itemId),
       _isStreaming: true,
       message: {
         role: "assistant",
@@ -5464,10 +5468,12 @@ export class CodexProvider implements AgentProvider {
     // Native tool items key the uuid on call_id (item.id). Code-mode
     // commandExecution items temporarily key on exec-* and carry correlation
     // metadata for adoption of the outer durable call_* id client-side.
-    // Message/reasoning counters have no durable equivalent and stay scoped.
+    // Message/reasoning item ids are the provider ids persisted in rollout.
     const uuid = this.isToolBackedThreadItem(item)
       ? this.buildItemToolUuid(item.id)
-      : `${item.id}-${turnId}`;
+      : item.type === "agent_message" || item.type === "reasoning"
+        ? item.id
+        : `${item.id}-${turnId}`;
 
     switch (item.type) {
       case "reasoning": {

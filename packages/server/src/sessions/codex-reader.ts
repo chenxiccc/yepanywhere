@@ -11,7 +11,7 @@
  * Unlike Claude's DAG structure, Codex sessions are linear.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { open, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -424,112 +424,6 @@ function parseCodexJsonlChunk(
   }
 
   return { entries, partialLine };
-}
-
-function getCodexMessagePayloadText(
-  content: Array<{ type: string; text?: string }>,
-): string {
-  return content
-    .map((block) => (typeof block.text === "string" ? block.text : block.type))
-    .join("\n");
-}
-
-function getCodexEntryDedupeKey(entry: CodexSessionEntry): string | null {
-  if (entry.type === "response_item") {
-    const { payload } = entry;
-    if (payload.type === "message") {
-      return [
-        entry.type,
-        entry.timestamp,
-        payload.type,
-        payload.role,
-        getCodexMessagePayloadText(payload.content),
-      ].join("\n");
-    }
-    return null;
-  }
-
-  if (entry.type === "event_msg") {
-    const { payload } = entry;
-    if (payload.type === "user_message" || payload.type === "agent_message") {
-      return [entry.type, entry.timestamp, payload.type, payload.message].join(
-        "\n",
-      );
-    }
-  }
-
-  return null;
-}
-
-function getCodexSummaryDedupeKey(entry: CodexSessionEntry): string | null {
-  if (entry.type === "response_item") {
-    const { payload } = entry;
-    if (payload.type !== "message") {
-      return null;
-    }
-
-    const hash = createHash("sha256");
-    hash.update(entry.type);
-    hash.update("\0");
-    hash.update(entry.timestamp);
-    hash.update("\0");
-    hash.update(payload.type);
-    hash.update("\0");
-    hash.update(payload.role);
-    hash.update("\0");
-    payload.content.forEach((block, index) => {
-      if (index > 0) hash.update("\n");
-      hash.update(
-        "text" in block && typeof block.text === "string"
-          ? block.text
-          : block.type,
-      );
-    });
-    return hash.digest("base64url");
-  }
-
-  if (entry.type === "event_msg") {
-    const { payload } = entry;
-    if (payload.type !== "user_message" && payload.type !== "agent_message") {
-      return null;
-    }
-
-    const hash = createHash("sha256");
-    hash.update(entry.type);
-    hash.update("\0");
-    hash.update(entry.timestamp);
-    hash.update("\0");
-    hash.update(payload.type);
-    hash.update("\0");
-    hash.update(payload.message);
-    return hash.digest("base64url");
-  }
-
-  return null;
-}
-
-function dedupeCodexEntries(entries: CodexSessionEntry[]): CodexSessionEntry[] {
-  const seen = new Set<string>();
-  let deduped: CodexSessionEntry[] | null = null;
-
-  entries.forEach((entry, index) => {
-    const key = getCodexEntryDedupeKey(entry);
-    if (!key) {
-      deduped?.push(entry);
-      return;
-    }
-    if (seen.has(key)) {
-      if (!deduped) {
-        deduped = entries.slice(0, index);
-      }
-      return;
-    }
-
-    seen.add(key);
-    deduped?.push(entry);
-  });
-
-  return deduped ?? entries;
 }
 
 class CodexAgentMappingCollector {
@@ -1485,7 +1379,6 @@ export class CodexSessionReader implements ISessionReader {
       cached.size === stats.size &&
       cached.mtimeMs === stats.mtimeMs
     ) {
-      cached.entries = dedupeCodexEntries(cached.entries);
       this.cacheAgentMappingsFromEntries(
         sessionId,
         filePath,
@@ -1528,10 +1421,7 @@ export class CodexSessionReader implements ISessionReader {
         stats.size > cached.size,
       );
       const parseMs = Date.now() - parseStartedAt;
-      const dedupeStartedAt = Date.now();
       cached.entries.push(...entries);
-      cached.entries = dedupeCodexEntries(cached.entries);
-      const dedupeMs = Date.now() - dedupeStartedAt;
       cached.partialLine = partialLine;
       cached.size = stats.size;
       cached.mtimeMs = stats.mtimeMs;
@@ -1553,7 +1443,6 @@ export class CodexSessionReader implements ISessionReader {
         stats,
         readLinesMs,
         parseMs,
-        dedupeMs,
         lineCount: entries.length,
         parsedEntries: entries.length,
         dedupedEntries: cached.entries.length,
@@ -1575,15 +1464,12 @@ export class CodexSessionReader implements ISessionReader {
       }
     }
     const parseMs = Date.now() - parseStartedAt;
-    const dedupeStartedAt = Date.now();
-    const dedupedEntries = dedupeCodexEntries(entries);
-    const dedupeMs = Date.now() - dedupeStartedAt;
     this.cacheAgentMappingsFromEntries(
       sessionId,
       filePath,
       stats.mtimeMs,
       stats.size,
-      dedupedEntries,
+      entries,
     );
     let cacheStoreMs = 0;
     if (shouldWriteCache) {
@@ -1592,7 +1478,7 @@ export class CodexSessionReader implements ISessionReader {
         filePath,
         mtimeMs: stats.mtimeMs,
         size: stats.size,
-        entries: dedupedEntries,
+        entries,
         partialLine: "",
       });
       cacheStoreMs = Date.now() - cacheStoreStartedAt;
@@ -1608,14 +1494,13 @@ export class CodexSessionReader implements ISessionReader {
       stats,
       readLinesMs,
       parseMs,
-      dedupeMs,
       cacheStoreMs,
       lineCount: lines.length,
       parsedEntries: entries.length,
-      dedupedEntries: dedupedEntries.length,
+      dedupedEntries: entries.length,
       maxLineLength,
     });
-    return dedupedEntries.slice();
+    return entries.slice();
   }
 
   async getSessionSummaryFromFile(
@@ -1719,11 +1604,10 @@ export class CodexSessionReader implements ISessionReader {
       legacyResponseUserCount: 0,
       assistantMessageCount: 0,
     };
-    const seenDedupeKeys = new Set<string>();
     let lineCount = 0;
     let parsedEntries = 0;
     let dedupedEntries = 0;
-    let skippedDuplicateEntries = 0;
+    const skippedDuplicateEntries = 0;
     let maxLineLength = 0;
     let bytesRead = 0;
     let stoppedEarly = false;
@@ -1775,15 +1659,6 @@ export class CodexSessionReader implements ISessionReader {
       }
 
       parsedEntries += 1;
-      const dedupeKey = getCodexSummaryDedupeKey(entry);
-      if (dedupeKey) {
-        if (seenDedupeKeys.has(dedupeKey)) {
-          skippedDuplicateEntries += 1;
-          continue;
-        }
-        seenDedupeKeys.add(dedupeKey);
-      }
-
       dedupedEntries += 1;
       this.applySummaryEntry(state, entry);
       if (readMode === "head" && this.hasHeadSummary(state)) {

@@ -109,8 +109,7 @@ function withReplay(message: Message): Message {
   };
 }
 
-// Reduced from the class of Codex stream/reload captures where the opening
-// user turn is emitted live before the durable row is visible with its final id.
+// Stream, replay, and durable rows carry the same provider-log identity.
 export const codexReplayCatchupDuplicatePromptFixture: CodexFixture = {
   session: codexSession,
   streamMessages: [
@@ -145,12 +144,12 @@ export const codexReplayCatchupDuplicatePromptFixture: CodexFixture = {
     session: codexSession,
     messages: [
       userMessage(
-        "codex-2-2026-07-01T12:00:06.218Z",
+        "optimistic-opening-turn",
         "2026-07-01T12:00:06.218Z",
         "Summarize the reducer fixture coverage.",
       ),
       assistantMessage(
-        "response_item_019b8510-46c2-7b10-8ce2-0d1e9a1d98fa",
+        "item_1_live_agent_message",
         "2026-07-01T12:00:07.780Z",
         "The reducer fixture coverage now exercises stream and persisted input.",
       ),
@@ -195,7 +194,7 @@ export const codexAttachmentOpeningTurnFixture: CodexFixture = {
     } as SessionMetadata,
     messages: [
       userMessage(
-        "codex-2-2026-07-01T12:20:09.744Z",
+        "optimistic-attachment-opening-turn",
         "2026-07-01T12:20:09.744Z",
         `${attachmentPrompt}\n\nUser uploaded files in .attachments:\n- [image.png](<${attachmentPath}>) (42 kb, image/png, 321x460)`,
       ),

@@ -131,6 +131,15 @@ Those actions should be testable without React. The reducer is where YA should
 settle duplicate suppression, stable ids, parent/tree projection, subagent
 attachment, durable-vs-live parity, and augment attachment identity.
 
+Duplicate suppression requires shared provenance identity. Equal type, role,
+content, attachment set, parent, or timestamp does not make two provider log
+rows duplicates: repeated prompts and responses are valid transcript events.
+When live and durable sources expose the same provider item id, or a provider
+persists YA's supplied client id, the reducer merges by that id. When an older
+server or provider cannot supply it, the reducer preserves both rows rather
+than guessing from content or client-observed time. A provider-log timestamp
+may advance a durable freshness watermark, but it is not message identity.
+
 ## Augment Contract
 
 Augments should attach at the data layer by stable message/block identity, not

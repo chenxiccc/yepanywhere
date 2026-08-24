@@ -197,9 +197,7 @@ function maybeReconcileApprox(
     ? reconcileLinearMessages(providerReconciled, approxDedupOptions(provider))
     : providerReconciled;
   const steerReconciled =
-    provider === "codex" || provider === "codex-oss"
-      ? reconcileCodexSteerEchoes(approx)
-      : approx;
+    provider === "codex-oss" ? reconcileCodexSteerEchoes(approx) : approx;
   return usesQueueOperationEchoDedup(provider)
     ? reconcileClaudeQueueOperationEchoes(steerReconciled)
     : steerReconciled;
@@ -260,10 +258,20 @@ function applyStreamMessage(
   const incoming = action.message;
   const isReplay = incoming.isReplay === true;
   const incomingTimestampMs = getMessageTimestampMs(incoming);
+  const incomingId = getMessageId(incoming);
+  const hasPersistedIdentity =
+    incomingId !== undefined &&
+    state.messages.some(
+      (message) =>
+        (message._source ?? "sdk") === "jsonl" &&
+        getMessageId(message) === incomingId,
+    );
   const isPersistedReplay =
     isReplay &&
-    incomingTimestampMs !== null &&
-    incomingTimestampMs <= state.maxPersistedTimestampMs;
+    (provider === "codex"
+      ? hasPersistedIdentity
+      : incomingTimestampMs !== null &&
+        incomingTimestampMs <= state.maxPersistedTimestampMs);
 
   if (incoming._isStreaming === true && action.streamingEnabled === false) {
     const messages = clearStreamingPlaceholderMessages(state.messages);

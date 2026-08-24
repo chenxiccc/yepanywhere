@@ -384,13 +384,13 @@ describe("transcriptReducer", () => {
     expect(state.lastMessageId).toBe("assistant-1");
   });
 
-  it("dedupes replayed duplicate user prompts from persisted catch-up", () => {
+  it("reconciles a streamed user prompt by provider identity", () => {
     const state = reduceSessionDetailActions(
       [
         {
           type: "applyStreamMessage",
           message: userMessage(
-            "sdk-user-1",
+            "provider-user-1",
             "start the task",
             "2026-07-01T12:00:00.000Z",
           ),
@@ -399,7 +399,7 @@ describe("transcriptReducer", () => {
           type: "applyCatchupMessages",
           messages: [
             userMessage(
-              "jsonl-user-1",
+              "provider-user-1",
               "start the task",
               "2026-07-01T12:00:01.000Z",
             ),
@@ -414,16 +414,16 @@ describe("transcriptReducer", () => {
 
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]?._source).toBe("jsonl");
-    expect(state.messages[0]?.uuid).toBe("jsonl-user-1");
+    expect(state.messages[0]?.uuid).toBe("provider-user-1");
   });
 
-  it("replaces duplicate assistant stream rows with durable rows", () => {
+  it("reconciles a streamed assistant response by provider identity", () => {
     const state = reduceSessionDetailActions(
       [
         {
           type: "applyStreamMessage",
           message: assistantMessage(
-            "sdk-assistant-1",
+            "provider-assistant-1",
             "The task is complete.",
             "2026-07-01T12:00:00.000Z",
           ),
@@ -432,7 +432,7 @@ describe("transcriptReducer", () => {
           type: "applyCatchupMessages",
           messages: [
             assistantMessage(
-              "jsonl-assistant-1",
+              "provider-assistant-1",
               "The task is complete.",
               "2026-07-01T12:00:00.900Z",
             ),
@@ -447,7 +447,7 @@ describe("transcriptReducer", () => {
 
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]?._source).toBe("jsonl");
-    expect(state.messages[0]?.uuid).toBe("jsonl-assistant-1");
+    expect(state.messages[0]?.uuid).toBe("provider-assistant-1");
   });
 
   it("drops transient streaming placeholders when streaming is disabled", () => {
@@ -578,20 +578,25 @@ describe("transcriptReducer", () => {
     ]);
   });
 
-  it("keeps distinct same-text user turns", () => {
+  it("keeps byte-identical Codex rows with distinct provider ids", () => {
+    const timestamp = "2026-07-01T12:00:00.000Z";
     const state = reduceSessionDetailState(createInitialSessionDetailState(), {
       type: "loadPersistedTranscript",
       session: sessionMetadata("codex"),
       messages: [
-        userMessage("user-1", "again", "2026-07-01T12:00:00.000Z"),
-        assistantMessage("assistant-1", "ok", "2026-07-01T12:00:01.000Z"),
-        userMessage("user-2", "again", "2026-07-01T12:00:10.000Z"),
+        userMessage("user-1", "wait 10 minutes", timestamp),
+        userMessage("user-2", "wait 10 minutes", timestamp),
+        assistantMessage("assistant-1", "Still waiting.", timestamp),
+        assistantMessage("assistant-2", "Still waiting.", timestamp),
       ],
     });
 
-    expect(
-      state.messages.filter((message) => message.type === "user"),
-    ).toHaveLength(2);
+    expect(state.messages.map((message) => message.uuid)).toEqual([
+      "user-1",
+      "user-2",
+      "assistant-1",
+      "assistant-2",
+    ]);
   });
 
   it("suppresses replay events already covered by persisted rows", () => {
@@ -610,7 +615,7 @@ describe("transcriptReducer", () => {
         type: "applyStreamMessage",
         message: {
           ...userMessage(
-            "sdk-user-1",
+            "jsonl-user-1",
             "already loaded",
             "2026-07-01T12:00:00.000Z",
           ),
@@ -621,6 +626,29 @@ describe("transcriptReducer", () => {
 
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]?.uuid).toBe("jsonl-user-1");
+  });
+
+  it("keeps a Codex replay row with a new provider id", () => {
+    const timestamp = "2026-07-01T12:00:00.000Z";
+    const state = reduceSessionDetailActions([
+      {
+        type: "loadPersistedTranscript",
+        session: sessionMetadata("codex"),
+        messages: [userMessage("provider-user-1", "again", timestamp)],
+      },
+      {
+        type: "applyStreamMessage",
+        message: {
+          ...userMessage("provider-user-2", "again", timestamp),
+          isReplay: true,
+        },
+      },
+    ]);
+
+    expect(state.messages.map((message) => message.uuid)).toEqual([
+      "provider-user-1",
+      "provider-user-2",
+    ]);
   });
 
   it("skips durable recap overlays when computing persisted cursors", () => {
@@ -1114,7 +1142,7 @@ describe("claude queue-operation echo dedup", () => {
   });
 });
 
-describe("codex steer echo dedup", () => {
+describe("codex steer identity", () => {
   const STEER = "what does heartbeat 300 do?";
 
   function steerEcho(timestamp: string): Message {
@@ -1131,14 +1159,14 @@ describe("codex steer echo dedup", () => {
   function durableRow(timestamp: string): Message {
     return {
       type: "user",
-      uuid: "codex-durable-user",
+      uuid: "ya-steer-uuid",
       timestamp,
       codexUserTurnProvenance: "paired",
       message: { role: "user", content: STEER },
     } as Message;
   }
 
-  it("confirms a long-lived steer when Codex catch-up arrives", () => {
+  it("confirms a long-lived steer by its persisted client id", () => {
     const state = reduceSessionDetailActions(
       [
         {
@@ -1158,7 +1186,7 @@ describe("codex steer echo dedup", () => {
 
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]?._source).toBe("jsonl");
-    expect(state.messages[0]?.uuid).toBe("codex-durable-user");
+    expect(state.messages[0]?.uuid).toBe("ya-steer-uuid");
     expect(state.messages[0]?.tempId).toBe("temp-steer");
   });
 
@@ -1216,9 +1244,37 @@ describe("codex steer echo dedup", () => {
 
     expect(confirmed.messages).toHaveLength(3);
     expect(confirmed.messages.at(-1)).toMatchObject({
-      uuid: "codex-durable-user",
-      tempId: "temp-steer",
+      uuid: "ya-steer-uuid",
       _source: "jsonl",
     });
+  });
+
+  it("keeps an unmatched identical durable steer from an older server", () => {
+    const state = reduceSessionDetailActions(
+      [
+        {
+          type: "applyStreamMessage",
+          message: steerEcho("2026-07-23T03:10:00.000Z"),
+        },
+        {
+          type: "applyCatchupMessages",
+          messages: [
+            {
+              ...durableRow("2026-07-23T03:10:00.000Z"),
+              uuid: "old-server-positional-id",
+            },
+          ],
+        },
+      ],
+      {
+        ...createInitialSessionDetailState(),
+        session: sessionMetadata("codex"),
+      },
+    );
+
+    expect(state.messages.map((message) => message.uuid)).toEqual([
+      "ya-steer-uuid",
+      "old-server-positional-id",
+    ]);
   });
 });

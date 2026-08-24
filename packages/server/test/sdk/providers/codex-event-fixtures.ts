@@ -38,7 +38,7 @@ export const codexAgentMessageDeltaFixtures = {
   expectedFirstMessage: {
     type: "assistant",
     session_id: "session-1",
-    uuid: "item-1-turn-1",
+    uuid: "item-1",
     _isStreaming: true,
     message: {
       role: "assistant",
@@ -48,7 +48,7 @@ export const codexAgentMessageDeltaFixtures = {
   expectedSecondMessage: {
     type: "assistant",
     session_id: "session-1",
-    uuid: "item-1-turn-1",
+    uuid: "item-1",
     _isStreaming: true,
     message: {
       role: "assistant",

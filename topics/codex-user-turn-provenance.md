@@ -5,7 +5,7 @@
 > Codex's persisted turn lifecycle and retain the paired response item only as
 > the richer rendering payload.
 
-Status: closed 2026-07-10. Slices 1-2 landed; no further work is planned.
+Status: closed. Slices 1-3 landed; no further work is planned.
 
 Topic: codex-user-turn-provenance
 
@@ -415,20 +415,18 @@ This preserves old materialized transcripts while ensuring a paired human
 prompt that literally resembles `<environment_context>` remains an ordinary
 user turn on every current surface.
 
-### Slice 3 — Durable user ids and rich event metadata (deferred)
+### Slice 3 — Durable user ids (landed 2026-08-24)
 
-The event side can carry `client_id`, local-image details, and UI text
-elements. Codex provides a real round-trip: YA can send
-`clientUserMessageId`, and Codex persists it as `user_message.client_id`.
-However, adopting it as YA's durable uuid would cross the checked-in event
-schema, response/event reconciliation, pagination, and live/durable dedup.
+YA sends the queue message uuid as `clientUserMessageId` on `turn/start` and
+`turn/steer`; Codex persists it as `user_message.client_id`. The event schema
+retains that value, and the paired rich response-item message uses it as its
+durable uuid. Historical rows fall back to the response-item id and then their
+JSONL position.
 
-The current approximate dedup already covers the known symptom, so that
-cross-layer identity change is not justified by the remaining benefit. This is
-deferred indefinitely and is not outstanding work. Reopen it only if a
-reproducible duplicate-turn defect survives the existing dedup path and an
-audited end-to-end migration proves the provider id is stable across every YA
-consumer.
+This makes optimistic, live, replayed, and durable user turns converge by
+identity without treating equal content or nearby timestamps as evidence of a
+duplicate. An older server can leave two visible copies, which is safer than
+erasing a real repeated turn.
 
 Visibility and title correctness do not depend on changing reconciliation
 identity.

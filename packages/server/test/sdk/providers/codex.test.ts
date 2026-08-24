@@ -858,7 +858,10 @@ describe("CodexProvider app-server lifecycle", () => {
       const testProvider = new CodexProvider({ codexPath });
       session = await testProvider.startSession({
         cwd: tempDir,
-        initialMessage: { text: "start a fake turn" },
+        initialMessage: {
+          text: "start a fake turn",
+          uuid: "ya-start-uuid",
+        },
         effort: "low",
       });
 
@@ -877,6 +880,7 @@ describe("CodexProvider app-server lifecycle", () => {
       expect(
         await waitForSuccessfulSteer(session, {
           text: "steer the fake turn",
+          uuid: "ya-steer-uuid",
         }),
       ).toBe(true);
       await waitForFakeCodexRequest(logPath, "turn/steer");
@@ -888,11 +892,18 @@ describe("CodexProvider app-server lifecycle", () => {
       const steerRequest = requests.find(
         (request) => request.method === "turn/steer",
       );
+      const startRequest = requests.find(
+        (request) => request.method === "turn/start",
+      );
       const interruptRequest = requests.find(
         (request) => request.method === "turn/interrupt",
       );
 
+      expect(startRequest?.params).toMatchObject({
+        clientUserMessageId: "ya-start-uuid",
+      });
       expect(steerRequest?.params).toMatchObject({
+        clientUserMessageId: "ya-steer-uuid",
         expectedTurnId: "turn-start",
       });
       expect(interruptRequest?.params).toMatchObject({
@@ -2928,7 +2939,7 @@ async function waitForMessage(
 
 async function waitForSuccessfulSteer(
   session: Awaited<ReturnType<CodexProvider["startSession"]>>,
-  message: { text: string },
+  message: { text: string; uuid?: string },
 ): Promise<boolean> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 2000) {
@@ -3482,6 +3493,12 @@ describe("CodexProvider Event Normalization", () => {
   it("prefers reasoning summaries over raw reasoning content", () => {
     const provider = createTestProvider() as unknown as {
       normalizeThreadItem: (item: unknown) => Record<string, unknown> | null;
+      convertItemToSDKMessages: (
+        item: unknown,
+        sessionId: string,
+        turnId: string,
+        sourceEvent: "item/started" | "item/completed",
+      ) => Array<Record<string, unknown>>;
     };
 
     const normalized = provider.normalizeThreadItem({
@@ -3496,6 +3513,14 @@ describe("CodexProvider Event Normalization", () => {
       type: "reasoning",
       text: "Short summary",
     });
+    expect(
+      provider.convertItemToSDKMessages(
+        normalized,
+        "session-1",
+        "turn-1",
+        "item/completed",
+      ),
+    ).toMatchObject([{ uuid: "reason-1" }]);
   });
 
   it("renders asynchronously delivered agent messages", () => {
@@ -3531,6 +3556,7 @@ describe("CodexProvider Event Normalization", () => {
     ).toMatchObject([
       {
         type: "assistant",
+        uuid: "async-message-1",
         message: { role: "assistant", content: "Asynchronous update" },
       },
     ]);

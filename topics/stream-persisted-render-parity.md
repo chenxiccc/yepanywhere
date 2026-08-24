@@ -283,8 +283,9 @@ same logical session; keep the two fixtures representing the *same* commands so
 a drift means a real asymmetry, not two different sessions. The comparison
 retains render-item IDs, source-message IDs and parent/tool relationships,
 block HTML, media, and structured fields. Provider-specific identity aliases
-must be declared at the assertion; the Codex fixture declares only its known
-positional durable IDs for the user prompt and final assistant text.
+must be declared at the assertion. Current Codex user, assistant, and reasoning
+rows instead converge on persisted provider identity; positional ids remain a
+historical fallback.
 
 The harness intentionally enforces strict equality for facts and items that
 the fixture declares paired. That is a conservative test for the

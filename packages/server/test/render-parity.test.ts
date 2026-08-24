@@ -126,9 +126,19 @@ function codexPersistedEntries(): CodexSessionEntry[] {
       type: "response_item",
       timestamp: "2026-03-05T12:00:00.000Z",
       payload: {
+        id: "msg-user-provider-1",
         type: "message",
         role: "user",
         content: [{ type: "input_text", text: "Check tools and summarize." }],
+      },
+    },
+    {
+      type: "event_msg",
+      timestamp: "2026-03-05T12:00:00.000Z",
+      payload: {
+        type: "user_message",
+        message: "Check tools and summarize.",
+        client_id: "codex-user-1",
       },
     },
     {
@@ -230,6 +240,7 @@ function codexPersistedEntries(): CodexSessionEntry[] {
       type: "response_item",
       timestamp: "2026-03-05T12:00:09.000Z",
       payload: {
+        id: "agent-final",
         type: "message",
         role: "assistant",
         content: [
@@ -241,9 +252,7 @@ function codexPersistedEntries(): CodexSessionEntry[] {
 }
 
 const CODEX_PERSISTED_ID_ALIASES = {
-  "codex-0-2026-03-05T12:00:00.000Z": "codex-user-1",
-  "codex-10-2026-03-05T12:00:09.000Z": "agent-final-turn-parity-1",
-  "codex-10-2026-03-05T12:00:09.000Z-0": "agent-final-turn-parity-1",
+  "agent-final-0": "agent-final",
 } as const;
 
 function codexStreamMessages(): Array<Record<string, unknown>> {
@@ -845,13 +854,11 @@ describe("Render Parity Harness", () => {
     }
   });
 
-  it("dedups Codex tool messages by id across interrupt/steer reconnect with the backstop off", () => {
+  it("dedups Codex messages by id across interrupt/steer reconnect", () => {
     // Reproduce the reported defect's trigger: a live turn streams, then an
     // interrupt/steer forces a durable backfill merge of the now-persisted
-    // rows. We merge WITHOUT reconcileLinearMessages (the approx-dedup
-    // backstop) to prove the deterministic call_id uuids carry tool dedup on
-    // their own. Codex messages have no parentUuid, so pruneSupersededSdkSiblings
-    // is inert here — uuid match is the only thing that can dedup tools.
+    // rows. Codex messages have no parentUuid, so uuid match is the only
+    // cross-source dedup in this path.
     const durable = normalizeSession(
       buildLoadedCodexSession(codexPersistedEntries()),
     ).messages as unknown as ClientMessage[];
@@ -896,10 +903,7 @@ describe("Render Parity Harness", () => {
       expect(toolResultCount.get(callId)).toBe(1);
     }
 
-    // Assistant text has no shared id (live counter vs durable positional), so
-    // it still double-displays without the backstop — confirming the backstop
-    // must remain for non-tool messages.
-    expect(summaryTextCount).toBe(2);
+    expect(summaryTextCount).toBe(1);
   });
 
   it("keeps Claude stream and persisted rendering equivalent", async () => {

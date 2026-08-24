@@ -63,6 +63,7 @@ describe("Codex Normalization", () => {
         type: "response_item",
         timestamp: "2024-01-01T00:00:01Z",
         payload: {
+          id: "msg-assistant-1",
           type: "message",
           role: "assistant",
           content: [{ type: "output_text", text: "Hi there" }],
@@ -72,6 +73,7 @@ describe("Codex Normalization", () => {
         type: "response_item",
         timestamp: "2024-01-01T00:00:02Z",
         payload: {
+          id: "msg-user-provider-1",
           type: "message",
           role: "user",
           content: [{ type: "input_text", text: "How are you?" }],
@@ -85,6 +87,7 @@ describe("Codex Normalization", () => {
         payload: {
           type: "user_message",
           message: "How are you?",
+          client_id: "ya-user-1",
         },
       },
     ];
@@ -103,6 +106,7 @@ describe("Codex Normalization", () => {
     // Check content
     // Message 0: Assistant "Hi there"
     const msg0 = result.messages[0];
+    expect(msg0?.uuid).toBe("msg-assistant-1");
     const content0 = msg0.message?.content;
     expect(Array.isArray(content0) ? content0[0] : content0).toEqual({
       type: "text",
@@ -111,11 +115,97 @@ describe("Codex Normalization", () => {
 
     // Message 1: User "How are you?"
     const msg1 = result.messages[1];
+    expect(msg1?.uuid).toBe("ya-user-1");
     const content1 = msg1.message?.content;
     expect(Array.isArray(content1) ? content1[0] : content1).toEqual({
       type: "text",
       text: "How are you?",
     });
+  });
+
+  it("preserves identical provider log rows with distinct ids", () => {
+    const repeatedPrompt = "wait 10 minutes";
+    const repeatedResponse = "Still waiting.";
+    const timestamp = "2026-08-24T12:00:00.000Z";
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp,
+        payload: {
+          id: "msg-user-provider-1",
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: repeatedPrompt }],
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp,
+        payload: {
+          type: "user_message",
+          message: repeatedPrompt,
+          client_id: "ya-user-1",
+        },
+      },
+      {
+        type: "response_item",
+        timestamp,
+        payload: {
+          id: "msg-user-provider-2",
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: repeatedPrompt }],
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp,
+        payload: {
+          type: "user_message",
+          message: repeatedPrompt,
+          client_id: "ya-user-2",
+        },
+      },
+      {
+        type: "response_item",
+        timestamp,
+        payload: {
+          id: "msg-assistant-1",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: repeatedResponse }],
+        },
+      },
+      {
+        type: "response_item",
+        timestamp,
+        payload: {
+          id: "msg-assistant-2",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: repeatedResponse }],
+        },
+      },
+      {
+        type: "response_item",
+        timestamp,
+        payload: {
+          id: "rs-1",
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "Checking again" }],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+
+    expect(result.messages.map((message) => message.uuid)).toEqual([
+      "ya-user-1",
+      "ya-user-2",
+      "msg-assistant-1",
+      "msg-assistant-2",
+      "rs-1",
+    ]);
   });
 
   it("normalizes function_call_output into user tool_result blocks", () => {

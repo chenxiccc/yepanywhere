@@ -92,4 +92,20 @@ describe("CodexSessionEntrySchema", () => {
       },
     });
   });
+
+  it("preserves the client id persisted with a user message event", () => {
+    const parsed = CodexSessionEntrySchema.parse({
+      timestamp: "2026-08-24T12:00:00.000Z",
+      type: "event_msg",
+      payload: {
+        type: "user_message",
+        message: "wait 10 minutes",
+        client_id: "ya-user-1",
+      },
+    });
+
+    expect(parsed.type).toBe("event_msg");
+    if (parsed.type !== "event_msg") return;
+    expect(parsed.payload).toMatchObject({ client_id: "ya-user-1" });
+  });
 });

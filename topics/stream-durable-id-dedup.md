@@ -2,9 +2,9 @@
 
 > A provider's live-stream message ids can diverge from its durable
 > (JSONL/DB) ids; when a backfill merges durable rows the client already
-> has from the stream, messages render twice. Align ids deterministically
-> where the provider allows it; fall back to a tight content+timestamp
-> reconcile only where it cannot.
+> has from the stream, messages render twice. Use provider-persisted identity
+> wherever it exists. Content and client-observed time never prove that two
+> transcript rows are the same turn.
 
 Topic: stream-durable-id-dedup
 
@@ -28,24 +28,26 @@ interrupted to deliver a queued steer is double-displayed."
 
 1. **Deterministic id alignment (preferred).** Make the streamed id equal
    the durable id, so dedup-by-id just works. No false-merge risk.
-2. **Approx-dedup backstop.** `lib/linearMessageDedup.ts`
+2. **Provider-scoped legacy backstops.** `lib/linearMessageDedup.ts`
    (`reconcileLinearMessages`, `hasEquivalentJsonlMessage`) merges
    same-fingerprint (type+role+content) cross-source copies within a tight
    timestamp window. Gated by the provider capability
-   `needsApproxMessageDedup` (codex, codex-oss, opencode). The window is
+   `needsApproxMessageDedup` (codex-oss, opencode, pi). The window is
    **2s** (default and replay): a human does not send two identical turns
    that fast, so this minimizes the real risk — silently merging two
    genuinely-distinct identical messages (the old 90s replay window made
-   that risk large). Deterministic alignment carries the load; this only
-   catches the residue. The optional capability `approxDedupExcludesTools`
-   (codex, codex-oss) removes tool_use/tool_result messages from this
+   that risk large). This is unavailable to Codex: repeated wait/status turns
+   and responses are commonly byte-identical, and every provider log row is a
+   distinct turn unless a shared provider identity proves otherwise. The
+   optional capability `approxDedupExcludesTools` (codex-oss) removes
+   tool_use/tool_result messages from this
    backstop entirely: native tool uuids are deterministic (`call_id`), while
    the code-mode `commandExecution` exception uses a separately scoped exact
    turn/semantics reconciliation. The broad backstop would otherwise be the
    one place a legitimately repeated identical tool call could be wrongly
    merged. The `excludeTools` option on both backstop functions implements
    this; OpenCode leaves it off.
-   The one deliberately wider exception is the **first plain user turn**:
+   Codex-oss retains one deliberately wider exception for the **first plain user turn**:
    new-session startup can show the optimistic user echo before Codex has
    finished thread setup and written the durable response-item user row. That
    first-turn pair gets a 30s startup window, but only when no earlier user
@@ -168,27 +170,26 @@ the backstop, which already covers the case — revisit only if the
 YA drives Codex over the app-server **thread-item** stream
 (`thread/start` with `experimentalRawEvents: false`), so the live render
 path is `item/started`/`item/completed` → `convertItemToSDKMessages`
-(NOT the `rawResponseItem/*` path, which is opt-in and unused here). What
-id a thread item carries decides whether alignment is possible, and it
-splits by item class (verified in `references/codex`
-`app-server-protocol/src/protocol/thread_history.rs`):
+(not the opt-in `rawResponseItem/*` path). Codex 0.149 carries provider ids on
+the live thread item and persists those ids in rollout response items. The one
+YA-supplied identity is `clientUserMessageId`, which Codex persists on the
+paired `user_message` event.
 
 | Item | Live thread `item.id` | Durable rollout id | Aligned? |
 |---|---|---|---|
 | Native tool calls/results | `payload.call_id` (`id: payload.call_id.clone()`) | `call_id` on the response item | **Yes** — both key on `call_id` |
 | Code-mode nested command | inner `commandExecution` id (`exec-*`) | outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
 | Checklist update | transient YA id for `turn/plan/updated` (notification has no item id) | `function_call.call_id` or outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
-| User turns | counter `item-{N}` + separate `client_id` | event_msg `client_id` (null until YA sends it); also a positional response-item copy | Deferred (see below) |
-| Assistant / reasoning | counter `item-{N}` (`next_item_id()`) | `response_item.payload.id` — **null in practice** | **No** — no shared id; backstop only |
+| User turns | YA queue `message.uuid` | paired event_msg `client_id` | **Yes** — YA sends it on start and steer |
+| Assistant / reasoning | response item id (`msg_*` / `rs_*`) | `response_item.payload.id` | **Yes** — both preserve the provider id |
 
-The decisive correction over the original plan: in the active
-(thread-item) config, assistant messages have **no shared id either
-side** — the live id is a synthetic per-thread counter and the rollout's
-`payload.id` is null (confirmed on a real 2026-06 rollout: 13 assistant
-items, all `payload.id == null`). So the "Assistant w/ `ResponseItem.id`"
-class does not occur, and *all* assistant messages fall to the
-content+timestamp backstop. Only **native tool calls** are cleanly alignable by
-provider id. Code-mode and checklist updates add the bounded exceptions below.
+The provider id is the identity. A repeated row with the same role, content,
+and timestamp remains distinct when its provider id or JSONL position differs.
+For historical rows lacking an id, normalization retains the existing
+`codex-${index}-${providerTimestamp}` positional id; the timestamp is evidence
+from the provider log and is never used as a content-equivalence test. The
+reader preserves every parsed row and does not deduplicate JSONL records by
+content or timestamp.
 
 ### Done: native tool-call id alignment and scoped reconciliation
 
@@ -197,16 +198,15 @@ on `call_id` (call → `call_id`, result → `${call_id}-result`), independent o
 turn — `call_id` is globally unique, so no turn scoping is needed:
 - Live (`codex.ts`): `convertItemToSDKMessages` routes tool-backed thread
   items (`isToolBackedThreadItem`) through `buildItemToolUuid(item.id)` /
-  `buildItemResultUuid(callId)`; message/reasoning items keep
-  `${itemId}-${turnId}`. A code-mode command temporarily uses its inner
+  `buildItemResultUuid(callId)`; message/reasoning items keep `item.id`
+  unchanged. A code-mode command temporarily uses its inner
   `exec-*` item id until the scoped reconciliation below. The streaming-result
   and (opt-in) rawResponse paths use the same helpers.
 - Durable (`normalization.ts`): `codexDurableResponseItemUuid` maps
   `function_call`/`custom_tool_call`/`web_search_call` →
   `call_id`, `*_output` → `${call_id}-result`; the `exec_command_end`
-  event result keys on `${call_id}-result` too. Messages keep the
-  positional `codex-${index}-${ts}` uuid (the index still advances, so
-  positional ids stay stable).
+  event result keys on `${call_id}-result` too. Messages and reasoning keep
+  `payload.id`, with the positional id only as a historical fallback.
 - Contract test: `render-parity.test.ts` "aligns Codex tool-call uuids
   across stream and durable sources" asserts uuid equality per `call_id`,
   and "dedups Codex tool messages by id … with the backstop off" proves the
@@ -231,53 +231,34 @@ turn — `call_id` is globally unique, so no turn scoping is needed:
   parents cannot be assigned safely to one outer call by id. The explored
   projection may make their default visual group converge, but raw parent
   structure and active-tail collapse identity may replace once rollout lands.
-- Backstop excluded for tools: native ids plus the scoped code-mode reconciler
-  carry the known cases, so the approximate backstop does not run over tools
-  (`approxDedupExcludesTools`); it stays on only for the residual non-tool
-  messages. See the Two-layer remedy note above.
+- General approximate dedup is disabled for Codex. Native ids plus the scoped
+  code-mode reconciler carry the known tool exceptions without treating equal
+  content or nearby timestamps as identity.
 
-### Deferred: user-turn id alignment
+### Done: user-turn id alignment
 
-The round-trip exists — sending `clientUserMessageId` on `turn/start`
-(`codex.ts:createTurnStartParams`) and `turn/steer` makes Codex persist it
-as the event_msg `user_message.client_id` (`references/codex`
-`core/src/session/mod.rs:3717` sets `client_id: client_user_message_id`),
-and the live echo already uses the same `message.uuid`. The durable
-double-source is now correlated for authorship by
-`codex-user-turn-provenance.ts`: the adjacent event witnesses the turn and the
-response item remains the rich rendering payload. Normalized messages expose
-that result as `codexUserTurnProvenance`, but still use the response item's
-positional uuid because YA's checked-in event schema does not yet retain the
-paired `client_id`. Adopting that id and re-measuring the approximate backstop
-are deferred indefinitely: the existing backstop covers the known symptom,
-while an id migration would cross schema, pagination, and reconciliation
-boundaries. Reopen only for a reproducible duplicate that survives current
-dedup and after auditing the end-to-end provider id contract. See the closed
-disposition in `topics/codex-user-turn-provenance.md`.
+YA sends the queue `message.uuid` as `clientUserMessageId` on both
+`turn/start` and `turn/steer`. Codex persists it as the adjacent event_msg
+`user_message.client_id`; `codex-user-turn-provenance.ts` pairs that witness
+with the rich response-item user payload. Normalization uses the persisted
+`client_id` as the rendered uuid, then falls back to the response-item id and
+finally the JSONL position for historical transcripts.
 
-The first user turn has one additional startup wrinkle: YA may render the
-optimistic opening turn before the Codex thread has finished startup and before
-the durable first user row appears. A real report on 2026-06-30
-(`019f1642-3917-7052-aa32-1262257ec3f1`) had the session meta at
-`02:01:07.884Z` and the durable visible user row at `02:01:12.931Z`, outside
-the general 2s window. The fix is a first-plain-user-turn-only 30s window in
-`linearMessageDedup`, not a looser general Codex backstop.
+The optimistic opening turn and a later durable row therefore meet by exact id
+even when provider startup takes longer than any plausible time window.
 
-An in-turn steer has the inverse timing problem: its optimistic echo can exist
-for longer than the ordinary 15–30-second server replay window before Codex
-consumes and persists it. A reconnect in that interval must still replay the
-accepted echo. `Process` therefore retains steer echoes separately until the
-provider turn boundary, while continuing to use the bounded rolling buckets for
-ordinary messages and for the short post-boundary persistence gap. This
-retention is bounded by the number of steers in the active turn; it does not
-turn the general replay buffer into an unbounded transcript. When Codex finally
-persists a long-lived steer, its positional durable id still differs from the
-echo's YA uuid and the timestamps can be far outside the general 2s backstop.
-`reconcileCodexSteerEchoes` therefore pairs only unconfirmed self-sent
-`deliveryIntent: "steer"` echoes with exact-text durable user turns,
-one-to-one, and adopts the durable row's identity and position.
+An in-turn steer can remain optimistic for minutes before Codex consumes it.
+`Process` still retains accepted steer echoes through the provider turn
+boundary, but durable confirmation now uses the persisted client id. Codex no
+longer invokes `reconcileCodexSteerEchoes` or any text/timestamp substitute.
+Against an older server that omitted `clientUserMessageId`, a current client
+may show both copies; it must not erase a possibly real repeated turn.
 
-### Re-reported first-turn duplicate with attachments
+### Historical: first-turn duplicate with attachments
+
+This incident predates exact Codex user-turn identity. Its fingerprint repair
+remains in the shared legacy utility for providers that need it, but Codex no
+longer enables that utility.
 
 On 2026-06-30, session `019f1685-f1c8-7171-b056-e9b3f2f6be61` showed the
 opening prompt twice as two normal user bubbles. That session was created from
@@ -300,7 +281,7 @@ opening prompt twice as two normal user bubbles. That session was created from
   timestamps are identical; it does not enforce a user-visible "one first turn"
   invariant across all startup sources.
 
-The UI contract should be stronger than "the right source eventually wins":
+The earlier mitigation defined a stronger UI contract than "the right source eventually wins":
 before rendering the main transcript, the first visible user turn may appear at
 most once. For the startup window, compare the user-visible prompt text after
 stripping YA's uploaded-files metadata into the same attachment model the UI
@@ -310,7 +291,7 @@ row when present, otherwise prefer the metadata-rich/latest live row. Do not
 extend this to arbitrary later repeated user turns; a user really can resend the
 same text later.
 
-Landed fix:
+Historical mitigation:
 
 - `linearMessageDedup` now computes an attachment-bearing visible first-user
   fingerprint: rendered prompt text after removing YA's uploaded-files metadata,
@@ -324,23 +305,20 @@ Landed fix:
 - Regression coverage pins the attached new-session cases above and confirms a
   later identical attached prompt remains two turns.
 
-Still deferred: thread a client user message id through the attached-new-session
-two-phase path too; that removes the need for this safety net on the opening
-turn instead of only masking it.
+The exact identity path supersedes this Codex mitigation: the attached-session
+queue uuid now reaches Codex and returns as the persisted `client_id`.
 
-### Pitfalls that turned out fine (for the deferred user-turn work)
+### Historical investigation notes
 
 Confirmed non-issues while doing the tool-call alignment, recorded so the
 user-turn step doesn't re-investigate them:
 - The live `-result` suffix correlation moved in lockstep: tool-result
   uuids derive from the same `call_id` as the call, on both sides.
-- `getCodexEntryDedupeKey` (`codex-reader.ts`) keys the **within-file**
-  dedup on timestamp+role+content, not on ids, so changing the rendered
-  uuid does not touch it; the tool-context maps key on `call_id`, which is
-  unchanged. No regression there.
-- Parsing `response_item.id` is pointless for assistants (null in
-  practice); only `user_message.client_id` is worth parsing, and only once
-  the user-turn renderer is changed to consume it.
+- The former `getCodexEntryDedupeKey` content/timestamp dedup was unsafe and
+  has been removed. Cache callers receive array copies instead of mutating the
+  reader's retained entries.
+- Codex 0.149 persists `msg_*` and `rs_*` response-item ids. YA preserves them
+  for assistant and reasoning identity.
 
 ## pi
 
@@ -422,4 +400,5 @@ anyway (pi doesn't emit it; see above).
 - `packages/server/src/sdk/providers/opencode.ts` — OpenCode stream ids.
 - `packages/server/src/sessions/normalization.ts`,
   `packages/server/src/sessions/codex-reader.ts` — durable Codex ids.
-- `packages/shared/src/codex-schema/session.ts` — Codex schema (drops ids).
+- `packages/shared/src/codex-schema/session.ts` — persisted Codex item and
+  client-id schema.

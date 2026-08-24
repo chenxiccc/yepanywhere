@@ -11,11 +11,7 @@ export class CodexProvider implements Provider {
   readonly capabilities: ProviderCapabilities = {
     supportsDag: false, // Linear history
     supportsCloning: true,
-    needsApproxMessageDedup: true,
-    // Native tools dedup by call_id; code-mode inner commandExecution messages
-    // use their scoped exact reconciler. Keep the general approximate backstop
-    // away from legitimately repeated tools. See tasks/032.
-    approxDedupExcludesTools: true,
+    needsApproxMessageDedup: false,
   };
 
   readonly metadata: ProviderMetadata = {
@@ -40,7 +36,7 @@ export class CodexOssProvider implements Provider {
     needsApproxMessageDedup: true,
     // Native tools dedup by call_id; code-mode inner commandExecution messages
     // use their scoped exact reconciler. Keep the general approximate backstop
-    // away from legitimately repeated tools. See tasks/032.
+    // away from legitimately repeated tools. See stream-durable-id-dedup.md.
     approxDedupExcludesTools: true,
   };
 

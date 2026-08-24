@@ -110,30 +110,23 @@ describe("transcriptReducer markdown augments", () => {
     expect(getStateTextAugmentHtml(state)).toBe(html);
   });
 
-  it("moves a final markdown augment from a live Codex id to its durable id", () => {
+  it("keeps a final markdown augment on its exact Codex id", () => {
     const html = "<p>Rendered durable answer.</p>";
+    const messageId = "msg_019b8510_augment";
     const state = reduceSessionDetailActions(
       [
         {
           type: "applyStreamMessage",
-          message: assistantMessage(
-            "live-assistant-1",
-            "Rendered durable answer.",
-          ),
+          message: assistantMessage(messageId, "Rendered durable answer."),
         },
         createFinalMarkdownAugmentAction({
-          messageId: "live-assistant-1",
+          messageId,
           html,
         }),
         {
           type: "applyCatchupMessages",
           session: sessionMetadata("codex"),
-          messages: [
-            assistantMessage(
-              "response_item_019b8510-augment-durable",
-              "Rendered durable answer.",
-            ),
-          ],
+          messages: [assistantMessage(messageId, "Rendered durable answer.")],
         },
       ],
       {
@@ -143,11 +136,9 @@ describe("transcriptReducer markdown augments", () => {
     );
 
     expect(state.messages).toHaveLength(1);
-    expect(state.messages[0]?.uuid).toBe(
-      "response_item_019b8510-augment-durable",
-    );
+    expect(state.messages[0]?.uuid).toBe(messageId);
     expect(state.markdownAugments).toEqual({
-      "response_item_019b8510-augment-durable": { html },
+      [messageId]: { html },
     });
     expect(getStateTextAugmentHtml(state)).toBe(html);
   });

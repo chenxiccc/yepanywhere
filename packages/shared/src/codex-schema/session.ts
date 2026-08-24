@@ -400,6 +400,7 @@ export const CodexTokenUsageInfoSchema = z.object({
 export const CodexUserMessageEventSchema = z.object({
   type: z.literal("user_message"),
   message: z.string(),
+  client_id: z.string().nullable().optional(),
   images: z.array(z.unknown()).optional(),
 });
 
