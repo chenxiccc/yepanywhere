@@ -4,6 +4,10 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const stylesheetUrl = new URL("../index.css", import.meta.url);
+const deliveryGlyphStylesheetUrl = new URL(
+  "../../components/DeliveryGlyph.module.css",
+  import.meta.url,
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -96,5 +100,14 @@ describe("Project Queue action CSS contract", () => {
     expect(declarations).toMatch(
       /color:\s*var\(--project-queue-new-session-action-bg\)\s*;/,
     );
+  });
+
+  it("optically centers text arrows in a shared glyph envelope", async () => {
+    const css = await readFile(deliveryGlyphStylesheetUrl, "utf8");
+    const declarations = getRuleDeclarations(css, ".glyph");
+
+    expect(declarations).toMatch(/height:\s*1em\s*;/);
+    expect(declarations).toMatch(/padding-block-start:\s*4px\s*;/);
+    expect(declarations).toMatch(/line-height:\s*1\s*;/);
   });
 });

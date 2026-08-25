@@ -29,6 +29,7 @@ import {
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useOptionalToastContext } from "../contexts/ToastContext";
 import { ConversationViewIcon } from "./ConversationViewIcon";
+import { DeliveryGlyph } from "./DeliveryGlyph";
 import {
   type EffortLevel,
   type ThinkingMode,
@@ -1449,7 +1450,7 @@ export function MessageInputToolbarView({
               title={deliveryTooltip(projectQueue.tooltip)}
               role={menu ? "menuitem" : undefined}
             >
-              <span className="send-icon">⇥</span>
+              <DeliveryGlyph className="send-icon">⇥</DeliveryGlyph>
               {speechPrefix && <SpeechPrefixActionCue prefix={speechPrefix} />}
             </button>
           )}
@@ -1470,7 +1471,7 @@ export function MessageInputToolbarView({
               title={deliveryTooltip(projectQueue.newSessionTooltip)}
               role={menu ? "menuitem" : undefined}
             >
-              <span className="send-icon">⇥</span>
+              <DeliveryGlyph className="send-icon">⇥</DeliveryGlyph>
               <span
                 className="project-queue-new-session-mark"
                 aria-hidden="true"
@@ -2562,7 +2563,9 @@ export function MessageInputToolbarView({
                       : queueControl.queueTooltip
                   }
                 >
-                  <span className="send-icon queue-icon">→</span>
+                  <DeliveryGlyph className="send-icon queue-icon">
+                    →
+                  </DeliveryGlyph>
                   {actionsControl.send.speechMessagePrefix && (
                     <SpeechPrefixActionCue
                       prefix={actionsControl.send.speechMessagePrefix}
@@ -2598,7 +2601,7 @@ export function MessageInputToolbarView({
                       : t("toolbarSteerTooltip")
                   }
                 >
-                  <span className="send-icon">↗</span>
+                  <DeliveryGlyph className="send-icon">↗</DeliveryGlyph>
                   {actionsControl.send.speechMessagePrefix && (
                     <SpeechPrefixActionCue
                       prefix={actionsControl.send.speechMessagePrefix}
@@ -2631,9 +2634,9 @@ export function MessageInputToolbarView({
                     : actionsControl.send.alternate.tooltip
                 }
               >
-                <span className="send-icon">
+                <DeliveryGlyph className="send-icon">
                   {actionsControl.send.alternate.icon}
-                </span>
+                </DeliveryGlyph>
                 {actionsControl.send.speechMessagePrefix && (
                   <SpeechPrefixActionCue
                     prefix={actionsControl.send.speechMessagePrefix}
@@ -2672,7 +2675,9 @@ export function MessageInputToolbarView({
                   tooltipMode,
                 )}
               >
-                <span className="send-icon">{actionsControl.send.icon}</span>
+                <DeliveryGlyph className="send-icon">
+                  {actionsControl.send.icon}
+                </DeliveryGlyph>
                 {actionsControl.send.primarySpeechMessagePrefix && (
                   <SpeechPrefixActionCue
                     prefix={actionsControl.send.primarySpeechMessagePrefix}

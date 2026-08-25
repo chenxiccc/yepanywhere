@@ -200,6 +200,7 @@ import { shortenPath } from "../lib/text";
 import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
+import { DeliveryGlyph } from "./DeliveryGlyph";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { FullPaneComposerToggle } from "./FullPaneComposerToggle";
 import { NewSessionProjectQueue } from "./NewSessionProjectQueue";
@@ -3245,7 +3246,7 @@ export function NewSessionForm({
               )}
               title={describePrefixedTooltip(projectQueueNewSessionTitle)}
             >
-              <span className="send-icon">⇥</span>
+              <DeliveryGlyph className="send-icon">⇥</DeliveryGlyph>
               {manualDeliverySpeechPrefix && (
                 <SpeechPrefixActionCue prefix={manualDeliverySpeechPrefix} />
               )}

@@ -97,6 +97,10 @@ when queueing. The active composer model is:
   while a turn is active, including mobile users who cannot rely on keybinds.
   The patient-switch visibility setting must not hide this alternate send
   option.
+- Text arrows in delivery controls share one optically centered glyph envelope
+  across ordinary, collapsed, and touch-keyboard composer layouts. Their
+  surrounding button sizes and hit targets do not move to compensate for font
+  metrics.
 - The **patient stopwatch toggle** is default-off and affects only future queue
   submissions. Accepted queued items keep their own regular or patient intent.
 - Patient queued rows wait for their per-item verified-quiet patience seconds

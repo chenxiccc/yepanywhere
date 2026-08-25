@@ -111,6 +111,7 @@ import type {
 } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
 import chipStyles from "./AttachmentChip.module.css";
+import { DeliveryGlyph } from "./DeliveryGlyph";
 import { FullPaneComposerToggle } from "./FullPaneComposerToggle";
 import {
   MessageInputToolbar,
@@ -3687,7 +3688,9 @@ export function MessageInput({
                 aria-label={collapsedActionLabel}
                 title={collapsedActionLabel}
               >
-                <span className="send-icon">{collapsedActionIcon}</span>
+                <DeliveryGlyph className="send-icon">
+                  {collapsedActionIcon}
+                </DeliveryGlyph>
               </button>
             )}
           </div>
@@ -3890,7 +3893,7 @@ export function MessageInput({
                         : t("toolbarProjectQueueTooltip"),
                     )}
                   >
-                    <span aria-hidden="true">⇥</span>
+                    <DeliveryGlyph>⇥</DeliveryGlyph>
                     {manualDeliverySpeechPrefix && (
                       <SpeechPrefixActionCue
                         prefix={manualDeliverySpeechPrefix}
@@ -3914,7 +3917,7 @@ export function MessageInput({
                       t("toolbarProjectQueueNewSessionTooltip"),
                     )}
                   >
-                    <span aria-hidden="true">⇥</span>
+                    <DeliveryGlyph>⇥</DeliveryGlyph>
                     <span
                       className="project-queue-new-session-mark"
                       aria-hidden="true"
@@ -3944,9 +3947,9 @@ export function MessageInput({
                       mobileKeyboardAlternateAction.label,
                     )}
                   >
-                    <span aria-hidden="true">
+                    <DeliveryGlyph>
                       {mobileKeyboardAlternateAction.icon}
-                    </span>
+                    </DeliveryGlyph>
                     {manualDeliverySpeechPrefix && (
                       <SpeechPrefixActionCue
                         prefix={manualDeliverySpeechPrefix}
@@ -3971,9 +3974,9 @@ export function MessageInput({
                     )}
                   >
                     <span>{mobileKeyboardAlternateAction.displayLabel}</span>
-                    <span aria-hidden="true">
+                    <DeliveryGlyph>
                       {mobileKeyboardAlternateAction.icon}
-                    </span>
+                    </DeliveryGlyph>
                     {manualDeliverySpeechPrefix && (
                       <SpeechPrefixActionCue
                         prefix={manualDeliverySpeechPrefix}
@@ -3992,7 +3995,7 @@ export function MessageInput({
                   title={t("bangTabCompleteLabel")}
                 >
                   <span>Tab</span>
-                  <span aria-hidden="true">⇥</span>
+                  <DeliveryGlyph>⇥</DeliveryGlyph>
                 </button>
               )}
               {toolbarVisibility.composerRecall &&
@@ -4055,12 +4058,9 @@ export function MessageInput({
                     {mobileKeyboardActionDisplayLabel}
                   </span>
                 )}
-                <span
-                  className="message-input-keyboard-primary-icon"
-                  aria-hidden="true"
-                >
+                <DeliveryGlyph className="message-input-keyboard-primary-icon">
                   {mobileKeyboardActionIcon}
-                </span>
+                </DeliveryGlyph>
                 {primaryDeliverySpeechPrefix && (
                   <SpeechPrefixActionCue prefix={primaryDeliverySpeechPrefix} />
                 )}
