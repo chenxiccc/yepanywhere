@@ -103,4 +103,37 @@ describe("Modal closeOnBackGesture", () => {
     fireEvent.keyDown(document, { key: "Backspace" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("gives Escape and body-scroll ownership to the topmost modal", () => {
+    const closeParent = vi.fn();
+    const closeChild = vi.fn();
+    document.body.style.overflow = "clip";
+    const { rerender, unmount } = render(
+      <I18nProvider>
+        <Modal title="Parent" onClose={closeParent}>
+          <div>parent body</div>
+          <Modal title="Child" onClose={closeChild}>
+            <div>child body</div>
+          </Modal>
+        </Modal>
+      </I18nProvider>,
+    );
+
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(closeChild).toHaveBeenCalledTimes(1);
+    expect(closeParent).not.toHaveBeenCalled();
+
+    rerender(
+      <I18nProvider>
+        <Modal title="Parent" onClose={closeParent}>
+          <div>parent body</div>
+        </Modal>
+      </I18nProvider>,
+    );
+    expect(document.body.style.overflow).toBe("hidden");
+    unmount();
+    expect(document.body.style.overflow).toBe("clip");
+    document.body.style.overflow = "";
+  });
 });

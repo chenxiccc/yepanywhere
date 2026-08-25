@@ -57,7 +57,11 @@ import {
 } from "./FileResourceActions";
 import { createPublicShareFileViewerSource } from "./publicShareFileViewerSource";
 import { CopyTextButton } from "./ui/CopyTextButton";
-import { useModalBackGesture, useModalBackspace } from "./ui/Modal";
+import {
+  useModalBackGesture,
+  useModalBackspace,
+  useModalLayer,
+} from "./ui/Modal";
 import styles from "./FilePathLink.module.css";
 
 export { FileVersionControlLinks } from "./FileDiffViewLinks";
@@ -439,30 +443,9 @@ export function FileViewerModal({
     }
   };
 
-  // Close on Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !minimized) {
-        e.preventDefault();
-        e.stopPropagation();
-        close();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [close, minimized]);
-
   useModalBackGesture(close, !minimized, "__fileViewerModal");
   useModalBackspace(close, !minimized);
-
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    if (minimized) return;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [minimized]);
+  useModalLayer(close, !minimized);
 
   const sessionViewerLayer =
     publicShareContext === null

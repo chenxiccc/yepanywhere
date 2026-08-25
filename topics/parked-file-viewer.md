@@ -55,7 +55,10 @@ session. Browser Back/back-swipe and an unmodified, non-repeating Backspace use
 the same topmost-only rule. Backspace never dismisses a viewer while its event
 target is an input, textarea, select, editable region, or textbox. Each child
 file or resource modal owns its own browser-history entry so browser Back does
-not skip from a nested file past its parent.
+not skip from a nested file past its parent. Escape likewise dismisses only the
+topmost visible modal. Every visible modal shares one reference-counted document
+scroll lock: dismissing a child keeps scrolling locked for its parent, and the
+last dismissal restores the body overflow value that preceded the stack.
 
 The capability is authenticated-session UI. Live and frozen public shares do
 not expose parking controls, consistent with their lack of an authenticated

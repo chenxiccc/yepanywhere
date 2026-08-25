@@ -246,6 +246,7 @@ describe("FileViewer", () => {
       await waitFor(() =>
         expect(screen.getAllByRole("dialog")).toHaveLength(2),
       );
+      expect(document.body.style.overflow).toBe("hidden");
       const backButtons = screen.getAllByRole("button", { name: "Back" });
       const childBack = backButtons.at(-1);
       if (!childBack) throw new Error("Nested file viewer has no Back control");
@@ -254,6 +255,18 @@ describe("FileViewer", () => {
         expect(screen.getAllByRole("dialog")).toHaveLength(1),
       );
       expect(onClose).not.toHaveBeenCalled();
+      expect(document.body.style.overflow).toBe("hidden");
+
+      fireEvent.click(screen.getByRole("link", { name: "child.yml" }));
+      await waitFor(() =>
+        expect(screen.getAllByRole("dialog")).toHaveLength(2),
+      );
+      fireEvent.keyDown(document, { key: "Escape" });
+      await waitFor(() =>
+        expect(screen.getAllByRole("dialog")).toHaveLength(1),
+      );
+      expect(onClose).not.toHaveBeenCalled();
+      expect(document.body.style.overflow).toBe("hidden");
 
       fireEvent.click(screen.getByRole("link", { name: "child.yml" }));
       await waitFor(() =>
