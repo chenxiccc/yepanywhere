@@ -162,7 +162,7 @@ export class ProjectMetadataService {
    * Get all hidden projects.
    */
   getAllHiddenProjects(): Record<string, HiddenProjectMetadata> {
-    return { ...(this.state.hiddenProjects ?? {}) };
+    return { ...this.state.hiddenProjects };
   }
 
   getProjectSessionDefaults(
