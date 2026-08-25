@@ -3,12 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  type InstallationOwnerProbe,
   type ProviderInstallationBusyError,
   ProviderInstallationCoordinator,
+} from "../../src/services/ProviderInstallationCoordinator.js";
+import {
   createDefaultOwnerProbe,
   defaultOwnerProbe,
-} from "../../src/services/ProviderInstallationCoordinator.js";
+  type InstallationOwnerProbe,
+} from "../../src/services/installationOwnerProbe.js";
 
 const FAMILY = "codex-cli";
 
