@@ -1,8 +1,10 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { FileViewer } from "../components/FileViewer";
+import { SidebarLauncher } from "../components/SidebarLauncher";
 import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
+import { useNavigationLayout } from "../layouts";
 
 /**
  * FilePage - Standalone page for viewing files.
@@ -10,6 +12,7 @@ import { useI18n } from "../i18n";
  */
 export function FilePage() {
   const { t } = useI18n();
+  const { openSidebar } = useNavigationLayout();
   const basePath = useRemoteBasePath();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
@@ -55,6 +58,11 @@ export function FilePage() {
     <GlossaryProjectBoundary projectId={projectId}>
       <div className="file-page">
         <div className="file-page-nav">
+          <SidebarLauncher
+            label={t("actionOpenSidebar")}
+            newSessionLabel={t("sidebarNewSession")}
+            onActivate={openSidebar}
+          />
           <Link
             to={`${basePath}/projects/${projectId}`}
             className="file-page-back-link"

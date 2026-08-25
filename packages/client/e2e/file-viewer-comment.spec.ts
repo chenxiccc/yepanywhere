@@ -5,6 +5,10 @@ import { e2ePaths, expect, test } from "./fixtures.js";
 
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
+const fileBrowserProjectPath = join(e2ePaths.tempDir, "file-browser-project");
+const fileBrowserProjectId = Buffer.from(fileBrowserProjectPath).toString(
+  "base64url",
+);
 const sessionId = "file-viewer-absolute-001";
 
 async function dismissOnboardingIfVisible(page: Page) {
@@ -259,6 +263,44 @@ test("opens the viewer toolbar link with a native middle click", async ({
   await openedPage.close();
   await expect(page.locator(".file-viewer-modal")).toBeVisible();
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1000, height: 600 },
+  { name: "mobile", width: 375, height: 812 },
+] as const) {
+  test(`opens and dismisses the standalone viewer sidebar at ${viewport.name} width`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto(`/projects/${fileBrowserProjectId}/file?path=README.md`);
+    await dismissOnboardingIfVisible(page);
+
+    const viewer = page.locator(".file-page");
+    const sidebar = page.locator(".sidebar");
+    const opener = page.getByRole("button", { name: "Open sidebar" });
+    await expect(viewer).toBeVisible();
+    await expect(opener).toBeVisible();
+    await expect(sidebar).toHaveCount(0);
+    await capture(
+      page,
+      `${viewport.name}-standalone-file-sidebar-closed-${viewport.width}x${viewport.height}`,
+    );
+
+    await opener.click();
+
+    await expect(sidebar).toBeVisible();
+    await expect(viewer).toBeVisible();
+    await capture(
+      page,
+      `${viewport.name}-standalone-file-sidebar-open-${viewport.width}x${viewport.height}`,
+    );
+
+    await sidebar.getByRole("button", { name: "Close sidebar" }).click();
+
+    await expect(sidebar).toHaveCount(0);
+    await expect(viewer).toBeVisible();
+  });
+}
 
 test("keeps selection actions out of an upward pointer drag", async ({
   page,

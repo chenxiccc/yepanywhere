@@ -51,10 +51,12 @@ const mocks = vi.hoisted(() => ({
     ({
       isDesktop,
       onMinimize,
+      onClose,
       currentSessionId,
     }: {
       isDesktop?: boolean;
       onMinimize?: () => void;
+      onClose: () => void;
       currentSessionId?: string;
     }) => (
       <div
@@ -64,6 +66,11 @@ const mocks = vi.hoisted(() => ({
         {onMinimize && (
           <button type="button" onClick={onMinimize}>
             Minimize sidebar
+          </button>
+        )}
+        {!isDesktop && (
+          <button type="button" onClick={onClose}>
+            Close sidebar
           </button>
         )}
       </div>
@@ -87,7 +94,20 @@ vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
 import {
   NavigationLayout,
   SessionDomLingerRouteMarker,
+  useNavigationLayout,
 } from "../NavigationLayout";
+
+function ContentFrameRoute() {
+  const { openSidebar } = useNavigationLayout();
+  return (
+    <div data-testid="file-frame">
+      <button type="button" onClick={openSidebar}>
+        Open file sidebar
+      </button>
+      <Link to="/projects/project-1/sessions/session-1">Session 1</Link>
+    </div>
+  );
+}
 
 function renderNavigationLayout(path = "/agents") {
   render(
@@ -157,13 +177,7 @@ function renderNavigationLayoutWithSessionLinger(
             />
             <Route
               path="/projects/:projectId/file"
-              element={
-                <div data-testid="file-frame">
-                  <Link to="/projects/project-1/sessions/session-1">
-                    Session 1
-                  </Link>
-                </div>
-              }
+              element={<ContentFrameRoute />}
             />
             <Route
               path="/projects/:projectId/sessions/:sessionId"
@@ -450,6 +464,10 @@ describe("NavigationLayout", () => {
 
   it("parks the session DOM under a full-frame project file route", () => {
     enableSessionDomLinger();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+    });
     renderNavigationLayoutWithSessionLinger();
 
     const sessionLayer = screen.getByTestId("session-layer");
@@ -459,13 +477,34 @@ describe("NavigationLayout", () => {
     expect(screen.getByTestId("file-frame")).toBeTruthy();
     expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
     expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    expect(screen.queryByTestId("desktop-sidebar")).toBeNull();
     expect(screen.queryByTestId("mobile-sidebar")).toBeNull();
+    expect(
+      screen.getByTestId("sidebar-session-feeds-provider").dataset.enabled,
+    ).toBe("false");
     expect(
       screen
         .getByTestId("session-layer")
         .closest("[data-session-dom-linger]")
         ?.getAttribute("data-session-dom-linger"),
     ).toBe("parked");
+
+    fireEvent.click(screen.getByText("Open file sidebar"));
+
+    expect(screen.queryByTestId("desktop-sidebar")).toBeNull();
+    expect(screen.getByTestId("mobile-sidebar")).toBeTruthy();
+    expect(
+      screen.getByTestId("sidebar-session-feeds-provider").dataset.enabled,
+    ).toBe("true");
+    expect(screen.getByTestId("file-frame")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Close sidebar"));
+
+    expect(screen.queryByTestId("mobile-sidebar")).toBeNull();
+    expect(
+      screen.getByTestId("sidebar-session-feeds-provider").dataset.enabled,
+    ).toBe("false");
+    expect(screen.getByTestId("file-frame")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Session 1"));
 

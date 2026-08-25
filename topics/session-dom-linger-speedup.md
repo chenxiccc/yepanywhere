@@ -150,6 +150,14 @@ routes, not as sibling routes that unmount the layout. They may cover 100% of
 the app frame and suppress sidebar chrome, but the session linger host must stay
 mounted. `/projects/:projectId/file` is the current concrete example.
 
+An authenticated standalone content-frame viewer must still expose the normal
+sidebar launcher. Activating it opens the shared sidebar as a temporary overlay
+at every viewport width; dismissing the overlay returns to the unchanged viewer,
+while selecting a destination performs normal app navigation. The content frame
+stays full-width and sidebar session feeds remain disabled until that overlay is
+actually opened, so a new-tab file view neither waits for sidebar discovery nor
+changes the default presentation merely because sidebar access is available.
+
 External offsite links that navigate the browser away from YA are outside this
 contract. If YA later adds a built-in offsite/web viewer, that viewer must follow
 the same modal/content-frame rule: Back acts as close/return, the foreground

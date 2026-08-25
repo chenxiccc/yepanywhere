@@ -322,16 +322,15 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   // This prevents having both sidebars visible after window resize/device rotation
   // Only auto-close when desktop sidebar is actually visible (isWideScreen)
   useEffect(() => {
-    if (sidebarOpen && isWideScreen && canShowExpandedSidebar) {
+    if (
+      !isContentFrameRoute &&
+      sidebarOpen &&
+      isWideScreen &&
+      canShowExpandedSidebar
+    ) {
       setSidebarOpen(false);
     }
-  }, [canShowExpandedSidebar, isWideScreen, sidebarOpen]);
-
-  useEffect(() => {
-    if (isContentFrameRoute && sidebarOpen) {
-      setSidebarOpen(false);
-    }
-  }, [isContentFrameRoute, sidebarOpen]);
+  }, [canShowExpandedSidebar, isContentFrameRoute, isWideScreen, sidebarOpen]);
 
   // Smart toggle: if viewport can support expanded, toggle preference; otherwise open overlay
   const handleToggleExpanded = useCallback(() => {
@@ -469,9 +468,9 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     element.inert = sessionLayerParked;
   }, [sessionLayerParked]);
 
-  const sidebarFeedsEnabled =
-    !isContentFrameRoute &&
-    ((isWideScreen && !isMinimized) || (!isWideScreen && sidebarOpen));
+  const sidebarFeedsEnabled = isContentFrameRoute
+    ? sidebarOpen
+    : (isWideScreen && !isMinimized) || (!isWideScreen && sidebarOpen);
 
   return (
     <SidebarSessionFeedsProvider enabled={sidebarFeedsEnabled}>
@@ -543,7 +542,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
           ))}
 
         {/* Mobile sidebar - modal overlay (also used for constrained desktop overlay) */}
-        {!isContentFrameRoute && (!isWideScreen || sidebarOpen) && (
+        {(isContentFrameRoute ? sidebarOpen : !isWideScreen || sidebarOpen) && (
           <Sidebar
             isOpen={sidebarOpen}
             onClose={closeSidebar}
