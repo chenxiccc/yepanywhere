@@ -1531,6 +1531,70 @@ describe("linkifyProjectPaths", () => {
     expect(out).toContain("&quot;,</span>");
   });
 
+  it("links paths relative to the viewed file directory", async () => {
+    const existing = new Set([
+      "RegressionTests/xmt/Privacy/input/aip2705-boundary.txt",
+      "RegressionTests/xmt/Privacy/output/baseline.stdout",
+      "scripts/run.py",
+    ]);
+    const asked: string[][] = [];
+    const fileIndex: ProjectPathIndex = {
+      findExisting: async (paths: readonly string[]) => {
+        asked.push([...paths]);
+        return new Set(paths.filter((path) => existing.has(path)));
+      },
+      has: async (path: string) => existing.has(path),
+      knownFile: (path: string) => existing.has(path),
+      release: () => undefined,
+      sourceRevision: () => 1,
+    };
+    const html =
+      "<span>$ROOT/input/aip2705-boundary.txt " +
+      "output/baseline.stdout scripts/run.py missing.txt</span>";
+
+    const out = await linkifyProjectPaths(html, {
+      projectPath: "/repo",
+      index: fileIndex,
+      selfRelativePath:
+        "RegressionTests/xmt/Privacy/regtest-aip2705-boundary.yml",
+    });
+
+    expect(out).toContain(
+      'data-ya-path="/repo/RegressionTests/xmt/Privacy/input/aip2705-boundary.txt"',
+    );
+    expect(out).toContain(">$ROOT/input/aip2705-boundary.txt</a>");
+    expect(out).toContain(
+      'data-ya-path="/repo/RegressionTests/xmt/Privacy/output/baseline.stdout"',
+    );
+    expect(out).toContain('data-ya-path="/repo/scripts/run.py"');
+    expect(out).not.toContain(
+      "/repo/RegressionTests/xmt/Privacy/scripts/run.py",
+    );
+    expect(out).not.toContain("missing.txt</a>");
+    expect(asked).toHaveLength(1);
+  });
+
+  it("prefers a project-relative path over a file-relative collision", async () => {
+    const existing = new Set(["shared.txt", "configs/shared.txt"]);
+    const collisionIndex: ProjectPathIndex = {
+      findExisting: async (paths: readonly string[]) =>
+        new Set(paths.filter((path) => existing.has(path))),
+      has: async (path: string) => existing.has(path),
+      knownFile: (path: string) => existing.has(path),
+      release: () => undefined,
+      sourceRevision: () => 1,
+    };
+
+    const out = await linkifyProjectPaths("<span>shared.txt</span>", {
+      projectPath: "/repo",
+      index: collisionIndex,
+      selfRelativePath: "configs/view.yml",
+    });
+
+    expect(out).toContain('data-ya-path="/repo/shared.txt"');
+    expect(out).not.toContain('data-ya-path="/repo/configs/shared.txt"');
+  });
+
   it("resolves only exact existing tokens in raw command text", async () => {
     const targets = await resolveProjectPathTextLinks(
       "cat topics/performance-regression-suite.md topics/commits.md",
@@ -1548,6 +1612,26 @@ describe("linkifyProjectPaths", () => {
         text: "topics/performance-regression-suite.md",
       },
     ]);
+  });
+
+  it("keeps viewed-file root markers literal outside a file viewer", async () => {
+    const rootMarkerIndex: ProjectPathIndex = {
+      findExisting: async (paths: readonly string[]) =>
+        new Set(paths.filter((path) => path === "input/request.txt")),
+      has: async (path: string) => path === "input/request.txt",
+      knownFile: (path: string) => path === "input/request.txt",
+      release: () => undefined,
+      sourceRevision: () => 1,
+    };
+
+    await expect(
+      resolveProjectPathTextLinks("$ROOT/input/request.txt", {
+        projectId: "project-1",
+        projectPath: "/repo",
+        index: rootMarkerIndex,
+        gateLookupsByShape: true,
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("does not link a string that merely looks like a path", async () => {

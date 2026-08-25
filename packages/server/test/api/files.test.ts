@@ -103,6 +103,36 @@ describe("Files API", () => {
       expect(json.rawUrl).toContain("/files/raw?path=README.md");
     });
 
+    it("links paths relative to the viewed file directory", async () => {
+      await mkdir(join(projectPath, "configs", "input"), { recursive: true });
+      await writeFile(
+        join(projectPath, "configs", "input", "request.txt"),
+        "request",
+      );
+      await writeFile(
+        join(projectPath, "configs", "regtest.yml"),
+        "input: $ROOT/input/request.txt\nreadme: README.md\n",
+      );
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=configs%2Fregtest.yml&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.highlightedHtml).toContain(
+        `data-ya-path="${join(projectPath, "configs", "input", "request.txt")}"`,
+      );
+      expect(json.highlightedHtml).toContain(">$ROOT/input/request.txt</a>");
+      expect(json.highlightedHtml).toContain(
+        `data-ya-path="${join(projectPath, "README.md")}"`,
+      );
+    });
+
     it("keeps file reads independent of provider inventory refreshes", async () => {
       const { app } = createApp({
         codexSessionsDir: join(testDir, "codex-sessions"),

@@ -9,7 +9,7 @@ Topic: project-path-links
 Status: **implemented (2026-08-02); demand-driven cache and turn-text
 annotation landed 2026-08-05; authenticated absolute-path probes landed
 2026-08-10; command, tool-result, and user-turn annotations landed
-2026-08-16.**
+2026-08-16; viewed-file-relative links landed 2026-08-25.**
 Highlighted file content, assistant turn text, completed command text, and
 completed tool-result bodies link exact project files through a demand-driven,
 watcher-backed directory cache — the same cache that now also decides the
@@ -221,6 +221,23 @@ rewrites only confirmed files. Project-relative matches retain the existing
 local-file markup; absolute matches use private project-file markup so both
 open in the FileViewer belonging to the active session project.
 
+Highlighted file content also resolves relative tokens from the viewed file's
+containing directory when the same token is not an existing project-root path.
+Project-root precedence preserves every established link when both coordinates
+exist. A leading `$ROOT/` is treated as an explicit relative-root marker: the
+marker is removed, then the same project-root-first, viewed-directory-second
+resolution applies. This covers configuration values such as
+`$ROOT/input/example.txt` without teaching the viewer a project-specific file
+format. Turn text and tool annotations have no viewed-file coordinate, so their
+project-root-relative contract is unchanged.
+
+All possible targets for one body enter the same `findExisting()` batch. The
+index therefore answers cached negative prefixes immediately and groups dense
+root or sibling-directory candidates into its existing bounded directory
+listing; file-relative support adds no per-token `stat` loop and no project
+crawl. Self-link suppression applies to the resolved target rather than only
+to the visible spelling.
+
 Constraints that keep it safe over arbitrary markup:
 
 - Only text between tags is rewritten. Markup is never matched, so a real
@@ -240,6 +257,14 @@ Constraints that keep it safe over arbitrary markup:
 
 An empty or unavailable index returns the content unchanged, so the feature
 degrades to plain content rather than failing the view.
+
+## Design decisions
+
+- **Project-root paths win collisions** (vs. nearest-file precedence): adding a
+  sibling with the same name cannot retarget an existing project-relative link.
+- **Expand bounded target aliases into the existing index batch** (vs. client
+  path corpora or a second filesystem oracle): the watcher-backed index keeps
+  membership, invalidation, and I/O batching authoritative in one place.
 
 ## Turn text
 
