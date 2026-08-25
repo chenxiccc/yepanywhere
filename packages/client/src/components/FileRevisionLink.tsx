@@ -38,7 +38,7 @@ export function FileRevisionLink({
   const version = useRetainedVersionInfo(sourceKey);
   const basePath = useRemoteBasePath();
   const supported = serverHasCapability(version, GIT_FILE_REVISION_CAPABILITY);
-  const identity = `${projectId}\0${path}\0${rev ?? ""}\0${origPath ?? ""}`;
+  const identity = `${sourceKey}\0${projectId}\0${path}\0${rev ?? ""}\0${origPath ?? ""}`;
   const [loaded, setLoaded] = useState<{
     identity: string;
     value: GitFileRevision | null;

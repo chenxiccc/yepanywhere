@@ -15,11 +15,13 @@ const MAX_MESSAGE_LINES = 50;
 
 export interface GitFileRevisionDeps {
   scanner: ProjectScanner;
+  runGit?: typeof runGit;
 }
 
 /** Read-only provenance for the file chrome shared by every file surface. */
 export function createGitFileRevisionRoutes(deps: GitFileRevisionDeps): Hono {
   const routes = new Hono();
+  const git = deps.runGit ?? runGit;
 
   routes.get("/:projectId/git/file-revision", async (c) => {
     const projectPath = await resolveProjectPath(c, deps.scanner);
@@ -37,19 +39,19 @@ export function createGitFileRevisionRoutes(deps: GitFileRevisionDeps): Hono {
       return c.json({ error: "rev must be a commit hash" }, 400);
     }
 
-    if (!(await isGitWorkingTree(projectPath))) {
-      return c.json({
-        path,
-        isGitRepo: false,
-        commit: null,
-        dirty: false,
-      } satisfies GitFileRevision);
-    }
-
     try {
+      if (!(await isGitWorkingTree(git, projectPath))) {
+        return c.json({
+          path,
+          isGitRepo: false,
+          commit: null,
+          dirty: false,
+        } satisfies GitFileRevision);
+      }
+
       const revision = requestedRev
-        ? await resolveCommit(projectPath, requestedRev)
-        : await resolveHead(projectPath);
+        ? await resolveCommit(git, projectPath, requestedRev)
+        : await resolveHead(git, projectPath);
       if (!revision) {
         return c.json({
           path,
@@ -58,10 +60,16 @@ export function createGitFileRevisionRoutes(deps: GitFileRevisionDeps): Hono {
           dirty: false,
         } satisfies GitFileRevision);
       }
-      const commit = await lastFileRevision(projectPath, revision, historyPath);
+      const commit = await lastFileRevision(
+        git,
+        projectPath,
+        revision,
+        historyPath,
+      );
       const dirty =
         !requestedRev && commit
           ? await workingFileDiffers(
+              git,
               projectPath,
               path,
               historyPath,
@@ -82,28 +90,42 @@ export function createGitFileRevisionRoutes(deps: GitFileRevisionDeps): Hono {
   return routes;
 }
 
-async function isGitWorkingTree(cwd: string): Promise<boolean> {
+type GitRunner = typeof runGit;
+
+async function isGitWorkingTree(git: GitRunner, cwd: string): Promise<boolean> {
   try {
-    const { stdout } = await runGit(cwd, [
-      "rev-parse",
-      "--is-inside-work-tree",
-    ]);
+    const { stdout } = await git(cwd, ["rev-parse", "--is-inside-work-tree"]);
     return stdout.trim() === "true";
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotGitRepositoryError(error)) return false;
+    throw error;
   }
 }
 
-async function resolveHead(cwd: string): Promise<string | null> {
+async function resolveHead(
+  git: GitRunner,
+  cwd: string,
+): Promise<string | null> {
   try {
-    return await resolveCommit(cwd, "HEAD");
-  } catch {
-    return null;
+    const { stdout } = await git(cwd, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "HEAD^{commit}",
+    ]);
+    return stdout.trim();
+  } catch (error) {
+    if (isQuietMissingObjectError(error)) return null;
+    throw error;
   }
 }
 
-async function resolveCommit(cwd: string, rev: string): Promise<string> {
-  const { stdout } = await runGit(cwd, [
+async function resolveCommit(
+  git: GitRunner,
+  cwd: string,
+  rev: string,
+): Promise<string> {
+  const { stdout } = await git(cwd, [
     "rev-parse",
     "--verify",
     `${rev}^{commit}`,
@@ -112,11 +134,12 @@ async function resolveCommit(cwd: string, rev: string): Promise<string> {
 }
 
 async function lastFileRevision(
+  git: GitRunner,
   cwd: string,
   revision: string,
   path: string,
 ): Promise<GitFileRevisionCommit | null> {
-  const { stdout } = await runGit(
+  const { stdout } = await git(
     cwd,
     [
       "log",
@@ -147,22 +170,56 @@ async function lastFileRevision(
 }
 
 async function workingFileDiffers(
+  git: GitRunner,
   cwd: string,
   path: string,
   historyPath: string,
   commit: string,
 ): Promise<boolean> {
-  try {
-    const [working, committed] = await Promise.all([
-      runGit(cwd, ["hash-object", `--path=${path}`, "--", path]),
-      runGit(cwd, ["rev-parse", `${commit}:${historyPath}`]),
-    ]);
-    return working.stdout.trim() !== committed.stdout.trim();
-  } catch {
-    // A missing working file or historical blob differs from the last known
-    // revision. Other Git failures are surfaced by the metadata commands.
+  const [working, committed] = await Promise.allSettled([
+    git(cwd, ["hash-object", `--path=${path}`, "--", path]),
+    git(cwd, ["rev-parse", "--verify", "--quiet", `${commit}:${historyPath}`]),
+  ]);
+  if (
+    working.status === "rejected" &&
+    !isMissingWorkingFileError(working.reason)
+  ) {
+    throw working.reason;
+  }
+  if (
+    committed.status === "rejected" &&
+    !isQuietMissingObjectError(committed.reason)
+  ) {
+    throw committed.reason;
+  }
+  if (working.status === "rejected" || committed.status === "rejected") {
     return true;
   }
+  return working.value.stdout.trim() !== committed.value.stdout.trim();
+}
+
+function gitErrorShape(error: unknown): {
+  code?: number | string;
+  stderr?: string;
+} {
+  return error && typeof error === "object" ? error : {};
+}
+
+function isNotGitRepositoryError(error: unknown): boolean {
+  return gitErrorShape(error).stderr?.includes("not a git repository") ?? false;
+}
+
+function isQuietMissingObjectError(error: unknown): boolean {
+  const { code, stderr } = gitErrorShape(error);
+  return code === 1 && !(stderr ?? "").trim();
+}
+
+function isMissingWorkingFileError(error: unknown): boolean {
+  const stderr = gitErrorShape(error).stderr ?? "";
+  return (
+    stderr.includes("could not open") &&
+    stderr.includes("No such file or directory")
+  );
 }
 
 function gitError(c: Context, error: unknown): Response {

@@ -4,6 +4,7 @@ import { FileRevisionLink, formatRevisionAge } from "../FileRevisionLink";
 
 const mocks = vi.hoisted(() => ({
   getGitFileRevision: vi.fn(),
+  sourceKey: "local",
   version: { current: "0.7.2" } as { current: string } | null,
 }));
 
@@ -17,10 +18,11 @@ vi.mock("../../hooks/useVersion", () => ({
   useRetainedVersionInfo: () => mocks.version,
 }));
 vi.mock("../../lib/clientSummaryStore", () => ({
-  useClientSummarySourceKey: () => "local",
+  useClientSummarySourceKey: () => mocks.sourceKey,
 }));
 describe("FileRevisionLink", () => {
   beforeEach(() => {
+    mocks.sourceKey = "local";
     mocks.version = { current: "0.7.2" };
     mocks.getGitFileRevision.mockReset();
   });
@@ -101,6 +103,57 @@ describe("FileRevisionLink", () => {
 
     expect(await screen.findByText("uncommitted")).not.toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("reloads provenance when the source changes and ignores the old response", async () => {
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    const first = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    mocks.getGitFileRevision.mockReturnValueOnce(first).mockResolvedValueOnce({
+      path: "same.txt",
+      isGitRepo: true,
+      dirty: false,
+      commit: {
+        hash: "bbbbbbbbbbbbbbbb",
+        shortHash: "bbbbbbb",
+        authorName: "Second source",
+        authorDate: "2026-08-25T12:00:00.000Z",
+        subject: "Second revision",
+        message: "Second revision",
+        messageTruncated: false,
+      },
+    });
+    const props = {
+      projectId: "shared-project",
+      path: "same.txt",
+      dirtyLabel: "dirty",
+      uncommittedLabel: "uncommitted",
+    };
+    const { rerender } = render(<FileRevisionLink {...props} />);
+
+    mocks.sourceKey = "remote:second";
+    rerender(<FileRevisionLink {...props} />);
+    expect(await screen.findByRole("link", { name: "bbbbbbb" })).not.toBeNull();
+
+    resolveFirst?.({
+      path: "same.txt",
+      isGitRepo: true,
+      dirty: false,
+      commit: {
+        hash: "aaaaaaaaaaaaaaaa",
+        shortHash: "aaaaaaa",
+        authorName: "First source",
+        authorDate: "2026-08-24T12:00:00.000Z",
+        subject: "First revision",
+        message: "First revision",
+        messageTruncated: false,
+      },
+    });
+    await Promise.resolve();
+
+    expect(screen.queryByRole("link", { name: "aaaaaaa" })).toBeNull();
+    expect(mocks.getGitFileRevision).toHaveBeenCalledTimes(2);
   });
 });
 

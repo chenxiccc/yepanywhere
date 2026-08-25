@@ -1,17 +1,21 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { type GitFileRevision, toUrlProjectId } from "@yep-anywhere/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
+import { runGit } from "../../src/git/gitExec.js";
 import { createGitFileRevisionRoutes } from "../../src/routes/git-file-revision.js";
 import type { Project } from "../../src/supervisor/types.js";
 
 const execFileAsync = promisify(execFile);
 
-function createRoutesForProject(projectPath: string) {
+function createRoutesForProject(
+  projectPath: string,
+  git: typeof runGit = runGit,
+) {
   const projectId = toUrlProjectId(projectPath);
   const project: Project = {
     id: projectId,
@@ -32,6 +36,7 @@ function createRoutesForProject(projectPath: string) {
           return id === projectId ? project : null;
         },
       } as unknown as ProjectScanner,
+      runGit: git,
     }),
   };
 }
@@ -48,14 +53,15 @@ describe("git file revision routes", () => {
   async function request(
     path: string,
     params: Record<string, string> = {},
-  ): Promise<{ body: GitFileRevision; status: number }> {
-    const { projectId, routes } = createRoutesForProject(dir);
+    run: typeof runGit = runGit,
+  ): Promise<{ body: GitFileRevision & { error?: string }; status: number }> {
+    const { projectId, routes } = createRoutesForProject(dir, run);
     const query = new URLSearchParams({ path, ...params });
     const response = await routes.request(
       `/${projectId}/git/file-revision?${query.toString()}`,
     );
     return {
-      body: (await response.json()) as GitFileRevision,
+      body: (await response.json()) as GitFileRevision & { error?: string },
       status: response.status,
     };
   }
@@ -101,6 +107,15 @@ describe("git file revision routes", () => {
     expect((await request("file.txt")).body.dirty).toBe(false);
   });
 
+  it("treats a missing working file as dirty", async () => {
+    await unlink(join(dir, "file.txt"));
+    const { body, status } = await request("file.txt");
+
+    expect(status).toBe(200);
+    expect(body.commit?.hash).toBe(fileCommit);
+    expect(body.dirty).toBe(true);
+  });
+
   it("follows an uncommitted rename without treating the path as content", async () => {
     await rename(join(dir, "file.txt"), join(dir, "renamed.txt"));
     const { body } = await request("renamed.txt", { origPath: "file.txt" });
@@ -142,4 +157,43 @@ describe("git file revision routes", () => {
     expect(body.commit).toBeNull();
     expect(body.dirty).toBe(false);
   });
+
+  it("surfaces an unexpected repository probe failure", async () => {
+    const failure = Object.assign(new Error("spawn git ENOENT"), {
+      code: "ENOENT",
+    });
+    const injected = vi.fn(async () => {
+      throw failure;
+    }) as typeof runGit;
+
+    const { body, status } = await request("file.txt", {}, injected);
+
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ error: "spawn git ENOENT" });
+  });
+
+  it.each(["working file", "committed blob"])(
+    "surfaces an unexpected %s hash failure",
+    async (probe) => {
+      const injected = (async (cwd, args, options) => {
+        const isTarget =
+          probe === "working file"
+            ? args[0] === "hash-object"
+            : args[0] === "rev-parse" &&
+              args.includes(`${fileCommit}:file.txt`);
+        if (isTarget) {
+          throw Object.assign(new Error(`${probe} permission denied`), {
+            code: 128,
+            stderr: `fatal: ${probe} Permission denied`,
+          });
+        }
+        return runGit(cwd, args, options);
+      }) as typeof runGit;
+
+      const { body, status } = await request("file.txt", {}, injected);
+
+      expect(status).toBe(400);
+      expect(body).toMatchObject({ error: `${probe} permission denied` });
+    },
+  );
 });

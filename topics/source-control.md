@@ -763,7 +763,16 @@ resolves from `HEAD`. A not-yet-committed rename follows its original path.
 Live content adds **dirty** only when its bytes differ from the committed blob;
 a rename with identical content is not dirty. Immutable revision views are
 never dirty. An untracked file says **uncommitted** and receives no invented
-hash or link. A non-Git project omits the chrome.
+hash or link. A non-Git project omits the chrome. Only Git's explicit
+not-a-repository, unborn-HEAD, missing-working-file, and missing-blob outcomes
+map to those ordinary absence states; process launch, permission, and other Git
+execution failures surface as request errors rather than fabricated absence or
+dirty content.
+
+Revision requests are scoped by source as well as project, path, and revision.
+Switching between local and remote sources starts a request against the new
+source even when those other fields match, and a late response from the prior
+source cannot replace the new source's provenance.
 
 The hash is a regular anchor to Changes with the resolved commit and file
 selected in the default diff view; blame and full context remain opt-in from
