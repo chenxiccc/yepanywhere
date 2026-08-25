@@ -767,7 +767,7 @@ describe("SessionShareModal", () => {
       screen.getByText("Public share link copied to clipboard."),
     ).toBeTruthy();
     expect(screen.queryByText("Public link copied to clipboard.")).toBeNull();
-    expect(screen.getByRole("listitem").className).not.toContain(
+    expect((await screen.findByRole("listitem")).className).not.toContain(
       "rowHighlighted",
     );
   });
