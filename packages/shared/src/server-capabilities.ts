@@ -386,6 +386,30 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients may outpace installed servers, and older servers do not expose the Codex reasoning-summary policy.",
     },
   },
+  codexStreamDurableIdAlignment: {
+    id: CAPABILITY_ID_ALLOCATIONS.codexStreamDurableIdAlignment.id,
+    name: "codex-stream-durable-id-alignment",
+    kind: "permanent",
+    area: "providers",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server aligns Codex live and durable transcript rows on provider or client message identity when that identity exists.",
+    clientFallback:
+      "Use the legacy Codex non-tool content/timestamp reconciliation, steer pairing, and timestamp-watermark replay suppression.",
+    serverContract: {
+      responseFields: [
+        "sessionDetail.messages[].uuid",
+        "sessionMessage.message.uuid",
+      ],
+      events: ["session-message"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers whose Codex stream and durable transcript ids do not align.",
+    },
+  },
   toolResultMediaPreservationPolicy: {
     id: CAPABILITY_ID_ALLOCATIONS.toolResultMediaPreservationPolicy.id,
     name: "tool-result-media-preservation-policy",
@@ -1914,6 +1938,8 @@ export const SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.subagentMaxDepthSetting.name;
 export const CODEX_REASONING_SUMMARY_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.codexReasoningSummarySetting.name;
+export const CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY =
+  SERVER_CAPABILITIES.codexStreamDurableIdAlignment.name;
 export const GLOSSARY_TOOLTIPS_CAPABILITY =
   SERVER_CAPABILITIES.glossaryTooltips.name;
 export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =

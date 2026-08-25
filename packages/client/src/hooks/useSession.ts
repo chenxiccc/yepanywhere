@@ -541,6 +541,7 @@ export function useSession(
     tailTurns?: number;
     tailFrom?: string;
     detailedLoadingProgress?: boolean;
+    codexStreamDurableIdAlignment?: boolean;
     backgroundEffectsPaused?: boolean;
     onConfigurationError?: (failure: {
       setting: "effort";
@@ -1060,6 +1061,7 @@ export function useSession(
     tailTurns: options?.tailTurns,
     tailFrom: options?.tailFrom,
     detailedLoadingProgress: options?.detailedLoadingProgress,
+    codexStreamDurableIdAlignment: options?.codexStreamDurableIdAlignment,
     onLoadComplete: handleLoadComplete,
     onLoadError: handleLoadError,
   });

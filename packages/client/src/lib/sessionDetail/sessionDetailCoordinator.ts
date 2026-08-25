@@ -190,6 +190,7 @@ export class SessionDetailCoordinator {
   private readonly activeWindowTrimEnabled: () => boolean;
   private readonly activeWindowTrimNowMs: () => number;
   private readonly activeWindowTrimPlanner: ActiveWindowTrimPlanner;
+  private codexStreamDurableIdAlignment = false;
   private activeWindowFollowingBottom = false;
   private activeWindowHistoryExpanded = false;
   private activeWindowStructuralRevision = 0;
@@ -247,7 +248,14 @@ export class SessionDetailCoordinator {
   }
 
   dispatch(action: SessionDetailAction): SessionDetailState | undefined {
-    return this.cache.dispatch(this.entryKey, action);
+    return this.cache.dispatch(this.entryKey, {
+      ...action,
+      codexStreamDurableIdAlignment: this.codexStreamDurableIdAlignment,
+    });
+  }
+
+  setCodexStreamDurableIdAlignment(aligned: boolean): void {
+    this.codexStreamDurableIdAlignment = aligned;
   }
 
   applyStreamMessage(

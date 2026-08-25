@@ -188,6 +188,32 @@ function coordinator(activeWindowTrim?: SessionDetailActiveWindowTrimRuntime) {
 }
 
 describe("SessionDetailCoordinator", () => {
+  it("injects the connected server's Codex identity mode into transcript actions", () => {
+    const durableMessage = {
+      ...message("old-durable-id"),
+      message: { role: "assistant" as const, content: "Still waiting." },
+    };
+    const liveMessage = {
+      ...message("live-provider-id"),
+      message: { role: "assistant" as const, content: "Still waiting." },
+    };
+    const response = {
+      ...sessionResponse([durableMessage]),
+      session: { ...session(), provider: "codex" as const },
+    };
+
+    const legacy = coordinator();
+    legacy.applyInitialLoad(response);
+    legacy.applyStreamMessage(liveMessage);
+    expect(legacy.readSelected(selectSessionDetailMessages)).toHaveLength(1);
+
+    const aligned = coordinator();
+    aligned.setCodexStreamDurableIdAlignment(true);
+    aligned.applyInitialLoad(response);
+    aligned.applyStreamMessage(liveMessage);
+    expect(aligned.readSelected(selectSessionDetailMessages)).toHaveLength(2);
+  });
+
   it("buffers stream messages until initial load completes", () => {
     const detail = coordinator();
     const initialLoad = detail.beginInitialLoad();

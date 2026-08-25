@@ -13,6 +13,7 @@ import type {
   UserQuestionAnswers,
 } from "@yep-anywhere/shared";
 import {
+  CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PROJECT_CODE_NAMES_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
@@ -478,6 +479,10 @@ function SessionPageContent({
     versionInfo,
     PROJECT_CODE_NAMES_CAPABILITY,
   );
+  const supportsCodexStreamDurableIdAlignment = serverHasCapability(
+    versionInfo,
+    CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
+  );
   const projectQueueProjectIds = useMemo(
     () =>
       supportsProjectQueue ? [projectId] : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
@@ -533,6 +538,7 @@ function SessionPageContent({
     () => ({
       ...clientTailParams,
       detailedLoadingProgress: sessionLoadingProgressEnabled,
+      codexStreamDurableIdAlignment: supportsCodexStreamDurableIdAlignment,
       backgroundEffectsPaused: isDomLingerParked,
       onConfigurationError: (failure: { setting: "effort" }) => {
         if (failure.setting === "effort") {
@@ -545,6 +551,7 @@ function SessionPageContent({
       isDomLingerParked,
       sessionLoadingProgressEnabled,
       showToast,
+      supportsCodexStreamDurableIdAlignment,
       t,
     ],
   );

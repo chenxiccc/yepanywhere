@@ -5,6 +5,7 @@ import {
   CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
+  CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   GIT_FILE_REVISION_CAPABILITY,
@@ -284,6 +285,37 @@ describe("server capability advertisements", () => {
     expect(
       serverHasCapability({ current: "0.7.1" }, GIT_FILE_REVISION_CAPABILITY),
     ).toBe(false);
+  });
+
+  it("assigns Codex stream/durable identity to permanent capability ID 48", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.codexStreamDurableIdAlignment.id).toBe(48);
+    expect(
+      serverHasCapability(
+        { current: "0.7.2" },
+        CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
+      ),
+    ).toBe(false);
+
+    const sourceAdvertisement = encodeVersionedServerCapabilities(
+      [CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+    expect(sourceAdvertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 2 ** 16]],
+    });
+    expect(
+      serverHasCapability(
+        { current: "0.7.0-741-gabcdef", ...sourceAdvertisement },
+        CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
+      ),
+    ).toBe(true);
   });
 
   it("assigns cache-billing ignore-after to permanent capability ID 43", () => {

@@ -36,10 +36,13 @@ interrupted to deliver a queued steer is double-displayed."
    **2s** (default and replay): a human does not send two identical turns
    that fast, so this minimizes the real risk — silently merging two
    genuinely-distinct identical messages (the old 90s replay window made
-   that risk large). This is unavailable to Codex: repeated wait/status turns
-   and responses are commonly byte-identical, and every provider log row is a
-   distinct turn unless a shared provider identity proves otherwise. The
-   optional capability `approxDedupExcludesTools` (codex-oss) removes
+   that risk large). Current Codex servers with
+   `codex-stream-durable-id-alignment` do not use this: repeated wait/status
+   turns and responses are commonly byte-identical, and every provider log row
+   is a distinct turn unless a shared provider identity proves otherwise. A
+   current client temporarily enables the same two-second backstop, excluding
+   tools, when that server capability is absent or still unknown. The optional
+   provider capability `approxDedupExcludesTools` (codex-oss) removes
    tool_use/tool_result messages from this
    backstop entirely: native tool uuids are deterministic (`call_id`), while
    the code-mode `commandExecution` exception uses a separately scoped exact
@@ -175,6 +178,17 @@ the live thread item and persists those ids in rollout response items. The one
 YA-supplied identity is `clientUserMessageId`, which Codex persists on the
 paired `user_message` event.
 
+The permanent server capability `codex-stream-durable-id-alignment` (ID 48,
+version-implied from YA 0.7.2) gates whether the client may rely on these ids.
+Source-ahead servers advertise the ID explicitly. Stable servers `v0.6.0`,
+`v0.6.1`, `v0.6.2`, and `v0.7.0` predate the contract. Against them—or while
+version metadata is pending—the client restores the former two-second
+content/timestamp reconciliation for non-tool rows, legacy steer pairing, and
+timestamp-watermark replay suppression. This avoids routine duplicate rows at
+the deliberate old-server risk of merging genuinely distinct identical turns.
+The fallback makes no new request and remains until a separate
+compatibility-floor review approves its removal.
+
 | Item | Live thread `item.id` | Durable rollout id | Aligned? |
 |---|---|---|---|
 | Native tool calls/results | `payload.call_id` (`id: payload.call_id.clone()`) | `call_id` on the response item | **Yes** — both key on `call_id` |
@@ -231,9 +245,11 @@ turn — `call_id` is globally unique, so no turn scoping is needed:
   parents cannot be assigned safely to one outer call by id. The explored
   projection may make their default visual group converge, but raw parent
   structure and active-tail collapse identity may replace once rollout lands.
-- General approximate dedup is disabled for Codex. Native ids plus the scoped
-  code-mode reconciler carry the known tool exceptions without treating equal
-  content or nearby timestamps as identity.
+- General approximate dedup is disabled for Codex when the connected server
+  advertises stream/durable id alignment. Native ids plus the scoped code-mode
+  reconciler carry the known tool exceptions without treating equal content or
+  nearby timestamps as identity. The documented old-server compatibility path
+  is the only exception, and it continues to exclude tools.
 
 ### Done: user-turn id alignment
 
@@ -249,10 +265,11 @@ even when provider startup takes longer than any plausible time window.
 
 An in-turn steer can remain optimistic for minutes before Codex consumes it.
 `Process` still retains accepted steer echoes through the provider turn
-boundary, but durable confirmation now uses the persisted client id. Codex no
-longer invokes `reconcileCodexSteerEchoes` or any text/timestamp substitute.
-Against an older server that omitted `clientUserMessageId`, a current client
-may show both copies; it must not erase a possibly real repeated turn.
+boundary, but durable confirmation now uses the persisted client id. Against a
+server advertising `codex-stream-durable-id-alignment`, Codex never invokes
+`reconcileCodexSteerEchoes` or any text/timestamp substitute. Against an older
+server that omitted `clientUserMessageId`, the capability-gated legacy path
+pairs the echo and durable row so the hosted client does not show both copies.
 
 ### Historical: first-turn duplicate with attachments
 

@@ -306,6 +306,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "git-file-revision",
     introducedIn: "0.7.2",
   },
+  codexStreamDurableIdAlignment: {
+    id: 48,
+    direction: "server",
+    name: "codex-stream-durable-id-alignment",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

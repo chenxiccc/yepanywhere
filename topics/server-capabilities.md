@@ -74,6 +74,17 @@ omit file-revision chrome and make no metadata request. Existing capability
 meanings and older capable behavior remain unchanged. It is version-implied
 from `0.7.2`.
 
+`codex-stream-durable-id-alignment` owns the meaning of existing Codex
+`message.uuid` values across streamed `session-message` events and REST session
+detail rows. The core corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0` lacks
+the alignment contract and permanent ID 48. Without it, the client uses the
+legacy two-second non-tool reconciliation, Codex steer pairing, and
+timestamp-watermark replay suppression; it adds no request. With it, equal
+content or timestamps never substitute for provider/client identity. The
+capability is version-implied from `0.7.2`, while source-ahead servers advertise
+the positive ID explicitly. Its fallback remains until a separate
+compatibility-floor review approves removal.
+
 `git-working-tree-files` owns the current-content inventory, persistent
 untracked-cache route, and cache-backed status request. Releases `0.6.2` and
 `0.7.0` have none of them. Without the permanent capability, the client retains
@@ -357,9 +368,10 @@ the same ledger:
 | 45 | server | 0.7.2 | `synthetic-terminate-command` |
 | 46 | server | 0.7.2 | `project-code-names` |
 | 47 | server | 0.7.2 | `git-file-revision` |
+| 48 | server | 0.7.2 | `codex-stream-durable-id-alignment` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 48; retired rows stay in the ledger as reserved IDs.
+ID 49; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

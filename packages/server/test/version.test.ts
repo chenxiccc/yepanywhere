@@ -1,6 +1,7 @@
 import {
   CAPABILITY_ID_ENCODING_VERSION,
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
@@ -225,6 +226,9 @@ describe("GET /version", () => {
     expect(json.remoteCompatibilityLevel).toBe(REMOTE_COMPATIBILITY_LEVEL);
     expect(Array.isArray(json.capabilities)).toBe(true);
     expect(json.capabilities).toContain(CLAUDE_ADDITIONAL_MODELS_CAPABILITY);
+    expect(json.capabilities).toContain(
+      CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
+    );
     expect(json.capabilities).toContain(SESSION_SANDBOXING_STATUS_CAPABILITY);
   });
 
@@ -297,6 +301,12 @@ describe("GET /version", () => {
     expect(version.capabilities).toBeUndefined();
     expect(version.optionalCapabilityBits).toEqual([[0, 1]]);
     expect(serverHasCapability(version, PROJECT_QUEUE_CAPABILITY)).toBe(true);
+    expect(
+      serverHasCapability(
+        version,
+        CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
+      ),
+    ).toBe(true);
     expect(serverHasCapability(version, VOICE_INPUT_CAPABILITY)).toBe(true);
     expect(serverHasCapability(version, DEVICE_BRIDGE_CAPABILITY)).toBe(false);
   });
