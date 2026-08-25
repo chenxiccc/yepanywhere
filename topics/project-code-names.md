@@ -67,7 +67,9 @@ ab2, ab3, ab4, ...
 This ordering is deterministic. Given the same project name and reserved code
 names, every client and server must choose the same result, although allocation
 should have one server-side owner rather than be independently recomputed by
-clients.
+clients. When several projects need allocation together, project names and then
+URL-safe project IDs use JavaScript code-unit order; host locale never changes
+the winner.
 
 ## Editing and conflicts
 
@@ -79,7 +81,10 @@ reserved set, so resolving one conflict cannot create another.
 
 The edit and any displaced-project reassignment are one atomic server-owned
 metadata change. Every connected client should observe the same pair of
-updates, and a reconnect should retain them.
+updates, and a reconnect should retain them. Automatic reconciliation has the
+same publication rule: after the complete assignment set is durably saved, the
+server emits one invalidation naming every project whose code changed. It never
+publishes an intermediate collision or an assignment that persistence rejected.
 
 ## Character and editing rules
 

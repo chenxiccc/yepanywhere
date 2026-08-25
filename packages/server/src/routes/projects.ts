@@ -236,14 +236,24 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     projects: readonly Project[],
   ): Promise<Map<string, string>> {
     if (!deps.projectMetadataService) return new Map();
-    const assignments =
+    const update =
       await deps.projectMetadataService.ensureProjectCodeNames(projects);
+    publishCodeNameChanges(update.changedProjectIds);
     return new Map(
-      assignments.map((assignment) => [
+      update.assignments.map((assignment) => [
         assignment.projectId,
         assignment.codeName,
       ]),
     );
+  }
+
+  function publishCodeNameChanges(projectIds: readonly string[]): void {
+    if (projectIds.length === 0) return;
+    deps.eventBus?.emit({
+      type: "project-code-names-changed",
+      projectIds: [...projectIds],
+      timestamp: new Date().toISOString(),
+    });
   }
 
   /**
@@ -561,17 +571,13 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     }
 
     try {
-      const assignments = await deps.projectMetadataService.setProjectCodeName(
+      const update = await deps.projectMetadataService.setProjectCodeName(
         project.id,
         body.codeName,
         visibleProjects,
       );
-      deps.eventBus?.emit({
-        type: "project-code-names-changed",
-        projectIds: assignments.map((assignment) => assignment.projectId),
-        timestamp: new Date().toISOString(),
-      });
-      return c.json({ assignments });
+      publishCodeNameChanges(update.changedProjectIds);
+      return c.json({ assignments: update.assignments });
     } catch (error) {
       if (error instanceof RangeError) {
         return c.json({ error: error.message }, 400);

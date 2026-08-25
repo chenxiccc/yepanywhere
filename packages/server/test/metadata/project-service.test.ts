@@ -219,22 +219,28 @@ describe("ProjectMetadataService", () => {
         { id: encodeProjectId("/alphanumeric"), name: "Alphanumeric" },
       ];
 
-      const assignments = await service.ensureProjectCodeNames(projects);
-      expect(assignments).toEqual([
-        { projectId: projects[0].id, codeName: "alh" },
-        { projectId: projects[1].id, codeName: "alpi" },
-        { projectId: projects[2].id, codeName: "ala" },
-      ]);
+      const update = await service.ensureProjectCodeNames(projects);
+      expect(update).toEqual({
+        assignments: [
+          { projectId: projects[0].id, codeName: "alh" },
+          { projectId: projects[1].id, codeName: "alpi" },
+          { projectId: projects[2].id, codeName: "ala" },
+        ],
+        changedProjectIds: projects.map((project) => project.id).sort(),
+      });
 
       const reloaded = new ProjectMetadataService({ dataDir: tempDir });
       await reloaded.initialize();
       expect(
         await reloaded.ensureProjectCodeNames([...projects].reverse()),
-      ).toEqual([
-        { projectId: projects[2].id, codeName: "ala" },
-        { projectId: projects[1].id, codeName: "alpi" },
-        { projectId: projects[0].id, codeName: "alh" },
-      ]);
+      ).toEqual({
+        assignments: [
+          { projectId: projects[2].id, codeName: "ala" },
+          { projectId: projects[1].id, codeName: "alpi" },
+          { projectId: projects[0].id, codeName: "alh" },
+        ],
+        changedProjectIds: [],
+      });
     });
 
     it("gives an explicit edit priority and reassigns its conflict", async () => {
@@ -242,23 +248,53 @@ describe("ProjectMetadataService", () => {
       const beta = { id: encodeProjectId("/beta"), name: "Beta" };
       await service.ensureProjectCodeNames([alpha, beta]);
 
-      const assignments = await service.setProjectCodeName(beta.id, "ALP", [
+      const update = await service.setProjectCodeName(beta.id, "ALP", [
         alpha,
         beta,
       ]);
 
-      expect(assignments).toEqual([
-        { projectId: beta.id, codeName: "ALP" },
-        { projectId: alpha.id, codeName: "alph" },
-      ]);
+      expect(update).toEqual({
+        assignments: [
+          { projectId: beta.id, codeName: "ALP" },
+          { projectId: alpha.id, codeName: "alph" },
+        ],
+        changedProjectIds: [alpha.id, beta.id].sort(),
+      });
       expect(service.getProjectCodeName(beta.id)).toBe("ALP");
       expect(service.getProjectCodeName(alpha.id)).toBe("alph");
       await expect(
         service.ensureProjectCodeNames([alpha, beta]),
-      ).resolves.toEqual([
+      ).resolves.toEqual({
+        assignments: [
+          { projectId: alpha.id, codeName: "alph" },
+          { projectId: beta.id, codeName: "ALP" },
+        ],
+        changedProjectIds: [],
+      });
+    });
+
+    it("reports automatic collision reassignments in code-unit order", async () => {
+      const alpha = { id: encodeProjectId("/über/alpha"), name: "Álpha" };
+      const first = await service.ensureProjectCodeNames([alpha]);
+      expect(first.changedProjectIds).toEqual([alpha.id]);
+      expect(first.assignments[0]?.codeName).toBe("alp");
+
+      const alpine = {
+        id: encodeProjectId("/東京/alpine"),
+        name: "Álpine",
+      };
+      const update = await service.ensureProjectCodeNames([alpine, alpha]);
+
+      expect(update.changedProjectIds).toEqual([alpha.id, alpine.id].sort());
+      expect(update.assignments).toEqual([
+        { projectId: alpine.id, codeName: "alpi" },
         { projectId: alpha.id, codeName: "alph" },
-        { projectId: beta.id, codeName: "ALP" },
       ]);
+      expect(
+        update.assignments.every(({ projectId }) =>
+          /^[A-Za-z0-9_-]+$/.test(projectId),
+        ),
+      ).toBe(true);
     });
   });
 

@@ -1,13 +1,10 @@
-import {
-  MAX_PROJECT_CODE_NAME_LENGTH,
-  normalizeProjectCodeName,
-} from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useI18n } from "../i18n";
 import { shortenPath } from "../lib/text";
 import type { Project } from "../types";
 import styles from "./ProjectCard.module.css";
+import { ProjectCodeNameEditor } from "./ProjectCodeNameEditor";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
 interface ProjectCardProps {
@@ -69,12 +66,7 @@ export function ProjectCard({
   const { t } = useI18n();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [editingCodeName, setEditingCodeName] = useState(false);
-  const [draftCodeName, setDraftCodeName] = useState(project.codeName ?? "");
-  const [codeNameError, setCodeNameError] = useState<string | null>(null);
-  const [savingCodeName, setSavingCodeName] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const codeNameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -86,12 +78,6 @@ export function ProjectCard({
     document.addEventListener("mousedown", closeIfOutside);
     return () => document.removeEventListener("mousedown", closeIfOutside);
   }, [menuOpen]);
-
-  useEffect(() => {
-    if (!editingCodeName) return;
-    codeNameInputRef.current?.focus();
-    codeNameInputRef.current?.select();
-  }, [editingCodeName]);
 
   const handleNewSession = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -111,54 +97,6 @@ export function ProjectCard({
     e.stopPropagation();
     setMenuOpen(false);
     onOpenSettings?.(project);
-  };
-
-  const startCodeNameEdit = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDraftCodeName(project.codeName ?? "");
-    setCodeNameError(null);
-    setEditingCodeName(true);
-  };
-
-  const cancelCodeNameEdit = (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDraftCodeName(project.codeName ?? "");
-    setCodeNameError(null);
-    setEditingCodeName(false);
-  };
-
-  const commitCodeNameEdit = async () => {
-    if (!onUpdateCodeName || savingCodeName) return;
-    let codeName: string;
-    try {
-      codeName = normalizeProjectCodeName(draftCodeName);
-    } catch (error) {
-      setCodeNameError(
-        error instanceof Error ? error.message : t("projectCodeNameInvalid"),
-      );
-      requestAnimationFrame(() => codeNameInputRef.current?.focus());
-      return;
-    }
-    if (codeName === project.codeName) {
-      setEditingCodeName(false);
-      return;
-    }
-
-    setSavingCodeName(true);
-    setCodeNameError(null);
-    try {
-      await onUpdateCodeName(project, codeName);
-      setEditingCodeName(false);
-    } catch (error) {
-      setCodeNameError(
-        error instanceof Error ? error.message : t("projectCodeNameSaveFailed"),
-      );
-      requestAnimationFrame(() => codeNameInputRef.current?.focus());
-    } finally {
-      setSavingCodeName(false);
-    }
   };
 
   return (
@@ -254,66 +192,10 @@ export function ProjectCard({
               )}
               {project.name}
             </strong>
-            {project.codeName && (
-              <div className={styles.codeNameSlot}>
-                {editingCodeName && onUpdateCodeName ? (
-                  <div className={styles.codeNameEditor}>
-                    <input
-                      ref={codeNameInputRef}
-                      aria-label={t("projectCodeNameLabel")}
-                      aria-invalid={codeNameError ? true : undefined}
-                      className={styles.codeNameInput}
-                      disabled={savingCodeName}
-                      maxLength={MAX_PROJECT_CODE_NAME_LENGTH}
-                      value={draftCodeName}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                      onChange={(event) => {
-                        setDraftCodeName(event.target.value);
-                        setCodeNameError(null);
-                      }}
-                      onBlur={() => void commitCodeNameEdit()}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          event.currentTarget.blur();
-                        } else if (event.key === "Escape") {
-                          cancelCodeNameEdit(event);
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className={styles.cancelCodeName}
-                      aria-label={t("projectCodeNameCancelEdit")}
-                      disabled={savingCodeName}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={cancelCodeNameEdit}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ) : onUpdateCodeName ? (
-                  <button
-                    type="button"
-                    className={styles.codeName}
-                    aria-label={t("projectCodeNameEdit")}
-                    onClick={startCodeNameEdit}
-                  >
-                    {project.codeName}
-                  </button>
-                ) : (
-                  <span className={styles.codeName}>{project.codeName}</span>
-                )}
-                {codeNameError && (
-                  <span className={styles.codeNameError} role="alert">
-                    {codeNameError}
-                  </span>
-                )}
-              </div>
-            )}
+            <ProjectCodeNameEditor
+              project={project}
+              onUpdateCodeName={onUpdateCodeName}
+            />
           </div>
           <button
             type="button"

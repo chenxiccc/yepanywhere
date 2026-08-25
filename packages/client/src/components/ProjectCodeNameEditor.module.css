@@ -1,0 +1,84 @@
+.slot {
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.codeName {
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.codeName {
+  cursor: text;
+}
+
+button.codeName:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.editor {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 3px;
+}
+
+.input {
+  width: 12ch;
+  max-width: calc(100% - 1.5rem);
+  min-width: 5ch;
+  padding: 1px 3px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--error-color);
+}
+
+.cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cancel:hover {
+  color: var(--text-primary);
+}
+
+.error {
+  max-width: 28rem;
+  margin-top: 2px;
+  color: var(--error-color);
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+}

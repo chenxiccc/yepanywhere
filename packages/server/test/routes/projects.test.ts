@@ -1,11 +1,15 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
-import type { ProjectMetadataService } from "../../src/metadata/index.js";
+import { ProjectMetadataService } from "../../src/metadata/index.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { createProjectsRoutes } from "../../src/routes/projects.js";
 import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
 import type { Project, SessionSummary } from "../../src/supervisor/types.js";
+import { EventBus } from "../../src/watcher/index.js";
 
 function createProject(): Project {
   return {
@@ -112,9 +116,10 @@ describe("Projects Routes", () => {
         typeof createProjectsRoutes
       >[0]["projectQueueService"],
       projectMetadataService: {
-        ensureProjectCodeNames: vi.fn(async () => [
-          { projectId: project.id, codeName: "prj" },
-        ]),
+        ensureProjectCodeNames: vi.fn(async () => ({
+          assignments: [{ projectId: project.id, codeName: "prj" }],
+          changedProjectIds: [],
+        })),
       } as unknown as ProjectMetadataService,
     });
 
@@ -127,6 +132,104 @@ describe("Projects Routes", () => {
       codeName: "prj",
       projectQueueCount: 2,
     });
+  });
+
+  it("publishes automatic code-name collision reassignments", async () => {
+    const alpha = {
+      ...createProject(),
+      id: toUrlProjectId("/tmp/alpha"),
+      path: "/tmp/alpha",
+      name: "Alpha",
+    };
+    const alpine = {
+      ...createProject(),
+      id: toUrlProjectId("/tmp/alpine"),
+      path: "/tmp/alpine",
+      name: "Alpine",
+    };
+    const emit = vi.fn();
+    const routes = createProjectsRoutes({
+      scanner: {
+        listProjects: vi.fn(async () => [alpha, alpine]),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(),
+      projectMetadataService: {
+        ensureProjectCodeNames: vi.fn(async () => ({
+          assignments: [
+            { projectId: alpha.id, codeName: "alph" },
+            { projectId: alpine.id, codeName: "alpi" },
+          ],
+          changedProjectIds: [alpha.id, alpine.id],
+        })),
+      } as unknown as ProjectMetadataService,
+      eventBus: { emit } as unknown as NonNullable<
+        Parameters<typeof createProjectsRoutes>[0]["eventBus"]
+      >,
+    });
+
+    expect((await routes.request("/")).status).toBe(200);
+    expect(emit).toHaveBeenCalledWith({
+      type: "project-code-names-changed",
+      projectIds: [alpha.id, alpine.id],
+      timestamp: expect.any(String),
+    });
+  });
+
+  it("invalidates two connected clients after Alpha gains an Alpine peer", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "ya-code-name-route-"));
+    try {
+      const metadata = new ProjectMetadataService({ dataDir });
+      await metadata.initialize();
+      const alpha = {
+        ...createProject(),
+        id: toUrlProjectId("/tmp/alpha"),
+        path: "/tmp/alpha",
+        name: "Alpha",
+      };
+      const alpine = {
+        ...createProject(),
+        id: toUrlProjectId("/tmp/alpine"),
+        path: "/tmp/alpine",
+        name: "Alpine",
+      };
+      let visibleProjects = [alpha];
+      const eventBus = new EventBus();
+      const firstClient = vi.fn();
+      const secondClient = vi.fn();
+      eventBus.subscribe(firstClient);
+      eventBus.subscribe(secondClient);
+      const routes = createProjectsRoutes({
+        scanner: {
+          listProjects: vi.fn(async () => visibleProjects),
+        } as unknown as ProjectScanner,
+        readerFactory: vi.fn(),
+        projectMetadataService: metadata,
+        eventBus,
+      });
+
+      expect((await routes.request("/")).status).toBe(200);
+      firstClient.mockClear();
+      secondClient.mockClear();
+      visibleProjects = [alpha, alpine];
+
+      const response = await routes.request("/");
+      expect(response.status).toBe(200);
+      const event = {
+        type: "project-code-names-changed",
+        projectIds: [alpha.id, alpine.id].sort(),
+        timestamp: expect.any(String),
+      };
+      expect(firstClient).toHaveBeenCalledWith(event);
+      expect(secondClient).toHaveBeenCalledWith(event);
+      await expect(response.json()).resolves.toMatchObject({
+        projects: expect.arrayContaining([
+          expect.objectContaining({ id: alpha.id, codeName: "alph" }),
+          expect.objectContaining({ id: alpine.id, codeName: "alpi" }),
+        ]),
+      });
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("lists mixed-provider sessions through the shared provider resolver", async () => {
@@ -285,7 +388,10 @@ describe("Projects Routes", () => {
       { projectId: project.id, codeName: "oth" },
       { projectId: otherProject.id, codeName: "otr" },
     ];
-    const setProjectCodeName = vi.fn(async () => assignments);
+    const setProjectCodeName = vi.fn(async () => ({
+      assignments,
+      changedProjectIds: [project.id, otherProject.id],
+    }));
     const emit = vi.fn();
     const routes = createProjectsRoutes({
       scanner: {
@@ -294,7 +400,10 @@ describe("Projects Routes", () => {
       } as unknown as ProjectScanner,
       readerFactory: vi.fn(),
       projectMetadataService: {
-        ensureProjectCodeNames: vi.fn(async () => []),
+        ensureProjectCodeNames: vi.fn(async () => ({
+          assignments: [],
+          changedProjectIds: [],
+        })),
         setProjectCodeName,
       } as unknown as ProjectMetadataService,
       eventBus: { emit } as unknown as NonNullable<
