@@ -21,6 +21,14 @@ export function useBrowserDebugLease() {
     () => browserDebugLeaseController.reactivate(),
     [],
   );
+  const prepareFrontendReload = useCallback(
+    (currentUrl: string, reloadToken: string) =>
+      browserDebugLeaseController.prepareFrontendReload(
+        currentUrl,
+        reloadToken,
+      ),
+    [],
+  );
 
   useEffect(() => {
     void browserDebugLeaseController.reconcilePersistedLease();
@@ -43,5 +51,6 @@ export function useBrowserDebugLease() {
     enable,
     disable,
     reactivate,
+    prepareFrontendReload,
   };
 }

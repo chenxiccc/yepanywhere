@@ -5,6 +5,11 @@ import {
   installBrowserDebugPerformanceInstrumentation,
   type BrowserDebugPerformanceSummary,
 } from "./browserDebugPerformance";
+import { ExclusiveBrowserPageLock } from "./exclusiveBrowserPageLock";
+import {
+  buildFrontendReloadUrl,
+  FRONTEND_RELOAD_QUERY_PARAM,
+} from "./frontendReload";
 import { getSourceRuntimeRegistry } from "./sourceRuntime";
 import { generateUUID } from "./uuid";
 
@@ -47,6 +52,7 @@ type ConsoleMethod = "debug" | "error" | "info" | "log" | "warn";
 
 const TAB_ID_STORAGE_KEY = "ya:browser-debug-tab-id";
 const LEASE_STORAGE_KEY = "ya:browser-debug-active-lease-v1";
+const RELOAD_INTENT_STORAGE_KEY = "ya:browser-debug-reload-intent-v1";
 const LEASE_PAGE_LOCK_PREFIX = "ya:browser-debug-active-lease:";
 const FLUSH_INTERVAL_MS = 1_000;
 const EVENT_QUEUE_LIMIT = 500;
@@ -57,6 +63,7 @@ const FLUSH_BODY_BUDGET = 220 * 1024;
 const EVENT_KIND_LIMIT = 80;
 const POLL_CONNECTED_GRACE_MS = 500;
 const POLL_RECONNECT_RETRY_MS = 250;
+const PAGE_LOCK_RELOAD_HANDOFF_MS = 500;
 
 interface StoredBrowserDebugLease {
   version: 1;
@@ -68,25 +75,45 @@ interface StoredBrowserDebugLease {
   sourceKey: string;
 }
 
-interface BrowserTabLockManager {
-  request(
-    name: string,
-    options: { ifAvailable: true; mode: "exclusive" },
-    callback: (lock: unknown | null) => Promise<void> | void,
-  ): Promise<unknown>;
+interface StoredBrowserDebugReloadIntent {
+  version: 1;
+  leaseId: string;
+  reloadToken: string;
 }
 
-function getBrowserTabLockManager(): BrowserTabLockManager | null {
-  const locks = (navigator as Navigator & { locks?: BrowserTabLockManager })
-    .locks;
-  return locks ?? null;
+function consumeBrowserDebugReloadIntent(
+  persistedLease: StoredBrowserDebugLease,
+): boolean {
+  try {
+    const rawIntent = sessionStorage.getItem(RELOAD_INTENT_STORAGE_KEY);
+    sessionStorage.removeItem(RELOAD_INTENT_STORAGE_KEY);
+    if (!rawIntent) return false;
+    const intent = JSON.parse(
+      rawIntent,
+    ) as Partial<StoredBrowserDebugReloadIntent>;
+    const reloadToken = new URL(window.location.href).searchParams.get(
+      FRONTEND_RELOAD_QUERY_PARAM,
+    );
+    return (
+      intent.version === 1 &&
+      intent.leaseId === persistedLease.leaseId &&
+      typeof intent.reloadToken === "string" &&
+      intent.reloadToken.length > 0 &&
+      intent.reloadToken === reloadToken
+    );
+  } catch {
+    return false;
+  }
 }
 
-function navigationAllowsLeaseRestore(): boolean {
+function navigationAllowsLeaseRestore(
+  persistedLease: StoredBrowserDebugLease,
+): boolean {
+  const hasReloadIntent = consumeBrowserDebugReloadIntent(persistedLease);
   const navigation = performance.getEntriesByType?.("navigation")[0] as
     | PerformanceNavigationTiming
     | undefined;
-  return navigation?.type === "reload";
+  return navigation?.type === "reload" || hasReloadIntent;
 }
 
 function clearStoredLease(expectedLeaseId?: string): void {
@@ -356,8 +383,9 @@ export class BrowserDebugLeaseController {
   private enableAttempt = 0;
   private cleanupInstrumentation: (() => void) | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
-  private ownedPageLeaseId: string | null = null;
-  private releasePageOwnership: (() => void) | null = null;
+  private readonly pageOwnership = new ExclusiveBrowserPageLock(
+    LEASE_PAGE_LOCK_PREFIX,
+  );
   private pageHideHandler = () => {
     this.suspendLocalLease();
   };
@@ -368,7 +396,8 @@ export class BrowserDebugLeaseController {
   constructor(options: { canRestorePersistedLease?: () => boolean } = {}) {
     if (this.persistedLease) {
       const canRestore =
-        options.canRestorePersistedLease?.() ?? navigationAllowsLeaseRestore();
+        options.canRestorePersistedLease?.() ??
+        navigationAllowsLeaseRestore(this.persistedLease);
       if (!canRestore) {
         this.finishPersistedLease(this.persistedLease);
         return;
@@ -395,7 +424,11 @@ export class BrowserDebugLeaseController {
       this.finishPersistedLease(persistedLease);
       return;
     }
-    if (!(await this.acquirePageOwnership(persistedLease.leaseId))) {
+    if (
+      !(await this.pageOwnership.acquire(persistedLease.leaseId, {
+        handoffWaitMs: PAGE_LOCK_RELOAD_HANDOFF_MS,
+      }))
+    ) {
       this.finishPersistedLease(persistedLease);
       return;
     }
@@ -457,6 +490,24 @@ export class BrowserDebugLeaseController {
     return this.reconcilePersistedLease();
   }
 
+  prepareFrontendReload(currentUrl: string, reloadToken: string): string {
+    const persistedLease = this.persistedLease;
+    if (!persistedLease) {
+      throw new Error("The browser debugging lease is no longer active");
+    }
+    const intent: StoredBrowserDebugReloadIntent = {
+      version: 1,
+      leaseId: persistedLease.leaseId,
+      reloadToken,
+    };
+    try {
+      sessionStorage.setItem(RELOAD_INTENT_STORAGE_KEY, JSON.stringify(intent));
+    } catch {
+      throw new Error("Browser session storage is unavailable");
+    }
+    return buildFrontendReloadUrl(currentUrl, reloadToken);
+  }
+
   async enable(sessionId: string): Promise<string> {
     if (this.lease) return buildAgentPrompt(this.lease);
     if (this.persistedLease) {
@@ -504,7 +555,7 @@ export class BrowserDebugLeaseController {
         expiresAt: response.lease.expiresAt,
         sourceKey: sourceRuntime.sourceKey,
       };
-      if (!(await this.acquirePageOwnership(persistedLease.leaseId))) {
+      if (!(await this.pageOwnership.acquire(persistedLease.leaseId))) {
         await sourceFetch(`/browser-debug/leases/${response.lease.leaseId}`, {
           method: "DELETE",
           headers: {
@@ -654,7 +705,7 @@ export class BrowserDebugLeaseController {
     this.pollGeneration += 1;
     this.pollAbortController?.abort();
     this.pollAbortController = null;
-    this.releaseOwnedPage();
+    this.pageOwnership.release();
     this.lease = null;
     this.sourceFetch = null;
     this.cleanupInstrumentation?.();
@@ -752,7 +803,7 @@ export class BrowserDebugLeaseController {
     }
     if (persistedLease) clearStoredLease(persistedLease.leaseId);
     else clearStoredLease();
-    this.releaseOwnedPage();
+    this.pageOwnership.release();
     this.persistedLease = null;
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
@@ -763,53 +814,6 @@ export class BrowserDebugLeaseController {
       expiresAtMs: null,
       error: null,
     });
-  }
-
-  private async acquirePageOwnership(leaseId: string): Promise<boolean> {
-    if (this.ownedPageLeaseId === leaseId) return true;
-    if (this.ownedPageLeaseId) return false;
-    const locks = getBrowserTabLockManager();
-    if (!locks) return false;
-
-    let settleAcquired: (acquired: boolean) => void = () => undefined;
-    const acquired = new Promise<boolean>((resolve) => {
-      settleAcquired = resolve;
-    });
-    let releaseLock: () => void = () => undefined;
-    const holdLock = new Promise<void>((resolve) => {
-      releaseLock = resolve;
-    });
-    let settled = false;
-    const settle = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      settleAcquired(value);
-    };
-
-    void locks
-      .request(
-        `${LEASE_PAGE_LOCK_PREFIX}${leaseId}`,
-        { ifAvailable: true, mode: "exclusive" },
-        async (lock) => {
-          if (!lock) {
-            settle(false);
-            return;
-          }
-          this.ownedPageLeaseId = leaseId;
-          this.releasePageOwnership = releaseLock;
-          settle(true);
-          await holdLock;
-        },
-      )
-      .catch(() => settle(false));
-    return acquired;
-  }
-
-  private releaseOwnedPage(): void {
-    const release = this.releasePageOwnership;
-    this.releasePageOwnership = null;
-    this.ownedPageLeaseId = null;
-    release?.();
   }
 
   private headers(lease: BrowserDebugLeaseDescriptor): HeadersInit {

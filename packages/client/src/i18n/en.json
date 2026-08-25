@@ -1131,6 +1131,7 @@
   "browserDebugClipboardFailed": "Full JavaScript debugging is active, but the agent instruction could not be copied. Disable the red warning control and try again.",
   "browserDebugEnableFailed": "Could not enable browser debugging: {error}",
   "browserDebugReactivateFailed": "Could not reconnect browser debugging: {error}",
+  "browserDebugReloadFailed": "Could not reload with browser debugging: {error}",
   "toolbarStop": "Stop",
   "toolbarSend": "Send",
   "toolbarSteerNowLabel": "Steer now",

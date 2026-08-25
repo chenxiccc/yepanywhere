@@ -67,7 +67,6 @@ import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import { writeClipboardTextLater } from "../lib/clipboard";
 import { BROWSER_DEBUG_LEASE_TTL_MS } from "../lib/browserDebugLease";
-import { buildFrontendReloadUrl } from "../lib/frontendReload";
 import {
   type SessionViewerControllerState,
   useSessionViewerController,
@@ -3073,10 +3072,21 @@ export function MessageInputToolbar({
   }, [browserDebugLease, showToast, t]);
   const reloadWithBrowserDebug = useCallback(() => {
     if (!browserDebugActive) return;
-    window.location.replace(
-      buildFrontendReloadUrl(window.location.href, String(Date.now())),
-    );
-  }, [browserDebugActive]);
+    try {
+      const reloadUrl = browserDebugLease.prepareFrontendReload(
+        window.location.href,
+        String(Date.now()),
+      );
+      window.location.replace(reloadUrl);
+    } catch (error) {
+      showToast?.(
+        t("browserDebugReloadFailed", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+        "error",
+      );
+    }
+  }, [browserDebugActive, browserDebugLease, showToast, t]);
   const hasPotentialDualActions = !!(onSend && onQueue && onSteer);
   const effectivePrimaryActionKind =
     primaryActionKind ?? (hasPotentialDualActions ? "steer" : "send");
