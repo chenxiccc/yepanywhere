@@ -25,7 +25,7 @@ describe("FileRevisionLink", () => {
     mocks.getGitFileRevision.mockReset();
   });
 
-  it("renders a regular blame deep link with age, dirtiness, and tooltip", async () => {
+  it("renders a regular commit diff link with age, dirtiness, and tooltip", async () => {
     mocks.getGitFileRevision.mockResolvedValue({
       path: "src/file.ts",
       isGitRepo: true,
@@ -53,7 +53,7 @@ describe("FileRevisionLink", () => {
 
     const link = await screen.findByRole("link", { name: "1234567" });
     expect(link.getAttribute("href")).toBe(
-      "/git-status?projectId=project-1&rev=1234567890abcdef&commitFile=src%2Fold.ts&blame=1",
+      "/git-status?projectId=project-1&rev=1234567890abcdef&commitFile=src%2Fold.ts",
     );
     expect(link.getAttribute("title")).toContain("Ada Lovelace");
     expect(link.getAttribute("title")).toContain("Explain revision");

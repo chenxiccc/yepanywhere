@@ -66,6 +66,7 @@ function getDiffScrollRoot(content: HTMLElement): HTMLElement {
 
 export interface GitDiffViewState {
   showFullContext?: boolean;
+  hideRemovedLines?: boolean;
   showMarkdownPreview?: boolean;
 }
 
@@ -731,7 +732,12 @@ function GitDiffContent({
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   const [showFullContext, setShowFullContext] = useState(
-    () => retainedDiffView?.showFullContext ?? false,
+    () =>
+      (retainedDiffView?.showFullContext ?? false) ||
+      (retainedDiffView?.hideRemovedLines ?? false),
+  );
+  const [hideRemovedLines, setHideRemovedLines] = useState(
+    () => retainedDiffView?.hideRemovedLines ?? false,
   );
   const fullContextRevisionKey = useMemo(
     () =>
@@ -972,8 +978,29 @@ function GitDiffContent({
       content?.querySelector(CHANGED_DIFF_LINE_SELECTOR) ?? null,
     );
     setShowFullContext(nextShowFullContext);
-    retainDiffView({ showFullContext: nextShowFullContext });
+    if (!nextShowFullContext) setHideRemovedLines(false);
+    retainDiffView({
+      showFullContext: nextShowFullContext,
+      ...(nextShowFullContext ? {} : { hideRemovedLines: false }),
+    });
   }, [loadFullContext, retainDiffView, showFullContext]);
+
+  const handleToggleRemovedLines = useCallback(async () => {
+    const nextHideRemovedLines = !hideRemovedLines;
+    if (nextHideRemovedLines && !(await loadFullContext())) return;
+    const content = contentRef.current;
+    const scrollRoot = content ? getDiffScrollRoot(content) : null;
+    pendingScrollAnchorRef.current = captureScrollPositionAnchor(
+      scrollRoot,
+      content?.querySelector(CHANGED_DIFF_LINE_SELECTOR) ?? null,
+    );
+    if (nextHideRemovedLines) setShowFullContext(true);
+    setHideRemovedLines(nextHideRemovedLines);
+    retainDiffView({
+      hideRemovedLines: nextHideRemovedLines,
+      ...(nextHideRemovedLines ? { showFullContext: true } : {}),
+    });
+  }, [hideRemovedLines, loadFullContext, retainDiffView]);
 
   const handleToggleMarkdownPreview = useCallback(() => {
     const nextShowMarkdownPreview = !showMarkdownPreview;
@@ -1007,7 +1034,7 @@ function GitDiffContent({
       anchor,
       contentRef.current?.querySelector(CHANGED_DIFF_LINE_SELECTOR) ?? null,
     );
-  }, [showFullContext, fullContextResult]);
+  }, [showFullContext, hideRemovedLines, fullContextResult]);
 
   const displayResult =
     showFullContext && fullContextResult ? fullContextResult : diffResult;
@@ -1233,6 +1260,27 @@ function GitDiffContent({
       >
         <ContextModeIcon expanded={showFullContext} />
       </button>
+      <button
+        type="button"
+        className={`diff-context-toggle diff-toolbar-icon-button ${
+          hideRemovedLines ? "active" : ""
+        }`}
+        onClick={handleToggleRemovedLines}
+        disabled={contextLoading}
+        title={
+          hideRemovedLines
+            ? t("gitStatusShowRemovedLines")
+            : t("gitStatusHideRemovedLines")
+        }
+        aria-label={
+          hideRemovedLines
+            ? t("gitStatusShowRemovedLines")
+            : t("gitStatusHideRemovedLines")
+        }
+        aria-pressed={hideRemovedLines}
+      >
+        <RemovedLinesIcon hidden={hideRemovedLines} />
+      </button>
       <CopyButton
         value={resolveCopyContent}
         title={t("fileViewerCopyContent")}
@@ -1244,7 +1292,7 @@ function GitDiffContent({
         }
         icon="content"
       />
-      {!showingMarkdownPreview && !plainDiff && (
+      {!showingMarkdownPreview && !plainDiff && !hideRemovedLines && (
         <button
           type="button"
           className="diff-context-toggle diff-toolbar-icon-button"
@@ -1273,6 +1321,7 @@ function GitDiffContent({
           : t("gitStatusNoContentChanges")}
       </div>
     ) : diffHtml &&
+      !hideRemovedLines &&
       resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
       <SideBySideDiff
         diffHtml={diffHtml}
@@ -1284,6 +1333,7 @@ function GitDiffContent({
       <UnifiedDiff
         diffHtml={diffHtml}
         structuredPatch={displayResult.structuredPatch}
+        hideRemovedLines={hideRemovedLines}
         plain={plainDiff}
         splitAfterLine={splitAfterLine}
         editor={editor}
@@ -1292,6 +1342,7 @@ function GitDiffContent({
       <UnifiedDiff
         diffHtml=""
         structuredPatch={displayResult.structuredPatch}
+        hideRemovedLines={hideRemovedLines}
         plain={plainDiff}
         splitAfterLine={splitAfterLine}
         editor={editor}
@@ -1432,6 +1483,25 @@ function ContextModeIcon({ expanded }: { expanded: boolean }) {
           <path d="m8 21 4-4 4 4" />
         </>
       )}
+    </svg>
+  );
+}
+
+function RemovedLinesIcon({ hidden }: { hidden: boolean }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 7h14M5 12h14M5 17h14" />
+      {hidden && <path d="M4 4l16 16" />}
     </svg>
   );
 }

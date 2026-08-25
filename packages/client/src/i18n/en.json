@@ -1397,6 +1397,8 @@
   "gitStatusPreview": "Preview",
   "gitStatusDiffOnly": "Diff only",
   "gitStatusFullContext": "Full context",
+  "gitStatusHideRemovedLines": "Hide removed lines",
+  "gitStatusShowRemovedLines": "Show removed lines",
   "diffViewModeAuto": "Auto",
   "diffViewModeUnified": "Unified",
   "diffViewModeSideBySide": "Side-by-side",

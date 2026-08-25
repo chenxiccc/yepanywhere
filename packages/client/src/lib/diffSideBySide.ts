@@ -102,15 +102,21 @@ export function buildSideBySideRows(hunks: PatchHunk[]): SideBySideRow[] {
  * their `data-diff-line` flat index. Uses DOMParser so nested Shiki token spans
  * are handled correctly (no fragile HTML regex). The returned `outerHTML` keeps
  * each line's classes and `data-diff-line`, so the click/tint contract holds in
- * either layout.
+ * either layout. After-side projections may omit the dedicated prefix element
+ * while retaining the line class and syntax-highlighted content.
  */
-export function parseDiffLineFragments(diffHtml: string): Map<number, string> {
+export function parseDiffLineFragments(
+  diffHtml: string,
+  omitDiffPrefixes = false,
+): Map<number, string> {
   const map = new Map<number, string>();
   if (typeof DOMParser === "undefined") return map;
   const doc = new DOMParser().parseFromString(diffHtml, "text/html");
   for (const el of doc.querySelectorAll("[data-diff-line]")) {
     const index = Number(el.getAttribute("data-diff-line"));
-    if (Number.isInteger(index)) map.set(index, el.outerHTML);
+    if (!Number.isInteger(index)) continue;
+    if (omitDiffPrefixes) el.querySelector(".diff-prefix")?.remove();
+    map.set(index, el.outerHTML);
   }
   return map;
 }

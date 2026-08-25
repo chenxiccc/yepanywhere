@@ -176,6 +176,36 @@ describe("git-browse routes", () => {
     });
   });
 
+  it("returns a root commit's file list and diff", async () => {
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const detailResponse = await routes.request(
+      `/${projectId}/git/commit/${shas.c1}`,
+    );
+    const detail = (await detailResponse.json()) as GitCommitDetail;
+
+    expect(detailResponse.status).toBe(200);
+    expect(detail.files).toContainEqual({
+      path: "a.ts",
+      status: "A",
+      staged: false,
+      linesAdded: 3,
+      linesDeleted: 0,
+    });
+
+    const diffResponse = await routes.request(`/${projectId}/git/commit-diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sha: shas.c1, path: "a.ts", status: "A" }),
+    });
+    const diff = (await diffResponse.json()) as GitDiffResult;
+
+    expect(diffResponse.status).toBe(200);
+    expect(diff.structuredPatch.flatMap((hunk) => hunk.lines)).toEqual(
+      expect.arrayContaining(["+line1", "+line2", "+line3"]),
+    );
+  });
+
   it("marks a rename with its original path", async () => {
     const { projectId, routes } = createRoutesForProject(dir);
 

@@ -182,6 +182,84 @@ describe("GitDiffBody", () => {
     expect(await screen.findByText("full-b")).toBeTruthy();
   });
 
+  it("shows complete after-side text without removed lines", async () => {
+    const normal: GitDiffResult = {
+      diffHtml: "",
+      structuredPatch: [
+        {
+          oldStart: 2,
+          oldLines: 1,
+          newStart: 2,
+          newLines: 1,
+          lines: ["-old", "+new"],
+        },
+      ],
+    };
+    const full: GitDiffResult = {
+      diffHtml: "",
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 3,
+          newStart: 1,
+          newLines: 3,
+          lines: [" before", "-old", "+new", " after"],
+        },
+      ],
+    };
+    getGitDiff.mockImplementation(
+      (
+        _projectId: string,
+        options: {
+          fullContext?: boolean;
+        },
+      ) => Promise.resolve(options.fullContext ? full : normal),
+    );
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <GitDiffBody
+          file={FILE}
+          fileKey="src/live.ts:false"
+          projectId="p1"
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("old", { exact: false });
+    fireEvent.click(
+      screen.getByRole("button", { name: "gitStatusHideRemovedLines" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        getGitDiff.mock.calls.some(([, options]) => options.fullContext),
+      ).toBe(true),
+    );
+    const rendered = document.querySelector(".highlighted-diff");
+    expect(rendered?.textContent).toContain("before");
+    expect(rendered?.textContent).toContain("new");
+    expect(rendered?.textContent).toContain("after");
+    expect(rendered?.textContent).not.toContain("-old");
+    expect(rendered?.textContent).not.toContain("+new");
+    expect(rendered?.querySelector(".line-hunk")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "gitStatusShowRemovedLines" }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "gitStatusShowRemovedLines" }),
+    );
+    expect(rendered?.textContent).toContain("-old");
+    expect(rendered?.querySelector(".line-hunk")).not.toBeNull();
+  });
+
   it("keeps the requested rendered diff through a source-only refresh", async () => {
     const markdownFile: GitFileChange = {
       ...FILE,

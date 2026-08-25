@@ -79,4 +79,19 @@ describe("parseDiffLineFragments", () => {
     expect(map.get(1)).toContain("+y");
     expect([...map.keys()]).toEqual([0, 1]);
   });
+
+  it("can omit explicit diff prefixes without losing highlighting", () => {
+    const html =
+      `<pre class="shiki"><code>` +
+      `<span class="line line-inserted" data-diff-line="0">` +
+      `<span class="diff-prefix">+</span>` +
+      `<span style="color:red">new</span>` +
+      `</span></code></pre>`;
+    const fragment = parseDiffLineFragments(html, true).get(0);
+
+    expect(fragment).toContain("line-inserted");
+    expect(fragment).toContain("color:red");
+    expect(fragment).not.toContain("diff-prefix");
+    expect(fragment).not.toContain(">+</");
+  });
 });

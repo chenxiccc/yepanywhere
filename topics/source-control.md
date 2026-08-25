@@ -571,9 +571,13 @@ previous/next hunk and a visible current-hunk indicator. Browser shortcuts must
 not copy native GitHub Desktop accelerators that collide with browser tabs,
 Find, or the address bar.
 
-Unified/Split and full-context controls stay in the diff pane. Ignore
-whitespace is an independent projection of the active working-tree, commit, or
-revision-range diff. **To HEAD** is inclusive: an ordinary selected commit uses
+Unified/Split and full-context controls stay in the diff pane. **Hide removed
+lines** loads that same full-context projection, suppresses every old-side
+deletion, hunk header, and diff-prefix character while keeping additions
+highlighted in the complete after-side text. Turning full context off also
+leaves this after-side mode. Ignore whitespace is an independent projection of
+the active working-tree, commit, or revision-range diff. **To HEAD** is
+inclusive: an ordinary selected commit uses
 its first parent as the fixed base, a selected root uses Git's empty tree, and
 the server pins current HEAD as the tip. The returned list therefore contains
 the net squash-style change from the selected commit through HEAD, including
@@ -762,10 +766,11 @@ never dirty. An untracked file says **uncommitted** and receives no invented
 hash or link. A non-Git project omits the chrome.
 
 The hash is a regular anchor to Changes with the resolved commit and file
-selected and blame already open. It therefore preserves modifier-click,
-middle-click, and browser context-menu behavior. Its native tooltip contains
-the author, absolute author time, and at most 50 commit-message lines; when
-more lines exist it ends with `...`.
+selected in the default diff view; blame and full context remain opt-in from
+that pane. It therefore preserves modifier-click, middle-click, and browser
+context-menu behavior without paying the blame-history cost on entry. Its
+native tooltip contains the author, absolute author time, and at most 50
+commit-message lines; when more lines exist it ends with `...`.
 
 The permanent `git-file-revision` capability owns
 `GET /api/projects/:projectId/git/file-revision`. A client without it omits

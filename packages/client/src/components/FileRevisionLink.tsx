@@ -76,7 +76,6 @@ export function FileRevisionLink({
     projectId,
     rev: revision.commit.hash,
     commitFile: rev ? path : (origPath ?? path),
-    blame: "1",
   });
   const href = toBrowserAppHref(`${basePath}/git-status?${params.toString()}`);
   const tooltip = formatRevisionTooltip(revision.commit);
