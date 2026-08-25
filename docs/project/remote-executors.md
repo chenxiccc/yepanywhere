@@ -18,7 +18,11 @@ peers so the target server resumes the provider locally.
 
 1. User has SSH config aliases set up (`~/.ssh/config`)
 2. Claude CLI is installed on remote machines
-3. Project paths are symmetric (`$HOME/code/project` exists on both machines)
+3. Project paths are symmetric relative to the user's home
+   (`$HOME/code/project` exists on both machines). A local POSIX, Windows-drive,
+   or UNC home maps only its actual descendants to remote `$HOME`; containment
+   uses the local path flavor and never rewrites a sibling that merely shares a
+   string prefix.
 4. Remote has valid Claude credentials (`~/.claude/.credentials.json` or `ANTHROPIC_API_KEY`)
 5. rsync 3.0 or newer is installed locally and remotely; session paths use
    protected arguments so shell metacharacters remain literal

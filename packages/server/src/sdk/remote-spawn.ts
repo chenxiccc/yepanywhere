@@ -89,6 +89,13 @@ export interface RemotePathCheckResult {
  */
 const remoteHomeCache = new Map<string, string>();
 
+function isWindowsPath(value: string): boolean {
+  return (
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    /^[\\/]{2}[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/.test(value)
+  );
+}
+
 export async function getRemoteHome(host: string): Promise<string | null> {
   // Check cache first
   const cached = remoteHomeCache.get(host);
@@ -120,7 +127,7 @@ export function homeRelativeSuffix(
   localPath: string,
   home: string,
 ): string | null {
-  const pathApi = /^[A-Za-z]:[\\/]/.test(home) ? win32Path : posixPath;
+  const pathApi = isWindowsPath(home) ? win32Path : posixPath;
   const relative = pathApi.relative(home, localPath);
   if (relative === "") return "";
   if (
@@ -150,7 +157,7 @@ export function translateHomePath(
   const suffix = homeRelativeSuffix(localPath, localHome);
   if (suffix !== null) {
     if (suffix === "") return remoteHome;
-    const remoteSeparator = /^[A-Za-z]:[\\/]/.test(remoteHome) ? "\\" : "/";
+    const remoteSeparator = isWindowsPath(remoteHome) ? "\\" : "/";
     const remoteBase = remoteHome.replace(/[\\/]+$/, "");
     const remoteSuffix = suffix.slice(1).replace(/[\\/]+/g, remoteSeparator);
     return `${remoteBase}${remoteSeparator}${remoteSuffix}`;
@@ -356,8 +363,8 @@ async function runSSHCommand(
  *   /home/kgraehl/code/project -> $HOME/code/project
  *   /var/www/project -> /var/www/project (unchanged)
  */
-function toRemotePath(localPath: string): string {
-  const suffix = homeRelativeSuffix(localPath, homedir());
+export function toRemotePath(localPath: string, localHome = homedir()): string {
+  const suffix = homeRelativeSuffix(localPath, localHome);
   if (suffix !== null) {
     // Replace home directory with $HOME for remote expansion
     return `$HOME${suffix.replaceAll("\\", "/")}`;

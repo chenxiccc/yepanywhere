@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   homeRelativeSuffix,
+  toRemotePath,
   translateHomePath,
 } from "../../src/sdk/remote-spawn.js";
 
@@ -12,6 +13,11 @@ describe("home-relative path containment", () => {
     ["C:\\Users\\dev", "C:\\Users\\dev", ""],
     ["C:\\Users\\dev\\repo", "C:\\Users\\dev", "\\repo"],
     ["C:\\Users\\Dev\\repo", "C:\\Users\\dev", "\\repo"],
+    [
+      "\\\\SERVER\\Share\\User\\repo\\nested",
+      "\\\\server\\share\\user",
+      "\\repo\\nested",
+    ],
   ])("splits %j against home %j", (localPath, home, suffix) => {
     expect(homeRelativeSuffix(localPath, home)).toBe(suffix);
   });
@@ -21,6 +27,7 @@ describe("home-relative path containment", () => {
     ["/home/user-backup/repo", "/home/user"],
     ["/home/username/repo", "/home/user"],
     ["C:\\Users\\devops\\repo", "C:\\Users\\dev"],
+    ["\\\\server\\share-two\\user", "\\\\server\\share\\user"],
     ["/var/www/project", "/home/user"],
     ["/home/use", "/home/user"],
   ])("rejects %j against home %j", (localPath, home) => {
@@ -58,5 +65,25 @@ describe("translateHomePath", () => {
         "/home/dev",
       ),
     ).toBe("/home/dev/repo/nested");
+  });
+
+  it("maps UNC home descendants to either remote path flavor", () => {
+    expect(
+      translateHomePath(
+        "\\\\SERVER\\Share\\User\\repo\\nested",
+        "\\\\server\\share\\user",
+        "/home/dev",
+      ),
+    ).toBe("/home/dev/repo/nested");
+    expect(
+      translateHomePath(
+        "\\\\SERVER\\Share\\User\\repo\\nested",
+        "\\\\server\\share\\user",
+        "D:\\Users\\dev",
+      ),
+    ).toBe("D:\\Users\\dev\\repo\\nested");
+    expect(
+      toRemotePath("\\\\SERVER\\Share\\User\\repo", "\\\\server\\share\\user"),
+    ).toBe("$HOME/repo");
   });
 });
