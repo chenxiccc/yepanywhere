@@ -21,7 +21,9 @@ differs between them:
 - **Following the tail** — pinned at/near the bottom, watching live output.
   `shouldAutoScrollRef` is true; `isScrolledToBottom` is true. Here the view
   *should* track new content: appended rows and the streaming current turn may
-  freely change height, and the view re-pins to the bottom.
+  freely change height, and the view re-pins to the bottom. When a whole turn
+  completes in a visible tab, this regime also advances that session's
+  device-specific cursor and records that it was following.
 - **Scrolled back** — the reader has scrolled up to read or review earlier
   content. `shouldAutoScrollRef` is false. Here the view *must hold still*: no
   streaming growth, expand/collapse, hydration, late markdown/highlight, or
@@ -194,7 +196,7 @@ as preferences would resolve much of the "is this a bug or intended?" ambiguity:
   the only thing that ever moves the view to the tail).
 
 Design caution: expose these as a **small set of named modes** (currently
-`live-tail`, `remember-place`, `manual-follow`, and `no-memory` internally), not
+`live-tail`, `remember-place`, and `no-memory` internally), not
 four orthogonal toggles — orthogonal toggles are 2⁴ states to reason about and
 test, whereas the internal model can stay axis-based. The first hidden policy
 value persists via the existing `UI_KEYS` localStorage pattern already used for

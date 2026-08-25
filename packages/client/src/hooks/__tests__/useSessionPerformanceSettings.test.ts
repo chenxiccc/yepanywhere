@@ -10,6 +10,10 @@ import {
   getSessionDetailRetentionDefaults,
 } from "../../lib/sessionDetail/sessionDetailStore";
 import type { SessionRouteSnapshot } from "../../lib/sessionRouteSnapshots";
+import {
+  readSessionScrollMemory,
+  writeSessionScrollMemory,
+} from "../../lib/sessionScrollMemoryStorage";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
   getLastSessionTranscriptBytes,
@@ -66,6 +70,10 @@ describe("useSessionPerformanceSettings", () => {
       },
       removeItem: (key: string) => {
         storage.delete(key);
+      },
+      key: (index: number) => Array.from(storage.keys())[index] ?? null,
+      get length() {
+        return storage.size;
       },
       clear: () => {
         storage.clear();
@@ -304,6 +312,16 @@ describe("useSessionPerformanceSettings", () => {
     expect(
       defaultSessionDetailMemoryCache.readScrollSnapshot(storeKey),
     ).toBeDefined();
+    writeSessionScrollMemory(storeKey, {
+      atBottom: true,
+      scrollTop: 400,
+      scrollHeight: 800,
+      clientHeight: 400,
+      completedTurn: { id: "turn-1", timestampMs: 20 },
+      following: true,
+      updatedAtMs: 20,
+    });
+    expect(readSessionScrollMemory(storeKey)).not.toBeNull();
 
     act(() => {
       result.current.setSessionScrollBehaviorMode("no-memory");
@@ -320,5 +338,16 @@ describe("useSessionPerformanceSettings", () => {
     expect(
       defaultSessionDetailMemoryCache.readScrollSnapshot(storeKey),
     ).toBeUndefined();
+    expect(readSessionScrollMemory(storeKey)).toBeNull();
+  });
+
+  it("migrates the retired manual-follow value to remember-place", () => {
+    localStorage.setItem(UI_KEYS.sessionScrollBehavior, "manual-follow");
+    invalidateLocalStorageValues(UI_KEYS.sessionScrollBehavior);
+
+    const { result } = renderHook(() => useSessionPerformanceSettings());
+
+    expect(result.current.sessionScrollBehaviorMode).toBe("remember-place");
+    expect(getSessionScrollBehaviorMode()).toBe("remember-place");
   });
 });

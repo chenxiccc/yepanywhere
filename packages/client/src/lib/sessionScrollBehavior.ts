@@ -3,7 +3,6 @@ import type { SessionRouteScrollSnapshot } from "./sessionRouteSnapshots";
 export const SESSION_SCROLL_BEHAVIOR_MODES = [
   "live-tail",
   "remember-place",
-  "manual-follow",
   "no-memory",
 ] as const;
 
@@ -21,6 +20,9 @@ export type SessionScrollRestoreDecision =
 export function parseSessionScrollBehaviorMode(
   value: string | null | undefined,
 ): SessionScrollBehaviorMode {
+  if (value === "manual-follow") {
+    return "remember-place";
+  }
   return SESSION_SCROLL_BEHAVIOR_MODES.includes(
     value as SessionScrollBehaviorMode,
   )
@@ -47,7 +49,7 @@ export function decideSessionScrollRestore({
     return "skip";
   }
 
-  if (mode === "live-tail" && snapshot.atBottom) {
+  if (mode === "live-tail" && (snapshot.following ?? snapshot.atBottom)) {
     return "follow-bottom";
   }
 

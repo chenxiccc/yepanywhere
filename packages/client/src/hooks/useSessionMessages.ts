@@ -69,6 +69,12 @@ import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../lib/sessionRouteSnapshots";
+import {
+  createSessionScrollMemoryStorageKey,
+  readSessionScrollMemory,
+  selectFurthestSessionScrollMemory,
+  writeSessionScrollMemory,
+} from "../lib/sessionScrollMemoryStorage";
 
 /** Result from initial session load */
 export type SessionLoadResult = SessionDetailLoadCompleteResult;
@@ -78,6 +84,12 @@ const DEFAULT_INITIAL_TAIL_TURNS = 20;
 const INCREMENTAL_REFRESH_DIAGNOSTIC_INTERVAL_MS = 30_000;
 const OLDER_USER_TURN_LOAD_PAGE_LIMIT = 8;
 const SAME_ID_STREAM_REPLACEMENT_DELAY_MS = 100;
+
+function isDocumentVisibleForScrollMemory(): boolean {
+  return (
+    typeof document !== "undefined" && document.visibilityState === "visible"
+  );
+}
 
 export type SessionMetadataUpdate =
   | SessionMetadata
@@ -294,6 +306,14 @@ export function useSessionMessages(
   );
   const sourceApi = coordinator.api;
   const snapshotKeyString = coordinator.entryKeyString;
+  const scrollMemoryReference = useMemo(
+    () => ({ sourceKey, projectId, sessionId }),
+    [projectId, sessionId, sourceKey],
+  );
+  const scrollMemoryStorageKey = useMemo(
+    () => createSessionScrollMemoryStorageKey(scrollMemoryReference),
+    [scrollMemoryReference],
+  );
   const cachedLoadRef = useRef<{
     key: string;
     coordinator: SessionDetailCoordinator;
@@ -343,11 +363,44 @@ export function useSessionMessages(
 
   // Store-authoritative fields come from reducer-owned state. The remaining ref
   // holds hook-only scroll bookkeeping, which is intentionally not reactive.
+  const deviceScrollMemoryRef = useRef<{
+    key: string;
+    snapshot: SessionRouteScrollSnapshot | null;
+  } | null>(null);
+  if (deviceScrollMemoryRef.current?.key !== scrollMemoryStorageKey) {
+    deviceScrollMemoryRef.current = {
+      key: scrollMemoryStorageKey,
+      snapshot: shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
+        ? readSessionScrollMemory(scrollMemoryReference)
+        : null,
+    };
+  }
+  const deviceScrollCandidateRef = useRef<{
+    key: string;
+    snapshot: SessionRouteScrollSnapshot | null;
+  }>({ key: scrollMemoryStorageKey, snapshot: null });
+  if (deviceScrollCandidateRef.current.key !== scrollMemoryStorageKey) {
+    deviceScrollCandidateRef.current = {
+      key: scrollMemoryStorageKey,
+      snapshot: null,
+    };
+  }
+  const initialRetainedScrollSnapshot = shouldRetainSessionScrollMemory(
+    getSessionScrollBehaviorMode(),
+  )
+    ? selectFurthestSessionScrollMemory(
+        cachedLoad?.scrollSnapshot,
+        deviceScrollMemoryRef.current.snapshot,
+      )
+    : undefined;
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
-    shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
-      ? cachedLoad?.scrollSnapshot
-      : undefined,
+    initialRetainedScrollSnapshot,
   );
+  const scrollSnapshotKeyRef = useRef(snapshotKeyString);
+  if (scrollSnapshotKeyRef.current !== snapshotKeyString) {
+    scrollSnapshotKeyRef.current = snapshotKeyString;
+    scrollSnapshotRef.current = initialRetainedScrollSnapshot;
+  }
   const dispatchSessionDetailAction = useCallback(
     (action: SessionDetailAction) => {
       coordinator.dispatch(action);
@@ -609,7 +662,10 @@ export function useSessionMessages(
       scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
         getSessionScrollBehaviorMode(),
       )
-        ? snapshot.scrollSnapshot
+        ? selectFurthestSessionScrollMemory(
+            snapshot.scrollSnapshot,
+            deviceScrollMemoryRef.current?.snapshot,
+          )
         : undefined;
       setRevealedSnapshotKey(snapshotKeyString);
     };
@@ -750,7 +806,10 @@ export function useSessionMessages(
     scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
     )
-      ? warmLoad?.scrollSnapshot
+      ? selectFurthestSessionScrollMemory(
+          warmLoad?.scrollSnapshot,
+          deviceScrollMemoryRef.current?.snapshot,
+        )
       : undefined;
     setRevealedSnapshotKey(null);
     if (warmLoad) {
@@ -1293,11 +1352,78 @@ export function useSessionMessages(
         scrollSnapshotRef.current = undefined;
         return;
       }
-      scrollSnapshotRef.current = snapshot;
-      coordinator.patchScrollSnapshot(snapshot);
+      let retainedSnapshot = snapshot;
+      if (snapshot.completedTurn && isDocumentVisibleForScrollMemory()) {
+        deviceScrollCandidateRef.current = {
+          key: scrollMemoryStorageKey,
+          snapshot,
+        };
+        const result = writeSessionScrollMemory(
+          scrollMemoryReference,
+          snapshot,
+        );
+        if (result) {
+          deviceScrollMemoryRef.current = {
+            key: scrollMemoryStorageKey,
+            snapshot: result.snapshot,
+          };
+          retainedSnapshot =
+            selectFurthestSessionScrollMemory(snapshot, result.snapshot) ??
+            snapshot;
+        }
+      }
+      scrollSnapshotRef.current = retainedSnapshot;
+      coordinator.patchScrollSnapshot(retainedSnapshot);
     },
-    [coordinator],
+    [coordinator, scrollMemoryReference, scrollMemoryStorageKey],
   );
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const reconcileDeviceScrollMemory = () => {
+      if (!shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())) {
+        return;
+      }
+      let stored = readSessionScrollMemory(scrollMemoryReference);
+      const current = scrollSnapshotRef.current;
+      const visibleCandidate = deviceScrollCandidateRef.current.snapshot;
+      if (visibleCandidate && isDocumentVisibleForScrollMemory()) {
+        const result = writeSessionScrollMemory(
+          scrollMemoryReference,
+          visibleCandidate,
+        );
+        stored = result?.snapshot ?? stored;
+      }
+      deviceScrollMemoryRef.current = {
+        key: scrollMemoryStorageKey,
+        snapshot: stored,
+      };
+      const winner = selectFurthestSessionScrollMemory(current, stored);
+      if (winner && winner !== current) {
+        scrollSnapshotRef.current = winner;
+        coordinator.patchScrollSnapshot(winner);
+      }
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === scrollMemoryStorageKey) {
+        reconcileDeviceScrollMemory();
+      }
+    };
+    const handleVisibility = () => {
+      if (isDocumentVisibleForScrollMemory()) {
+        reconcileDeviceScrollMemory();
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [coordinator, scrollMemoryReference, scrollMemoryStorageKey]);
   const updateActiveWindowFollowingBottom = useCallback(
     (followingBottom: boolean) => {
       coordinator.setActiveWindowFollowingBottom(followingBottom);
@@ -1337,7 +1463,10 @@ export function useSessionMessages(
   const selectedInitialScrollSnapshot = shouldRetainSessionScrollMemory(
     getSessionScrollBehaviorMode(),
   )
-    ? (coordinator.readScrollSnapshot() ?? cachedLoad?.scrollSnapshot ?? null)
+    ? (scrollSnapshotRef.current ??
+      coordinator.readScrollSnapshot() ??
+      cachedLoad?.scrollSnapshot ??
+      null)
     : null;
 
   return {

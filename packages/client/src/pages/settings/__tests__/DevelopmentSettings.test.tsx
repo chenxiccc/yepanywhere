@@ -202,6 +202,11 @@ describe("DevelopmentSettings", () => {
     ).not.toBeNull();
     const select = screen.getByLabelText("Restore mode") as HTMLSelectElement;
     expect(select.value).toBe("live-tail");
+    expect(Array.from(select.options, (option) => option.text)).toEqual([
+      "Live tail (default)",
+      "Remember place",
+      "No memory",
+    ]);
 
     fireEvent.change(select, { target: { value: "remember-place" } });
 

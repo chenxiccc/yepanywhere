@@ -1368,6 +1368,78 @@ describe("MessageList scroll and follow", () => {
     expect(container.scrollTop).toBe(200); // 700 - 500
   });
 
+  it("publishes a newly completed turn while visibly following", async () => {
+    const onScrollSnapshotChange = vi.fn();
+    const messages = [
+      userMessage("user-1", "go", "2026-08-25T12:00:00.000Z"),
+      assistantMessage("assistant-1", "done", "2026-08-25T12:01:00.000Z"),
+    ];
+    const { container, rerender } = render(
+      <MessageList
+        isProcessing={true}
+        messages={messages}
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    container.getBoundingClientRect = () => rectFor(0, 500);
+    const user = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const assistant = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    expect(user).toBeTruthy();
+    expect(assistant).toBeTruthy();
+    (user as HTMLElement).getBoundingClientRect = () => rectFor(40, 40);
+    (assistant as HTMLElement).getBoundingClientRect = () => rectFor(120, 280);
+    onScrollSnapshotChange.mockClear();
+
+    rerender(
+      <MessageList
+        isProcessing={false}
+        messages={messages}
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onScrollSnapshotChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          completedTurn: {
+            id: "user-1",
+            timestampMs: new Date("2026-08-25T12:01:00.000Z").getTime(),
+          },
+          following: true,
+        }),
+      );
+    });
+  });
+
   it("lets a user wheel away cancel live follow before resize catch-up", () => {
     let resizeCallback: ResizeObserverCallback | null = null;
     class CapturingResizeObserver {

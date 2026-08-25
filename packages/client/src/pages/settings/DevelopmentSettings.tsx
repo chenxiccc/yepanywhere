@@ -23,13 +23,11 @@ import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 type SessionScrollMemoryModeDescriptionKey =
   | "developmentSessionScrollMemoryModeLiveTailDescription"
   | "developmentSessionScrollMemoryModeRememberPlaceDescription"
-  | "developmentSessionScrollMemoryModeManualFollowDescription"
   | "developmentSessionScrollMemoryModeNoMemoryDescription";
 
 type SessionScrollMemoryModeLabelKey =
   | "developmentSessionScrollMemoryModeLiveTail"
   | "developmentSessionScrollMemoryModeRememberPlace"
-  | "developmentSessionScrollMemoryModeManualFollow"
   | "developmentSessionScrollMemoryModeNoMemory";
 
 const sessionScrollMemoryModeDescriptionKeys: Record<
@@ -39,7 +37,6 @@ const sessionScrollMemoryModeDescriptionKeys: Record<
   "live-tail": "developmentSessionScrollMemoryModeLiveTailDescription",
   "remember-place":
     "developmentSessionScrollMemoryModeRememberPlaceDescription",
-  "manual-follow": "developmentSessionScrollMemoryModeManualFollowDescription",
   "no-memory": "developmentSessionScrollMemoryModeNoMemoryDescription",
 };
 
@@ -49,7 +46,6 @@ const sessionScrollMemoryModeLabelKeys: Record<
 > = {
   "live-tail": "developmentSessionScrollMemoryModeLiveTail",
   "remember-place": "developmentSessionScrollMemoryModeRememberPlace",
-  "manual-follow": "developmentSessionScrollMemoryModeManualFollow",
   "no-memory": "developmentSessionScrollMemoryModeNoMemory",
 };
 

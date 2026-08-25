@@ -60,8 +60,9 @@ the defect this topic addresses.
 - Retention is source-scoped. A local source, remote source, project id,
   provider session id, auth state, and route parameter set must not reuse
   another source's retained view.
-- A browser reload remains a cold start unless another durable feature
-  explicitly provides persistence.
+- A browser reload remains a cold start for route data and DOM geometry. Session
+  scroll memory is the narrow durable exception: site storage preserves the
+  device-specific completed-turn cursor, not the transcript snapshot.
 
 ## Boundaries
 
@@ -254,15 +255,26 @@ never-seen content is the failure to avoid; output that arrived while away
 belongs below the restored viewport (surfaced by the new-output-below
 follow affordance), not silently scrolled past.
 
+For browser reloads and multiple tabs, "last viewed" is a monotone,
+device-specific cursor: each visible tab may advance its own session when a
+whole turn becomes visible, and site storage keeps the furthest completed turn
+without granting any tab an exclusive lease. Different sessions have different
+keys, so split-screen viewing advances both independently. Exact pixel/anchor
+geometry remains an in-tab hint. Cross-device/server sharing is not yet part of
+this contract.
+
 Which mode *engages* the restore is policy (`sessionScrollBehavior.ts`;
 mode decisions in
 [`docs/tactical/047-session-scroll-memory-policy.md`](../docs/tactical/047-session-scroll-memory-policy.md)):
-the default `live-tail` deliberately returns bottom snapshots to the live
-tail, while `remember-place` restores the last-viewed anchor. The capture
+the default `live-tail` returns cursors recorded while following to the live
+tail, while `remember-place` restores the last-viewed anchor. A parked
+`live-tail` cursor also restores its anchor. The capture
 machinery is load-bearing regardless of active mode: anchors are captured
 even at bottom, each anchor carries neighbor row ids and a timestamp for
 recovery when the exact row is gone, and snapshot publication is gated to
-settled (post-hydration) content. A change that stops capturing at-bottom
+settled (post-hydration) content. Completing a turn while visibly following
+must publish a fresh observation even without a scroll event. A change that
+stops capturing at-bottom
 anchors, overwrites settled snapshots with transient hydration geometry,
 or drops the context fallbacks breaks this contract even while the
 `live-tail` default hides the loss.
@@ -282,8 +294,8 @@ they left (§ Contract: Coming Back To Where You Left Off).
    capture when `atBottom`, so the data needed to do better was never captured.
    The 2026-07-03 scroll-memory slice now captures anchors even when the
    viewport is at bottom and routes restore through a browser-local policy.
-   The default `live-tail` policy still maps `atBottom` to scroll-to-bottom
-   with follow re-engaged, so when the server moved while away a warm return
+   The default `live-tail` policy maps recorded follow intent to
+   scroll-to-bottom with follow re-engaged, so when the server moved while away a warm return
    can still intentionally land at the *new* bottom. The `remember-place`
    policy can instead restore the captured last-viewed anchor.
 2. **Anchor miss falls back to stale pixel geometry.** When `findRenderRow`

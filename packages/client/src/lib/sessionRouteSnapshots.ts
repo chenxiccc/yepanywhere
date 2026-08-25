@@ -21,6 +21,11 @@ export interface SessionRouteScrollSnapshot {
     nextId?: string;
     timestampMs?: number;
   };
+  completedTurn?: {
+    id: string;
+    timestampMs?: number;
+  };
+  following?: boolean;
   updatedAtMs: number;
 }
 

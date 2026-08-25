@@ -15,6 +15,7 @@ import {
   createLocalStorageBoolean,
   createLocalStorageValue,
 } from "../lib/localStorageValue";
+import { clearSessionScrollMemory } from "../lib/sessionScrollMemoryStorage";
 import { UI_KEYS } from "../lib/storageKeys";
 
 const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
@@ -266,6 +267,7 @@ export function setSessionScrollBehaviorModePreference(
   sessionScrollBehaviorStore.set(normalized);
   if (!shouldRetainSessionScrollMemory(normalized)) {
     clearDefaultSessionDetailMemoryCacheScrollSnapshots();
+    clearSessionScrollMemory();
   }
 }
 

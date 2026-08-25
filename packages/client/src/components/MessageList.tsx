@@ -205,6 +205,85 @@ function getVisibleTurnEndTimestampMs(
   return timestampMs;
 }
 
+interface CompletedTurnCursor {
+  id: string;
+  timestampMs?: number;
+  endRenderItemId: string;
+}
+
+function getCompletedTurnCursors(
+  groups: readonly RenderTurnGroup[],
+  turnActive: boolean,
+): CompletedTurnCursor[] {
+  const completed: CompletedTurnCursor[] = [];
+  let userPrompt: RenderItem | null = null;
+  let assistantEnd: RenderItem | null = null;
+
+  const finishPendingTurn = (isActiveTail: boolean) => {
+    if (!userPrompt || !assistantEnd || isActiveTail) {
+      return;
+    }
+    const timestampMs = getLatestMessageTimestampMs(
+      assistantEnd.sourceMessages,
+    );
+    completed.push({
+      id: userPrompt.id,
+      ...(timestampMs !== null ? { timestampMs } : {}),
+      endRenderItemId: assistantEnd.id,
+    });
+  };
+
+  for (const group of groups) {
+    if (group.isUserPrompt) {
+      finishPendingTurn(false);
+      userPrompt =
+        group.items.find((item) => item.type === "user_prompt") ?? null;
+      assistantEnd = null;
+      continue;
+    }
+    if (!group.isStandalone && userPrompt) {
+      assistantEnd =
+        getLastTimestampedRenderItem(group.items) ??
+        group.items[group.items.length - 1] ??
+        assistantEnd;
+    }
+  }
+  finishPendingTurn(turnActive);
+  return completed;
+}
+
+function getVisibleCompletedTurnCursor(
+  scrollContainer: HTMLElement,
+  groups: readonly RenderTurnGroup[],
+  rowsById: ReadonlyMap<string, HTMLElement>,
+  turnActive: boolean,
+): Omit<CompletedTurnCursor, "endRenderItemId"> | null {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  let visible: CompletedTurnCursor | null = null;
+  for (const cursor of getCompletedTurnCursors(groups, turnActive)) {
+    const row = rowsById.get(cursor.endRenderItemId);
+    if (!row) {
+      continue;
+    }
+    const rowRect = row.getBoundingClientRect();
+    if (
+      rowRect.bottom >= containerRect.top &&
+      rowRect.bottom <= containerRect.bottom
+    ) {
+      visible = cursor;
+    }
+  }
+  if (!visible) {
+    return null;
+  }
+  return {
+    id: visible.id,
+    ...(visible.timestampMs !== undefined
+      ? { timestampMs: visible.timestampMs }
+      : {}),
+  };
+}
+
 function getMiddleVisibleTimestampMs(
   scrollContainer: HTMLElement,
   items: readonly RenderItem[],
@@ -1334,6 +1413,8 @@ export const MessageList = memo(function MessageList({
   const autoExpandedHistoricalThinkingProviderRef = useRef<string | null>(null);
   const thinkingDeltaFollowAllowedRef = useRef(false);
   const wasTurnActiveRef = useRef(false);
+  const turnActiveRef = useRef(isProcessing || isStreaming);
+  turnActiveRef.current = isProcessing || isStreaming;
   const navMotionCueTokenRef = useRef(0);
   const navMotionCueClearTimerRef = useRef<ReturnType<
     typeof setTimeout
@@ -1905,6 +1986,13 @@ export const MessageList = memo(function MessageList({
   displayRenderItemsRef.current = displayRenderItems;
   const turnGroupsRef = useRef(turnGroups);
   turnGroupsRef.current = turnGroups;
+  const latestCompletedTurnId = useMemo(() => {
+    const cursors = getCompletedTurnCursors(
+      turnGroups,
+      isProcessing || isStreaming,
+    );
+    return cursors[cursors.length - 1]?.id ?? null;
+  }, [isProcessing, isStreaming, turnGroups]);
   const updateScrollPositionTimestamp = useCallback(() => {
     const content = containerRef.current;
     const container = content?.parentElement;
@@ -1940,12 +2028,30 @@ export const MessageList = memo(function MessageList({
           container,
           displayRenderItemsRef.current,
         ) ?? undefined;
+      const rowsById = new Map<string, HTMLElement>();
+      for (const row of content.querySelectorAll<HTMLElement>(
+        "[data-render-id]",
+      )) {
+        const id = row.dataset.renderId;
+        if (id && !rowsById.has(id)) {
+          rowsById.set(id, row);
+        }
+      }
+      const completedTurn =
+        getVisibleCompletedTurnCursor(
+          container,
+          turnGroupsRef.current,
+          rowsById,
+          turnActiveRef.current,
+        ) ?? undefined;
       return {
         atBottom,
         scrollTop: container.scrollTop,
         scrollHeight: container.scrollHeight,
         clientHeight: container.clientHeight,
         ...(anchor ? { anchor } : {}),
+        ...(completedTurn ? { completedTurn } : {}),
+        following: shouldAutoScrollRef.current,
         updatedAtMs: Date.now(),
       };
     },
@@ -2308,6 +2414,14 @@ export const MessageList = memo(function MessageList({
     if (!content || !container) return;
     onScrollSnapshotChange(captureScrollSnapshot(container, content));
   }, [captureScrollSnapshot, onScrollSnapshotChange]);
+
+  useEffect(() => {
+    if (inert || !latestCompletedTurnId || !shouldAutoScrollRef.current) {
+      return;
+    }
+    const frame = requestAnimationFrame(publishScrollSnapshot);
+    return () => cancelAnimationFrame(frame);
+  }, [inert, latestCompletedTurnId, publishScrollSnapshot]);
 
   const scrollSnapshotPublishTimerRef = useRef<ReturnType<
     typeof setTimeout

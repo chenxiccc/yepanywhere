@@ -44,6 +44,11 @@ import type {
 import { FakeSourceTransport } from "../../lib/transport";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
+import {
+  createSessionScrollMemoryStorageKey,
+  readSessionScrollMemory,
+  writeSessionScrollMemory,
+} from "../../lib/sessionScrollMemoryStorage";
 import type { Message, SessionMetadata } from "../../types";
 
 const apiMocks = vi.hoisted(() => ({
@@ -80,6 +85,23 @@ function scrollSnapshot(): SessionRouteScrollSnapshot {
       topOffset: 16,
     },
     updatedAtMs: 42,
+  };
+}
+
+function deviceScrollSnapshot(
+  id: string,
+  timestampMs: number,
+  following = false,
+): SessionRouteScrollSnapshot {
+  return {
+    atBottom: following,
+    scrollTop: timestampMs,
+    scrollHeight: 1000,
+    clientHeight: 500,
+    anchor: { id: `answer-${id}`, topOffset: 10, timestampMs },
+    completedTurn: { id, timestampMs },
+    following,
+    updatedAtMs: timestampMs,
   };
 }
 
@@ -1920,6 +1942,90 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.restoredFromSnapshot).toBe(true);
     expect(second.result.current.initialScrollSnapshot).toEqual(retainedScroll);
     await waitFor(() => expect(second.result.current.loading).toBe(false));
+  });
+
+  it("restores a device cursor without a warm transcript cache", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+    const reference = {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId: "proj-1",
+      sessionId: "sess-1",
+    };
+    const retainedScroll = deviceScrollSnapshot("turn-2", 200, true);
+    writeSessionScrollMemory(reference, retainedScroll);
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+
+    expect(rendered.result.current.initialScrollSnapshot).toEqual(
+      retainedScroll,
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(rendered.result.current.initialScrollSnapshot).toEqual(
+      retainedScroll,
+    );
+  });
+
+  it("advances storage on completed turns and reconciles another tab", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+    const reference = {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId: "proj-1",
+      sessionId: "sess-1",
+    };
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    const first = deviceScrollSnapshot("turn-1", 100);
+    act(() => {
+      rendered.result.current.updateRouteScrollSnapshot(first);
+    });
+    expect(readSessionScrollMemory(reference)).toEqual(first);
+
+    const second = deviceScrollSnapshot("turn-2", 200, true);
+    writeSessionScrollMemory(reference, second);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: createSessionScrollMemoryStorageKey(reference),
+          newValue: JSON.stringify(second),
+        }),
+      );
+    });
+
+    expect(
+      defaultSessionDetailMemoryCache.readScrollSnapshot(
+        defaultStoreEntryKey(),
+      ),
+    ).toEqual(second);
+  });
+
+  it("does not advance the device cursor from a hidden tab", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+    const reference = {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId: "proj-1",
+      sessionId: "sess-1",
+    };
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+
+    act(() => {
+      rendered.result.current.updateRouteScrollSnapshot(
+        deviceScrollSnapshot("turn-1", 100, true),
+      );
+    });
+
+    expect(readSessionScrollMemory(reference)).toBeNull();
+    visibility.mockRestore();
   });
 
   it("reuses the warm session cache before a slow delta fetch resolves", async () => {
