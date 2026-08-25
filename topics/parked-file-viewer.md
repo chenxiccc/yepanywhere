@@ -201,28 +201,29 @@ Tool renderers used outside this explicit session-viewer provider retain the
 ordinary close-only modal. Session metadata by itself does not opt a surface
 into a host that may not exist.
 
-## Open ownership defect: rich-text replacement
+## Stable ownership through rich-text replacement
 
-The current file link owns both its local open state and the mounted modal.
-When session rich text replaces that link component, React destroys an open or
-parked viewer even though the user did not close it. Reproduction evidence is
-tracked in
-[`gaps/rich-text-replacement-closes-file-viewer.md`](../gaps/rich-text-replacement-closes-file-viewer.md).
+Every authenticated session file link publishes its viewer descriptor and
+content to the stable session-level host. The link is only an activation
+surface; it does not own the mounted viewer. Session rich-text replacement,
+transcript virtualization, or removal of the originating tool row therefore
+must not close or reconstruct a viewer while it is open or parked.
 
-The repair belongs at the session ownership boundary established above:
+The host owns the managed viewer and its browser-history lifetime until one of
+these explicit transitions occurs:
 
-- mount one stable session-level viewer host and keep the open viewer
-  descriptor there;
-- make every authenticated file-link surface invoke that host rather than
-  mounting its own modal;
-- keep history-entry ownership with the host so link replacement cannot leave
-  stale viewer history or close the wrong file; and
-- cover replacement while open and parked, opening a second file, browser
-  history navigation, and an explicit close.
+- opening another authenticated session file replaces the current managed
+  viewer and its controller;
+- Back, browser history navigation, Escape, or the close control dismisses the
+  current viewer according to the modal-stack rules above; or
+- leaving the session destroys the host.
 
-This work changes viewer ownership, not only presentation. The gap remains open
-until every authenticated file-link caller uses the shared host and replacement
-no longer changes viewer lifetime.
+The same mounted viewer remains available through source-link replacement in
+both open and parked states, including its loaded content, scroll and selection
+state, presentation mode, and controller. File links outside an explicit
+session-viewer provider and links in public shares retain their local,
+close-only modal ownership; session metadata alone never publishes into a host
+that is not present.
 
 ## Evaluation
 

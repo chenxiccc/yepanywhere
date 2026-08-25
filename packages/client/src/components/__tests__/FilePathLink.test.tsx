@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
-import { StrictMode } from "react";
+import { type ReactNode, StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicShareProvider } from "../../contexts/PublicShareContext";
@@ -17,6 +17,7 @@ import { useFileViewerController } from "../../lib/fileViewerController";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { FileViewerSource } from "../FileViewer";
 import { FilePathLink, FileViewerModal } from "../FilePathLink";
+import { SessionViewerProvider } from "../SessionManagedViewer";
 
 const mocks = vi.hoisted(() => ({
   useFileVersionControl: vi.fn(),
@@ -38,6 +39,17 @@ function FileViewerControllerProbe() {
         {`Close ${location}`}
       </button>
     </>
+  );
+}
+
+function SessionViewerHarness({ children }: { children: ReactNode }) {
+  return (
+    <I18nProvider>
+      <SessionViewerProvider sessionId="session-1">
+        {children}
+        <FileViewerControllerProbe />
+      </SessionViewerProvider>
+    </I18nProvider>
   );
 }
 
@@ -179,6 +191,109 @@ describe("FilePathLink", () => {
     );
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(source.loadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a session viewer through source-link replacement", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const { rerender } = render(
+      <SessionViewerHarness>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          displayText="guide.md"
+        />
+      </SessionViewerHarness>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "guide.md" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    rerender(
+      <SessionViewerHarness>
+        <span>Settled transcript content</span>
+      </SessionViewerHarness>,
+    );
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Park docs/guide.md" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore docs/guide.md" }),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close docs/guide.md" }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps a parked session viewer through source-link replacement", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const { rerender } = render(
+      <SessionViewerHarness>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          displayText="guide.md"
+        />
+      </SessionViewerHarness>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "guide.md" }));
+    fireEvent.click(screen.getByRole("button", { name: "Park docs/guide.md" }));
+
+    rerender(
+      <SessionViewerHarness>
+        <span>Settled transcript content</span>
+      </SessionViewerHarness>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore docs/guide.md" }),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close docs/guide.md" }),
+    );
+  });
+
+  it("replaces a hosted file viewer when another file opens", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    render(
+      <SessionViewerHarness>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          displayText="guide.md"
+        />
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/notes.md"
+          displayText="notes.md"
+        />
+      </SessionViewerHarness>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "guide.md" }));
+    fireEvent.click(screen.getByRole("link", { name: "notes.md" }));
+
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "Park docs/guide.md" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close docs/notes.md" }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("does not publish viewer controls from a public share", async () => {

@@ -6,22 +6,31 @@ interface SessionViewerBase {
   sessionId: string;
   label: string;
   briefLabel?: string;
-  onClose: () => void;
 }
 
 export interface PanelViewerRegistration extends SessionViewerBase {
   kind: "panel";
+  onClose: () => void;
   title: ReactNode;
   actions?: ReactNode;
   contentRef?: RefObject<HTMLDivElement | null>;
   content: ReactNode;
 }
 
-export interface FileViewerRegistration extends SessionViewerBase {
+interface FileViewerBase extends SessionViewerBase {
   kind: "file";
   filePath: string;
   lineSuffix: string;
 }
+
+export type FileViewerRegistration = FileViewerBase &
+  (
+    | { onClose: () => void; renderContent?: never }
+    | {
+        onClose?: never;
+        renderContent: (inactive: boolean) => ReactNode;
+      }
+  );
 
 export type SessionViewerRegistration =
   | PanelViewerRegistration
@@ -46,7 +55,7 @@ function closeViewer(id: string): void {
   const onClose = current.onClose;
   current = null;
   emit();
-  onClose();
+  onClose?.();
 }
 
 function setMinimized(id: string, minimized: boolean): void {
@@ -90,7 +99,7 @@ export function presentSessionViewer(
   const minimized = previous?.id === registration.id && previous.minimized;
   current = toController(registration, Boolean(minimized));
   emit();
-  if (previous && previous.id !== registration.id) previous.onClose();
+  if (previous && previous.id !== registration.id) previous.onClose?.();
 }
 
 export function clearSessionViewer(id: string): void {

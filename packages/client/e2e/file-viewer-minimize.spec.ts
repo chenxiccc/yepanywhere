@@ -31,6 +31,27 @@ async function capture(page: Page, name: string) {
   });
 }
 
+test("keeps the viewer open while transcript rich text settles", async ({
+  page,
+  baseURL,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
+  await dismissOnboardingIfVisible(page);
+
+  const absoluteLink = page.locator(
+    'a[data-ya-private-project-file-link="true"]',
+  );
+  await expect(absoluteLink).toBeVisible({ timeout: 10000 });
+  await absoluteLink.click();
+
+  const viewer = page.locator(".file-viewer");
+  await expect(viewer).toBeVisible();
+  await page.waitForTimeout(750);
+  await expect(viewer).toBeVisible();
+  await capture(page, "desktop-1000-rich-text-replacement");
+});
+
 for (const viewport of [
   { name: "desktop", width: 1920, height: 1080 },
   { name: "desktop-1024", width: 1024, height: 768 },
@@ -61,9 +82,9 @@ for (const viewport of [
     );
     await expect(absoluteLink).toBeVisible({ timeout: 10000 });
     await dismissOnboardingIfVisible(page);
-    // Let the initial transcript's rich-text replacement settle so this spec
-    // isolates viewer presentation rather than the separately tracked stable-
-    // owner defect in gaps/rich-text-replacement-closes-file-viewer.md.
+    // Let the initial transcript's rich-text replacement settle so this loop
+    // isolates viewer presentation; the preceding regression covers
+    // replacement while the viewer is already open.
     await page.waitForTimeout(750);
     await absoluteLink.click();
 

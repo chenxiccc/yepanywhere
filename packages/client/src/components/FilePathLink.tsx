@@ -62,6 +62,7 @@ import {
   useModalBackspace,
   useModalLayer,
 } from "./ui/Modal";
+import { useSessionViewerSessionId } from "./SessionManagedViewer";
 import styles from "./FilePathLink.module.css";
 
 export { FileVersionControlLinks } from "./FileDiffViewLinks";
@@ -168,7 +169,9 @@ export const FilePathLink = memo(function FilePathLink({
   showVersionControlLinks = true,
 }: FilePathLinkProps) {
   const publicShareContext = usePublicShareContext();
+  const sessionViewerSessionId = useSessionViewerSessionId();
   const basePath = useRemoteBasePath();
+  const managedViewerId = useId();
   const [showModal, setShowModal] = useState(false);
   const [modalPresentation, setModalPresentation] =
     useState<FileViewPresentation>();
@@ -226,6 +229,53 @@ export const FilePathLink = memo(function FilePathLink({
     [publicShareContext],
   );
 
+  const openViewer = useCallback(
+    (presentation?: FileViewPresentation) => {
+      if (sessionViewerSessionId && publicShareContext === null) {
+        const lineSuffix = formatLineSuffix(lineNumber, lineEnd);
+        presentSessionViewer({
+          id: managedViewerId,
+          kind: "file",
+          sessionId: sessionViewerSessionId,
+          label: `${viewerFilePath}${lineSuffix}`,
+          briefLabel: getPathBasename(viewerFilePath),
+          filePath: viewerFilePath,
+          lineSuffix,
+          renderContent: (inactive) => (
+            <FileViewerModal
+              key={managedViewerId}
+              managedViewerId={managedViewerId}
+              inactive={inactive}
+              projectId={projectId}
+              filePath={viewerFilePath}
+              lineNumber={lineNumber}
+              lineEnd={lineEnd}
+              viewMode={viewMode}
+              initialPresentation={presentation}
+              source={publicShareFileViewerSource}
+              openInNewTabUrl={fileViewUrl}
+            />
+          ),
+        });
+        return;
+      }
+      setModalPresentation(presentation);
+      setShowModal(true);
+    },
+    [
+      fileViewUrl,
+      lineEnd,
+      lineNumber,
+      managedViewerId,
+      projectId,
+      publicShareContext,
+      publicShareFileViewerSource,
+      sessionViewerSessionId,
+      viewMode,
+      viewerFilePath,
+    ],
+  );
+
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -237,10 +287,9 @@ export const FilePathLink = memo(function FilePathLink({
         return;
       }
       e.preventDefault();
-      setModalPresentation(undefined);
-      setShowModal(true);
+      openViewer();
     },
-    [publicShareContext, publicShareFileViewUrl],
+    [openViewer, publicShareContext, publicShareFileViewUrl],
   );
 
   const handleClose = useCallback(() => {
@@ -252,10 +301,10 @@ export const FilePathLink = memo(function FilePathLink({
     setContextMenu({ x: event.clientX, y: event.clientY });
   }, []);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
-  const openFromMenu = useCallback((presentation?: FileViewPresentation) => {
-    setModalPresentation(presentation);
-    setShowModal(true);
-  }, []);
+  const openFromMenu = useCallback(
+    (presentation?: FileViewPresentation) => openViewer(presentation),
+    [openViewer],
+  );
   const handleCopyViewerLinkFromMenu = useCallback(() => {
     if (!fileViewUrl) return;
     void writeClipboardText(new URL(fileViewUrl, window.location.href).href);
@@ -374,6 +423,28 @@ export const FilePathLink = memo(function FilePathLink({
 /**
  * Modal wrapper for FileViewer.
  */
+type FileViewerModalProps = {
+  projectId: string;
+  filePath: string;
+  lineNumber?: number;
+  lineEnd?: number;
+  viewMode?: FileViewerMode;
+  initialPresentation?: FileViewPresentation;
+  source?: FileViewerSource;
+  openInNewTabUrl?: string | null;
+} & (
+  | {
+      managedViewerId: string;
+      inactive?: boolean;
+      onClose?: never;
+    }
+  | {
+      managedViewerId?: never;
+      inactive?: never;
+      onClose: () => void;
+    }
+);
+
 export function FileViewerModal({
   projectId,
   filePath,
@@ -383,35 +454,31 @@ export function FileViewerModal({
   initialPresentation,
   source,
   openInNewTabUrl,
+  managedViewerId,
+  inactive = false,
   onClose,
-}: {
-  projectId: string;
-  filePath: string;
-  lineNumber?: number;
-  lineEnd?: number;
-  viewMode?: FileViewerMode;
-  initialPresentation?: FileViewPresentation;
-  source?: FileViewerSource;
-  openInNewTabUrl?: string | null;
-  onClose: () => void;
-}) {
+}: FileViewerModalProps) {
   const publicShareContext = usePublicShareContext();
   const sessionMetadata = useOptionalSessionMetadata();
-  const minimizedViewerId = useId();
+  const generatedViewerId = useId();
+  const minimizedViewerId = managedViewerId ?? generatedViewerId;
   const publishedViewer = useFileViewerController();
-  const minimized =
-    publishedViewer?.id === minimizedViewerId && publishedViewer.minimized;
+  const minimized = Boolean(
+    inactive ||
+      (publishedViewer?.id === minimizedViewerId && publishedViewer.minimized),
+  );
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const close = useCallback(() => {
     clearSessionViewer(minimizedViewerId);
-    onCloseRef.current();
+    onCloseRef.current?.();
   }, [minimizedViewerId]);
   const minimize = useCallback(
     () => minimizeSessionViewer(minimizedViewerId),
     [minimizedViewerId],
   );
   useEffect(() => {
+    if (managedViewerId !== undefined) return;
     if (publicShareContext !== null) return;
     const lineSuffix = formatLineSuffix(lineNumber, lineEnd);
     presentSessionViewer({
@@ -429,14 +496,15 @@ export function FileViewerModal({
     filePath,
     lineEnd,
     lineNumber,
+    managedViewerId,
     minimizedViewerId,
     publicShareContext,
     sessionMetadata?.sessionId,
   ]);
-  useEffect(
-    () => () => clearSessionViewer(minimizedViewerId),
-    [minimizedViewerId],
-  );
+  useEffect(() => {
+    if (managedViewerId !== undefined) return;
+    return () => clearSessionViewer(minimizedViewerId);
+  }, [managedViewerId, minimizedViewerId]);
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       close();

@@ -105,13 +105,13 @@ export function SessionViewerProvider({
     <SessionViewerContext.Provider value={sessionId}>
       <SessionViewerCommentProvider onSendComment={onSendComment}>
         {children}
-        <SessionManagedPanelHost sessionId={sessionId} inactive={inactive} />
+        <SessionManagedViewerHost sessionId={sessionId} inactive={inactive} />
       </SessionViewerCommentProvider>
     </SessionViewerContext.Provider>
   );
 }
 
-export function SessionManagedPanelHost({
+export function SessionManagedViewerHost({
   sessionId,
   inactive = false,
 }: {
@@ -124,6 +124,12 @@ export function SessionManagedPanelHost({
   controllerRef.current = controller;
   const panel =
     controller?.kind === "panel" && controller.sessionId === sessionId
+      ? controller
+      : null;
+  const file =
+    controller?.kind === "file" &&
+    controller.sessionId === sessionId &&
+    controller.renderContent
       ? controller
       : null;
 
@@ -144,6 +150,7 @@ export function SessionManagedPanelHost({
     };
   }, [sessionId]);
 
+  if (file) return file.renderContent(inactive);
   if (!panel) return null;
   return (
     <Modal
