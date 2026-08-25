@@ -351,6 +351,8 @@ export type {
   GitFileChange,
   GitFileDiffMode,
   GitFileProjectionManifest,
+  GitFileRevision,
+  GitFileRevisionCommit,
   GitIncomingCommitListResult,
   GitInclusiveRevisionComparison,
   GitWorkingTreeChange,
@@ -394,6 +396,7 @@ export type {
 } from "./safe-restart.js";
 export {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  GIT_FILE_REVISION_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,

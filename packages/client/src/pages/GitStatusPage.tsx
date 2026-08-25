@@ -107,6 +107,7 @@ const SOURCE_SELECTION_PARAMS = [
   "history",
   "rev",
   "commitFile",
+  "blame",
   "worktreeFile",
   "bf",
   "submission",
@@ -1075,6 +1076,7 @@ function GitStatusContent({
   const blameFile = searchParams.get("bf") ?? undefined;
   const commitSha = searchParams.get("rev") ?? undefined;
   const commitFile = searchParams.get("commitFile") ?? undefined;
+  const commitBlame = searchParams.get("blame") === "1";
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
   const { sourceControlCleanLanding } = useSourceControlCleanLanding();
   const historyOpen =
@@ -1221,6 +1223,7 @@ function GitStatusContent({
           untrackedFiles={untrackedFiles}
           initialSha={commitSha}
           initialPath={commitFile}
+          initialBlame={commitBlame}
           showRevisionPane={historyOpen}
           revisionHref={focusedRevisionHref}
           onSelectRevision={handleSelectRevision}

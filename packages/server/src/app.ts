@@ -101,6 +101,7 @@ import { canonicalizeManagedAttachmentPath } from "./uploads/attachmentAccess.js
 import { createBangCommandsRoutes } from "./routes/bang-commands.js";
 import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitBrowseRoutes } from "./routes/git-browse.js";
+import { createGitFileRevisionRoutes } from "./routes/git-file-revision.js";
 import { createGitFileProjectionRoutes } from "./routes/git-file-projections.js";
 import { createGitInclusiveToHeadRoutes } from "./routes/git-inclusive-to-head.js";
 import { createGitIncomingCommitsRoutes } from "./routes/git-incoming-commits.js";
@@ -1936,6 +1937,7 @@ export function createApp(options: AppOptions): AppResult {
     "/api/projects",
     createGitBrowseRoutes({ scanner, storagePolicy: projectStoragePolicy }),
   );
+  app.route("/api/projects", createGitFileRevisionRoutes({ scanner }));
 
   // Current-content inventory and last-fetched incoming history.
   app.route(

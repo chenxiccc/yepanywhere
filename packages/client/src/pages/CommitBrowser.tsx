@@ -50,6 +50,7 @@ export function CommitBrowser({
   untrackedFiles = null,
   initialSha,
   initialPath,
+  initialBlame = false,
   showRevisionPane = true,
   revisionHref = () => "#",
   onSelectRevision,
@@ -74,6 +75,8 @@ export function CommitBrowser({
   initialSha?: string;
   /** Direct file selection within the initial commit. */
   initialPath?: string;
+  /** Open direct file selection in blame mode. */
+  initialBlame?: boolean;
   /** Whether the commit selector is part of this view. */
   showRevisionPane?: boolean;
   /** Focused URL for a commit, or for the Working tree when passed null. */
@@ -99,7 +102,10 @@ export function CommitBrowser({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileListScrollTopRef = useRef(0);
   const restoreMobileListScrollRef = useRef(false);
-  const [showBlame, setShowBlame] = useState(false);
+  const [showBlame, setShowBlame] = useState(initialBlame);
+  useEffect(() => {
+    if (initialBlame) setShowBlame(true);
+  }, [initialBlame]);
   useSourceSearchShortcut(searchInputRef);
   const {
     displayedCommits,

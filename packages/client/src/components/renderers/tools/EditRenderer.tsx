@@ -35,6 +35,7 @@ import {
 } from "../../FilePathLink";
 import { SchemaWarning } from "../../SchemaWarning";
 import { SourceFileHeaderActions } from "../../SourceFileHeaderActions";
+import { FileRevisionLink } from "../../FileRevisionLink";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
 import {
   FixedFontMathToggle,
@@ -1043,6 +1044,12 @@ function EditDetailModal({
   const actions =
     projectId && filePath ? (
       <>
+        <FileRevisionLink
+          projectId={projectId}
+          path={viewerPath}
+          dirtyLabel={t("fileRevisionDirty" as never)}
+          uncommittedLabel={t("fileRevisionUncommitted" as never)}
+        />
         <FileVersionControlLinks projectId={projectId} filePath={filePath} />
         <SourceFileHeaderActions path={viewerPath} t={t} />
       </>

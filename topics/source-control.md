@@ -747,6 +747,30 @@ The permanent `git-file-diff-projections` capability owns
 client hides all of these selectors and makes no projection request. Existing
 Source Control capability meanings do not expand.
 
+### File revision provenance
+
+Every authenticated project file view shows the last commit that changed the
+displayed file as a short hash followed by a compact parenthesized age. This
+shared chrome covers ordinary and modal file viewers, expanded Edit details,
+Source Control current-content, commit, comparison, and diff panes, and blame.
+An immutable view resolves history from its selected revision; a live view
+resolves from `HEAD`. A not-yet-committed rename follows its original path.
+
+Live content adds **dirty** only when its bytes differ from the committed blob;
+a rename with identical content is not dirty. Immutable revision views are
+never dirty. An untracked file says **uncommitted** and receives no invented
+hash or link. A non-Git project omits the chrome.
+
+The hash is a regular anchor to Changes with the resolved commit and file
+selected and blame already open. It therefore preserves modifier-click,
+middle-click, and browser context-menu behavior. Its native tooltip contains
+the author, absolute author time, and at most 50 commit-message lines; when
+more lines exist it ends with `...`.
+
+The permanent `git-file-revision` capability owns
+`GET /api/projects/:projectId/git/file-revision`. A client without it omits
+this chrome and sends no request.
+
 ## Search and compatibility
 
 Every Source Control filter activates on the first non-whitespace character.

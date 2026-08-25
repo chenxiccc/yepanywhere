@@ -8,6 +8,7 @@ import type {
   GitFileListResult,
   GitFileDiffMode,
   GitFileProjectionManifest,
+  GitFileRevision,
   GitIncomingCommitListResult,
   GitInclusiveRevisionComparison,
   GitIntegrationOptionsResult,
@@ -197,6 +198,18 @@ export const gitApi = {
     fetchJSON<GitFileProjectionManifest>(
       `/projects/${projectId}/git/file-projections`,
     ),
+
+  getGitFileRevision: (
+    projectId: string,
+    params: { path: string; rev?: string; origPath?: string },
+  ) => {
+    const query = new URLSearchParams({ path: params.path });
+    if (params.rev) query.set("rev", params.rev);
+    if (params.origPath) query.set("origPath", params.origPath);
+    return fetchJSON<GitFileRevision>(
+      `/projects/${projectId}/git/file-revision?${query.toString()}`,
+    );
+  },
 
   getGitFileProjectionDiff: (
     projectId: string,

@@ -740,6 +740,37 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace self-hosted servers, and the exact cumulative projection has no safe older-server request fallback.",
     },
   },
+  gitFileRevision: {
+    id: CAPABILITY_ID_ALLOCATIONS.gitFileRevision.id,
+    name: "git-file-revision",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server resolves a file's last content revision and whether live filesystem content differs from the committed blob.",
+    clientFallback:
+      "Omit file-revision provenance and make no metadata request.",
+    serverContract: {
+      routes: ["GET /api/projects/:projectId/git/file-revision"],
+      routeModules: ["packages/server/src/routes/git-file-revision.ts"],
+      requestFields: [
+        "gitFileRevision.path",
+        "gitFileRevision.rev",
+        "gitFileRevision.origPath",
+      ],
+      responseFields: [
+        "gitFileRevision.isGitRepo",
+        "gitFileRevision.commit",
+        "gitFileRevision.dirty",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, and older servers have no per-file revision metadata route.",
+    },
+  },
   gitWorkingTreeFiles: {
     id: CAPABILITY_ID_ALLOCATIONS.gitWorkingTreeFiles.id,
     name: "git-working-tree-files",
@@ -1921,6 +1952,8 @@ export const GIT_DIRTY_FILE_EDITOR_CAPABILITY =
   SERVER_CAPABILITIES.gitDirtyFileEditor.name;
 export const GIT_FILE_DIFF_PROJECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitFileDiffProjections.name;
+export const GIT_FILE_REVISION_CAPABILITY =
+  SERVER_CAPABILITIES.gitFileRevision.name;
 export const GIT_WORKING_TREE_FILES_CAPABILITY =
   SERVER_CAPABILITIES.gitWorkingTreeFiles.name;
 export const GIT_WORKING_TREE_SECTIONS_CAPABILITY =

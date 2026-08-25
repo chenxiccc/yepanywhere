@@ -18,6 +18,7 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
+import { FileRevisionLink } from "../components/FileRevisionLink";
 import {
   type SourceContextMenuAction,
   useSourceContextMenu,
@@ -432,6 +433,13 @@ export function BlameView({
             icon="path"
           />
         </span>
+        <FileRevisionLink
+          projectId={projectId}
+          path={path}
+          rev={rev}
+          dirtyLabel={t("fileRevisionDirty" as never)}
+          uncommittedLabel={t("fileRevisionUncommitted" as never)}
+        />
         {onToggleBlame && (
           <button
             type="button"

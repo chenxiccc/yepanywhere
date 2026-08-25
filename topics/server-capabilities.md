@@ -66,6 +66,14 @@ request; it does not reuse `git-source-review-projections`, whose advertised
 meaning predates these routes. The capability is permanent and
 version-implied from `0.7.1`.
 
+`git-file-revision` owns read-only last-revision metadata for a selected file.
+The ordinary optional-feature corpus is `v0.7.0` (2026-07-25) and `v0.6.2`
+(2026-07-11); no other stable server release fell in the preceding 14 days as
+of 2026-08-24. Both lack the route and permanent ID 47. Without it, clients
+omit file-revision chrome and make no metadata request. Existing capability
+meanings and older capable behavior remain unchanged. It is version-implied
+from `0.7.2`.
+
 `git-working-tree-files` owns the current-content inventory, persistent
 untracked-cache route, and cache-backed status request. Releases `0.6.2` and
 `0.7.0` have none of them. Without the permanent capability, the client retains
@@ -348,9 +356,10 @@ the same ledger:
 | 44 | server | 0.7.2 | `git-live-worktree-setting` |
 | 45 | server | 0.7.2 | `synthetic-terminate-command` |
 | 46 | server | 0.7.2 | `project-code-names` |
+| 47 | server | 0.7.2 | `git-file-revision` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 47; retired rows stay in the ledger as reserved IDs.
+ID 48; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

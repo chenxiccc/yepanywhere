@@ -20,6 +20,7 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
+import { FileRevisionLink } from "../components/FileRevisionLink";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { renderFixedFontRichContent } from "../components/ui/FixedFontMathToggle";
 import { Modal } from "../components/ui/Modal";
@@ -82,6 +83,7 @@ interface DiffPaneHeader {
   title: string;
   path: string;
   actions?: ReactNode;
+  revision?: ReactNode;
 }
 
 export interface GitDiffPreviewHandle {
@@ -132,6 +134,14 @@ const WORKTREE_SOURCE: GitDiffSource = { kind: "worktree" };
 const WORKING_TREE_HISTORY_SOURCE: GitDiffSource = {
   kind: "working-tree-history",
 };
+
+function revisionForDiffSource(source: GitDiffSource): string | undefined {
+  if (source.kind === "commit") return source.sha;
+  if (source.kind === "comparison" || source.kind === "inclusive-comparison") {
+    return source.headSha;
+  }
+  return undefined;
+}
 
 function getRelativeScrollRatio(element: HTMLElement): number {
   const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
@@ -311,6 +321,18 @@ export const GitDiffPreview = forwardRef<
               title: fileName ?? file.path,
               path: file.path,
               actions: headerActions,
+              revision: (
+                <FileRevisionLink
+                  projectId={projectId}
+                  path={file.path}
+                  origPath={
+                    revisionForDiffSource(source) ? undefined : file.origPath
+                  }
+                  rev={revisionForDiffSource(source)}
+                  dirtyLabel={t("fileRevisionDirty" as never)}
+                  uncommittedLabel={t("fileRevisionUncommitted" as never)}
+                />
+              ),
             }}
             onHunkNavigationChange={handleHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}
@@ -390,9 +412,17 @@ export function GitDiffModal({
       closeOnBackGesture
       contentRef={bodyRef}
     >
-      {headerActions && (
-        <div className="git-diff-preview-header-actions">{headerActions}</div>
-      )}
+      <div className="git-diff-preview-header-actions">
+        <FileRevisionLink
+          projectId={projectId}
+          path={file.path}
+          origPath={revisionForDiffSource(source) ? undefined : file.origPath}
+          rev={revisionForDiffSource(source)}
+          dirtyLabel={t("fileRevisionDirty" as never)}
+          uncommittedLabel={t("fileRevisionUncommitted" as never)}
+        />
+        {headerActions}
+      </div>
       <GitDiffBody
         file={file}
         fileKey={fileKey}
@@ -635,6 +665,7 @@ export function GitDiffBody({
           title={paneHeader.title}
           path={paneHeader.path}
           actions={paneHeader.actions}
+          revision={paneHeader.revision}
         />
       )}
       {initialLoading && (
@@ -1274,6 +1305,7 @@ function GitDiffContent({
           title={paneHeader.title}
           path={paneHeader.path}
           actions={paneHeader.actions}
+          revision={paneHeader.revision}
         >
           {toolbarButtons}
         </DiffPaneToolbar>
@@ -1331,6 +1363,7 @@ function DiffPaneToolbar({
   title,
   path,
   actions,
+  revision,
   children,
 }: DiffPaneHeader & { children?: ReactNode }) {
   const directoryPath =
@@ -1357,6 +1390,7 @@ function DiffPaneToolbar({
           {title}
         </h3>
       </span>
+      {revision}
       {children && (
         <div className={`diff-context-buttons ${styles.controls}`}>
           {children}

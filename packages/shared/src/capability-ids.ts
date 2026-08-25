@@ -300,6 +300,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "project-code-names",
     introducedIn: "0.7.2",
   },
+  gitFileRevision: {
+    id: 47,
+    direction: "server",
+    name: "git-file-revision",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

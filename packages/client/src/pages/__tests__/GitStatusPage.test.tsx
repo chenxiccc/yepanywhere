@@ -70,6 +70,7 @@ vi.mock("../../api/client", () => ({
 
 vi.mock("../CommitBrowser", () => ({
   CommitBrowser: (props: {
+    initialBlame?: boolean;
     initialPath?: string;
     initialSha?: string;
     showRevisionPane?: boolean;
@@ -962,6 +963,21 @@ describe("GitStatusPage source header", () => {
         initialSha: "abc123",
         initialPath: "src/x.ts",
         showRevisionPane: false,
+      }),
+    );
+  });
+
+  it("passes a commit blame deep link through to the browser", async () => {
+    renderPage(
+      "/git-status?projectId=project-a&rev=abc123&commitFile=src%2Fx.ts&blame=1",
+    );
+
+    expect(await screen.findByTestId("commit-browser")).toBeDefined();
+    expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSha: "abc123",
+        initialPath: "src/x.ts",
+        initialBlame: true,
       }),
     );
   });

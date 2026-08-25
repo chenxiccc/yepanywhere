@@ -1589,6 +1589,8 @@
   "sourceNoCommits": "No commits.",
   "sourceWorkingTree": "Working tree",
   "sourceWorkingTreeDescription": "Current uncommitted changes against HEAD",
+  "fileRevisionDirty": "dirty",
+  "fileRevisionUncommitted": "uncommitted",
   "sourceWorkingTreeCleanDescription": "No uncommitted changes",
   "sourceCommitHistory": "Commit history",
   "sourceOpenChanges": "Show working tree changes",

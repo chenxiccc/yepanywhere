@@ -7,6 +7,7 @@ import {
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
+  GIT_FILE_REVISION_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
@@ -273,6 +274,16 @@ describe("server capability advertisements", () => {
       capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
       capabilityBits: [[1, 2 ** 10]],
     });
+  });
+
+  it("assigns file revision metadata to permanent capability ID 47", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.gitFileRevision.id).toBe(47);
+    expect(
+      serverHasCapability({ current: "0.7.2" }, GIT_FILE_REVISION_CAPABILITY),
+    ).toBe(true);
+    expect(
+      serverHasCapability({ current: "0.7.1" }, GIT_FILE_REVISION_CAPABILITY),
+    ).toBe(false);
   });
 
   it("assigns cache-billing ignore-after to permanent capability ID 43", () => {

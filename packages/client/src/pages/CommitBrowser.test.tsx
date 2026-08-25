@@ -1488,6 +1488,27 @@ describe("CommitBrowser", () => {
     );
   });
 
+  it("opens a directly linked file in blame mode", async () => {
+    primeApis();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          initialSha={SHA}
+          initialPath="src/x.ts"
+          initialBlame
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(getGitBlame).toHaveBeenCalledWith("p1", "src/x.ts", SHA),
+    );
+    expect(document.querySelector("[data-blame-row]")).not.toBeNull();
+  });
+
   it("re-clicks the selected file to advance to the next diff hunk", async () => {
     primeApis();
     getGitCommitDiff.mockResolvedValue({

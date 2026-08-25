@@ -7,6 +7,7 @@ import type { PatchHunk } from "./types.js";
 export {
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_FILE_DIFF_PROJECTIONS_CAPABILITY,
+  GIT_FILE_REVISION_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
   GIT_INCOMING_COMMITS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
@@ -55,6 +56,25 @@ export interface GitRecentCommit {
   authorName: string;
   /** Author timestamp as an ISO 8601 string */
   authorDate: string;
+}
+
+/** Commit metadata shown beside a file view. */
+export interface GitFileRevisionCommit extends GitRecentCommit {
+  /** Commit subject and body, capped by the server at 50 lines. */
+  message: string;
+  /** Whether undisplayed commit-message lines remain. */
+  messageTruncated: boolean;
+}
+
+/** Last committed content revision for one repository-relative file path. */
+export interface GitFileRevision {
+  path: string;
+  /** False when the selected project is not a Git working tree. */
+  isGitRepo: boolean;
+  /** Null for a file with no revision reachable from the requested tree. */
+  commit: GitFileRevisionCommit | null;
+  /** True only when live file content differs from the committed blob. */
+  dirty: boolean;
 }
 
 /**

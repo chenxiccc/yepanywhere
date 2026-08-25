@@ -64,6 +64,7 @@ import {
   FileDiffViewLinks,
   type FileViewSelection,
 } from "./FileDiffViewLinks";
+import { FileRevisionLink } from "./FileRevisionLink";
 import {
   FilePathContextMenu,
   type FileViewPresentation,
@@ -1121,23 +1122,35 @@ export const FileViewer = memo(function FileViewer({
         >
           {displayPath}
         </span>
-        <span className="file-viewer-meta">
-          {metadata ? formatFileSize(metadata.size) : ""}
-          {!diffActive && metadata?.isText && content !== undefined && (
-            <>
-              {" \u2022 "}
-              {fileData?.contentTruncated
-                ? `lines ${getContentStartLine(fileData)}-${getContentEndLine(fileData)}${
-                    fileData?.contentTotalLines
-                      ? ` of ${fileData.contentTotalLines}`
-                      : ""
-                  }`
-                : t("fileViewerLines" as never, {
-                    count: content.length > 0 ? content.split("\n").length : 0,
-                  })}
-            </>
+        <div className={viewerStyles.provenanceRow}>
+          {publicShareContext === null && fileVersionControl.relativePath && (
+            <FileRevisionLink
+              projectId={projectId}
+              path={fileVersionControl.relativePath}
+              origPath={fileVersionControl.worktreeFile?.origPath}
+              dirtyLabel={t("fileRevisionDirty" as never)}
+              uncommittedLabel={t("fileRevisionUncommitted" as never)}
+            />
           )}
-        </span>
+          <span className="file-viewer-meta">
+            {metadata ? formatFileSize(metadata.size) : ""}
+            {!diffActive && metadata?.isText && content !== undefined && (
+              <>
+                {" \u2022 "}
+                {fileData?.contentTruncated
+                  ? `lines ${getContentStartLine(fileData)}-${getContentEndLine(fileData)}${
+                      fileData?.contentTotalLines
+                        ? ` of ${fileData.contentTotalLines}`
+                        : ""
+                    }`
+                  : t("fileViewerLines" as never, {
+                      count:
+                        content.length > 0 ? content.split("\n").length : 0,
+                    })}
+              </>
+            )}
+          </span>
+        </div>
       </div>
       <div className={`file-viewer-actions ${viewerStyles.actions}`}>
         {publicShareContext === null && (
