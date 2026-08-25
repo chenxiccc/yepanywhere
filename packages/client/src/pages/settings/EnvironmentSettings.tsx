@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type EnvSettingEntry } from "../../api/client";
 import { useI18n } from "../../i18n";
 import styles from "./EnvironmentSettings.module.css";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
-import { HideInSettingsSearch } from "./SettingsSearchContext";
+import {
+  HideInSettingsSearch,
+  useSettingsSearchScope,
+} from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
 
 interface EnvGroup {
@@ -33,6 +37,7 @@ export function EnvironmentSettings() {
   const [entries, setEntries] = useState<EnvSettingEntry[] | null>(null);
   const [error, setError] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const searchScope = useSettingsSearchScope();
 
   useEffect(() => {
     let cancelled = false;
@@ -50,8 +55,8 @@ export function EnvironmentSettings() {
   }, []);
 
   const visibleEntries = useMemo(
-    () => entries?.filter((entry) => showAll || entry.set) ?? [],
-    [entries, showAll],
+    () => entries?.filter((entry) => searchScope || showAll || entry.set) ?? [],
+    [entries, searchScope, showAll],
   );
   const groups = useMemo(() => groupEntries(visibleEntries), [visibleEntries]);
   const setCount = entries?.filter((entry) => entry.set).length ?? 0;
@@ -85,16 +90,17 @@ export function EnvironmentSettings() {
         {!error && entries && !showAll && groups.length === 0 && (
           <p className="settings-empty">{t("environmentEmptySet")}</p>
         )}
-
-        {groups.map((group) => (
-          <div key={group.group} className={`settings-group ${styles.group}`}>
-            <h3 className={styles.groupTitle}>{group.group}</h3>
-            {group.entries.map((entry) => (
-              <EnvVarRow key={entry.name} entry={entry} />
-            ))}
-          </div>
-        ))}
       </HideInSettingsSearch>
+      {groups.map((group) => (
+        <div key={group.group} className={`settings-group ${styles.group}`}>
+          <HideInSettingsSearch>
+            <h3 className={styles.groupTitle}>{group.group}</h3>
+          </HideInSettingsSearch>
+          {group.entries.map((entry) => (
+            <EnvVarRow key={entry.name} entry={entry} />
+          ))}
+        </div>
+      ))}
     </SettingsSection>
   );
 }
@@ -102,7 +108,16 @@ export function EnvironmentSettings() {
 function EnvVarRow({ entry }: { entry: EnvSettingEntry }) {
   const { t } = useI18n();
   return (
-    <div className={`${styles.row} ${entry.set ? "" : styles.unset}`}>
+    <SettingsItem
+      label={entry.name}
+      description={entry.description}
+      keywords={[entry.group, entry.note].filter(
+        (value): value is string => !!value,
+      )}
+      layout="custom"
+      baseClassName={styles.row}
+      className={entry.set ? undefined : styles.unset}
+    >
       <div className={styles.head}>
         <code className={styles.name}>{entry.name}</code>
         {entry.secret && (
@@ -114,7 +129,7 @@ function EnvVarRow({ entry }: { entry: EnvSettingEntry }) {
       </div>
       <p className={styles.description}>{entry.description}</p>
       {entry.note && <p className={styles.note}>{entry.note}</p>}
-    </div>
+    </SettingsItem>
   );
 }
 

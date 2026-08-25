@@ -420,11 +420,27 @@ export function LocalAccessSettings() {
       .some((line) => isWholeDiskPath(line));
 
     return (
-      <div
-        className="settings-item file-access-settings-panel"
-        role="group"
-        aria-labelledby="file-access-settings-title"
-        aria-describedby="file-access-settings-description"
+      <SettingsItem
+        label={t("fileAccessTitle")}
+        description={t("fileAccessDescription")}
+        keywords={[
+          t("fileAccessAllowedFoldersTitle"),
+          t("fileAccessProjects"),
+          t("fileAccessProjectsDescription"),
+          t("fileAccessUploads"),
+          t("fileAccessTemp"),
+          t("fileAccessHome"),
+          t("fileAccessHomeDescription"),
+          t("fileAccessCustomTitle"),
+          t("fileAccessCustomDescription"),
+        ]}
+        layout="custom"
+        className="file-access-settings-panel"
+        containerProps={{
+          role: "group",
+          "aria-labelledby": "file-access-settings-title",
+          "aria-describedby": "file-access-settings-description",
+        }}
       >
         <div className="file-access-settings-header">
           <strong id="file-access-settings-title">
@@ -580,7 +596,7 @@ export function LocalAccessSettings() {
             )}
           </>
         )}
-      </div>
+      </SettingsItem>
     );
   };
 
@@ -934,9 +950,7 @@ export function LocalAccessSettings() {
             <p className="form-hint">{t("localAccessAllowedHostsHint")}</p>
           </HideInSettingsSearch>
 
-          <HideInSettingsSearch>
-            {renderFileAccessSettings()}
-          </HideInSettingsSearch>
+          {renderFileAccessSettings()}
 
           {/* Require Password toggle */}
           {!auth.authDisabledByEnv && (
@@ -1101,11 +1115,7 @@ export function LocalAccessSettings() {
     return (
       <SettingsSection description={t("localAccessRemoteDescription")}>
         {remoteFileAccessReady ? (
-          <div className="settings-group">
-            <HideInSettingsSearch>
-              {renderFileAccessSettings()}
-            </HideInSettingsSearch>
-          </div>
+          <div className="settings-group">{renderFileAccessSettings()}</div>
         ) : (
           <HideInSettingsSearch>
             <div className="settings-group">

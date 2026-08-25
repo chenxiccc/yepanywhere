@@ -41,7 +41,6 @@ import {
 } from "../../lib/projectQueueVisibility";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
-import { HideInSettingsSearch } from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import toolbarSettingsStyles from "./ToolbarSettings.module.css";
@@ -658,63 +657,70 @@ export function ToolbarSettings() {
           />
         </SettingsItem>
 
-        <HideInSettingsSearch>
-          <div className={`settings-item ${toolbarSettingsStyles.settings}`}>
-            <SessionToolbarPreview />
+        <SettingsItem
+          label={t("appearanceSessionToolbarTitle")}
+          description={t("appearanceSessionToolbarDescription")}
+          keywords={toolbarControls.flatMap((control) => [
+            control.title,
+            control.description,
+          ])}
+          layout="custom"
+          className={toolbarSettingsStyles.settings}
+        >
+          <SessionToolbarPreview />
 
-            <div className="session-toolbar-zone">
-              <div className="session-toolbar-zone-heading">
-                <strong>{t("appearanceToolbarHiddenHeading")}</strong>
-                <span>{t("appearanceToolbarHiddenDescription")}</span>
-              </div>
-              <div className={toolbarSettingsStyles.sideGroups}>
-                {renderSideGroup(
-                  t("appearanceToolbarSideLeft"),
-                  hiddenLeft,
-                  "hidden",
-                )}
-                {renderSideGroup(
-                  t("appearanceToolbarSideRight"),
-                  hiddenRight,
-                  "hidden",
-                )}
-              </div>
+          <div className="session-toolbar-zone">
+            <div className="session-toolbar-zone-heading">
+              <strong>{t("appearanceToolbarHiddenHeading")}</strong>
+              <span>{t("appearanceToolbarHiddenDescription")}</span>
             </div>
-
-            <div className="session-toolbar-zone-separator" />
-
-            <div className="session-toolbar-zone">
-              <div className="session-toolbar-zone-heading">
-                <strong>{t("appearanceToolbarShownHeading")}</strong>
-                <span>{t("appearanceToolbarShownDescription")}</span>
-              </div>
-              <div className={toolbarSettingsStyles.sideGroups}>
-                {renderSideGroup(
-                  t("appearanceToolbarSideLeft"),
-                  shownLeft,
-                  "shown",
-                )}
-                {renderSideGroup(
-                  t("appearanceToolbarSideRight"),
-                  shownRight,
-                  "shown",
-                )}
-              </div>
-            </div>
-
-            <div className="settings-item-actions">
-              <button
-                type="button"
-                className="settings-button settings-button-secondary"
-                onClick={() => {
-                  resetPresence();
-                }}
-              >
-                {t("appearanceSessionToolbarReset")}
-              </button>
+            <div className={toolbarSettingsStyles.sideGroups}>
+              {renderSideGroup(
+                t("appearanceToolbarSideLeft"),
+                hiddenLeft,
+                "hidden",
+              )}
+              {renderSideGroup(
+                t("appearanceToolbarSideRight"),
+                hiddenRight,
+                "hidden",
+              )}
             </div>
           </div>
-        </HideInSettingsSearch>
+
+          <div className="session-toolbar-zone-separator" />
+
+          <div className="session-toolbar-zone">
+            <div className="session-toolbar-zone-heading">
+              <strong>{t("appearanceToolbarShownHeading")}</strong>
+              <span>{t("appearanceToolbarShownDescription")}</span>
+            </div>
+            <div className={toolbarSettingsStyles.sideGroups}>
+              {renderSideGroup(
+                t("appearanceToolbarSideLeft"),
+                shownLeft,
+                "shown",
+              )}
+              {renderSideGroup(
+                t("appearanceToolbarSideRight"),
+                shownRight,
+                "shown",
+              )}
+            </div>
+          </div>
+
+          <div className="settings-item-actions">
+            <button
+              type="button"
+              className="settings-button settings-button-secondary"
+              onClick={() => {
+                resetPresence();
+              }}
+            >
+              {t("appearanceSessionToolbarReset")}
+            </button>
+          </div>
+        </SettingsItem>
         {error && <p className="settings-warning">{error}</p>}
       </div>
     </SettingsSection>

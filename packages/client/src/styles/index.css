@@ -9947,7 +9947,7 @@ a.sidebar-nav-item {
 
 /* Filtering: inside search panes only matched rows render visible; hints,
    warnings, and grouped sub-rows that are not row-owned stay hidden. */
-.settings-search-pane .settings-item:not(.settings-search-match) {
+.settings-search-pane [data-settings-item]:not(.settings-search-match) {
   display: none;
 }
 
@@ -9958,10 +9958,6 @@ a.sidebar-nav-item {
 }
 
 /* Collapse structures left with no matched row, and whole matchless panes. */
-.settings-search-pane .settings-item-group:not(:has(.settings-search-match)) {
-  display: none;
-}
-
 .settings-search-pane .settings-group:not(:has(.settings-search-match)) {
   display: none;
 }

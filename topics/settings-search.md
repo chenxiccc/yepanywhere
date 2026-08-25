@@ -56,13 +56,14 @@ principle this design follows).
   line quoting the query. A visually-hidden live region announces the match
   count. The values toggle appears only while a query is active, adjacent
   to the field.
-- **Coverage rule.** Only rows declared through the shared row layer
-  (`SettingsItem`, `SettingsSection`) are searchable. An undeclared row is
-  *hidden* in search results, never falsely shown — partial conversion
-  degrades to reduced coverage, not to wrong results. Rows that are
-  conditionally not rendered (e.g. capability-gated panes, developer-mode
-  extras) are not searchable while hidden; gated categories join the search
-  corpus exactly when they join the navigation.
+- **Coverage rule.** Every setting is declared through the shared row layer
+  (`SettingsItem`, including its custom-layout form, or `SettingsSection`) and
+  is searchable. `HideInSettingsSearch` is only for content that is not a
+  setting: previews, status blocks, diagnostics, inventories, and form actions.
+  A duplicate access point may opt out only when the same setting has a primary
+  searchable row elsewhere. Rows that are conditionally unavailable because a
+  capability is absent join the search corpus exactly when they join the
+  navigation.
 
 ## Values matching: why a toggle, why default-off
 
@@ -88,8 +89,12 @@ Per [ui-architecture](ui-architecture.md)'s render-boundary principle, the
 searchable corpus is declared where the row renders: `SettingsItem`
 (pages/settings/SettingsItem.tsx) renders the canonical `.settings-item`
 markup and, inside a search scope, filters itself, highlights, and offers
-the jump link. `SettingsSection` does the same at section granularity.
-There is no side index to drift and no post-render DOM rewriting.
+the jump link. Its custom layout and custom base-class forms preserve panels
+whose DOM cannot use the standard info/control columns while retaining the
+same search and jump contract. Content intentionally hidden from search on its
+own becomes visible when its owning row matches. `SettingsSection` does the
+same at section granularity. There is no side index to drift and no
+post-render DOM rewriting.
 
 Search results mount the *actual pane components* inside
 `SettingsSearchResults`, one scope per category. This is what makes rows
@@ -111,8 +116,9 @@ non-row content is either row-owned (`after` prop), wrapped in
 read-effects as visiting each pane once, as a burst); the mount persists
 while the query is non-empty. Per-keystroke work is one deferred context
 update fanned to row-level consumers doing substring checks — pane bodies
-are memo-isolated and do not re-render per keystroke. This surface is
-typing-rate, not streaming-rate; no further coalescing is required.
+are memo-isolated and do not re-render per keystroke. A contained mutation
+observer recounts results when an asynchronous pane loads dynamic rows. This
+surface is typing-rate, not streaming-rate; no further coalescing is required.
 
 ## Known limitations / candidate refinements
 
@@ -130,15 +136,6 @@ typing-rate, not streaming-rate; no further coalescing is required.
 
 - Rows using a custom `info` body match on their declared strings but do
   not highlight inside the custom markup.
-- Rows whose markup is not the canonical `.settings-item` shape cannot use
-  `SettingsItem` (which does support `as="label"` for click-anywhere toggle
-  rows and a `title` passthrough) and are search-hidden: the Appearance
-  output-typography panel, the Model session-defaults panel, Toolbar
-  per-button presence rows, and Local Access file-access rows. Where
-  wired, section `keywords` bridge the gap by revealing the whole section
-  (Model, Appearance, Lifecycle Webhooks); converting these panels to
-  canonical rows (or a SettingsItem variant with a custom base class) is
-  the follow-up that closes it.
 - The two-column category rail does not filter while searching; the
   results panel is the filtered surface.
 - The query is component state, not a URL parameter; leaving Settings

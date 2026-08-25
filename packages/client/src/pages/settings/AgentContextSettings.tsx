@@ -191,79 +191,102 @@ export function AgentContextSettings() {
   }
 
   return (
-    <SettingsSection description={t("agentContextDescription")}>
-      <HideInSettingsSearch>
-        <div className="settings-group">
-          <div
-            className="settings-item"
-            style={{ flexDirection: "column", alignItems: "stretch" }}
-          >
-            <div className="settings-item-info">
-              <strong>{t("agentContextGlobalInstructions")}</strong>
-              <p>{t("agentContextGlobalInstructionsDescription")}</p>
-            </div>
-            <textarea
-              className="settings-textarea"
-              value={instructions}
-              onChange={(e) => {
-                const value = e.target.value.slice(0, MAX_LENGTH);
-                setInstructions(value);
-                recomputeHasChanges({ instructions: value });
-                setSaveError(null);
-              }}
-              placeholder={t("agentContextPlaceholder")}
-              rows={10}
-            />
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: "var(--space-2)",
-              }}
-            >
-              <span className="settings-hint">
-                {t("agentContextCharacters", {
-                  current: instructions.length.toLocaleString(),
-                  max: MAX_LENGTH.toLocaleString(),
-                })}
-              </span>
-              <button
-                type="button"
-                className="settings-button"
-                disabled={!hasChanges || isSaving}
-                onClick={handleSave}
-              >
-                {isSaving ? t("providersSaving") : t("providersSave")}
-              </button>
-            </div>
+    <SettingsSection
+      description={t("agentContextDescription")}
+      keywords={[
+        t("agentContextGlobalInstructions"),
+        t("agentContextGlobalInstructionsDescription"),
+        t("agentContextSuggestedLatexTitle"),
+        t("agentContextSuggestedLatexDescription"),
+        t("agentContextHeartbeatAfterTitle"),
+        t("agentContextHeartbeatAfterDescription"),
+        t("agentContextHeartbeatTextTitle"),
+        t("agentContextHeartbeatTextDescription"),
+      ]}
+    >
+      <div className="settings-group">
+        <SettingsItem
+          label={t("agentContextGlobalInstructions")}
+          description={t("agentContextGlobalInstructionsDescription")}
+          layout="custom"
+          containerProps={{
+            style: { flexDirection: "column", alignItems: "stretch" },
+          }}
+        >
+          <div className="settings-item-info">
+            <strong>{t("agentContextGlobalInstructions")}</strong>
+            <p>{t("agentContextGlobalInstructionsDescription")}</p>
           </div>
+          <textarea
+            className="settings-textarea"
+            value={instructions}
+            onChange={(e) => {
+              const value = e.target.value.slice(0, MAX_LENGTH);
+              setInstructions(value);
+              recomputeHasChanges({ instructions: value });
+              setSaveError(null);
+            }}
+            placeholder={t("agentContextPlaceholder")}
+            rows={10}
+          />
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginTop: "var(--space-2)",
+            }}
+          >
+            <span className="settings-hint">
+              {t("agentContextCharacters", {
+                current: instructions.length.toLocaleString(),
+                max: MAX_LENGTH.toLocaleString(),
+              })}
+            </span>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={!hasChanges || isSaving}
+              onClick={handleSave}
+            >
+              {isSaving ? t("providersSaving") : t("providersSave")}
+            </button>
+          </div>
+        </SettingsItem>
 
+        <HideInSettingsSearch>
           <div className="settings-subsection-heading">
             <strong>{t("agentContextSuggestedHintsTitle")}</strong>
             <p>{t("agentContextSuggestedHintsDescription")}</p>
           </div>
+        </HideInSettingsSearch>
 
-          <label className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("agentContextSuggestedLatexTitle")}</strong>
-              <p>{t("agentContextSuggestedLatexDescription")}</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={latexMathRendering}
-              onChange={(e) => {
-                const nextLatexMathRendering = e.target.checked;
-                setLatexMathRendering(nextLatexMathRendering);
-                recomputeHasChanges({
-                  latexMathRendering: nextLatexMathRendering,
-                });
-                setSaveError(null);
-              }}
-              aria-label={t("agentContextSuggestedLatexTitle")}
-            />
-          </label>
+        <SettingsItem
+          as="label"
+          label={t("agentContextSuggestedLatexTitle")}
+          description={t("agentContextSuggestedLatexDescription")}
+          layout="custom"
+        >
+          <div className="settings-item-info">
+            <strong>{t("agentContextSuggestedLatexTitle")}</strong>
+            <p>{t("agentContextSuggestedLatexDescription")}</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={latexMathRendering}
+            onChange={(e) => {
+              const nextLatexMathRendering = e.target.checked;
+              setLatexMathRendering(nextLatexMathRendering);
+              recomputeHasChanges({
+                latexMathRendering: nextLatexMathRendering,
+              });
+              setSaveError(null);
+            }}
+            aria-label={t("agentContextSuggestedLatexTitle")}
+          />
+        </SettingsItem>
 
+        <HideInSettingsSearch>
           <div
             className="settings-item"
             style={{ flexDirection: "column", alignItems: "stretch" }}
@@ -285,8 +308,8 @@ export function AgentContextSettings() {
               {effectiveAgentContext ?? t("agentContextPreviewEmpty")}
             </pre>
           </details>
-        </div>
-      </HideInSettingsSearch>
+        </HideInSettingsSearch>
+      </div>
 
       <div className="settings-group">
         <SettingsItem
@@ -309,29 +332,31 @@ export function AgentContextSettings() {
           />
         </SettingsItem>
 
-        <HideInSettingsSearch>
-          <div
-            className="settings-item"
-            style={{ flexDirection: "column", alignItems: "stretch" }}
-          >
-            <div className="settings-item-info">
-              <strong>{t("agentContextHeartbeatTextTitle")}</strong>
-              <p>{t("agentContextHeartbeatTextDescription")}</p>
-            </div>
-            <HeartbeatTextArea
-              className="settings-input"
-              value={heartbeatTurnText}
-              onChange={(value) => {
-                setHeartbeatTurnText(value);
-                recomputeHasChanges({
-                  heartbeatTurnText: value,
-                });
-                setSaveError(null);
-              }}
-              placeholder={DEFAULT_HEARTBEAT_TEXT}
-            />
+        <SettingsItem
+          label={t("agentContextHeartbeatTextTitle")}
+          description={t("agentContextHeartbeatTextDescription")}
+          layout="custom"
+          containerProps={{
+            style: { flexDirection: "column", alignItems: "stretch" },
+          }}
+        >
+          <div className="settings-item-info">
+            <strong>{t("agentContextHeartbeatTextTitle")}</strong>
+            <p>{t("agentContextHeartbeatTextDescription")}</p>
           </div>
-        </HideInSettingsSearch>
+          <HeartbeatTextArea
+            className="settings-input"
+            value={heartbeatTurnText}
+            onChange={(value) => {
+              setHeartbeatTurnText(value);
+              recomputeHasChanges({
+                heartbeatTurnText: value,
+              });
+              setSaveError(null);
+            }}
+            placeholder={DEFAULT_HEARTBEAT_TEXT}
+          />
+        </SettingsItem>
       </div>
 
       <HideInSettingsSearch>

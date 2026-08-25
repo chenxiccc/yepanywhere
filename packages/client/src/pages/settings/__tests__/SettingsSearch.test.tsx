@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsItem } from "../SettingsItem";
 import { SettingsSearchBar } from "../SettingsSearchBar";
 import {
+  HideInSettingsSearch,
   SettingsJumpTargetProvider,
   type SettingsSearchScope,
   SettingsSearchScopeProvider,
@@ -140,6 +147,38 @@ describe("SettingsItem under search scope", () => {
       </SettingsSearchScopeProvider>,
     );
     expect(screen.getByLabelText("Theme")).toBeTruthy();
+  });
+
+  it("searches custom row layouts without changing their content", () => {
+    render(
+      <SettingsSearchScopeProvider value={makeScope({ query: "typography" })}>
+        <SettingsItem
+          label="Typography"
+          layout="custom"
+          baseClassName="custom-settings-panel"
+        >
+          <input aria-label="Prose font" />
+        </SettingsItem>
+      </SettingsSearchScopeProvider>,
+    );
+
+    expect(screen.getByLabelText("Prose font")).toBeTruthy();
+    expect(document.querySelector(".custom-settings-panel")).toBeTruthy();
+    expect(screen.getByText("Appearance ›")).toBeTruthy();
+  });
+
+  it("reveals matched-row controls intentionally hidden from search alone", () => {
+    render(
+      <SettingsSearchScopeProvider value={makeScope({ query: "helper" })}>
+        <SettingsItem label="Helper target">
+          <HideInSettingsSearch>
+            <input aria-label="Helper target URL" />
+          </HideInSettingsSearch>
+        </SettingsItem>
+      </SettingsSearchScopeProvider>,
+    );
+
+    expect(screen.getByLabelText("Helper target URL")).toBeTruthy();
   });
 
   it("matches multi-word product names on Session Defaults-style rows", () => {
@@ -322,5 +361,33 @@ describe("SettingsSearchResults", () => {
       />,
     );
     expect(screen.getByText("settingsSearchNoResults")).toBeTruthy();
+  });
+
+  it("recounts rows loaded asynchronously by a pane", async () => {
+    function AsyncPane() {
+      const [loaded, setLoaded] = useState(false);
+      useEffect(() => setLoaded(true), []);
+      return loaded ? (
+        <SettingsItem label="Late setting">
+          <input aria-label="Late setting" />
+        </SettingsItem>
+      ) : null;
+    }
+
+    render(
+      <SettingsSearchResults
+        categories={[{ id: "async", label: "Async", description: "Pane" }]}
+        components={{ async: AsyncPane }}
+        query="late"
+        matchValues={false}
+        onJumpToItem={vi.fn()}
+        onOpenCategory={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByLabelText("Late setting")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByText("settingsSearchNoResults")).toBeNull(),
+    );
   });
 });

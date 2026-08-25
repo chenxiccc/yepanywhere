@@ -323,6 +323,14 @@ export function DevelopmentSettings() {
         <SettingsItem
           label={t("developmentSessionScrollMemoryTitle")}
           description={t("developmentSessionScrollMemoryDescription")}
+          keywords={[
+            t("developmentSessionScrollMemoryControlTitle"),
+            t("developmentSessionScrollMemoryKeywords"),
+            ...SESSION_SCROLL_BEHAVIOR_MODES.flatMap((mode) => [
+              t(sessionScrollMemoryModeLabelKeys[mode]),
+              t(sessionScrollMemoryModeDescriptionKeys[mode]),
+            ]),
+          ]}
           valueText={t(
             sessionScrollMemoryModeLabelKeys[sessionScrollBehaviorMode],
           )}

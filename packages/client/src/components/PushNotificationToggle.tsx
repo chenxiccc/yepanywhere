@@ -4,6 +4,7 @@ import {
   usePushNotifications,
 } from "../hooks/usePushNotifications";
 import { useI18n } from "../i18n";
+import { SettingsItem } from "../pages/settings/SettingsItem";
 
 /**
  * Toggle component for this browser's Web Push subscription and local
@@ -42,50 +43,68 @@ export function PushNotificationToggle() {
     );
 
     return (
-      <div className="settings-item">
-        <div className="settings-item-info">
-          <strong>{t("pushToggleTitle")}</strong>
-          <p>{error || t("pushToggleUnsupported")}</p>
-          {isDevModeDisabled && (
-            <div className="settings-info-box" style={{ marginTop: "0.5rem" }}>
-              <p>{t("pushToggleThisDeviceOnly")}</p>
-              <p>{t("pushToggleDevModeHint")}</p>
-            </div>
-          )}
-          <p style={{ marginTop: "0.5rem" }}>
-            <a
-              href="https://github.com/kzahel/yepanywhere/blob/main/docs/push-notifications.md"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t("pushToggleTroubleshooting")}
-            </a>
-          </p>
-        </div>
-      </div>
+      <SettingsItem
+        label={t("pushToggleTitle")}
+        description={error || t("pushToggleUnsupported")}
+        info={
+          <>
+            <strong>{t("pushToggleTitle")}</strong>
+            <p>{error || t("pushToggleUnsupported")}</p>
+            {isDevModeDisabled && (
+              <div
+                className="settings-info-box"
+                style={{ marginTop: "0.5rem" }}
+              >
+                <p>{t("pushToggleThisDeviceOnly")}</p>
+                <p>{t("pushToggleDevModeHint")}</p>
+              </div>
+            )}
+            <p style={{ marginTop: "0.5rem" }}>
+              <a
+                href="https://github.com/kzahel/yepanywhere/blob/main/docs/push-notifications.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("pushToggleTroubleshooting")}
+              </a>
+            </p>
+          </>
+        }
+      />
     );
   }
 
   // Permission denied - show how to fix
   if (permission === "denied") {
     return (
-      <div className="settings-item">
-        <div className="settings-item-info">
-          <strong>{t("pushToggleTitle")}</strong>
-          <p className="settings-warning">{t("pushToggleBlocked")}</p>
-        </div>
-      </div>
+      <SettingsItem
+        label={t("pushToggleTitle")}
+        description={t("pushToggleBlocked")}
+        info={
+          <>
+            <strong>{t("pushToggleTitle")}</strong>
+            <p className="settings-warning">{t("pushToggleBlocked")}</p>
+          </>
+        }
+      />
     );
   }
 
   return (
     <>
-      <div className="settings-item">
-        <div className="settings-item-info">
-          <strong>{t("pushToggleTitle")}</strong>
-          <p>{t("pushToggleDescription")}</p>
-          {displayedError && <p className="settings-error">{displayedError}</p>}
-        </div>
+      <SettingsItem
+        label={t("pushToggleTitle")}
+        description={t("pushToggleDescription")}
+        info={
+          <>
+            <strong>{t("pushToggleTitle")}</strong>
+            <p>{t("pushToggleDescription")}</p>
+            {displayedError && (
+              <p className="settings-error">{displayedError}</p>
+            )}
+          </>
+        }
+      >
         <label className="toggle-switch">
           <input
             type="checkbox"
@@ -95,14 +114,13 @@ export function PushNotificationToggle() {
           />
           <span className="toggle-slider" />
         </label>
-      </div>
+      </SettingsItem>
 
       {isSubscribed && (
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("pushToggleNotifyInAppTitle")}</strong>
-            <p>{t("pushToggleNotifyInAppDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("pushToggleNotifyInAppTitle")}
+          description={t("pushToggleNotifyInAppDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -111,7 +129,7 @@ export function PushNotificationToggle() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
+        </SettingsItem>
       )}
     </>
   );

@@ -1,4 +1,5 @@
 import {
+  type HTMLAttributes,
   type ReactNode,
   useCallback,
   useEffect,
@@ -8,6 +9,7 @@ import {
 import { useI18n } from "../../i18n";
 import {
   renderSettingsSearchHighlight,
+  SettingsSearchScopeProvider,
   useSettingsJumpTarget,
   useSettingsSearchScope,
 } from "./SettingsSearchContext";
@@ -41,6 +43,21 @@ export interface SettingsItemProps {
   valueText?: string;
   /** Extra classes appended to `settings-item` (e.g. width modifiers). */
   className?: string;
+  /**
+   * Base class for a custom row shape. Defaults to `settings-item`; use the
+   * owning shared primitive when the setting already has one.
+   */
+  baseClassName?: string;
+  /**
+   * `custom` keeps the caller's complete row contents instead of injecting
+   * the standard info/control columns. Search and jump behavior still apply.
+   */
+  layout?: "standard" | "custom";
+  /** Native attributes for custom row containers. */
+  containerProps?: Omit<
+    HTMLAttributes<HTMLElement>,
+    "children" | "className" | "title"
+  >;
   /**
    * Custom info-block body for rows whose info is richer than
    * bold-label + description. `label`/`description` still drive search
@@ -86,6 +103,9 @@ export function SettingsItem({
   keywords,
   valueText,
   className,
+  baseClassName = "settings-item",
+  layout = "standard",
+  containerProps,
   info,
   children,
   after,
@@ -156,38 +176,71 @@ export function SettingsItem({
     : null;
 
   const itemClassName = [
-    "settings-item",
+    baseClassName,
     className,
+    layout === "custom" ? "settings-item--custom-layout" : null,
     scope ? "settings-search-match" : null,
     flash ? "settings-item--jump-flash" : null,
   ]
     .filter(Boolean)
     .join(" ");
 
-  return (
+  const row = (
     <>
       <RowElement
+        {...containerProps}
         className={itemClassName}
         data-settings-item={resolvedId}
         title={title}
         ref={setRef}
       >
-        <div className="settings-item-info">
-          {infoBody}
-          {scope && originLabel && (
-            <button
-              type="button"
-              className="settings-search-origin"
-              aria-label={t("settingsSearchJumpTo", { location: originLabel })}
-              onClick={() => scope.jumpToItem(resolvedId)}
-            >
-              {originLabel} ›
-            </button>
-          )}
-        </div>
-        {children}
+        {layout === "custom" ? (
+          <>
+            {children}
+            {scope && originLabel && (
+              <button
+                type="button"
+                className="settings-search-origin"
+                aria-label={t("settingsSearchJumpTo", {
+                  location: originLabel,
+                })}
+                onClick={() => scope.jumpToItem(resolvedId)}
+              >
+                {originLabel} ›
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="settings-item-info">
+              {infoBody}
+              {scope && originLabel && (
+                <button
+                  type="button"
+                  className="settings-search-origin"
+                  aria-label={t("settingsSearchJumpTo", {
+                    location: originLabel,
+                  })}
+                  onClick={() => scope.jumpToItem(resolvedId)}
+                >
+                  {originLabel} ›
+                </button>
+              )}
+            </div>
+            {children}
+          </>
+        )}
       </RowElement>
       {after}
     </>
   );
+
+  if (scope && matched && !scope.sectionMatched) {
+    return (
+      <SettingsSearchScopeProvider value={{ ...scope, sectionMatched: true }}>
+        {row}
+      </SettingsSearchScopeProvider>
+    );
+  }
+  return row;
 }

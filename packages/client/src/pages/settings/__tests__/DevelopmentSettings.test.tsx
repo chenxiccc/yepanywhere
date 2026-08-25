@@ -96,6 +96,8 @@ vi.mock("../../../i18n", () => ({
           developmentSessionScrollMemoryTitle: "Session Scroll Memory",
           developmentSessionScrollMemoryControlTitle: "Restore mode",
           developmentSessionScrollMemoryDescription: "Debug restore mode",
+          developmentSessionScrollMemoryKeywords:
+            "return to tab previously read position follow mode last viewed row reopen scroll restore",
           developmentSessionScrollMemoryModeLiveTail: "Live tail (default)",
           developmentSessionScrollMemoryModeLiveTailDescription:
             "Reopen at latest output",
@@ -210,12 +212,12 @@ describe("DevelopmentSettings", () => {
     expect(screen.getByText("Reopen at last viewed row")).toBeTruthy();
   });
 
-  it("finds session scroll memory in settings search", () => {
+  it("finds session scroll memory from remembered behavior", () => {
     render(
       <MemoryRouter>
         <SettingsSearchScopeProvider
           value={{
-            query: "session scroll memory",
+            query: "previously read position",
             matchValues: false,
             sectionMatched: false,
             categoryLabel: "Development",

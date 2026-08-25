@@ -25,6 +25,7 @@ import {
   setWaveformButtonBackgroundOpacityPercent,
 } from "../../../hooks/useWaveformButtonBackgroundOpacity";
 import { ToolbarSettings } from "../ToolbarSettings";
+import { SettingsSearchScopeProvider } from "../SettingsSearchContext";
 
 const state = vi.hoisted(() => {
   const defaultPresence = {
@@ -358,6 +359,26 @@ describe("ToolbarSettings", () => {
         .getByRole("slider", { name: "Microphone visibility" })
         .getAttribute("max"),
     ).toBe("1");
+  });
+
+  it("finds custom per-button settings in search", () => {
+    render(
+      <SettingsSearchScopeProvider
+        value={{
+          query: "attachments",
+          matchValues: false,
+          sectionMatched: false,
+          categoryLabel: "Toolbar",
+          jumpToItem: vi.fn(),
+        }}
+      >
+        <ToolbarSettings />
+      </SettingsSearchScopeProvider>,
+    );
+
+    expect(
+      screen.getByRole("slider", { name: "Attachments visibility" }),
+    ).toBeTruthy();
   });
 
   it("configures the browser-local Conversation View history window", () => {

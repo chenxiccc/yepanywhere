@@ -2361,6 +2361,7 @@
   "developmentSessionScrollMemoryTitle": "Session Scroll Memory",
   "developmentSessionScrollMemoryControlTitle": "Restore mode",
   "developmentSessionScrollMemoryDescription": "Browser-local debug setting for how reopened session transcripts restore scroll position. Include the selected mode in scroll bug reports.",
+  "developmentSessionScrollMemoryKeywords": "return to tab previously read position follow mode last viewed row reopen scroll restore",
   "developmentSessionScrollMemoryModeLiveTail": "Live tail (default)",
   "developmentSessionScrollMemoryModeLiveTailDescription": "Bottom snapshots reopen at the newest output and keep following. Scrolled-back snapshots restore their remembered row.",
   "developmentSessionScrollMemoryModeRememberPlace": "Remember place",

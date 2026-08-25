@@ -470,11 +470,9 @@ export function NotificationsSettings() {
         title={t("notificationsThisBrowserTitle")}
         description={t("notificationsThisBrowserDescription")}
       >
-        <HideInSettingsSearch>
-          <div className="settings-group">
-            <PushNotificationToggle />
-          </div>
-        </HideInSettingsSearch>
+        <div className="settings-group">
+          <PushNotificationToggle />
+        </div>
       </SettingsSection>
 
       <SettingsSection

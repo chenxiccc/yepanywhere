@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../i18n";
 import { EnvironmentSettings } from "../EnvironmentSettings";
+import { SettingsSearchScopeProvider } from "../SettingsSearchContext";
 
 const { getEnvSettings } = vi.hoisted(() => ({
   getEnvSettings: vi.fn(),
@@ -64,5 +65,38 @@ describe("EnvironmentSettings", () => {
     expect(
       screen.getByRole("option", { name: "All documented variables (2)" }),
     ).toHaveProperty("selected", true);
+  });
+
+  it("searches unset documented variables without changing the filter", async () => {
+    getEnvSettings.mockResolvedValue({
+      entries: [
+        {
+          name: "HOST",
+          group: "Server & network",
+          description: "Extra bind interface.",
+          secret: false,
+          set: false,
+        },
+      ],
+    });
+
+    render(
+      <I18nProvider>
+        <SettingsSearchScopeProvider
+          value={{
+            query: "host",
+            matchValues: false,
+            sectionMatched: false,
+            categoryLabel: "Environment",
+            jumpToItem: vi.fn(),
+          }}
+        >
+          <EnvironmentSettings />
+        </SettingsSearchScopeProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText("HOST")).toBeTruthy();
+    expect(screen.queryByLabelText("Show")).toBeNull();
   });
 });
