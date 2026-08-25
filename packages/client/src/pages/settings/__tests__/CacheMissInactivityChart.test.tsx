@@ -80,6 +80,31 @@ describe("bucketByInactivity", () => {
     expect(bucket).toMatchObject({ misses: 1, hits: 1 });
   });
 
+  it("counts expected expiry as a miss rather than a cache hit", () => {
+    const buckets = bucketByInactivity([
+      record({
+        elapsedSinceExpectedCacheMs: 70 * 60_000,
+        reason: "warm-session-cache-expiry",
+        outcome: "expected-cache-expiry",
+        exception: false,
+        wastedInputTokens: 12_000,
+        expectedInputCost: {
+          state: "expected-new-content",
+          source: "warm-session",
+          prefixBasis: "same-session-prefix",
+          freshEnough: false,
+          providerFreshWindowMinutes: 60,
+        },
+      }),
+    ]);
+
+    expect(buckets[0]).toMatchObject({
+      misses: 1,
+      hits: 0,
+      wastedTokens: 12_000,
+    });
+  });
+
   it("creates a doubling bucket for arbitrarily long gaps", () => {
     const buckets = bucketByInactivity([
       record({

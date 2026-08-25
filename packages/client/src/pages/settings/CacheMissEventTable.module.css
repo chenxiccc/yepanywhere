@@ -66,7 +66,7 @@
 
 .table {
   width: 100%;
-  min-width: 28rem;
+  min-width: 44rem;
   border-collapse: collapse;
   table-layout: fixed;
   color: var(--text-primary);
@@ -91,11 +91,11 @@
 }
 
 .tupleColumn {
-  width: 24%;
+  width: 21%;
 }
 
-.seenColumn {
-  width: 12%;
+.eventTimeColumn {
+  width: 15%;
 }
 
 .resultColumn,
@@ -175,6 +175,16 @@
   color: var(--text-muted);
 }
 
+.eventTimestamp {
+  display: grid;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
 .messageReference {
   display: flex;
   align-items: center;
@@ -213,6 +223,11 @@
 
 .hit {
   color: var(--success-color, var(--app-yep-green));
+  font-weight: 650;
+}
+
+.expectedMiss {
+  color: var(--text-muted);
   font-weight: 650;
 }
 

@@ -155,6 +155,19 @@ and omits the additive field from writes and undo restores. Existing capability
 meanings and older behavior remain unchanged. It is version-implied from
 `0.7.2`.
 
+`cache-miss-billing-expected-expiry` owns the additive
+`includeExpectedExpiry=1` query on
+`GET /api/settings/cache-miss-billing/events`, the post-window outcome and
+`expectedInputCost.freshEnough: false` records it reveals, and the distinct
+`cache-miss-billing-expected-expiry` live event. The ordinary optional-feature
+corpus is `v0.7.0` (2026-07-25) and `v0.6.2` (2026-07-11); both lack the query,
+records, event, and capability. Without permanent ID 49, the client hides the
+default-off evidence toggle, omits the query, and listens only for the legacy
+live event. The legacy route filters expected-expiry evidence before applying
+its limit, and the legacy live event never carries it. Existing capability
+meanings and older behavior remain unchanged. It is version-implied from
+`0.7.2`.
+
 `project-code-names` owns the additive `codeName` field on project list,
 detail, and create responses; `PATCH /api/projects/:projectId/code-name`; and
 the `project-code-names-changed` invalidation event. The ordinary optional
@@ -369,9 +382,10 @@ the same ledger:
 | 46 | server | 0.7.2 | `project-code-names` |
 | 47 | server | 0.7.2 | `git-file-revision` |
 | 48 | server | 0.7.2 | `codex-stream-durable-id-alignment` |
+| 49 | server | 0.7.2 | `cache-miss-billing-expected-expiry` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 49; retired rows stay in the ledger as reserved IDs.
+ID 50; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

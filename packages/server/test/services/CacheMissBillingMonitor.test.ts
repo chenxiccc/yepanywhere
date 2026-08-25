@@ -453,6 +453,111 @@ describe("CacheMissBillingMonitor", () => {
     }
   });
 
+  it("records a miss after the provider freshness window as expected expiry", async () => {
+    const { monitor, addCacheMissBillingEvent, emit } = monitorWith({
+      enabled: true,
+      showToasts: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 0,
+      ignoreAfterMinutes: 0,
+    });
+    const process = fakeProcess();
+    const startedAt = Date.now();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(startedAt)
+      .mockReturnValue(startedAt + 62 * 60_000);
+    try {
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 5,
+          cache_read_input_tokens: 100_000,
+        }),
+      );
+      monitor.observeUserTurnStarted(process, startedAt + 61 * 60_000);
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 100_005,
+          cache_read_input_tokens: 0,
+        }),
+      );
+
+      await waitFor(() =>
+        expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(1),
+      );
+      expect(addCacheMissBillingEvent.mock.calls[0]?.[1]).toMatchObject({
+        reason: "warm-session-cache-expiry",
+        outcome: "expected-cache-expiry",
+        exception: false,
+        elapsedSinceExpectedCacheMs: 61 * 60_000,
+        completeProbabilitySample: true,
+        expectedInputCost: {
+          freshEnough: false,
+          providerFreshWindowMinutes: 60,
+        },
+      });
+      expect(emit.mock.calls[0]?.[0]).toMatchObject({
+        type: "cache-miss-billing-expected-expiry",
+        showToast: false,
+      });
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("records a hit after the provider freshness window as expected evidence", async () => {
+    const { monitor, addCacheMissBillingEvent, emit } = monitorWith({
+      enabled: true,
+      showToasts: true,
+      minimumWastedTokens: 10_000,
+      recentActivityMinutes: 0,
+      ignoreAfterMinutes: 0,
+    });
+    const process = fakeProcess();
+    const startedAt = Date.now();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(startedAt)
+      .mockReturnValue(startedAt + 62 * 60_000);
+    try {
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 5,
+          cache_read_input_tokens: 100_000,
+        }),
+      );
+      monitor.observeUserTurnStarted(process, startedAt + 61 * 60_000);
+      monitor.observeMessage(
+        process,
+        claudeAssistantMessage({
+          input_tokens: 50,
+          cache_read_input_tokens: 100_500,
+        }),
+      );
+
+      await waitFor(() =>
+        expect(addCacheMissBillingEvent).toHaveBeenCalledTimes(1),
+      );
+      expect(addCacheMissBillingEvent.mock.calls[0]?.[1]).toMatchObject({
+        reason: "warm-session-cache-hit",
+        outcome: "expected-cache-hit",
+        exception: false,
+        elapsedSinceExpectedCacheMs: 61 * 60_000,
+        completeProbabilitySample: true,
+        expectedInputCost: { freshEnough: false },
+      });
+      expect(emit.mock.calls[0]?.[0]).toMatchObject({
+        type: "cache-miss-billing-expected-expiry",
+        showToast: false,
+      });
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("measures to provider input rather than assistant completion", async () => {
     const { monitor, addCacheMissBillingEvent } = monitorWith({
       enabled: true,

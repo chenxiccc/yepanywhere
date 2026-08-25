@@ -96,6 +96,39 @@ describe("CacheMissEventTable", () => {
     expect(screen.getAllByRole("link", { name: "Open" })).toHaveLength(2);
   });
 
+  it("counts expected expiry as a miss and labels it as expected", () => {
+    renderTable([
+      record("expiry", {
+        reason: "warm-session-cache-expiry",
+        outcome: "expected-cache-expiry",
+        exception: false,
+        expectedInputCost: {
+          state: "expected-new-content",
+          source: "warm-session",
+          prefixBasis: "same-session-prefix",
+          freshEnough: false,
+          providerFreshWindowMinutes: 60,
+        },
+      }),
+    ]);
+
+    expect(screen.getByText(/1 events · 1 misses/)).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "Expected miss" })).toBeTruthy();
+  });
+
+  it("shows the event's exact timestamp instead of a relative age", () => {
+    const timestamp = "2026-08-23T12:34:56.000Z";
+    const { container } = renderTable([record("timed", { timestamp })]);
+
+    const time = container.querySelector(
+      `tr[tabindex="-1"] time[datetime="${timestamp}"]`,
+    );
+    expect(time).toBeTruthy();
+    expect(time?.textContent).toMatch(/\d/);
+    expect(time?.textContent).toContain(":");
+    expect(time?.textContent).not.toContain("now");
+  });
+
   it("collapses a provider/model outline group", () => {
     renderTable([record("miss"), record("other")]);
 

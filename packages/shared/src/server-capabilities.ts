@@ -938,6 +938,32 @@ export const SERVER_CAPABILITIES = {
         "Older servers interpret recentActivityMinutes as a lower no-alert window, so the upper cutoff requires an additive field and permanent client gate.",
     },
   },
+  cacheMissBillingExpectedExpiry: {
+    id: CAPABILITY_ID_ALLOCATIONS.cacheMissBillingExpectedExpiry.id,
+    name: "cache-miss-billing-expected-expiry",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server records post-freshness cache reads and input costs as expected expiry evidence behind an opt-in query and live event.",
+    clientFallback:
+      "Hide the expected-expiry evidence toggle, omit the query field, and listen only for ordinary cache-billing events.",
+    serverContract: {
+      routes: ["GET /api/settings/cache-miss-billing/events"],
+      requestFields: ["includeExpectedExpiry"],
+      responseFields: [
+        "events[].expectedInputCost.freshEnough",
+        "events[].outcome",
+      ],
+      events: ["cache-miss-billing-expected-expiry"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older clients must not receive expected long-idle evidence through the legacy response or alert-oriented live event.",
+    },
+  },
   gitLiveWorktreeSetting: {
     id: CAPABILITY_ID_ALLOCATIONS.gitLiveWorktreeSetting.id,
     name: "git-live-worktree-setting",
@@ -1990,6 +2016,8 @@ export const GIT_LIVE_WORKTREE_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.gitLiveWorktreeSetting.name;
 export const CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY =
   SERVER_CAPABILITIES.cacheMissBillingIgnoreAfter.name;
+export const CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY =
+  SERVER_CAPABILITIES.cacheMissBillingExpectedExpiry.name;
 export const GIT_INCOMING_COMMITS_CAPABILITY =
   SERVER_CAPABILITIES.gitIncomingCommits.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =

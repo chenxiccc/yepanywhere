@@ -62,6 +62,33 @@
   margin-top: var(--space-3);
 }
 
+.expectedExpiryToggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.expectedExpiryToggle input {
+  margin-top: 0.2rem;
+}
+
+.expectedExpiryToggle > span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.expectedExpiryToggle strong {
+  font-size: var(--font-size-sm);
+}
+
+.expectedExpiryToggle span span {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .sliderStack {
   display: flex;
   flex: 1 1 auto;

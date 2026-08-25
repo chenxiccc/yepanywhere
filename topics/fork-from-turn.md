@@ -419,7 +419,8 @@ Cache-affinity contract and implementation plan:
   `ENABLE_PROMPT_CACHING_1H=1`; current Codex app-server defaults to a
   conservative 10-minute measured window until a protocol refresh exposes a
   stronger cache-retention/routing contract.
-- **Record both misses and successful hits as billing evidence.** When enabled,
+- **Record misses, successful hits, and expected expiry as billing evidence.**
+  When enabled,
   YA records provider usage observations for Claude and Codex turns where the
   expected-input-cost state is expected-free: the first assistant usage from a YA
   fork (including retitle, recap, and fork-after-summary helper/target forks),
@@ -436,6 +437,10 @@ Cache-affinity contract and implementation plan:
   session link. This answers the economically important question: did a
   byte-identical retained prefix actually land on a backend/cache tier that
   reused the prefix, or did the provider assess full input cost?
+  Beyond the configured provider freshness window, the same measurable miss is
+  retained as expected-cache-expiry and a clean hit remains denominator
+  evidence. Both are unexceptional, never alert, and are hidden behind the
+  evidence-wide Include expected expiry filter.
 - **Surface unexpected recomputes where the user can act.** The same setting
   controls an optional popup. When enabled, every unexpected cache-billing
   recompute emits an in-app warning with an Open Session action. The

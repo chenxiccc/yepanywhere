@@ -3,6 +3,7 @@ import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BANG_COMMANDS_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
   CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
@@ -146,6 +147,12 @@ describe("Version Routes", () => {
   it("advertises the cache-billing ignore-after setting", () => {
     expect(getServerCapabilities()).toContain(
       CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
+    );
+  });
+
+  it("advertises expected cache-expiry evidence", () => {
+    expect(getServerCapabilities()).toContain(
+      CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
     );
   });
 

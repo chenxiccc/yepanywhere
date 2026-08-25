@@ -296,8 +296,12 @@ export class CacheMissBillingMonitor {
     const warmExpected =
       elapsedSinceWarmObservationMs !== undefined &&
       elapsedSinceWarmObservationMs <= providerFreshWindowMinutes * 60_000;
+    const expectedCacheExpired =
+      !forkExpected &&
+      elapsedSinceWarmObservationMs !== undefined &&
+      !warmExpected;
 
-    if (!forkExpected && !warmExpected) {
+    if (!forkExpected && !warmExpected && !expectedCacheExpired) {
       return;
     }
     const ignoreAfterMinutes = settings.ignoreAfterMinutes;
@@ -344,7 +348,7 @@ export class CacheMissBillingMonitor {
       prefixBasis: forkExpected
         ? "provider-fork-byte-identical"
         : "same-session-prefix",
-      freshEnough: true,
+      freshEnough: !expectedCacheExpired,
       providerFreshWindowMinutes,
     };
 
@@ -352,7 +356,9 @@ export class CacheMissBillingMonitor {
       expectedNewContentTokens !== undefined &&
       wastedInputTokens >= settings.minimumWastedTokens;
     const outcome: CacheMissBillingOutcome | null = missed
-      ? "unexpected-recompute"
+      ? expectedCacheExpired
+        ? "expected-cache-expiry"
+        : "unexpected-recompute"
       : this.shouldRecordHit(observation, elapsedSinceExpectedCacheMs)
         ? "expected-cache-hit"
         : null;
@@ -385,7 +391,9 @@ export class CacheMissBillingMonitor {
           : "fork-prefix-cache-miss"
         : outcome === "expected-cache-hit"
           ? "warm-session-cache-hit"
-          : "warm-session-cache-miss",
+          : outcome === "expected-cache-expiry"
+            ? "warm-session-cache-expiry"
+            : "warm-session-cache-miss",
       outcome,
       exception,
       ...(observation.messageId ? { messageId: observation.messageId } : {}),
@@ -425,7 +433,9 @@ export class CacheMissBillingMonitor {
         record,
       );
       this.options.eventBus?.emit({
-        type: "cache-miss-billing",
+        type: record.expectedInputCost.freshEnough
+          ? "cache-miss-billing"
+          : "cache-miss-billing-expected-expiry",
         record,
         showToast,
         timestamp: new Date().toISOString(),

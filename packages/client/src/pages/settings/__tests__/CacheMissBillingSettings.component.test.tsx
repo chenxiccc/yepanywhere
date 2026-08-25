@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
+  CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerSettings } from "../../../api/client";
 import { CacheMissBillingSettings } from "../CacheMissBillingSettings";
@@ -93,6 +96,17 @@ describe("CacheMissBillingSettings capability gate", () => {
     expect(
       screen.getByRole("spinbutton", {
         name: "cacheMissBillingIgnoreAfterTitle",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("shows the expected-expiry evidence toggle only to capable servers", () => {
+    state.capabilities = [CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY];
+    render(<CacheMissBillingSettings />);
+
+    expect(
+      screen.getByRole("checkbox", {
+        name: "cacheMissExpectedExpiryToggleTitle",
       }),
     ).toBeTruthy();
   });

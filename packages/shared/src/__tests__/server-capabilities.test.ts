@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CAPABILITY_ID_ALLOCATIONS,
   CAPABILITY_ID_ENCODING_VERSION,
+  CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
   CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
@@ -328,6 +329,24 @@ describe("server capability advertisements", () => {
       capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
       capabilityBits: [[1, 2 ** 11]],
     });
+  });
+
+  it("assigns expected cache expiry to permanent capability ID 49", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.cacheMissBillingExpectedExpiry.id).toBe(
+      49,
+    );
+    expect(
+      serverHasCapability(
+        { current: "0.7.2" },
+        CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
+      ),
+    ).toBe(false);
   });
 
   it("assigns the live worktree setting to permanent capability ID 44", () => {

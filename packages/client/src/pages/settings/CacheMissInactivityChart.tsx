@@ -13,6 +13,10 @@ export interface InactivityBucket {
   events: CacheMissBillingRecord[];
 }
 
+function isCacheMiss(event: CacheMissBillingRecord): boolean {
+  return event.outcome !== "expected-cache-hit";
+}
+
 export function bucketByInactivity(
   events: CacheMissBillingRecord[],
 ): InactivityBucket[] {
@@ -38,7 +42,7 @@ export function bucketByInactivity(
       events: [],
     };
     bucket.events.push(event);
-    if (event.outcome === "unexpected-recompute") {
+    if (isCacheMiss(event)) {
       bucket.misses += 1;
       bucket.wastedTokens += event.wastedInputTokens;
     } else {
@@ -249,7 +253,7 @@ function bucketByProvider(events: CacheMissBillingRecord[]): ProviderBucket[] {
       events: [],
     };
     bucket.events.push(event);
-    if (event.outcome === "unexpected-recompute") bucket.misses += 1;
+    if (isCacheMiss(event)) bucket.misses += 1;
     else bucket.hits += 1;
     buckets.set(event.provider, bucket);
   }

@@ -28,6 +28,10 @@ function eventTuple(event: CacheMissBillingRecord, unknownModel: string) {
   return `${event.provider} / ${event.model?.trim() || unknownModel}`;
 }
 
+function isCacheMiss(event: CacheMissBillingRecord): boolean {
+  return event.outcome !== "expected-cache-hit";
+}
+
 export function groupCacheMissEvents(
   events: CacheMissBillingRecord[],
   unknownModel: string,
@@ -44,7 +48,7 @@ export function groupCacheMissEvents(
       newestTimestampMs: 0,
     };
     group.events.push(event);
-    if (event.outcome === "unexpected-recompute") group.misses += 1;
+    if (isCacheMiss(event)) group.misses += 1;
     if (Number.isFinite(timestampMs)) {
       group.newestTimestampMs = Math.max(group.newestTimestampMs, timestampMs);
     }
@@ -68,9 +72,34 @@ function formatTokenCount(tokens: number): string {
 }
 
 function eventTokenCount(event: CacheMissBillingRecord): number {
-  return event.outcome === "unexpected-recompute"
+  return isCacheMiss(event)
     ? event.wastedInputTokens
     : (event.observedUsage.cacheReadTokens ?? 0);
+}
+
+function formatEventTimestamp(timestamp: string): {
+  date: string;
+  time: string;
+  title: string;
+} {
+  const timestampMs = Date.parse(timestamp);
+  if (!Number.isFinite(timestampMs)) {
+    return { date: timestamp, time: "", title: timestamp };
+  }
+  const date = new Date(timestampMs);
+  return {
+    date: new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(date),
+    time: new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(date),
+    title: date.toLocaleString(),
+  };
 }
 
 function formatIdleDuration(elapsedMs: number | undefined): string {
@@ -99,7 +128,7 @@ function eventMatchesOutcomeFilter(
 ): boolean {
   if (filter === "all") return true;
   return filter === "misses"
-    ? event.outcome === "unexpected-recompute"
+    ? isCacheMiss(event)
     : event.outcome === "expected-cache-hit";
 }
 
@@ -290,7 +319,7 @@ export function CacheMissEventTable({
           <table className={styles.table}>
             <colgroup>
               <col className={styles.tupleColumn} />
-              <col className={styles.seenColumn} />
+              <col className={styles.eventTimeColumn} />
               <col className={styles.resultColumn} />
               <col className={styles.gapColumn} />
               <col className={styles.tokensColumn} />
@@ -372,6 +401,9 @@ export function CacheMissEventTable({
                   </tr>
                   {!collapsed &&
                     group.events.map((event) => {
+                      const eventTimestamp = formatEventTimestamp(
+                        event.timestamp,
+                      );
                       const previousEventId =
                         eventNavigation.previousByEventId.get(event.id);
                       const navigationTitle = previousEventId
@@ -393,27 +425,29 @@ export function CacheMissEventTable({
                         >
                           <td aria-hidden="true" />
                           <td>
-                            <MessageAge
-                              timestampMs={Date.parse(event.timestamp)}
-                              nowMs={nowMs}
-                              className={styles.age}
-                              formatLabel={(age) =>
-                                age === "now"
-                                  ? t("cacheMissEventAgeNow")
-                                  : t("cacheMissEventAgeAgo", { age })
-                              }
-                            />
+                            <time
+                              className={styles.eventTimestamp}
+                              dateTime={event.timestamp}
+                              title={eventTimestamp.title}
+                            >
+                              <span>{eventTimestamp.date}</span>
+                              <span>{eventTimestamp.time}</span>
+                            </time>
                           </td>
                           <td
                             className={
-                              event.outcome === "unexpected-recompute"
-                                ? styles.miss
-                                : styles.hit
+                              event.outcome === "expected-cache-hit"
+                                ? styles.hit
+                                : event.outcome === "expected-cache-expiry"
+                                  ? styles.expectedMiss
+                                  : styles.miss
                             }
                           >
-                            {event.outcome === "unexpected-recompute"
-                              ? t("cacheMissEventResultMiss")
-                              : t("cacheMissEventResultHit")}
+                            {event.outcome === "expected-cache-hit"
+                              ? t("cacheMissEventResultHit")
+                              : event.outcome === "expected-cache-expiry"
+                                ? t("cacheMissEventResultExpectedMiss")
+                                : t("cacheMissEventResultMiss")}
                           </td>
                           <td>
                             {formatIdleDuration(

@@ -1,4 +1,5 @@
 import {
+  CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
   CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
   type CacheMissBillingRecord,
@@ -81,10 +82,14 @@ export function filterCacheMissEvents(
   recencyHours: number | null,
   ignoreAfterMinutes: number,
   nowMs: number,
+  includeExpectedExpiry = false,
 ): CacheMissBillingRecord[] {
   const cutoffMs =
     recencyHours === null ? null : nowMs - recencyHours * 60 * 60_000;
   return events.filter((event) => {
+    if (!includeExpectedExpiry && !event.expectedInputCost.freshEnough) {
+      return false;
+    }
     const timestampMs = Date.parse(event.timestamp);
     if (
       cutoffMs !== null &&
@@ -108,12 +113,17 @@ export function CacheMissBillingSettings() {
     version,
     CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   );
+  const supportsExpectedExpiry = serverHasCapability(
+    version,
+    CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
+  );
   const basePath = useRemoteBasePath();
   const { settings, isLoading, error, updateSettings } = useServerSettings();
   const [events, setEvents] = useState<CacheMissBillingRecord[]>([]);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [recencyHours, setRecencyHours] = useState<number | null>(null);
   const [recencyText, setRecencyText] = useState("");
+  const [includeExpectedExpiry, setIncludeExpectedExpiry] = useState(false);
   const nowMs = useRelativeNow(60_000);
 
   const effective = effectiveCacheMissBillingSettings(
@@ -159,12 +169,13 @@ export function CacheMissBillingSettings() {
     recencyHours,
     effective.ignoreAfterMinutes,
     nowMs,
+    includeExpectedExpiry,
   );
 
   useEffect(() => {
     let cancelled = false;
     api
-      .getCacheMissBillingEvents(MAX_EVENTS)
+      .getCacheMissBillingEvents(MAX_EVENTS, supportsExpectedExpiry)
       .then((response) => {
         if (!cancelled) {
           setEvents(response.events);
@@ -183,10 +194,10 @@ export function CacheMissBillingSettings() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [supportsExpectedExpiry, t]);
 
   useEffect(() => {
-    return activityBus.on("cache-miss-billing", (event) => {
+    const addEvent = (event: { record: CacheMissBillingRecord }) => {
       setEvents((current) => {
         const next = [
           event.record,
@@ -194,8 +205,16 @@ export function CacheMissBillingSettings() {
         ];
         return next.slice(0, MAX_EVENTS);
       });
-    });
-  }, []);
+    };
+    const unsubscribe = activityBus.on("cache-miss-billing", addEvent);
+    const unsubscribeExpectedExpiry = supportsExpectedExpiry
+      ? activityBus.on("cache-miss-billing-expected-expiry", addEvent)
+      : undefined;
+    return () => {
+      unsubscribe();
+      unsubscribeExpectedExpiry?.();
+    };
+  }, [supportsExpectedExpiry]);
 
   const setRecencyFromSlider = (value: number) => {
     if (value === UNLIMITED_RECENCY_SLIDER_VALUE) {
@@ -493,6 +512,22 @@ export function CacheMissBillingSettings() {
                   })}
                 </span>
               </div>
+              {supportsExpectedExpiry && (
+                <label className={styles.expectedExpiryToggle}>
+                  <input
+                    type="checkbox"
+                    checked={includeExpectedExpiry}
+                    onChange={(event) =>
+                      setIncludeExpectedExpiry(event.currentTarget.checked)
+                    }
+                    aria-label={t("cacheMissExpectedExpiryToggleTitle")}
+                  />
+                  <span>
+                    <strong>{t("cacheMissExpectedExpiryToggleTitle")}</strong>
+                    <span>{t("cacheMissExpectedExpiryToggleDescription")}</span>
+                  </span>
+                </label>
+              )}
               <div className={styles.recencyInputs}>
                 <div className={styles.sliderStack}>
                   <input

@@ -220,7 +220,7 @@ export interface BrowserTabDisconnectedEvent {
 }
 
 export interface CacheMissBillingEvent {
-  type: "cache-miss-billing";
+  type: "cache-miss-billing" | "cache-miss-billing-expected-expiry";
   record: CacheMissBillingRecord;
   showToast: boolean;
   timestamp: string;
@@ -251,6 +251,7 @@ export interface ActivityEventMap {
   "browser-tab-connected": BrowserTabConnectedEvent;
   "browser-tab-disconnected": BrowserTabDisconnectedEvent;
   "cache-miss-billing": CacheMissBillingEvent;
+  "cache-miss-billing-expected-expiry": CacheMissBillingEvent;
   // Dev mode events
   "source-change": SourceChangeEvent;
   "backend-reloaded": undefined;
@@ -614,6 +615,7 @@ class ActivityBus {
       "browser-tab-connected",
       "browser-tab-disconnected",
       "cache-miss-billing",
+      "cache-miss-billing-expected-expiry",
       "source-change",
       "backend-reloaded",
       "worker-activity-changed",

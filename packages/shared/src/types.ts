@@ -230,11 +230,13 @@ export interface CacheMissBillingSettings {
 export type CacheMissBillingReason =
   | "fork-prefix-cache-miss"
   | "warm-session-cache-miss"
+  | "warm-session-cache-expiry"
   | "fork-prefix-cache-hit"
   | "warm-session-cache-hit";
 
 export type CacheMissBillingOutcome =
   | "unexpected-recompute"
+  | "expected-cache-expiry"
   | "expected-cache-hit";
 
 export interface ExpectedInputCostState {

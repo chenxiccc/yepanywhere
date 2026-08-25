@@ -62,6 +62,26 @@ describe("filterCacheMissEvents", () => {
       filterCacheMissEvents(events, null, 0, nowMs).map(({ id }) => id),
     ).toEqual(events.map(({ id }) => id));
   });
+
+  it("includes post-window evidence only when its toggle is on", () => {
+    const expectedExpiry = {
+      ...record("expected-expiry", "2026-08-20T11:30:00.000Z", 70 * 60_000),
+      reason: "warm-session-cache-expiry" as const,
+      outcome: "expected-cache-expiry" as const,
+      expectedInputCost: {
+        ...record("basis", "2026-08-20T11:30:00.000Z").expectedInputCost,
+        freshEnough: false,
+      },
+    };
+    const input = [events[0]!, expectedExpiry];
+
+    expect(
+      filterCacheMissEvents(input, null, 0, nowMs, false).map(({ id }) => id),
+    ).toEqual(["eligible"]);
+    expect(
+      filterCacheMissEvents(input, null, 0, nowMs, true).map(({ id }) => id),
+    ).toEqual(["eligible", "expected-expiry"]);
+  });
 });
 
 describe("cacheMissBillingSettingsForServer", () => {

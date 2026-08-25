@@ -295,7 +295,7 @@ export interface BrowserTabDisconnectedEvent {
 
 /** Event emitted when cache-billing usage accounting shows a hit or likely miss. */
 export interface CacheMissBillingEvent {
-  type: "cache-miss-billing";
+  type: "cache-miss-billing" | "cache-miss-billing-expected-expiry";
   record: CacheMissBillingRecord;
   showToast: boolean;
   timestamp: string;

@@ -1586,11 +1586,11 @@ export const api = {
   // Read-only file-access info (env-pin state + resolved hint paths)
   getFileAccessInfo: () => fetchJSON<FileAccessInfo>("/settings/file-access"),
 
-  getCacheMissBillingEvents: (limit = 200) =>
+  getCacheMissBillingEvents: (limit = 200, includeExpectedExpiry = false) =>
     fetchJSON<{ events: CacheMissBillingRecord[] }>(
       `/settings/cache-miss-billing/events?limit=${encodeURIComponent(
         String(limit),
-      )}`,
+      )}${includeExpectedExpiry ? "&includeExpectedExpiry=1" : ""}`,
     ),
 
   discoverHelperTargetModels: (baseUrl: string) =>

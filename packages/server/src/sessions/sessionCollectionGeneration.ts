@@ -40,6 +40,7 @@ const NON_COLLECTION_EVENT_TYPES: ReadonlySet<BusEvent["type"]> = new Set([
   "browser-tab-disconnected",
   "worker-activity-changed",
   "cache-miss-billing",
+  "cache-miss-billing-expected-expiry",
 ]);
 
 export function busEventChangesSessionCollection(event: BusEvent): boolean {

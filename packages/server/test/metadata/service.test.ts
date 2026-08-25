@@ -2,9 +2,46 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { WorkstreamId } from "@yep-anywhere/shared";
+import type {
+  CacheMissBillingRecord,
+  WorkstreamId,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataService } from "../../src/metadata/SessionMetadataService.js";
+
+function cacheMissRecord(
+  id: string,
+  overrides: Partial<CacheMissBillingRecord> = {},
+): CacheMissBillingRecord {
+  return {
+    id,
+    timestamp: "2026-08-25T12:00:00.000Z",
+    provider: "claude",
+    sessionId: "session-1",
+    projectId: "project-1" as CacheMissBillingRecord["projectId"],
+    sessionPath: "/projects/project-1/sessions/session-1",
+    reason: "warm-session-cache-miss",
+    outcome: "unexpected-recompute",
+    exception: true,
+    observedUsage: {
+      inputTokens: 100_000,
+      cacheReadTokens: 0,
+      totalContextTokens: 100_000,
+      uncachedInputTokens: 100_000,
+    },
+    expectedInputCost: {
+      state: "expected-new-content",
+      source: "warm-session",
+      prefixBasis: "same-session-prefix",
+      freshEnough: true,
+      providerFreshWindowMinutes: 60,
+    },
+    wastedInputTokens: 100_000,
+    freshWindowMinutes: 60,
+    expectedCacheSource: "warm-session",
+    ...overrides,
+  };
+}
 
 describe("SessionMetadataService", () => {
   let testDir: string;
@@ -161,6 +198,41 @@ describe("SessionMetadataService", () => {
 
       // Should start fresh
       expect(service.getAllMetadata()).toEqual({});
+    });
+  });
+
+  describe("cache miss billing events", () => {
+    it("hides expected expiry evidence unless the caller opts in", async () => {
+      await service.initialize();
+      await service.addCacheMissBillingEvent(
+        "session-1",
+        cacheMissRecord("unexpected"),
+      );
+      await service.addCacheMissBillingEvent(
+        "session-1",
+        cacheMissRecord("expected-expiry", {
+          timestamp: "2026-08-25T13:00:00.000Z",
+          reason: "warm-session-cache-expiry",
+          outcome: "expected-cache-expiry",
+          exception: false,
+          expectedInputCost: {
+            state: "expected-new-content",
+            source: "warm-session",
+            prefixBasis: "same-session-prefix",
+            freshEnough: false,
+            providerFreshWindowMinutes: 60,
+          },
+        }),
+      );
+
+      expect(service.getCacheMissBillingEvents().map(({ id }) => id)).toEqual([
+        "unexpected",
+      ]);
+      expect(
+        service
+          .getCacheMissBillingEvents(200, { includeExpectedExpiry: true })
+          .map(({ id }) => id),
+      ).toEqual(["expected-expiry", "unexpected"]);
     });
   });
 

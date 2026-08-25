@@ -175,8 +175,12 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       Number.isFinite(rawLimit) && rawLimit > 0
         ? Math.min(Math.floor(rawLimit), 500)
         : 200;
+    const includeExpectedExpiry = c.req.query("includeExpectedExpiry") === "1";
     return c.json({
-      events: sessionMetadataService?.getCacheMissBillingEvents(limit) ?? [],
+      events:
+        sessionMetadataService?.getCacheMissBillingEvents(limit, {
+          includeExpectedExpiry,
+        }) ?? [],
     });
   });
 

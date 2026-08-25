@@ -11,7 +11,8 @@ Status: implemented as of 2026-08-21 in
 `packages/server/src/services/CacheMissBillingMonitor.ts`, surfaced in
 Settings → Cache Billing. Default off. The idle-gap boundary distinguishes
 human from automatic provider turns, and mixed-version support keeps the
-legacy recent-activity meaning while gating the additive ignore-after field.
+legacy recent-activity meaning while gating the additive ignore-after field
+and expected-expiry evidence.
 The per-project boot baseline described under [Session boot](#session-boot) is
 not built; it is tracked in
 [`gaps/cache-miss-boot-baseline.md`](../gaps/cache-miss-boot-baseline.md).
@@ -93,13 +94,29 @@ records a miss but does not flag it (`exception: false`) or show a popup; its
 default is 10 minutes. Later eligible misses are flagged because they represent
 an unexpected recompute after local activity has settled.
 
+After the provider freshness window, the same measurable samples remain worth
+recording but are not exceptions. A miss above the wasted-token floor becomes
+`expected-cache-expiry`; a clean read remains `expected-cache-hit`; both carry
+`expectedInputCost.freshEnough: false`, never set `exception`, and never show a
+popup. Keeping the hits preserves the denominator for long-idle probability
+samples.
+
 The optional ignore-after cutoff excludes both hits and misses beyond its
 duration so the event list, totals, and probability denominators describe the
-same population. Zero means no additional cutoff beyond the provider freshness
-window. It is serialized separately as `ignoreAfterMinutes` and exposed only
-when the server advertises `cache-miss-billing-ignore-after`. Without the
-capability, the client keeps the legacy recent-activity control and omits the
-new field from writes and undo restores.
+same population. Zero means no upper cutoff. It is serialized separately as
+`ignoreAfterMinutes` and exposed only when the server advertises
+`cache-miss-billing-ignore-after`. Without the capability, the client keeps the
+legacy recent-activity control and omits the new field from writes and undo
+restores.
+
+Expected-expiry evidence is a separately gated optional surface. A capable
+client requests `includeExpectedExpiry=1`, listens for
+`cache-miss-billing-expected-expiry`, and offers a default-off **Include
+expected expiry** toggle that filters the table and every chart together. The
+legacy route response filters these records before applying its limit, and the
+legacy `cache-miss-billing` live event never carries them, so older clients
+keep their prior behavior. Capability `cache-miss-billing-expected-expiry`
+owns this contract.
 
 The UI's separate recency filter limits records by event timestamp. Its 1–96h
 slider ends in an unlimited notch, and a blank numeric value also means
@@ -113,11 +130,13 @@ tail. The charts omit ranges containing no observations.
 The table adds a browser-local result filter, defaulting to misses and
 persisting Misses / Hits / All across revisits. It does not filter the charts:
 clean hits remain the denominator for miss probability even when the table is
-showing misses only. Table columns distinguish when YA recorded an event
-(`Seen`) from its measured human-turn delay (`Gap`). Rows from one session
-share a color marker, while clicking a numbered `Msg` jumps to the next older
-visible event from that session; the full provider id remains available on
-hover.
+showing misses only. Table columns distinguish the provider usage event time
+from its measured human-turn delay (`Gap`). Each record's `timestamp` is
+created when YA observes that event, not from session last activity. The table
+renders its exact local date and time under `Event`. Rows
+from one session share a color marker, while clicking a numbered `Msg` jumps to
+the next older visible event from that session; the full provider id remains
+available on hover.
 
 ## Design decisions
 
@@ -131,11 +150,10 @@ hover.
   re-written trailing segments), well below a prefix recompute worth seeing.
 - `recentActivityMinutes` 10 — record short-delay misses for the distribution,
   but do not flag them or show popups.
-- ignore-after 0 — do not impose another measurement cutoff inside the
-  provider freshness window.
+- ignore-after 0 — do not impose an upper measurement cutoff.
 - `providerFreshWindowMinutes` claude 60 / codex 10 — how long YA expects a
-  cache to exist at all. Beyond it, no expectation is formed and nothing is
-  recorded.
+  cache to remain warm. Beyond it, measured costs and hits are recorded as
+  expected expiry evidence.
 
 These are calibration guesses, not measurements. The recorded distribution is
 what should eventually set them.

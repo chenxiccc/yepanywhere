@@ -312,6 +312,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "codex-stream-durable-id-alignment",
     introducedIn: "0.7.2",
   },
+  cacheMissBillingExpectedExpiry: {
+    id: 49,
+    direction: "server",
+    name: "cache-miss-billing-expected-expiry",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

@@ -293,13 +293,20 @@ export class SessionMetadataService {
     ];
   }
 
-  getCacheMissBillingEvents(limit = 200): CacheMissBillingRecord[] {
+  getCacheMissBillingEvents(
+    limit = 200,
+    options: { includeExpectedExpiry?: boolean } = {},
+  ): CacheMissBillingRecord[] {
     const safeLimit = Math.max(0, Math.min(500, Math.floor(limit)));
     if (safeLimit === 0) {
       return [];
     }
     return Object.values(this.state.sessions)
       .flatMap((metadata) => metadata.cacheMissBillingEvents ?? [])
+      .filter(
+        (event) =>
+          options.includeExpectedExpiry || event.expectedInputCost.freshEnough,
+      )
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
       .slice(0, safeLimit);
   }
