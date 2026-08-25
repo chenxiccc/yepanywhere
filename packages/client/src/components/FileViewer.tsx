@@ -8,6 +8,7 @@ import {
   memo,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
   useCallback,
   useEffect,
@@ -20,6 +21,7 @@ import { usePublicShareContext } from "../contexts/PublicShareContext";
 import { useQuoteReply } from "../contexts/QuoteReplyContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useFileVersionControl } from "../hooks/useFileVersionControl";
+import { useQuoteReplyButtonMode } from "../hooks/useQuoteReplyButtonMode";
 import { useSelectionActions } from "../hooks/useMessageListSelectionQuote";
 import { useRegisterQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
@@ -30,11 +32,9 @@ import {
   writeClipboardText,
   writeClipboardTextLater,
 } from "../lib/clipboard";
-import { createCommentAnchor } from "../lib/commentAnchors";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { downloadBlob } from "../lib/imageActions";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
-import { getMarkdownSnippetForSubElement } from "../lib/markdownSelectionCopy";
 import { getRenderedFileClipboardPayload } from "../lib/renderedFileClipboard";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
 import {
@@ -85,6 +85,7 @@ import {
 } from "./MarkdownPreview";
 import { Modal } from "./ui/Modal";
 import { ViewerSelectAllButton } from "./ViewerSelectAllButton";
+import { ParagraphQuoteRail } from "./ParagraphQuoteRail";
 
 export interface FileViewerSource {
   loadFile: (
@@ -137,9 +138,6 @@ interface FileViewerProps {
 }
 
 export type FileViewerMode = "full" | "range";
-
-const MARKDOWN_COMMENT_BLOCK_SELECTOR =
-  "p, li, blockquote, pre, h1, h2, h3, h4, h5, h6, tr";
 
 /**
  * Format file size for display.
@@ -364,6 +362,7 @@ export const FileViewer = memo(function FileViewer({
 }: FileViewerProps) {
   const { t } = useI18n();
   const quoteTextBlock = useQuoteReply();
+  const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
   const transport = useCurrentSourceRuntime().transport;
   const publicShareContext = usePublicShareContext();
   const viewIdentity = `${projectId}\0${filePath}\0${diffMode ?? "source"}`;
@@ -478,43 +477,20 @@ export const FileViewer = memo(function FileViewer({
     },
     [],
   );
-  const handleMarkdownPreviewClick = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      handleLocalResourceClick(event);
+  const handleViewerBodyPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (
-        event.defaultPrevented ||
-        !quoteTextBlock ||
-        !(event.target instanceof Element) ||
-        event.target.closest(
-          "button, input, textarea, select, a[href], [contenteditable='true']",
-        )
+        event.button > 0 ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            "button, input, textarea, select, a[href], [contenteditable='true']",
+          ))
       ) {
         return;
       }
-      const selection = event.currentTarget.ownerDocument.getSelection();
-      if (selection && !selection.isCollapsed) {
-        return;
-      }
-      const sourceElement = fileViewerBodyRef.current;
-      const blockElement = event.target.closest<HTMLElement>(
-        MARKDOWN_COMMENT_BLOCK_SELECTOR,
-      );
-      if (
-        !sourceElement ||
-        !blockElement ||
-        !event.currentTarget.contains(blockElement)
-      ) {
-        return;
-      }
-      const snippet = getMarkdownSnippetForSubElement(
-        sourceElement,
-        blockElement,
-      );
-      if (snippet) {
-        quoteTextBlock(createCommentAnchor(snippet));
-      }
+      event.currentTarget.focus({ preventScroll: true });
     },
-    [handleLocalResourceClick, quoteTextBlock],
+    [],
   );
   const mediaSource = useMemo(
     () => source.createMediaSource?.(fileData),
@@ -952,14 +928,11 @@ export const FileViewer = memo(function FileViewer({
       if (showPreview && hasMarkdownPreview && renderedMarkdownHtml) {
         return (
           <MarkdownPreview
-            className={
-              quoteTextBlock ? viewerStyles.commentableMarkdown : undefined
-            }
             html={renderedMarkdownHtml}
             sourcePath={filePath}
             density={markdownDensity}
             ariaLabel={t("fileViewerPreview" as never)}
-            onClick={handleMarkdownPreviewClick}
+            onClick={handleLocalResourceClick}
             onContextMenu={handleLocalResourceContextMenu}
             onKeyDown={handleLocalResourceKeyDown}
             ref={markdownPreviewRef}
@@ -1230,10 +1203,16 @@ export const FileViewer = memo(function FileViewer({
           </button>
         )}
         {!standalone && (
-          <button
-            type="button"
+          <a
             className="file-viewer-action"
-            onClick={handleOpenInNewTab}
+            href={imageOpenUrl ?? standaloneViewerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={
+              imageOpenUrl
+                ? openImageInNewTabLabel
+                : t("fileViewerOpenNewTab" as never)
+            }
             title={
               imageOpenUrl
                 ? openImageInNewTabLabel
@@ -1241,7 +1220,7 @@ export const FileViewer = memo(function FileViewer({
             }
           >
             <ExternalLinkIcon />
-          </button>
+          </a>
         )}
         {onMinimize && (
           <button
@@ -1351,10 +1330,27 @@ export const FileViewer = memo(function FileViewer({
       {localResourceContextMenu}
       {loadedIsImage ? imageActions.contextMenuElement : null}
       <div
-        className={`file-viewer-body ${viewerStyles.body}`}
+        className={`file-viewer-body ${viewerStyles.body} ${
+          quoteTextBlock && showPreview && hasMarkdownPreview
+            ? viewerStyles.quoteReplySurface
+            : ""
+        }`}
         ref={fileViewerBodyRef}
+        tabIndex={-1}
+        onPointerDown={handleViewerBodyPointerDown}
       >
         {renderContent()}
+        {quoteTextBlock && showPreview && hasMarkdownPreview ? (
+          <ParagraphQuoteRail
+            alwaysShowQuoteCircle={quoteReplyButtonMode === "paragraph-always"}
+            contentRef={markdownPreviewRef}
+            layoutKey={`${filePath}\0${renderedMarkdownHtml ?? ""}`}
+            onQuoteBlock={quoteTextBlock}
+            paragraphQuoteCirclesEnabled={quoteReplyButtonMode !== "block"}
+            sourceRef={fileViewerBodyRef}
+            surfaceRef={fileViewerBodyRef}
+          />
+        ) : null}
         {standalone ? (
           <FileViewerSelectionActions
             containerRef={fileViewerBodyRef}

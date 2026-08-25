@@ -73,6 +73,7 @@ let fileExistsIdentities = new WeakMap<(...args: never[]) => unknown, number>();
 function fileExistsIdentity(
   fileExists:
     | ((absolutePath: string, relativePath: string) => boolean)
+    | ((paths: readonly string[]) => ReadonlySet<string>)
     | ((paths: readonly string[]) => Promise<ReadonlySet<string>>)
     | undefined,
 ): number | null {
@@ -97,7 +98,9 @@ function markdownCacheKey(
     options?.quartoMarkdown ?? false,
     projectLinks?.projectId ?? null,
     projectLinks?.projectPath ?? null,
+    projectLinks?.pathDiscovery ?? "resolve",
     fileExistsIdentity(projectLinks?.fileExists),
+    fileExistsIdentity(projectLinks?.knownAbsoluteFilePaths),
     fileExistsIdentity(projectLinks?.resolveAbsoluteFilePaths),
   ]);
 }
@@ -160,7 +163,7 @@ async function renderMarkdownToHtmlUncached(
     retainable = false;
     projectLinks?.onUnversionedLookup?.();
   };
-  if (index) {
+  if (index && projectLinks?.pathDiscovery !== "known-only") {
     try {
       // Before rendering, so the synchronous membership questions the inline-code
       // linker asks mid-render are answered from cache.
@@ -211,8 +214,10 @@ async function renderMarkdownToHtmlUncached(
           projectId: projectLinks.projectId,
           projectPath: projectLinks.projectPath,
           index,
+          pathDiscovery: projectLinks.pathDiscovery,
           gateLookupsByShape: true,
           onUnversionedLookup: markUnversionedLookup,
+          knownAbsoluteFilePaths: projectLinks.knownAbsoluteFilePaths,
           resolveAbsoluteFilePaths: projectLinks.resolveAbsoluteFilePaths,
         })
       : html;

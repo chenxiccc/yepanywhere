@@ -169,14 +169,15 @@ menu.
    highlight text — or right-drag
    to select lines (see the line-select helper below) — to comment on a specific
    sub-range instead of the whole paragraph.
-5. **Rendered session-file block click.** In a session-owned rendered Markdown
-   preview, clicking a paragraph, list item, quote, code block, heading, or
-   table row sends that authored block through the same quote-comment pipeline.
-   The viewer stays open, the visible session composer receives and focuses the
-   quote, and the clicked block gets the ordinary comment tint. Links and other
-   interactive controls retain their own actions. A non-collapsed native text
-   selection wins over the click, so releasing a drag never also quotes the
-   block under the pointer.
+5. **Rendered session-file reply affordances.** A rendered Markdown file in a
+   session viewer uses the same quote-reply button mode as transcript prose:
+   block-only shows the whole-document `>` circle, paragraph-hover reveals one
+   circle per top-level rendered block, and paragraph-always keeps those
+   circles visible. Activating a circle quotes through the same source-aware
+   reply pipeline. Ordinary primary clicks only focus or select viewer content;
+   neither the paragraph layer nor selection actions may turn that click into
+   a quote or composer focus transfer. Links and other interactive controls
+   retain their own actions.
 
 The **Appearance** rows immediately after `> Reply Buttons` separately control
 selection quote, visible-text copy, source copy, rich copy, and new session.

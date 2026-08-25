@@ -57,12 +57,18 @@ describe("local resource path policy", () => {
       const policy = createLocalResourcePathPolicy({ allowedPaths: [root] });
 
       expect(
+        policy.findKnownAllowedFilePaths([allowedFile, outsideFile]),
+      ).toEqual(new Set());
+      expect(
         await policy.findAllowedFilePaths([
           allowedFile,
           outsideFile,
           path.join(root, "missing.md"),
           "/x",
         ]),
+      ).toEqual(new Set([allowedFile]));
+      expect(
+        policy.findKnownAllowedFilePaths([allowedFile, outsideFile]),
       ).toEqual(new Set([allowedFile]));
     } finally {
       await Promise.all([

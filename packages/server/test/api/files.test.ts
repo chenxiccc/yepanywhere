@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { watch } from "node:fs";
 import {
+  lstat,
   mkdir,
+  readdir,
   realpath,
   rm,
   symlink,
@@ -14,11 +17,36 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../setup/create-app.js";
 import { canonicalizeProjectPath } from "../../src/projects/paths.js";
 import {
+  __test__ as projectPathIndexTest,
+  getProjectPathIndex,
+  type PathIndexIo,
+} from "../../src/projects/projectPathIndex.js";
+import {
   initFileAccess,
   updateFileAccess,
 } from "../../src/middleware/file-access.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+async function primeProjectFiles(
+  projectPath: string,
+  relativePaths: readonly string[],
+): Promise<void> {
+  const index = await getProjectPathIndex(projectPath);
+  try {
+    await index.findExisting(relativePaths);
+  } finally {
+    index.release();
+  }
+}
 
 describe("Files API", () => {
   let mockSdk: MockClaudeSDK;
@@ -113,6 +141,10 @@ describe("Files API", () => {
         join(projectPath, "configs", "regtest.yml"),
         "input: $ROOT/input/request.txt\nreadme: README.md\n",
       );
+      await primeProjectFiles(projectPath, [
+        "configs/input/request.txt",
+        "README.md",
+      ]);
       const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
@@ -131,6 +163,62 @@ describe("Files API", () => {
       expect(json.highlightedHtml).toContain(
         `data-ya-path="${join(projectPath, "README.md")}"`,
       );
+    });
+
+    it("returns rendered text before cold path discovery settles", async () => {
+      await writeFile(
+        join(projectPath, "manifest.yml"),
+        "artifact: src/index.ts\n",
+      );
+      const probeStarted = deferred<void>();
+      const releaseProbe = deferred<void>();
+      const blockProbe = async () => {
+        probeStarted.resolve();
+        await releaseProbe.promise;
+      };
+      const io: PathIndexIo = {
+        async lstat(path) {
+          await blockProbe();
+          return lstat(path);
+        },
+        async readdir(path) {
+          await blockProbe();
+          return readdir(path, { withFileTypes: true });
+        },
+        watch(path, listener) {
+          return watch(path, { persistent: false }, (event, filename) =>
+            listener(event, filename),
+          );
+        },
+      };
+      const heldIndex = projectPathIndexTest.claimIndex(projectPath, { io });
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+      let response: Response | undefined;
+      const responsePromise = app
+        .request(
+          `/api/projects/${projectId}/files?path=manifest.yml&highlight=true`,
+        )
+        .then((resolved) => {
+          response = resolved;
+          return resolved;
+        });
+
+      try {
+        await probeStarted.promise;
+        expect(response).toBeDefined();
+      } finally {
+        releaseProbe.resolve();
+        heldIndex.release();
+      }
+
+      const resolvedResponse = await responsePromise;
+      expect(resolvedResponse.status).toBe(200);
+      const json = (await resolvedResponse.json()) as FileContentResponse;
+      expect(json.content).toBe("artifact: src/index.ts\n");
+      expect(json.highlightedHtml).toBeDefined();
     });
 
     it("links relative paths from an allowed file outside the project", async () => {
@@ -160,12 +248,28 @@ describe("Files API", () => {
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
-      const res = await app.request(
+      const coldRes = await app.request(
         `/api/projects/${projectId}/files?path=${encodeURIComponent(viewedFile)}&highlight=true`,
       );
 
-      expect(res.status).toBe(200);
-      const json = (await res.json()) as FileContentResponse;
+      expect(coldRes.status).toBe(200);
+      const coldJson = (await coldRes.json()) as FileContentResponse;
+      expect(coldJson.content).toContain("basis: basis.yml");
+
+      let json = coldJson;
+      await expect
+        .poll(
+          async () => {
+            const res = await app.request(
+              `/api/projects/${projectId}/files?path=${encodeURIComponent(viewedFile)}&highlight=true`,
+            );
+            expect(res.status).toBe(200);
+            json = (await res.json()) as FileContentResponse;
+            return json.highlightedHtml;
+          },
+          { interval: 10, timeout: 2_000 },
+        )
+        .toContain(`path=${encodeURIComponent(basisFile)}`);
       expect(json.highlightedHtml).toContain(
         `path=${encodeURIComponent(basisFile)}`,
       );
@@ -212,6 +316,7 @@ describe("Files API", () => {
     });
 
     it("renders Markdown previews with relative project media resolved", async () => {
+      await primeProjectFiles(projectPath, ["docs/peer.md"]);
       const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
@@ -259,6 +364,10 @@ describe("Files API", () => {
           "{{< include /shared/_methods.md >}}",
         ].join("\n"),
       );
+      await primeProjectFiles(projectPath, [
+        "docs/_introduction.qmd",
+        "shared/_methods.md",
+      ]);
       const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
@@ -294,6 +403,7 @@ describe("Files API", () => {
         join(projectPath, "docs", "assets", "frontier.png"),
         Buffer.from([0x89, 0x50, 0x4e, 0x47]),
       );
+      await primeProjectFiles(projectPath, ["docs/assets/frontier.svg"]);
       const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
@@ -370,6 +480,7 @@ describe("Files API", () => {
         join(projectPath, "docs", "references.md"),
         "See [Peer][peer]\n\nContext\n\n[peer]: peer.md",
       );
+      await primeProjectFiles(projectPath, ["docs/peer.md"]);
       const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
@@ -401,6 +512,7 @@ describe("Files API", () => {
           "tail\n".repeat(240_000),
         ].join("\n"),
       );
+      await primeProjectFiles(projectPath, ["docs/peer.md"]);
       const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),

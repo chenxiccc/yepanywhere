@@ -10,18 +10,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
-import {
-  createCommentAnchor,
-  type CommentAnchor,
-} from "../../lib/commentAnchors";
+import type { CommentAnchor } from "../../lib/commentAnchors";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import { useI18n } from "../../i18n";
-import {
-  getMarkdownSnippetForElement,
-  getMarkdownSnippetForSubElement,
-  registerMarkdownCopySource,
-} from "../../lib/markdownSelectionCopy";
+import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
 import { FileViewerModal } from "../FilePathLink";
 import {
   LocalFileModal,
@@ -32,6 +25,7 @@ import {
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 import { RenderModeGlyph } from "../ui/RenderModeGlyph";
 import { useTurnImageGalleryNavigation } from "../TurnImageGallery";
+import { ParagraphQuoteRail } from "../ParagraphQuoteRail";
 import { useGlossaryArtifact } from "../../contexts/GlossaryContext";
 import { annotateGlossaryHtml } from "../../lib/glossary/annotateGlossaryHtml";
 import {
@@ -40,27 +34,6 @@ import {
 } from "../../lib/turnInlineMedia";
 
 const EMPTY_LOCAL_MATH_PREVIEW = { html: "", changed: false };
-
-// Rendered block-level elements that get their own per-paragraph quote circle.
-const PARAGRAPH_BLOCK_SELECTOR =
-  "p, ul, ol, blockquote, pre, h1, h2, h3, h4, h5, h6, table";
-
-/**
- * Top-level rendered blocks inside the copy-source content — paragraphs, lists,
- * etc. — skipping blocks nested inside another block (e.g. a `<p>` inside an
- * `<li>`), so each gets exactly one quote circle.
- */
-function collectTopLevelBlocks(content: HTMLElement): HTMLElement[] {
-  const all = Array.from(
-    content.querySelectorAll<HTMLElement>(PARAGRAPH_BLOCK_SELECTOR),
-  );
-  return all.filter((element) => {
-    const parentBlock = element.parentElement?.closest(
-      PARAGRAPH_BLOCK_SELECTOR,
-    );
-    return !parentBlock || !content.contains(parentBlock);
-  });
-}
 
 function htmlToText(html: string): string {
   if (typeof document === "undefined") {
@@ -118,10 +91,6 @@ export const TextBlock = memo(function TextBlock({
     useState<HTMLElement | null>(null);
   const copySourceRef = useRef<HTMLDivElement>(null);
   const textBlockRef = useRef<HTMLDivElement>(null);
-  const paragraphBlocksRef = useRef<HTMLElement[]>([]);
-  const [paragraphTargets, setParagraphTargets] = useState<
-    { top: number; height: number }[]
-  >([]);
   const localMathPreview = useMemo(
     () => (isStreaming ? EMPTY_LOCAL_MATH_PREVIEW : renderFixedFontMath(text)),
     [isStreaming, text],
@@ -193,37 +162,6 @@ export const TextBlock = memo(function TextBlock({
       console.error("Failed to copy text:", err);
     }
   }, [text]);
-
-  const handleQuoteBlock = useCallback(() => {
-    const element = copySourceRef.current;
-    if (!element || !onQuoteBlock) {
-      return;
-    }
-    const snippet = getMarkdownSnippetForElement(element);
-    if (!snippet) {
-      return;
-    }
-    onQuoteBlock(createCommentAnchor(snippet));
-  }, [onQuoteBlock]);
-
-  const quoteParagraph = useCallback(
-    (index: number) => {
-      const sourceElement = copySourceRef.current;
-      const blockElement = paragraphBlocksRef.current[index];
-      if (!sourceElement || !blockElement || !onQuoteBlock) {
-        return;
-      }
-      const snippet = getMarkdownSnippetForSubElement(
-        sourceElement,
-        blockElement,
-      );
-      if (!snippet) {
-        return;
-      }
-      onQuoteBlock(createCommentAnchor(snippet));
-    },
-    [onQuoteBlock],
-  );
 
   useEffect(() => {
     const element = copySourceRef.current;
@@ -369,88 +307,25 @@ export const TextBlock = memo(function TextBlock({
     return () => host?.remove();
   }, [galleryActionTarget, renderItemId, showRendered, showStreamingContent]);
 
-  // Measure each rendered top-level block so a per-paragraph quote circle can
-  // sit at its end. Skipped while streaming (paragraph boundaries are still
-  // moving); re-measured on reflow via ResizeObserver.
-  useEffect(() => {
-    void paragraphLayoutKey;
-    const content = copySourceRef.current;
-    const block = textBlockRef.current;
-    if (
-      !onQuoteBlock ||
-      !paragraphQuoteCirclesEnabled ||
-      !content ||
-      !block ||
-      showStreamingContent
-    ) {
-      // Clear without churning state when already empty: the no-quote path must
-      // render identically to a TextBlock without quote circles. A stray extra
-      // render here disturbs other post-render content effects (inline media).
-      if (paragraphBlocksRef.current.length > 0) {
-        paragraphBlocksRef.current = [];
-        setParagraphTargets([]);
-      }
-      return;
-    }
-
-    const measure = () => {
-      const blocks = collectTopLevelBlocks(content);
-      const blockRect = block.getBoundingClientRect();
-      paragraphBlocksRef.current = blocks;
-      setParagraphTargets(
-        blocks.map((element) => {
-          const rect = element.getBoundingClientRect();
-          return { top: rect.top - blockRect.top, height: rect.height };
-        }),
-      );
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, [
-    onQuoteBlock,
-    paragraphLayoutKey,
-    paragraphQuoteCirclesEnabled,
-    showStreamingContent,
-  ]);
-
   return (
     <div
       ref={textBlockRef}
       className={`text-block text-block-assistant timeline-item${isStreaming ? " streaming" : ""}`}
       data-turn-image-source-id={renderItemId}
     >
-      {onQuoteBlock && (
-        <div className="text-block-quote-rail">
-          {paragraphQuoteCirclesEnabled && paragraphTargets.length > 0 ? (
-            paragraphTargets.map((target, index) => (
-              <button
-                key={index}
-                type="button"
-                className={`text-block-quote text-block-quote-paragraph ${alwaysShowQuoteCircle ? "always-visible" : ""}`}
-                style={{ top: `${target.top + target.height}px` }}
-                onClick={() => quoteParagraph(index)}
-                title={t("sessionQuoteBlock")}
-                aria-label={t("sessionQuoteBlock")}
-              >
-                &gt;
-              </button>
-            ))
-          ) : (
-            <button
-              type="button"
-              className={`text-block-quote text-block-quote-fallback ${alwaysShowQuoteCircle ? "always-visible" : ""}`}
-              onClick={handleQuoteBlock}
-              title={t("sessionQuoteBlock")}
-              aria-label={t("sessionQuoteBlock")}
-            >
-              &gt;
-            </button>
-          )}
-        </div>
-      )}
+      {onQuoteBlock ? (
+        <ParagraphQuoteRail
+          alwaysShowQuoteCircle={alwaysShowQuoteCircle}
+          contentRef={copySourceRef}
+          layoutKey={paragraphLayoutKey}
+          onQuoteBlock={onQuoteBlock}
+          paragraphQuoteCirclesEnabled={
+            paragraphQuoteCirclesEnabled && !showStreamingContent
+          }
+          sourceRef={copySourceRef}
+          surfaceRef={textBlockRef}
+        />
+      ) : null}
       <div className="text-block-actions">
         {canToggleRendered && (
           <button

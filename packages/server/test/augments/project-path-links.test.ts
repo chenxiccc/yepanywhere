@@ -274,6 +274,48 @@ describe("project path index", () => {
     expect(io.watched).toEqual([]);
   });
 
+  it("links only cached path facts in known-only mode", async () => {
+    const repo = await createRepo();
+    await writeFile(join(repo, "known.md"), "# known\n");
+    await writeFile(join(repo, "not-yet-known.md"), "# cold\n");
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+    expect(await index.has("known.md")).toBe(true);
+    io.listed.length = 0;
+    io.probed.length = 0;
+    const knownAbsoluteFilePaths = vi.fn(
+      (paths: readonly string[]) =>
+        new Set(paths.filter((path) => path === "/tmp/report.md")),
+    );
+    const resolveAbsoluteFilePaths = vi.fn(async () =>
+      Promise.resolve(new Set<string>()),
+    );
+
+    const html = await linkifyProjectPaths(
+      "<span>known.md not-yet-known.md /tmp/report.md</span>",
+      {
+        projectId: "project-1",
+        projectPath: repo,
+        index,
+        knownAbsoluteFilePaths,
+        pathDiscovery: "known-only",
+        resolveAbsoluteFilePaths,
+      },
+    );
+
+    expect(html).toContain(`data-ya-path="${join(repo, "known.md")}"`);
+    expect(html).toContain("path=%2Ftmp%2Freport.md");
+    expect(html).toContain("not-yet-known.md");
+    expect(html).not.toContain(
+      `data-ya-path="${join(repo, "not-yet-known.md")}"`,
+    );
+    expect(knownAbsoluteFilePaths).toHaveBeenCalledWith(["/tmp/report.md"]);
+    expect(resolveAbsoluteFilePaths).not.toHaveBeenCalled();
+    expect(io.listed).toEqual([]);
+    expect(io.probed).toEqual([]);
+    index.dispose();
+  });
+
   it("advances the public source revision when membership becomes uncertain", async () => {
     const repo = await createRepo();
     await writeFile(join(repo, "one.json"), "{}\n");

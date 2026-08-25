@@ -171,6 +171,8 @@ export interface ProjectPathLinkOptions {
   /** Absolute path of the project the content belongs to. */
   projectPath: string;
   index: ProjectPathIndex;
+  /** Use only watcher-backed facts already in memory, without starting I/O. */
+  pathDiscovery?: "known-only" | "resolve";
   /** Project-relative viewed-file path; owns sibling resolution and self-suppression. */
   selfRelativePath?: string;
   /** Resolved viewed-file path; enables bounded sibling probes outside the project. */
@@ -185,6 +187,8 @@ export interface ProjectPathLinkOptions {
   gateLookupsByShape?: boolean;
   /** Marks direct filesystem answers that no live watcher versions. */
   onUnversionedLookup?: () => void;
+  /** Positive allow-set facts already resolved by an earlier background pass. */
+  knownAbsoluteFilePaths?: (paths: readonly string[]) => ReadonlySet<string>;
   /** Authenticated, allow-set-aware exact probes. Omit for public shares. */
   resolveAbsoluteFilePaths?: (
     paths: readonly string[],
@@ -291,6 +295,7 @@ async function resolveProjectPathCandidates(
     projectId,
     selfRelativePath,
     gateLookupsByShape,
+    knownAbsoluteFilePaths,
     onUnversionedLookup,
     resolveAbsoluteFilePaths,
   } = options;
@@ -308,12 +313,11 @@ async function resolveProjectPathCandidates(
     ),
   );
 
-  const relative = new Map<string, string>();
   const cappedAbsoluteCandidates = Array.from(
     new Set(absoluteCandidates),
   ).slice(0, MAX_ABSOLUTE_PATH_PROBES);
   const externalCandidateTargets =
-    projectId && resolveAbsoluteFilePaths
+    projectId && (knownAbsoluteFilePaths || resolveAbsoluteFilePaths)
       ? externalRelativeCandidateTargets(
           relativeCandidates,
           options,
@@ -326,6 +330,24 @@ async function resolveProjectPathCandidates(
       ...externalCandidateTargets.values(),
     ]),
   ).slice(0, MAX_ABSOLUTE_PATH_PROBES);
+  const relative = new Map<string, string>();
+  if (options.pathDiscovery === "known-only") {
+    for (const candidate of relativeCandidates) {
+      const target = candidateTargets
+        .get(candidate)
+        ?.find((path) => index.knownFile(path) === true);
+      if (target) relative.set(candidate, target);
+    }
+    const absolute = new Set(
+      knownAbsoluteFilePaths?.(directlyProbedPaths) ?? [],
+    );
+    const externalRelative = new Map<string, string>();
+    for (const [candidate, target] of externalCandidateTargets) {
+      if (absolute.has(target)) externalRelative.set(candidate, target);
+    }
+    if (directlyProbedPaths.length > 0) onUnversionedLookup?.();
+    return { absolute, externalRelative, relative };
+  }
   let absolute = new Set<string>();
   try {
     const [existingRelative, existingAbsolute] = await Promise.all([
@@ -395,7 +417,8 @@ export async function resolveProjectPathTextLinks(
     ),
   );
   const absoluteCandidates =
-    options.projectId && options.resolveAbsoluteFilePaths
+    options.projectId &&
+    (options.knownAbsoluteFilePaths || options.resolveAbsoluteFilePaths)
       ? Array.from(
           new Set(
             tokens
@@ -536,6 +559,8 @@ export async function linkifyProjectPaths(
     projectPath,
     projectId,
     index,
+    knownAbsoluteFilePaths,
+    pathDiscovery,
     selfAbsolutePath,
     selfRelativePath,
     gateLookupsByShape,
@@ -547,7 +572,7 @@ export async function linkifyProjectPaths(
 
   const relativeCandidates = collectCandidatePaths(html, selfRelativePath);
   const absoluteCandidates =
-    projectId && resolveAbsoluteFilePaths
+    projectId && (knownAbsoluteFilePaths || resolveAbsoluteFilePaths)
       ? collectAbsoluteCandidatePaths(html)
           .filter(mayCostAbsoluteLookup)
           .slice(0, MAX_ABSOLUTE_PATH_PROBES)
@@ -563,6 +588,8 @@ export async function linkifyProjectPaths(
       projectPath,
       projectId,
       index,
+      knownAbsoluteFilePaths,
+      pathDiscovery,
       selfAbsolutePath,
       selfRelativePath,
       gateLookupsByShape,

@@ -29,6 +29,7 @@ import { computeEditAugment } from "../augments/edit-augments.js";
 import { renderMarkdownFilePreview } from "../augments/markdown-file-preview.js";
 import { highlightFile } from "../highlighting/index.js";
 import { linkifyProjectPaths } from "../augments/project-path-links.js";
+import { getLogger } from "../logging/logger.js";
 import { getProjectPathIndex } from "../projects/projectPathIndex.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
@@ -837,6 +838,50 @@ function isPathInsideDirectory(filePath: string, directory: string): boolean {
   );
 }
 
+interface DeferredFilePathDiscovery {
+  html: string;
+  projectId: string;
+  projectPath: string;
+  resolveAbsoluteFilePaths?: (
+    paths: readonly string[],
+  ) => Promise<ReadonlySet<string>>;
+  selfAbsolutePath: string;
+  selfRelativePath: string;
+}
+
+function scheduleFilePathDiscovery({
+  html,
+  projectId,
+  projectPath,
+  resolveAbsoluteFilePaths,
+  selfAbsolutePath,
+  selfRelativePath,
+}: DeferredFilePathDiscovery): void {
+  const handle = setImmediate(() => {
+    void (async () => {
+      const index = await getProjectPathIndex(projectPath);
+      try {
+        await linkifyProjectPaths(html, {
+          projectId,
+          projectPath,
+          index,
+          resolveAbsoluteFilePaths,
+          selfAbsolutePath,
+          selfRelativePath,
+        });
+      } finally {
+        index.release();
+      }
+    })().catch((error: unknown) => {
+      getLogger().debug(
+        { error, projectId, selfRelativePath },
+        "FILE_VIEWER_PATH_DISCOVERY: deferred annotation failed",
+      );
+    });
+  });
+  handle.unref();
+}
+
 export function createFilesRoutes(deps: FilesDeps): Hono {
   const routes = new Hono();
 
@@ -944,6 +989,7 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
         metadata,
         rawUrl,
       };
+      let deferredPathDiscoveryHtml: string | undefined;
 
       // For text files under size limit, include the whole file unless the link
       // explicitly asks for a compact range view. For targeted links into larger
@@ -997,6 +1043,11 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
                     projectId,
                     projectPath: projectRoot,
                     index: pathIndex,
+                    knownAbsoluteFilePaths:
+                      deps.strictProjectFileAccess === true
+                        ? undefined
+                        : pathPolicy?.findKnownAllowedFilePaths,
+                    pathDiscovery: "known-only",
                     selfAbsolutePath: filePath,
                     selfRelativePath: relativePath,
                     resolveAbsoluteFilePaths:
@@ -1008,6 +1059,7 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
               } finally {
                 pathIndex.release();
               }
+              deferredPathDiscoveryHtml = result.html;
               response.highlightedLanguage = result.language;
               response.highlightedTruncated = result.truncated;
             }
@@ -1042,6 +1094,11 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
                         projectId,
                         projectPath: projectRoot,
                         index: previewPathIndex,
+                        knownAbsoluteFilePaths:
+                          deps.strictProjectFileAccess === true
+                            ? undefined
+                            : pathPolicy?.findKnownAllowedFilePaths,
+                        pathDiscovery: "known-only",
                         resolveAbsoluteFilePaths:
                           deps.strictProjectFileAccess === true
                             ? undefined
@@ -1071,7 +1128,21 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
         }
       }
 
-      return c.json(response);
+      const result = c.json(response);
+      if (deferredPathDiscoveryHtml) {
+        scheduleFilePathDiscovery({
+          html: deferredPathDiscoveryHtml,
+          projectId,
+          projectPath: projectRoot,
+          resolveAbsoluteFilePaths:
+            deps.strictProjectFileAccess === true
+              ? undefined
+              : pathPolicy?.findAllowedFilePaths,
+          selfAbsolutePath: filePath,
+          selfRelativePath: relativePath,
+        });
+      }
+      return result;
     } finally {
       await fileHandle?.close();
     }

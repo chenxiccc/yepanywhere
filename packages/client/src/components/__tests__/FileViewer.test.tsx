@@ -10,6 +10,7 @@ import { toUrlProjectId, type FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { QuoteReplyProvider } from "../../contexts/QuoteReplyContext";
+import { setQuoteReplyButtonModePreference } from "../../hooks/useQuoteReplyButtonMode";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
 import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
@@ -101,6 +102,14 @@ describe("FileViewer", () => {
       callback(0);
       return 1;
     });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe = vi.fn();
+        disconnect = vi.fn();
+      },
+    );
+    setQuoteReplyButtonModePreference("paragraph-hover");
   });
 
   it("makes cumulative diff override source line ranges", async () => {
@@ -845,7 +854,7 @@ describe("FileViewer", () => {
     }
   });
 
-  it("quotes a clicked rendered Markdown block into the session", async () => {
+  it("keeps primary Markdown clicks in the viewer and quotes from circles", async () => {
     const onQuoteTextBlock = vi.fn();
     const source: FileViewerSource = {
       loadFile: vi.fn(async () => ({
@@ -874,14 +883,83 @@ describe("FileViewer", () => {
       </I18nProvider>,
     );
 
+    const paragraph = await screen.findByText("Selected text");
+    const viewerBody = paragraph.closest<HTMLElement>(".file-viewer-body");
+    expect(viewerBody?.tabIndex).toBe(-1);
+
     document.getSelection()?.removeAllRanges();
-    fireEvent.click(await screen.findByText("Selected text"));
+    fireEvent.pointerDown(paragraph, { button: 0 });
+    fireEvent.click(paragraph);
+
+    expect(document.activeElement).toBe(viewerBody);
+    expect(onQuoteTextBlock).not.toHaveBeenCalled();
+    const pageDown = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "PageDown",
+    });
+    viewerBody?.dispatchEvent(pageDown);
+    expect(pageDown.defaultPrevented).toBe(false);
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: /Quote this paragraph/ }),
+      ).toHaveLength(2),
+    );
+    const quoteButtons = screen.getAllByRole("button", {
+      name: /Quote this paragraph/,
+    });
+    fireEvent.click(quoteButtons[1]!);
 
     expect(onQuoteTextBlock).toHaveBeenCalledTimes(1);
     expect(onQuoteTextBlock.mock.calls[0]?.[0]).toMatchObject({
       quotedText: "> Selected text",
       selectedText: "Selected text",
     });
+  });
+
+  it("uses one whole-document quote circle in block-only mode", async () => {
+    setQuoteReplyButtonModePreference("block");
+    const onQuoteTextBlock = vi.fn();
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "notes.md",
+          size: 21,
+          mimeType: "text/markdown",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "# Title\n\nSelected text",
+        renderedMarkdownHtml: "<h1>Title</h1><p>Selected text</p>",
+      })),
+    };
+
+    render(
+      <I18nProvider>
+        <QuoteReplyProvider onQuoteTextBlock={onQuoteTextBlock}>
+          <FileViewer
+            projectId="project-id"
+            filePath="notes.md"
+            initialPresentation="preview"
+            source={source}
+          />
+        </QuoteReplyProvider>
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Selected text");
+    const quoteButtons = screen.getAllByRole("button", {
+      name: /Quote this paragraph/,
+    });
+    expect(quoteButtons).toHaveLength(1);
+    expect(quoteButtons[0]?.classList).toContain("text-block-quote-fallback");
+    fireEvent.click(quoteButtons[0]!);
+    expect(onQuoteTextBlock).toHaveBeenCalledTimes(1);
+    const anchor = onQuoteTextBlock.mock.calls[0]?.[0];
+    expect(anchor?.quotedText).toContain("# Title");
+    expect(anchor?.quotedText).toContain("Selected text");
+    expect(anchor?.selectedText).not.toContain(">");
   });
 
   it("opens Quarto files rendered and maps include selections to source", async () => {
@@ -1077,10 +1155,9 @@ describe("FileViewer", () => {
     );
     expect(imageLink.getAttribute("target")).toBe("_blank");
     expect(imageLink.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(
-      screen.getByRole("img", { name: "result.png" }).getAttribute("src"),
-    ).toBe("blob:file-viewer-image");
-    fireEvent.contextMenu(screen.getByRole("img", { name: "result.png" }));
+    const image = await screen.findByRole("img", { name: "result.png" });
+    expect(image.getAttribute("src")).toBe("blob:file-viewer-image");
+    fireEvent.contextMenu(image);
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
@@ -1093,16 +1170,14 @@ describe("FileViewer", () => {
     ]);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss image menu" }));
 
-    const openButton = container.querySelector<HTMLButtonElement>(
+    const openLink = container.querySelector<HTMLAnchorElement>(
       '.file-viewer-actions .file-viewer-action[title="Open image in new tab"]',
     );
-    expect(openButton).not.toBeNull();
-    fireEvent.click(openButton as HTMLButtonElement);
-
-    expect(openMock).toHaveBeenCalledWith(
+    expect(openLink?.getAttribute("href")).toBe(
       "/api/projects/project-id/files/raw?path=screenshots%2Fresult.png",
-      "_blank",
-      "noopener",
     );
+    expect(openLink?.getAttribute("target")).toBe("_blank");
+    expect(openLink?.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(openMock).not.toHaveBeenCalled();
   });
 });

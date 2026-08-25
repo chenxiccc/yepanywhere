@@ -72,6 +72,8 @@ let projectFileCodeLinkCache = new Map<string, ProjectFileCodeLink | null>();
 export interface ProjectFileLinkOptions {
   projectId: string;
   projectPath: string;
+  /** Bare-path annotation may use only facts already cached in the index. */
+  pathDiscovery?: "known-only" | "resolve";
   /**
    * Watcher-backed membership oracle for this project.
    *
@@ -89,6 +91,8 @@ export interface ProjectFileLinkOptions {
   resolveAbsoluteFilePaths?: (
     paths: readonly string[],
   ) => Promise<ReadonlySet<string>>;
+  /** Positive allow-set facts already resolved without starting new I/O. */
+  knownAbsoluteFilePaths?: (paths: readonly string[]) => ReadonlySet<string>;
   /** Marks a synchronous filesystem fallback that cannot back retained HTML. */
   onUnversionedLookup?: () => void;
 }
@@ -545,6 +549,7 @@ function projectFileExists(
 ): boolean {
   const known = options.index?.knownFile(relativePath);
   if (known !== undefined) return known;
+  if (options.pathDiscovery === "known-only") return false;
   options.onUnversionedLookup?.();
   return options.fileExists
     ? options.fileExists(absolutePath, relativePath)

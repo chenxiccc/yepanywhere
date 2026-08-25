@@ -1,29 +1,34 @@
-# Unify file and diff selection around the inline composer
+# Add an explicit inline-comment mode to session file viewers
 
-Source Control diffs currently route a plain line click through
-`pages/DiffCommentLayer.tsx` into `ReviewCommentWindow`. Session-backed source
-file and Edit detail views still need the equivalent non-selection gesture.
-The turn should identify `path:line` and quote the same nearby context model
-Source Control derives from the clicked line.
+The session-owned `FileViewer` modal needs an opt-in **Comment** toggle in its
+top bar. With the mode off, ordinary clicks remain native focus/selection
+gestures and the configured transcript-style whole-block or paragraph `>`
+circles remain available. With Comment on, suppress those circles and make a
+plain source-line click open the same inline comment editor style used by
+Source Control's `pages/DiffCommentLayer.tsx` and `ReviewCommentWindow`.
 
-The rendered-Markdown session-file slice landed 2026-08-20. Clicking a
-non-interactive rendered block now feeds the existing visible session composer
-through the shared quote-reply pipeline, leaves the viewer open, and tints the
-quoted source. A native range selection wins over the click. This deliberately
-uses the session composer instead of adding a second inline composer inside the
-viewer.
+A native text selection in the session viewer opens that inline editor with
+the selected quote. The existing selection-action bubbles, including Copy,
+may still appear when their setting enables them; they are not replaced by
+comment mode. Cancelling an untouched editor removes it without leaving a
+draft. The behavior belongs only to a session viewer with a live session
+destination, not standalone or public-share file pages.
 
-This is deliberately separate from the transcript's generic drag-selection
-flow in `hooks/useSelectionActionPresentation.tsx`; diff selections do not need
-to be bridged into its DOM-range-to-source-offset registry. Copy remains an
-adjacent line action. The remaining work is source-mode file lines, Edit detail
-lines, and convergence with the Source Control path/citation context model.
+Enter in the inline editor sends that one location/quote/comment immediately
+to the current session (the default send mode); Shift+Enter inserts a newline.
+Blurring only the editor persists its draft locally. Defocusing or closing the
+viewer flushes the remaining nonempty comments to the session using the usual
+`---` grouping from source review, but the generated turn contains no generic
+code-review boilerplate: each item contains only its location, quote, and
+comment or question.
 
-This was separated from the file-backed Edit chrome and full-context viewport
-work to avoid coupling an interaction redesign to presentation convergence.
-The cheap implementation path is to extract the line-anchor/context payload
-from the existing Source Control flow and feed the current session composer,
-not to create a second composer or a generalized viewer hierarchy.
+The implementation should reuse the Source Control anchor, editor, and
+batch-formatting owners rather than introduce a second comment grammar.
+Rendered Markdown selection must keep its source-offset mapping, while
+source-mode line clicks use `path:line` plus the same nearby-context model as
+Source Control. This is separate from the current viewer latency, scrolling,
+and accidental-left-click regression repair so each observable interaction
+change can be reviewed and reverted independently.
 
 Found 2026-08-17 while converging session Edit details with file and Source
 Control views.

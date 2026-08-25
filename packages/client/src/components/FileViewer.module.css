@@ -45,17 +45,10 @@
   gap: 0.375rem;
 }
 
-.commentableMarkdown
-  :global(.markdown-rendered)
-  :is(p, li, blockquote, pre, h1, h2, h3, h4, h5, h6, tr) {
-  border-radius: var(--radius-sm);
-  transition: background 80ms ease-out;
-}
-
-.commentableMarkdown
-  :global(.markdown-rendered)
-  :is(p, li, blockquote, pre, h1, h2, h3, h4, h5, h6, tr):hover {
-  background: var(--bg-hover);
+.quoteReplySurface:hover :global(.text-block-quote),
+.quoteReplySurface:focus-within :global(.text-block-quote) {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 @media (max-width: 800px) {

@@ -32,6 +32,8 @@ type LocalResourceFileResult =
   | { file: LocalResourceFile; ok: true }
   | (LocalResourceFileError & { ok: false });
 
+const MAX_KNOWN_ALLOWED_FILE_PATHS = 512;
+
 export const LOCAL_FILE_CONTENT_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
   ".md": "text/plain; charset=utf-8",
@@ -102,6 +104,7 @@ export function createLocalResourcePathPolicy(deps: LocalResourcePolicyDeps) {
   // change (function form returning a new list) re-resolves automatically.
   let resolvedCacheKey: string | null = null;
   let resolvedAllowedPaths: string[] = [];
+  let knownAllowedFilePaths = new Map<string, true>();
 
   function rawAllowedPaths(): string[] {
     return typeof deps.allowedPaths === "function"
@@ -129,6 +132,7 @@ export function createLocalResourcePathPolicy(deps: LocalResourcePolicyDeps) {
     if (key !== resolvedCacheKey) {
       resolvedAllowedPaths = await Promise.all(raw.map(realpathOrOriginal));
       resolvedCacheKey = key;
+      knownAllowedFilePaths = new Map();
     }
     return resolvedAllowedPaths;
   }
@@ -228,11 +232,28 @@ export function createLocalResourcePathPolicy(deps: LocalResourcePolicyDeps) {
         }
       }),
     );
-    return new Set(results.filter((path): path is string => path !== null));
+    const found = new Set(
+      results.filter((path): path is string => path !== null),
+    );
+    for (const filePath of found) {
+      knownAllowedFilePaths.delete(filePath);
+      knownAllowedFilePaths.set(filePath, true);
+    }
+    while (knownAllowedFilePaths.size > MAX_KNOWN_ALLOWED_FILE_PATHS) {
+      const oldest = knownAllowedFilePaths.keys().next().value;
+      if (oldest === undefined) break;
+      knownAllowedFilePaths.delete(oldest);
+    }
+    return found;
   }
 
   return {
     findAllowedFilePaths,
+    findKnownAllowedFilePaths(filePaths: readonly string[]) {
+      return new Set(
+        filePaths.filter((filePath) => knownAllowedFilePaths.has(filePath)),
+      );
+    },
     getAllowedPaths,
     isAbsolutePath(filePath: string) {
       return isSupportedAbsoluteLocalPath(

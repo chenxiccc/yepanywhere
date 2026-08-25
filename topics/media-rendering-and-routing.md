@@ -117,6 +117,14 @@ File-viewer modals own one same-URL browser-history entry: Back dismisses the
 viewer without leaving the underlying session, while opening or React effect
 replay must never traverse pre-modal history.
 
+The visible file-viewer body is the document's normal scroll owner at every
+supported width. When an input, textarea, select, or editable region does not
+own focus, wheel/trackpad input and ordinary keyboard navigation scroll that
+body at native browser speed. Selection and quote-reply handlers may observe
+the document, but they must not retain hidden composer focus, consume
+navigation keys, or turn a click in unselected viewer content into a composer
+transfer.
+
 An authenticated FileViewer modal can be parked without discarding loaded
 content, presentation mode, scroll position, or quoteable source registration.
 Its persistent session-level controller lets the user move between document and
@@ -145,6 +153,10 @@ vocabulary even though their authorization routes remain distinct:
   one **Raw source** icon button whose pressed state means the source is
   showing; the local-file modal takes its initial representation from the
   context menu in this first convergence step.
+- The project `FileViewer` toolbar's **Open in new tab** action is a real link
+  to the stable viewer route. Ordinary activation, middle-click, browser
+  context-menu opening, and native modifier-click therefore keep their normal
+  browser meanings instead of depending on a left-click handler.
 - Copy actions are direct root-menu rows with a copy glyph and a full command
   label: **Copy project-relative path**, **Copy absolute file path**, **Copy
   file path** when the client cannot classify it more strongly, **Copy viewer

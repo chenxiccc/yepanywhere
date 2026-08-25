@@ -49,6 +49,24 @@ async function textPoint(locator: Locator, horizontal: "start" | "end") {
   }, horizontal);
 }
 
+async function quoteButtonForBlock(buttons: Locator, block: Locator) {
+  const blockBox = await block.boundingBox();
+  if (!blockBox) throw new Error("Expected rendered Markdown block");
+  const blockBottom = blockBox.y + blockBox.height;
+  let nearest: { distance: number; locator: Locator } | undefined;
+  for (let index = 0; index < (await buttons.count()); index += 1) {
+    const locator = buttons.nth(index);
+    const box = await locator.boundingBox();
+    if (!box) continue;
+    const distance = Math.abs(box.y + box.height / 2 - blockBottom);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { distance, locator };
+    }
+  }
+  if (!nearest) throw new Error("Expected a visible paragraph quote button");
+  return nearest.locator;
+}
+
 async function capture(page: Page, name: string) {
   const artifactDir = process.env.YEP_UI_CAPTURE_DIR;
   if (!artifactDir) return;
@@ -65,11 +83,12 @@ for (const viewport of [
   { name: "desktop", width: 1000, height: 600 },
   { name: "mobile", width: 375, height: 812 },
 ] as const) {
-  test(`clicks a rendered Markdown block into the visible composer at ${viewport.name} width`, async ({
+  test(`keeps rendered clicks native and quotes from circles at ${viewport.name} width`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
     const preview = await openRenderedMarkdown(page);
+    const viewerBody = page.locator(".file-viewer-modal .file-viewer-body");
     const paragraph = preview.getByText(
       "Viewer context remains available while reviewing this file.",
       { exact: true },
@@ -77,25 +96,88 @@ for (const viewport of [
     await paragraph.click();
 
     const composer = page.locator("[data-composer-input]");
+    await expect(composer).toHaveValue("");
+    await expect(viewerBody).toBeFocused();
+
+    const keyboardScrollStart = await viewerBody.evaluate(
+      (element) => element.scrollTop,
+    );
+    await page.keyboard.press("PageDown");
+    await expect
+      .poll(() => viewerBody.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(keyboardScrollStart);
+    const wheelScrollStart = await viewerBody.evaluate(
+      (element) => element.scrollTop,
+    );
+    const wheelScrollTarget = await viewerBody.evaluate(
+      (element, delta) =>
+        Math.min(
+          element.scrollHeight - element.clientHeight,
+          element.scrollTop + delta,
+        ),
+      300,
+    );
+    const viewerBox = await viewerBody.boundingBox();
+    if (!viewerBox) throw new Error("Expected file viewer scroll owner");
+    await page.mouse.move(
+      viewerBox.x + viewerBox.width / 2,
+      viewerBox.y + viewerBox.height / 2,
+    );
+    await page.mouse.wheel(0, 300);
+    await expect
+      .poll(() => viewerBody.evaluate((element) => element.scrollTop))
+      .toBeGreaterThanOrEqual(wheelScrollTarget - 1);
+    expect(wheelScrollTarget).toBeGreaterThan(wheelScrollStart);
+    await viewerBody.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+
+    await paragraph.hover();
+    const quoteButtons = page.getByRole("button", {
+      name: /Quote this paragraph/,
+    });
+    const quoteButton = await quoteButtonForBlock(quoteButtons, paragraph);
+    await expect(quoteButton).toBeVisible();
+    await quoteButton.click();
     await expect(composer).toHaveValue(
       "> Viewer context remains available while reviewing this file.\n",
     );
     await expect(composer).toBeFocused();
     await expect(page.locator(".file-viewer-modal")).toBeVisible();
 
-    const [viewerBox, composerBox] = await Promise.all([
+    const [modalBox, composerBox] = await Promise.all([
       page.locator(".file-viewer-modal").boundingBox(),
       page.locator(".session-input").boundingBox(),
     ]);
-    if (!viewerBox || !composerBox) {
+    if (!modalBox || !composerBox) {
       throw new Error("Expected viewer and composer layout boxes");
     }
-    expect(
-      Math.abs(viewerBox.y + viewerBox.height - composerBox.y),
-    ).toBeLessThan(1.1);
+    expect(Math.abs(modalBox.y + modalBox.height - composerBox.y)).toBeLessThan(
+      1.1,
+    );
     await capture(page, `${viewport.name}-markdown-quote`);
   });
 }
+
+test("opens the viewer toolbar link with a native middle click", async ({
+  context,
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await openRenderedMarkdown(page);
+  const openLink = page
+    .locator(".file-viewer-modal")
+    .getByRole("link", { name: "Open in new tab" });
+  await expect(openLink).toHaveAttribute("target", "_blank");
+
+  const [openedPage] = await Promise.all([
+    context.waitForEvent("page"),
+    openLink.click({ button: "middle" }),
+  ]);
+  await expect(openedPage).toHaveURL(/\/file\?path=/);
+  await openedPage.close();
+  await expect(page.locator(".file-viewer-modal")).toBeVisible();
+});
 
 test("keeps selection actions out of an upward pointer drag", async ({
   page,

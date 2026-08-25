@@ -215,14 +215,25 @@ file with the warm it configured.
 
 ## Rendering
 
-Linkification runs server-side over already-highlighted HTML, in the same
-response that produces it, so the client needs no path corpus and no second
-request. A first pass collects distinct candidates. The project index resolves
+Path discovery is advisory and must never gate the first readable source or
+preview. A file response renders highlighted and Markdown text from already
+known path facts; cold project-root, viewed-file-relative, and authenticated
+absolute-path probes continue outside that display-critical response. The
+current view may therefore stay plain and a later refresh may gain anchors.
+This is the viewed-file form of the established session-text contract: live or
+optimistic text appears before its settled, server-confirmed path annotation.
+
+Foreground linkification runs server-side over already-highlighted HTML using
+only cached membership facts, so the client needs no project path corpus and a
+cold scanner cannot extend response latency. After constructing the response,
+one deferred pass collects distinct candidates. The project index resolves
 relative candidates in bounded directory batches, while the authenticated
-allow-set resolver directly probes bounded absolute candidates. A second pass
-rewrites only confirmed files. Project-relative matches retain the existing
-local-file markup; absolute matches use private project-file markup so both
-open in the FileViewer belonging to the active session project.
+allow-set resolver directly probes bounded absolute candidates. That pass
+warms the authoritative caches; it does not mutate the response already being
+returned. A later request rewrites only confirmed files. Project-relative
+matches retain the existing local-file markup; absolute matches use private
+project-file markup so both open in the FileViewer belonging to the active
+session project.
 
 Highlighted file content also resolves relative tokens from the viewed file's
 containing directory when the same token is not an existing project-root path.
