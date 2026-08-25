@@ -2212,11 +2212,13 @@ function SessionPageContent({
   const handleSend = async (
     text: string,
     metadata?: MessageSubmissionMetadata,
-  ) => {
+    options: { preserveComposer?: boolean } = {},
+  ): Promise<boolean> => {
     const prepared = prepareComposerSubmission(text);
     if (!prepared) {
-      return;
+      return false;
     }
+    const preserveComposer = options.preserveComposer === true;
     const { outgoingText, slashCommand } = prepared;
     const thinking = prepared.thinking ?? getImplicitComposerThinking();
     // Display preference for thinking rows; sent for compatibility while the
@@ -2244,21 +2246,25 @@ function SessionPageContent({
       thinking,
       slashCommand: slashCommand ?? null,
       textLength: outgoingText.length,
-      attachmentCount: attachments.length,
-      hasCorrectionDraft: !!correctionDraft,
+      attachmentCount: preserveComposer ? 0 : attachments.length,
+      hasCorrectionDraft: preserveComposer ? false : !!correctionDraft,
       clientTimestamp,
       serverOffsetMs: getEstimatedServerOffsetMs(),
     });
 
-    let currentAttachments = [...attachmentsRef.current];
+    let currentAttachments = preserveComposer
+      ? []
+      : [...attachmentsRef.current];
     let uploadedAttachments: UploadedFile[] = [];
 
     try {
-      currentAttachments = await collectComposerAttachmentsForSubmission({
-        pendingMessageId: tempId,
-      });
-      uploadedAttachments =
-        await materializeComposerAttachments(currentAttachments);
+      if (!preserveComposer) {
+        currentAttachments = await collectComposerAttachmentsForSubmission({
+          pendingMessageId: tempId,
+        });
+        uploadedAttachments =
+          await materializeComposerAttachments(currentAttachments);
+      }
       if (uploadedAttachments.length > 0) {
         updatePendingMessage(tempId, { attachments: uploadedAttachments });
       }
@@ -2368,11 +2374,14 @@ function SessionPageContent({
         }
       }
       // Success - clear the draft from localStorage
-      rememberSentSubmission(text, tempId);
-      draftControlsRef.current?.confirmInputClear();
-      revokeAttachmentPreviewUrls(currentAttachments);
-      setCorrectionDraft(null);
-      clearQuoteAnchors();
+      if (!preserveComposer) {
+        rememberSentSubmission(text, tempId);
+        draftControlsRef.current?.confirmInputClear();
+        revokeAttachmentPreviewUrls(currentAttachments);
+        setCorrectionDraft(null);
+        clearQuoteAnchors();
+      }
+      return true;
     } catch (err) {
       console.error("Failed to send:", err);
       let finalError: unknown = err;
@@ -2435,12 +2444,14 @@ function SessionPageContent({
             modeVersion: result.modeVersion,
             recapAfterSeconds: result.recapAfterSeconds,
           });
-          rememberSentSubmission(text, tempId);
-          draftControlsRef.current?.confirmInputClear();
-          revokeAttachmentPreviewUrls(currentAttachments);
-          setCorrectionDraft(null);
-          clearQuoteAnchors();
-          return;
+          if (!preserveComposer) {
+            rememberSentSubmission(text, tempId);
+            draftControlsRef.current?.confirmInputClear();
+            revokeAttachmentPreviewUrls(currentAttachments);
+            setCorrectionDraft(null);
+            clearQuoteAnchors();
+          }
+          return true;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
           finalError = retryErr;
@@ -2456,8 +2467,10 @@ function SessionPageContent({
 
       // Remove from pending queue and restore draft on error
       removePendingMessage(tempId);
-      draftControlsRef.current?.restoreFromStorage();
-      setComposerAttachments(currentAttachments, { persistDraft: false });
+      if (!preserveComposer) {
+        draftControlsRef.current?.restoreFromStorage();
+        setComposerAttachments(currentAttachments, { persistDraft: false });
+      }
       setProcessState("idle");
       const errorMsg =
         finalError instanceof Error ? finalError.message : String(finalError);
@@ -2474,10 +2487,16 @@ function SessionPageContent({
       } else {
         showToast(t("sessionSendFailed", { message: errorMsg }), "error");
       }
+      return false;
     }
   };
   const handleSendRef = useRef(handleSend);
   handleSendRef.current = handleSend;
+  const handleSessionViewerCommentSend = useCallback(
+    (text: string) =>
+      handleSendRef.current(text, undefined, { preserveComposer: true }),
+    [],
+  );
 
   // !! bang commands: local shell runs in the project dir, never provider
   // ingress; persisted as transcript display objects (topics/bang-commands.md).
@@ -5385,6 +5404,7 @@ function SessionPageContent({
                 <SessionViewerProvider
                   sessionId={actualSessionId}
                   inactive={isDomLingerParked}
+                  onSendComment={handleSessionViewerCommentSend}
                 >
                   <MessageList
                     messages={messages}

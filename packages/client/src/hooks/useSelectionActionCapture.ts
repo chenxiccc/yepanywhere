@@ -41,6 +41,7 @@ export interface SelectionActionState {
 
 interface UseSelectionActionCaptureOptions {
   actionCount: number;
+  getActionCount?: (snapshot: SelectionActionSnapshot) => number;
   containerRef: RefObject<HTMLDivElement | null>;
   inert: boolean;
 }
@@ -305,6 +306,7 @@ export function placeSelectionActions(
 
 export function useSelectionActionCapture({
   actionCount,
+  getActionCount,
   containerRef,
   inert,
 }: UseSelectionActionCaptureOptions): SelectionActionCaptureController {
@@ -433,12 +435,17 @@ export function useSelectionActionCapture({
         setState(null);
         return;
       }
+      const resolvedActionCount = getActionCount?.(snapshot) ?? actionCount;
+      if (resolvedActionCount === 0) {
+        setState(null);
+        return;
+      }
       setState(
         placeSelectionActions(
           root,
           selection,
           snapshot,
-          actionCount,
+          resolvedActionCount,
           pointerEnd,
         ),
       );
@@ -489,7 +496,7 @@ export function useSelectionActionCapture({
       window.removeEventListener("resize", updateFromSelectionRange);
       window.removeEventListener("scroll", updateFromSelectionRange, true);
     };
-  }, [actionCount, captureSnapshot, containerRef, inert]);
+  }, [actionCount, captureSnapshot, containerRef, getActionCount, inert]);
 
   return { captureSnapshot, dismiss, state };
 }

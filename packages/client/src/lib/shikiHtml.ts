@@ -107,3 +107,40 @@ export function annotateShikiSourceOffsets(
   }
   return template.innerHTML;
 }
+
+/**
+ * Split one highlighted source document after its absolute `data-line` row
+ * while retaining Shiki's outer theme and code attributes in both halves.
+ */
+export function splitHighlightedSourceAfterLine(
+  html: string,
+  afterLine: number,
+): { before: string; after: string } | null {
+  if (typeof document === "undefined") return null;
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const sourceLines = Array.from(
+    template.content.querySelectorAll<HTMLElement>("code .line[data-line]"),
+  );
+  if (!sourceLines.some((line) => Number(line.dataset.line) === afterLine)) {
+    return null;
+  }
+
+  const renderHalf = (keep: (lineNumber: number) => boolean) => {
+    const clone = template.content.cloneNode(true) as DocumentFragment;
+    for (const line of clone.querySelectorAll<HTMLElement>(
+      "code .line[data-line]",
+    )) {
+      const lineNumber = Number(line.dataset.line);
+      if (!Number.isInteger(lineNumber) || !keep(lineNumber)) line.remove();
+    }
+    const wrapper = document.createElement("div");
+    wrapper.append(clone);
+    return wrapper.innerHTML;
+  };
+
+  return {
+    before: renderHalf((lineNumber) => lineNumber <= afterLine),
+    after: renderHalf((lineNumber) => lineNumber > afterLine),
+  };
+}

@@ -5,6 +5,7 @@ import {
 
 const MARKDOWN_COPY_SOURCE_ATTR = "data-markdown-copy-source";
 const QUOTE_SELECTION_ROOT_ATTR = "data-quote-selection-root";
+const MARKDOWN_COPY_IGNORE_SELECTOR = '[data-markdown-copy-ignore="true"]';
 
 export const QUOTE_SELECTION_ROOT_ATTRIBUTES = {
   [QUOTE_SELECTION_ROOT_ATTR]: "true",
@@ -663,18 +664,31 @@ function getRangeTextWithinElement(
   const sourceModeElements = Array.from(
     element.querySelectorAll<HTMLElement>(".text-block-source"),
   );
+  const selectedText = getRangeTextWithoutIgnoredContent(clippedRange);
 
   return {
-    selectedText: clippedRange.toString(),
+    selectedText,
     sourceSelectedText:
-      getRenderedSourceSelectionText(clippedRange) ?? clippedRange.toString(),
-    textBefore: beforeRange.toString(),
+      getRenderedSourceSelectionText(clippedRange) ?? selectedText,
+    textBefore: getRangeTextWithoutIgnoredContent(beforeRange),
     preferExactSource: sourceModeElements.some((sourceElement) =>
       rangeIntersectsNode(clippedRange, sourceElement),
     ),
     range: clippedRange,
     sourceRange: getRangeSourceOffsets(element, clippedRange),
   };
+}
+
+function getRangeTextWithoutIgnoredContent(range: Range): string {
+  const doc = range.startContainer.ownerDocument ?? document;
+  const wrapper = doc.createElement("div");
+  wrapper.append(range.cloneContents());
+  for (const ignored of wrapper.querySelectorAll(
+    MARKDOWN_COPY_IGNORE_SELECTOR,
+  )) {
+    ignored.remove();
+  }
+  return wrapper.textContent ?? "";
 }
 
 function getRenderedSourceSelectionText(range: Range): string | null {
@@ -686,6 +700,11 @@ function getRenderedSourceSelectionText(range: Range): string | null {
   const doc = range.startContainer.ownerDocument ?? document;
   const wrapper = doc.createElement("div");
   wrapper.append(range.cloneContents());
+  for (const ignored of wrapper.querySelectorAll(
+    MARKDOWN_COPY_IGNORE_SELECTOR,
+  )) {
+    ignored.remove();
+  }
   const mathElements = Array.from(
     wrapper.querySelectorAll<HTMLElement>(".katex"),
   );

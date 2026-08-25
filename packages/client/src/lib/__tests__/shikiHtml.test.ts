@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { annotateShikiSourceOffsets } from "../shikiHtml";
+import {
+  annotateShikiSourceOffsets,
+  splitHighlightedSourceAfterLine,
+} from "../shikiHtml";
 
 describe("annotateShikiSourceOffsets", () => {
   it("carries exact line and token offsets through compact Shiki HTML", () => {
@@ -27,5 +30,36 @@ describe("annotateShikiSourceOffsets", () => {
       ['"<"', "10", "13"],
       ["return", "15", "21"],
     ]);
+  });
+});
+
+describe("splitHighlightedSourceAfterLine", () => {
+  it("keeps the highlighted document shell and partitions numbered rows", () => {
+    const html =
+      '<pre class="shiki" style="background:#fff"><code class="language-ts"><span class="line" data-line="8">eight</span><span class="line" data-line="9">nine</span><span class="line" data-line="10">ten</span></code></pre>';
+
+    const split = splitHighlightedSourceAfterLine(html, 9);
+
+    expect(split).not.toBeNull();
+    for (const half of [split?.before, split?.after]) {
+      expect(half).toContain('class="shiki"');
+      expect(half).toContain('style="background:#fff"');
+      expect(half).toContain('class="language-ts"');
+    }
+    expect(split?.before).toContain("eight");
+    expect(split?.before).toContain("nine");
+    expect(split?.before).not.toContain("ten");
+    expect(split?.after).not.toContain("eight");
+    expect(split?.after).not.toContain("nine");
+    expect(split?.after).toContain("ten");
+  });
+
+  it("declines a split when the requested row is absent", () => {
+    expect(
+      splitHighlightedSourceAfterLine(
+        '<pre><code><span class="line" data-line="1">one</span></code></pre>',
+        2,
+      ),
+    ).toBeNull();
   });
 });

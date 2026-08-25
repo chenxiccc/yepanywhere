@@ -8,6 +8,10 @@ import {
   useRef,
 } from "react";
 import {
+  type SendSessionViewerComment,
+  SessionViewerCommentProvider,
+} from "../contexts/SessionViewerCommentContext";
+import {
   clearSessionViewer,
   presentSessionViewer,
   useSessionViewerController,
@@ -89,16 +93,20 @@ export function SessionManagedPanel({
 export function SessionViewerProvider({
   sessionId,
   inactive = false,
+  onSendComment,
   children,
 }: {
   sessionId: string;
   inactive?: boolean;
+  onSendComment?: SendSessionViewerComment;
   children: ReactNode;
 }) {
   return (
     <SessionViewerContext.Provider value={sessionId}>
-      {children}
-      <SessionManagedPanelHost sessionId={sessionId} inactive={inactive} />
+      <SessionViewerCommentProvider onSendComment={onSendComment}>
+        {children}
+        <SessionManagedPanelHost sessionId={sessionId} inactive={inactive} />
+      </SessionViewerCommentProvider>
     </SessionViewerContext.Provider>
   );
 }

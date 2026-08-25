@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   forwardRef,
   type KeyboardEventHandler,
+  memo,
   type MouseEventHandler,
   useCallback,
   useMemo,
@@ -142,8 +143,8 @@ interface MarkdownPreviewProps {
   sourcePath?: string;
 }
 
-export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
-  function MarkdownPreview(
+export const MarkdownPreview = memo(
+  forwardRef<HTMLDivElement, MarkdownPreviewProps>(function MarkdownPreview(
     {
       ariaLabel,
       className,
@@ -182,7 +183,7 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
         />
       </div>
     );
-  },
+  }),
 );
 
 interface FileViewerDensityControlsProps {

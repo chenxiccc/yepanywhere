@@ -157,6 +157,87 @@ for (const viewport of [
     );
     await capture(page, `${viewport.name}-markdown-quote`);
   });
+
+  test(`opens an inline selection comment without consuming the composer at ${viewport.name} width`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "yep-anywhere-selection-text-copy-action-enabled",
+        "true",
+      );
+    });
+    const sentMessages: string[] = [];
+    await page.route("**/resume", async (route) => {
+      const request = route.request().postDataJSON() as { message?: string };
+      if (request.message) sentMessages.push(request.message);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          processId: "file-comment-e2e",
+          permissionMode: "default",
+          modeVersion: 1,
+          serverTimestamp: Date.now(),
+        }),
+      });
+    });
+    const preview = await openRenderedMarkdown(page);
+    const composer = page.locator("[data-composer-input]");
+    await composer.fill("Main composer draft stays put.");
+    const viewer = page.locator(".file-viewer-modal");
+    const commentToggle = viewer.getByRole("button", {
+      name: "Comment",
+      exact: true,
+    });
+    await expect(commentToggle).toHaveAttribute("aria-pressed", "false");
+    await commentToggle.click();
+    await expect(commentToggle).toHaveAttribute("aria-pressed", "true");
+
+    const paragraph = preview.getByText(
+      "Viewer context remains available while reviewing this file.",
+      { exact: true },
+    );
+    await paragraph.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = document.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    const editor = viewer.getByPlaceholder("Comment or ask a question…");
+    await expect(editor).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy text" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Quote reply" })).toHaveCount(
+      0,
+    );
+    await expect(
+      viewer.getByRole("button", { name: /Quote this paragraph/ }),
+    ).toHaveCount(0);
+    await editor.focus();
+    await expect(editor).toBeVisible();
+    await editor.fill("Question on this passage?");
+    await expect(editor).toBeVisible();
+    await editor.press("Shift+Enter");
+    await editor.pressSequentially("Please check it.");
+    await expect(editor).toHaveValue(
+      "Question on this passage?\nPlease check it.",
+    );
+    await capture(page, `${viewport.name}-markdown-comment`);
+
+    await editor.press("Enter");
+    await expect.poll(() => sentMessages.length).toBe(1);
+    expect(sentMessages[0]).toContain("README.md:5");
+    expect(sentMessages[0]).toContain(
+      "> Viewer context remains available while reviewing this file.",
+    );
+    expect(sentMessages[0]).toContain(
+      "Question on this passage?\nPlease check it.",
+    );
+    await expect(composer).toHaveValue("Main composer draft stays put.");
+  });
 }
 
 test("opens the viewer toolbar link with a native middle click", async ({

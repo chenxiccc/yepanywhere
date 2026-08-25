@@ -3,6 +3,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
 } from "react";
 import { createPortal } from "react-dom";
@@ -18,6 +19,7 @@ import {
 import type { CommentAnchor } from "../lib/commentAnchors";
 import { writeClipboardRichText, writeClipboardText } from "../lib/clipboard";
 import { getSemanticHtmlClipboardPayload } from "../lib/semanticHtmlClipboard";
+import { SESSION_FILE_COMMENT_MODE_ATTR } from "../lib/sessionFileComments";
 import { useI18n } from "../i18n";
 import {
   pointIntersectsSelection,
@@ -50,6 +52,17 @@ export interface SelectionActionPresentation {
 interface EnabledSelectionAction {
   kind: SelectionActionKind;
   label: string;
+}
+
+function selectionUsesSessionFileCommentMode(
+  snapshot: SelectionActionSnapshot,
+): boolean {
+  return snapshot.snippets.some(
+    (snippet) =>
+      snippet.sourceElement.closest(
+        `[${SESSION_FILE_COMMENT_MODE_ATTR}="true"]`,
+      ) !== null,
+  );
 }
 
 function selectionText(snapshot: SelectionActionSnapshot): string {
@@ -133,40 +146,61 @@ export function useSelectionActionPresentation({
       menu: t("sessionSelectionActionMenu" as never),
     });
 
-  const enabledSelectionActions: EnabledSelectionAction[] = [];
-  if (selectionTextCopyActionEnabled) {
-    enabledSelectionActions.push({
-      kind: "text",
-      label: t("sessionCopySelectionText" as never),
-    });
-  }
-  if (selectionSourceCopyActionEnabled) {
-    enabledSelectionActions.push({
-      kind: "source",
-      label: t("sessionCopySelectionSource"),
-    });
-  }
-  if (selectionRichCopyActionEnabled) {
-    enabledSelectionActions.push({
-      kind: "rich",
-      label: t("sessionCopySelectionRich"),
-    });
-  }
-  if (selectionQuoteActionEnabled && onQuoteSelection) {
-    enabledSelectionActions.push({
-      kind: "quote",
-      label: t("sessionQuoteSelection"),
-    });
-  }
-  if (selectionNewSessionActionEnabled && onStartNewSessionFromSelection) {
-    enabledSelectionActions.push({
-      kind: "newSession",
-      label: t("sessionNewSessionFromSelection" as never),
-    });
-  }
+  const enabledSelectionActions = useMemo(() => {
+    const actions: EnabledSelectionAction[] = [];
+    if (selectionTextCopyActionEnabled) {
+      actions.push({
+        kind: "text",
+        label: t("sessionCopySelectionText" as never),
+      });
+    }
+    if (selectionSourceCopyActionEnabled) {
+      actions.push({
+        kind: "source",
+        label: t("sessionCopySelectionSource"),
+      });
+    }
+    if (selectionRichCopyActionEnabled) {
+      actions.push({
+        kind: "rich",
+        label: t("sessionCopySelectionRich"),
+      });
+    }
+    if (selectionQuoteActionEnabled && onQuoteSelection) {
+      actions.push({
+        kind: "quote",
+        label: t("sessionQuoteSelection"),
+      });
+    }
+    if (selectionNewSessionActionEnabled && onStartNewSessionFromSelection) {
+      actions.push({
+        kind: "newSession",
+        label: t("sessionNewSessionFromSelection" as never),
+      });
+    }
+    return actions;
+  }, [
+    onQuoteSelection,
+    onStartNewSessionFromSelection,
+    selectionNewSessionActionEnabled,
+    selectionQuoteActionEnabled,
+    selectionRichCopyActionEnabled,
+    selectionSourceCopyActionEnabled,
+    selectionTextCopyActionEnabled,
+    t,
+  ]);
+
+  const actionsForSnapshot = useCallback(
+    (snapshot: SelectionActionSnapshot) =>
+      selectionUsesSessionFileCommentMode(snapshot)
+        ? enabledSelectionActions.filter((action) => action.kind !== "quote")
+        : enabledSelectionActions,
+    [enabledSelectionActions],
+  );
 
   const capture = useSelectionActionCapture({
     actionCount: enabledSelectionActions.length,
+    getActionCount: (snapshot) => actionsForSnapshot(snapshot).length,
     containerRef,
     inert,
   });
@@ -185,6 +219,8 @@ export function useSelectionActionPresentation({
       ) {
         return;
       }
+      const snapshot = capture.captureSnapshot();
+      if (snapshot && selectionUsesSessionFileCommentMode(snapshot)) return;
       if (!applyQuoteFromSelection(event.key)) return;
       capture.dismiss();
       event.preventDefault();
@@ -196,6 +232,7 @@ export function useSelectionActionPresentation({
       window.removeEventListener("keydown", handleSelectionTyping, true);
   }, [
     applyQuoteFromSelection,
+    capture.captureSnapshot,
     capture.dismiss,
     inert,
     isInteractiveTarget,
@@ -255,7 +292,7 @@ export function useSelectionActionPresentation({
           },
         },
       ];
-      if (onQuoteSelection) {
+      if (onQuoteSelection && !selectionUsesSessionFileCommentMode(snapshot)) {
         actions.push({
           label: t("sessionQuoteSelection" as never),
           onSelect: () => {
@@ -350,7 +387,7 @@ export function useSelectionActionPresentation({
             }
       }
     >
-      {enabledSelectionActions.map(({ kind, label }) => (
+      {actionsForSnapshot(selectionActions.snapshot).map(({ kind, label }) => (
         <SelectionActionButton
           key={kind}
           kind={kind}

@@ -10,6 +10,8 @@ import { toUrlProjectId, type FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { QuoteReplyProvider } from "../../contexts/QuoteReplyContext";
+import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
+import { SessionViewerCommentProvider } from "../../contexts/SessionViewerCommentContext";
 import { setQuoteReplyButtonModePreference } from "../../hooks/useQuoteReplyButtonMode";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
@@ -1179,5 +1181,195 @@ describe("FileViewer", () => {
     expect(openLink?.getAttribute("target")).toBe("_blank");
     expect(openLink?.getAttribute("rel")).toBe("noopener noreferrer");
     expect(openMock).not.toHaveBeenCalled();
+  });
+
+  it("sends source-line comments without using the paragraph quote rail", async () => {
+    const onSendComment = vi.fn(async () => true);
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "src/example.ts",
+          size: 34,
+          mimeType: "text/typescript",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "const first = 1;\nconst second = 2;\nreturn first;",
+        highlightedHtml:
+          '<pre class="shiki"><code><span class="line">const first = 1;</span>\n<span class="line">const second = 2;</span>\n<span class="line">return first;</span></code></pre>',
+      })),
+    };
+    const projectId = toUrlProjectId("/workspace");
+    const { container } = render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId={projectId}
+          projectPath="/workspace"
+          sessionId="session-id"
+        >
+          <SessionViewerCommentProvider onSendComment={onSendComment}>
+            <QuoteReplyProvider onQuoteTextBlock={vi.fn()}>
+              <FileViewer
+                projectId={projectId}
+                filePath="src/example.ts"
+                source={source}
+                onClose={vi.fn()}
+              />
+            </QuoteReplyProvider>
+          </SessionViewerCommentProvider>
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    const toggle = await screen.findByRole("button", { name: "Comment" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      screen.queryByRole("button", { name: /Quote this paragraph/ }),
+    ).toBeNull();
+
+    const secondLine = container.querySelector<HTMLElement>('[data-line="2"]');
+    expect(secondLine).toBeTruthy();
+    fireEvent.click(secondLine!);
+    const editor = await screen.findByPlaceholderText(
+      "Comment or ask a question…",
+    );
+    expect(screen.getByText("src/example.ts:2")).toBeTruthy();
+    fireEvent.change(editor, {
+      target: { value: "Should these share a name?" },
+    });
+    fireEvent.keyDown(editor, { key: "Enter", shiftKey: true });
+    expect(onSendComment).not.toHaveBeenCalled();
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(onSendComment).toHaveBeenCalledWith(
+        "src/example.ts:2\n\n> const first = 1;\n> const second = 2;\n> return first;\n\nShould these share a name?",
+      ),
+    );
+    await waitFor(() => expect(editor.isConnected).toBe(false));
+  });
+
+  it("flushes unsent source comments as one grouped session turn", async () => {
+    const onSendComment = vi.fn(async () => true);
+    const onClose = vi.fn();
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "src/example.ts",
+          size: 13,
+          mimeType: "text/typescript",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "one\ntwo\nthree",
+        highlightedHtml:
+          '<pre class="shiki"><code><span class="line">one</span>\n<span class="line">two</span>\n<span class="line">three</span></code></pre>',
+      })),
+    };
+    const projectId = toUrlProjectId("/workspace");
+    const { container } = render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId={projectId}
+          projectPath="/workspace"
+          sessionId="session-id"
+        >
+          <SessionViewerCommentProvider onSendComment={onSendComment}>
+            <FileViewer
+              projectId={projectId}
+              filePath="src/example.ts"
+              source={source}
+              onClose={onClose}
+            />
+          </SessionViewerCommentProvider>
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Comment" }));
+    fireEvent.click(container.querySelector<HTMLElement>('[data-line="1"]')!);
+    fireEvent.change(
+      await screen.findByPlaceholderText("Comment or ask a question…"),
+      { target: { value: "First comment" } },
+    );
+    fireEvent.click(container.querySelector<HTMLElement>('[data-line="3"]')!);
+    fireEvent.change(
+      await screen.findByPlaceholderText("Comment or ask a question…"),
+      { target: { value: "Second comment" } },
+    );
+    fireEvent.click(screen.getByTitle("Close"));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onSendComment).toHaveBeenCalledTimes(1));
+    expect(onSendComment).toHaveBeenCalledWith(
+      "src/example.ts:1\n\n> one\n> two\n> three\n\nFirst comment\n\n---\n\nsrc/example.ts:3\n\n> one\n> two\n> three\n\nSecond comment",
+    );
+  });
+
+  it("opens the comment composer from a rendered-text selection", async () => {
+    const onSendComment = vi.fn(async () => true);
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "notes.md",
+          size: 22,
+          mimeType: "text/markdown",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "# Title\n\nSelected words",
+        renderedMarkdownHtml: "<h1>Title</h1><p>Selected words</p>",
+      })),
+    };
+    const projectId = toUrlProjectId("/workspace");
+    render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId={projectId}
+          projectPath="/workspace"
+          sessionId="session-id"
+        >
+          <SessionViewerCommentProvider onSendComment={onSendComment}>
+            <QuoteReplyProvider onQuoteTextBlock={vi.fn()}>
+              <FileViewer
+                projectId={projectId}
+                filePath="notes.md"
+                initialPresentation="preview"
+                source={source}
+                onClose={vi.fn()}
+              />
+            </QuoteReplyProvider>
+          </SessionViewerCommentProvider>
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Comment" }));
+    const selectedText = screen.getByText("Selected words");
+    const range = document.createRange();
+    range.selectNodeContents(selectedText);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    act(() => document.dispatchEvent(new Event("selectionchange")));
+
+    const editor = await screen.findByPlaceholderText(
+      "Comment or ask a question…",
+    );
+    expect(editor).toBeTruthy();
+    expect(screen.getByText("notes.md:3")).toBeTruthy();
+    const selectedCopies = screen.getAllByText("Selected words");
+    expect(selectedCopies.length).toBeGreaterThan(1);
+    const renderedSelection = selectedCopies.find(
+      (element) => element.tagName === "P",
+    );
+    expect(renderedSelection?.nextElementSibling?.contains(editor)).toBe(true);
+    expect(editor.closest("[data-review-comment-inline]")).toBeTruthy();
+    expect(document.activeElement).not.toBe(editor);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(editor.isConnected).toBe(false));
+    expect(onSendComment).not.toHaveBeenCalled();
   });
 });

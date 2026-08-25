@@ -31,7 +31,8 @@ exact formatted-source selection and activity-overlay placement landed
 2026-08-14; mobile long-press selection ownership restored 2026-08-15;
 session-file Markdown block clicks and live-drag deferral landed
 2026-08-20; viewer toolbar select-all landed 2026-08-22; collapsed-preview
-selection and live-tail suspension landed 2026-08-23.**
+selection and live-tail suspension landed 2026-08-23; session-file inline
+Comment mode landed 2026-08-25.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -178,6 +179,44 @@ menu.
    neither the paragraph layer nor selection actions may turn that click into
    a quote or composer focus transfer. Links and other interactive controls
    retain their own actions.
+
+### Session-file Comment mode
+
+A private, session-owned textual file modal with a live destination exposes a
+top-bar **Comment** toggle. It is default-off and is absent from standalone,
+public-share, binary, HTML-preview, and diff projections. With Comment off,
+the rendered-file reply affordances above remain the complete click contract.
+
+With Comment on:
+
+- whole-document and paragraph `>` circles are suppressed; ordinary source
+  line clicks open the Source Control inline editor at `path:line` with up to
+  three neighboring lines on either side;
+- selecting rendered or source text opens that editor with the exact
+  source-aware quote and `path:line` or `path:start-end` when the mapping is
+  known. Independently enabled selection-copy, source-copy, rich-copy, and
+  new-session bubbles remain available, while **Quote reply** and
+  type-over-selection quote insertion are suppressed so one selection cannot
+  start two comment workflows;
+- **Cancel** removes the active editor, including an untouched empty editor.
+  Opening a different anchor also discards the prior active editor when it is
+  empty, but retains it as a draft when it has text;
+- `Enter` sends the active nonempty comment immediately to the current session;
+  `Shift+Enter` inserts a newline. This send does not clear, submit, quote,
+  attach, or otherwise consume the main composer state;
+- editor blur saves nonempty drafts in browser-local storage scoped by source,
+  session, project, and file. Moving focus outside the viewer, minimizing or
+  closing it, or turning Comment off sends all remaining nonempty drafts in
+  one turn, in creation order, separated by `---`; and
+- each sent item contains only its location, `>`-quoted source, and the
+  reviewer comment/question. It deliberately omits Source Control review
+  boilerplate and durable review-site metadata. A failed send leaves the draft
+  stored and shows the failure inline so it can be retried.
+
+The editor shell and source-splitting layout are the same components used by
+Source Control comments. Session-file comments intentionally have a smaller
+turn grammar and browser-local lifetime: they are direct session messages, not
+entries in the durable Source Review accumulator.
 
 The **Appearance** rows immediately after `> Reply Buttons` separately control
 selection quote, visible-text copy, source copy, rich copy, and new session.

@@ -323,6 +323,39 @@ describe("extractMarkdownSnippetsFromSelection", () => {
     unregister();
     root.remove();
   });
+
+  it("excludes an inline comment editor from repeated-source mapping", () => {
+    const root = document.createElement("div");
+    const source = document.createElement("div");
+    source.innerHTML =
+      '<p>Same paragraph.</p><div data-markdown-copy-ignore="true">Editor text that is not source.</div><p>Same paragraph.</p>';
+    root.append(source);
+    document.body.append(root);
+    const unregister = registerMarkdownCopySource(
+      source,
+      "1. Same paragraph.\n2. Same paragraph.",
+      { projectId: "project-1", filePath: "notes.md" },
+    );
+    const second = source.querySelectorAll("p")[1];
+    const range = document.createRange();
+    range.selectNodeContents(second!);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(extractMarkdownSnippetsFromSelection(root)[0]).toMatchObject({
+      markdown: "2. Same paragraph.",
+      sourceLocation: {
+        filePath: "notes.md",
+        lineStart: 2,
+        lineEnd: 2,
+      },
+    });
+
+    selection?.removeAllRanges();
+    unregister();
+    root.remove();
+  });
 });
 
 describe("getMarkdownSnippetForSubElement", () => {

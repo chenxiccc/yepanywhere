@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import { UI_KEYS } from "../../lib/storageKeys";
 import { extractMarkdownSnippetsFromSelection } from "../../lib/markdownSelectionCopy";
+import { SESSION_FILE_COMMENT_MODE_ATTR } from "../../lib/sessionFileComments";
 import {
   installMessageListTestEnvironment,
   SessionTranscriptHarness,
@@ -38,6 +39,19 @@ function QuoteableMarkdownModal() {
     <Modal title="Rendered document" onClose={() => {}}>
       <div ref={previewRef}>
         <MarkdownPreview html="<h1>Modal heading</h1>" />
+      </div>
+    </Modal>
+  );
+}
+
+function SessionFileCommentModal() {
+  const textRef = useQuoteableTextSource<HTMLParagraphElement>(
+    "Comment-selected text",
+  );
+  return (
+    <Modal title="Commenting document" onClose={() => {}}>
+      <div {...{ [SESSION_FILE_COMMENT_MODE_ATTR]: "true" }}>
+        <p ref={textRef}>Comment-selected text</p>
       </div>
     </Modal>
   );
@@ -643,6 +657,47 @@ describe("MessageList selection and copy", () => {
     fireEvent.click(quoteButton);
 
     expect(onQuoteSelection).toHaveBeenCalledWith("> Modal selected text\n");
+  });
+
+  it("keeps enabled selection tools but suppresses quote actions in file comment mode", async () => {
+    mockPointerCoarse(false);
+    window.localStorage.setItem(UI_KEYS.selectionTextCopyActionEnabled, "true");
+    render(
+      <>
+        <MessageList
+          messages={[assistantMessage("assistant-1", "Transcript text")]}
+          onQuoteSelection={() => "> Comment-selected text\n"}
+          onStartNewSessionFromSelection={vi.fn()}
+        />
+        <SessionFileCommentModal />
+      </>,
+    );
+
+    const selectedElement = screen.getByText("Comment-selected text");
+    const range = document.createRange();
+    range.selectNodeContents(selectedElement);
+    const selection = window.getSelection();
+    const selectAgain = () => {
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
+    selectAgain();
+    fireEvent.contextMenu(selectedElement, { clientX: 0, clientY: 0 });
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Copy text", "Copy source", "New session"]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss selected text actions" }),
+    );
+
+    selectAgain();
+    fireEvent.pointerDown(selectedElement, { clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
+    expect(
+      await screen.findByRole("button", { name: "Copy text" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Quote reply" })).toBeNull();
   });
 
   it("opens the selection action circle after viewer select-all", async () => {

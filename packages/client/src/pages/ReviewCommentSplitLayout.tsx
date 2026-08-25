@@ -25,3 +25,18 @@ export function ReviewCommentSplitLayout({
     </div>
   );
 }
+
+/** Render the shared editor styling inside a source-owned insertion host. */
+export function ReviewCommentInlineLayout({
+  editor,
+}: {
+  editor: ReactNode | null;
+}) {
+  if (!editor) return null;
+
+  return (
+    <div className={styles.root} data-review-comment-inline="">
+      <div className={styles.editor}>{editor}</div>
+    </div>
+  );
+}
