@@ -1574,6 +1574,80 @@ describe("linkifyProjectPaths", () => {
     expect(asked).toHaveLength(1);
   });
 
+  it("directly resolves deduplicated words beside a short external file", async () => {
+    const projectPath = await createRepo();
+    const externalRoot = await createRepo();
+    const viewedFile = join(externalRoot, "config", "view.yml");
+    const sibling = join(externalRoot, "config", "XMTConfig-ont.yml");
+    const model = join(externalRoot, "models", "boundary-refiner.onnx");
+    const findExisting = vi.fn(async () => new Set<string>());
+    const externalIndex: ProjectPathIndex = {
+      findExisting,
+      has: async () => false,
+      knownFile: () => undefined,
+      release: () => undefined,
+      sourceRevision: () => 1,
+    };
+    const resolveAbsoluteFilePaths = vi.fn(
+      async (paths: readonly string[]) =>
+        new Set(paths.filter((path) => path === sibling || path === model)),
+    );
+
+    const out = await linkifyProjectPaths(
+      "<span>basis XMTConfig-ont.yml ../models/boundary-refiner.onnx " +
+        "call call</span>",
+      {
+        projectId: "project-1",
+        projectPath,
+        index: externalIndex,
+        selfAbsolutePath: viewedFile,
+        selfRelativePath: viewedFile,
+        resolveAbsoluteFilePaths,
+      },
+    );
+
+    expect(findExisting).not.toHaveBeenCalled();
+    expect(resolveAbsoluteFilePaths).toHaveBeenCalledTimes(1);
+    expect(resolveAbsoluteFilePaths.mock.calls[0]?.[0]).toEqual([
+      join(externalRoot, "config", "basis"),
+      sibling,
+      model,
+      join(externalRoot, "config", "call"),
+    ]);
+    expect(out).toContain(`path=${encodeURIComponent(sibling)}`);
+    expect(out).toContain(">XMTConfig-ont.yml</a>");
+    expect(out).toContain(`path=${encodeURIComponent(model)}`);
+    expect(out).toContain(">../models/boundary-refiner.onnx</a>");
+    expect(out).not.toContain(">call</a>");
+  });
+
+  it("checks only path-shaped words when an external file exceeds the cap", async () => {
+    const projectPath = await createRepo();
+    const externalRoot = await createRepo();
+    const viewedFile = join(externalRoot, "config", "view.yml");
+    const model = join(externalRoot, "models", "refiner.onnx");
+    const settings = join(externalRoot, "config", "settings.json");
+    const resolveAbsoluteFilePaths = vi.fn(async () => new Set([model]));
+    const words = Array.from({ length: 70 }, (_, index) => `word${index}`);
+
+    const out = await linkifyProjectPaths(
+      `<span>${words.join(" ")} ../models/refiner.onnx settings.json ` +
+        "../models/refiner.onnx</span>",
+      {
+        projectId: "project-1",
+        projectPath,
+        index,
+        selfAbsolutePath: viewedFile,
+        selfRelativePath: viewedFile,
+        resolveAbsoluteFilePaths,
+      },
+    );
+
+    expect(resolveAbsoluteFilePaths).toHaveBeenCalledWith([model, settings]);
+    expect(out).toContain(">../models/refiner.onnx</a>");
+    expect(out).not.toContain(">settings.json</a>");
+  });
+
   it("prefers a project-relative path over a file-relative collision", async () => {
     const existing = new Set(["shared.txt", "configs/shared.txt"]);
     const collisionIndex: ProjectPathIndex = {

@@ -133,6 +133,52 @@ describe("Files API", () => {
       );
     });
 
+    it("links relative paths from an allowed file outside the project", async () => {
+      const externalRoot = join(testDir, "external-files");
+      const configDir = join(externalRoot, "config");
+      const modelsDir = join(externalRoot, "models");
+      const viewedFile = join(configDir, "XMTConfig.yml");
+      const basisFile = join(configDir, "basis.yml");
+      const modelFile = join(modelsDir, "boundary-refiner.onnx");
+      await mkdir(configDir, { recursive: true });
+      await mkdir(modelsDir, { recursive: true });
+      await writeFile(basisFile, "basis");
+      await writeFile(modelFile, "model");
+      await writeFile(
+        viewedFile,
+        "basis: basis.yml\nmodel: ../models/boundary-refiner.onnx\n" +
+          "action: call\n",
+      );
+      initFileAccess({
+        uploadsDir: join(testDir, "uploads"),
+        homeDir: join(testDir, "home"),
+        tempPaths: [],
+        envPaths: [externalRoot],
+      });
+
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=${encodeURIComponent(viewedFile)}&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.highlightedHtml).toContain(
+        `path=${encodeURIComponent(basisFile)}`,
+      );
+      expect(json.highlightedHtml).toContain(">basis.yml</a>");
+      expect(json.highlightedHtml).toContain(
+        `path=${encodeURIComponent(modelFile)}`,
+      );
+      expect(json.highlightedHtml).toContain(
+        ">../models/boundary-refiner.onnx</a>",
+      );
+      expect(json.highlightedHtml).not.toContain(">call</a>");
+    });
+
     it("keeps file reads independent of provider inventory refreshes", async () => {
       const { app } = createApp({
         codexSessionsDir: join(testDir, "codex-sessions"),

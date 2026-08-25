@@ -997,6 +997,7 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
                     projectId,
                     projectPath: projectRoot,
                     index: pathIndex,
+                    selfAbsolutePath: filePath,
                     selfRelativePath: relativePath,
                     resolveAbsoluteFilePaths:
                       deps.strictProjectFileAccess === true

@@ -2,7 +2,15 @@ import {
   findProjectPathTokens,
   type ProjectPathLinkTarget,
 } from "@yep-anywhere/shared";
-import { dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  normalize,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import type { ProjectPathIndex } from "../projects/projectPathIndex.js";
 import {
   renderLocalFileLink,
@@ -93,7 +101,9 @@ function mayCostLookup(token: string): boolean {
   // the token out outright — which is also what a URL's `//host/path` becomes
   // once the tokenizer drops the scheme at its colon.
   if (token.startsWith("/")) return false;
-  if (token.includes("/") || token.startsWith(".")) return true;
+  if (token.includes("/") || token.includes("\\") || token.startsWith(".")) {
+    return true;
+  }
   const dot = token.lastIndexOf(".");
   if (dot <= 0 || dot === token.length - 1) return false;
   const extension = token.slice(dot + 1);
@@ -163,6 +173,8 @@ export interface ProjectPathLinkOptions {
   index: ProjectPathIndex;
   /** Project-relative viewed-file path; owns sibling resolution and self-suppression. */
   selfRelativePath?: string;
+  /** Resolved viewed-file path; enables bounded sibling probes outside the project. */
+  selfAbsolutePath?: string;
   /**
    * Spend filesystem I/O only on path-shaped tokens.
    *
@@ -181,7 +193,48 @@ export interface ProjectPathLinkOptions {
 
 interface ResolvedProjectPathCandidates {
   absolute: ReadonlySet<string>;
+  externalRelative: ReadonlyMap<string, string>;
   relative: ReadonlyMap<string, string>;
+}
+
+function externalViewedFileDirectory({
+  projectPath,
+  selfAbsolutePath,
+}: ProjectPathLinkOptions): { directory: string; self: string } | null {
+  if (!selfAbsolutePath || !isAbsolute(selfAbsolutePath)) return null;
+  const projectRoot = resolve(projectPath);
+  const self = resolve(selfAbsolutePath);
+  const projectRelative = relative(projectRoot, self);
+  if (
+    projectRelative === "" ||
+    (projectRelative !== ".." &&
+      !projectRelative.startsWith(`..${sep}`) &&
+      !isAbsolute(projectRelative))
+  ) {
+    return null;
+  }
+  return { directory: dirname(self), self };
+}
+
+function externalRelativeCandidateTargets(
+  candidates: readonly string[],
+  options: ProjectPathLinkOptions,
+  limit: number,
+): ReadonlyMap<string, string> {
+  const viewedFile = externalViewedFileDirectory(options);
+  if (!viewedFile || limit <= 0) return new Map();
+
+  const distinct = Array.from(new Set(candidates));
+  const eligible =
+    distinct.length <= limit
+      ? distinct
+      : distinct.filter(mayCostLookup).slice(0, limit);
+  const targets = new Map<string, string>();
+  for (const candidate of eligible) {
+    const target = resolve(viewedFile.directory, candidate);
+    if (target !== viewedFile.self) targets.set(candidate, target);
+  }
+  return targets;
 }
 
 function viewedFileDirectory(selfRelativePath: string | undefined): {
@@ -231,18 +284,20 @@ function relativeCandidateTargets(
 async function resolveProjectPathCandidates(
   relativeCandidates: readonly string[],
   absoluteCandidates: readonly string[],
-  {
+  options: ProjectPathLinkOptions,
+): Promise<ResolvedProjectPathCandidates | null> {
+  const {
     index,
+    projectId,
     selfRelativePath,
     gateLookupsByShape,
     onUnversionedLookup,
     resolveAbsoluteFilePaths,
-  }: ProjectPathLinkOptions,
-): Promise<ResolvedProjectPathCandidates | null> {
-  const candidateTargets = relativeCandidateTargets(
-    relativeCandidates,
-    selfRelativePath,
-  );
+  } = options;
+  const externalViewedFile = externalViewedFileDirectory(options);
+  const candidateTargets = externalViewedFile
+    ? new Map<string, readonly string[]>()
+    : relativeCandidateTargets(relativeCandidates, selfRelativePath);
   const worthLookup = Array.from(
     new Set(
       relativeCandidates
@@ -254,12 +309,31 @@ async function resolveProjectPathCandidates(
   );
 
   const relative = new Map<string, string>();
+  const cappedAbsoluteCandidates = Array.from(
+    new Set(absoluteCandidates),
+  ).slice(0, MAX_ABSOLUTE_PATH_PROBES);
+  const externalCandidateTargets =
+    projectId && resolveAbsoluteFilePaths
+      ? externalRelativeCandidateTargets(
+          relativeCandidates,
+          options,
+          MAX_ABSOLUTE_PATH_PROBES - cappedAbsoluteCandidates.length,
+        )
+      : new Map<string, string>();
+  const directlyProbedPaths = Array.from(
+    new Set([
+      ...cappedAbsoluteCandidates,
+      ...externalCandidateTargets.values(),
+    ]),
+  ).slice(0, MAX_ABSOLUTE_PATH_PROBES);
   let absolute = new Set<string>();
   try {
     const [existingRelative, existingAbsolute] = await Promise.all([
-      index.findExisting(worthLookup),
-      absoluteCandidates.length > 0
-        ? resolveAbsoluteFilePaths?.(absoluteCandidates)
+      externalViewedFile
+        ? Promise.resolve(new Set<string>())
+        : index.findExisting(worthLookup),
+      directlyProbedPaths.length > 0
+        ? resolveAbsoluteFilePaths?.(directlyProbedPaths)
         : undefined,
     ]);
     for (const candidate of relativeCandidates) {
@@ -270,8 +344,8 @@ async function resolveProjectPathCandidates(
     }
     absolute = new Set(existingAbsolute);
   } catch {
-    // Link discovery is advisory. An unavailable index must not fail the view
-    // that owns the source text.
+    // Link discovery is advisory. An unavailable index or exact resolver must
+    // not fail the view that owns the source text.
     onUnversionedLookup?.();
     return null;
   }
@@ -279,7 +353,7 @@ async function resolveProjectPathCandidates(
   if (worthLookup.some((path) => index.knownFile(path) === undefined)) {
     onUnversionedLookup?.();
   }
-  if (absoluteCandidates.length > 0) {
+  if (directlyProbedPaths.length > 0) {
     onUnversionedLookup?.();
   }
   if (gateLookupsByShape) {
@@ -296,7 +370,12 @@ async function resolveProjectPathCandidates(
     }
   }
 
-  return { absolute, relative };
+  const externalRelative = new Map<string, string>();
+  for (const [candidate, target] of externalCandidateTargets) {
+    if (absolute.has(target)) externalRelative.set(candidate, target);
+  }
+
+  return { absolute, externalRelative, relative };
 }
 
 /** Resolve raw command/result text to a small exact-link annotation. */
@@ -347,7 +426,8 @@ export async function resolveProjectPathTextLinks(
         ? resolved.absolute.has(token.text)
           ? token.text
           : undefined
-        : resolved.relative.get(token.text);
+        : (resolved.externalRelative.get(token.text) ??
+          resolved.relative.get(token.text));
     if (!filePath || targets.has(token.text)) continue;
     targets.set(token.text, {
       filePath,
@@ -456,6 +536,7 @@ export async function linkifyProjectPaths(
     projectPath,
     projectId,
     index,
+    selfAbsolutePath,
     selfRelativePath,
     gateLookupsByShape,
     onUnversionedLookup,
@@ -482,6 +563,7 @@ export async function linkifyProjectPaths(
       projectPath,
       projectId,
       index,
+      selfAbsolutePath,
       selfRelativePath,
       gateLookupsByShape,
       onUnversionedLookup,
@@ -492,11 +574,14 @@ export async function linkifyProjectPaths(
 
   const existing = resolved.relative;
   const existingAbsolute = resolved.absolute;
+  const existingExternalRelative = resolved.externalRelative;
   let linkedHtml =
     projectId && existingAbsolute.size > 0
       ? linkAbsolutePaths(html, projectId, existingAbsolute)
       : html;
-  if (existing.size === 0) return linkedHtml;
+  if (existing.size === 0 && existingExternalRelative.size === 0) {
+    return linkedHtml;
+  }
 
   linkedHtml = mapHtmlTextRuns(linkedHtml, (text) => {
     if (!text) return text;
@@ -507,15 +592,24 @@ export async function linkifyProjectPaths(
     while (match !== null) {
       const token = match[0];
       const trimmed = token.replace(TRAILING_NOISE, "");
-      const target = trimmed ? existing.get(trimmed) : undefined;
-      if (trimmed && target) {
+      const externalTarget = trimmed
+        ? existingExternalRelative.get(trimmed)
+        : undefined;
+      const projectTarget = trimmed ? existing.get(trimmed) : undefined;
+      const renderedLink =
+        trimmed && externalTarget && projectId
+          ? renderProjectFileViewerLink(projectId, externalTarget, trimmed)
+          : trimmed && projectTarget
+            ? renderLocalFileLink(
+                { filePath: resolve(projectPath, projectTarget) },
+                trimmed,
+                { title: trimmed },
+              )
+            : undefined;
+      if (renderedLink) {
         const start = match.index;
         out += text.slice(cursor, start);
-        out += renderLocalFileLink(
-          { filePath: resolve(projectPath, target) },
-          trimmed,
-          { title: trimmed },
-        );
+        out += renderedLink;
         out += token.slice(trimmed.length);
         cursor = start + token.length;
       }
