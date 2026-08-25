@@ -81,6 +81,7 @@ interface LocalMediaModalProps {
   mediaType: LocalResourceMediaType;
   mediaSource?: LocalMediaSource;
   imageNavigation?: ImageViewerNavigation;
+  dismissOnBack?: boolean;
   onClose: () => void;
 }
 
@@ -98,6 +99,7 @@ interface DisplayedLocalMedia {
 interface LocalFileModalProps {
   resource: LocalResourceRef;
   initialPresentation?: FileViewPresentation;
+  dismissOnBack?: boolean;
   onClose: () => void;
 }
 
@@ -402,6 +404,7 @@ export function LocalMediaModal({
   mediaType,
   mediaSource,
   imageNavigation,
+  dismissOnBack,
   onClose,
 }: LocalMediaModalProps) {
   const { t } = useI18n();
@@ -566,6 +569,8 @@ export function LocalMediaModal({
           )
         }
         onClose={onClose}
+        closeOnBackGesture={dismissOnBack}
+        closeOnBackspace={dismissOnBack}
         variant={imageModalActive ? "image-viewer" : undefined}
       >
         {displayedImage ? (
@@ -622,6 +627,7 @@ export function LocalMediaModal({
 export function LocalFileModal({
   resource,
   initialPresentation,
+  dismissOnBack,
   onClose,
 }: LocalFileModalProps) {
   const sessionMetadata = useOptionalSessionMetadata();
@@ -693,7 +699,12 @@ export function LocalFileModal({
   }, [apiPath, presentation, transport]);
 
   return (
-    <Modal title={fileName} onClose={onClose}>
+    <Modal
+      title={fileName}
+      onClose={onClose}
+      closeOnBackGesture={dismissOnBack}
+      closeOnBackspace={dismissOnBack}
+    >
       <div className={styles.fileModalContent}>
         <div
           className={styles.fileModalMeta}

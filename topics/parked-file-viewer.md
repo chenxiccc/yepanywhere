@@ -48,6 +48,15 @@ a time. This includes file viewers, tool activity details, and provider-child
 details. Opening another managed viewer closes the previous viewer and dismisses
 its still-mounted source deterministically.
 
+File navigation inside an open viewer is a dismissal stack. The file header's
+**Back** control closes only the viewer that control belongs to, so an in-file
+link returns to its still-mounted parent and the outermost Back returns to the
+session. Browser Back/back-swipe and an unmodified, non-repeating Backspace use
+the same topmost-only rule. Backspace never dismisses a viewer while its event
+target is an input, textarea, select, editable region, or textbox. Each child
+file or resource modal owns its own browser-history entry so browser Back does
+not skip from a nested file past its parent.
+
 The capability is authenticated-session UI. Live and frozen public shares do
 not expose parking controls, consistent with their lack of an authenticated
 session composer and their narrower file authority.

@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { toUrlProjectId, type FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "../../api/client";
 import { QuoteReplyProvider } from "../../contexts/QuoteReplyContext";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
@@ -16,6 +17,7 @@ import { extractMarkdownSnippetsFromSelection } from "../../lib/markdownSelectio
 import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
 import { UI_KEYS } from "../../lib/storageKeys";
 import { FileViewer, type FileViewerSource } from "../FileViewer";
+import { FileViewerModal } from "../FilePathLink";
 
 const mocks = vi.hoisted(() => ({
   useFileVersionControl: vi.fn(),
@@ -166,6 +168,116 @@ describe("FileViewer", () => {
         "range",
       ),
     );
+  });
+
+  it("offers a Back control that closes a modal viewer", async () => {
+    const onClose = vi.fn();
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "notes.txt",
+          size: 5,
+          mimeType: "text/plain",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "notes",
+      })),
+    };
+
+    render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="notes.txt"
+          source={source}
+          onClose={onClose}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Back" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("backs out of an in-file viewer before closing its parent", async () => {
+    const childResponse: FileContentResponse = {
+      metadata: {
+        path: "child.yml",
+        size: 5,
+        mimeType: "text/yaml",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "child",
+    };
+    const getFile = vi.spyOn(api, "getFile").mockResolvedValue(childResponse);
+    const onClose = vi.fn();
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "parent.yml",
+          size: 9,
+          mimeType: "text/yaml",
+          isText: true,
+        },
+        rawUrl: "",
+        content: "child.yml",
+        highlightedHtml:
+          '<a href="/projects/project-id/file?path=child.yml" ' +
+          'data-ya-resource="project-file" data-ya-project-id="project-id" ' +
+          'data-ya-path="child.yml">child.yml</a>',
+      })),
+    };
+
+    try {
+      render(
+        <I18nProvider>
+          <FileViewerModal
+            projectId="project-id"
+            filePath="parent.yml"
+            source={source}
+            onClose={onClose}
+          />
+        </I18nProvider>,
+      );
+
+      fireEvent.click(await screen.findByRole("link", { name: "child.yml" }));
+      await waitFor(() =>
+        expect(screen.getAllByRole("dialog")).toHaveLength(2),
+      );
+      const backButtons = screen.getAllByRole("button", { name: "Back" });
+      const childBack = backButtons.at(-1);
+      if (!childBack) throw new Error("Nested file viewer has no Back control");
+      fireEvent.click(childBack);
+      await waitFor(() =>
+        expect(screen.getAllByRole("dialog")).toHaveLength(1),
+      );
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("link", { name: "child.yml" }));
+      await waitFor(() =>
+        expect(screen.getAllByRole("dialog")).toHaveLength(2),
+      );
+      fireEvent.keyDown(document, { key: "Backspace" });
+      await waitFor(() =>
+        expect(screen.getAllByRole("dialog")).toHaveLength(1),
+      );
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(document, { key: "Backspace" });
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(getFile).toHaveBeenCalledWith(
+        "project-id",
+        "child.yml",
+        true,
+        undefined,
+        undefined,
+        "full",
+      );
+    } finally {
+      getFile.mockRestore();
+    }
   });
 
   afterEach(() => {

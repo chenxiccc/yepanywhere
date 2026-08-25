@@ -1113,6 +1113,18 @@ export const FileViewer = memo(function FileViewer({
   // Header with file info and actions
   const header = (
     <div className={`file-viewer-header ${viewerStyles.header}`}>
+      {onClose && (
+        <button
+          type="button"
+          className={`file-viewer-action ${viewerStyles.backButton}`}
+          onClick={onClose}
+          title={t("actionBack")}
+          aria-label={t("actionBack")}
+        >
+          <BackIcon />
+          <span className={viewerStyles.backLabel}>{t("actionBack")}</span>
+        </button>
+      )}
       <div className={`file-viewer-info ${viewerStyles.info}`}>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: right-click opens the file action menu; left-click behavior stays on explicit toolbar buttons */}
         <span
@@ -1359,6 +1371,7 @@ export const FileViewer = memo(function FileViewer({
           path={localMediaModal.path}
           mediaType={localMediaModal.mediaType}
           mediaSource={mediaSource}
+          dismissOnBack
           onClose={closeLocalMediaModal}
         />
       ) : null}
@@ -1366,6 +1379,7 @@ export const FileViewer = memo(function FileViewer({
         <LocalFileModal
           resource={localFileModal.resource}
           initialPresentation={localFileModal.initialPresentation}
+          dismissOnBack
           onClose={closeLocalFileModal}
         />
       ) : null}
@@ -1373,6 +1387,8 @@ export const FileViewer = memo(function FileViewer({
         <Modal
           title={getPathBasename(projectFileModal.filePath)}
           onClose={closeProjectFileModal}
+          closeOnBackGesture
+          closeOnBackspace
         >
           <FileViewer
             projectId={projectFileModal.projectId}
@@ -1417,6 +1433,24 @@ function FileViewerSelectionActions({
 }
 
 // Icons
+function BackIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.5 8h-11M6.5 4l-4 4 4 4" />
+    </svg>
+  );
+}
+
 function RawSourceIcon() {
   return (
     <svg

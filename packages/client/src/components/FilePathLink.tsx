@@ -57,7 +57,7 @@ import {
 } from "./FileResourceActions";
 import { createPublicShareFileViewerSource } from "./publicShareFileViewerSource";
 import { CopyTextButton } from "./ui/CopyTextButton";
-import { useModalBackGesture } from "./ui/Modal";
+import { useModalBackGesture, useModalBackspace } from "./ui/Modal";
 import styles from "./FilePathLink.module.css";
 
 export { FileVersionControlLinks } from "./FileDiffViewLinks";
@@ -453,6 +453,7 @@ export function FileViewerModal({
   }, [close, minimized]);
 
   useModalBackGesture(close, !minimized, "__fileViewerModal");
+  useModalBackspace(close, !minimized);
 
   // Prevent body scroll when modal is open
   useEffect(() => {

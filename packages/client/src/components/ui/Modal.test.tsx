@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { Modal } from "./Modal";
@@ -64,5 +64,43 @@ describe("Modal closeOnBackGesture", () => {
       ...priorState,
       yaModal: expect.stringMatching(/^yaModal-\d+$/),
     });
+  });
+
+  it("closes only the topmost Backspace owner", () => {
+    const closeParent = vi.fn();
+    const closeChild = vi.fn();
+    render(
+      <I18nProvider>
+        <Modal title="Parent" onClose={closeParent} closeOnBackspace>
+          <div>parent body</div>
+        </Modal>
+        <Modal title="Child" onClose={closeChild} closeOnBackspace>
+          <div>child body</div>
+        </Modal>
+      </I18nProvider>,
+    );
+
+    fireEvent.keyDown(document, { key: "Backspace" });
+
+    expect(closeChild).toHaveBeenCalledTimes(1);
+    expect(closeParent).not.toHaveBeenCalled();
+  });
+
+  it("leaves Backspace to editable controls", () => {
+    const onClose = vi.fn();
+    render(
+      <I18nProvider>
+        <Modal title="Editor" onClose={onClose} closeOnBackspace>
+          <input aria-label="Filename" />
+        </Modal>
+      </I18nProvider>,
+    );
+
+    const input = screen.getByRole("textbox", { name: "Filename" });
+    fireEvent.keyDown(input, { key: "Backspace" });
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document, { key: "Backspace" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

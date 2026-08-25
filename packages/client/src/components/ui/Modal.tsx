@@ -14,6 +14,11 @@ import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../../lib/markdownSelectionCopy
 const ANCHORED_MODAL_MARGIN_PX = 8;
 const ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX = 600;
 let modalHistoryEntrySequence = 0;
+let modalBackspaceOwnerSequence = 0;
+const modalBackspaceOwners: Array<{
+  id: number;
+  close: () => void;
+}> = [];
 
 export interface ModalAnchorRect {
   bottom: number;
@@ -42,6 +47,72 @@ interface ModalProps {
    * (topic: source-review-to-session).
    */
   closeOnBackGesture?: boolean;
+  /** Close only the topmost opted-in modal when Backspace is not editing text. */
+  closeOnBackspace?: boolean;
+}
+
+function isEditableBackspaceTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']",
+    ),
+  );
+}
+
+function handleModalBackspace(event: KeyboardEvent): void {
+  if (
+    event.key !== "Backspace" ||
+    event.repeat ||
+    event.isComposing ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    isEditableBackspaceTarget(event.target)
+  ) {
+    return;
+  }
+  const owner = modalBackspaceOwners.at(-1);
+  if (!owner) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  owner.close();
+}
+
+/** Own the topmost Backspace dismissal slot while a viewer is visible. */
+export function useModalBackspace(onClose: () => void, enabled = true): void {
+  const onCloseRef = useRef(onClose);
+  const ownerIdRef = useRef<number | null>(null);
+  onCloseRef.current = onClose;
+  if (ownerIdRef.current === null) {
+    modalBackspaceOwnerSequence += 1;
+    ownerIdRef.current = modalBackspaceOwnerSequence;
+  }
+
+  useEffect(() => {
+    if (!enabled) return;
+    const ownerId = ownerIdRef.current;
+    if (ownerId === null) return;
+    const owner = {
+      id: ownerId,
+      close: () => onCloseRef.current(),
+    };
+    const needsListener = modalBackspaceOwners.length === 0;
+    modalBackspaceOwners.push(owner);
+    if (needsListener) {
+      document.addEventListener("keydown", handleModalBackspace, true);
+    }
+    return () => {
+      const ownerIndex = modalBackspaceOwners.findIndex(
+        (candidate) => candidate.id === owner.id,
+      );
+      if (ownerIndex >= 0) modalBackspaceOwners.splice(ownerIndex, 1);
+      if (modalBackspaceOwners.length === 0) {
+        document.removeEventListener("keydown", handleModalBackspace, true);
+      }
+    };
+  }, [enabled]);
 }
 
 function getHistoryState(): Record<string, unknown> {
@@ -131,6 +202,7 @@ export function Modal({
   anchorRect,
   anchorAtAnyWidth = false,
   closeOnBackGesture,
+  closeOnBackspace,
   contentRef,
   variant,
 }: ModalProps) {
@@ -139,6 +211,7 @@ export function Modal({
   const modalRef = useRef<HTMLDivElement>(null);
   const overlayPointerStartedOnOverlayRef = useRef(false);
   useModalBackGesture(onClose, Boolean(closeOnBackGesture && !minimized));
+  useModalBackspace(onClose, Boolean(closeOnBackspace && !minimized));
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&
