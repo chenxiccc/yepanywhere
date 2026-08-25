@@ -65,6 +65,10 @@ import { ProjectStoragePolicy } from "./projects/projectStoragePolicy.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
 import {
+  WebhookPrivateService,
+  createWebhookPrivateRoutes,
+} from "./webhook-private/index.js";
+import {
   RemoteAccessService,
   RemoteSessionService,
 } from "./remote-access/index.js";
@@ -1025,6 +1029,27 @@ async function startServer() {
   });
   markStartup("app created");
   disposeAppForShutdown = disposeSessionReaders;
+
+  // webhook-private：钉钉/飞书群机器人通知服务（独立于 LifecycleWebhookService）
+  // webhook-private: DingTalk/Feishu group-bot notification service
+  // (independent of LifecycleWebhookService). supervisor 在 createApp 返回后才可用，
+  // 故在此实例化并挂路由，不改 app.ts。
+  // supervisor is only available after createApp returns, so instantiate and
+  // mount the route here without touching app.ts.
+  const webhookPrivateService = new WebhookPrivateService({
+    dataDir: config.dataDir,
+    eventBus,
+    supervisor,
+  });
+  await webhookPrivateService.initialize();
+  app.route(
+    "/api/webhook-private",
+    createWebhookPrivateRoutes({
+      store: webhookPrivateService.getStore(),
+      service: webhookPrivateService,
+    }),
+  );
+  markStartup("webhook-private routes mounted");
 
   const focusedSessionWatchManager = new FocusedSessionWatchManager({
     scanner,
