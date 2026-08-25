@@ -12,6 +12,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useNewSessionDraft } from "../hooks/useDrafts";
+import { useProjectCodeNamePreferences } from "../hooks/useProjectCodeNamePreferences";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
 import { useProcesses } from "../hooks/useProcesses";
@@ -387,6 +388,7 @@ export function Sidebar({
     versionInfo,
     PROJECT_CODE_NAMES_CAPABILITY,
   );
+  const { projectCodeNamesEnabled } = useProjectCodeNamePreferences();
   const supportsSourceControl = serverHasCapability(
     versionInfo,
     GIT_STATUS_ENHANCED_CAPABILITY,
@@ -655,12 +657,14 @@ export function Sidebar({
       new Map(
         projects.map((project) => [
           project.id,
-          supportsProjectCodeNames && project.codeName
+          supportsProjectCodeNames &&
+          projectCodeNamesEnabled &&
+          project.codeName
             ? project.codeName
             : project.name,
         ]),
       ),
-    [projects, supportsProjectCodeNames],
+    [projectCodeNamesEnabled, projects, supportsProjectCodeNames],
   );
   const pendingProjectQueueItems = useMemo(
     () =>

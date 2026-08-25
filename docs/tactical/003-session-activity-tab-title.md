@@ -21,6 +21,9 @@ Progress:
 - [x] 2026-08-24: Replaced capable-server circle frames with a zero-prefix
   ordinary/Mathematical-Bold project-code-name cycle. Older servers retain the
   released circle fallback.
+- [x] 2026-08-25: Restored circle frames as the consistent default on every
+  route. The Mathematical-Bold code-name pulse remains an explicit, default-off
+  Appearance option that also requires short project code names.
 
 ## Context
 
@@ -47,10 +50,10 @@ The requested setting is:
   - `idle`;
   - `waiting-input`;
   - pending approvals or questions.
-- On servers with project code names, use two zero-prefix frames:
-  - `yep:Session`
-  - `𝐲𝐞𝐩:Session`
-- On an older server without the capability, retain the released circle frames.
+- Use the released `(●)` / `(○)` frames on every route by default.
+- Keep the zero-prefix `yep:Session` / `𝐲𝐞𝐩:Session` cycle only when the
+  browser has explicitly enabled both short project code names and their
+  activity pulse. A title without a code name retains circle frames.
 - Prefer the existing needs-attention count first:
   - `(2) 𝐲𝐞𝐩:Session`
 - Compose tab-title prefixes from one place instead of adding another
@@ -193,14 +196,19 @@ The requested setting is:
 
 ## Verification Checklist
 
-- Fresh browser profiles do not show activity in the tab title.
-- Enabling the setting alternates ordinary and bold code-name frames only
-  during active work; an older server retains `(●)` / `(○)`.
+- Fresh browser profiles do not show activity in the tab title, short project
+  code names, or the Mathematical-Bold pulse.
+- Enabling only tab-title activity alternates `(●)` / `(○)` during active work
+  on every route.
+- Enabling short project codes and their separate pulse preference alternates
+  ordinary and bold code-name frames during active work; an older server still
+  retains `(●)` / `(○)`.
 - The tab title shows activity when any active session is working.
 - Pending approvals/questions still use the existing needs-attention badge and
   do not trigger the activity spinner by themselves.
 - Existing needs-attention title counts still work and compose as
-  `(N) 𝐲𝐞𝐩:Title` on a capable server.
+  `(N) (●) Project - Title` by default or `(N) 𝐲𝐞𝐩:Title` after both project
+  code-name preferences are enabled on a capable server.
 - Timers are cleaned up after disabling the feature, navigating away from a
   session, or unmounting the app.
 - Remote client routes behave consistently with local routes.

@@ -1,5 +1,6 @@
 import { sanitizeSessionTitle } from "@yep-anywhere/shared";
 import { useEffect } from "react";
+import { useProjectCodeNamePreferences } from "./useProjectCodeNamePreferences";
 
 const BASE_TITLE = "Yep Anywhere";
 export const PROJECT_CODE_NAME_TITLE_ATTRIBUTE = "data-project-code-name";
@@ -34,20 +35,25 @@ export function useDocumentTitle(
   sessionName?: string | null,
   enabled = true,
 ) {
+  const { projectCodeNamesEnabled } = useProjectCodeNamePreferences();
+  const displayedProjectCodeName = projectCodeNamesEnabled
+    ? projectCodeName
+    : undefined;
+
   useEffect(() => {
     if (!enabled) {
       return;
     }
 
     const titleElement = document.querySelector("title");
-    if (projectName && projectCodeName && sessionName) {
+    if (projectName && displayedProjectCodeName && sessionName) {
       titleElement?.setAttribute(PROJECT_CODE_NAME_TITLE_ATTRIBUTE, "");
     } else {
       titleElement?.removeAttribute(PROJECT_CODE_NAME_TITLE_ATTRIBUTE);
     }
     document.title = formatDocumentTitle(
       projectName,
-      projectCodeName,
+      displayedProjectCodeName,
       sessionName,
     );
 
@@ -56,5 +62,5 @@ export function useDocumentTitle(
       titleElement?.removeAttribute(PROJECT_CODE_NAME_TITLE_ATTRIBUTE);
       document.title = BASE_TITLE;
     };
-  }, [enabled, projectCodeName, projectName, sessionName]);
+  }, [displayedProjectCodeName, enabled, projectName, sessionName]);
 }

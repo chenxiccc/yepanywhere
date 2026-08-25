@@ -9,28 +9,36 @@ Status: **implemented.**
 
 ## User-visible contract
 
-- Every project has one code name. The generated default is the first three
-  letters of the project name. Projects displays it in smaller text directly
-  below the full name; clicking it opens an inline editor, leaving the field
-  commits, and the adjacent × cancels.
+- A capable server assigns every project one code name. The generated value
+  starts with the first three letters of the project name, but remains latent
+  until the browser opts into **Short Project Code Names** in Appearance.
+- **Short Project Code Names** is browser-local and defaults off. While off,
+  browser titles and sidebar rows use full project names with their released
+  ellipsis behavior, and Projects hides the code-name editor. This is the
+  vanilla presentation for fresh browser profiles.
+- Enabling **Short Project Code Names** displays the code in smaller text
+  directly below the full name on Projects. Clicking it opens an inline editor,
+  leaving the field commits, and the adjacent × cancels.
 - Code names are unique across the projects visible to one YA server. A
   generated value remains stable across project ordering and visible-session
   changes, but is regenerated if another project's name introduces a generated
   prefix collision.
-- A session browser title uses `code:title` with no brackets or post-colon
-  space, for example `yep:Improve tab titles`.
-- Sidebar project labels use the same code name so more of each session title
-  remains visible. The full project name remains available in the Projects
-  surface and wherever disambiguating detail is needed.
-- When the tab-title activity preference is enabled, activity alternates only
-  the leading code segment between ordinary and bold-looking forms. It does not
-  add the current `(●)` / `(○)` frame, so activity costs no additional title
-  characters. Existing needs-attention counts remain a separate leading
-  indicator.
+- With short code names enabled, a session browser title uses `code:title` with
+  no brackets or post-colon space, for example `yep:Improve tab titles`.
+  Sidebar project labels use the same code so more of each session title remains
+  visible. The full project name remains available in Projects and wherever
+  disambiguating detail is needed.
+- **Pulse Project Code for Tab Activity** is a second browser-local Appearance
+  preference and defaults off. Ordinary tab-title activity therefore uses the
+  same `(●)` / `(○)` frames on code-name and full-name titles. When both short
+  code names and the pulse are explicitly enabled, a code-name title alternates
+  only its leading code between ordinary and bold-looking forms; titles without
+  a code name retain the circle frames. Existing needs-attention counts remain
+  a separate leading indicator.
 
 The activity preference remains browser-local, opt-in, and default-off. Code
-names themselves are server-owned project identity and are always available
-from a capable server.
+names themselves remain server-owned project identity even while their client
+presentation is disabled.
 
 ## Default allocation
 
@@ -105,27 +113,28 @@ displacement, but never changes the assigned code name by itself.
 ## Activity rendering
 
 `document.title` is plain text and cannot apply CSS font weight to only the
-code-name substring. The enabled activity cycle therefore alternates ASCII
-letters and digits before the leading colon between ordinary characters and
-their Unicode Mathematical Bold equivalents. Underscores, hyphens, and any
-unsupported characters remain unchanged. The composer always normalizes the
-previous frame before applying the next one, so animation cannot accumulate
-styled code points. Omitting a post-colon space offsets the small width increase
-of the bold frame and keeps the effect subtle. A capable title spends no extra
-characters on activity; the legacy `(●)` / `(○)` frames remain only as the
-older-server fallback.
+code-name substring. The optional pulse therefore alternates ASCII letters and
+digits before the leading colon between ordinary characters and their Unicode
+Mathematical Bold equivalents. Underscores, hyphens, and any unsupported
+characters remain unchanged. The composer always normalizes the previous frame
+before applying the next one, so animation cannot accumulate styled code
+points. Omitting a post-colon space offsets the small width increase of the bold
+frame and keeps the effect subtle. Without that explicit pulse preference,
+every title uses the released `(●)` / `(○)` activity frames.
 
 ## Ownership and compatibility
 
 The code name is project metadata in YA app data, not state written into the
-selected project directory and not a browser-local preference. The server owns
-uniqueness and conflict resolution; clients render the assigned value.
+selected project directory. The server owns uniqueness and conflict resolution;
+the browser-local preferences own whether the client renders the assigned value
+and whether activity pulses it.
 
 Capability `project-code-names` (permanent ID 46, version-implied from `0.7.2`)
 owns the response field, edit route, and invalidation event. The reviewed older
 server corpus is `v0.7.0` and `v0.6.2`; without the capability, a current client
 uses full project names, preserves the released title format and activity
-frames, hides editing, and sends no code-name request.
+frames, hides editing, and sends no code-name request. Enabling the browser
+preference against such a server does not weaken that fallback.
 
 ## Related contracts
 

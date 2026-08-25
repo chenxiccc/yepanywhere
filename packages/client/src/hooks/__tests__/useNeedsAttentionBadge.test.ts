@@ -11,16 +11,20 @@ import {
   useNeedsAttentionBadge,
 } from "../useNeedsAttentionBadge";
 
-const { inboxCounts, preferenceState } = vi.hoisted(() => ({
-  inboxCounts: {
-    needsAttention: 0,
-    active: 0,
-    total: 0,
-  },
-  preferenceState: {
-    tabTitleActivityEnabled: false,
-  },
-}));
+const { inboxCounts, preferenceState, projectCodeNamePreferenceState } =
+  vi.hoisted(() => ({
+    inboxCounts: {
+      needsAttention: 0,
+      active: 0,
+      total: 0,
+    },
+    preferenceState: {
+      tabTitleActivityEnabled: false,
+    },
+    projectCodeNamePreferenceState: {
+      projectCodeNameActivityPulseEnabled: false,
+    },
+  }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
   useInboxCounts: () => inboxCounts,
@@ -28,6 +32,10 @@ vi.mock("../../lib/clientSummaryStore", () => ({
 
 vi.mock("../useTabTitleActivityPreference", () => ({
   useTabTitleActivityPreference: () => preferenceState,
+}));
+
+vi.mock("../useProjectCodeNamePreferences", () => ({
+  useProjectCodeNamePreferences: () => projectCodeNamePreferenceState,
 }));
 
 describe("tab title indicators", () => {
@@ -38,6 +46,7 @@ describe("tab title indicators", () => {
     inboxCounts.active = 0;
     inboxCounts.total = 0;
     preferenceState.tabTitleActivityEnabled = false;
+    projectCodeNamePreferenceState.projectCodeNameActivityPulseEnabled = false;
   });
 
   afterEach(() => {
@@ -50,6 +59,9 @@ describe("tab title indicators", () => {
       "(2) (●) 💻 Project",
     );
     expect(composeTabTitle("yep:Session", 2, "bold", "💻")).toBe(
+      "(2) (●) 💻 yep:Session",
+    );
+    expect(composeTabTitle("yep:Session", 2, "bold", "💻", true, true)).toBe(
       `(2) 💻 ${toMathematicalBold("yep")}:Session`,
     );
   });
@@ -86,7 +98,7 @@ describe("tab title indicators", () => {
 
     renderHook(() => useNeedsAttentionBadge());
 
-    expect(document.title).toBe(`${toMathematicalBold("yep")}:Session`);
+    expect(document.title).toBe("(●) yep:Session");
   });
 
   it("animates all-session activity on the configured cadence", () => {
@@ -94,6 +106,7 @@ describe("tab title indicators", () => {
     inboxCounts.active = 1;
     inboxCounts.total = 1;
     preferenceState.tabTitleActivityEnabled = true;
+    projectCodeNamePreferenceState.projectCodeNameActivityPulseEnabled = true;
 
     renderHook(() => useNeedsAttentionBadge());
 

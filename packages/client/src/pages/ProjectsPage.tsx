@@ -11,6 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import { ProjectCard } from "../components/ProjectCard";
 import { ProjectQueueSection } from "../components/ProjectQueueSection";
 import { ProjectSessionDefaultsModal } from "../components/ProjectSessionDefaultsModal";
+import { useProjectCodeNamePreferences } from "../hooks/useProjectCodeNamePreferences";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
@@ -36,6 +37,7 @@ export function ProjectsPage() {
     version,
     PROJECT_CODE_NAMES_CAPABILITY,
   );
+  const { projectCodeNamesEnabled } = useProjectCodeNamePreferences();
   const inboxCountsByProject = useInboxCountsByProject();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProjectPath, setNewProjectPath] = useState("");
@@ -392,7 +394,7 @@ export function ProjectsPage() {
                       : undefined
                   }
                   onUpdateCodeName={
-                    supportsProjectCodeNames
+                    supportsProjectCodeNames && projectCodeNamesEnabled
                       ? handleUpdateProjectCodeName
                       : undefined
                   }

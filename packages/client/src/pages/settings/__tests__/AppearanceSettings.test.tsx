@@ -207,6 +207,50 @@ describe("AppearanceSettings", () => {
     ).toBe("true");
   });
 
+  it("defaults project code names and their activity pulse off", () => {
+    const { container } = renderAppearanceSettings();
+    const codeNameRow = screen
+      .getByText("Short Project Code Names")
+      .closest("[data-settings-item]");
+    const activityRow = screen
+      .getByText("Show Session Activity in Tab Title")
+      .closest("[data-settings-item]");
+    const pulseRow = screen
+      .getByText("Pulse Project Code for Tab Activity")
+      .closest("[data-settings-item]");
+    const codeNameToggle = codeNameRow?.querySelector<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+    const activityToggle = activityRow?.querySelector<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+    const pulseToggle = pulseRow?.querySelector<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+
+    expect(codeNameToggle?.checked).toBe(false);
+    expect(activityToggle?.checked).toBe(false);
+    expect(pulseToggle?.checked).toBe(false);
+    expect(pulseToggle?.disabled).toBe(true);
+    expect(container.textContent).toContain(
+      "Full project names with ordinary ellipsis are used when this is off.",
+    );
+
+    if (!codeNameToggle || !activityToggle || !pulseToggle) {
+      throw new Error("Project tab-title preference controls are missing");
+    }
+    fireEvent.click(codeNameToggle);
+    fireEvent.click(activityToggle);
+    expect(pulseToggle.disabled).toBe(false);
+    fireEvent.click(pulseToggle);
+
+    expect(localStorage.getItem(UI_KEYS.projectCodeNamesEnabled)).toBe("true");
+    expect(localStorage.getItem(UI_KEYS.tabTitleActivityEnabled)).toBe("true");
+    expect(
+      localStorage.getItem(UI_KEYS.projectCodeNameActivityPulseEnabled),
+    ).toBe("true");
+  });
+
   it("shows independent selection-action toggles with live specimens", () => {
     renderAppearanceSettings();
 

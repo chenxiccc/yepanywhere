@@ -7,6 +7,7 @@ import type {
 import { PROJECT_SESSION_DEFAULTS_CAPABILITY } from "@yep-anywhere/shared";
 import { PROJECT_CODE_NAMES_CAPABILITY } from "@yep-anywhere/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -18,6 +19,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import queueStyles from "../../components/ProjectQueueSection.module.css";
 import { I18nProvider } from "../../i18n";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
+import { UI_KEYS } from "../../lib/storageKeys";
 import { PROJECT_QUEUE_CAPABILITY } from "../../lib/projectQueueVisibility";
 import { ProjectsPage } from "../ProjectsPage";
 
@@ -168,6 +171,8 @@ function makeRecoveredItem(): ProjectQueueRecoveredSessionQueueSummary {
 
 describe("ProjectsPage", () => {
   beforeEach(() => {
+    localStorage.clear();
+    invalidateLocalStorageValues();
     state.queueItems = [makeItem("queued")];
     state.recoveredSessionQueues = [];
     state.projectStatusesByProject = {};
@@ -185,6 +190,8 @@ describe("ProjectsPage", () => {
 
   afterEach(() => {
     cleanup();
+    localStorage.clear();
+    invalidateLocalStorageValues();
   });
 
   it("renders project queue items and project card queue counts", () => {
@@ -328,11 +335,24 @@ describe("ProjectsPage", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Edit code name" })).toBe(null);
-    expect(screen.getByText("alp")).toBeTruthy();
+    expect(screen.queryByText("alp")).toBe(null);
 
     state.version = {
       capabilities: [PROJECT_QUEUE_CAPABILITY, PROJECT_CODE_NAMES_CAPABILITY],
     };
+    rerender(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "Edit code name" })).toBe(null);
+
+    act(() => {
+      localStorage.setItem(UI_KEYS.projectCodeNamesEnabled, "true");
+      invalidateLocalStorageValues(UI_KEYS.projectCodeNamesEnabled);
+    });
     rerender(
       <I18nProvider>
         <MemoryRouter>

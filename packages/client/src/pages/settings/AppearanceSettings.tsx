@@ -128,6 +128,7 @@ import {
 import { useWiderConversationActivityPreviews } from "../../hooks/useWiderConversationActivityPreviews";
 import { useSelectionActionPreferences } from "../../hooks/useSelectionActionPreferences";
 import { useGlossaryHints } from "../../hooks/useGlossaryHints";
+import { useProjectCodeNamePreferences } from "../../hooks/useProjectCodeNamePreferences";
 import { useVersion } from "../../hooks/useVersion";
 
 const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
@@ -299,6 +300,12 @@ export function AppearanceSettings() {
     useFloatingActionButtonEnabled();
   const { sidebarDuplicateHidingEnabled, setSidebarDuplicateHidingEnabled } =
     useSidebarDuplicateHiding();
+  const {
+    projectCodeNamesEnabled,
+    setProjectCodeNamesEnabled,
+    projectCodeNameActivityPulseEnabled,
+    setProjectCodeNameActivityPulseEnabled,
+  } = useProjectCodeNamePreferences();
   const { tabTitleActivityEnabled, setTabTitleActivityEnabled } =
     useTabTitleActivityPreference();
   const { showConnectionBars, setShowConnectionBars } = useDeveloperMode();
@@ -393,7 +400,12 @@ export function AppearanceSettings() {
     undoEntry(funPhrasesEnabled, setFunPhrasesEnabled),
     undoEntry(floatingActionButtonEnabled, setFloatingActionButtonEnabled),
     undoEntry(sidebarDuplicateHidingEnabled, setSidebarDuplicateHidingEnabled),
+    undoEntry(projectCodeNamesEnabled, setProjectCodeNamesEnabled),
     undoEntry(tabTitleActivityEnabled, setTabTitleActivityEnabled),
+    undoEntry(
+      projectCodeNameActivityPulseEnabled,
+      setProjectCodeNameActivityPulseEnabled,
+    ),
     undoEntry(showConnectionBars, setShowConnectionBars),
   ];
   const undoEntriesRef = useRef(undoEntries);
@@ -1191,6 +1203,19 @@ export function AppearanceSettings() {
           </label>
         </SettingsItem>
         <SettingsItem
+          label={t("appearanceProjectCodeNamesTitle")}
+          description={t("appearanceProjectCodeNamesDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={projectCodeNamesEnabled}
+              onChange={(e) => setProjectCodeNamesEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
           label={t("appearanceTabTitleActivityTitle")}
           description={t("appearanceTabTitleActivityDescription")}
         >
@@ -1204,6 +1229,22 @@ export function AppearanceSettings() {
               <span className="toggle-slider" />
             </label>
           </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceProjectCodeNameActivityPulseTitle")}
+          description={t("appearanceProjectCodeNameActivityPulseDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={projectCodeNameActivityPulseEnabled}
+              disabled={!projectCodeNamesEnabled || !tabTitleActivityEnabled}
+              onChange={(e) =>
+                setProjectCodeNameActivityPulseEnabled(e.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
         </SettingsItem>
         <SettingsItem
           label={t("appearanceConnectionBarsTitle")}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useInboxCounts } from "../lib/clientSummaryStore";
 import { PROJECT_CODE_NAME_TITLE_ATTRIBUTE } from "./useDocumentTitle";
+import { useProjectCodeNamePreferences } from "./useProjectCodeNamePreferences";
 import { useTabTitleActivityPreference } from "./useTabTitleActivityPreference";
 
 // Regex to match and strip existing badge prefix like "(3) "
@@ -95,12 +96,15 @@ export function composeTabTitle(
   activityFrame?: TabTitleActivityFrame,
   hostIdentityIcon?: string,
   projectCodeNameTitle = /^[A-Za-z0-9_-]{1,12}:/u.test(baseTitle),
+  projectCodeNameActivityPulseEnabled = false,
 ): string {
+  const pulseProjectCodeName =
+    projectCodeNameTitle && projectCodeNameActivityPulseEnabled;
   const prefixes: string[] = [];
   if (count > 0) {
     prefixes.push(`(${count})`);
   }
-  if (activityFrame && !projectCodeNameTitle) {
+  if (activityFrame && !pulseProjectCodeName) {
     prefixes.push(activityFrame === "bold" ? "(●)" : "(○)");
   }
   if (hostIdentityIcon) {
@@ -108,7 +112,7 @@ export function composeTabTitle(
   }
   const renderedBaseTitle = renderActivityCodeFrame(
     baseTitle,
-    activityFrame,
+    pulseProjectCodeName ? activityFrame : "plain",
     projectCodeNameTitle,
   );
   return prefixes.length > 0
@@ -140,6 +144,8 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
   const activityStartedAtRef = useRef<number | null>(null);
   const { needsAttention: count, active } = useInboxCounts();
   const { tabTitleActivityEnabled } = useTabTitleActivityPreference();
+  const { projectCodeNameActivityPulseEnabled } =
+    useProjectCodeNamePreferences();
   const showSessionActivity = tabTitleActivityEnabled && active > 0;
 
   useEffect(() => {
@@ -190,6 +196,7 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
         activityFrame,
         hostIdentityIcon,
         projectCodeNameTitle,
+        projectCodeNameActivityPulseEnabled,
       );
       // Use setTimeout to reset flag after current mutation cycle completes
       setTimeout(() => {
@@ -231,6 +238,7 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
         activityFrame,
         hostIdentityIcon,
         projectCodeNameTitle,
+        projectCodeNameActivityPulseEnabled,
       );
 
       if (currentTitle !== expectedTitle) {
@@ -253,7 +261,12 @@ export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
         clearInterval(activityTimer);
       }
     };
-  }, [count, hostIdentityIcon, showSessionActivity]);
+  }, [
+    count,
+    hostIdentityIcon,
+    projectCodeNameActivityPulseEnabled,
+    showSessionActivity,
+  ]);
 
   return count;
 }

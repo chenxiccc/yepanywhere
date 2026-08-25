@@ -192,10 +192,12 @@ export function ProjectCard({
               )}
               {project.name}
             </strong>
-            <ProjectCodeNameEditor
-              project={project}
-              onUpdateCodeName={onUpdateCodeName}
-            />
+            {onUpdateCodeName && (
+              <ProjectCodeNameEditor
+                project={project}
+                onUpdateCodeName={onUpdateCodeName}
+              />
+            )}
           </div>
           <button
             type="button"

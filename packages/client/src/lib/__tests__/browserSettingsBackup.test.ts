@@ -22,6 +22,8 @@ describe("browser settings backup", () => {
     localStorage.setItem(UI_KEYS.conversationViewTurnLimit, "150");
     localStorage.setItem(UI_KEYS.widerConversationActivityPreviews, "true");
     localStorage.setItem(UI_KEYS.compactMultiImageGalleries, "false");
+    localStorage.setItem(UI_KEYS.projectCodeNamesEnabled, "true");
+    localStorage.setItem(UI_KEYS.projectCodeNameActivityPulseEnabled, "true");
     localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "custom");
     localStorage.setItem(UI_KEYS.speechMessageCustomPrefix, "Dictated:");
     localStorage.setItem(UI_KEYS.speechUnspokenPunctuation, "true");
@@ -43,6 +45,8 @@ describe("browser settings backup", () => {
       [UI_KEYS.conversationViewTurnLimit]: "150",
       [UI_KEYS.widerConversationActivityPreviews]: "true",
       [UI_KEYS.compactMultiImageGalleries]: "false",
+      [UI_KEYS.projectCodeNamesEnabled]: "true",
+      [UI_KEYS.projectCodeNameActivityPulseEnabled]: "true",
       [UI_KEYS.speechMessagePrefixMode]: "custom",
       [UI_KEYS.speechMessageCustomPrefix]: "Dictated:",
       [UI_KEYS.speechUnspokenPunctuation]: "true",

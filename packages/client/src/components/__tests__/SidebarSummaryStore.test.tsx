@@ -13,7 +13,9 @@ import {
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import { saveSessionDraft } from "../../lib/sessionDraftStorage";
+import { UI_KEYS } from "../../lib/storageKeys";
 import { Sidebar } from "../Sidebar";
 
 vi.mock("../../lib/activityBus", () => ({
@@ -232,12 +234,41 @@ describe("Sidebar client summary source registry", () => {
   beforeEach(() => {
     resetClientSummaryStoreForTests();
     localStorage.clear();
+    invalidateLocalStorageValues();
   });
 
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    invalidateLocalStorageValues();
     resetClientSummaryStoreForTests();
+  });
+
+  it("uses full project names by default", async () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+      reportGlobalSessionsCollectionSnapshot(
+        macbook,
+        {
+          query: { scope: "global-sessions" },
+          sessions: [
+            session("full-name-session", "Full name session", {
+              projectId: "project-1",
+              projectName: "draft",
+            }),
+          ],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    renderSidebar();
+
+    const row = await screen.findByTestId("session-row-full-name-session");
+    expect(row.getAttribute("data-project-name")).toBe("draft");
   });
 
   it("rerenders rows and draft badges from only the current source", async () => {
@@ -374,6 +405,8 @@ describe("Sidebar client summary source registry", () => {
     const macbook = createClientSummaryHostSourceKey("macbook");
 
     act(() => {
+      localStorage.setItem(UI_KEYS.projectCodeNamesEnabled, "true");
+      invalidateLocalStorageValues(UI_KEYS.projectCodeNamesEnabled);
       setCurrentClientSummarySourceKey(macbook);
       reportGlobalSessionsCollectionSnapshot(
         macbook,
