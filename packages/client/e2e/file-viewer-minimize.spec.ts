@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { e2ePaths, expect, test } from "./fixtures.js";
@@ -6,6 +6,11 @@ import { e2ePaths, expect, test } from "./fixtures.js";
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
 const sessionId = "file-viewer-absolute-001";
+const externalReadmePath = join(
+  e2ePaths.tempDir,
+  "file-browser-project",
+  "README.md",
+);
 
 async function dismissOnboardingIfVisible(page: Page) {
   const skip = page.locator(".onboarding-skip-all");
@@ -50,6 +55,92 @@ test("keeps the viewer open while transcript rich text settles", async ({
   await page.waitForTimeout(750);
   await expect(viewer).toBeVisible();
   await capture(page, "desktop-1000-rich-text-replacement");
+});
+
+test("keeps the viewer open and responsive across session width changes", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(30000);
+  const originalReadme = readFileSync(externalReadmePath, "utf8");
+  writeFileSync(
+    externalReadmePath,
+    [
+      "# Large viewer resize specimen",
+      "",
+      ...Array.from(
+        { length: 3000 },
+        (_, index) =>
+          `Paragraph ${index + 1} keeps enough wrapping text in the expanded viewer to exercise responsive layout.`,
+      ),
+    ].join("\n\n"),
+  );
+
+  try {
+    await page.setViewportSize({ width: 1000, height: 600 });
+    await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
+    await dismissOnboardingIfVisible(page);
+
+    const absoluteLink = page.locator(
+      'a[data-ya-private-project-file-link="true"]',
+    );
+    await expect(absoluteLink).toBeVisible({ timeout: 10000 });
+    await page.waitForTimeout(750);
+    await absoluteLink.click();
+
+    const viewer = page.locator(".file-viewer");
+    const viewerBody = viewer.locator(".file-viewer-body");
+    const quoteButtons = viewer.locator(".text-block-quote-paragraph");
+    const lastParagraph = viewer.getByText(
+      "Paragraph 3000 keeps enough wrapping text in the expanded viewer to exercise responsive layout.",
+      { exact: true },
+    );
+    await expect(viewer).toBeVisible();
+    await expect(
+      viewer.getByText("Large viewer resize specimen", { exact: true }),
+    ).toBeVisible();
+    await expect(lastParagraph).toBeAttached();
+    await expect.poll(() => quoteButtons.count()).toBeGreaterThan(0);
+    expect(await quoteButtons.count()).toBeLessThan(100);
+
+    const widerWidths = Array.from(
+      { length: 21 },
+      (_, index) => 1000 + index * 10,
+    );
+    const narrowerWidths = widerWidths.slice(0, -1).reverse();
+    for (const width of [...widerWidths.slice(1), ...narrowerWidths]) {
+      const startedAt = performance.now();
+      await page.setViewportSize({ width, height: 600 });
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            window.requestAnimationFrame(() => resolve()),
+          ),
+      );
+      expect(performance.now() - startedAt).toBeLessThan(3000);
+    }
+
+    await expect(viewer).toBeVisible();
+    await expect.poll(() => quoteButtons.count()).toBeGreaterThan(0);
+    expect(await quoteButtons.count()).toBeLessThan(100);
+
+    await viewerBody.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(lastParagraph).toBeVisible();
+    await expect.poll(() => quoteButtons.count()).toBeGreaterThan(0);
+    expect(await quoteButtons.count()).toBeLessThan(100);
+    await lastParagraph.hover();
+    await expect(quoteButtons.last()).toBeVisible();
+    await quoteButtons.last().click();
+    await expect(page.locator("[data-composer-input]")).toHaveValue(
+      "> Paragraph 3000 keeps enough wrapping text in the expanded viewer to exercise responsive layout.\n",
+    );
+    await expect(viewer).toBeVisible();
+    await capture(page, "desktop-1000-large-resize");
+  } finally {
+    writeFileSync(externalReadmePath, originalReadme);
+  }
 });
 
 for (const viewport of [

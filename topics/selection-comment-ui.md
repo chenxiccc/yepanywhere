@@ -175,10 +175,14 @@ menu.
    block-only shows the whole-document `>` circle, paragraph-hover reveals one
    circle per top-level rendered block, and paragraph-always keeps those
    circles visible. Activating a circle quotes through the same source-aware
-   reply pipeline. Ordinary primary clicks only focus or select viewer content;
-   neither the paragraph layer nor selection actions may turn that click into
-   a quote or composer focus transfer. Links and other interactive controls
-   retain their own actions.
+   reply pipeline. Long previews keep circles live only for visible blocks,
+   then follow the viewer scroll so every block receives the same control when
+   reached. Responsive width changes and asynchronous preview enrichment keep
+   those controls aligned without dismissing the viewer.
+   Ordinary primary clicks only focus or select viewer content; neither the
+   paragraph layer nor selection actions may turn that click into a quote or
+   composer focus transfer. Links and other interactive controls retain their
+   own actions.
 
 ### Session-file Comment mode
 

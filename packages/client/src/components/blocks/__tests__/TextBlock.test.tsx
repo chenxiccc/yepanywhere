@@ -200,6 +200,7 @@ describe("TextBlock", () => {
       async () => new Response(new Blob(["png"], { type: "image/png" })),
     );
     let resizeCallback: ResizeObserverCallback | null = null;
+    let notifyIntersection: IntersectionObserverCallback = () => {};
     class ResizeObserverMock {
       constructor(callback: ResizeObserverCallback) {
         resizeCallback = callback;
@@ -207,8 +208,17 @@ describe("TextBlock", () => {
       observe = vi.fn();
       disconnect = vi.fn();
     }
+    class IntersectionObserverMock {
+      constructor(callback: IntersectionObserverCallback) {
+        notifyIntersection = callback;
+      }
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
     vi.stubGlobal("URL", {
       ...URL,
       createObjectURL: vi.fn(() => "blob:preview"),
@@ -229,13 +239,35 @@ describe("TextBlock", () => {
 
     expect(await screen.findByAltText("trajectory.png")).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(container.querySelector(".text-block-quote-paragraph")).toBeTruthy();
+    const surface = container.querySelector(".text-block");
+    const paragraph = container.querySelector("p");
+    expect(surface).toBeTruthy();
+    expect(paragraph).toBeTruthy();
+    act(() => {
+      notifyIntersection(
+        [
+          { target: surface, isIntersecting: true },
+        ] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
+      notifyIntersection(
+        [
+          { target: paragraph, isIntersecting: true },
+        ] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(
+        container.querySelector(".text-block-quote-paragraph"),
+      ).toBeTruthy(),
+    );
     const preview = container.querySelector(".local-media-inline-preview");
 
     await act(async () => {
       resizeCallback?.([], {} as ResizeObserver);
+      await new Promise((resolve) => setTimeout(resolve, 150));
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(container.querySelector(".local-media-inline-preview")).toBe(

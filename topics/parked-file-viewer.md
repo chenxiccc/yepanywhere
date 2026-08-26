@@ -123,6 +123,8 @@ was.
   document ends above the separate composer row, so its final line can always
   scroll completely clear of those controls without overlay-compensation
   padding.
+- Changing the viewport width keeps an open viewer open. Responsive relayout
+  must not implicitly minimize or close it.
 - Its reduced form reuses the existing measured narrowing and overflow system;
   it does not introduce another user-configurable priority tier. Send and Mic
   remain non-displaceable, while the controller may move any other optional
