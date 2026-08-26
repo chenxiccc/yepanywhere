@@ -75,11 +75,11 @@
   retained categories.
 
   The same probe did find continuing avoidable work: while public sharing is
-  enabled, the session page polls its 82-byte viewer-status response every five
-  seconds and replaces page state even when the response is unchanged. Each
-  poll coincided with another broad style/reconciliation cycle on this large
-  page. That is an allocation/layout-churn lead, not evidence that those
-  allocations remain live; it is tracked separately in
+  enabled, the session page polls its small viewer-status response every five
+  seconds. The hooks now avoid publishing equal snapshots, but a 2026-08-26
+  trace still aligned 100--200 ms main-thread pulses with the 82-byte session
+  and 459-byte global status responses. That is an allocation/layout-churn
+  lead, not evidence that those allocations remain live; it is tracked in
   [`gaps/public-share-status-rerenders-session.md`](../gaps/public-share-status-rerenders-session.md).
 
   The remaining product gap is also independent of leak classification:
@@ -124,12 +124,13 @@
 - CSS `content-visibility: auto` is not a safe default bound for transcript
   rows. A hosted mobile client confirmed repeated scroll-position corrections
   as variable-height rows replaced their intrinsic fallback sizes on first
-  reveal. The browser-local experiment remains available but defaults off; see
-  [`transcript-virtualization.md`](transcript-virtualization.md). A future bound
-  should instead be explicit in the session-detail data model: keep the server
-  transcript canonical, retain a contiguous recent semantic window on the
-  client, and recover omitted history through pagination. That direction is now
-  approved for implementation; the tactical contract is linked above.
+  reveal, and a later long-session reload showed severe main-thread
+  amplification. The experiment and its browser setting were retired on
+  2026-08-26; see
+  [`transcript-virtualization.md`](transcript-virtualization.md). The shipped
+  bound is explicit in the session-detail data model: keep the server transcript
+  canonical, retain a contiguous recent semantic window on the client, and
+  recover omitted history through pagination.
 - The old in-tab session-load cache was a developer convenience only:
   `VITE_SESSION_LOAD_CACHE=true` retained every visited transcript without
   production eviction or source/query invalidation. It proved the warm-return

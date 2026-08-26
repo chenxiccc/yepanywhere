@@ -3318,18 +3318,6 @@ a.sidebar-nav-item {
   position: relative;
 }
 
-.message-list-offscreen-rendering .message-render-row {
-  /* Experimental only; default off. The browser can skip off-screen layout,
-     but correcting the fallback to a row's real height caused confirmed mobile
-     scroll jumps. See topics/transcript-virtualization.md. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 120px;
-}
-
-.message-list-offscreen-rendering .explored-message-row {
-  contain-intrinsic-size: auto var(--explored-group-intrinsic-height, 120px);
-}
-
 .queued-context-return {
   position: sticky;
   top: var(--space-2);

@@ -18,7 +18,6 @@ import { UI_KEYS } from "../../lib/storageKeys";
 import {
   getLastSessionTranscriptBytes,
   getSessionActiveWindowTrimEnabled,
-  getSessionOffscreenTranscriptRenderingEnabled,
   getSessionScrollBehaviorMode,
   getSessionDomLingerEnabled,
   getSessionTranscriptMemoryStats,
@@ -96,16 +95,12 @@ describe("useSessionPerformanceSettings", () => {
     expect(result.current.sessionTranscriptCacheEnabled).toBe(false);
     expect(result.current.sessionTranscriptCacheTtlHours).toBe(1);
     expect(result.current.sessionScrollBehaviorMode).toBe("live-tail");
-    expect(result.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
-      false,
-    );
     expect(result.current.sessionActiveWindowTrimEnabled).toBe(true);
     expect(getSessionDomLingerEnabled()).toBe(false);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
     expect(getSessionTranscriptCacheTtlHours()).toBe(1);
     expect(getSessionScrollBehaviorMode()).toBe("live-tail");
-    expect(getSessionOffscreenTranscriptRenderingEnabled()).toBe(false);
     expect(getSessionActiveWindowTrimEnabled()).toBe(true);
   });
 
@@ -140,26 +135,6 @@ describe("useSessionPerformanceSettings", () => {
     });
 
     expect(result.current.sessionActiveWindowTrimEnabled).toBe(false);
-  });
-
-  it("persists and publishes off-screen transcript rendering updates", () => {
-    const { result: first } = renderHook(() => useSessionPerformanceSettings());
-    const { result: second } = renderHook(() =>
-      useSessionPerformanceSettings(),
-    );
-
-    act(() => {
-      first.current.setSessionOffscreenTranscriptRenderingEnabled(true);
-    });
-
-    expect(first.current.sessionOffscreenTranscriptRenderingEnabled).toBe(true);
-    expect(second.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
-      true,
-    );
-    expect(getSessionOffscreenTranscriptRenderingEnabled()).toBe(true);
-    expect(
-      localStorage.getItem(UI_KEYS.sessionOffscreenTranscriptRendering),
-    ).toBe("true");
   });
 
   it("seeds the budget from the legacy boolean toggle", () => {

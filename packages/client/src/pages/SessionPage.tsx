@@ -511,10 +511,7 @@ function SessionPageContent({
     clientTailParams.tailTurns !== undefined ||
     clientTailParams.tailFrom !== undefined;
   const { sessionLoadingProgressEnabled } = useSessionLoadingProgress();
-  const {
-    sessionOffscreenTranscriptRenderingEnabled,
-    sessionScrollBehaviorMode,
-  } = useSessionPerformanceSettings();
+  const { sessionScrollBehaviorMode } = useSessionPerformanceSettings();
   const [
     sessionLoadingProgressDetailsVisible,
     setSessionLoadingProgressDetailsVisible,
@@ -5490,9 +5487,6 @@ function SessionPageContent({
                     onFollowingBottomChange={updateActiveWindowFollowingBottom}
                     onFollowCurrent={handleFollowCurrent}
                     scrollBehaviorMode={sessionScrollBehaviorMode}
-                    offscreenTranscriptRenderingEnabled={
-                      sessionOffscreenTranscriptRenderingEnabled
-                    }
                     getForkSummaryTargetHref={getForkSummaryTargetHref}
                     onCancelForkSummary={handleCancelForkSummary}
                     onToggleForkSummaryAutoOpen={

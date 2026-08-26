@@ -59,22 +59,6 @@ describe("PerformanceSettings", () => {
     window.localStorage.clear();
   });
 
-  it("defaults off-screen transcript rendering off and persists opt-in", () => {
-    render(<PerformanceSettings />);
-
-    const toggle = screen.getByRole("checkbox", {
-      name: "performanceOffscreenTranscriptRenderingTitle",
-    }) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
-
-    fireEvent.click(toggle);
-
-    expect(toggle.checked).toBe(true);
-    expect(
-      window.localStorage.getItem(UI_KEYS.sessionOffscreenTranscriptRendering),
-    ).toBe("true");
-  });
-
   it("defaults active-window trimming on and persists an explicit opt-out", () => {
     render(<PerformanceSettings />);
 

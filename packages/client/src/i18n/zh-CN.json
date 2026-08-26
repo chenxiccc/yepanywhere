@@ -220,8 +220,6 @@
   "performanceKeepRecentSessionMountedDescription": "离开最近查看的会话后，短时间内仍保留其页面，以便返回时立即显示。关闭可减少内存占用。",
   "performanceActiveWindowTrimTitle": "卸载较早的对话记录",
   "performanceActiveWindowTrimDescription": "跟随实时输出时，自动卸载较早的对话记录以限制内存增长。完整历史仍可通过“加载更早内容”查看。",
-  "performanceOffscreenTranscriptRenderingTitle": "屏幕外对话记录渲染",
-  "performanceOffscreenTranscriptRenderingDescription": "实验性地跳过视口外的对话记录行，以减少内存占用。此功能默认关闭，因为内容进入视口时可能发生跳动。",
   "performanceTranscriptCacheTitle": "会话记录缓存",
   "performanceTranscriptCacheDescription": "用于在内存中保留近期会话记录的容量，以便快速返回。关闭后每次都会重新加载。",
   "performanceTranscriptCacheEquivalentLast": "约等于 {count} 个与你上次查看的会话相同大小的会话（每个 {size} MB）",

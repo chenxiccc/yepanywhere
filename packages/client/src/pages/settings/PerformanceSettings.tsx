@@ -50,12 +50,10 @@ export function PerformanceSettings() {
   const {
     sessionDomLingerEnabled,
     sessionActiveWindowTrimEnabled,
-    sessionOffscreenTranscriptRenderingEnabled,
     sessionTranscriptCacheBudgetMb,
     sessionTranscriptCacheTtlHours,
     setSessionDomLingerEnabled,
     setSessionActiveWindowTrimEnabled,
-    setSessionOffscreenTranscriptRenderingEnabled,
     setSessionTranscriptCacheBudgetMb,
     setSessionTranscriptCacheTtlHours,
   } = useSessionPerformanceSettings();
@@ -173,7 +171,6 @@ export function PerformanceSettings() {
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
       sessionActiveWindowTrimEnabled,
-      sessionOffscreenTranscriptRenderingEnabled,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -184,7 +181,6 @@ export function PerformanceSettings() {
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
       sessionActiveWindowTrimEnabled,
-      sessionOffscreenTranscriptRenderingEnabled,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -198,9 +194,6 @@ export function PerformanceSettings() {
       setSessionDomLingerEnabled(snapshot.sessionDomLingerEnabled);
       setSessionActiveWindowTrimEnabled(
         snapshot.sessionActiveWindowTrimEnabled,
-      );
-      setSessionOffscreenTranscriptRenderingEnabled(
-        snapshot.sessionOffscreenTranscriptRenderingEnabled,
       );
       setSessionTranscriptCacheBudgetMb(
         snapshot.sessionTranscriptCacheBudgetMb,
@@ -224,7 +217,6 @@ export function PerformanceSettings() {
       setSessionLoadingProgressEnabled,
       setSessionDomLingerEnabled,
       setSessionActiveWindowTrimEnabled,
-      setSessionOffscreenTranscriptRenderingEnabled,
       setSessionTranscriptCacheBudgetMb,
       setSessionTranscriptCacheTtlHours,
       setStableToolPreviewRendering,
@@ -296,24 +288,6 @@ export function PerformanceSettings() {
                 setSessionActiveWindowTrimEnabled(event.target.checked)
               }
               aria-label={t("performanceActiveWindowTrimTitle")}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </SettingsItem>
-        <SettingsItem
-          label={t("performanceOffscreenTranscriptRenderingTitle")}
-          description={t("performanceOffscreenTranscriptRenderingDescription")}
-        >
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={sessionOffscreenTranscriptRenderingEnabled}
-              onChange={(event) =>
-                setSessionOffscreenTranscriptRenderingEnabled(
-                  event.target.checked,
-                )
-              }
-              aria-label={t("performanceOffscreenTranscriptRenderingTitle")}
             />
             <span className="toggle-slider" />
           </label>

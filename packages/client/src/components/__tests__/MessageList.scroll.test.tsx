@@ -270,30 +270,6 @@ describe("MessageList scroll and follow", () => {
     expect(onFollowingBottomChange).toHaveBeenLastCalledWith(false);
   });
 
-  it("disables off-screen transcript rendering by default and allows opt-in", () => {
-    const messages = [userMessage("user-1", "completed request")];
-    const { container, rerender } = render(<MessageList messages={messages} />);
-
-    expect(
-      container
-        .querySelector(".message-list")
-        ?.classList.contains("message-list-offscreen-rendering"),
-    ).toBe(false);
-
-    rerender(
-      <MessageList
-        messages={messages}
-        offscreenTranscriptRenderingEnabled={true}
-      />,
-    );
-
-    expect(
-      container
-        .querySelector(".message-list")
-        ?.classList.contains("message-list-offscreen-rendering"),
-    ).toBe(true);
-  });
-
   it("scrolls to current from a focused composer with Ctrl+End", () => {
     const { container } = render(
       <MessageList

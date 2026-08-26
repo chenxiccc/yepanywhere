@@ -18,15 +18,11 @@ See also:
 
 Topic: transcript-virtualization
 
-Status: 2026-07-09. Stage 1 item 1 landed (stabilize MessageList's callback
-props): idle CPU ~22% → ~9%, per-second O(rows) re-render gone. Stage 2 landed
-via `content-visibility: auto` on `.message-render-row`: laid-out render tree
-bounded to the viewport — **layout objects ~70,100 → ~2,750 at 1532 rows (25×)**,
-RSS lower, with no functional regressions (turn-rail markers, click-to-jump,
-scroll-to-bottom, and hover affordances all verified; no paint-containment
-clipping). Tradeoff: idle *style-recalc* roughly doubled, because the per-second widget
-layouts now also re-evaluate content-visibility state (native, high count but
-~1% CPU duration).
+Status: Stage 1 item 1 landed (stabilize MessageList's callback props): idle CPU
+~22% → ~9%, per-second O(rows) re-render gone. The Stage 2
+`content-visibility: auto` experiment was retired on 2026-08-26 after confirmed
+scroll-position failures and severe amplification in a real long-session
+reload. The bounded semantic client window is the shipped transcript bound.
 
 2026-07-09 (follow-up, measured): **Stage 1 items 2–3 are moot, not
 "re-prioritized."** Direct render-count instrumentation on the full-transcript
@@ -155,7 +151,7 @@ Goal: a very long transcript should cost the browser (Blink style/layout/paint/
 raster memory, and any per-tick layout) only for what's near the viewport, not
 for the whole history.
 
-### Rejected default experiment: `content-visibility: auto`
+### Retired experiment: `content-visibility: auto`
 
 Experimented 2026-07-09; default rejected 2026-07-10.
 
@@ -205,16 +201,24 @@ finished session. That falsifies the behavior-preserving premise: variable row
 heights and bottom-anchored transcript scrolling make first-reveal geometry
 corrections user-visible.
 
-Decision: default the experiment off immediately. Keep the browser-local toggle
-only for explicit comparison while the longer-term design is considered. The
-~150 MB RSS reduction measured above does not justify fighting the reader's
-scroll position, and the experiment does not bound retained transcript data.
+Decision: default the experiment off immediately. The ~150 MB RSS reduction
+measured above does not justify fighting the reader's scroll position, and the
+experiment does not bound retained transcript data.
 
 2026-07-10 explored-rendering hardening: grouped exploration rows publish a
 bounded intrinsic-height estimate derived from their visible entry/detail-row
-count, capped at the group's existing scrollable-body height. The override is
-consumed only when this default-off experiment is explicitly enabled; it does
-not change the default or weaken the decision above.
+count, capped at the group's existing scrollable-body height.
+
+2026-08-26 retirement: a 45,103-message Codex session reopened with the
+experiment enabled at 3,461 rendered rows and roughly 178,000 DOM elements.
+The tab spent about 60% of its observed lifetime in long tasks, with frame gaps
+up to 11.9 seconds, while intrinsic-height correction also left the reader at
+the start of the compact tail. After disabling the experiment and remounting
+against the bounded active window, the page held 310 rows and roughly 13,750
+elements, with a 237 ms worst frame gap. The row reduction came from the active
+window rather than CSS, but the experiment amplified the unbounded state and
+made scroll recovery unreliable. The comparison toggle, preference plumbing,
+and transcript CSS were removed; no runtime path now enables this experiment.
 
 ### Approved direction: bounded semantic client window
 

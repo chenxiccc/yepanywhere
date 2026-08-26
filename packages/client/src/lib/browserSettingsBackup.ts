@@ -67,7 +67,6 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.sessionThinkingLatestOnly,
   UI_KEYS.sessionLoadingProgress,
   UI_KEYS.sessionDomLinger,
-  UI_KEYS.sessionOffscreenTranscriptRendering,
   UI_KEYS.sessionActiveWindowTrim,
   UI_KEYS.sessionTranscriptCache,
   UI_KEYS.sessionTranscriptCacheBudgetMb,

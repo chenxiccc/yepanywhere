@@ -711,8 +711,6 @@ interface Props {
   /** Immediate live-tail intent; unlike route snapshots, this is not debounced. */
   onFollowingBottomChange?: (followingBottom: boolean) => void;
   scrollBehaviorMode?: SessionScrollBehaviorMode;
-  /** Allow CSS to skip rendering transcript rows outside the viewport. */
-  offscreenTranscriptRenderingEnabled?: boolean;
   inert?: boolean;
   onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
@@ -1272,7 +1270,6 @@ export const MessageList = memo(function MessageList({
   onScrollSnapshotChange,
   onFollowingBottomChange,
   scrollBehaviorMode = DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
-  offscreenTranscriptRenderingEnabled = false,
   inert = false,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
@@ -3704,9 +3701,6 @@ export const MessageList = memo(function MessageList({
         className={[
           "message-list",
           progressiveRevealActive ? "message-list-progressive-hydrating" : "",
-          offscreenTranscriptRenderingEnabled
-            ? "message-list-offscreen-rendering"
-            : "",
         ]
           .filter(Boolean)
           .join(" ")}
