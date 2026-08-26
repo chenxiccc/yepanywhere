@@ -178,6 +178,16 @@ The focused session watch requests catch-up on its initial open as well as
 after a reconnect. The initial read and watch subscription therefore do not
 leave an unobserved interval between snapshot hydration and live observation.
 
+A provider-progress heartbeat compares its progress timestamp with the session
+timestamp from the last REST transcript response successfully applied to the
+detail store. Activity-channel metadata patches are not a transcript watermark:
+they can advance `updatedAt` even when the corresponding content-stream events
+did not reach this browser. A successful initial load, incremental catch-up, or
+full-tail reconciliation advances the transcript watermark; a failed read does
+not. An owned session that misses live content must therefore recover on a
+later heartbeat while the turn remains active, without waiting for idle or a
+page reload.
+
 ## Store Model
 
 The store should be a custom external store with keyed selectors, not a generic

@@ -113,6 +113,8 @@ export interface UseSessionMessagesOptions {
   codexStreamDurableIdAlignment?: boolean;
   /** Called when initial load completes with session data */
   onLoadComplete?: (result: SessionLoadResult) => void;
+  /** Called after REST transcript state has been applied. */
+  onTranscriptReconciled?: (updatedAt: string) => void;
   /** Called on load error */
   onLoadError?: (error: Error) => void;
 }
@@ -276,6 +278,7 @@ export function useSessionMessages(
     detailedLoadingProgress,
     codexStreamDurableIdAlignment,
     onLoadComplete,
+    onTranscriptReconciled,
     onLoadError,
   } = options;
   const effectiveTailTurns =
@@ -638,6 +641,7 @@ export function useSessionMessages(
       sourceSummary.reportProviderRuntimeStatusSnapshot(
         coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
+      onTranscriptReconciled?.(data.session.updatedAt);
       onLoadComplete?.(coordinator.buildLoadCompleteResult(data));
     };
 
@@ -930,6 +934,7 @@ export function useSessionMessages(
     tailFrom,
     detailedLoadingProgress,
     onLoadComplete,
+    onTranscriptReconciled,
     onLoadError,
     coordinator,
     resetSessionDetailState,
@@ -1114,6 +1119,7 @@ export function useSessionMessages(
           const applied = coordinator.applyIncrementalRefresh(data, {
             afterMessageId,
           });
+          onTranscriptReconciled?.(data.session.updatedAt);
           if (applied.applied) {
             reportStoreDivergence("catchup", { session: data.session });
           }
@@ -1176,6 +1182,7 @@ export function useSessionMessages(
               coordinator.buildProviderRuntimeStatusSnapshot(data),
             );
             const applied = coordinator.applyFullTailReconciliation(data);
+            onTranscriptReconciled?.(data.session.updatedAt);
             reportStoreDivergence("incremental-reconciliation", {
               session: data.session,
             });
@@ -1226,6 +1233,7 @@ export function useSessionMessages(
     [
       coordinator,
       effectiveTailTurns,
+      onTranscriptReconciled,
       projectId,
       sessionId,
       tailFrom,

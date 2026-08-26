@@ -3004,6 +3004,7 @@ describe("useSessionMessages cache", () => {
   });
 
   it("mirrors incremental catch-up messages into the session detail store", async () => {
+    const onTranscriptReconciled = vi.fn();
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -3032,10 +3033,15 @@ describe("useSessionMessages cache", () => {
       useSessionMessages({
         projectId: "proj-1",
         sessionId: "sess-1",
+        onTranscriptReconciled,
       }),
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(onTranscriptReconciled).toHaveBeenCalledWith(
+      "2026-05-04T00:00:00.000Z",
+    );
+    onTranscriptReconciled.mockClear();
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(defaultStoreEntryKey(), {
@@ -3089,6 +3095,9 @@ describe("useSessionMessages cache", () => {
       "msg-2",
     ]);
     expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg", "msg-2"]);
+    expect(onTranscriptReconciled).toHaveBeenCalledWith(
+      "2026-05-04T00:01:00.000Z",
+    );
   });
 
   it("coalesces concurrent incremental refreshes into one trailing pass", async () => {

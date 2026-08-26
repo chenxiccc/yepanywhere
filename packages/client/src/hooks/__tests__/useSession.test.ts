@@ -29,6 +29,8 @@ const apiMocks = vi.hoisted(() => ({
 const sessionMessagesMock = vi.hoisted(() => ({
   messages: [] as Array<Record<string, unknown>>,
   provider: "codex",
+  sessionUpdatedAt: "2026-04-24T00:00:00.000Z",
+  reconciledSessionUpdatedAt: "2026-04-24T00:00:00.000Z",
 }));
 
 const fetchNewMessages = vi.fn(async () => {});
@@ -76,6 +78,7 @@ let streamingContentOptions:
 let sessionMessagesOptions:
   | {
       onLoadComplete?: (result: SessionLoadResult) => void;
+      onTranscriptReconciled?: (updatedAt: string) => void;
     }
   | undefined;
 
@@ -159,6 +162,9 @@ function installVisibilityStateMock(initial: DocumentVisibilityState) {
 vi.mock("../useSessionMessages", () => ({
   useSessionMessages: vi.fn((options) => {
     sessionMessagesOptions = options;
+    options.onTranscriptReconciled?.(
+      sessionMessagesMock.reconciledSessionUpdatedAt,
+    );
     return {
       messages: sessionMessagesMock.messages,
       agentContent: {},
@@ -176,7 +182,7 @@ vi.mock("../useSessionMessages", () => ({
         projectId: "proj-1",
         provider: sessionMessagesMock.provider,
         model: "gpt-5.4",
-        updatedAt: "2026-04-24T00:00:00.000Z",
+        updatedAt: sessionMessagesMock.sessionUpdatedAt,
         messages: [],
       },
       updateSession,
@@ -265,6 +271,8 @@ describe("useSession completion reconciliation", () => {
     streamingContentOptions = undefined;
     sessionMessagesMock.messages = [];
     sessionMessagesMock.provider = "codex";
+    sessionMessagesMock.sessionUpdatedAt = "2026-04-24T00:00:00.000Z";
+    sessionMessagesMock.reconciledSessionUpdatedAt = "2026-04-24T00:00:00.000Z";
   });
 
   afterEach(() => {
@@ -1360,6 +1368,28 @@ describe("useSession completion reconciliation", () => {
   });
 
   it("catches up when a heartbeat reports progress newer than durable state", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "heartbeat",
+        liveness: mockLiveness({
+          lastProviderMessageAt: "2026-04-24T00:06:00.000Z",
+        }),
+      });
+    });
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let activity metadata suppress transcript catch-up", () => {
+    sessionMessagesMock.sessionUpdatedAt = "2026-04-24T00:06:00.000Z";
+
     renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {
         owner: "self",

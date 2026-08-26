@@ -127,14 +127,17 @@ function buildSessionFileChangePerfDetail(
 
 function hasUnreconciledHeartbeatProgress(
   liveness: SessionLivenessSnapshot,
-  durableUpdatedAt: string | undefined,
+  reconciledTranscriptUpdatedAt: string | undefined,
 ): boolean {
   if (!liveness.lastProviderMessageAt) return false;
   const progressAtMs = Date.parse(liveness.lastProviderMessageAt);
-  const durableUpdatedAtMs = Date.parse(durableUpdatedAt ?? "");
+  const reconciledTranscriptUpdatedAtMs = Date.parse(
+    reconciledTranscriptUpdatedAt ?? "",
+  );
   return (
     Number.isFinite(progressAtMs) &&
-    (!Number.isFinite(durableUpdatedAtMs) || progressAtMs > durableUpdatedAtMs)
+    (!Number.isFinite(reconciledTranscriptUpdatedAtMs) ||
+      progressAtMs > reconciledTranscriptUpdatedAtMs)
   );
 }
 
@@ -563,6 +566,21 @@ export function useSession(
   const [pendingInputRequest, setPendingInputRequest] =
     useState<InputRequest | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const reconciledTranscriptRef = useRef<{
+    sessionId: string;
+    updatedAt: string | undefined;
+  }>({ sessionId, updatedAt: undefined });
+  if (reconciledTranscriptRef.current.sessionId !== sessionId) {
+    reconciledTranscriptRef.current = { sessionId, updatedAt: undefined };
+  }
+  const handleTranscriptReconciled = useCallback(
+    (updatedAt: string) => {
+      if (reconciledTranscriptRef.current.sessionId === sessionId) {
+        reconciledTranscriptRef.current.updatedAt = updatedAt;
+      }
+    },
+    [sessionId],
+  );
 
   const reportProviderRuntimeStatus = useCallback(
     (
@@ -1063,6 +1081,7 @@ export function useSession(
     detailedLoadingProgress: options?.detailedLoadingProgress,
     codexStreamDurableIdAlignment: options?.codexStreamDurableIdAlignment,
     onLoadComplete: handleLoadComplete,
+    onTranscriptReconciled: handleTranscriptReconciled,
     onLoadError: handleLoadError,
   });
 
@@ -2044,14 +2063,15 @@ export function useSession(
           if (
             hasUnreconciledHeartbeatProgress(
               heartbeatData.liveness,
-              session?.updatedAt,
+              reconciledTranscriptRef.current.updatedAt,
             )
           ) {
             throttledFetch({
               route: "session-heartbeat-progress",
               lastProviderMessageAt:
                 heartbeatData.liveness.lastProviderMessageAt,
-              durableUpdatedAt: session?.updatedAt,
+              reconciledTranscriptUpdatedAt:
+                reconciledTranscriptRef.current.updatedAt,
             });
           }
           const heartbeatProcessState = parseProcessState(
@@ -2358,7 +2378,6 @@ export function useSession(
       reportProviderRuntimeStatus,
       session?.provider,
       session?.model,
-      session?.updatedAt,
       options?.onConfigurationError,
     ],
   );
