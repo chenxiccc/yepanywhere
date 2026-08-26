@@ -80,7 +80,8 @@ class CodexProviderChildProjectionCollector {
       return true;
     }
 
-    if (payload.type !== "function_call_output") return true;
+    if (payload.type !== "function_call_output" || !payload.call_id)
+      return true;
     const launch = this.launches.get(payload.call_id);
     if (!launch) return true;
     const child = parseCodexSpawnAgentDetails(payload.output);

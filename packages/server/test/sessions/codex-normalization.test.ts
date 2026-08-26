@@ -270,6 +270,39 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("does not invent a tool exchange for standalone function outputs", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2026-08-26T00:00:01Z",
+        payload: {
+          type: "function_call_output",
+          name: "notifications",
+          namespace: "slack",
+          output: "new message",
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-08-26T00:00:02Z",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "visible reply" }],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+
+    expect(result.messages).toHaveLength(1);
+    const content = result.messages[0]?.message?.content;
+    expect(Array.isArray(content) ? content[0] : content).toEqual({
+      type: "text",
+      text: "visible reply",
+    });
+  });
+
   it("recognizes opaque Codex agent_message response items without rendering", () => {
     const entries: CodexSessionEntry[] = [
       {

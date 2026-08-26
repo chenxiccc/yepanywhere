@@ -101,8 +101,8 @@
   },
   "yepAnywhere": {
     "codexCli": {
-      "expectedVersion": "0.149.0",
-      "compatibleThroughVersion": "0.149.1"
+      "expectedVersion": "0.150.0",
+      "compatibleThroughVersion": "0.150.0"
     },
     "claudeCode": {
       "compatibleThroughVersion": "2.1.223",

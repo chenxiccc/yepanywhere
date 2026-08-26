@@ -676,7 +676,9 @@ function codexDurableResponseItemUuid(
     case "function_call":
       return payload.call_id;
     case "function_call_output":
-      return `${payload.call_id}-result`;
+      return payload.call_id
+        ? `${payload.call_id}-result`
+        : payload.id || positionalUuid;
     case "custom_tool_call":
     case "web_search_call":
       return payload.call_id ?? payload.id ?? positionalUuid;
@@ -749,6 +751,12 @@ function convertCodexResponseItem(
     }
 
     case "function_call_output": {
+      if (!payload.call_id) {
+        // Codex 0.150 can persist standalone named outputs as model context.
+        // Without a paired call, projecting one as a tool_result would invent
+        // a user-visible tool exchange that never happened.
+        return null;
+      }
       if (closedToolResultIds.has(payload.call_id)) {
         return null;
       }

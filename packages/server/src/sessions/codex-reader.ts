@@ -494,6 +494,7 @@ class CodexAgentMappingCollector {
 
     if (
       payload.type !== "function_call_output" ||
+      !payload.call_id ||
       !this.spawnAgentCallIds.has(payload.call_id) ||
       this.seenToolUseIds.has(payload.call_id)
     ) {

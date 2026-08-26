@@ -200,7 +200,9 @@ export type CodexFunctionCallOutputContentItem = z.infer<
 export const CodexFunctionCallOutputPayloadSchema = z.object({
   ...CodexResponseItemIdentityShape,
   type: z.literal("function_call_output"),
-  call_id: z.string(),
+  call_id: z.string().optional(),
+  name: z.string().optional(),
+  namespace: z.string().optional(),
   output: z.union([
     z.string(),
     z.array(CodexFunctionCallOutputContentItemSchema),

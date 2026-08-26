@@ -93,6 +93,27 @@ describe("CodexSessionEntrySchema", () => {
     });
   });
 
+  it("accepts standalone named function outputs", () => {
+    const parsed = CodexSessionEntrySchema.parse({
+      timestamp: "2026-08-26T00:00:00.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call_output",
+        name: "notifications",
+        namespace: "slack",
+        output: "new message",
+      },
+    });
+
+    expect(parsed.type).toBe("response_item");
+    if (parsed.type !== "response_item") return;
+    expect(parsed.payload).toMatchObject({
+      name: "notifications",
+      namespace: "slack",
+      output: "new message",
+    });
+  });
+
   it("preserves the client id persisted with a user message event", () => {
     const parsed = CodexSessionEntrySchema.parse({
       timestamp: "2026-08-24T12:00:00.000Z",

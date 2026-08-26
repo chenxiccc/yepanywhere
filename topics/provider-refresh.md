@@ -163,6 +163,38 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-08-26:
+
+- Installed Codex is `0.150.0`; the official `rust-v0.150.0` source is commit
+  `9bdd7a39c5034657dfbbb89381cd9364f61eee11`. Root compatibility and
+  expected-protocol markers now record `0.150.0`.
+- Regeneration adds `CommandExecutionApprovalKind` and changes six files in
+  YA's checked-in app-server subset. Command approvals now identify command
+  execution versus terminal input, collaboration tools add message, follow-up,
+  interrupt, and list operations, collaboration status adds `interrupted`,
+  subagent activity adds `completed`, and skill metadata adds its owning plugin
+  id. These are additive for YA's existing request and item handlers. The
+  tagged runtime contains terminal-input approval protocol groundwork but does
+  not yet produce that approval kind.
+- `function_call_output` can now omit `call_id` and instead carry a tool `name`
+  and `namespace`. Codex classifies these standalone outputs as external model
+  context, not a response paired with a visible tool call. YA's durable schema
+  accepts the shape, its child-session correlation requires a real call id, and
+  transcript normalization does not invent an orphaned user-facing tool result.
+- The current account's no-token `model/list` returns Sol, Terra, Luna, GPT-5.5,
+  and GPT-5.2. Sol now advertises an `ultrafast` service tier in addition to
+  `priority`; the existing dynamic catalog path preserves it without a fallback
+  change. Bundled definitions also add hidden Daybreak Blue and Red entries,
+  whose account-variable availability does not justify exposing either when
+  live catalog discovery fails.
+- New app-server MCP event-stream, realtime-item, browser/computer-use,
+  permission-profile, and runtime-status surfaces are outside YA's current
+  requests. Message content-kind and context-window metadata remain compatible
+  with the persisted schema's metadata passthrough.
+
+Status: Codex 0.150.0 app-server, live model-catalog, and persisted-transcript
+compatibility is refreshed.
+
 Current no-op refresh, 2026-08-24:
 
 - Installed Codex and npm `@openai/codex` `latest` are `0.149.1`; the official
