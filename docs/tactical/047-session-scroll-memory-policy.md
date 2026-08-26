@@ -122,6 +122,7 @@ provider-like behavior.
 
 Contributing-model: Daybreak Blue
 
+- Implementation commit: `cbf796fe`.
 - Completed the late-layout restore path in this change: the retained anchor
   survives asynchronous transcript growth instead of accepting Chrome's early
   clamped scroll position.
