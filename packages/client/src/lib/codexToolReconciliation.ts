@@ -6,7 +6,7 @@ import {
 import type { Message } from "../types";
 import { getMessageContent, getMessageId, mergeMessage } from "./mergeMessages";
 
-// A durable tool call is written near its live commandExecution or plan-update
+// A durable tool call is written near its live nested-tool or plan-update
 // event. Keep this window deliberately narrow and require exact normalized
 // input plus the same provider turn; the timestamp is only used to pair
 // repeated identical calls one-to-one.
@@ -161,6 +161,7 @@ function mergeCanonicalMessage(existing: Message, incoming: Message): Message {
  * Reconcile bounded Codex live/durable tool identity mismatches:
  *
  * - app-server exposes a nested command as commandExecution(exec-*);
+ * - app-server exposes a nested image view as imageView(item-*);
  * - app-server exposes a checklist as turn/plan/updated without a call id;
  * - rollout persists the corresponding function/custom tool call(call_*).
  *

@@ -29,6 +29,7 @@ export const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   wait: "WriteStdin",
   update_plan: "UpdatePlan",
   apply_patch: "Edit",
+  view_image: "ViewImage",
   web_search_call: "WebSearch",
   search_query: "WebSearch",
   // Code-mode flattening of the namespaced `web.run` browsing tool.

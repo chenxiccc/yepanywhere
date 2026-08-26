@@ -9,6 +9,7 @@ import {
   mergeJSONLMessages,
   mergeStreamMessage,
 } from "../../client/src/lib/mergeMessages.ts";
+import { reconcileCodexToolMessages } from "../../client/src/lib/codexToolReconciliation.ts";
 import { compileTranscriptProjection } from "../../client/src/lib/transcriptProjection/compiler.ts";
 import type { Message as ClientMessage } from "../../client/src/types.ts";
 import { CodexProvider } from "../src/sdk/providers/codex.js";
@@ -935,6 +936,91 @@ describe("Render Parity Harness", () => {
     }
 
     expect(summaryTextCount).toBe(1);
+  });
+
+  it("renders one Codex code-mode image view live and persisted", () => {
+    const provider = new CodexProvider() as unknown as CodexProviderBridge;
+    const turnId = "turn-image-view";
+    const callId = "call_image_view";
+    const itemId = "item-image-view";
+    const imagePath = "/workspace/capture.png";
+    const timestamp = new Date().toISOString();
+    const metadata = {
+      internal_chat_message_metadata_passthrough: { turn_id: turnId },
+    };
+    const persistedMessages = normalizeSession(
+      buildLoadedCodexSession([
+        {
+          type: "response_item",
+          timestamp,
+          payload: {
+            type: "custom_tool_call",
+            call_id: callId,
+            name: "exec",
+            input: `const r = await tools.view_image({ path: ${JSON.stringify(imagePath)} }); image(r.image_url);`,
+            ...metadata,
+          },
+        },
+        {
+          type: "response_item",
+          timestamp,
+          payload: {
+            type: "custom_tool_call_output",
+            call_id: callId,
+            output: [
+              { type: "input_text", text: "Image loaded" },
+              {
+                type: "input_image",
+                image_url: "data:image/png;base64,iVBORw0KGgo=",
+              },
+            ],
+            ...metadata,
+          },
+        },
+      ]),
+    ).messages;
+    const imageItem = {
+      id: itemId,
+      type: "image_view" as const,
+      path: imagePath,
+    };
+    const liveMessages = reconcileCodexToolMessages([
+      ...(persistedMessages as ClientMessage[]),
+      ...(provider.convertItemToSDKMessages(
+        imageItem,
+        "codex-image-view-live",
+        turnId,
+        "item/started",
+      ) as ClientMessage[]),
+      ...(provider.convertItemToSDKMessages(
+        imageItem,
+        "codex-image-view-live",
+        turnId,
+        "item/completed",
+      ) as ClientMessage[]),
+    ]);
+
+    const persistedRows = compileTranscriptProjection(
+      persistedMessages as ClientMessage[],
+    ).filter((item) => item.type === "tool_call");
+    const liveRows = compileTranscriptProjection(liveMessages).filter(
+      (item) => item.type === "tool_call",
+    );
+
+    expect(persistedRows).toHaveLength(1);
+    expect(liveRows).toHaveLength(1);
+    expect(persistedRows[0]).toMatchObject({
+      id: callId,
+      toolName: "ViewImage",
+      toolInput: { path: imagePath },
+      status: "complete",
+    });
+    expect(liveRows[0]).toMatchObject({
+      id: callId,
+      toolName: "ViewImage",
+      toolInput: { path: imagePath },
+      status: "complete",
+    });
   });
 
   it("keeps Claude stream and persisted rendering equivalent", async () => {

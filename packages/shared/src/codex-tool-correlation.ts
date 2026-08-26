@@ -12,6 +12,7 @@ export type CodexToolCorrelationOrigin =
   | "command_execution"
   | "custom_tool_call"
   | "function_call"
+  | "image_view"
   | "plan_update";
 
 export interface CodexToolCorrelationMetadata {
@@ -50,6 +51,7 @@ export function getCodexToolCorrelation(
     origin !== "command_execution" &&
     origin !== "custom_tool_call" &&
     origin !== "function_call" &&
+    origin !== "image_view" &&
     origin !== "plan_update"
   ) {
     return null;

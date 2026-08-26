@@ -193,6 +193,7 @@ compatibility-floor review approves its removal.
 |---|---|---|---|
 | Native tool calls/results | `payload.call_id` (`id: payload.call_id.clone()`) | `call_id` on the response item | **Yes** — both key on `call_id` |
 | Code-mode nested command | inner `commandExecution` id (`exec-*`) | outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
+| Code-mode image view | inner `imageView` item id | outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
 | Checklist update | transient YA id for `turn/plan/updated` (notification has no item id) | `function_call.call_id` or outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
 | User turns | YA queue `message.uuid` | paired event_msg `client_id` | **Yes** — YA sends it on start and steer |
 | Assistant / reasoning | response item id (`msg_*` / `rs_*`) | `response_item.payload.id` | **Yes** — both preserve the provider id |
@@ -213,9 +214,9 @@ turn — `call_id` is globally unique, so no turn scoping is needed:
 - Live (`codex.ts`): `convertItemToSDKMessages` routes tool-backed thread
   items (`isToolBackedThreadItem`) through `buildItemToolUuid(item.id)` /
   `buildItemResultUuid(callId)`; message/reasoning items keep `item.id`
-  unchanged. A code-mode command temporarily uses its inner
-  `exec-*` item id until the scoped reconciliation below. The streaming-result
-  and (opt-in) rawResponse paths use the same helpers.
+  unchanged. A code-mode command or image view temporarily uses its inner item
+  id until the scoped reconciliation below. The streaming-result and (opt-in)
+  rawResponse paths use the same helpers.
 - Durable (`normalization.ts`): `codexDurableResponseItemUuid` maps
   `function_call`/`custom_tool_call`/`web_search_call` →
   `call_id`, `*_output` → `${call_id}-result`; the `exec_command_end`
@@ -235,6 +236,14 @@ turn — `call_id` is globally unique, so no turn scoping is needed:
   with exactly equal normalized name/input/actions, one-to-one by nearest
   timestamp within 10s, then adopts `call_*` / `call_*-result` as canonical.
   The durable row remains authoritative and no YA record is persisted.
+- Image-view exception (verified 2026-08-26): app-server exposes a nested
+  code-mode image inspection as an `imageView` thread item while rollout stores
+  the enclosing `custom_tool_call`. Both representations canonicalize to
+  `ViewImage`; ephemeral correlation metadata lets the client pair exact
+  same-turn name/path matches and adopt the outer `call_*` identity. The tool
+  result and its media stay under that one canonical parent, so live overlap
+  and persisted reload each render exactly one visible image row. Repeated
+  views remain distinct because pairing is one-to-one and turn-scoped.
 - Checklist exception (verified against Codex 0.146.0): app-server emits
   `turn/plan/updated` with the full plan but no item/call id, while code-mode
   rollout stores the enclosing `custom_tool_call` (ordinary tool mode uses a

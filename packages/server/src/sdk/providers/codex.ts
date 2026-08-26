@@ -5739,9 +5739,9 @@ export class CodexProvider implements AgentProvider {
   ): SDKMessage[] {
     const isComplete = sourceEvent === "item/completed";
     const observedAt = new Date().toISOString();
-    // Native tool items key the uuid on call_id (item.id). Code-mode
-    // commandExecution items temporarily key on exec-* and carry correlation
-    // metadata for adoption of the outer durable call_* id client-side.
+    // Native tool items key the uuid on call_id (item.id). Nested code-mode
+    // commands and image views temporarily key on their inner item id and
+    // carry correlation metadata for adoption of the outer durable call_* id.
     // Message/reasoning item ids are the provider ids persisted in rollout.
     const uuid = this.isToolBackedThreadItem(item)
       ? this.buildItemToolUuid(item.id)
@@ -6264,6 +6264,11 @@ export class CodexProvider implements AgentProvider {
             type: "assistant",
             session_id: sessionId,
             uuid,
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "image_view",
+              turnId,
+              item.id,
+            ),
             message: {
               role: "assistant",
               content: [
@@ -6293,6 +6298,11 @@ export class CodexProvider implements AgentProvider {
               type: "user",
               session_id: sessionId,
               uuid: `${uuid}-result`,
+              [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+                "image_view",
+                turnId,
+                item.id,
+              ),
               message: {
                 role: "user",
                 content: [
