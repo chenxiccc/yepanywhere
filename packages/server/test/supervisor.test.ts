@@ -1677,6 +1677,109 @@ describe("Supervisor", () => {
   });
 
   describe("reactivateSession", () => {
+    it("retains managed placement across queueing, shutdown, and resume", async () => {
+      let generation = 0;
+      const delivered: string[] = [];
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          generation += 1;
+          const runnerGeneration = `runner-${generation}`;
+          const queue = new MessageQueue();
+          let alive = true;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "managed-native-session",
+            };
+            for await (const message of queue) {
+              if (!alive) return;
+              const text =
+                typeof message.message.content === "string"
+                  ? message.message.content
+                  : "non-text provider message";
+              delivered.push(text);
+              yield {
+                type: "assistant" as const,
+                message: { content: `reply to ${text}` },
+              };
+              yield {
+                type: "result" as const,
+                session_id: options.resumeSessionId ?? "managed-native-session",
+              };
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            execution: {
+              kind: "managed-ssh" as const,
+              targetId: "linux-testbed",
+              workspaceId: "managed-workspace",
+              runnerGeneration,
+            },
+            abort: () => {
+              alive = false;
+              queue.push({ text: "__abort__" });
+            },
+            isProcessAlive: () => alive,
+          };
+        },
+      );
+      const providerSupervisor = new Supervisor({
+        provider: testProvider(startSession),
+        idleTimeoutMs: 60000,
+      });
+
+      const first = await providerSupervisor.reactivateSession(
+        "/tmp/managed-workspace",
+        "managed-native-session",
+        undefined,
+        { providerName: "claude" },
+      );
+
+      expect(first.execution).toEqual({
+        kind: "managed-ssh",
+        targetId: "linux-testbed",
+        workspaceId: "managed-workspace",
+        runnerGeneration: "runner-1",
+      });
+      expect(first.executor).toBeUndefined();
+      expect(first.queueMessage({ text: "managed queue turn" })).toEqual(
+        expect.objectContaining({ success: true }),
+      );
+      await waitFor(() => {
+        expect(delivered).toContain("managed queue turn");
+        expect(first.state.type).toBe("idle");
+      });
+      await expect(
+        providerSupervisor.abortProcessWithVerification(first.id),
+      ).resolves.toMatchObject({
+        processId: first.id,
+        verifiedStopped: true,
+        verification: "provider",
+      });
+
+      const resumed = await providerSupervisor.reactivateSession(
+        "/tmp/managed-workspace",
+        "managed-native-session",
+        undefined,
+        { providerName: "claude" },
+      );
+
+      expect(resumed.sessionId).toBe("managed-native-session");
+      expect(resumed.execution).toEqual({
+        kind: "managed-ssh",
+        targetId: "linux-testbed",
+        workspaceId: "managed-workspace",
+        runnerGeneration: "runner-2",
+      });
+      await expect(
+        providerSupervisor.abortProcessWithVerification(resumed.id),
+      ).resolves.toMatchObject({ verifiedStopped: true });
+      expect(startSession).toHaveBeenCalledTimes(2);
+    });
+
     it("spawns a live owned process for an existing session with no user turn", async () => {
       const startSession = vi.fn(
         async (options: Parameters<AgentProvider["startSession"]>[0]) => {

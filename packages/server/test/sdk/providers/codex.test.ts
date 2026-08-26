@@ -357,6 +357,59 @@ describe("CodexProvider", () => {
       }
     });
 
+    it("logs in with an in-memory external ChatGPT projection", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-external-auth-"));
+      const logPath = join(tempDir, "fake-codex-requests.jsonl");
+      const codexHome = join(tempDir, "isolated-codex-home");
+      mkdirSync(codexHome, { mode: 0o700 });
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-external-auth",
+        buildFakeCodexAppServer(logPath),
+      );
+      const testProvider = new CodexProvider({
+        codexPath,
+        codexHome,
+        externalChatgptAuth: {
+          initialProjection: {
+            accessToken: "external-access-token",
+            chatgptAccountId: "account-one",
+            chatgptPlanType: "plus",
+          },
+          refresh: async () => ({
+            accessToken: "refreshed-access-token",
+            chatgptAccountId: "account-one",
+            chatgptPlanType: "plus",
+          }),
+        },
+      });
+      const session = await testProvider.startSession({ cwd: tempDir });
+
+      try {
+        await expect(session.iterator.next()).resolves.toMatchObject({
+          value: {
+            type: "system",
+            subtype: "init",
+            session_id: "thread-1",
+          },
+        });
+        const login = readFakeCodexRequests(logPath).find(
+          (request) => request.method === "account/login/start",
+        );
+        expect(login?.params).toEqual({
+          type: "chatgptAuthTokens",
+          accessToken: "external-access-token",
+          chatgptAccountId: "account-one",
+          chatgptPlanType: "plus",
+        });
+        expect(existsSync(join(codexHome, "auth.json"))).toBe(false);
+      } finally {
+        await session.abort();
+        await session.iterator.return?.(undefined);
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("reports that /usage requires ChatGPT subscription auth", async () => {
       const tempDir = mkdtempSync(join(tmpdir(), "codex-api-key-usage-"));
       const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -2059,6 +2112,9 @@ function handleMessage(message) {
           : { type: "apiKey" },
         requiresOpenaiAuth: true,
       });
+      break;
+    case "account/login/start":
+      respond(message.id, { type: "chatgptAuthTokens" });
       break;
     case "account/rateLimits/read":
       respond(message.id, {

@@ -218,7 +218,7 @@ async function probeRunner(
     }
   });
   const leaseId = `gate-b-${randomUUID()}`;
-  send(launch, { type: "hello", protocolVersion: 1, leaseId });
+  send(launch, { type: "hello", protocolVersion: 2, leaseId });
   await waitForFrame(frames, (frame) => frame.type === "helloAck");
   send(launch, {
     type: "launch",

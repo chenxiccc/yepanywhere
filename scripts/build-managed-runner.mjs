@@ -92,7 +92,7 @@ for (const inputPath of inputPaths) {
 const sourceSha256 = sourceHasher.digest("hex");
 const manifest = {
   artifactFormatVersion: 1,
-  runnerProtocolVersion: 1,
+  runnerProtocolVersion: 2,
   providerSessionProtocolVersion: 1,
   yaVersion: packageJson.version,
   sourceIdentity: {

@@ -9,8 +9,9 @@ import {
   providerSessionErrorMessage,
 } from "./provider-session-owner.js";
 import type { StartSessionOptions } from "./types.js";
+import type { CodexExternalChatgptAuthProjection } from "./codex.js";
 
-export const MANAGED_RUNNER_PROTOCOL_VERSION = 1;
+export const MANAGED_RUNNER_PROTOCOL_VERSION = 2;
 export const MANAGED_RUNNER_MAX_INPUT_FRAME_BYTES = 1024 * 1024;
 export const MANAGED_RUNNER_MAX_OUTPUT_FRAME_BYTES = 4 * 1024 * 1024;
 export const MANAGED_RUNNER_MAX_QUEUED_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -27,11 +28,24 @@ export interface ManagedRunnerLaunchRequest {
     browserDebugEnvironment?: Record<string, string>;
   };
   runtimeConfig?: Record<string, unknown>;
+  codexAuth?: {
+    initialProjection: CodexExternalChatgptAuthProjection;
+    codexHome: string;
+    expectedCodexVersion: string;
+  };
+}
+
+export interface ManagedRunnerControllerBridge {
+  refreshCodexAuth: (request: {
+    reason: string;
+    previousAccountId: string;
+  }) => Promise<CodexExternalChatgptAuthProjection>;
 }
 
 export type ManagedRunnerSessionFactory = (
   request: ManagedRunnerLaunchRequest,
   hooks: ProviderSessionStartHooks,
+  controller: ManagedRunnerControllerBridge,
 ) => Promise<ProviderSessionStartResult>;
 
 export interface RunManagedStdioRunnerOptions {
@@ -40,6 +54,8 @@ export interface RunManagedStdioRunnerOptions {
   stderr: Writable;
   runtimeId: string;
   createSession: ManagedRunnerSessionFactory;
+  /** Release target ownership only after provider shutdown is complete. */
+  onCooperativeShutdown?: () => void | Promise<void>;
   maxInputFrameBytes?: number;
   maxOutputFrameBytes?: number;
   maxQueuedOutputBytes?: number;
@@ -226,6 +242,47 @@ export async function runManagedStdioRunner(
   } = { current: null };
   const seenControlIds = new Set<string>();
   const controlIdOrder: string[] = [];
+  let nextAuthRequestId = 1;
+  const pendingAuth = new Map<
+    string,
+    {
+      resolve: (projection: CodexExternalChatgptAuthProjection) => void;
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
+  const failPendingAuth = (error: Error): void => {
+    for (const pending of pendingAuth.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+    pendingAuth.clear();
+  };
+  const controllerBridge: ManagedRunnerControllerBridge = {
+    refreshCodexAuth: ({ reason, previousAccountId }) => {
+      if (!leaseId || !launched) {
+        return Promise.reject(
+          new Error("Managed Codex auth broker is not attached"),
+        );
+      }
+      const authRequestId = `auth-${nextAuthRequestId++}`;
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pendingAuth.delete(authRequestId);
+          reject(new Error("Managed Codex auth callback timed out"));
+        }, 8_000);
+        timeout.unref?.();
+        pendingAuth.set(authRequestId, { resolve, reject, timeout });
+        writer.write({
+          type: "codexAuthRefresh",
+          leaseId,
+          authRequestId,
+          reason,
+          previousAccountId,
+        });
+      });
+    },
+  };
   const owner = new ProviderSessionOwner({
     runtimeId: options.runtimeId,
     onTerminal: (reason, exitCode) => {
@@ -323,6 +380,7 @@ export async function runManagedStdioRunner(
             "activity",
             "retention",
             "cooperative-shutdown",
+            "codex-external-auth-v1",
           ],
           limits: {
             maxInputFrameBytes:
@@ -346,6 +404,46 @@ export async function runManagedStdioRunner(
         continue;
       }
       if (!rememberControl(frame)) continue;
+
+      if (
+        frame.type === "codexAuthProjection" ||
+        frame.type === "codexAuthFailure"
+      ) {
+        const authRequestId =
+          typeof frame.authRequestId === "string" ? frame.authRequestId : "";
+        const pending = pendingAuth.get(authRequestId);
+        if (!pending) {
+          writer.write({
+            type: "protocolError",
+            phase: launched ? "active" : "pre-start",
+            leaseId,
+            error: "Unknown managed Codex auth callback",
+          });
+          continue;
+        }
+        pendingAuth.delete(authRequestId);
+        clearTimeout(pending.timeout);
+        if (frame.type === "codexAuthFailure") {
+          pending.reject(
+            new Error(
+              typeof frame.error === "string"
+                ? frame.error
+                : "Managed Codex auth callback failed",
+            ),
+          );
+          continue;
+        }
+        try {
+          pending.resolve(parseAuthProjection(frame.projection));
+        } catch (error) {
+          pending.reject(
+            error instanceof Error
+              ? error
+              : new Error("Managed Codex auth projection is invalid"),
+          );
+        }
+        continue;
+      }
 
       if (!launched) {
         if (frame.type !== "launch") {
@@ -375,7 +473,7 @@ export async function runManagedStdioRunner(
         }
         try {
           const metadata = await owner.start(
-            (hooks) => options.createSession(launch, hooks),
+            (hooks) => options.createSession(launch, hooks, controllerBridge),
             launch.options.browserDebugEnvironment,
           );
           controllerId = `stdio:${leaseId}`;
@@ -411,7 +509,9 @@ export async function runManagedStdioRunner(
 
       if (frame.type === "shutdown") {
         cooperativeShutdown = true;
+        failPendingAuth(new Error("Managed runner is shutting down"));
         await owner.shutdown("controller requested shutdown");
+        await options.onCooperativeShutdown?.();
         writer.write({ type: "shutdownComplete", leaseId });
         await writer.close();
         return 0;
@@ -421,13 +521,17 @@ export async function runManagedStdioRunner(
       try {
         await owner.handleControllerRequest(controllerId, frame);
       } catch (error) {
-        writer.write({
-          type: "controlError",
-          leaseId,
-          controlId: frame.controlId,
-          id: frame.id,
-          error: providerSessionErrorMessage(error),
-        });
+        if (frame.type === "rpc" && typeof frame.id === "number") {
+          owner.emitControllerError(frame, error);
+        } else {
+          writer.write({
+            type: "controlError",
+            leaseId,
+            controlId: frame.controlId,
+            id: frame.id,
+            error: providerSessionErrorMessage(error),
+          });
+        }
       }
     }
 
@@ -436,6 +540,7 @@ export async function runManagedStdioRunner(
       return terminalResult.current.exitCode;
     }
     if (!cooperativeShutdown) {
+      failPendingAuth(new Error("Managed runner controller stream closed"));
       await owner.shutdown("controller stdin EOF");
       writer.write({
         type: launched ? "controllerLost" : "launchFailed",
@@ -450,6 +555,11 @@ export async function runManagedStdioRunner(
     await writer.close();
     return launched ? 0 : 1;
   } catch (error) {
+    failPendingAuth(
+      error instanceof Error
+        ? error
+        : new Error("Managed runner protocol failure"),
+    );
     diagnostic(providerSessionErrorMessage(error));
     await owner.shutdown("managed runner protocol failure").catch(() => {});
     try {
@@ -465,6 +575,32 @@ export async function runManagedStdioRunner(
     }
     return 1;
   }
+}
+
+function parseAuthProjection(
+  value: unknown,
+): CodexExternalChatgptAuthProjection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Managed Codex auth projection is invalid");
+  }
+  const projection = value as Record<string, unknown>;
+  if (
+    typeof projection.accessToken !== "string" ||
+    projection.accessToken.length === 0 ||
+    typeof projection.chatgptAccountId !== "string" ||
+    projection.chatgptAccountId.length === 0 ||
+    !(
+      projection.chatgptPlanType === null ||
+      typeof projection.chatgptPlanType === "string"
+    )
+  ) {
+    throw new Error("Managed Codex auth projection is invalid");
+  }
+  return {
+    accessToken: projection.accessToken,
+    chatgptAccountId: projection.chatgptAccountId,
+    chatgptPlanType: projection.chatgptPlanType,
+  };
 }
 
 function asRecord(message: unknown): Record<string, unknown> {

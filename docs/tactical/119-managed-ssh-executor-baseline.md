@@ -2,12 +2,13 @@
 
 Topic: managed-remote-executors
 
-Status: Gates A and B completed and accepted on 2026-08-26. The injectable
-runner, shared provider-session owner, non-PTY manual-SSH carrier, and
-disposable exact-commit Git workspace round trip are implemented behind tests
-and an operator diagnostic. No production Codex target session, route,
-capability, setting, session metadata, user-project Git writer, or UI described
-here is implemented or compatibility-approved.
+Status: Gates A, B, and C completed and accepted on 2026-08-26. The injectable
+runner, shared provider-session owner, non-PTY manual-SSH carrier, disposable
+exact-commit Git workspace round trip, controller-authenticated target Codex
+session, and internal `RemoteAgentSession`/Supervisor path are implemented
+behind tests and an operator diagnostic. No public route, capability, setting,
+managed session metadata, user-project Git writer, UI, or reload-survival claim
+described here is implemented or compatibility-approved.
 
 This tactical deliberately has stop/go gates. A normal implementation request
 should complete and record one gate at a time rather than treating the whole
@@ -611,6 +612,77 @@ Use an internal test-only or operator diagnostic launch door guarded against
 ordinary clients. It exists to prove full Supervisor/Process routing,
 acknowledgement, queue state, and shutdown before adding a public client/server
 contract.
+
+### Gate C result — accept controller-authenticated remote Codex
+
+Gate C passed on the available Linux controller and clean Ubuntu x86_64 target
+on 2026-08-26. The target had no YA checkout, provider login, or controller
+credential file. The acceptance setup supplied exact Node.js 25.2.0, Git
+2.43.0, and Codex CLI 0.149.0 as target prerequisites; YA's inspection and
+runner did not install them. The built runner was 1,237,665 bytes with SHA-256
+`0f82f1a9f58dffb12b2e53e76dca985404f2e35254da55dfdf7e84a98e56427a`
+and 209 bundled inputs. Its only runtime externals remained Node built-ins and
+the target Codex executable.
+
+One controller-local managed auth owner verified the exact Codex version,
+default file credential store, ChatGPT subscription login, account, and plan,
+then projected only the access token, account id, and plan to the runner. The
+target adapter initialized app-server through `chatgptAuthTokens`; it removed
+provider keys and base URLs from the target environment and kept the projection
+out of process arguments and target storage. All three launches completed
+without target login and left no target `auth.json`. The protocol relays a
+target `account/chatgptAuthTokens/refresh` request to the serialized controller
+owner, rejects an account change, and returns only a fresh projection. Unit
+coverage gives missing store, keyring store, missing login, incompatible
+version, account mismatch, refresh failure, and callback timeout distinct
+errors. The earlier forced-`401` feasibility proof remains the live evidence
+for Codex's callback-and-retry behavior.
+
+The first target runner initialized a new Codex thread in the exact managed
+worktree. It acknowledged `gpt-5.4-mini` with low effort, streamed normalized
+events, executed target-local `pwd` and Git commands, crossed two approval
+callbacks for Bash, interrupted a running `sleep`, committed the requested
+file, and stopped cooperatively. The controller fetched the committed head into
+the disposable marked repository, verified base ancestry and file bytes, and
+confirmed that the source checkout, branch, status, staged diff, and unstaged
+diff had not changed.
+
+The target stored Codex's native rollout below the workspace-owned private
+`CODEX_HOME`. A second orderly runner resumed the same provider thread in the
+same worktree and completed another turn; no controller-local Codex file was
+scanned or treated as the remote transcript. A third runner resumed that same
+thread through the internal diagnostic provider and the real
+`Supervisor`/`Process` path. Its message queue drained to zero, normalized
+events reached `Process`, the process returned to idle, and Supervisor verified
+provider shutdown. The canonical YA identity used by the diagnostic remained
+separate from the provider thread id.
+
+`AgentSession` and `Process` now retain an internal structured execution
+coordinate with distinct local, legacy-SSH, and managed-SSH variants. The live
+process reported the managed target, workspace, and fresh runner generation
+while its legacy `executor` remained absent. The operator provider is not in
+provider discovery, a provider barrel, or an HTTP route; it requires one fixed
+server-owned target/workspace configuration and rejects legacy executor,
+controller environment, and controller sandbox projections. Durable/browser
+metadata and restart routing remain Gate D compatibility work.
+
+An atomic workspace-local runner lease is acquired before provider start. A
+concurrent resume was rejected before launch acceptance with the exact active-
+runner conflict, so no second Codex writer started. Deterministic coverage also
+retains the prior dirty-workspace behavior, classifies provider failure before
+identity binding, and classifies an SSH drop after acceptance as uncertain. The
+dropped-channel fixture retains its active lease and rejects a retry; only the
+runner's verified cooperative-shutdown path removes that fence. A missing
+target rollout is surfaced through target `thread/resume` failure rather than
+local history or local execution. Each of the three accepted runners reported
+clean cooperative exit; the target Codex and Node processes, active lease,
+workspace, runner cache/root, temporary runtimes, and Machine Control claim
+were gone after the proof.
+
+The available Machine Control inventory again exposed no macOS controller
+testbed, so Gate C makes no macOS native claim. The direct proxy is portable
+TypeScript and has deterministic coverage, but the unavailable coordinate is
+not inferred from Linux evidence.
 
 ## Gate D — Add Reload Survival And The Opt-In Product
 

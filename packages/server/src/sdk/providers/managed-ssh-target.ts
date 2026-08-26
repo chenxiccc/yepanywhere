@@ -35,7 +35,7 @@ const SSH_ENVIRONMENT_ALLOWLIST = new Set([
 
 export interface ManagedRunnerArtifactManifest {
   artifactFormatVersion: 1;
-  runnerProtocolVersion: 1;
+  runnerProtocolVersion: 2;
   providerSessionProtocolVersion: 1;
   entrypoint: "runner.mjs";
   target: {
@@ -129,6 +129,10 @@ export interface LaunchManagedRunnerOptions {
   manifest: ManagedRunnerArtifactManifest;
   cwd: string;
   allowFakeProvider?: boolean;
+  workspaceLease?: {
+    workspaceDirectory: string;
+    leaseId: string;
+  };
 }
 
 export class ManagedSshOperationError extends Error {
@@ -462,10 +466,17 @@ export class ManagedSshTarget {
       "managed runner cwd",
     );
     const remotePath = `${this.remoteRoot}/runner-cache/${options.manifest.artifact.sha256}/${options.manifest.entrypoint}`;
-    const launch = options.allowFakeProvider
+    const runner = options.allowFakeProvider
       ? `exec env YEP_MANAGED_RUNNER_ALLOW_FAKE=1 ${quoteShellWord(this.nodeCommand)} ${quoteShellWord(remotePath)}`
       : `exec ${quoteShellWord(this.nodeCommand)} ${quoteShellWord(remotePath)}`;
-    const command = `set -eu; cd ${quoteShellWord(options.cwd)}; ${launch}`;
+    const command = options.workspaceLease
+      ? managedRunnerLeaseCommand(
+          this.remoteRoot,
+          options.cwd,
+          options.workspaceLease,
+          runner.replace(/^exec /, ""),
+        )
+      : `set -eu; cd ${quoteShellWord(options.cwd)}; ${runner}`;
     const child = spawn(this.sshCommand, this.sshArguments(command), {
       env: this.spawnEnvironment,
       stdio: ["pipe", "pipe", "pipe"],
@@ -607,6 +618,42 @@ export class ManagedSshTarget {
   }
 }
 
+function managedRunnerLeaseCommand(
+  remoteRoot: string,
+  cwd: string,
+  lease: NonNullable<LaunchManagedRunnerOptions["workspaceLease"]>,
+  runnerCommand: string,
+): string {
+  assertContainedRemotePath(
+    remoteRoot,
+    lease.workspaceDirectory,
+    "managed runner workspace lease",
+  );
+  if (cwd !== `${lease.workspaceDirectory}/worktree`) {
+    throw new Error("Managed runner lease does not own the requested cwd");
+  }
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(lease.leaseId)) {
+    throw new Error("Managed runner lease identity is invalid");
+  }
+  const leaseDirectory = `${lease.workspaceDirectory}/active-runner-lease`;
+  assertContainedRemotePath(
+    remoteRoot,
+    leaseDirectory,
+    "managed runner active lease",
+  );
+  const leaseDirectoryWord = quoteShellWord(leaseDirectory);
+  const ownerPathWord = quoteShellWord(`${leaseDirectory}/owner`);
+  const leaseIdWord = quoteShellWord(lease.leaseId);
+  return [
+    "set -eu",
+    "umask 077",
+    `if ! mkdir ${leaseDirectoryWord}; then printf 'managed workspace already has an active runner\\n' >&2; exit 73; fi`,
+    `printf '%s\\n' ${leaseIdWord} > ${ownerPathWord}`,
+    `cd ${quoteShellWord(cwd)}`,
+    `exec env YEP_MANAGED_RUNNER_LEASE_DIRECTORY=${leaseDirectoryWord} YEP_MANAGED_RUNNER_LEASE_ID=${leaseIdWord} ${runnerCommand}`,
+  ].join("; ");
+}
+
 function assertManagedSshController(): void {
   if (process.platform === "win32") {
     throw new Error(
@@ -644,7 +691,7 @@ export function validateManagedRunnerManifest(
   const manifest = value as Partial<ManagedRunnerArtifactManifest> | null;
   if (
     manifest?.artifactFormatVersion !== 1 ||
-    manifest.runnerProtocolVersion !== 1 ||
+    manifest.runnerProtocolVersion !== 2 ||
     manifest.providerSessionProtocolVersion !== 1 ||
     manifest.entrypoint !== "runner.mjs" ||
     manifest.target?.os !== "linux" ||

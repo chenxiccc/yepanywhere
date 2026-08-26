@@ -271,11 +271,14 @@ interface StdioHarness {
   send(message: unknown): void;
 }
 
-function stdioHarness(limits?: {
-  maxInputFrameBytes?: number;
-  maxOutputFrameBytes?: number;
-  maxQueuedOutputBytes?: number;
-}): StdioHarness {
+function stdioHarness(
+  limits?: {
+    maxInputFrameBytes?: number;
+    maxOutputFrameBytes?: number;
+    maxQueuedOutputBytes?: number;
+  },
+  createSession?: Parameters<typeof runManagedStdioRunner>[0]["createSession"],
+): StdioHarness {
   const input = new PassThrough();
   const output = new PassThrough();
   const stderr = new PassThrough();
@@ -288,12 +291,14 @@ function stdioHarness(limits?: {
     output,
     stderr,
     runtimeId: "stdio-runtime",
-    createSession: async (request, hooks) => ({
-      session: await startFakeProviderSession(
-        { failOnStart: request.runtimeConfig?.failOnStart === true },
-        hooks,
-      ),
-    }),
+    createSession:
+      createSession ??
+      (async (request, hooks) => ({
+        session: await startFakeProviderSession(
+          { failOnStart: request.runtimeConfig?.failOnStart === true },
+          hooks,
+        ),
+      })),
     ...limits,
   });
   return {
@@ -310,7 +315,7 @@ function stdioHarness(limits?: {
 async function launchHarness(harness: StdioHarness): Promise<void> {
   const hello = JSON.stringify({
     type: "hello",
-    protocolVersion: 1,
+    protocolVersion: 2,
     leaseId: "lease-test-123",
   });
   harness.input.write(hello.slice(0, 7));
@@ -331,6 +336,58 @@ async function launchHarness(harness: StdioHarness): Promise<void> {
 }
 
 describe("managed runner stdio protocol", () => {
+  it("brokers a bounded Codex access-token refresh without echoing credentials", async () => {
+    let refreshedAccount: string | undefined;
+    const harness = stdioHarness(
+      undefined,
+      async (_request, hooks, controller) => {
+        setTimeout(() => {
+          void controller
+            .refreshCodexAuth({
+              reason: "unauthorized",
+              previousAccountId: "account-one",
+            })
+            .then((projection) => {
+              refreshedAccount = projection.chatgptAccountId;
+            });
+        }, 0);
+        return { session: await startFakeProviderSession({}, hooks) };
+      },
+    );
+    await launchHarness(harness);
+    await waitFor(() =>
+      harness.messages.some((message) => message.type === "codexAuthRefresh"),
+    );
+    const request = harness.messages.find(
+      (message) => message.type === "codexAuthRefresh",
+    );
+    expect(JSON.stringify(request)).not.toContain("access-token-secret");
+    harness.send({
+      type: "codexAuthProjection",
+      leaseId: "lease-test-123",
+      controlId: "auth-response",
+      authRequestId: request?.authRequestId,
+      projection: {
+        accessToken: "access-token-secret",
+        chatgptAccountId: "account-one",
+        chatgptPlanType: "plus",
+      },
+    });
+    await waitFor(() => refreshedAccount === "account-one");
+    expect(
+      harness.messages.some((message) =>
+        JSON.stringify(message).includes("access-token-secret"),
+      ),
+    ).toBe(false);
+    harness.send({
+      type: "shutdown",
+      leaseId: "lease-test-123",
+      controlId: "shutdown-auth",
+    });
+    harness.input.end();
+    await expect(harness.result).resolves.toBe(0);
+  });
+
   it("handles partial frames, leases, duplicate controls, approvals, RPC, interrupt, and shutdown", async () => {
     const harness = stdioHarness();
     await launchHarness(harness);
@@ -542,7 +599,7 @@ describe("managed runner stdio protocol", () => {
     const incompatible = stdioHarness();
     incompatible.send({
       type: "hello",
-      protocolVersion: 2,
+      protocolVersion: 3,
       leaseId: "lease-bad-version",
     });
     incompatible.input.end();
@@ -564,12 +621,12 @@ describe("managed runner stdio protocol", () => {
     const launchFailure = stdioHarness();
     launchFailure.send({
       type: "hello",
-      protocolVersion: 1,
+      protocolVersion: 2,
       leaseId: "lease-launch-failure",
     });
     launchFailure.send({
       type: "launch",
-      protocolVersion: 1,
+      protocolVersion: 2,
       leaseId: "lease-launch-failure",
       provider: "fake",
       options: { cwd: "/tmp" },

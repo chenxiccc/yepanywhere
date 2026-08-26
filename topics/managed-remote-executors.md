@@ -7,13 +7,15 @@
 
 Topic: managed-remote-executors
 
-Status: product direction with its Gate A injectable runtime and Gate B
-manual-SSH/disposable-workspace foundations implemented and accepted. YA's
-released SSH Remote Executors remain Claude-family process transports that
-assume a matching remote checkout and sync Claude transcripts with `rsync`.
-The new carrier and workspace service remain diagnostic-only: YA does not yet
-run a production Codex target session, publish managed placement, persist a
-managed execution coordinate, or fetch remote heads into user-project refs.
+Status: product direction with its Gate A injectable runtime, Gate B
+manual-SSH/disposable-workspace foundation, and Gate C controller-authenticated
+Codex diagnostic accepted. YA's released SSH Remote Executors remain
+Claude-family process transports that assume a matching remote checkout and
+sync Claude transcripts with `rsync`. The new carrier, workspace service,
+remote `AgentSession`, and Supervisor bridge remain operator-only: YA does not
+yet publish managed placement, persist a browser-visible managed execution
+coordinate, survive Hono replacement, or fetch remote heads into user-project
+refs.
 
 The staged implementation and research gates are tracked in
 [`docs/tactical/119-managed-ssh-executor-baseline.md`](../docs/tactical/119-managed-ssh-executor-baseline.md).
@@ -256,7 +258,7 @@ bytes through Node, and atomically publishes a digest-named private cache
 entry. A cache hit is trusted only after re-verification. The selected Gate A
 artifact and installer probe work without a YA checkout, dependency tree,
 pnpm, `tsx`, or target package-manager mutation. Bounded cache reclamation and
-production Codex launch remain later gates.
+product integration remain later gates.
 
 Runner cache retention is bounded by artifact digest and may be reclaimed when
 unused. Session processes, output buffers, reconnect state, and target Git
@@ -315,6 +317,32 @@ configured OS keyring store, API-key login, missing ChatGPT login, or
 incompatible Codex version produces a distinct read-only preflight failure.
 Supporting another credential store or login mode requires its own explicit
 contract and acceptance evidence.
+
+Gate C implements this boundary in the runner protocol. The controller auth
+owner verifies the exact Codex version and account projection before SSH
+launch, serializes forced refreshes, enforces account continuity and a callback
+deadline, and never returns the refresh credential. The target Codex adapter
+requires experimental external-auth capability, strips provider API keys and
+base URLs from its child environment, uses a workspace-owned private
+`CODEX_HOME`, and writes no `auth.json`. An auth, protocol, or callback failure
+is terminal for that managed launch or turn and never selects another auth or
+execution path.
+
+Gate C also implements one internal `RemoteAgentSession` proxy over the
+version-2 runner protocol. It projects queue depth/yield, normalized sequenced
+events and acknowledgement, approvals, interrupts, provider RPCs, liveness,
+activity, retention, identity binding, and cooperative shutdown onto the
+existing `AgentSession` surface. `Process` retains an internal discriminated
+execution coordinate; managed placement never populates or changes the meaning
+of the released legacy `executor` string. The fixed diagnostic provider is
+absent from provider discovery and HTTP routes and rejects controller paths,
+environment, and sandbox configuration.
+
+Exactly one active runner may own a managed workspace. The target atomically
+creates a workspace-local lease before provider start; a conflict fails before
+launch acceptance and cannot start a second Codex writer. Orderly shutdown
+removes the lease. A channel failure after acceptance remains uncertain and
+does not authorize a competing resume.
 
 Claude is not part of this baseline. The released Claude SSH executor remains
 intact, and a future managed-runner Claude adapter requires a separate plan and
@@ -411,6 +439,14 @@ branch, edits the working tree, pushes upstream, or overloads the existing
 The canonical visible id is always the controller's YA session id. The target
 may retain a Codex thread id or another provider-native resume handle, but it
 never substitutes that value in YA URLs, metadata, or client contracts.
+
+For the accepted Codex diagnostic, the provider thread and rollout remain in a
+private workspace-owned target `CODEX_HOME`. An orderly new runner resumes that
+thread only in the same recorded target workspace. Active normalized events may
+be retained by the owning controller process, but a stopped diagnostic never
+scans controller-local Codex files or presents them as cold remote history. A
+missing target rollout therefore produces the target app-server's resume
+failure; it does not create a replacement local thread.
 
 While active, the runner owns provider-native persistence and sends normalized
 events through the controller's ordinary `Process`. A managed provider cannot

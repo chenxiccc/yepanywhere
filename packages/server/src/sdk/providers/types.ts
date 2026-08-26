@@ -42,6 +42,20 @@ export type ProviderName =
   | "pi";
 
 /**
+ * Internal provider-process placement. This is deliberately separate from the
+ * released Claude-only `executor` string and is not a browser contract.
+ */
+export type SessionExecution =
+  | { kind: "local" }
+  | { kind: "legacy-ssh"; executor: string }
+  | {
+      kind: "managed-ssh";
+      targetId: string;
+      workspaceId: string;
+      runnerGeneration: string;
+    };
+
+/**
  * Provider-native address of a completed transcript prefix. These identities
  * stay on the server; browser-facing message and session ids remain YA ids.
  */
@@ -259,6 +273,8 @@ export interface AgentSession {
   iterator: AsyncIterableIterator<SDKMessage>;
   /** Message queue for sending messages to the agent */
   queue: AgentMessageQueue;
+  /** Internal placement identity retained by the owning Process. */
+  execution?: SessionExecution;
   /** Abort function to cancel the session */
   abort: () => void | Promise<void>;
   /** Release only the replaceable server's proxy, retaining the provider owner. */

@@ -89,6 +89,7 @@ export interface ProviderSessionReadyMetadata {
     runProviderCommand: boolean;
   };
   sandbox?: ProviderSessionSandboxMetadata;
+  diagnostics?: Record<string, unknown>;
 }
 
 export interface ProviderSessionStartHooks {
@@ -102,6 +103,7 @@ export interface ProviderSessionStartHooks {
 export interface ProviderSessionStartResult {
   session: AgentSession;
   sandbox?: ProviderSessionSandboxMetadata;
+  diagnostics?: Record<string, unknown>;
 }
 
 export type StartOwnedProviderSession = (
@@ -162,6 +164,7 @@ export class ProviderSessionOwner {
   private iteratorStarted = false;
   private terminalSignalled = false;
   private sandboxMetadata: ProviderSessionSandboxMetadata | undefined;
+  private diagnostics: Record<string, unknown> | undefined;
 
   constructor(private readonly options: ProviderSessionOwnerOptions) {}
 
@@ -191,6 +194,7 @@ export class ProviderSessionOwner {
     });
     this.session = result.session;
     this.sandboxMetadata = result.sandbox;
+    this.diagnostics = result.diagnostics;
     this.reportProviderPid();
     this.providerActivity = result.session.getProviderActivity?.() ?? {};
     this.providerRetention = result.session.getProviderRetention?.() ?? {
@@ -234,6 +238,7 @@ export class ProviderSessionOwner {
         runProviderCommand: Boolean(session.runProviderCommand),
       },
       sandbox: this.sandboxMetadata,
+      diagnostics: this.diagnostics,
     };
   }
 

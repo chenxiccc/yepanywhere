@@ -54,6 +54,7 @@ import {
 import type {
   AgentProvider,
   PromptCacheRefreshResult,
+  SessionExecution,
 } from "../sdk/providers/types.js";
 import { expandSlashCommandEmulation } from "../sdk/slashCommandEmulation.js";
 import type {
@@ -926,6 +927,8 @@ export class Process {
   readonly serviceTier: string | undefined;
   /** SSH host for remote execution (undefined = local) */
   readonly executor: string | undefined;
+  /** Internal placement coordinate, kept out of browser-facing ProcessInfo. */
+  readonly execution: SessionExecution;
   readonly sandboxEnforcement: SessionSandboxEnforcement | undefined;
   readonly sandboxStateKey: string | undefined;
   readonly sandboxProjectPath: string | undefined;
@@ -1177,6 +1180,11 @@ export class Process {
     this.launchCompactPercentOverride = options.launchCompactPercentOverride;
     this.serviceTier = options.serviceTier;
     this.executor = options.executor;
+    this.execution =
+      options.execution ??
+      (options.executor
+        ? { kind: "legacy-ssh", executor: options.executor }
+        : { kind: "local" });
     this.sandboxEnforcement = options.sandboxEnforcement;
     this.sandboxStateKey = options.sandboxStateKey;
     this.sandboxProjectPath = options.sandboxProjectPath;

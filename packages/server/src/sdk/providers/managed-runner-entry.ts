@@ -2,7 +2,17 @@
 
 import "../../startupEnv.js";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rmdir,
+  unlink,
+} from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CODEX_REASONING_SUMMARY,
@@ -16,11 +26,11 @@ import { startFakeProviderSession } from "./provider-runtime-fake.js";
 import type { ProviderSessionStartResult } from "./provider-session-owner.js";
 import {
   type ManagedRunnerLaunchRequest,
+  type ManagedRunnerControllerBridge,
   runManagedStdioRunner,
 } from "./provider-runtime-stdio.js";
 
 interface ManagedRunnerRuntimeConfig {
-  codexCliPath?: string;
   codexReasoningSummary?: CodexReasoningSummary;
   subagentMaxDepth?: SubagentMaxDepth;
 }
@@ -37,6 +47,7 @@ function runtimeConfig(
 async function createSession(
   request: ManagedRunnerLaunchRequest,
   hooks: Parameters<typeof startFakeProviderSession>[1],
+  controller: ManagedRunnerControllerBridge,
 ): Promise<ProviderSessionStartResult> {
   if (request.provider === "fake") {
     if (process.env.YEP_MANAGED_RUNNER_ALLOW_FAKE !== "1") {
@@ -58,7 +69,22 @@ async function createSession(
   }
 
   const config = runtimeConfig(request);
-  const provider = new CodexProvider({ codexPath: config.codexCliPath });
+  const auth = request.codexAuth;
+  if (!auth) {
+    throw new Error("Managed Codex requires controller-owned authentication");
+  }
+  const codexHome = await prepareManagedCodexHome(
+    request.options.cwd,
+    auth.codexHome,
+  );
+  const codexVersion = await inspectCodexVersion(auth.expectedCodexVersion);
+  const provider = new CodexProvider({
+    codexHome,
+    externalChatgptAuth: {
+      initialProjection: auth.initialProjection,
+      refresh: (refreshRequest) => controller.refreshCodexAuth(refreshRequest),
+    },
+  });
   provider.setReasoningSummaryGetter(
     () => config.codexReasoningSummary ?? DEFAULT_CODEX_REASONING_SUMMARY,
   );
@@ -90,6 +116,15 @@ async function createSession(
   });
   return {
     session,
+    diagnostics: {
+      codex: {
+        available: true,
+        version: codexVersion,
+        compatible: true,
+        authMode: "controller-chatgpt-access-token",
+        state: "target-native-rollout",
+      },
+    },
     sandbox: sessionSandbox
       ? {
           enforcement: sessionSandbox.enforcement,
@@ -98,6 +133,83 @@ async function createSession(
         }
       : undefined,
   };
+}
+
+async function prepareManagedCodexHome(
+  cwd: string,
+  requestedCodexHome: string,
+): Promise<string> {
+  if (!isAbsolute(cwd) || !isAbsolute(requestedCodexHome)) {
+    throw new Error("Managed Codex paths must be absolute");
+  }
+  const normalizedCwd = resolve(cwd);
+  const normalizedCodexHome = resolve(requestedCodexHome);
+  if (dirname(normalizedCwd) !== dirname(normalizedCodexHome)) {
+    throw new Error("Managed Codex state must stay beside its owned worktree");
+  }
+  await mkdir(normalizedCodexHome, { recursive: true, mode: 0o700 });
+  const info = await lstat(normalizedCodexHome);
+  if (!info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error("Managed Codex state root is not a private directory");
+  }
+  if ((await realpath(normalizedCodexHome)) !== normalizedCodexHome) {
+    throw new Error("Managed Codex state root must not traverse symlinks");
+  }
+  await chmod(normalizedCodexHome, 0o700);
+  return normalizedCodexHome;
+}
+
+async function inspectCodexVersion(expectedVersion: string): Promise<string> {
+  if (!/^\d+\.\d+\.\d+$/.test(expectedVersion)) {
+    throw new Error("Managed Codex requires an exact expected version");
+  }
+  const child = spawn("codex", ["--version"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: false,
+    windowsHide: true,
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    if (Buffer.byteLength(stdout) < 1024) stdout += String(chunk);
+  });
+  child.stderr.on("data", (chunk) => {
+    if (Buffer.byteLength(stderr) < 4096) stderr += String(chunk);
+  });
+  const version = await new Promise<string>((resolveVersion, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("Target Codex version probe timed out"));
+    }, 5_000);
+    timeout.unref?.();
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      if (code !== 0 || signal !== null) {
+        reject(
+          new Error(
+            `Target Codex is unavailable${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+          ),
+        );
+        return;
+      }
+      const match = /^codex-cli\s+(\d+\.\d+\.\d+)$/.exec(stdout.trim());
+      if (!match?.[1]) {
+        reject(new Error("Target Codex version output is incompatible"));
+        return;
+      }
+      resolveVersion(match[1]);
+    });
+  });
+  if (version !== expectedVersion) {
+    throw new Error(
+      `Target Codex CLI ${version} is incompatible; expected ${expectedVersion}`,
+    );
+  }
+  return version;
 }
 
 async function verifyArtifact(expectedSha256: string): Promise<number> {
@@ -117,6 +229,36 @@ async function verifyArtifact(expectedSha256: string): Promise<number> {
   return 0;
 }
 
+async function releaseManagedRunnerLease(): Promise<void> {
+  const leaseDirectory = process.env.YEP_MANAGED_RUNNER_LEASE_DIRECTORY;
+  const leaseId = process.env.YEP_MANAGED_RUNNER_LEASE_ID;
+  if (!leaseDirectory && !leaseId) return;
+  if (
+    !leaseDirectory ||
+    !leaseId ||
+    !isAbsolute(leaseDirectory) ||
+    resolve(leaseDirectory) !== leaseDirectory ||
+    basename(leaseDirectory) !== "active-runner-lease" ||
+    !/^[A-Za-z0-9._:-]{1,128}$/.test(leaseId)
+  ) {
+    throw new Error("Managed runner lease environment is invalid");
+  }
+  const info = await lstat(leaseDirectory);
+  if (
+    !info.isDirectory() ||
+    info.isSymbolicLink() ||
+    (await realpath(leaseDirectory)) !== leaseDirectory
+  ) {
+    throw new Error("Managed runner lease directory is invalid");
+  }
+  const ownerPath = join(leaseDirectory, "owner");
+  if ((await readFile(ownerPath, "utf8")).trim() !== leaseId) {
+    throw new Error("Managed runner lease ownership changed");
+  }
+  await unlink(ownerPath);
+  await rmdir(leaseDirectory);
+}
+
 async function main(): Promise<number> {
   const verifyIndex = process.argv.indexOf("--verify-artifact");
   if (verifyIndex !== -1) {
@@ -133,6 +275,7 @@ async function main(): Promise<number> {
       process.env.YEP_MANAGED_RUNNER_RUNTIME_ID ??
       `managed-runner-${randomUUID()}`,
     createSession,
+    onCooperativeShutdown: releaseManagedRunnerLease,
   });
 }
 

@@ -31,6 +31,7 @@
     "console:volume": "node scripts/report-client-log-volume.mjs",
     "managed-runner:build": "node scripts/build-managed-runner.mjs",
     "managed-ssh:probe": "tsx --conditions source scripts/probe-managed-ssh-gate-b.ts",
+    "managed-ssh:codex-probe": "tsx --conditions source scripts/probe-managed-ssh-gate-c.ts",
     "perf:regression:server": "node scripts/perf-suite/run.mjs --checkout . --scenario fleet-small --driver server --label working-tree",
     "perf:regression:browser": "node scripts/perf-suite/run.mjs --checkout . --scenario fleet-small --driver browser --label working-tree",
     "perf:regression:specialized": "node scripts/perf-suite/run.mjs --checkout . --scenario specialized-contracts --driver specialized --label working-tree",

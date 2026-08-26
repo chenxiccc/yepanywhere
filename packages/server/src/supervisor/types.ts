@@ -20,6 +20,7 @@ import type {
   WorkstreamId,
 } from "@yep-anywhere/shared";
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
+import type { SessionExecution } from "../sdk/providers/types.js";
 
 export const DEFAULT_IDLE_PREEMPT_THRESHOLD_MS = 10 * 1000; // 10 seconds - workers idle longer than this can be preempted
 
@@ -378,6 +379,8 @@ export interface ProcessOptions {
   launchCompactPercentOverride?: number;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;
+  /** Internal placement identity; never inferred from a managed target path. */
+  execution?: SessionExecution;
   /** How this process should answer away-recap requests. */
   recapMode?: RecapMode;
   /** Browser-away duration before YA asks this process for a recap. */

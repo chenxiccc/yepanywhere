@@ -2,15 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  chmod,
-  copyFile,
-  mkdir,
-  readFile,
-  rename,
-  rm,
-  stat,
-} from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, rename, rm } from "node:fs/promises";
 import { arch, platform } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -63,9 +55,8 @@ function requiredPath(name) {
 
 function validateManifest(value) {
   if (
-    !value ||
-    value.artifactFormatVersion !== 1 ||
-    value.runnerProtocolVersion !== 1 ||
+    value?.artifactFormatVersion !== 1 ||
+    value.runnerProtocolVersion !== 2 ||
     value.providerSessionProtocolVersion !== 1 ||
     value.entrypoint !== "runner.mjs" ||
     value.target?.os !== "linux" ||
@@ -179,7 +170,7 @@ async function probeRunner(path) {
   const send = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
   const leaseId = `probe-${randomUUID()}`;
 
-  send({ type: "hello", protocolVersion: 1, leaseId });
+  send({ type: "hello", protocolVersion: 2, leaseId });
   await waitForFrame((frame) => frame.type === "helloAck");
   const helloMs = elapsed(startedAt);
   send({
