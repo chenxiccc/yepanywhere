@@ -2,9 +2,11 @@
 
 Topic: managed-remote-executors
 
-Status: proposed staged implementation plan. No runner artifact, remote
-`AgentSession`, managed workspace, Codex target support, route, capability,
-setting, or UI described here is implemented or compatibility-approved.
+Status: Gate A completed and accepted on 2026-08-26. The injectable runner
+artifact, shared provider-session owner, released-protocol Unix-socket adapter,
+and framed-stdio fake-provider adapter are implemented. No SSH carrier, managed
+workspace, production Codex target session, route, capability, setting, session
+metadata, or UI described here is implemented or compatibility-approved.
 
 This tactical deliberately has stop/go gates. A normal implementation request
 should complete and record one gate at a time rather than treating the whole
@@ -24,8 +26,10 @@ the maintainer:
   base without requiring a matching target checkout or path;
 - a real Codex session runs in that worktree through YA's provider-neutral
   `AgentSession` contract;
-- the target needs its own Codex authentication but no upstream Git credential
-  or forwarded controller SSH agent;
+- Codex is the only managed-runner provider advertised by this baseline;
+- the controller's file-backed ChatGPT subscription supplies a per-lease
+  access-token projection without sending its refresh credential, and the
+  target needs no provider login or upstream Git credential;
 - agent-created commits are fetched into one namespaced controller tracking ref
   without changing the controller worktree or branch; and
 - Linux controllers additionally retain the SSH-backed session across Hono
@@ -113,6 +117,9 @@ without updating the owning topic:
 7. A failed managed launch never falls back to local execution.
 8. The feature is default-off and performs no target inspection or background
    work while disabled.
+9. The first managed-runner release advertises Codex only and uses the
+   controller-owned file-backed ChatGPT subscription projection defined in the
+   owning topic. Claude and other providers require separate acceptance.
 
 ## Platform Matrix
 
@@ -248,6 +255,53 @@ cleanup without opening SSH.
 worker contract and the stdio fake-runner contract. There is no copied remote
 provider state machine.
 
+### Gate A result — accept the single-bundle injectable runtime
+
+Gate A passed on 2026-08-26 and selected one Linux-targeted ESM bundle. The
+artifact includes YA's Codex adapter and its JavaScript dependencies while
+leaving only Node built-ins and the target Codex executable external. The
+builder uses 209 bundled inputs and emits a versioned manifest with YA Git and
+source identities, target OS and architecture, entrypoint, Node range, byte
+size, and SHA-256 digest. The supported runtime prerequisite is Node.js 20.12
+or newer; a Codex session will additionally require the compatible target
+Codex executable. Gate A added no target-side installation policy.
+
+The final x86_64 proof artifact was 1,226,530 bytes
+(`dc848e12ff34278f53d9838f2f8f7e15cb527186201ed9fd48d24da3d3502216`).
+The controller verified those bytes before transfer. The target probe copied
+them through a mode-0700 private staging directory, reverified size and digest
+with Node, and atomically published the bundle into a digest-named mode-0700
+cache directory; the staged artifact was mode 0600 and the cached executable
+was mode 0700. A second installation was a verified cache hit.
+
+The clean Ubuntu x86_64 VM had no Node executable, YA checkout, YA dependency
+tree, pnpm, or `tsx`. The proof unpacked official Node.js 25.2.0 into the test's
+private temporary directory without invoking a target package manager. The
+1,226,530-byte runner transfer took 0.94 seconds through the available VM file
+carrier. Target measurements were:
+
+| Measurement | Cold | Warm cache hit |
+| --- | ---: | ---: |
+| Verify and install | 4.55 ms | 2.00 ms |
+| Process start through `helloAck` | 115.49 ms | 115.22 ms |
+| Process start through launch acceptance | 116.91 ms | 117.08 ms |
+| Process start through first fake-provider turn | 118.93 ms | 118.31 ms |
+| Full protocol probe and clean shutdown | 129.21 ms | 126.81 ms |
+
+The same deterministic fake session owner passed the version-1 private Unix
+socket attach path and the version-1 framed stdio path. Coverage includes
+queue depth and yield, event sequencing and acknowledgement, replay after
+reattach, approvals, liveness, retention, interrupt, partial and malformed
+input, version and lease rejection, duplicate control suppression, bounded
+input/output/backpressure, launch and provider failure, controller EOF,
+cooperative shutdown, and cleanup. The VM proof exercised 27 protocol frames
+per cold and warm run, then removed the runner, cache, probe, and temporary Node
+runtime and released its Machine Control claim.
+
+Gate A therefore selects the single-bundle form and authorizes proceeding to
+Gate B. The measured VM carrier was used only as a clean Linux fixture; it does
+not implement or substitute for Gate B's manual-SSH target adapter.
+
 ## Gate B — Prove SSH And Source Transfer
 
 Gate B remains a server-side diagnostic/harness path. It does not advertise a
@@ -322,6 +376,78 @@ prepare, commit, amend, fetch, and clean up a Linux target workspace without
 target upstream credentials, local branch movement, or leaked processes. An
 unavailable OS testbed is recorded rather than inferred from another host.
 
+## Codex Subscription Authentication Feasibility Spike
+
+Evidence recorded 2026-08-26 against the pinned Codex CLI `0.149.0` changed
+the credential assumption that Gate C tests. The maintainer approved the
+controller-owned subscription projection on 2026-08-26, and the owning topic
+now carries it as the Codex-only baseline contract.
+
+Codex app-server has an experimental `chatgptAuthTokens` login intended for a
+host application that owns the ChatGPT authentication lifecycle. The client
+supplies an access token and account projection. After a `401`, app-server
+sends `account/chatgptAuthTokens/refresh`, waits about ten seconds for a fresh
+projection, and retries the failed request. It does not need or accept the
+subscription refresh token in that mode. See the
+[official app-server authentication contract](https://learn.chatgpt.com/docs/app-server#auth-endpoints).
+
+[`scripts/probe-codex-external-auth.mjs`](../../scripts/probe-codex-external-auth.mjs)
+exercised that contract with two isolated roles:
+
+- a controller-local, managed-auth Codex app-server remained the sole owner of
+  the normal subscription login and performed a forced OAuth refresh through
+  `account/read { refreshToken: true }`;
+- an isolated app-server used only `accessToken`, `chatgptAccountId`, and
+  `chatgptPlanType`; its initial token signature was deliberately made invalid
+  so a real low-cost turn had to enter the refresh callback and retry; and
+- after the controller rotated the access token, the isolated turn completed,
+  exactly one refresh request had occurred, the refresh token had never been
+  sent to the isolated process, and its private `CODEX_HOME` contained no
+  `auth.json`.
+
+The access-only half also ran on the disposable Linux VM through Machine
+Control. The clean target temporarily downloaded exact Node and Codex runtime
+artifacts, initialized app-server, read live subscription rate limits, entered
+the forced-`401` refresh callback, completed the retried turn, and was cleaned
+back to its ready state. The access projection was a mode-`0600` temporary
+test carrier and was deleted; a product runner should carry this projection in
+its authenticated protocol and memory, not an environment variable or durable
+target file. A first attempt to transfer the hundreds of megabytes of runtime
+artifacts through the guest-agent carrier temporarily stalled machine control;
+target-side download worked for the spike, but neither path is a Gate A
+artifact decision.
+
+This proof avoids the refresh-token conflict that copying `auth.json` to every
+target would create: only the controller rotates the refresh credential, while
+each active target receives a replaceable bearer token. The bearer token still
+grants subscription access until it expires and must be redacted, scoped to the
+owned runner connection, kept out of process arguments and environment, and
+dropped on teardown.
+
+The baseline Codex-specific broker is therefore:
+
+1. keep one controller-local managed Codex auth owner per credential store and
+   serialize forced refreshes there;
+2. validate account continuity, read only the resulting access-token
+   projection, and send it to the selected runner during external-token login;
+3. answer each app-server refresh request with a newly resolved projection or
+   fail the remote turn visibly before Codex's callback timeout; and
+4. never fall back to copying the refresh credential or silently starting a
+   target-local login.
+
+The public app-server API does not return the managed access token after
+refresh. The tested broker projects it from Codex's default file credential
+store. A user-selected OS keyring store is not externally readable through
+this API and receives a distinct preflight failure in the first release; there
+is no target-login or API-key fallback. The experimental protocol also gets an
+exact Codex-version/capability gate.
+
+This contract replaces the earlier target-owned-Codex-login wording in the
+objective, Gate C, completion contract, and
+`topics/managed-remote-executors.md`. Claude is outside this tactical and
+requires its own provider-specific subscription-auth proof before a future
+managed-runner plan may advertise it.
+
 ## Gate C — Make Codex Usable Without Product UI
 
 Gate C proves the actual provider and ownership model through a guarded
@@ -330,11 +456,22 @@ unreleased server contract.
 
 ### 5 — run Codex inside the managed workspace
 
-Add a target-specific provider launch projection. Do not send controller-local
-provider paths, credentials, environment, settings paths, or installation
-coordinator state to the runner. The target runner discovers its own Codex CLI,
-uses its own authenticated account/configuration, and reports a sanitized
-availability/version result.
+Add the Codex target launch and auth projections. Do not send controller-local
+provider paths, refresh credentials, complete auth storage, API keys,
+environment, settings paths, or installation coordinator state to the runner.
+The target runner discovers its own Codex CLI and reports a sanitized
+availability/version result. The controller auth owner resolves only
+`accessToken`, `chatgptAccountId`, and `chatgptPlanType`; the runner supplies
+them through `chatgptAuthTokens` and keeps them only in app-server/runner
+memory for the owned lease.
+
+Serialize refreshes through one controller-local managed Codex auth owner. On
+`account/chatgptAuthTokens/refresh`, validate account continuity and return a
+fresh projection before Codex's callback timeout. A missing file-backed
+ChatGPT login, configured keyring store, incompatible external-token protocol,
+refresh failure, timeout, or account mismatch is a distinct preflight or turn
+failure. Do not fall back to target-local login, API-key auth, copied
+`auth.json`, copied refresh tokens, or local execution.
 
 Start YA's complete Codex adapter on the runner in the verified managed cwd.
 Prove with a real low-cost session:
@@ -355,10 +492,10 @@ or explicit unavailable state, but it must not scan controller-local Codex
 files as though they belonged to the remote session and must not invent a new
 canonical transcript format.
 
-Record behavior when the target is unauthenticated, the Codex version is
-incompatible, the workspace is dirty, the provider exits before binding an id,
-SSH drops during a turn, and a resume finds missing or conflicting target
-state.
+Record behavior when controller subscription auth is absent or keyring-backed,
+the Codex version is incompatible, the auth callback times out or changes
+account, the workspace is dirty, the provider exits before binding an id, SSH
+drops during a turn, and a resume finds missing or conflicting target state.
 
 **Gate condition:** the diagnostic can start, control, stop, view, and resume a
 real remote Codex session with stable YA identity and recover its committed
@@ -532,8 +669,11 @@ Required live evidence:
 - macOS controller to clean Linux target: direct Hono-owned Codex, commit,
   fetch, resume, and cleanup;
 - Linux controller to clean Linux target: the same flow plus Hono replacement;
-- target without Node, Git, Codex, or Codex auth: distinct read-only preflight
-  failures and no mutation;
+- target without Node, Git, or Codex, and controller without supported
+  file-backed ChatGPT auth: distinct read-only preflight failures and no
+  mutation;
+- target without local Codex auth but with a supported controller subscription:
+  external-token login, forced-`401` refresh/retry, and no target auth file;
 - target with a partial/stale runner artifact: verified replacement without
   executing unverified bytes;
 - SSH loss before and after launch acceptance: safe retry versus visible
@@ -557,14 +697,18 @@ without delaying the Linux correctness baseline.
   artifact without a YA checkout or target package installation.
 - One provider-session core owns local-socket and remote-stdio adapters; the
   implementation contains no copied remote provider state machine.
+- Managed-runner placement advertises Codex only; Claude and every other
+  provider remain unavailable through this feature.
 - macOS and Linux controllers can create a verified Linux target worktree at
   the displayed exact commit while excluding disclosed dirty local state.
 - A real remote Codex session retains its canonical YA identity, supports its
   promised controls, and resumes only through its recorded target workspace.
 - Linux Hono replacement preserves an active managed turn through the existing
   provider host without duplicate output or provider writers.
-- The target receives no upstream Git credential, forwarded SSH agent, YA
-  account secret, provider-host token, or controller Codex credential.
+- The target receives only its per-lease Codex access-token projection. It
+  receives no upstream Git credential, forwarded SSH agent, YA account secret,
+  provider-host token, subscription refresh token, complete controller Codex
+  credential store, or API key, and writes no provider auth file.
 - A remote commit becomes only the assigned local managed tracking ref; no
   local worktree, checked-out branch, upstream, or remote configuration moves.
 - Dirty-only, unfetched, disconnected, incompatible, and uncertain-cleanup
@@ -600,7 +744,9 @@ configuration, provider account, or unrelated VM.
   non-SSH runner carriers.
 - Porting the reload-safe provider host to macOS or Windows.
 - Windows and macOS targets before their platform-specific acceptance.
-- Claude migration from the released SSH executor and additional providers.
+- Claude managed-runner planning, migration from the released SSH executor,
+  and additional providers; each requires separate provider-specific
+  acceptance.
 - Dirty controller snapshot seeding and dirty target artifact capture.
 - Existing target checkout adoption and multiple simultaneous writers in one
   target repository anchor.
@@ -608,6 +754,8 @@ configuration, provider account, or unrelated VM.
 - Automatic fast-forward, merge, rebase, cherry-pick, push, or PR creation.
 - Full remote Source Control, inventory, media, blame, search, and source-review
   parity.
-- Provider or dependency credential brokering.
+- Credential brokering beyond the approved Codex file-backed ChatGPT
+  access-token projection, including keyring, API-key, Claude, and private
+  dependency credentials.
 - Restricted collaborator principals, session grants, comments, and shared
   write access.

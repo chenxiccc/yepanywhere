@@ -7,12 +7,12 @@
 
 Topic: managed-remote-executors
 
-Status: product direction proposal. YA's released SSH Remote Executors remain
+Status: product direction with its Gate A injectable-runtime foundation
+implemented and accepted. YA's released SSH Remote Executors remain
 Claude-family process transports that assume a matching remote checkout and
-sync Claude transcripts with `rsync`. YA does not yet inject a provider-neutral
-remote runner, prepare managed remote workspaces, run Codex remotely, or fetch
-remote session heads into controller-owned tracking refs. Nothing in this topic
-describes those capabilities as implemented.
+sync Claude transcripts with `rsync`. YA does not yet carry the new runner over
+SSH, prepare managed remote workspaces, run a production Codex target session,
+or fetch remote session heads into controller-owned tracking refs.
 
 The staged implementation and research gates are tracked in
 [`docs/tactical/119-managed-ssh-executor-baseline.md`](../docs/tactical/119-managed-ssh-executor-baseline.md).
@@ -38,6 +38,11 @@ Related:
 Manual SSH is the first managed execution-target provider. The useful baseline
 must work without Machine Control, a second YA server, a hosted account, a
 remote Git forge, or matching controller and target checkout paths.
+
+Codex is the only provider advertised by the first managed-runner release.
+Provider-neutral framing is an implementation boundary, not a product claim:
+Claude and every additional provider remain unavailable until their own auth,
+session, resume, transcript, and cleanup contracts have live acceptance.
 
 The baseline combines two independent mechanisms:
 
@@ -98,14 +103,17 @@ The first user journey is intentionally small:
    hostname, account, key, jump-host, and transport policy.
 2. New Session keeps **This server** selected by default. The user explicitly
    chooses the configured host under **Run on**.
-3. YA tests non-interactive SSH, target platform, Git, runner runtime, and the
-   chosen provider. Inspection makes no workspace or installation changes.
+3. YA tests non-interactive SSH, target platform, Git, runner runtime, target
+   Codex, and supported controller subscription auth. Inspection makes no
+   workspace or installation changes.
 4. The launch review names the exact local `HEAD` commit. If the controller
    worktree is dirty, YA reports that staged, unstaged, and untracked content
    is excluded. The user continues from the committed base or cancels.
 5. YA prepares a target-side repository anchor and a unique session worktree,
    injects or reuses the exact runner artifact by digest, and launches the
-   selected provider in the verified remote cwd.
+   Codex adapter in the verified remote cwd. The controller projects its
+   file-backed ChatGPT subscription access token to the runner without sending
+   the refresh credential.
 6. The conversation behaves like an ordinary controller-owned YA session and
    carries a compact execution-target marker. It does not become a second YA
    source or account.
@@ -173,8 +181,8 @@ Read-only inspection establishes at least:
 - target OS and architecture;
 - compatible Git and runner-runtime availability;
 - artifact transfer and execution support;
-- provider CLI availability and a provider-specific authentication probe that
-  does not expose credentials; and
+- a compatible Codex CLI plus controller-side file-backed ChatGPT subscription
+  authentication that can produce a sanitized access-token projection; and
 - a writable, containment-checked YA app-data/workspace root.
 
 SSH is the target-account authentication and carrier for the first version.
@@ -210,28 +218,41 @@ A likely launch sequence is:
 8. Stop the provider and runner on explicit termination or terminal cleanup;
    preserve result-bearing workspace state until its disposition is known.
 
-The first artifact may require a documented target-side Node runtime rather
-than solving standalone cross-platform packaging immediately. That is a target
-capability, not an implicit installation step. YA must never run a package
-manager or modify shell startup files merely because the user selected a host.
+Gate A selected a single Linux-targeted ESM bundle. It includes YA's Codex
+adapter and JavaScript dependency closure; Node built-ins and the target Codex
+executable are its only deliberate runtime externals. Its manifest binds
+artifact, runner-protocol, and provider-session protocol versions to YA Git and
+source identities, Linux OS/architecture, entrypoint, Node range, byte size,
+and SHA-256 digest. The initial supported runtime prerequisite is Node.js 20.12
+or newer. This is a target capability, not an implicit installation step: YA
+must never run a package manager or modify shell startup files merely because
+the user selected a host.
+
+Before transfer, the controller verifies manifest size and digest. Target
+installation occurs below a private temporary directory, verifies the same
+bytes through Node, and atomically publishes a digest-named private cache
+entry. A cache hit is trusted only after re-verification. The selected Gate A
+artifact and installer probe work without a YA checkout, dependency tree,
+pnpm, `tsx`, or target package-manager mutation. The eventual SSH adapter,
+bounded cache reclamation, and production Codex launch remain later gates.
 
 Runner cache retention is bounded by artifact digest and may be reclaimed when
 unused. Session processes, output buffers, reconnect state, and target Git
 checks must not retain an idle timer or polling loop after their owning lease,
 provider work, and controller interest end.
 
-## Provider Boundary And Codex-First Proof
+## Codex-Only Provider And Subscription-Auth Boundary
 
 The wire protocol is provider-neutral, but support is earned one provider at a
 time. Changing a client-side provider-name set is not evidence that a provider
 works remotely.
 
-Codex is the first intended production proof because it is useful to the
-maintainer and its app-server already exposes a stdio protocol. The remote
-runner owns YA's complete Codex adapter and starts `codex app-server` in the
-managed target worktree; the controller does not merely substitute an SSH
-child for one local `spawn()` call and leave the rest of the adapter's
-filesystem assumptions local.
+Codex is the sole baseline provider because its app-server exposes both a
+stdio protocol and the external-token contract needed for low-friction
+subscription auth. The remote runner owns YA's complete Codex adapter and
+starts `codex app-server` in the managed target worktree; the controller does
+not merely substitute an SSH child for one local `spawn()` call and leave the
+rest of the adapter's filesystem assumptions local.
 
 A provider is advertised on a particular target only after live coverage of:
 
@@ -244,14 +265,39 @@ A provider is advertised on a particular target only after live coverage of:
 - provider activity, liveness, and retention signals; and
 - target/provider process cleanup with no duplicate writer.
 
-The target starts with its own provider credentials. The baseline does not copy
-the controller's Codex login, forward its SSH agent, or silently borrow API
-keys. Explicit credential brokering is separate future work.
+The controller is the sole owner of the baseline ChatGPT subscription login.
+One controller-local managed Codex auth owner serializes refreshes against the
+normal file-backed credential store. YA reads the resulting `accessToken`,
+`chatgptAccountId`, and `chatgptPlanType` projection and supplies it to the
+target app-server through Codex's experimental `chatgptAuthTokens` login. The
+refresh token, complete `auth.json`, API keys, provider environment, and
+controller configuration never cross the runner boundary.
 
-Claude may later use the same runner contract, but the released Claude SSH
-executor remains intact until managed-runner resume, transcript, and migration
-behavior are complete enough to replace it safely. Other providers earn the
-same provider-specific acceptance rather than inheriting support from Codex.
+The target keeps the access-token projection only in the owned runner and
+app-server memory. It does not receive it in process arguments or environment,
+write it to target storage, or reuse it for another lease. A target account can
+still use that bearer token until it expires, so the runner protocol, logs,
+errors, diagnostics, and cleanup treat it as a secret.
+
+When target Codex receives a `401`, its
+`account/chatgptAuthTokens/refresh` request is relayed to the controller auth
+owner. The controller serializes a managed refresh, validates that the account
+id did not change, and returns only the replacement projection before Codex's
+callback deadline. Timeout, account mismatch, controller auth loss, protocol
+incompatibility, or broker failure terminates the turn visibly. None may fall
+back to copying the refresh credential, target-local login, an API key, or
+local execution.
+
+The first release supports Codex's default file credential store only. A
+configured OS keyring store, API-key login, missing ChatGPT login, or
+incompatible Codex version produces a distinct read-only preflight failure.
+Supporting another credential store or login mode requires its own explicit
+contract and acceptance evidence.
+
+Claude is not part of this baseline. The released Claude SSH executor remains
+intact, and a future managed-runner Claude adapter requires a separate plan and
+provider-specific subscription-auth, resume, transcript, and cleanup proof.
+Other providers likewise earn support rather than inheriting it from Codex.
 
 ## Managed Git Workspace
 
@@ -384,11 +430,12 @@ account. It is not a hostile multi-user sandbox and does not make a shared
 session safe merely because the worktree was created by YA.
 
 The controller must assume the target account can read prompts, provider
-output, source transferred to its workspace, provider credentials already
-present there, and other resources accessible to that account. Conversely, a
-compromised target runner must not receive a general controller shell,
-controller SSH agent, upstream repository credential, provider-host token,
-YA password, relay secret, or browser session.
+output, source transferred to its workspace, the projected Codex access token
+until it expires, and other resources accessible to that account. Conversely,
+a compromised target runner must not receive the subscription refresh token,
+complete controller credential store, general controller shell, controller SSH
+agent, upstream repository credential, provider-host token, YA password, relay
+secret, or browser session.
 
 Project-write restrictions must be installed and enforced on the target;
 confining the controller's local SSH process does not confine remote code. A
@@ -404,7 +451,9 @@ Failures distinguish at least:
 - unreachable or host-key failure;
 - unsupported target platform or missing prerequisite;
 - incompatible or unverifiable runner artifact;
-- provider unavailable or unauthenticated;
+- Codex unavailable or protocol-incompatible;
+- missing or unsupported controller ChatGPT credential store;
+- subscription projection, refresh, timeout, or account-continuity failure;
 - repository transfer or workspace verification failure;
 - runner started but attachment uncertain;
 - SSH disconnect with target process state uncertain;
@@ -477,12 +526,20 @@ testable:
   local dirty state is disclosed and excluded.
 - YA creates and verifies a unique target worktree without requiring a
   pre-existing corresponding checkout or path mapping.
+- Managed placement advertises Codex only; Claude and other providers remain
+  unavailable through this runner contract.
 - A real Codex session runs through the injected provider-neutral runner while
   retaining the controller's YA session identity.
+- A file-backed controller ChatGPT subscription can start the target Codex
+  app-server without target login; a forced `401` rotates credentials only on
+  the controller, retries once with a fresh access-token projection, and leaves
+  no target credential file.
 - On a supported Linux controller, replacing Hono during an active turn does
   not interrupt the remote provider or duplicate acknowledged output.
 - The remote account receives no upstream repository or forwarded SSH
-  credential from YA.
+  credential, subscription refresh token, complete Codex credential store, or
+  API key from YA. Its per-lease access-token projection is kept in memory and
+  discarded during teardown.
 - A remote commit is fetched into only the assigned local tracking ref without
   changing the local working tree, branch, upstream configuration, or remote.
 - Source Control presents the fetched head as incoming work associated with
