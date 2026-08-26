@@ -2307,7 +2307,7 @@ a.sidebar-nav-item {
 
 .session-messages {
   flex: 1;
-  overflow: clip auto;
+  overflow: auto;
   scrollbar-gutter: stable;
   padding: 1rem;
   padding-inline-end: var(--turn-rail-content-padding-inline-end);
@@ -2601,7 +2601,7 @@ a.sidebar-nav-item {
     grid-area: messages;
     min-width: 0;
     min-height: 0;
-    overflow-x: hidden;
+    overflow-x: auto;
   }
 
   .session-split.session-split-with-aside > .session-input {

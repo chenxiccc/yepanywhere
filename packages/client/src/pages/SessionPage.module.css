@@ -1,5 +1,6 @@
 .sessionSplit:global(.session-split) {
   display: grid;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
