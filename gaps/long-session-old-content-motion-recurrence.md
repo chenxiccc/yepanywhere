@@ -47,6 +47,19 @@ Follow intent fixed that race on 2026-08-18. Treat a repeat on the reloaded
 client as new evidence and first determine whether follow intent was already
 active or was deliberately released.
 
+## Reproduced steering paint gap
+
+On 2026-08-26, steering an in-progress Conversation view turn while following
+reproduced a transient geometry defect on current `main`. After the optimistic
+user row committed, a layout-phase probe still observed the old bottom; the
+send path did not write the new bottom until its passive effect ran after
+paint. Moving that first write into the committing layout phase removes the
+intermediate position while retaining the existing delayed catch-up writes.
+
+The parked resume-position retry introduced by `cbf796fe` was not active in
+this reproduction. The separate compaction-driven prefix-trim candidate above
+remains unproved and keeps this gap open.
+
 ## Evidence to collect on recurrence
 
 - Record whether the event followed a backend reattach, a natural compaction,

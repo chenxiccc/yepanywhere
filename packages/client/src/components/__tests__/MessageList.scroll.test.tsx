@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { setConversationViewPreference } from "../../hooks/useConversationView";
 import {
@@ -1175,6 +1176,72 @@ describe("MessageList scroll and follow", () => {
     });
 
     expect(container.scrollTop).toBe(900);
+  });
+
+  it("pins a steering send before the next paint while following", () => {
+    const firstThought = codexThinkingMessage(
+      "thinking-1",
+      "Initial visible thought",
+      "2026-08-26T18:00:00.000Z",
+      true,
+    );
+    const pendingSteer = {
+      tempId: "steer-1",
+      content: "Clarify the diff scope",
+      timestamp: "2026-08-26T18:00:01.000Z",
+      status: "Sending...",
+    };
+    const layoutScrollTops: number[] = [];
+    let scrollHeight = 1000;
+    let sendSteer: (() => void) | null = null;
+
+    function SteeringHarness() {
+      const [sent, setSent] = useState(false);
+      const viewportRef = useRef<HTMLDivElement>(null);
+      sendSteer = () => {
+        scrollHeight = 1400;
+        setSent(true);
+      };
+      useLayoutEffect(() => {
+        if (sent && viewportRef.current) {
+          layoutScrollTops.push(viewportRef.current.scrollTop);
+        }
+      }, [sent]);
+
+      return (
+        <div ref={viewportRef}>
+          <MessageList
+            provider="codex"
+            isProcessing
+            conversationViewEnabledOverride
+            messages={[firstThought]}
+            pendingMessages={sent ? [pendingSteer] : []}
+            scrollTrigger={sent ? 1 : 0}
+          />
+        </div>
+      );
+    }
+
+    const { container } = render(<SteeringHarness />);
+    const viewport = container.firstElementChild as HTMLDivElement;
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(viewport, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(viewport, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+
+    act(() => sendSteer?.());
+
+    expect(layoutScrollTops).toEqual([900]);
+    expect(viewport.scrollTop).toBe(900);
   });
 
   it("does not follow visible thinking deltas until Follow is clicked", async () => {

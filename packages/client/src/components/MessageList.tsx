@@ -3495,8 +3495,9 @@ export const MessageList = memo(function MessageList({
     };
   }, [reportFollowingBottom, scrollToBottom]);
 
-  // Force scroll to bottom when scrollTrigger changes (user sent a message)
-  useEffect(() => {
+  // Pin before paint so inserting an optimistic user row cannot expose the
+  // prior bottom for one frame before the send catch-up begins.
+  useLayoutEffect(() => {
     if (scrollTrigger > 0) {
       forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS, {
         allowThinkingDeltas: true,

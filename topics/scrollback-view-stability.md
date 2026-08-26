@@ -167,7 +167,9 @@ Consequences:
   anchor (content position, sub-item granularity) when not following — not just
   the one path currently wired.
 - Following the tail ⇒ appended/current-turn growth re-pins to bottom; this is
-  the only regime allowed to chase height.
+  the only regime allowed to chase height. A direct or steering send performs
+  its first bottom write in the committing layout phase, so the optimistic row
+  cannot paint once against the previous bottom before catch-up begins.
 - The explicit **Follow** action also restores a full-pane composer to ordinary
   size so the reclaimed transcript remains visible. Composer maximize/restore
   and one-line collapse actions do not change transcript position or follow
