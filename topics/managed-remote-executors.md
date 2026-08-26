@@ -8,14 +8,15 @@
 Topic: managed-remote-executors
 
 Status: product direction with its Gate A injectable runtime, Gate B
-manual-SSH/disposable-workspace foundation, and Gate C controller-authenticated
-Codex diagnostic accepted. YA's released SSH Remote Executors remain
-Claude-family process transports that assume a matching remote checkout and
-sync Claude transcripts with `rsync`. The new carrier, workspace service,
-remote `AgentSession`, and Supervisor bridge remain operator-only: YA does not
-yet publish managed placement, persist a browser-visible managed execution
-coordinate, survive Hono replacement, or fetch remote heads into user-project
-refs.
+manual-SSH/disposable-workspace foundation, Gate C controller-authenticated
+Codex diagnostic, and Gate D isolated-transcript proof accepted. YA's released
+SSH Remote Executors remain Claude-family process transports that assume a
+matching remote checkout and sync Claude transcripts with `rsync`. The new
+carrier, workspace service, remote `AgentSession`, Supervisor bridge, and
+bounded app-data transcript mirror remain operator-only: YA does not yet
+publish managed placement, persist a browser-visible managed execution
+coordinate, integrate managed records into server discovery/routes, or fetch
+remote heads into user-project refs.
 
 The staged implementation and research gates are tracked in
 [`docs/tactical/119-managed-ssh-executor-baseline.md`](../docs/tactical/119-managed-ssh-executor-baseline.md).
@@ -141,10 +142,6 @@ controller Hono Supervisor / Process
   |
   | existing AgentSession surface
   v
-reload-safe local provider host
-  |
-  | managed-executor bridge
-  v
 system SSH client
   |
   | versioned framed protocol over stdio
@@ -155,21 +152,23 @@ injected single-session runner
   +-- bounded workspace and Git observations
 ```
 
-On a controller where the implemented reload-safe provider host is available,
-that host owns the SSH child and remote-runner attachment. Replacing Hono then
-detaches and reattaches through the existing `HostedAgentSession` boundary
-without interrupting the remote provider. A remote provider PID by itself is
-not sufficient: the retained owner must include provider SDK/RPC state, queue,
-approvals, sequenced output, and SSH transport.
-
 The remote runner should reuse the provider-runtime worker's semantics and
 provider modules, but not expose its private same-user Unix socket or token.
 The shared provider-worker core needs transport adapters: the current local
 socket adapter and a smaller framed stdio adapter for the injected runner.
 
-On controller platforms without reload-safe provider-host support, managed SSH
-may remain unavailable initially or may disclose that a controller restart
-interrupts the session. It must not advertise reload survival it cannot prove.
+The first release keeps the same direct Hono-owned topology on macOS and Linux.
+A graceful Hono or development-wrapper reload cooperatively stops the provider,
+runner, SSH child, and target lease. Opening or sending later starts a new
+runner and explicitly resumes the recorded target-native thread in the same
+workspace. An abrupt disconnect leaves ownership uncertain and cannot start a
+second writer until recovery proves the old runner dead or fenced.
+
+Active-turn survival through the Linux reload-safe provider host is an optional
+later enhancement, not part of this baseline. If it is added, the retained
+owner must include the complete provider adapter/RPC state, queue, approvals,
+sequenced output, and SSH transport; retaining only a remote provider PID is
+insufficient.
 
 ## Manual SSH Target Contract
 
@@ -442,30 +441,59 @@ never substitutes that value in YA URLs, metadata, or client contracts.
 
 For the accepted Codex diagnostic, the provider thread and rollout remain in a
 private workspace-owned target `CODEX_HOME`. An orderly new runner resumes that
-thread only in the same recorded target workspace. Active normalized events may
-be retained by the owning controller process, but a stopped diagnostic never
-scans controller-local Codex files or presents them as cold remote history. A
-missing target rollout therefore produces the target app-server's resume
-failure; it does not create a replacement local thread.
+thread only in the same recorded target workspace. A missing target rollout
+therefore produces the target app-server's resume failure; it does not create a
+replacement local thread.
 
 While active, the runner owns provider-native persistence and sends normalized
-events through the controller's ordinary `Process`. A managed provider cannot
-be considered complete until its durable behavior is explicit:
+events through the controller's ordinary `Process`. At completed-turn,
+explicit-refresh, and graceful-shutdown boundaries, the controller copies the
+target rollout incrementally into a YA-owned app-data mirror. It asks for the
+latest complete JSONL byte watermark and transfers only bytes after the last
+recorded local offset. An unchanged target produces no transcript payload and
+an idle session creates no poller or watcher.
 
-- controller metadata records target, workspace, runner generation, and
-  provider-native resume identity;
-- the controller retains a verified transcript/checkpoint projection needed
-  to view the session when the runner is not attached, or clearly reports the
-  unavailable remote source;
-- resume returns to the same target workspace unless a separately implemented
-  portable provider bundle proves migration safe; and
-- controller-local provider files are never scanned or displayed as a
-  plausible substitute for missing remote state.
+The mirror is provider-native Codex JSONL, not a normalized YA shadow
+transcript. It lives below the YA data directory in an isolated root outside
+the user's ordinary `~/.codex/sessions` tree. Codex Desktop, the Codex CLI, and
+YA's ordinary provider scanner therefore cannot discover or resume it as a
+local session with remote absolute paths. YA reuses `CodexSessionReader` only
+after managed metadata resolves the one isolated root to open.
 
-The runner protocol should carry provider-neutral normalized events, but YA
-must not invent a competing canonical transcript solely for remote execution.
-Provider-native persistence and the existing stream-versus-durable parity
-contracts remain authoritative.
+A durable managed-session registry supplies discovery and routing. Each record
+binds at least:
+
+- canonical YA session id and provider-native thread id;
+- controller project, target, workspace, and target rollout identity;
+- exact isolated mirror root and rollout generation;
+- transferred byte offset, remote complete-line watermark, and target file
+  size;
+- last synchronization/activity time and `current`, `behind`, `unavailable`,
+  or `error` state; and
+- runner generation and ownership/recovery facts needed for safe resume.
+
+The registry, not a recursive mirror-root scan, contributes managed sessions to
+discovery. Opening one record may narrowly scan only its referenced isolated
+Codex root to locate the recorded provider thread. A later direct-file reader
+seam may remove even that bounded scan; it is not required for correctness.
+Registry-without-mirror remains discoverable with history unavailable or
+behind. Mirror-without-registry is an orphan cache candidate and never creates
+a session row.
+
+Transfer is one-way and bounded. Each chunk is integrity-checked before durable
+append, synchronizations are serialized per canonical session, and per-chunk,
+per-pass, and total-mirror limits fail visibly. Bytes after the latest complete
+target line are not copied. A local partial line caused by the transfer budget
+is retained and ignored by the existing reader until a later pass completes it.
+A target rollout path or file-identity change starts a new isolated mirror
+generation rather than appending incompatible bytes.
+
+The target remains authoritative for resume. The mirror is never copied back,
+never supplied to local `thread/resume`, and never considered fresher than its
+recorded watermark. Resume returns to the same target workspace unless a
+separately implemented portable provider bundle proves migration safe. Active
+streaming still follows the existing stream-versus-durable parity contract;
+cold history comes from the latest verified mirror prefix.
 
 ## Location-Correct Project Surfaces
 
@@ -607,8 +635,12 @@ testable:
   app-server without target login; a forced `401` rotates credentials only on
   the controller, retries once with a fresh access-token projection, and leaves
   no target credential file.
-- On a supported Linux controller, replacing Hono during an active turn does
-  not interrupt the remote provider or duplicate acknowledged output.
+- On macOS and Linux controllers, a graceful Hono or wrapper reload terminates
+  the active managed runner cooperatively. A later explicit resume uses the
+  recorded target workspace and provider-native thread without a second writer.
+- A stopped managed session is discoverable from durable YA metadata and
+  viewable from a bounded, incrementally synchronized Codex rollout mirror that
+  is invisible to the ordinary Codex scanner and native Codex applications.
 - The remote account receives no upstream repository or forwarded SSH
   credential, subscription refresh token, complete Codex credential store, or
   API key from YA. Its per-lease access-token projection is kept in memory and
@@ -635,8 +667,9 @@ surface at once:
    and controller fetch using Git over SSH, with no upstream credentials.
 3. Run and resume one real Codex session in that worktree and prove provider
    identity, transcript/checkpoint, approvals, interrupt, and cleanup.
-4. Connect the runner through the Linux reload-safe provider host and replace
-   Hono mid-turn.
+4. Incrementally mirror the target Codex rollout into isolated YA app data,
+   reconstruct metadata as after a controller restart, cold-load it through the
+   existing reader, and resume only against the target-native rollout.
 5. Add the guarded New Session placement and project-level incoming-head UI
    after compatibility and project-Git-write approval.
 6. Expand location-correct file/Git surfaces and additional target platforms
@@ -648,8 +681,9 @@ surface at once:
 - Linux-target-only first support versus an early Windows OpenSSH adapter.
 - Per-session runner injection versus bounded digest-cached artifacts with one
   runner process per active session.
-- Exact provider-native transcript/checkpoint transfer for Codex and later
-  providers.
+- Transcript-mirror retention and cleanup controls beyond the bounded Codex
+  baseline, and provider-specific mirrors for later providers.
+- Active-turn survival through the Linux reload-safe provider host.
 - Dirty controller snapshot seeding and dirty target result capture.
 - Existing target checkout adoption as an optimization over managed workspaces.
 - Safe fast-forward of a chosen local branch or one-click local integration

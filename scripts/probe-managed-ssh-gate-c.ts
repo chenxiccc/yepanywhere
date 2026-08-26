@@ -5,12 +5,20 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  toUrlProjectId,
+  type UrlProjectId,
+} from "../packages/shared/src/projectId.js";
 import type {
   SDKMessage,
   UserMessage,
 } from "../packages/server/src/sdk/types.js";
 import { ManagedCodexAuthOwner } from "../packages/server/src/sdk/providers/managed-codex-auth.js";
+import {
+  ManagedCodexTranscriptMirrorService,
+  type ManagedCodexTranscriptSyncResult,
+} from "../packages/server/src/sdk/providers/managed-codex-transcript-mirror.js";
 import {
   type ManagedSshCodexSessionResult,
   startManagedSshCodexSession,
@@ -55,6 +63,10 @@ let workspace: ManagedSshWorkspace | undefined;
 let activeSession: ManagedSshCodexSessionResult | undefined;
 let diagnosticSupervisor: Supervisor | undefined;
 let diagnosticProcessId: string | undefined;
+let transcriptMirror: ManagedCodexTranscriptMirrorService | undefined;
+const transcriptSyncs: ManagedCodexTranscriptSyncResult[] = [];
+let coldLoadBeforeResume = false;
+let coldLoadAfterResume = false;
 
 const target = new ManagedSshTarget({
   hostAlias,
@@ -82,6 +94,11 @@ try {
   git(source, ["add", "README.md"]);
   git(source, ["commit", "--quiet", "-m", "gate c base"]);
   const sourceBefore = sourceFingerprint(source);
+  const controllerProjectId = toUrlProjectId(source);
+  const transcriptDataDir = join(localFixture, "app-data");
+  transcriptMirror = await ManagedCodexTranscriptMirrorService.open({
+    dataDir: transcriptDataDir,
+  });
 
   workspace = await workspaceService.prepare(source);
   await workspaceService.runFixtureCommand(
@@ -149,6 +166,17 @@ try {
     uuid: randomUUID(),
   });
   assertAssistantMarker(discoveryEvents, "GATE_C_CWD_OK", "cwd turn");
+  transcriptSyncs.push(
+    await syncTranscriptMirror(
+      transcriptMirror,
+      activeSession,
+      target,
+      workspace,
+      yaSessionId,
+      controllerProjectId,
+      providerSessionId,
+    ),
+  );
   const configAck = discoveryEvents.find(
     (event) => event.type === "system" && event.subtype === "config_ack",
   );
@@ -195,6 +223,18 @@ try {
     uuid: randomUUID(),
   });
   assertAssistantMarker(commitEvents, "GATE_C_COMMIT_OK", "commit turn");
+  transcriptSyncs.push(
+    await syncTranscriptMirror(
+      transcriptMirror,
+      activeSession,
+      target,
+      workspace,
+      yaSessionId,
+      controllerProjectId,
+      providerSessionId,
+    ),
+  );
+  assertIncrementalTranscriptSync(transcriptSyncs);
   if (approvals.length === 0) {
     throw new Error("Gate C commit turn did not exercise an approval callback");
   }
@@ -261,6 +301,42 @@ try {
   activeSession = undefined;
   await assertTargetProcessesStopped(target, workspace);
 
+  transcriptMirror = await ManagedCodexTranscriptMirrorService.open({
+    dataDir: transcriptDataDir,
+  });
+  const discoveredMirror = transcriptMirror.getRecord(yaSessionId);
+  if (
+    !discoveredMirror ||
+    discoveredMirror.providerSessionId !== providerSessionId ||
+    discoveredMirror.controllerProjectId !== controllerProjectId ||
+    discoveredMirror.targetId !== "gate-c-linux-target" ||
+    discoveredMirror.workspaceId !== workspace.workspaceId
+  ) {
+    throw new Error(
+      "Gate D transcript registry did not reconstruct the managed session binding",
+    );
+  }
+  const mirrorSessionsDirectory = requiredString(
+    transcriptMirror.mirrorSessionsDirectory(yaSessionId),
+    "isolated transcript mirror root",
+  );
+  if (
+    !isContainedLocalPath(resolve(transcriptDataDir), mirrorSessionsDirectory)
+  ) {
+    throw new Error("Gate D transcript mirror escaped YA app data");
+  }
+  const loadedBeforeResume = await transcriptMirror.loadSession(yaSessionId);
+  const coldBeforeResumeText = JSON.stringify(loadedBeforeResume?.data);
+  coldLoadBeforeResume =
+    loadedBeforeResume?.summary.id === yaSessionId &&
+    coldBeforeResumeText.includes("GATE_C_CWD_OK") &&
+    coldBeforeResumeText.includes("GATE_C_COMMIT_OK");
+  if (!coldLoadBeforeResume) {
+    throw new Error(
+      "Gate D isolated mirror did not cold-load the canonical YA session",
+    );
+  }
+
   const resumedApprovals: string[] = [];
   activeSession = await startManagedSshCodexSession({
     targetId: "gate-c-linux-target",
@@ -299,11 +375,33 @@ try {
     uuid: randomUUID(),
   });
   assertAssistantMarker(resumeEvents, "GATE_C_RESUME_OK", "resume turn");
+  transcriptSyncs.push(
+    await syncTranscriptMirror(
+      transcriptMirror,
+      activeSession,
+      target,
+      workspace,
+      yaSessionId,
+      controllerProjectId,
+      providerSessionId,
+    ),
+  );
   await assertTargetSessionState(target, workspace, providerSessionId, true);
   await activeSession.session.abort();
   const resumedDiagnostics = activeSession.diagnostics();
   activeSession = undefined;
   await assertTargetProcessesStopped(target, workspace);
+  transcriptMirror = await ManagedCodexTranscriptMirrorService.open({
+    dataDir: transcriptDataDir,
+  });
+  coldLoadAfterResume = JSON.stringify(
+    (await transcriptMirror.loadSession(yaSessionId))?.data,
+  ).includes("GATE_C_RESUME_OK");
+  if (!coldLoadAfterResume) {
+    throw new Error(
+      "Gate D isolated mirror did not advance after remote resume",
+    );
+  }
 
   const diagnosticProvider = new ManagedSshCodexDiagnosticProvider({
     targetId: "gate-c-linux-target",
@@ -364,6 +462,23 @@ try {
       diagnosticProcess.queueDepth === 0,
     120_000,
     "Supervisor/Process turn",
+  );
+  const liveDiagnosticSession = diagnosticProvider.latestSession();
+  if (!liveDiagnosticSession) {
+    throw new Error(
+      "Gate D diagnostic Process did not expose its managed session",
+    );
+  }
+  transcriptSyncs.push(
+    await syncTranscriptMirror(
+      transcriptMirror,
+      liveDiagnosticSession,
+      target,
+      workspace,
+      yaSessionId,
+      controllerProjectId,
+      providerSessionId,
+    ),
   );
   unsubscribeDiagnostic();
   const diagnosticAbort =
@@ -438,7 +553,24 @@ try {
           discoveryEvents.length +
           interruptedEvents.length +
           commitEvents.length,
-        coldHistoricalProjection: "target-native-rollout-only",
+        coldHistoricalProjection: "isolated-ya-rollout-mirror",
+      },
+      transcriptMirror: {
+        registryDiscovery: true,
+        canonicalYaSessionId: true,
+        providerThreadMapped: true,
+        controllerRestartColdLoad: coldLoadBeforeResume,
+        postResumeColdLoad: coldLoadAfterResume,
+        syncPasses: transcriptSyncs.length,
+        transferredBytes: transcriptSyncs.map((sync) => sync.bytesTransferred),
+        chunksTransferred: transcriptSyncs.map(
+          (sync) => sync.chunksTransferred,
+        ),
+        finalMirroredBytes:
+          transcriptSyncs.at(-1)?.record.transferredBytes ?? 0,
+        syncState: transcriptSyncs.at(-1)?.record.syncState,
+        ordinaryCodexSessionsDirectoryUsed: false,
+        resumeAuthority: "target-native-rollout",
       },
       sourceReturn: {
         baseCommit: workspace?.baseCommit ?? sourceBefore.head,
@@ -726,6 +858,55 @@ function requiredString(value: unknown, label: string): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function syncTranscriptMirror(
+  service: ManagedCodexTranscriptMirrorService,
+  managed: ManagedSshCodexSessionResult,
+  target: ManagedSshTarget,
+  workspace: ManagedSshWorkspace,
+  yaSessionId: string,
+  controllerProjectId: UrlProjectId,
+  providerSessionId: string,
+): Promise<ManagedCodexTranscriptSyncResult> {
+  return await service.syncSession({
+    yaSessionId,
+    controllerProjectId,
+    targetId: "gate-c-linux-target",
+    target,
+    workspace,
+    providerSessionId,
+    runnerGeneration: managed.diagnostics().runnerGeneration,
+  });
+}
+
+function assertIncrementalTranscriptSync(
+  syncs: ManagedCodexTranscriptSyncResult[],
+): void {
+  const [first, second] = syncs;
+  if (
+    !first ||
+    !second ||
+    first.bytesTransferred < 1 ||
+    second.bytesTransferred < 1 ||
+    second.record.rolloutGeneration !== first.record.rolloutGeneration ||
+    second.record.transferredBytes !==
+      first.record.transferredBytes + second.bytesTransferred
+  ) {
+    throw new Error(
+      "Gate D transcript synchronization did not transfer only the new suffix",
+    );
+  }
+}
+
+function isContainedLocalPath(root: string, path: string): boolean {
+  const candidate = relative(root, path);
+  return (
+    candidate.length > 0 &&
+    candidate !== ".." &&
+    !candidate.startsWith(`..${sep}`) &&
+    !isAbsolute(candidate)
+  );
 }
 
 async function waitForCondition(

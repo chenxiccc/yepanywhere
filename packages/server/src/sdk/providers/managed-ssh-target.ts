@@ -10,6 +10,8 @@ const DEFAULT_OPERATION_TIMEOUT_MS = 15_000;
 const DEFAULT_TERMINATION_GRACE_MS = 2_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
+export const MANAGED_CODEX_TRANSCRIPT_CHUNK_BYTES = 512 * 1024;
+const MAX_CODEX_TRANSCRIPT_OUTPUT_BYTES = 1024 * 1024;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const SAFE_EXECUTABLE_PATTERN = /^(?:[A-Za-z0-9._-]+|\/[A-Za-z0-9._/-]+)$/;
 const SAFE_REMOTE_PATH_PATTERN = /^\/[A-Za-z0-9._/-]+$/;
@@ -100,6 +102,23 @@ export interface ManagedSshCommandOptions {
   maxStdoutBytes?: number;
   maxStderrBytes?: number;
   signal?: AbortSignal;
+}
+
+export interface ManagedCodexTranscriptCheckpoint {
+  providerSessionId: string;
+  relativePath: string;
+  fileIdentity: string;
+  metadataSha256: string;
+  completeBytes: number;
+  totalBytes: number;
+  mtimeMs: number;
+}
+
+export interface ManagedCodexTranscriptChunk {
+  offset: number;
+  byteLength: number;
+  sha256: string;
+  bytes: Buffer;
 }
 
 export interface ManagedRunnerInstallResult {
@@ -322,6 +341,9 @@ export class ManagedSshTarget {
   }
 
   gitSshCommand(): string {
+    // Git may append transport options such as `-o SendEnv=GIT_PROTOCOL`
+    // before its validated host. A terminating `--` here would turn that
+    // appended option into the hostname and make current OpenSSH reject it.
     return [
       quoteShellWord(this.sshCommand),
       "-T",
@@ -329,7 +351,6 @@ export class ManagedSshTarget {
       "BatchMode=yes",
       "-o",
       `ConnectTimeout=${this.connectTimeoutSeconds}`,
-      "--",
     ].join(" ");
   }
 
@@ -455,6 +476,92 @@ export class ManagedSshTarget {
       sha256: manifest.artifact.sha256,
       durationMs: Date.now() - startedAt,
     };
+  }
+
+  async getCodexTranscriptCheckpoint(
+    workspaceDirectory: string,
+    providerSessionId: string,
+    options: { knownRelativePath?: string; signal?: AbortSignal } = {},
+  ): Promise<ManagedCodexTranscriptCheckpoint> {
+    assertContainedRemotePath(
+      this.remoteRoot,
+      workspaceDirectory,
+      "managed Codex transcript workspace",
+    );
+    assertManagedCodexSessionId(providerSessionId);
+    if (options.knownRelativePath) {
+      assertManagedCodexTranscriptRelativePath(options.knownRelativePath);
+    }
+    const command = [
+      "exec",
+      quoteShellWord(this.nodeCommand),
+      "-e",
+      quoteShellWord(REMOTE_CODEX_TRANSCRIPT_CHECKPOINT),
+      quoteShellWord(workspaceDirectory),
+      quoteShellWord(providerSessionId),
+      quoteShellWord(options.knownRelativePath ?? "-"),
+    ].join(" ");
+    const result = await this.runCommand(command, {
+      maxStdoutBytes: MAX_CODEX_TRANSCRIPT_OUTPUT_BYTES,
+      signal: options.signal,
+    });
+    let value: unknown;
+    try {
+      value = JSON.parse(result.stdout.trim());
+    } catch {
+      throw new Error("Managed Codex transcript checkpoint was invalid");
+    }
+    return parseManagedCodexTranscriptCheckpoint(value, providerSessionId);
+  }
+
+  async readCodexTranscriptChunk(
+    workspaceDirectory: string,
+    checkpoint: ManagedCodexTranscriptCheckpoint,
+    offset: number,
+    byteLength: number,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ManagedCodexTranscriptChunk> {
+    assertContainedRemotePath(
+      this.remoteRoot,
+      workspaceDirectory,
+      "managed Codex transcript workspace",
+    );
+    assertManagedCodexSessionId(checkpoint.providerSessionId);
+    assertManagedCodexTranscriptRelativePath(checkpoint.relativePath);
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(byteLength) ||
+      byteLength < 1 ||
+      byteLength > MANAGED_CODEX_TRANSCRIPT_CHUNK_BYTES ||
+      offset + byteLength > checkpoint.completeBytes
+    ) {
+      throw new Error("Managed Codex transcript chunk range is invalid");
+    }
+    const command = [
+      "exec",
+      quoteShellWord(this.nodeCommand),
+      "-e",
+      quoteShellWord(REMOTE_CODEX_TRANSCRIPT_CHUNK),
+      quoteShellWord(workspaceDirectory),
+      quoteShellWord(checkpoint.providerSessionId),
+      quoteShellWord(checkpoint.relativePath),
+      quoteShellWord(checkpoint.fileIdentity),
+      String(checkpoint.completeBytes),
+      String(offset),
+      String(byteLength),
+    ].join(" ");
+    const result = await this.runCommand(command, {
+      maxStdoutBytes: MAX_CODEX_TRANSCRIPT_OUTPUT_BYTES,
+      signal: options.signal,
+    });
+    let value: unknown;
+    try {
+      value = JSON.parse(result.stdout.trim());
+    } catch {
+      throw new Error("Managed Codex transcript chunk was invalid");
+    }
+    return parseManagedCodexTranscriptChunk(value, offset, byteLength);
   }
 
   launchRunner(options: LaunchManagedRunnerOptions): ManagedSshRunnerLaunch {
@@ -768,6 +875,83 @@ export function assertContainedRemotePath(
   }
 }
 
+function assertManagedCodexSessionId(value: string): void {
+  if (!/^[A-Za-z0-9-]{8,128}$/.test(value)) {
+    throw new Error("Managed Codex provider session identity is invalid");
+  }
+}
+
+function assertManagedCodexTranscriptRelativePath(value: string): void {
+  if (
+    value.length > 512 ||
+    !/^[A-Za-z0-9._/-]+\.jsonl$/.test(value) ||
+    value.startsWith("/") ||
+    value.includes("//") ||
+    value.split("/").some((segment) => segment === "." || segment === "..")
+  ) {
+    throw new Error("Managed Codex transcript path is invalid");
+  }
+}
+
+function parseManagedCodexTranscriptCheckpoint(
+  value: unknown,
+  providerSessionId: string,
+): ManagedCodexTranscriptCheckpoint {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Managed Codex transcript checkpoint was invalid");
+  }
+  const checkpoint = value as Record<string, unknown>;
+  const relativePath = String(checkpoint.relativePath ?? "");
+  assertManagedCodexTranscriptRelativePath(relativePath);
+  const parsed: ManagedCodexTranscriptCheckpoint = {
+    providerSessionId: String(checkpoint.providerSessionId ?? ""),
+    relativePath,
+    fileIdentity: String(checkpoint.fileIdentity ?? ""),
+    metadataSha256: String(checkpoint.metadataSha256 ?? ""),
+    completeBytes: Number(checkpoint.completeBytes),
+    totalBytes: Number(checkpoint.totalBytes),
+    mtimeMs: Number(checkpoint.mtimeMs),
+  };
+  if (
+    parsed.providerSessionId !== providerSessionId ||
+    !/^[0-9]+:[0-9]+:[0-9]+$/.test(parsed.fileIdentity) ||
+    !SHA256_PATTERN.test(parsed.metadataSha256) ||
+    !Number.isSafeInteger(parsed.completeBytes) ||
+    parsed.completeBytes < 1 ||
+    !Number.isSafeInteger(parsed.totalBytes) ||
+    parsed.totalBytes < parsed.completeBytes ||
+    !Number.isFinite(parsed.mtimeMs) ||
+    parsed.mtimeMs < 0
+  ) {
+    throw new Error("Managed Codex transcript checkpoint was invalid");
+  }
+  return parsed;
+}
+
+function parseManagedCodexTranscriptChunk(
+  value: unknown,
+  offset: number,
+  byteLength: number,
+): ManagedCodexTranscriptChunk {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Managed Codex transcript chunk was invalid");
+  }
+  const chunk = value as Record<string, unknown>;
+  const encoded = typeof chunk.base64 === "string" ? chunk.base64 : "";
+  const bytes = Buffer.from(encoded, "base64");
+  const sha256 = String(chunk.sha256 ?? "");
+  if (
+    Number(chunk.offset) !== offset ||
+    Number(chunk.byteLength) !== byteLength ||
+    bytes.byteLength !== byteLength ||
+    !SHA256_PATTERN.test(sha256) ||
+    createHash("sha256").update(bytes).digest("hex") !== sha256
+  ) {
+    throw new Error("Managed Codex transcript chunk was invalid");
+  }
+  return { offset, byteLength, sha256, bytes };
+}
+
 function parseInspectionLines(stdout: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const line of stdout.split("\n")) {
@@ -1029,6 +1213,183 @@ async function main() {
 main().catch((error) => {
   if (stagingDirectory) rm(stagingDirectory, { recursive: true, force: true }).catch(() => {});
   process.stderr.write("managed artifact install failed: " + (error && error.message ? error.message : String(error)) + "\n");
+  process.exitCode = 1;
+});
+`;
+
+const REMOTE_CODEX_TRANSCRIPT_CHECKPOINT = String.raw`
+const { createHash } = require("node:crypto");
+const { lstat, open, readdir, realpath } = require("node:fs/promises");
+const { join, relative, resolve, sep } = require("node:path");
+const [workspace, providerSessionId, knownRelativePath] = process.argv.slice(1);
+const MAX_FILES = 4096;
+const MAX_METADATA_BYTES = 256 * 1024;
+const BACKWARD_READ_BYTES = 64 * 1024;
+function fail(message) { throw new Error(message); }
+function safeAbsolute(value) {
+  return typeof value === "string" && value !== "/" && /^\/[A-Za-z0-9._/-]+$/.test(value) && !value.includes("//") && !value.split("/").some((part) => part === "." || part === "..");
+}
+function safeRelative(value) {
+  return typeof value === "string" && value.length <= 512 && /^[A-Za-z0-9._/-]+\.jsonl$/.test(value) && !value.startsWith("/") && !value.includes("//") && !value.split("/").some((part) => part === "." || part === "..");
+}
+function contained(root, path) { return path.startsWith(root + sep); }
+async function readMetadata(handle, size) {
+  const length = Math.min(size, MAX_METADATA_BYTES);
+  const buffer = Buffer.alloc(length);
+  const result = await handle.read(buffer, 0, length, 0);
+  const newline = buffer.subarray(0, result.bytesRead).indexOf(0x0a);
+  if (newline < 0) fail("rollout metadata line is incomplete or oversized");
+  const line = buffer.subarray(0, newline);
+  let value;
+  try { value = JSON.parse(line.toString("utf8")); } catch { fail("rollout metadata is invalid"); }
+  if (value?.type !== "session_meta" || value?.payload?.id !== providerSessionId) return null;
+  return createHash("sha256").update(line).digest("hex");
+}
+async function completeBytes(handle, size) {
+  let end = size;
+  while (end > 0) {
+    const start = Math.max(0, end - BACKWARD_READ_BYTES);
+    const length = end - start;
+    const buffer = Buffer.alloc(length);
+    const result = await handle.read(buffer, 0, length, start);
+    const newline = buffer.subarray(0, result.bytesRead).lastIndexOf(0x0a);
+    if (newline >= 0) return start + newline + 1;
+    end = start;
+  }
+  return 0;
+}
+async function inspect(path, root) {
+  const metadata = await lstat(path);
+  if (!metadata.isFile() || metadata.isSymbolicLink()) return null;
+  const actual = await realpath(path);
+  if (!contained(root, actual)) fail("rollout escaped its sessions root");
+  const handle = await open(actual, "r");
+  try {
+    const stats = await handle.stat();
+    if (!Number.isSafeInteger(stats.size) || stats.size < 1) return null;
+    const metadataSha256 = await readMetadata(handle, stats.size);
+    if (!metadataSha256) return null;
+    const complete = await completeBytes(handle, stats.size);
+    if (complete < 1) fail("rollout has no complete JSONL record");
+    return {
+      providerSessionId,
+      relativePath: relative(root, actual).split(sep).join("/"),
+      fileIdentity: String(stats.dev) + ":" + String(stats.ino) + ":" + String(Math.max(0, Math.trunc(stats.birthtimeMs))),
+      metadataSha256,
+      completeBytes: complete,
+      totalBytes: stats.size,
+      mtimeMs: stats.mtimeMs,
+    };
+  } finally {
+    await handle.close();
+  }
+}
+async function walk(root) {
+  const files = [];
+  const pending = [root];
+  let visited = 0;
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      visited += 1;
+      if (visited > MAX_FILES) fail("rollout discovery exceeded its file bound");
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile() && entry.name.startsWith("rollout-") && entry.name.endsWith(".jsonl")) files.push(path);
+    }
+  }
+  return files;
+}
+async function main() {
+  if (!safeAbsolute(workspace) || resolve(workspace) !== workspace) fail("invalid managed workspace");
+  if (!/^[A-Za-z0-9-]{8,128}$/.test(providerSessionId || "")) fail("invalid provider session id");
+  if (knownRelativePath !== "-" && !safeRelative(knownRelativePath)) fail("invalid known rollout path");
+  if (await realpath(workspace) !== workspace) fail("managed workspace must not traverse symlinks");
+  const root = join(workspace, "codex-home", "sessions");
+  if (await realpath(root) !== root) fail("rollout sessions root must not traverse symlinks");
+  const matches = [];
+  if (knownRelativePath !== "-") {
+    const knownPath = resolve(root, knownRelativePath);
+    if (!contained(root, knownPath)) fail("known rollout path escaped its root");
+    try {
+      const known = await inspect(knownPath, root);
+      if (known) matches.push(known);
+    } catch (error) {
+      if (!error || error.code !== "ENOENT") throw error;
+    }
+  }
+  for (const path of await walk(root)) {
+    if (knownRelativePath !== "-" && relative(root, path).split(sep).join("/") === knownRelativePath) continue;
+    try {
+      const candidate = await inspect(path, root);
+      if (candidate) matches.push(candidate);
+    } catch (error) {
+      if (!error || error.code !== "ENOENT") throw error;
+    }
+  }
+  if (matches.length === 0) fail("provider rollout was not found");
+  matches.sort((left, right) => right.mtimeMs - left.mtimeMs || right.relativePath.localeCompare(left.relativePath));
+  process.stdout.write(JSON.stringify(matches[0]) + "\n");
+}
+main().catch((error) => {
+  process.stderr.write("managed Codex transcript checkpoint failed: " + (error?.message || String(error)) + "\n");
+  process.exitCode = 1;
+});
+`;
+
+const REMOTE_CODEX_TRANSCRIPT_CHUNK = String.raw`
+const { createHash } = require("node:crypto");
+const { open, realpath } = require("node:fs/promises");
+const { join, resolve, sep } = require("node:path");
+const [workspace, providerSessionId, relativePath, expectedIdentity, completeText, offsetText, lengthText] = process.argv.slice(1);
+const complete = Number(completeText);
+const offset = Number(offsetText);
+const length = Number(lengthText);
+function fail(message) { throw new Error(message); }
+function safeAbsolute(value) {
+  return typeof value === "string" && value !== "/" && /^\/[A-Za-z0-9._/-]+$/.test(value) && !value.includes("//") && !value.split("/").some((part) => part === "." || part === "..");
+}
+function safeRelative(value) {
+  return typeof value === "string" && value.length <= 512 && /^[A-Za-z0-9._/-]+\.jsonl$/.test(value) && !value.startsWith("/") && !value.includes("//") && !value.split("/").some((part) => part === "." || part === "..");
+}
+function contained(root, path) { return path.startsWith(root + sep); }
+async function main() {
+  if (!safeAbsolute(workspace) || resolve(workspace) !== workspace) fail("invalid managed workspace");
+  if (!/^[A-Za-z0-9-]{8,128}$/.test(providerSessionId || "")) fail("invalid provider session id");
+  if (!safeRelative(relativePath)) fail("invalid rollout path");
+  if (!/^[0-9]+:[0-9]+:[0-9]+$/.test(expectedIdentity || "")) fail("invalid rollout identity");
+  if (!Number.isSafeInteger(complete) || complete < 1 || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 1 || length > ${MANAGED_CODEX_TRANSCRIPT_CHUNK_BYTES} || offset + length > complete) fail("invalid transcript chunk range");
+  if (await realpath(workspace) !== workspace) fail("managed workspace must not traverse symlinks");
+  const root = join(workspace, "codex-home", "sessions");
+  if (await realpath(root) !== root) fail("rollout sessions root must not traverse symlinks");
+  const path = resolve(root, relativePath);
+  if (!contained(root, path) || await realpath(path) !== path) fail("rollout path escaped its root");
+  const handle = await open(path, "r");
+  try {
+    const stats = await handle.stat();
+    const identity = String(stats.dev) + ":" + String(stats.ino) + ":" + String(Math.max(0, Math.trunc(stats.birthtimeMs)));
+    if (identity !== expectedIdentity) fail("rollout generation changed");
+    if (stats.size < complete) fail("rollout was truncated");
+    const buffer = Buffer.alloc(length);
+    let received = 0;
+    while (received < length) {
+      const result = await handle.read(buffer, received, length - received, offset + received);
+      if (result.bytesRead < 1) fail("rollout chunk ended early");
+      received += result.bytesRead;
+    }
+    process.stdout.write(JSON.stringify({
+      offset,
+      byteLength: length,
+      sha256: createHash("sha256").update(buffer).digest("hex"),
+      base64: buffer.toString("base64"),
+    }) + "\n");
+  } finally {
+    await handle.close();
+  }
+}
+main().catch((error) => {
+  process.stderr.write("managed Codex transcript chunk failed: " + (error?.message || String(error)) + "\n");
   process.exitCode = 1;
 });
 `;

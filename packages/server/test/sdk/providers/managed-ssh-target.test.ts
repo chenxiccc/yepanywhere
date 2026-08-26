@@ -126,6 +126,7 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
     });
 
     const inspection = await target.inspect();
+    const gitSshCommand = target.gitSshCommand();
     await target.runCommand(
       `test -z "\${ANTHROPIC_API_KEY+x}"; test -z "\${CLAUDE_CODE_OAUTH_TOKEN+x}"; test -z "\${OPENAI_API_KEY+x}"`,
     );
@@ -138,6 +139,8 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
     expect(inspection.git.available).toBe(true);
     expect(inspection.managedRootState).toBe("creatable");
     expect(inspection.runnerCacheState).toBe("absent");
+    expect(gitSshCommand).toContain("BatchMode=yes");
+    expect(gitSshCommand).not.toMatch(/(?:^|\s)--\s*$/);
     expect(await readdir(directory)).toEqual(["ssh-record.jsonl"]);
     const records = (await readFile(recordPath, "utf8"))
       .trim()

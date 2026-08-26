@@ -2,13 +2,15 @@
 
 Topic: managed-remote-executors
 
-Status: Gates A, B, and C completed and accepted on 2026-08-26. The injectable
-runner, shared provider-session owner, non-PTY manual-SSH carrier, disposable
-exact-commit Git workspace round trip, controller-authenticated target Codex
-session, and internal `RemoteAgentSession`/Supervisor path are implemented
-behind tests and an operator diagnostic. No public route, capability, setting,
-managed session metadata, user-project Git writer, UI, or reload-survival claim
-described here is implemented or compatibility-approved.
+Status: Gates A, B, and C and Gate D's isolated-transcript proof completed and
+accepted on 2026-08-26. The injectable runner, shared provider-session owner,
+non-PTY manual-SSH carrier, disposable exact-commit Git workspace round trip,
+controller-authenticated target Codex session, internal
+`RemoteAgentSession`/Supervisor path, and bounded controller transcript mirror
+are implemented behind tests and an operator diagnostic. No public route,
+capability, setting, browser-visible managed session metadata, user-project Git
+writer, UI, or reload-survival claim described here is implemented or
+compatibility-approved.
 
 This tactical deliberately has stop/go gates. A normal implementation request
 should complete and record one gate at a time rather than treating the whole
@@ -34,8 +36,9 @@ the maintainer:
   target needs no provider login or upstream Git credential;
 - agent-created commits are fetched into one namespaced controller tracking ref
   without changing the controller worktree or branch; and
-- Linux controllers additionally retain the SSH-backed session across Hono
-  replacement through the existing reload-safe provider host.
+- the controller incrementally mirrors complete provider-native rollout bytes
+  into a YA-owned app-data directory so stopped sessions remain viewable without
+  making the mirror a local Codex resume source.
 
 The user-visible feature remains experimental, explicit, and default-off.
 Machine Control inventory, claims, readiness, and VM lifecycle remain deferred
@@ -47,10 +50,6 @@ to [tactical 118](118-managed-runner-mvp.md) until this baseline works.
   owns the manual-SSH product shape, injected-runner boundary, exact committed
   workspace, Codex-first proof, source return, trust model, and observable
   completion contract.
-- [`topics/reload-safe-provider-runtimes.md`](../../topics/reload-safe-provider-runtimes.md)
-  and [`topics/provider-host-api.md`](../../topics/provider-host-api.md) own the
-  implemented Linux host/worker lifecycle, generation fencing, sequenced
-  replay, Hono acknowledgement, and cleanup semantics.
 - [`docs/project/remote-executors.md`](../project/remote-executors.md) owns the
   released Claude-family SSH/rsync executor. Its `executor` field, path mapping,
   capability, session synchronization, and resume semantics are not widened by
@@ -129,8 +128,8 @@ Controller and target support are separate coordinates:
 
 | Coordinate | Baseline claim | Initial behavior |
 | --- | --- | --- |
-| macOS controller | supported | Hono owns the remote `AgentSession`; Hono restart may interrupt it |
-| Linux controller | supported | same baseline plus existing provider-host reload survival |
+| macOS controller | supported | Hono owns the remote `AgentSession`; Hono restart terminates it |
+| Linux controller | supported | same direct Hono-owned baseline; Hono restart terminates it |
 | Windows controller | not yet supported | feature gate remains unavailable; portable pure-unit coverage still runs |
 | Linux SSH target | supported | first real runner, Git, cleanup, and Codex acceptance target |
 | macOS SSH target | follow-up | use the POSIX adapter only after a native smoke proves process and path behavior |
@@ -143,8 +142,6 @@ or workspace mutation.
 
 ## Intended Runtime Shape
 
-Without the Linux provider host:
-
 ```text
 Hono Process
   -> RemoteAgentSession proxy
@@ -154,31 +151,18 @@ Hono Process
   -> codex app-server in managed worktree
 ```
 
-With the Linux provider host:
+The first product slice deliberately has one controller ownership model on
+macOS and Linux. A graceful Hono or development-wrapper reload cooperatively
+terminates the remote runner, SSH child, and Codex process instead of detaching
+them. A later explicit resume starts a fresh runner in the same recorded target
+workspace and resumes the target-native Codex thread. An abrupt disconnect
+records uncertainty and cannot authorize a second writer until lease recovery
+proves the old runner dead or fenced.
 
-```text
-Hono Process
-  -> HostedAgentSession
-  -> existing local provider-runtime worker
-  -> RemoteAgentSession proxy
-  -> system SSH child
-  -> injected stdio runner
-  -> target-local Codex AgentSession
-```
-
-The existing local worker remains the replay and Hono-generation owner. The
-first remote runner protocol does not need a second transparent reattachment
-system while its SSH channel remains owned by that worker. If SSH itself
-disconnects, the baseline ends the live attachment, records uncertainty, and
-allows a later explicit resume through the same target workspace only after the
-old runner is dead or fenced. This avoids two competing replay ledgers in the
-first version.
-
-On macOS the Hono process owns the same `RemoteAgentSession` directly. This
-makes managed execution useful there without porting Linux process discovery,
-`/proc` identity, process-group recovery, and wrapper ownership. Porting Safe
-Reload to macOS is a separate project justified by broader demand, not a hidden
-requirement of managed SSH.
+This avoids coupling a Linux-only developer reload optimization to the first
+managed-executor release. Provider-host integration remains an optional later
+enhancement if active-turn survival proves valuable enough to justify another
+ownership path.
 
 ## Gate A — Prove The Injectable Runtime
 
@@ -684,37 +668,100 @@ testbed, so Gate C makes no macOS native claim. The direct proxy is portable
 TypeScript and has deterministic coverage, but the unavailable coordinate is
 not inferred from Linux evidence.
 
-## Gate D — Add Reload Survival And The Opt-In Product
+## Gate D — Prove Transcript Durability And Add The Opt-In Product
 
 Gate D begins only after the runner artifact, SSH transport, Git round trip,
 Codex resume, and direct Hono path have evidence recorded in this tactical.
 
-### 7 — retain managed SSH through the Linux provider host
+### 7 — mirror and cold-read the target Codex rollout
 
-Teach the existing local provider-runtime worker to create the same
-`RemoteAgentSession` proxy when launch options carry an internally validated
-managed execution coordinate. The provider host continues to spawn and own one
-local worker; that worker owns the SSH child and remote runner.
+Keep the target workspace-owned `CODEX_HOME` authoritative for provider resume.
+At completed-turn, explicit-refresh, and graceful-shutdown boundaries, copy
+only the suffix through the target's latest complete JSONL byte into a private
+YA app-data mirror. Do not poll an idle target and do not transfer an unchanged
+prefix.
 
-Do not teach Hono a second hosted-session policy and do not expose the host or
-worker token remotely. The current local Unix-socket protocol, Hono generation
-fencing, acknowledgement boundary, replay limits, attach deadline, viewer
-presence, and wrapper terminal ownership remain authoritative.
+The mirror lives outside the user's ordinary `~/.codex/sessions` tree so Codex
+Desktop, the Codex CLI, and the normal provider scanner cannot mistake remote
+absolute paths for a local runnable session. A durable managed-session registry
+maps the canonical YA session id to the provider thread id, target/workspace,
+exact isolated mirror root and rollout generation, transferred and complete
+byte watermarks, activity time, and synchronization state. Session discovery
+comes from that registry. Opening one record may scan only its referenced
+isolated Codex root with the existing `CodexSessionReader`; the mirror does not
+join the ordinary global Codex scanner or watcher.
 
-Exercise a real Linux controller smoke:
+Transfer uses bounded chunks and verifies each chunk before durable append. An
+incomplete final provider line remains target-only until a later checkpoint; a
+budget-limited local partial line is retained and ignored by the existing
+reader until completed. A rollout path or file-identity change starts a new
+mirror generation. Cache size, one synchronization pass, command output, and
+registry writes are all bounded and serialized per managed session.
 
-1. Start a managed remote Codex turn.
-2. Replace Hono while provider output continues.
-3. Attach the new Hono generation to the same local worker.
-4. Observe exactly the acknowledged/unacknowledged event boundary with no
-   second remote runner or Codex writer.
-5. Commit and fetch the result.
-6. Shut down the full wrapper and prove local worker, SSH child, target runner,
-   Codex process, and owned clean workspace cleanup.
+The mirror is a one-way viewing cache. It is never copied back to the target,
+never passed to local `thread/resume`, and never treated as more current than
+its recorded watermark. A missing or stale mirror may make history unavailable
+or visibly behind while the target thread can still be resumed. A missing
+target rollout cannot fall back to the mirror as a new local session.
 
-macOS retains the direct Hono-owned behavior and does not advertise Safe
-Reload for managed sessions. Do not port the provider host as part of this
-step.
+Exercise a real Linux-controller smoke before public product work:
+
+1. Run a managed Codex turn and mirror its complete rollout prefix.
+2. Run another turn and prove only the new suffix crosses SSH.
+3. Stop the runner, reconstruct the registry service as after a controller
+   restart, discover the canonical YA record without a mirror-root corpus scan,
+   and load its messages through `CodexSessionReader`.
+4. Resume the same provider thread in the same target workspace, run another
+   turn, and advance the same mirror without duplicating the prefix.
+5. Prove the ordinary controller Codex sessions directory is untouched and the
+   target rollout remains the only resume authority.
+
+### Gate D transcript result — accept the isolated incremental mirror
+
+Step 7 passed on the available Linux controller and the same dedicated Ubuntu
+x86_64 target on 2026-08-26. The target had no YA checkout or provider login;
+the acceptance setup supplied Node.js 25.2.0, Git 2.43.0, and Codex CLI 0.149.0
+as prerequisites. The digest-verified runner remained 1,237,665 bytes with
+SHA-256
+`0f82f1a9f58dffb12b2e53e76dca985404f2e35254da55dfdf7e84a98e56427a`.
+
+Four synchronization boundaries copied 57,174, 30,636, 17,705, and 10,218
+new bytes respectively, one verified chunk per boundary, into a final
+115,733-byte mirror. The second pass retained the first rollout generation and
+advanced its durable offset by exactly the transferred suffix. The target
+checkpoint exposed only its latest complete JSONL watermark; the controller
+did not request or recopy the preceding prefix.
+
+After the first runner stopped, the diagnostic constructed a fresh mirror
+service from its durable registry, found the record by canonical YA session id,
+resolved the recorded isolated app-data root, and cold-loaded the first and
+committing turns through `CodexSessionReader`. It then resumed the same
+provider thread in the same target workspace, ran another turn, appended only
+the new suffix, reconstructed the service again, and cold-loaded the resumed
+turn. A final real `Supervisor`/`Process` turn advanced the same mirror. The YA
+id, provider thread, and workspace identities remained stable while each
+runner generation was fresh.
+
+The mirror never entered the ordinary Codex sessions tree or ordinary scanner,
+and only the target workspace-owned rollout was passed to `thread/resume`.
+Deterministic coverage additionally proves an ordinary-tree sentinel is
+untouched, concurrent synchronization joins one bounded operation, a
+pass-limited partial line remains unread until completed, registry
+reconstruction needs no mirror-root corpus scan, and a target rollout identity
+change publishes a new isolated generation instead of appending incompatible
+bytes.
+
+The live run also found one carrier bug outside the transcript algorithm: Git
+appends `-o SendEnv=GIT_PROTOCOL` to `GIT_SSH_COMMAND`, so a terminal `--` in
+YA's generated SSH command made that option the apparent hostname. The managed
+Git command now permits Git's appended option while retaining the configured
+literal alias, `BatchMode`, connection timeout, and the user's host-key policy.
+
+The target workspace remains authoritative for resume; the controller mirror
+is a one-way, bounded historical-view cache. This accepts step 7 only. Public
+managed metadata, discovery/routes, default-off placement, incoming user-
+project refs, location-correct project surfaces, and their compatibility and
+storage approvals remain steps 8 through 11.
 
 ### 8 — approve the optional compatibility and storage contracts
 
@@ -819,7 +866,9 @@ Required live evidence:
 
 - macOS controller to clean Linux target: direct Hono-owned Codex, commit,
   fetch, resume, and cleanup;
-- Linux controller to clean Linux target: the same flow plus Hono replacement;
+- Linux controller to clean Linux target: direct Hono-owned execution, cold
+  isolated-mirror loading, controller restart, explicit target-native resume,
+  and graceful reload termination;
 - target without Node, Git, or Codex, and controller without supported
   file-backed ChatGPT auth: distinct read-only preflight failures and no
   mutation;
@@ -854,8 +903,13 @@ without delaying the Linux correctness baseline.
   the displayed exact commit while excluding disclosed dirty local state.
 - A real remote Codex session retains its canonical YA identity, supports its
   promised controls, and resumes only through its recorded target workspace.
-- Linux Hono replacement preserves an active managed turn through the existing
-  provider host without duplicate output or provider writers.
+- A graceful Hono or wrapper reload cooperatively terminates the managed runner.
+  A later explicit resume uses the same recorded target workspace and
+  provider-native thread without a second writer.
+- A stopped session is viewable from a YA-owned isolated Codex rollout mirror.
+  Discovery is metadata-driven, synchronization transfers only new bounded
+  bytes, and neither native Codex software nor YA's ordinary Codex scanner sees
+  the mirror.
 - The target receives only its per-lease Codex access-token projection. It
   receives no upstream Git credential, forwarded SSH agent, YA account secret,
   provider-host token, subscription refresh token, complete controller Codex
@@ -893,7 +947,7 @@ configuration, provider account, or unrelated VM.
 
 - Machine Control inventory, readiness, claims, VM lifecycle, snapshots, and
   non-SSH runner carriers.
-- Porting the reload-safe provider host to macOS or Windows.
+- Preserving active managed turns through the reload-safe provider host.
 - Windows and macOS targets before their platform-specific acceptance.
 - Claude managed-runner planning, migration from the released SSH executor,
   and additional providers; each requires separate provider-specific
