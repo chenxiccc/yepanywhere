@@ -148,7 +148,9 @@ Consequences:
   fallen behind transcript growth re-pins rather than canceling follow. A
   `scrollTop` movement upward from that write releases follow even if no wheel,
   touch, scrollbar, or keyboard precursor was observed. Ordinary bottom geometry
-  can still acquire follow when it was already off.
+  can still acquire follow when it was already off. Follow also publishes its
+  live-tail route snapshot synchronously; programmatic scroll events are
+  suppressed and cannot be the persistence trigger.
 - **`RENDERING_PERFORMANCE.md` "Transcript Layout Stability"** is the
   kzahel-side statement of the invariant (no timers/visibility/stream-status
   effects changing historical row height; tidy only via explicit user control).
@@ -168,6 +170,8 @@ Consequences:
   size so the reclaimed transcript remains visible. Composer maximize/restore
   and one-line collapse actions do not change transcript position or follow
   intent.
+- The explicit **Follow** action commits live-tail return state before a route
+  switch or reload can unmount the session view.
 - The collapse/tidy trigger is a UX choice; jitter-safety is a separate,
   always-required property.
 - Committing in-session search (Enter on the highlighted match, or a click

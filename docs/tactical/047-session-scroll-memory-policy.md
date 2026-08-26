@@ -41,6 +41,9 @@ provider-like behavior.
   uses that bit on restore; `remember-place` restores the high-water anchor.
   Conversation View needs the winning turn; expanded view retains the specific
   activity location. Both are device-specific, not server-shared read state.
+- Activating Follow immediately publishes the resulting live-tail observation.
+  It must not depend on a later scroll event or leave-time capture: a route
+  switch or reload immediately after Follow still restores the live tail.
 - Per-session scroll memory belongs to the session detail cache entry, not the
   reducer-owned `SessionDetailState`.
 - `MessageList` remains responsible for live DOM scroll physics:
@@ -100,6 +103,7 @@ provider-like behavior.
   turn in Conversation View and its specific activity anchor in expanded view.
 - [x] Keep the persisted cursor monotone when a reader scrolls upward, including
   within the current high-water turn.
+- [x] Publish Follow's live-tail return state before the route can unmount.
 - [x] Retire the behavior-identical `manual-follow` option; legacy stored values
   migrate to `remember-place`.
 

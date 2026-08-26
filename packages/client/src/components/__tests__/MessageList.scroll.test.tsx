@@ -536,6 +536,89 @@ describe("MessageList scroll and follow", () => {
     composerTarget.remove();
   });
 
+  it("publishes live-tail return state when Follow is activated", async () => {
+    const composerTarget = document.createElement("div");
+    composerTarget.className = "session-input-inner";
+    document.body.append(composerTarget);
+    const onScrollSnapshotChange = vi.fn();
+    const promptTimestamp = "2026-08-26T12:00:00.000Z";
+
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request", promptTimestamp),
+          assistantMessage(
+            "assistant-1",
+            "current response",
+            "2026-08-26T12:01:00.000Z",
+          ),
+        ]}
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 200,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    container.getBoundingClientRect = () => rectFor(0, 500);
+    const user = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const assistant = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    const lastLine = container.querySelector<HTMLElement>(".message-list")
+      ?.lastElementChild as HTMLElement | null;
+    expect(user).toBeTruthy();
+    expect(assistant).toBeTruthy();
+    expect(lastLine).toBeTruthy();
+    (user as HTMLElement).getBoundingClientRect = () => rectFor(-80, 40);
+    (assistant as HTMLElement).getBoundingClientRect = () => rectFor(120, 280);
+    (lastLine as HTMLElement).getBoundingClientRect = () => rectFor(120, 380);
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    onScrollSnapshotChange.mockClear();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Follow latest session output",
+      }),
+    );
+
+    expect(container.scrollTop).toBe(500);
+    expect(onScrollSnapshotChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        atBottom: true,
+        following: true,
+        seenTurn: {
+          id: "user-1",
+          timestampMs: new Date(promptTimestamp).getTime(),
+          activityIndex: 1,
+        },
+      }),
+    );
+  });
+
   it("retargets the position timestamp to a hovered row's start time", async () => {
     const onTranscriptPositionTimestampChange = vi.fn();
     const assistantStart = "2026-04-26T12:04:00.000Z";

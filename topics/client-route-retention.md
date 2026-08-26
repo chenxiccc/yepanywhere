@@ -279,11 +279,12 @@ recovery when the exact row is gone, and snapshot publication is gated to
 settled (post-hydration) content. A visible incomplete turn advances the turn
 frontier; new visible activities advance the expanded-view position. Completing
 a turn while visibly following must publish a fresh observation even without a
-scroll event. A change that
-stops capturing at-bottom
-anchors, overwrites settled snapshots with transient hydration geometry,
-or drops the context fallbacks breaks this contract even while the
-`live-tail` default hides the loss.
+scroll event. Activating Follow is itself a return-state transition: it must
+publish the resulting live-tail observation immediately, before a route switch
+or reload can unmount the view. A change that stops capturing at-bottom anchors,
+overwrites settled snapshots with transient hydration geometry, or drops the
+context fallbacks breaks this contract even while the `live-tail` default hides
+the loss.
 
 ## Known Divergence Risks: Warm Restore vs Cold Reload (2026-07-02)
 

@@ -3788,8 +3788,9 @@ export const MessageList = memo(function MessageList({
 
   const handleFollowClick = useCallback(() => {
     scrollToCurrent();
+    publishScrollSnapshot();
     onFollowCurrent?.();
-  }, [onFollowCurrent, scrollToCurrent]);
+  }, [onFollowCurrent, publishScrollSnapshot, scrollToCurrent]);
 
   const followButtonTarget =
     !isScrolledToBottom && typeof document !== "undefined"
