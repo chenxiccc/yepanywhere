@@ -1846,8 +1846,6 @@
   "developmentSessionScrollMemoryModeLiveTailDescription": "关闭时位于底部的会话，重新打开后会跳到最新输出并继续跟随；向上滚动过的会话则恢复到记住的行。",
   "developmentSessionScrollMemoryModeRememberPlace": "记住位置",
   "developmentSessionScrollMemoryModeRememberPlaceDescription": "可用时重新打开到上次查看的行，即使下方已经出现了更新的输出。",
-  "developmentSessionScrollMemoryModeManualFollow": "手动跟随",
-  "developmentSessionScrollMemoryModeManualFollowDescription": "目前恢复方式与“记住位置”相同，预留用于更严格的手动跟随实验。",
   "developmentSessionScrollMemoryModeNoMemory": "不记忆",
   "developmentSessionScrollMemoryModeNoMemoryDescription": "不保留各会话的滚动位置快照；重新打开时使用正常的初始位置。",
   "developmentPersistRemoteTitle": "将远程会话持久化到磁盘",
