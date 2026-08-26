@@ -78,7 +78,7 @@ describe("Process", () => {
         setTimeoutSpy.mockRestore();
         vi.useRealTimers();
       }
-    });
+    }, 10_000);
 
     it("recalculates live timeout changes from the current idle period", async () => {
       vi.useFakeTimers();

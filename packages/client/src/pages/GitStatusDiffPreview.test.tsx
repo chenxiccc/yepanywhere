@@ -237,11 +237,12 @@ describe("GitDiffBody", () => {
       screen.getByRole("button", { name: "gitStatusHideRemovedLines" }),
     );
 
-    await waitFor(() =>
-      expect(
-        getGitDiff.mock.calls.some(([, options]) => options.fullContext),
-      ).toBe(true),
-    );
+    const showRemovedLinesButton = await screen.findByRole("button", {
+      name: "gitStatusShowRemovedLines",
+    });
+    expect(
+      getGitDiff.mock.calls.some(([, options]) => options.fullContext),
+    ).toBe(true);
     const rendered = document.querySelector(".highlighted-diff");
     expect(rendered?.textContent).toContain("before");
     expect(rendered?.textContent).toContain("new");
@@ -249,13 +250,8 @@ describe("GitDiffBody", () => {
     expect(rendered?.textContent).not.toContain("-old");
     expect(rendered?.textContent).not.toContain("+new");
     expect(rendered?.querySelector(".line-hunk")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "gitStatusShowRemovedLines" }),
-    ).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "gitStatusShowRemovedLines" }),
-    );
+    fireEvent.click(showRemovedLinesButton);
     expect(rendered?.textContent).toContain("-old");
     expect(rendered?.querySelector(".line-hunk")).not.toBeNull();
   });

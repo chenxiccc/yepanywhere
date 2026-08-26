@@ -42,6 +42,11 @@ async function primeProjectFiles(
 ): Promise<void> {
   const index = await getProjectPathIndex(projectPath);
   try {
+    // macOS may deliver fixture-creation events after fs.watch attaches. Let
+    // that valid invalidation settle, then rebuild the known-only facts the
+    // response under test is meant to consume.
+    await index.findExisting(relativePaths);
+    await new Promise((resolve) => setTimeout(resolve, 10));
     await index.findExisting(relativePaths);
   } finally {
     index.release();
