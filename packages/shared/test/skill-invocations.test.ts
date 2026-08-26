@@ -107,14 +107,23 @@ describe("skill invocation resolution", () => {
     ]);
   });
 
-  it("finds a completion token at the caret inside ordinary prompt text", () => {
-    expect(getInvocationCompletionQuery("please /dou later", 11)).toEqual({
-      start: 7,
-      end: 11,
+  it("offers completion only for a root invocation at the draft end", () => {
+    expect(getInvocationCompletionQuery("/dou")).toEqual({
+      start: 0,
+      end: 4,
       sigil: "/",
       query: "dou",
-      leading: false,
+      leading: true,
     });
+    expect(getInvocationCompletionQuery("  /dou")).toEqual({
+      start: 2,
+      end: 6,
+      sigil: "/",
+      query: "dou",
+      leading: true,
+    });
+    expect(getInvocationCompletionQuery("please /dou")).toBeNull();
+    expect(getInvocationCompletionQuery("/dou later", 4)).toBeNull();
   });
 
   it("distinguishes unrecognized tokens from native and skill entries", () => {

@@ -72,11 +72,19 @@ not be reinterpreted as confirmed skills.
 
 ### Keep the invocation editable
 
-Selecting a skill replaces the invocation-shaped completion token at the
-caret, or appends the invocation when no such token is active. It uses the
-provider's canonical spelling, adds a trailing space, and leaves focus in the
-composer. Existing surrounding text stays in place. Selection does not submit,
-open a required form, or replace the composer with a parameter editor.
+Typed completion is available only for a root invocation draft: the text before
+the `/` or `$` is empty or whitespace, and the caret is at the end of the
+composer. Enter or Tab may accept a visible completion in that state. Completion
+stays entirely inactive while editing inside a draft, after intervening text,
+or when text follows the caret, so those keys retain their normal composer
+behavior. Invocation recognition and provider translation still inspect exact
+tokens throughout the submitted text.
+
+Selecting a typed completion replaces that root invocation token. Selecting a
+skill from the launcher appends it when no completion token is active. Both use
+the provider's canonical spelling, add a trailing space, and leave focus in the
+composer. Selection does not submit, open a required form, or replace the
+composer with a parameter editor.
 
 The launcher may show:
 
@@ -183,6 +191,8 @@ free-form default for ordinary skills.
 
 - Exact installed-skill names resolve from both `/name` and `$name`, in any
   whitespace-delimited invocation position, without duplicate launcher entries.
+- Typed completion appears only for a root invocation at the end of the draft;
+  mid-draft and post-text invocations never intercept Enter or Tab.
 - A native slash command wins an exact leading slash-name collision.
 - Text outside recognized invocation spans round-trips byte-for-byte through
   recognition and provider translation.

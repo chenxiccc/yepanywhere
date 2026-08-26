@@ -3328,6 +3328,68 @@ describe("MessageInput", () => {
     expect(textarea.value).toBe("/compact ");
   });
 
+  it("submits instead of completing a slash token after existing text", () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onSend,
+        slashCommands: [
+          {
+            name: "doubt",
+            description: "Verify independently",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "current",
+            },
+          },
+        ],
+        onCustomCommand: vi.fn(() => false),
+      },
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "please /dou" } });
+
+    expect(screen.queryByRole("menuitem", { name: "$doubt" })).toBeNull();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expectSubmission(onSend, "please /dou", "direct");
+  });
+
+  it("submits instead of completing while the caret is inside a draft", () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onSend,
+        slashCommands: [
+          {
+            name: "doubt",
+            description: "Verify independently",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "current",
+            },
+          },
+        ],
+        onCustomCommand: vi.fn(() => false),
+      },
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: {
+        value: "before /dou after",
+        selectionStart: 11,
+        selectionEnd: 11,
+      },
+    });
+
+    expect(screen.queryByRole("menuitem", { name: "$doubt" })).toBeNull();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expectSubmission(onSend, "before /dou after", "direct");
+  });
+
   it("hides slash suggestions once the command is completely typed", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),
@@ -3363,7 +3425,7 @@ describe("MessageInput", () => {
     restoreMatchMedia();
   });
 
-  it("completes a provider-canonical skill token inside ordinary text", () => {
+  it("recognizes a provider-canonical skill token inside ordinary text", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),
       {
@@ -3382,12 +3444,11 @@ describe("MessageInput", () => {
       },
     ) as HTMLTextAreaElement;
 
-    fireEvent.change(textarea, { target: { value: "please /dou" } });
+    fireEvent.change(textarea, { target: { value: "please /doubt" } });
 
-    expect(screen.getByRole("menuitem", { name: "$doubt" })).toBeTruthy();
-    expect(screen.queryByText("Skill not found:")).toBeNull();
-    fireEvent.keyDown(textarea, { key: "Tab" });
-    expect(textarea.value).toBe("please $doubt ");
+    expect(screen.queryByRole("menuitem", { name: "$doubt" })).toBeNull();
+    expect(screen.getByText("Recognized skill:")).toBeTruthy();
+    expect(screen.getByText("$doubt")).toBeTruthy();
   });
 
   it("shows resolved and soft-unrecognized skill feedback", () => {
@@ -3443,7 +3504,7 @@ describe("MessageInput", () => {
     expect(screen.queryByText("Skill not found:")).toBeNull();
   });
 
-  it("shows one position-appropriate completion for a native/skill collision", () => {
+  it("prefers a native root completion and disables completion after text", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),
       {
@@ -3471,7 +3532,7 @@ describe("MessageInput", () => {
     expect(screen.queryByRole("menuitem", { name: "$goal" })).toBeNull();
 
     fireEvent.change(textarea, { target: { value: "please /go" } });
-    expect(screen.getByRole("menuitem", { name: "$goal" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "$goal" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "/goal" })).toBeNull();
   });
 

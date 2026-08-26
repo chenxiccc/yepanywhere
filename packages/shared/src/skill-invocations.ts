@@ -224,8 +224,12 @@ export function getInvocationCompletionQuery(
   cursor = text.length,
 ): InvocationCompletionQuery | null {
   const boundedCursor = Math.max(0, Math.min(cursor, text.length));
+  if (boundedCursor !== text.length) return null;
+
   let start = boundedCursor;
   while (start > 0 && !/\s/.test(text[start - 1] ?? "")) start -= 1;
+
+  if (text.slice(0, start).trim()) return null;
 
   const sigil = text[start];
   if (sigil !== "/" && sigil !== "$") return null;
@@ -246,7 +250,7 @@ export function getInvocationCompletionQuery(
     end,
     sigil,
     query: query.toLowerCase(),
-    leading: start === 0,
+    leading: true,
   };
 }
 
