@@ -2039,6 +2039,111 @@ describe("MessageList scroll and follow", () => {
     expect(scrollContainer.scrollTop).toBe(200);
   });
 
+  it("retries a remembered anchor through growth until the user scrolls", () => {
+    const animationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
+    let resizeCallback: ResizeObserverCallback | null = null;
+    class CapturingResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: CapturingResizeObserver,
+    });
+
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    let scrollTop = 0;
+    let scrollHeight = 500;
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = Math.min(value, scrollHeight - 500);
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 360,
+        width: 360,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === scrollContainer) {
+          return rectFor(0, 500);
+        }
+        if (this.dataset.renderId === "assistant-1") {
+          return rectFor(-scrollTop, scrollHeight);
+        }
+        return rectFor(0, 40);
+      });
+
+    try {
+      render(
+        <MessageList
+          messages={[
+            userMessage("user-1", "earlier request"),
+            assistantMessage("assistant-1", "current response"),
+          ]}
+          initialScrollSnapshot={{
+            atBottom: false,
+            scrollTop: 4800,
+            scrollHeight: 5500,
+            clientHeight: 500,
+            anchor: { id: "assistant-1", topOffset: -4800 },
+            following: false,
+            updatedAtMs: Date.now(),
+          }}
+          scrollBehaviorMode="remember-place"
+        />,
+        { container: scrollContainer },
+      );
+
+      expect(scrollContainer.scrollTop).toBe(0);
+      scrollHeight = 5500;
+      act(() => {
+        resizeCallback?.([], {} as ResizeObserver);
+      });
+      expect(scrollContainer.scrollTop).toBe(4800);
+
+      fireEvent.wheel(scrollContainer, { deltaY: -120 });
+      scrollContainer.scrollTop = 4400;
+      scrollHeight = 6000;
+      act(() => {
+        resizeCallback?.([], {} as ResizeObserver);
+      });
+      expect(scrollContainer.scrollTop).toBe(4400);
+    } finally {
+      animationFrameSpy.mockRestore();
+      rectSpy.mockRestore();
+    }
+  });
+
   it("falls back to a neighboring row when a remembered anchor is gone", () => {
     const scrollContainer = document.createElement("div");
     document.body.append(scrollContainer);

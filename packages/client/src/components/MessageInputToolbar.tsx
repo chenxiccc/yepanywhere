@@ -2965,19 +2965,6 @@ export function MessageInputToolbar({
     ? t("toolbarConversationViewDisable")
     : t("toolbarConversationViewEnable");
   const browserDebugActive = browserDebugLease.phase === "active";
-  useEffect(() => {
-    if (
-      browserDebugLease.phase === "active" &&
-      browserDebugLease.sessionId !== sessionId
-    ) {
-      void browserDebugLease.disable();
-    }
-  }, [
-    browserDebugLease.disable,
-    browserDebugLease.phase,
-    browserDebugLease.sessionId,
-    sessionId,
-  ]);
   const effectiveToolbarVisibility = useMemo(
     () =>
       browserDebugActive && !toolbarVisibility.browserDebug

@@ -2,7 +2,7 @@
 
 Date: 2026-07-03
 
-Status: device-specific cursor implemented
+Status: device-specific cursor and late-layout restore implemented
 
 See also:
 [`topics/client-route-retention.md`](../../topics/client-route-retention.md)
@@ -44,6 +44,12 @@ provider-like behavior.
 - Activating Follow immediately publishes the resulting live-tail observation.
   It must not depend on a later scroll event or leave-time capture: a route
   switch or reload immediately after Follow still restores the live tail.
+- A parked restore remains pending while its initially mounted transcript
+  grows. Resize-driven retries reapply the retained anchor until a user scroll
+  or explicit Follow transfers ownership; an early browser clamp must not turn
+  the high-water mark into a return to the beginning.
+- A same-origin server restart does not own or clear this browser-local state.
+  The ensuing reload restores the site-storage high-water mark.
 - Per-session scroll memory belongs to the session detail cache entry, not the
   reducer-owned `SessionDetailState`.
 - `MessageList` remains responsible for live DOM scroll physics:
@@ -106,6 +112,22 @@ provider-like behavior.
 - [x] Publish Follow's live-tail return state before the route can unmount.
 - [x] Retire the behavior-identical `manual-follow` option; legacy stored values
   migrate to `remember-place`.
+- [x] Keep initial parked restore pending through asynchronous transcript
+  growth, with user scroll and explicit Follow as the ownership boundary.
+- [x] Cover actual sidebar A -> B -> A, force reload, and same-origin server
+  restart with browser tests that verify upward reading does not lower the
+  stored high-water mark.
+
+## Status 2026-08-26
+
+Contributing-model: Daybreak Blue
+
+- Completed the late-layout restore path in this change: the retained anchor
+  survives asynchronous transcript growth instead of accepting Chrome's early
+  clamped scroll position.
+- Evidence covers a focused 500-to-5500-pixel growth regression, real sidebar
+  session selection on desktop and phone, force reload, and an actual server
+  process restart on the same origin.
 
 ## Follow-Up Work
 

@@ -1500,6 +1500,8 @@ export const MessageList = memo(function MessageList({
   const shouldAutoScrollRef = useRef(true);
   const previousInertRef = useRef(inert);
   const isInitialLoadRef = useRef(true);
+  const pendingInitialScrollRestoreRef =
+    useRef<SessionRouteScrollSnapshot | null>(null);
   const isProgrammaticScrollRef = useRef(false);
   const lastHeightRef = useRef(0);
   const lastFollowScrollTopRef = useRef(0);
@@ -1739,6 +1741,7 @@ export const MessageList = memo(function MessageList({
 
   const stopFollowingForUserScroll = useCallback(
     (container: HTMLElement | null | undefined) => {
+      pendingInitialScrollRestoreRef.current = null;
       shouldAutoScrollRef.current = false;
       thinkingDeltaFollowAllowedRef.current = false;
       isProgrammaticScrollRef.current = false;
@@ -1766,6 +1769,7 @@ export const MessageList = memo(function MessageList({
       delays: readonly number[] = FOLLOW_CATCH_UP_DELAYS_MS,
       options: { allowThinkingDeltas?: boolean } = {},
     ) => {
+      pendingInitialScrollRestoreRef.current = null;
       shouldAutoScrollRef.current = true;
       if (options.allowThinkingDeltas) {
         thinkingDeltaFollowAllowedRef.current = true;
@@ -2094,6 +2098,41 @@ export const MessageList = memo(function MessageList({
   displayRenderItemsRef.current = displayRenderItems;
   const turnGroupsRef = useRef(turnGroups);
   turnGroupsRef.current = turnGroups;
+  const restoreRetainedScrollPosition = useCallback(
+    (snapshot: SessionRouteScrollSnapshot) => {
+      const content = containerRef.current;
+      const container = content?.parentElement;
+      if (!content || !container) return false;
+
+      let restored = false;
+      const anchor = snapshot.anchor;
+      if (anchor) {
+        const row = findRenderRow(content, anchor.id);
+        const fallbackRow = row
+          ? null
+          : findFallbackRenderAnchorRow(
+              content,
+              anchor,
+              displayRenderItemsRef.current,
+            );
+        const targetRow = row ?? fallbackRow;
+        if (targetRow) {
+          restoreScrollToAnchorRow(container, targetRow, anchor.topOffset);
+          restored = true;
+        }
+      }
+      if (!restored) {
+        const maxScrollTop = Math.max(
+          0,
+          container.scrollHeight - container.clientHeight,
+        );
+        container.scrollTop = Math.min(snapshot.scrollTop, maxScrollTop);
+      }
+      lastHeightRef.current = container.scrollHeight;
+      return true;
+    },
+    [],
+  );
   const latestSeenTurnRenderKey = useMemo(() => {
     const cursors = getSeenTurnCursors(turnGroups);
     const latest = cursors[cursors.length - 1];
@@ -2905,6 +2944,7 @@ export const MessageList = memo(function MessageList({
       const scrollContainer = messageList?.parentElement;
       const row = findRenderRow(messageList, id);
       if (!scrollContainer || !row) return;
+      pendingInitialScrollRestoreRef.current = null;
       shouldAutoScrollRef.current = false;
       setIsScrolledToBottom(false);
       const scrollRect = scrollContainer.getBoundingClientRect();
@@ -3329,6 +3369,8 @@ export const MessageList = memo(function MessageList({
   const handleScroll = useCallback(() => {
     if (isProgrammaticScrollRef.current) return;
 
+    pendingInitialScrollRestoreRef.current = null;
+
     const content = containerRef.current;
     const container = content?.parentElement;
     if (!content || !container) return;
@@ -3537,6 +3579,16 @@ export const MessageList = memo(function MessageList({
       const newHeight = scrollContainer.scrollHeight;
       const heightChanged = newHeight !== lastHeightRef.current;
 
+      const pendingInitialRestore = pendingInitialScrollRestoreRef.current;
+      if (heightChanged && pendingInitialRestore) {
+        isProgrammaticScrollRef.current = true;
+        restoreRetainedScrollPosition(pendingInitialRestore);
+        requestAnimationFrame(() => {
+          isProgrammaticScrollRef.current = false;
+        });
+        return;
+      }
+
       // Continue an already-active follow through any height change. Growth is
       // the streaming case; a *shrink* is turn completion collapsing the
       // bounded thinking preview and recent-activity rows out of the flow,
@@ -3571,6 +3623,7 @@ export const MessageList = memo(function MessageList({
   }, [
     clearFollowUpScrollTimer,
     clearForcedCurrentScrollTimers,
+    restoreRetainedScrollPosition,
     scrollToBottom,
   ]);
 
@@ -3702,43 +3755,23 @@ export const MessageList = memo(function MessageList({
 
     isProgrammaticScrollRef.current = true;
     if (initialScrollRestoreDecision === "follow-bottom") {
+      pendingInitialScrollRestoreRef.current = null;
       scrollToBottom(container);
       shouldAutoScrollRef.current = true;
       setIsScrolledToBottom(true);
       setNewOutputBelowVisible(false);
     } else {
-      let restored = false;
       const anchor = initialScrollSnapshot.anchor;
-      if (anchor) {
-        const row = findRenderRow(content, anchor.id);
-        if (row) {
-          restoreScrollToAnchorRow(container, row, anchor.topOffset);
-          restored = true;
-        } else if (progressiveRevealActive) {
-          isProgrammaticScrollRef.current = false;
-          return;
-        } else {
-          const fallbackRow = findFallbackRenderAnchorRow(
-            content,
-            anchor,
-            displayRenderItems,
-          );
-          if (fallbackRow) {
-            restoreScrollToAnchorRow(container, fallbackRow, anchor.topOffset);
-            restored = true;
-          }
-        }
+      if (
+        anchor &&
+        progressiveRevealActive &&
+        !findRenderRow(content, anchor.id)
+      ) {
+        isProgrammaticScrollRef.current = false;
+        return;
       }
-      if (!restored) {
-        const maxScrollTop = Math.max(
-          0,
-          container.scrollHeight - container.clientHeight,
-        );
-        container.scrollTop = Math.min(
-          initialScrollSnapshot.scrollTop,
-          maxScrollTop,
-        );
-      }
+      pendingInitialScrollRestoreRef.current = initialScrollSnapshot;
+      restoreRetainedScrollPosition(initialScrollSnapshot);
       shouldAutoScrollRef.current = false;
       setIsScrolledToBottom(false);
       reportFollowingBottom(false);
@@ -3759,10 +3792,10 @@ export const MessageList = memo(function MessageList({
   }, [
     initialScrollSnapshot,
     initialScrollRestoreDecision,
-    displayRenderItems,
     mountedTimelineRowCount,
     publishScrollSnapshot,
     progressiveRevealActive,
+    restoreRetainedScrollPosition,
     scrollToBottom,
     updateScrollPositionTimestamp,
     reportFollowingBottom,
@@ -3787,6 +3820,7 @@ export const MessageList = memo(function MessageList({
   ]);
 
   const handleFollowClick = useCallback(() => {
+    pendingInitialScrollRestoreRef.current = null;
     scrollToCurrent();
     publishScrollSnapshot();
     onFollowCurrent?.();

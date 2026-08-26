@@ -267,6 +267,14 @@ split-screen viewing advances both independently. Exact DOM pixel geometry
 remains an in-tab hint; the content anchor and follow state survive reload.
 Cross-device/server sharing is not yet part of this contract.
 
+The retained anchor remains authoritative while the initial transcript is
+still growing asynchronously. Before the reader takes control, every observed
+height change reapplies that anchor so an early browser clamp cannot strand the
+viewport above the saved content. A user scroll or explicit Follow action ends
+that retry and transfers ownership to the reader. Because the high-water mark
+lives in site storage, a same-origin server process restart followed by reload
+restores it without depending on server memory or route-cache state.
+
 Which mode *engages* the restore is policy (`sessionScrollBehavior.ts`;
 mode decisions in
 [`docs/tactical/047-session-scroll-memory-policy.md`](../docs/tactical/047-session-scroll-memory-policy.md)):
@@ -314,16 +322,15 @@ Off).
    hydrated yet, when the anchor message was deleted server-side (edit-turn
    truncation, rewritten history), or when the row id belonged to
    restructured agent content.
-3. **The restore is one-shot and races progressive hydration.** The restore
-   effect fires at the first non-empty `displayRenderItems` and clears
-   `isInitialLoadRef`; if the anchor is not mounted yet, the pixel fallback
-   runs and nothing re-anchors when later chunks mount. On the capture side,
-   snapshots can be published mid-hydration with transient geometry. The
-   2026-07-02 fixes (`Ignore top anchored session scroll snapshots`, `Keep
-   cached session restores at the tail`) discard the worst captures at
-   restore time, but the mid-hydration capture window and the
-   restore-before-anchor-mounts window both remain. This combination is the
-   likeliest mechanism for the intermittent scroll resets.
+3. **One-shot restore race — fixed 2026-08-26.** The progressive-hydration
+   wait already delayed restore until the anchor row mounted, but that mounted
+   row could still grow after the first restore as markdown and transcript
+   content finished rendering. Chrome clamped the early target to the short
+   document's current maximum (often zero), then left the viewport there as
+   the document grew. The retained anchor now remains pending through
+   `ResizeObserver` height changes until a user scroll or explicit Follow takes
+   ownership. A focused 500-to-5500-pixel growth test and browser coverage for
+   sidebar A -> B -> A, reload, and same-origin server restart guard the fix.
 4. **The delta merge is union-only, so rewritten histories diverge in
    content, not just position.** On cursor miss the server returns the full
    list (`sliceAfterMessageIdWithMatch` with `found: false`) without
@@ -373,6 +380,10 @@ settled content.
   row, then nearest timestamped row. Raw pixel `scrollTop` remains only as the
   final fallback for a transcript with no surviving reference points, and
   should fire the slice-1 diagnostic once diagnostics land.
+- Keep the resolved restore pending while its mounted content grows. This
+  landed on 2026-08-26: transcript height changes reapply the retained anchor
+  until the reader scrolls or activates Follow, covering late markdown/render
+  growth after both warm navigation and cold reload.
 
 **Slice 3 — truth reconciliation.**
 

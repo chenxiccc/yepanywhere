@@ -17,6 +17,7 @@ const repoRoot = join(__dirname, "..", "..", "..", "..");
 const serverRoot = join(repoRoot, "packages", "server");
 
 export interface MockClaudeSession {
+  assistantContent?: string;
   content: string;
   projectPath: string;
   sessionId: string;
@@ -51,7 +52,9 @@ export interface YaServerProcess {
     stdout: string[];
   };
   port: number;
+  portFile: string;
   process: ChildProcess;
+  restartEnv: NodeJS.ProcessEnv;
   tempDir: string;
   wsUrl: string;
 }
@@ -117,15 +120,32 @@ function writeMockClaudeSession(
   const encodedPath = fixture.projectPath.replace(/\//g, "-");
   const sessionDir = join(claudeSessionsDir, hostname(), encodedPath);
   mkdirSync(sessionDir, { recursive: true });
-  writeFileSync(
-    join(sessionDir, `${fixture.sessionId}.jsonl`),
-    `${JSON.stringify({
+  const messages = [
+    {
       type: "user",
       cwd: fixture.projectPath,
       message: { role: "user", content: fixture.content },
       timestamp: "2026-01-01T00:00:00.000Z",
       uuid: "fixture-user-message",
-    })}\n`,
+    },
+    ...(fixture.assistantContent
+      ? [
+          {
+            type: "assistant",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: fixture.assistantContent }],
+            },
+            timestamp: "2026-01-01T00:00:01.000Z",
+            uuid: "fixture-assistant-message",
+            parentUuid: "fixture-user-message",
+          },
+        ]
+      : []),
+  ];
+  writeFileSync(
+    join(sessionDir, `${fixture.sessionId}.jsonl`),
+    `${messages.map((message) => JSON.stringify(message)).join("\n")}\n`,
   );
 }
 
@@ -230,7 +250,9 @@ export async function startYaServerProcess(
     label: options.label,
     output,
     port: 0,
+    portFile,
     process: child,
+    restartEnv: childEnv,
     tempDir,
     wsUrl: "",
   };
@@ -249,6 +271,84 @@ export async function startYaServerProcess(
   } catch (error) {
     stopYaServerProcess(pending);
     throw formatStartFailure(options.label, error, output);
+  }
+}
+
+async function terminateYaServerProcess(
+  server: YaServerProcess,
+): Promise<void> {
+  const pid = server.process.pid;
+  if (!pid || server.process.exitCode !== null) return;
+
+  const exited = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${server.label} did not stop after SIGTERM`));
+    }, 10_000);
+    server.process.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+      throw error;
+    }
+    return;
+  }
+  await exited;
+}
+
+export async function restartYaServerProcess(
+  server: YaServerProcess,
+): Promise<YaServerProcess> {
+  await terminateYaServerProcess(server);
+  if (existsSync(server.portFile)) {
+    rmSync(server.portFile);
+  }
+
+  const childEnv: NodeJS.ProcessEnv = {
+    ...server.restartEnv,
+    PORT: String(server.port),
+    PORT_FILE: server.portFile,
+  };
+  const child = spawn(
+    "pnpm",
+    ["exec", "tsx", "--conditions", "source", "src/index.ts"],
+    {
+      cwd: serverRoot,
+      env: childEnv,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    },
+  );
+  const output = { stderr: [] as string[], stdout: [] as string[] };
+  captureOutput(child.stdout, output.stdout);
+  captureOutput(child.stderr, output.stderr);
+  const pending = {
+    ...server,
+    output,
+    process: child,
+    restartEnv: childEnv,
+  };
+
+  try {
+    const port = await waitForPortFile(
+      server.portFile,
+      `${server.label} restart`,
+    );
+    if (port !== server.port) {
+      throw new Error(
+        `${server.label} restarted on port ${port}, expected ${server.port}`,
+      );
+    }
+    await waitForHealth(server.baseUrl, `${server.label} restart`);
+    child.unref();
+    return pending;
+  } catch (error) {
+    stopYaServerProcess(pending);
+    throw formatStartFailure(`${server.label} restart`, error, output);
   }
 }
 

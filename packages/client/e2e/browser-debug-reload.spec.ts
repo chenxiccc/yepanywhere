@@ -6,6 +6,7 @@ import { e2ePaths, expect, test } from "./fixtures.js";
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
 const sessionId = "transcript-specimen-001";
+const otherSessionId = "user-turn-presentation-001";
 
 async function dismissOnboardingIfVisible(page: Page) {
   const skip = page.locator(".onboarding-skip-all");
@@ -25,6 +26,17 @@ async function captureMenu(page: Page, testInfo: TestInfo, name: string) {
     path,
     contentType: "image/png",
   });
+}
+
+async function clickSidebarSession(page: Page, sessionPath: string) {
+  const sidebar = page.locator(".sidebar");
+  if (!(await sidebar.isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: "Open sidebar" }).click();
+    await expect(sidebar).toBeVisible();
+  }
+  const sessionLink = sidebar.locator(`a[href="${sessionPath}"]`).first();
+  await expect(sessionLink).toBeVisible();
+  await sessionLink.click();
 }
 
 for (const viewport of [
@@ -59,6 +71,23 @@ for (const viewport of [
     const expiryBeforeReload = (
       await activeControl.getAttribute("aria-label")
     )?.split("\n")[0];
+
+    const otherSessionPath = `/projects/${projectId}/sessions/${otherSessionId}`;
+    await clickSidebarSession(page, otherSessionPath);
+    await expect(page).toHaveURL(`${baseURL}${otherSessionPath}`);
+    await expect(activeControl).toBeVisible();
+    expect(
+      (await activeControl.getAttribute("aria-label"))?.split("\n")[0],
+    ).toBe(expiryBeforeReload);
+
+    const originalSessionPath = `/projects/${projectId}/sessions/${sessionId}`;
+    await clickSidebarSession(page, originalSessionPath);
+    await expect(page).toHaveURL(`${baseURL}${originalSessionPath}`);
+    await expect(activeControl).toBeVisible();
+    expect(
+      (await activeControl.getAttribute("aria-label"))?.split("\n")[0],
+    ).toBe(expiryBeforeReload);
+
     await activeControl.click({ button: "right" });
 
     await expect(

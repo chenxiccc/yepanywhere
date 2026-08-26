@@ -175,6 +175,42 @@ export default async function globalSetup() {
   );
   console.log(`[E2E] Created mock session at ${sessionFile}`);
 
+  const scrollMemorySessionFile = join(
+    mockSessionDir,
+    "scroll-memory-001.jsonl",
+  );
+  const scrollMemoryResponse = Array.from(
+    { length: 180 },
+    (_, index) => `Scroll memory response paragraph ${index + 1}.`,
+  ).join("\n\n");
+  writeFileSync(
+    scrollMemorySessionFile,
+    [
+      {
+        type: "user",
+        cwd: mockProjectPath,
+        message: { role: "user", content: "Scroll memory fixture" },
+        timestamp: "2026-01-01T00:00:00.000Z",
+        uuid: "scroll-memory-user-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: scrollMemoryResponse }],
+        },
+        timestamp: "2026-01-01T00:00:01.000Z",
+        uuid: "scroll-memory-assistant-1",
+        parentUuid: "scroll-memory-user-1",
+      },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n"),
+  );
+  console.log(
+    `[E2E] Created scroll memory session at ${scrollMemorySessionFile}`,
+  );
+
   const providerChildSessionId = "provider-child-layout-001";
   writeFileSync(
     join(mockSessionDir, `${providerChildSessionId}.jsonl`),

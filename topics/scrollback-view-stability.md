@@ -133,7 +133,9 @@ Consequences:
   *acted-on element* (the Σ fixed-font toggle) — correct for that one control.
 - **`ResizeObserver`** (MessageList.tsx) re-pins to bottom on every height
   increase while `shouldAutoScrollRef` is true. During streaming this fires at
-  the flush cadence (~200ms).
+  the flush cadence (~200ms). During initial parked restoration, it instead
+  reapplies the pending retained anchor through asynchronous content growth;
+  the first user scroll or explicit Follow action ends that retry.
 - **Near-bottom re-engage** — historical behavior let size/resize paths
   re-arm `shouldAutoScrollRef` whenever `isNearScrollBottom` held, i.e. within
   `BOTTOM_FOLLOW_VIEWPORT_FRACTION` (0.45) of the viewport, capped at
@@ -172,6 +174,10 @@ Consequences:
   intent.
 - The explicit **Follow** action commits live-tail return state before a route
   switch or reload can unmount the session view.
+- Initial parked restore keeps its retained anchor authoritative through late
+  transcript growth. Browser clamping against incomplete layout must not turn
+  a saved position into the beginning of the transcript; user scroll or
+  explicit Follow transfers ownership and cancels further restore retries.
 - The collapse/tidy trigger is a UX choice; jitter-safety is a separate,
   always-required property.
 - Committing in-session search (Enter on the highlighted match, or a click
