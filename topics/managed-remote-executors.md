@@ -14,8 +14,12 @@ remote runner, prepare managed remote workspaces, run Codex remotely, or fetch
 remote session heads into controller-owned tracking refs. Nothing in this topic
 describes those capabilities as implemented.
 
+The staged implementation and research gates are tracked in
+[`docs/tactical/119-managed-ssh-executor-baseline.md`](../docs/tactical/119-managed-ssh-executor-baseline.md).
+
 Related:
 [SSH Remote Executors](../docs/project/remote-executors.md),
+[managed SSH executor tactical](../docs/tactical/119-managed-ssh-executor-baseline.md),
 [managed runner execution targets](managed-runner-execution-targets.md),
 [deferred Machine Control tactical](../docs/tactical/118-managed-runner-mvp.md),
 [reload-safe provider runtimes](reload-safe-provider-runtimes.md),

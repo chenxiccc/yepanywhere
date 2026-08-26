@@ -3,7 +3,7 @@
 Topic: managed-runner-execution-targets
 
 Status: deferred. Do not start this Machine Control integration until the
-manual-SSH baseline in
+manual-SSH baseline in [tactical 119](119-managed-ssh-executor-baseline.md) and
 [`topics/managed-remote-executors.md`](../../topics/managed-remote-executors.md)
 has proven its injected runner, real Codex session, exact committed workspace,
 controller-side Git fetch, and cleanup contracts. No route, capability, Machine

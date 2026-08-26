@@ -19,8 +19,10 @@ as implemented.
 The Machine Control implementation plan in
 [`docs/tactical/118-managed-runner-mvp.md`](../docs/tactical/118-managed-runner-mvp.md)
 is deferred until the manual-SSH runner, Codex execution, managed Git workspace,
-and controller fetch loop are working. Machine Control then extends that
-execution substrate with inventory, claims, readiness, and VM lifecycle.
+and controller fetch loop tracked by
+[`docs/tactical/119-managed-ssh-executor-baseline.md`](../docs/tactical/119-managed-ssh-executor-baseline.md)
+are working. Machine Control then extends that execution substrate with
+inventory, claims, readiness, and VM lifecycle.
 
 Related:
 [managed remote executors](managed-remote-executors.md),

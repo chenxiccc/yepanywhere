@@ -110,7 +110,8 @@ section below for what would have to change at higher fan-out.
   — default-off manual-SSH baseline for controller-owned remote sessions:
   injected provider-neutral runners, controller-prepared Git workspaces,
   Codex-first validation, and fetched incoming heads without target upstream
-  credentials.
+  credentials; staged implementation is tracked in
+  [`docs/tactical/119-managed-ssh-executor-baseline.md`](docs/tactical/119-managed-ssh-executor-baseline.md).
 - [`topics/managed-runner-execution-targets.md`](topics/managed-runner-execution-targets.md)
   — broader target-provider proposal extending managed remote execution with
   Machine Control discovery, claims, VM lifecycle, and location-correct project
