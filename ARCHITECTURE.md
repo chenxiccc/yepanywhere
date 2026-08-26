@@ -106,6 +106,16 @@ section below for what would have to change at higher fan-out.
   — vision for explicit per-source client runtimes so local/direct/relay YA
   servers can own their API transport, activity stream, summary stores, and
   session-detail services without hidden current-source globals.
+- [`topics/managed-remote-executors.md`](topics/managed-remote-executors.md)
+  — default-off manual-SSH baseline for controller-owned remote sessions:
+  injected provider-neutral runners, controller-prepared Git workspaces,
+  Codex-first validation, and fetched incoming heads without target upstream
+  credentials.
+- [`topics/managed-runner-execution-targets.md`](topics/managed-runner-execution-targets.md)
+  — broader target-provider proposal extending managed remote execution with
+  Machine Control discovery, claims, VM lifecycle, and location-correct project
+  UI boundaries; its implementation tactical is deferred until the manual-SSH
+  baseline works.
 - [`topics/federated-super-sessions.md`](topics/federated-super-sessions.md)
   — proposal for one canonical, single-writer YA session that can transfer a
   provider-specific portable bundle and active ownership between trusted YA

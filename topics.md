@@ -351,3 +351,9 @@
   and sidebar labels, with deterministic collision reassignment.
 - server-side-settings - Server-owned policy, cross-client coherence, demand
   leases, warm retention, and environment fallback or pinning.
+- managed-runner-execution-targets - Default-off controller-owned sessions on
+  injected target runners, exact committed worktrees, and synchronized incoming
+  Git heads.
+- managed-remote-executors - Manual-SSH-first managed execution with an
+  injected provider-neutral runner, controller-prepared Git workspaces,
+  Codex-first proof, and no target upstream credentials.

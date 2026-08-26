@@ -62,6 +62,12 @@
 - Session summary fidelity (bounded list projections, complete-index isolation,
   and partial-observation nondowngrade rules)
 - Client source runtime topology (per-YA-server runtime boundary above summary/query/session-detail stores)
+- Managed remote executors (default-off manual SSH baseline with injected
+  provider-neutral runners, YA-managed Git workspaces, Codex-first validation,
+  and controller-fetched incoming heads)
+- Managed runner execution targets (default-off controller-owned sessions on
+  injected subordinate machines or disposable VMs, extending the managed SSH
+  baseline with Machine Control discovery and lifecycle)
 - Cross-host delegation (directed grants let one YA server create and supervise
   a separate native worker session on another YA host)
 - Claude cross-session messaging compared with YA delegation (live Claude

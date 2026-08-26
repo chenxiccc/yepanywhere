@@ -353,6 +353,13 @@ creation means full server-account authority.
   future interactive “locked to this session” share would require.
 - [`relay-client-mux.md`](relay-client-mux.md) keeps each host's authentication
   and encryption independent while sharing a physical relay connection.
+- [`managed-runner-execution-targets.md`](managed-runner-execution-targets.md)
+  records the default-off controller/subordinate trust shape, target-side
+  runner lease, credential boundaries, and future restricted collaborator
+  requirements.
+- [`managed-remote-executors.md`](managed-remote-executors.md) defines the
+  manual-SSH-first subordinate runner, controller-mediated Git transfer,
+  no-forwarded-credential baseline, and target-account trust boundary.
 - [`cross-host-delegation.md`](cross-host-delegation.md) and
   [`federated-super-sessions.md`](federated-super-sessions.md) record the
   proposed server-to-server trust and orchestration shapes.

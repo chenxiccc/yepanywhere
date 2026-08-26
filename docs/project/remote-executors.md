@@ -14,6 +14,15 @@ distinct from the proposed
 canonical single-writer session and its provider bundle move between equal YA
 peers so the target server resumes the provider locally.
 
+The proposed [managed remote executor](../../topics/managed-remote-executors.md)
+is the successor direction for new controller-owned remote work. It keeps
+manual SSH as the least-common-denominator target transport, but injects a
+provider-neutral runner, creates an exact remote Git workspace without a
+matching checkout/path requirement, validates Codex first, and fetches remote
+commits back without giving the target upstream credentials. This document
+continues to describe the released Claude-family behavior; no proposal
+retroactively changes its session metadata or resume contract.
+
 ## Assumptions
 
 1. User has SSH config aliases set up (`~/.ssh/config`)

@@ -15,6 +15,8 @@ presentation remain intentionally open.
 
 Related:
 [client source runtime topology](client-source-runtime-topology.md),
+[managed remote executors](managed-remote-executors.md),
+[managed runner execution targets](managed-runner-execution-targets.md),
 [relay client mux](relay-client-mux.md),
 [core service API](core-service-api.md),
 [ask-session](ask-session.md),
@@ -406,6 +408,18 @@ form of those delegation records, not a second ledger.
 **Relay monitor and mux.** The browser multi-host work proves independent
 relay-backed sources can coexist and supplies the initial manual-host product
 surface. It is not peer membership or delegation authorization.
+
+**Managed remote executors.** A controller-owned YA session may place its
+provider and exact project workspace on an injected subordinate runner reached
+through manually configured SSH. The controller prepares and retrieves Git
+state; the target is execution substrate, not an independent YA peer. This is
+the baseline before structured target lifecycle or delegation.
+
+**Managed runner execution targets.** Machine Control may later add discovery,
+readiness, claims, VM lifecycle, and other runner carriers to that baseline.
+The controller still retains the YA session id, catalog, policy, and future
+participant grants. Neither form creates the target-owned worker session or
+directional peer grant defined by delegation.
 
 **Remote Executors.** SSH Remote Executors keep one YA server authoritative,
 are Claude-specific, and assume an SSH/rsync environment. Cross-host delegation
