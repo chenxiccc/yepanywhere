@@ -1709,6 +1709,62 @@ describe("MessageInput", () => {
     expect(onRecallLastSubmission).toHaveBeenCalledTimes(2);
   });
 
+  it("cancels correction recall with Escape before stopping the turn", () => {
+    const onStop = vi.fn();
+    const onCancelCorrection = vi.fn();
+    function CorrectionRecallHarness() {
+      const [correctionActive, setCorrectionActive] = useState(false);
+      const draftControlsRef = useRef<
+        | Parameters<
+            NonNullable<
+              ComponentProps<typeof MessageInput>["onDraftControlsReady"]
+            >
+          >[0]
+        | null
+      >(null);
+
+      return (
+        <MessageInput
+          onSend={vi.fn()}
+          draftKey="correction-recall-test"
+          supportsPermissionMode={false}
+          supportsThinkingToggle={false}
+          correctionActive={correctionActive}
+          onCancelCorrection={() => {
+            onCancelCorrection();
+            setCorrectionActive(false);
+            draftControlsRef.current?.clearDraft();
+          }}
+          onDraftControlsReady={(controls) => {
+            draftControlsRef.current = controls;
+          }}
+          onRecallLastSubmission={() => {
+            const controls = draftControlsRef.current;
+            if (!controls) return false;
+            controls.setDraft("previous submission");
+            setCorrectionActive(true);
+            return true;
+          }}
+          isRunning
+          isThinking
+          onStop={onStop}
+        />
+      );
+    }
+
+    render(<CorrectionRecallHarness />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+
+    fireEvent.keyDown(textarea, { key: "ArrowUp" });
+    expect(textarea.value).toBe("previous submission");
+
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(onCancelCorrection).toHaveBeenCalledOnce();
+    expect(textarea.value).toBe("");
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
   describe("composer recall drawer", () => {
     const turnRecall = {
       entries: [

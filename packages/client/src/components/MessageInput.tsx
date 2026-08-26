@@ -2506,6 +2506,21 @@ export function MessageInput({
       !e.metaKey &&
       !e.shiftKey &&
       !e.altKey &&
+      correctionActive &&
+      onCancelCorrection
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancelCorrection();
+      return;
+    }
+
+    if (
+      e.key === "Escape" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey &&
       isRunning &&
       isThinking &&
       onStop

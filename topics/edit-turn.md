@@ -102,3 +102,8 @@ surface.
 If an incremental implementation keeps composer-restored edits for a while, the
 same escape-hatch invariant still applies: edit mode persists until explicit
 submit or cancel, and empty text is still edit mode rather than a fresh draft.
+Plain `Esc` invokes the same cancel action as the visible control: it ends
+correction mode and clears the restored draft. For plain-Up recall, which only
+starts from an empty composer, that restores the exact pre-recall state.
+Correction cancellation takes precedence over the running-turn stop shortcut;
+open composer menus and active speech capture may consume `Esc` first.
