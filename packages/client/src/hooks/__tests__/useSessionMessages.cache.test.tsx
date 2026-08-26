@@ -1944,14 +1944,21 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(second.result.current.loading).toBe(false));
   });
 
-  it("restores a device cursor without a warm transcript cache", async () => {
+  it("restores a remembered place without a warm transcript cache", async () => {
     apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
     const reference = {
       sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
       projectId: "proj-1",
       sessionId: "sess-1",
     };
-    const retainedScroll = deviceScrollSnapshot("turn-2", 200, true);
+    const retainedScroll = {
+      ...deviceScrollSnapshot("turn-2", 200),
+      scrollTop: 240,
+      anchor: { id: "answer-mid-turn-2", topOffset: 10, timestampMs: 250 },
+      completedTurn: undefined,
+      seenTurn: { id: "turn-2", timestampMs: 200, activityIndex: 1 },
+      updatedAtMs: 300,
+    };
     writeSessionScrollMemory(reference, retainedScroll);
 
     const rendered = renderHook(() =>
@@ -2001,6 +2008,56 @@ describe("useSessionMessages cache", () => {
         defaultStoreEntryKey(),
       ),
     ).toEqual(second);
+  });
+
+  it("does not persist a viewport without a seen-turn cursor", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+    const reference = {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId: "proj-1",
+      sessionId: "sess-1",
+    };
+    const rememberedPlace = {
+      ...deviceScrollSnapshot("turn-1", 100),
+      scrollTop: 240,
+      anchor: { id: "answer-mid-turn-1", topOffset: 10, timestampMs: 150 },
+      completedTurn: undefined,
+      updatedAtMs: 300,
+    };
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      rendered.result.current.updateRouteScrollSnapshot(rememberedPlace);
+    });
+
+    expect(readSessionScrollMemory(reference)).toBeNull();
+  });
+
+  it("persists an active seen turn before it completes", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+    const reference = {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId: "proj-1",
+      sessionId: "sess-1",
+    };
+    const activeTurn = {
+      ...deviceScrollSnapshot("turn-2", 200),
+      completedTurn: undefined,
+      seenTurn: { id: "turn-2", timestampMs: 200, activityIndex: 1 },
+    };
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      rendered.result.current.updateRouteScrollSnapshot(activeTurn);
+    });
+
+    expect(readSessionScrollMemory(reference)).toEqual(activeTurn);
   });
 
   it("does not advance the device cursor from a hidden tab", async () => {

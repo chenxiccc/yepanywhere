@@ -21,13 +21,15 @@ differs between them:
 - **Following the tail** — pinned at/near the bottom, watching live output.
   `shouldAutoScrollRef` is true; `isScrolledToBottom` is true. Here the view
   *should* track new content: appended rows and the streaming current turn may
-  freely change height, and the view re-pins to the bottom. When a whole turn
-  completes in a visible tab, this regime also advances that session's
-  device-specific cursor and records that it was following.
+  freely change height, and the view re-pins to the bottom. Settled visible
+  positions advance that session's device-specific turn/activity high-water
+  mark and record that it was following; an active turn counts before
+  completion, and whole-turn completion also publishes without a scroll event.
 - **Scrolled back** — the reader has scrolled up to read or review earlier
   content. `shouldAutoScrollRef` is false. Here the view *must hold still*: no
   streaming growth, expand/collapse, hydration, late markdown/highlight, or
-  background heuristic may move the content the reader is looking at.
+  background heuristic may move the content the reader is looking at. This
+  transient reading position must not lower the durable resume high-water mark.
 
 The boundary between regimes is itself a policy decision (see "Near-bottom
 re-engage" below) and is the source of the worst current bug.

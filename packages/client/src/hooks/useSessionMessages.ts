@@ -1353,7 +1353,10 @@ export function useSessionMessages(
         return;
       }
       let retainedSnapshot = snapshot;
-      if (snapshot.completedTurn && isDocumentVisibleForScrollMemory()) {
+      if (
+        (snapshot.seenTurn || snapshot.completedTurn) &&
+        isDocumentVisibleForScrollMemory()
+      ) {
         deviceScrollCandidateRef.current = {
           key: scrollMemoryStorageKey,
           snapshot,

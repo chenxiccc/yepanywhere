@@ -67,11 +67,33 @@ function parseScrollSnapshot(raw: string): SessionRouteScrollSnapshot | null {
     !isFiniteNumber(snapshot.scrollHeight) ||
     !isFiniteNumber(snapshot.clientHeight) ||
     !isFiniteNumber(snapshot.updatedAtMs) ||
-    typeof snapshot.following !== "boolean" ||
-    !snapshot.completedTurn ||
-    typeof snapshot.completedTurn.id !== "string" ||
-    snapshot.completedTurn.id.length === 0 ||
-    !isOptionalFiniteNumber(snapshot.completedTurn.timestampMs)
+    typeof snapshot.following !== "boolean"
+  ) {
+    return null;
+  }
+
+  const completedTurn = snapshot.completedTurn;
+  if (
+    completedTurn !== undefined &&
+    (typeof completedTurn.id !== "string" ||
+      completedTurn.id.length === 0 ||
+      !isOptionalFiniteNumber(completedTurn.timestampMs))
+  ) {
+    return null;
+  }
+
+  const seenTurn = snapshot.seenTurn;
+  if (
+    seenTurn !== undefined &&
+    (!seenTurn ||
+      typeof seenTurn !== "object" ||
+      typeof seenTurn.id !== "string" ||
+      seenTurn.id.length === 0 ||
+      !isOptionalFiniteNumber(seenTurn.timestampMs) ||
+      !isOptionalFiniteNumber(seenTurn.activityIndex) ||
+      (seenTurn.activityIndex !== undefined &&
+        (!Number.isInteger(seenTurn.activityIndex) ||
+          seenTurn.activityIndex < 0)))
   ) {
     return null;
   }
@@ -108,12 +130,16 @@ export function readSessionScrollMemory(
   }
 }
 
-function compareCompletedTurns(
+function getSeenTurn(snapshot: SessionRouteScrollSnapshot) {
+  return snapshot.seenTurn ?? snapshot.completedTurn;
+}
+
+function compareSeenTurns(
   left: SessionRouteScrollSnapshot,
   right: SessionRouteScrollSnapshot,
 ): number {
-  const leftTurn = left.completedTurn;
-  const rightTurn = right.completedTurn;
+  const leftTurn = getSeenTurn(left);
+  const rightTurn = getSeenTurn(right);
   if (!leftTurn) return rightTurn ? -1 : 0;
   if (!rightTurn) return 1;
   if (leftTurn.id === rightTurn.id) return 0;
@@ -127,30 +153,76 @@ function compareCompletedTurns(
   ) {
     return leftTimestamp - rightTimestamp;
   }
-  if (left.updatedAtMs !== right.updatedAtMs) {
-    return left.updatedAtMs - right.updatedAtMs;
-  }
   return leftTurn.id.localeCompare(rightTurn.id);
 }
 
-/**
- * Select the device cursor that has reached the furthest completed turn.
- * Following is a tie-breaker, never an exclusive claim on the session.
- */
+function comparePositionsWithinTurn(
+  left: SessionRouteScrollSnapshot,
+  right: SessionRouteScrollSnapshot,
+): number {
+  const turnId = getSeenTurn(left)?.id;
+  if (!turnId || getSeenTurn(right)?.id !== turnId) {
+    return 0;
+  }
+
+  const leftCompleted = left.completedTurn?.id === turnId;
+  const rightCompleted = right.completedTurn?.id === turnId;
+  if (leftCompleted !== rightCompleted) {
+    return leftCompleted ? 1 : -1;
+  }
+
+  const leftIndex = left.seenTurn?.activityIndex;
+  const rightIndex = right.seenTurn?.activityIndex;
+  if (
+    leftIndex !== undefined &&
+    rightIndex !== undefined &&
+    leftIndex !== rightIndex
+  ) {
+    return leftIndex - rightIndex;
+  }
+
+  const leftAnchorTimestamp = left.anchor?.timestampMs;
+  const rightAnchorTimestamp = right.anchor?.timestampMs;
+  if (
+    leftAnchorTimestamp !== undefined &&
+    rightAnchorTimestamp !== undefined &&
+    leftAnchorTimestamp !== rightAnchorTimestamp
+  ) {
+    return leftAnchorTimestamp - rightAnchorTimestamp;
+  }
+
+  const leftTopOffset = left.anchor?.topOffset;
+  const rightTopOffset = right.anchor?.topOffset;
+  if (
+    left.anchor?.id === right.anchor?.id &&
+    leftTopOffset !== undefined &&
+    rightTopOffset !== undefined &&
+    leftTopOffset !== rightTopOffset
+  ) {
+    return rightTopOffset - leftTopOffset;
+  }
+  if (left.following !== right.following) {
+    return left.following ? 1 : -1;
+  }
+  return 0;
+}
+
+/** Select the furthest turn/activity reached by either visible tab. */
 export function selectFurthestSessionScrollMemory(
   left: SessionRouteScrollSnapshot | null | undefined,
   right: SessionRouteScrollSnapshot | null | undefined,
 ): SessionRouteScrollSnapshot | undefined {
   if (!left) return right ?? undefined;
   if (!right) return left;
-  const turnOrder = compareCompletedTurns(left, right);
+  const turnOrder = compareSeenTurns(left, right);
   if (turnOrder !== 0) {
     return turnOrder > 0 ? left : right;
   }
-  if (left.following !== right.following) {
-    return left.following ? left : right;
+  const positionOrder = comparePositionsWithinTurn(left, right);
+  if (positionOrder !== 0) {
+    return positionOrder > 0 ? left : right;
   }
-  return left.updatedAtMs >= right.updatedAtMs ? left : right;
+  return left;
 }
 
 export interface WriteSessionScrollMemoryResult {
@@ -158,15 +230,12 @@ export interface WriteSessionScrollMemoryResult {
   written: boolean;
 }
 
-/**
- * Advance one session's device cursor. Older observations and repeated
- * same-turn state are reads; a parked-to-following upgrade writes once.
- */
+/** Advance one session's device-wide, cross-tab seen-position high-water mark. */
 export function writeSessionScrollMemory(
   reference: SessionScrollMemoryReference,
   candidate: SessionRouteScrollSnapshot,
 ): WriteSessionScrollMemoryResult | null {
-  if (!candidate.completedTurn || typeof candidate.following !== "boolean") {
+  if (typeof candidate.following !== "boolean" || !getSeenTurn(candidate)) {
     return null;
   }
   const storage = getStorage();
@@ -178,16 +247,13 @@ export function writeSessionScrollMemory(
     const key = createSessionScrollMemoryStorageKey(reference);
     const raw = storage.getItem(key);
     const stored = raw === null ? null : parseScrollSnapshot(raw);
-    if (stored) {
-      const turnOrder = compareCompletedTurns(candidate, stored);
-      const upgradesSameTurnToFollowing =
-        turnOrder === 0 && candidate.following && !stored.following;
-      if (turnOrder < 0 || (turnOrder === 0 && !upgradesSameTurnToFollowing)) {
-        return { snapshot: stored, written: false };
-      }
+    const selected =
+      selectFurthestSessionScrollMemory(stored, candidate) ?? candidate;
+    if (selected === stored) {
+      return { snapshot: stored, written: false };
     }
-    storage.setItem(key, JSON.stringify(candidate));
-    return { snapshot: candidate, written: true };
+    storage.setItem(key, JSON.stringify(selected));
+    return { snapshot: selected, written: true };
   } catch {
     return { snapshot: candidate, written: false };
   }

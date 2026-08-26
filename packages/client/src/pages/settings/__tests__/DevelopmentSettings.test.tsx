@@ -103,7 +103,7 @@ vi.mock("../../../i18n", () => ({
             "Reopen at latest output",
           developmentSessionScrollMemoryModeRememberPlace: "Remember place",
           developmentSessionScrollMemoryModeRememberPlaceDescription:
-            "Reopen at last viewed row",
+            "Reopen at furthest seen position",
           developmentSessionScrollMemoryModeManualFollow: "Manual follow",
           developmentSessionScrollMemoryModeManualFollowDescription:
             "Manual follow experiment",
@@ -214,7 +214,7 @@ describe("DevelopmentSettings", () => {
     expect(localStorage.getItem(UI_KEYS.sessionScrollBehavior)).toBe(
       "remember-place",
     );
-    expect(screen.getByText("Reopen at last viewed row")).toBeTruthy();
+    expect(screen.getByText("Reopen at furthest seen position")).toBeTruthy();
   });
 
   it("finds session scroll memory from remembered behavior", () => {

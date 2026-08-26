@@ -25,6 +25,12 @@ export interface SessionRouteScrollSnapshot {
     id: string;
     timestampMs?: number;
   };
+  /** Furthest transcript position visibly reached by this viewport. */
+  seenTurn?: {
+    id: string;
+    timestampMs?: number;
+    activityIndex?: number;
+  };
   following?: boolean;
   updatedAtMs: number;
 }

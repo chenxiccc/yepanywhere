@@ -11,10 +11,11 @@ policy modes serve.
 
 ## Motivation
 
-Session detail scroll state has two lifetimes: exact DOM geometry is an in-tab
-warm-restore hint, while completed-turn progress is a device-specific cursor
-persisted in site storage. Before these slices, both concepts were mixed into
-the session detail reducer state, which made ownership hard to reason about:
+Session detail scroll state has two lifetimes: exact DOM pixel geometry is an
+in-tab warm-restore hint, while the furthest seen turn/activity anchor and
+follow state are a device-specific high-water mark persisted in site storage.
+Before these slices, both concepts were mixed into the session detail reducer
+state, which made ownership hard to reason about:
 
 - reducer state carries transcript/session data and scroll metadata together;
 - `MessageList` owns the actual DOM geometry and follow-tail mechanics;
@@ -29,15 +30,17 @@ provider-like behavior.
 
 - Browser-local policy lives in `localStorage` under `UI_KEYS`, alongside the
   existing performance settings.
-- Each source/project/session has a separate site-storage cursor. Tabs may
-  update it concurrently; there is no lease or exclusive writer. A write only
-  advances to a newly observed completed turn, apart from one same-turn upgrade
-  from parked to following. Two visible sessions do not interfere and two tabs
-  on one session converge on the furthest turn.
-- Each cursor records whether its tab was following when that completed turn
-  became visible. `live-tail` uses that bit on restore; `remember-place`
-  restores its concrete anchor. Both are device-specific cursors, not
-  server-shared read state.
+- Each source/project/session has a separate site-storage high-water mark. Tabs
+  may update it concurrently; there is no lease or exclusive writer. The
+  furthest turn seen by any visible tab wins, including an active turn that has
+  not completed. Within that turn, expanded view advances to the furthest seen
+  activity and content offset. Scrolling upward never lowers either frontier.
+  Two visible sessions do not interfere and two tabs on one session converge
+  on the same maximum.
+- Each snapshot records whether its winning tab was following. `live-tail`
+  uses that bit on restore; `remember-place` restores the high-water anchor.
+  Conversation View needs the winning turn; expanded view retains the specific
+  activity location. Both are device-specific, not server-shared read state.
 - Per-session scroll memory belongs to the session detail cache entry, not the
   reducer-owned `SessionDetailState`.
 - `MessageList` remains responsible for live DOM scroll physics:
@@ -57,9 +60,10 @@ provider-like behavior.
 - `live-tail`: provider-like default. Restore a cursor recorded while following
   to the newest bottom and follow. Restore a parked cursor to its
   anchor/geometry.
-- `remember-place`: restore the last viewed anchor when available, including
-  snapshots captured while the user was at bottom. This makes "new output while
-  away" visible below the restored viewport instead of jumping past it.
+- `remember-place`: restore the furthest-seen anchor when available, including
+  snapshots captured while the user was at bottom. Reviewing earlier content
+  does not move the return point backward. This makes "new output while away"
+  visible below the restored viewport instead of jumping past it.
 - `no-memory`: do not retain or restore per-session scroll snapshots. Transcript
   cache may still retain message data. Selecting this mode clears the
   device-specific cursors.
@@ -90,8 +94,12 @@ provider-like behavior.
   maintainers can ask which restore mode was active during scroll reports.
 - [x] Publish a visible following tab's position when a whole turn completes,
   even though no user-scroll event occurred.
-- [x] Persist completed-turn observations per source/project/session and merge
-  concurrent tabs by furthest turn without an exclusive writer.
+- [x] Persist settled observations per source/project/session and merge
+  concurrent tabs by furthest seen turn/activity without an exclusive writer.
+- [x] Advance an active, incomplete turn as soon as it is visible; retain its
+  turn in Conversation View and its specific activity anchor in expanded view.
+- [x] Keep the persisted cursor monotone when a reader scrolls upward, including
+  within the current high-water turn.
 - [x] Retire the behavior-identical `manual-follow` option; legacy stored values
   migrate to `remember-place`.
 

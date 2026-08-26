@@ -35,6 +35,7 @@ function snapshot({
     clientHeight: 500,
     anchor: { id: `answer-${id}`, topOffset: 12, timestampMs },
     completedTurn: { id, timestampMs },
+    seenTurn: { id, timestampMs, activityIndex: 0 },
     following,
     updatedAtMs,
   };
@@ -60,7 +61,7 @@ describe("sessionScrollMemoryStorage", () => {
     );
   });
 
-  it("writes only for a later turn or a same-turn follow upgrade", () => {
+  it("keeps the furthest seen turn across captures", () => {
     const first = snapshot({ id: "turn-1", timestampMs: 100 });
     const sameTurn = snapshot({
       id: "turn-1",
@@ -80,6 +81,46 @@ describe("sessionScrollMemoryStorage", () => {
     expect(readSessionScrollMemory(reference)).toEqual(newer);
   });
 
+  it("does not move the resume point backward when the reader scrolls up", () => {
+    const following = snapshot({
+      id: "turn-2",
+      timestampMs: 200,
+      following: true,
+    });
+    const rememberedPlace = {
+      ...snapshot({ id: "turn-1", timestampMs: 100, updatedAtMs: 300 }),
+      scrollTop: 240,
+      anchor: { id: "answer-mid-turn-1", topOffset: 12, timestampMs: 150 },
+    };
+
+    writeSessionScrollMemory(reference, following);
+    expect(writeSessionScrollMemory(reference, rememberedPlace)?.written).toBe(
+      false,
+    );
+
+    expect(readSessionScrollMemory(reference)).toEqual(following);
+  });
+
+  it("does not replace the high-water mark with an unclassified viewport", () => {
+    const following = snapshot({
+      id: "turn-2",
+      timestampMs: 200,
+      following: true,
+    });
+    const rememberedPlace = {
+      ...snapshot({ id: "turn-1", timestampMs: 100, updatedAtMs: 300 }),
+      scrollTop: 240,
+      anchor: { id: "answer-mid-turn-1", topOffset: 12, timestampMs: 150 },
+      completedTurn: undefined,
+      seenTurn: undefined,
+    };
+
+    writeSessionScrollMemory(reference, following);
+    expect(writeSessionScrollMemory(reference, rememberedPlace)).toBeNull();
+
+    expect(readSessionScrollMemory(reference)).toEqual(following);
+  });
+
   it("prefers a following observation when two tabs reached one turn", () => {
     const parked = snapshot({ id: "turn-1", timestampMs: 100 });
     const following = snapshot({
@@ -95,6 +136,71 @@ describe("sessionScrollMemoryStorage", () => {
     expect(selectFurthestSessionScrollMemory(following, parked)).toBe(
       following,
     );
+  });
+
+  it("advances within one turn but rejects an earlier activity", () => {
+    const firstActivity = snapshot({
+      id: "turn-1",
+      timestampMs: 100,
+      updatedAtMs: 100,
+    });
+    const laterActivity = {
+      ...firstActivity,
+      anchor: { id: "activity-2", topOffset: -20, timestampMs: 200 },
+      seenTurn: { id: "turn-1", timestampMs: 100, activityIndex: 2 },
+      updatedAtMs: 200,
+    };
+    const earlierActivity = {
+      ...firstActivity,
+      anchor: { id: "activity-1", topOffset: -10, timestampMs: 150 },
+      seenTurn: { id: "turn-1", timestampMs: 100, activityIndex: 1 },
+      updatedAtMs: 300,
+    };
+
+    expect(writeSessionScrollMemory(reference, firstActivity)?.written).toBe(
+      true,
+    );
+    expect(writeSessionScrollMemory(reference, laterActivity)?.written).toBe(
+      true,
+    );
+    expect(writeSessionScrollMemory(reference, earlierActivity)?.written).toBe(
+      false,
+    );
+    expect(readSessionScrollMemory(reference)).toEqual(laterActivity);
+  });
+
+  it("keeps the furthest offset reached inside one expanded activity", () => {
+    const firstOffset = snapshot({ id: "turn-1", timestampMs: 100 });
+    const laterOffset = {
+      ...firstOffset,
+      anchor: { ...firstOffset.anchor!, topOffset: -120 },
+      updatedAtMs: 200,
+    };
+    const scrolledUpOffset = {
+      ...firstOffset,
+      anchor: { ...firstOffset.anchor!, topOffset: -40 },
+      updatedAtMs: 300,
+    };
+
+    writeSessionScrollMemory(reference, firstOffset);
+    expect(writeSessionScrollMemory(reference, laterOffset)?.written).toBe(
+      true,
+    );
+    expect(writeSessionScrollMemory(reference, scrolledUpOffset)?.written).toBe(
+      false,
+    );
+    expect(readSessionScrollMemory(reference)).toEqual(laterOffset);
+  });
+
+  it("advances to an active turn before that turn completes", () => {
+    const activeTurn = {
+      ...snapshot({ id: "turn-2", timestampMs: 200 }),
+      completedTurn: undefined,
+      seenTurn: { id: "turn-2", timestampMs: 200, activityIndex: 1 },
+    };
+
+    expect(writeSessionScrollMemory(reference, activeTurn)?.written).toBe(true);
+    expect(readSessionScrollMemory(reference)).toEqual(activeTurn);
   });
 
   it("ignores malformed entries and clears only session scroll memory", () => {
