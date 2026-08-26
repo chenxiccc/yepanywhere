@@ -482,6 +482,25 @@ export default async function globalSetup() {
     ].join("\n"),
   );
   writeFileSync(
+    join(fileBrowserProjectPath, "embedded-html.md"),
+    [
+      "# Runtime comparison",
+      "",
+      "<table>",
+      "  <thead>",
+      '    <tr><th rowspan="2">Runtime</th><th colspan="2">Latency</th></tr>',
+      "    <tr><th>Cold</th><th>Warm</th></tr>",
+      "  </thead>",
+      "  <tbody>",
+      '    <tr><th rowspan="2">Desktop</th><td>120 ms</td><td>45 ms</td></tr>',
+      '    <tr><td colspan="2">Stable after reload</td></tr>',
+      '    <tr><td rowspan="2">Phone</td><td>150 ms</td><td>55 ms</td></tr>',
+      '    <tr><td colspan="2">Fits the narrow viewer</td></tr>',
+      "  </tbody>",
+      "</table>",
+    ].join("\n"),
+  );
+  writeFileSync(
     join(fileBrowserProjectPath, "src", "index.ts"),
     [
       'export const alpha = "first highlighted line";',

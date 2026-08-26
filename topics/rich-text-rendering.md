@@ -78,8 +78,13 @@ These run unconditionally and are not user-configurable:
 - **Shiki syntax highlighting** — server-side, keyed on file extension, stored as
   `_highlightedContentHtml` on `ReadResultWithAugment`. Applied only to files the
   server recognises as source code.
-- **Server markdown rendering** — server-side, for `.md`/`.markdown` files, stored
-  as `_renderedMarkdownHtml`. Produces sanitised HTML used for the default preview.
+- **Server markdown rendering** — server-side, for `.md`/`.markdown` files,
+  stored as `_renderedMarkdownHtml`. CommonMark embedded HTML is parsed before
+  the shared sanitizer, so inert structural markup such as table headers with
+  `colspan` or cells with `rowspan` survives while scripts, event attributes,
+  unsafe URLs, active embeds, and disallowed elements remain blocked. Assistant
+  Markdown, tool-result Markdown, file previews, and persisted reloads use the
+  same boundary.
 - **Explicit rendered Markdown file links** — project file links open the
   standalone file viewer on browser link gestures, and `.md` / `.markdown`
   local-file links can request a content-only rendered document. That document

@@ -260,6 +260,48 @@ x \\] + y
   });
 });
 
+describe("renderSafeMarkdown — embedded HTML", () => {
+  it("keeps grouped table spans", () => {
+    const html = renderSafeMarkdown(`
+<table>
+  <thead>
+    <tr><th rowspan="2">Runtime</th><th colspan="2">Latency</th></tr>
+    <tr><th>Cold</th><th>Warm</th></tr>
+  </thead>
+  <tbody>
+    <tr><td rowspan="2">Desktop</td><td>120 ms</td><td>45 ms</td></tr>
+    <tr><td colspan="2">Stable</td></tr>
+  </tbody>
+</table>
+`);
+
+    expect(html).toContain('<th rowspan="2">Runtime</th>');
+    expect(html).toContain('<th colspan="2">Latency</th>');
+    expect(html).toContain('<td rowspan="2">Desktop</td>');
+    expect(html).toContain('<td colspan="2">Stable</td>');
+  });
+
+  it("removes active and disallowed markup from embedded HTML", () => {
+    const html = renderSafeMarkdown(`
+<table onclick="alert(1)">
+  <tr>
+    <td style="background: url(javascript:alert(1))" onmouseover="alert(1)">
+      <a href="javascript:alert(1)">unsafe link</a>
+      <img src="data:text/html;base64,PHNjcmlwdD4=" alt="unsafe image">
+    </td>
+  </tr>
+</table>
+<script>alert(1)</script>
+<iframe src="https://example.com"></iframe>
+`);
+
+    expect(html).toContain("unsafe link");
+    expect(html).not.toMatch(/<(?:script|iframe)\b/i);
+    expect(html).not.toMatch(/\s(?:on\w+|style)=/i);
+    expect(html).not.toMatch(/(?:href|src)="(?:javascript|data):/i);
+  });
+});
+
 describe("parseMarkdownSourceSpans", () => {
   it("maps headings, table rows, references, and math to exact source lines", () => {
     const markdown = [

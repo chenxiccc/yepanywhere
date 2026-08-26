@@ -89,7 +89,10 @@ Server-rendered Markdown, syntax highlighting, diffs, and declared rich-input
 forms may be inserted into an existing trusted YA document as inert fragments.
 Their renderer/sanitizer must reject executable elements, event handlers,
 unsafe URL schemes, active embeds, and other DOM authority. This class does not
-need a separate origin, but it must never accept arbitrary HTML as a shortcut.
+need a separate origin. CommonMark embedded HTML may enter the Markdown parser
+only when the resulting fragment immediately crosses the same sanitizer as
+renderer-generated markup. It is never unsanitized pass-through or a standalone
+HTML preview.
 
 `dangerouslySetInnerHTML` describes a React insertion mechanism, not a trust
 decision. Only output from the owning reviewed renderer/sanitizer belongs in

@@ -936,8 +936,8 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     input: ["type", "checked", "disabled"],
     ol: ["start"],
     span: ["class", "data-media-path", "data-media-type", "data-expanded"],
-    td: ["align"],
-    th: ["align"],
+    td: ["align", "colspan", "rowspan"],
+    th: ["align", "colspan", "rowspan"],
   },
   allowedSchemes: ["http", "https", "mailto"],
   allowedSchemesByTag: {
@@ -1228,7 +1228,7 @@ function renderTaskListItems(state: StateCore): void {
 
 const markdownRenderer = new MarkdownIt({
   breaks: false,
-  html: false,
+  html: true,
   linkify: true,
   typographer: false,
   xhtmlOut: false,
@@ -1376,7 +1376,7 @@ export function parseMarkdownSourceSpans(
 }
 
 /**
- * Render markdown to sanitized HTML with raw HTML disabled.
+ * Render Markdown, including embedded HTML, through the shared sanitizer.
  */
 export function renderSafeMarkdown(
   markdown: string,

@@ -402,6 +402,37 @@ const CLAUDE_MULTI_TEXT_FIXTURE: ClaudeSessionEntry[] = [
   },
 ];
 
+const EMBEDDED_HTML_MARKDOWN = [
+  "<table>",
+  "  <thead>",
+  '    <tr><th rowspan="2">Runtime</th><th colspan="2">Latency</th></tr>',
+  "    <tr><th>Cold</th><th>Warm</th></tr>",
+  "  </thead>",
+  "  <tbody>",
+  '    <tr><td rowspan="2">Desktop</td><td>120 ms</td><td>45 ms</td></tr>',
+  '    <tr><td colspan="2">Stable</td></tr>',
+  "  </tbody>",
+  "</table>",
+].join("\n");
+
+const CLAUDE_EMBEDDED_HTML_FIXTURE: ClaudeSessionEntry[] = [
+  {
+    type: "user",
+    uuid: "claude-html-user-1",
+    parentUuid: null,
+    message: { role: "user", content: "Compare the runtimes." },
+  },
+  {
+    type: "assistant",
+    uuid: "claude-html-assistant-1",
+    parentUuid: "claude-html-user-1",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: EMBEDDED_HTML_MARKDOWN }],
+    },
+  },
+];
+
 const CLAUDE_EDIT_CHAIN_FIXTURE: ClaudeSessionEntry[] = [
   {
     type: "user",
@@ -975,6 +1006,34 @@ describe("Render Parity Harness", () => {
     expect(textItems[0]?.augmentHtml).toContain("<strong>block</strong>");
     expect(textItems[1]?.augmentHtml).toContain("<p>Second block:</p>");
     expect(textItems[1]?.augmentHtml).toContain('class="shiki css-variables"');
+  });
+
+  it("keeps embedded HTML tables identical live and after persisted reload", async () => {
+    const persisted = await runPersistedPipeline(
+      buildLoadedClaudeSession(CLAUDE_EMBEDDED_HTML_FIXTURE),
+    );
+    const stream = await runStreamPipeline(
+      CLAUDE_EMBEDDED_HTML_FIXTURE as unknown as Array<Record<string, unknown>>,
+    );
+
+    assertRenderParity(
+      "claude-embedded-html",
+      persisted.renderItems,
+      stream.renderItems,
+      {
+        persisted: { includeSourceRelationships: true },
+        stream: { includeSourceRelationships: true },
+      },
+    );
+
+    const textItem = normalizeRenderItemsForComparison(
+      persisted.renderItems,
+    ).find(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" && item !== null && item.type === "text",
+    );
+    expect(textItem?.augmentHtml).toContain('<th colspan="2">Latency</th>');
+    expect(textItem?.augmentHtml).toContain('<td rowspan="2">Desktop</td>');
   });
 
   it("keeps chained Claude Edit branches visible after persisted reload", async () => {
