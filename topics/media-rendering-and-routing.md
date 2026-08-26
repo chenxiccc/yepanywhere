@@ -58,6 +58,25 @@ The recurring bug is any surface that skips this and emits a bare API URL: it
 works on the developer's own machine (direct mode) and 404s for everyone on a
 phone through the relay. The base64 `data:` surfaces are immune (no network).
 
+## Mutable path freshness
+
+Filesystem paths are mutable coordinates, not content identities. Raw bytes
+from `/api/local-image`, `/api/local-file`, and
+`/api/projects/:id/files/raw` use `Cache-Control: private, no-cache` with a
+weak stat validator (`ETag`) and `Last-Modified`. Every direct-client access
+therefore reaches the server to revalidate the current file: unchanged bytes
+may return `304 Not Modified`, while a changed size, mtime, or ctime returns the
+new body. The localhost transport also requests `cache: "no-cache"` for these
+routes so an older positive-TTL browser entry cannot hide the new policy after
+an upgrade.
+
+Rendered `/api/local-file` Markdown documents are `private, no-store` rather
+than stat-validated because their HTML also depends on the running renderer,
+not only on source-file metadata. Relay fetches continue to request the source
+server on every access; the relay protocol does not maintain a browser HTTP
+cache. Opaque transient session-media handles remain `no-store`, while
+content-addressed preserved media may remain explicitly immutable.
+
 ## Where media appears in the UI
 
 Each surface below is named by *what the user is looking at*, then the component

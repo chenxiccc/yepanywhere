@@ -158,12 +158,14 @@ export async function fetchPlainJSON<T>(
 
 export async function fetchPlainBlob(
   path: string,
+  requestInit?: RequestInit,
   options: PlainFetchOptions = {},
 ): Promise<Blob> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl(`${options.apiBase ?? API_BASE}${path}`, {
+    ...requestInit,
     credentials: "include",
-    headers: createPlainFetchHeaders(undefined, options),
+    headers: createPlainFetchHeaders(requestInit?.headers, options),
   });
 
   if (!response.ok) {

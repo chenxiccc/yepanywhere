@@ -864,8 +864,18 @@ describe("Files API", () => {
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toBe("text/markdown");
       expect(res.headers.get("Content-Disposition")).toContain("README.md");
+      expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
+      expect(res.headers.get("ETag")).toMatch(/^W\/"/);
+      expect(res.headers.get("Last-Modified")).not.toBeNull();
       const text = await res.text();
       expect(text).toBe("# Test Project\n\nThis is a test.");
+
+      const unchanged = await app.request(
+        `/api/projects/${projectId}/files/raw?path=README.md`,
+        { headers: { "If-None-Match": res.headers.get("ETag") ?? "" } },
+      );
+      expect(unchanged.status).toBe(304);
+      expect(unchanged.headers.get("Content-Length")).toBeNull();
     });
 
     it("returns raw TypeScript file with correct content-type", async () => {

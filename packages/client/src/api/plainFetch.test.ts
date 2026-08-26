@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchPlainJSON } from "./plainFetch";
+import { fetchPlainBlob, fetchPlainJSON } from "./plainFetch";
 
 describe("fetchPlainJSON", () => {
   afterEach(() => {
@@ -76,5 +76,28 @@ describe("fetchPlainJSON", () => {
       status: 401,
     });
     expect(onLoginRequired).not.toHaveBeenCalled();
+  });
+
+  it("passes blob cache directives and caller headers to fetch", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("png-bytes"));
+
+    await fetchPlainBlob(
+      "/local-image?path=%2Ftmp%2Fplot.png",
+      {
+        cache: "no-cache",
+        headers: { "X-File-Probe": "current" },
+      },
+      { fetchImpl },
+    );
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe("/api/local-image?path=%2Ftmp%2Fplot.png");
+    expect(init?.cache).toBe("no-cache");
+    expect(init?.credentials).toBe("include");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("x-file-probe")).toBe("current");
+    expect(headers.get("x-yep-anywhere")).toBe("true");
   });
 });

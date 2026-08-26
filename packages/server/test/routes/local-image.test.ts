@@ -37,7 +37,29 @@ describe("Local image routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toBe("private, no-cache");
+    expect(response.headers.get("etag")).toMatch(/^W\/"/);
+    expect(response.headers.get("last-modified")).not.toBeNull();
     expect(await response.text()).toBe("png-bytes");
+
+    const etag = response.headers.get("etag");
+    expect(etag).not.toBeNull();
+    const unchanged = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}`,
+      { headers: { "If-None-Match": etag ?? "" } },
+    );
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get("cache-control")).toBe("private, no-cache");
+    expect(unchanged.headers.get("content-length")).toBeNull();
+
+    await writeFile(filePath, "new-png-bytes");
+    const changed = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}`,
+      { headers: { "If-None-Match": etag ?? "" } },
+    );
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get("etag")).not.toBe(etag);
+    expect(await changed.text()).toBe("new-png-bytes");
   });
 
   it("serves media files from discovered project directories", async () => {

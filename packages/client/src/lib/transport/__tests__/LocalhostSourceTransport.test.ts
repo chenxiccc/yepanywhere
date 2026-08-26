@@ -125,6 +125,32 @@ function testFile(name: string, body: string, type: string): File {
 }
 
 describe("LocalhostSourceTransport", () => {
+  it("forces mutable file blobs to revalidate without weakening immutable media", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("file-bytes"));
+    const transport = new LocalhostSourceTransport();
+
+    try {
+      await transport.fetchBlob("/local-image?path=%2Ftmp%2Fplot.png");
+      await transport.fetchBlob("/local-file?path=%2Ftmp%2Fnotes.txt");
+      await transport.fetchBlob("/projects/project-1/files/raw?path=plot.png");
+      await transport.fetchBlob(
+        "/projects/project-1/sessions/session-1/media/media-1",
+      );
+
+      expect(fetchMock.mock.calls.map(([, init]) => init?.cache)).toEqual([
+        "no-cache",
+        "no-cache",
+        "no-cache",
+        undefined,
+      ]);
+    } finally {
+      transport.dispose();
+      fetchMock.mockRestore();
+    }
+  });
+
   it("keeps source state ready while reporting stream channel transitions", async () => {
     const streamSockets: FakeStreamSocket[] = [];
     const transport = new LocalhostSourceTransport({

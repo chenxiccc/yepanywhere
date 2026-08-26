@@ -467,7 +467,11 @@ describe("TextBlock", () => {
     expect(clickAllowed).toBe(false);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/local-file?path=%2Ftmp%2Fprobe.json",
-      { credentials: "include", headers: expect.any(Headers) },
+      {
+        cache: "no-cache",
+        credentials: "include",
+        headers: expect.any(Headers),
+      },
     );
     expect(screen.getByRole("dialog").textContent).toContain("probe.json");
     expect(await screen.findByText(/"ok": true/)).toBeTruthy();

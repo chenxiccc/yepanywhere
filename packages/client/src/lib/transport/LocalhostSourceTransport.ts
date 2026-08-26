@@ -41,6 +41,15 @@ export interface LocalhostSourceTransportOptions {
   uploadWebSocketFactory?: WebSocketFactory;
 }
 
+function isMutableFileBlobPath(path: string): boolean {
+  const pathname = path.split("?", 1)[0] ?? "";
+  return (
+    pathname === "/local-image" ||
+    pathname === "/local-file" ||
+    /^\/projects\/[^/]+\/files\/raw$/.test(pathname)
+  );
+}
+
 class LocalhostTransportStatus implements SourceTransportStatus {
   constructor(
     private readonly getSnapshotFn: () => SourceTransportStatusSnapshot,
@@ -133,7 +142,10 @@ export class LocalhostSourceTransport implements SourceTransport {
 
   fetchBlob(path: string): Promise<Blob> {
     this.assertNotDisposed();
-    return fetchPlainBlob(path);
+    return fetchPlainBlob(
+      path,
+      isMutableFileBlobPath(path) ? { cache: "no-cache" } : undefined,
+    );
   }
 
   upload(

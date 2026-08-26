@@ -41,8 +41,18 @@ describe("Local file routes", () => {
     expect(response.headers.get("content-type")).toBe(
       "text/plain; charset=utf-8",
     );
+    expect(response.headers.get("cache-control")).toBe("private, no-cache");
+    expect(response.headers.get("etag")).toMatch(/^W\/"/);
+    expect(response.headers.get("last-modified")).not.toBeNull();
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await response.text()).toBe("# Notes\n\nText");
+
+    const unchanged = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}`,
+      { headers: { "If-None-Match": response.headers.get("etag") ?? "" } },
+    );
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get("content-length")).toBeNull();
   });
 
   it("downloads active HTML and serves PDF inline from allowed directories", async () => {
@@ -136,6 +146,8 @@ describe("Local file routes", () => {
     expect(response.headers.get("content-type")?.toLowerCase()).toBe(
       "text/html; charset=utf-8",
     );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("etag")).toBeNull();
     const html = await response.text();
     expect(html).toContain("<h1>Notes</h1>");
     expect(html).toContain("<table>");

@@ -38,6 +38,12 @@ import {
 } from "../utils/projectFileAccess.js";
 import { isLikelyUtf8Text } from "../utils/utf8Text.js";
 import { createLocalResourcePathPolicy } from "./local-resource-policy.js";
+import {
+  createMutableFileCacheMetadata,
+  createNotModifiedResponse,
+  isMutableFileNotModified,
+  mutableFileCacheHeaders,
+} from "./mutable-file-cache.js";
 import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 export interface FilesDeps {
@@ -1214,14 +1220,21 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
 
     const mimeType = getMimeType(filePath);
     const fileName = relativePath.split("/").pop() || "file";
+    const cacheMetadata = createMutableFileCacheMetadata(stats);
     const headers = createUntrustedFileResponseHeaders({
-      baseHeaders: { "Content-Length": String(stats.size) },
+      baseHeaders: {
+        ...mutableFileCacheHeaders(cacheMetadata),
+        "Content-Length": String(stats.size),
+      },
       contentType: mimeType,
       disposition: download ? "attachment" : "inline",
       filePath: fileName,
     });
 
     try {
+      if (isMutableFileNotModified(c.req.raw.headers, cacheMetadata)) {
+        return createNotModifiedResponse(headers);
+      }
       const stream = fileHandle
         ? fileHandle.createReadStream({ autoClose: true, start: 0 })
         : createReadStream(filePath);

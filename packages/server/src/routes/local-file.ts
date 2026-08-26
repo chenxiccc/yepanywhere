@@ -11,6 +11,12 @@ import {
   LOCAL_FILE_CONTENT_TYPES,
   LOCAL_MEDIA_EXTENSIONS,
 } from "./local-resource-policy.js";
+import {
+  createMutableFileCacheMetadata,
+  createNotModifiedResponse,
+  isMutableFileNotModified,
+  mutableFileCacheHeaders,
+} from "./mutable-file-cache.js";
 import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 interface LocalFileDeps {
@@ -452,11 +458,11 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
         return c.json({ error: resolved.error }, resolved.status);
       }
       const { resolvedPath, stats } = resolved.file;
-
-      if (
+      const renderMarkdown =
         (c.req.query("render") === "1" || requested.hadInlineLocation) &&
-        isMarkdownPath(resolvedPath)
-      ) {
+        isMarkdownPath(resolvedPath);
+
+      if (renderMarkdown) {
         const markdown = await readFile(resolvedPath, "utf-8");
         const requestedRange =
           requested.lineNumber === undefined
@@ -484,7 +490,7 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
 
         c.header("Content-Type", "text/html; charset=utf-8");
         c.header("Content-Disposition", "inline");
-        c.header("Cache-Control", "private, max-age=60");
+        c.header("Cache-Control", "private, no-store");
         c.header("X-Content-Type-Options", "nosniff");
         return c.html(
           renderMarkdownDocument(
@@ -495,18 +501,20 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
         );
       }
 
-      applyHeaders(
-        (name, value) => c.header(name, value),
-        createUntrustedFileResponseHeaders({
-          baseHeaders: {
-            "Cache-Control": "private, max-age=60",
-            "Content-Length": stats.size.toString(),
-          },
-          contentType,
-          disposition: "inline",
-          filePath: resolvedPath,
-        }),
-      );
+      const cacheMetadata = createMutableFileCacheMetadata(stats);
+      const headers = createUntrustedFileResponseHeaders({
+        baseHeaders: {
+          ...mutableFileCacheHeaders(cacheMetadata),
+          "Content-Length": stats.size.toString(),
+        },
+        contentType,
+        disposition: "inline",
+        filePath: resolvedPath,
+      });
+      if (isMutableFileNotModified(c.req.raw.headers, cacheMetadata)) {
+        return createNotModifiedResponse(headers);
+      }
+      applyHeaders((name, value) => c.header(name, value), headers);
 
       return stream(c, async (s) => {
         const readable = createReadStream(resolvedPath);

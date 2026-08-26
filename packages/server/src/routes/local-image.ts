@@ -7,6 +7,12 @@ import {
   createLocalResourcePathPolicy,
   LOCAL_MEDIA_CONTENT_TYPES,
 } from "./local-resource-policy.js";
+import {
+  createMutableFileCacheMetadata,
+  createNotModifiedResponse,
+  isMutableFileNotModified,
+  mutableFileCacheHeaders,
+} from "./mutable-file-cache.js";
 import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
 interface LocalImageDeps {
@@ -49,15 +55,19 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
         return c.json({ error: resolved.error }, resolved.status);
       }
       const { resolvedPath, stats } = resolved.file;
+      const cacheMetadata = createMutableFileCacheMetadata(stats);
 
       const headers = createUntrustedFileResponseHeaders({
         baseHeaders: {
-          "Cache-Control": "private, max-age=3600",
+          ...mutableFileCacheHeaders(cacheMetadata),
           "Content-Length": stats.size.toString(),
         },
         contentType,
         filePath: resolvedPath,
       });
+      if (isMutableFileNotModified(c.req.raw.headers, cacheMetadata)) {
+        return createNotModifiedResponse(headers);
+      }
       headers.forEach((value, name) => {
         c.header(name, value);
       });
