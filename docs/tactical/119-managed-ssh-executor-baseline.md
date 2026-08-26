@@ -2,11 +2,12 @@
 
 Topic: managed-remote-executors
 
-Status: Gate A completed and accepted on 2026-08-26. The injectable runner
-artifact, shared provider-session owner, released-protocol Unix-socket adapter,
-and framed-stdio fake-provider adapter are implemented. No SSH carrier, managed
-workspace, production Codex target session, route, capability, setting, session
-metadata, or UI described here is implemented or compatibility-approved.
+Status: Gates A and B completed and accepted on 2026-08-26. The injectable
+runner, shared provider-session owner, non-PTY manual-SSH carrier, and
+disposable exact-commit Git workspace round trip are implemented behind tests
+and an operator diagnostic. No production Codex target session, route,
+capability, setting, session metadata, user-project Git writer, or UI described
+here is implemented or compatibility-approved.
 
 This tactical deliberately has stop/go gates. A normal implementation request
 should complete and record one gate at a time rather than treating the whole
@@ -375,6 +376,84 @@ boundaries. It does not create a per-workspace poller or native ref watcher.
 prepare, commit, amend, fetch, and clean up a Linux target workspace without
 target upstream credentials, local branch movement, or leaked processes. An
 unavailable OS testbed is recorded rather than inferred from another host.
+
+### Gate B result — accept the bounded SSH and disposable Git foundation
+
+Gate B passed on the available Linux controller and Linux target on 2026-08-26.
+The manual target adapter invokes a literal configured alias through the system
+SSH executable with `-T`, `BatchMode=yes`, a bounded connect timeout, and no
+host-key override. The user's SSH configuration remains the owner of hostname,
+account, host key, identity, proxy, and jump-host policy. Host aliases,
+executables, and absolute target paths are validated before process launch;
+commands use the shared POSIX shell-word quoting invariant. The SSH and
+Git-over-SSH children receive only system, locale, temporary-directory, and
+SSH-agent environment coordinates. Deterministic coverage verifies that
+OpenAI, Anthropic, and Claude OAuth variables do not reach the SSH child or its
+remote command even if they exist on the controller.
+
+Read-only inspection reports sanitized platform, architecture, Node, Git,
+Codex, managed-root, and runner-cache facts. Linux, target architecture,
+Node 20.12 or newer, a private/creatable root, and a private/absent cache are
+checked before artifact mutation. Inspection itself creates nothing and runs
+no installer. The live Ubuntu target initially had Git 2.43.0, no Node on
+`PATH`, and no Codex executable. The acceptance fixture explicitly unpacked a
+checksum-verified Node 25.2.0 runtime into one private temporary directory; the
+adapter did not install it or change the target account.
+
+The controller re-verifies the local artifact before every install request. A
+warm operation verifies the existing target file by size and SHA-256 without
+retransmitting it. A cold operation streams into a mode-0600 file below a
+mode-0700 private staging directory, bounds the announced bytes, verifies the
+digest, changes the runner to mode 0700, and atomically renames the directory
+to its digest cache key. Deterministic coverage truncates a 512 KiB transfer
+after 4 KiB and verifies that neither a cache entry nor an incoming directory
+survives. Concurrent publication accepts only an independently reverified
+winner.
+
+The long-lived SSH child exposes the runner's byte-clean stdin/stdout and
+bounded stderr. Controller EOF begins bounded SIGTERM/SIGKILL escalation;
+SIGTERM and SIGHUP close the controller stream before escalation. All timers
+are cleared at terminal exit. A controller marks the observed
+`launchAccepted` and `shutdownComplete` frames, allowing the carrier to report
+clean cooperative exit, failure before acceptance, or uncertainty after a
+writer may have started. The deterministic dropped-channel fixture proves both
+failure classes and never authorizes a retry.
+
+The managed-workspace service accepts only an absolute controller repository
+root and records its full `HEAD` plus staged, unstaged, and untracked counts.
+It creates one UUID-named target anchor, branch, worktree, identity marker, and
+writer-lease marker below the configured managed root. Controller Git pushes
+the exact commit and later fetches the target branch through the same
+non-interactive SSH policy. Setup verifies the marker, repository config,
+branch, cwd, and `HEAD`. Fetch is deliberately restricted to a newly created,
+marked bare fixture repository under controller temporary storage; Gate B
+writes no user-project objects or refs.
+
+The deterministic round trip excluded one staged, one unstaged, and one
+untracked controller file, made two target commits, amended the second,
+fetched and connectivity-checked the announced head, verified base ancestry,
+and preserved the controller `HEAD`, branch, status, staged diff, unstaged
+diff, and worktree bytes. Clean state was deleted only after the fetched head
+matched a second target observation. Separate fixtures retained dirty and
+committed-but-unfetched workspaces and required explicit discard. There is no
+poller, watcher, reconnect, retry, or maintenance loop.
+
+The real Linux SSH run used the Gate A artifact unchanged: 1,226,530 bytes with
+SHA-256
+`dc848e12ff34278f53d9838f2f8f7e15cb527186201ed9fd48d24da3d3502216`.
+Cold verified transfer and publication took 500 ms; the warm remote digest
+check took 233 ms. The runner exchanged ten protocol frames, accepted one fake
+provider lease and turn, and shut down cleanly. The Git fixture then completed
+prepare, two commits, amend, fetch, connectivity/ancestry checks, and clean
+deletion. The test verified that the target root, temporary Node runtime,
+runner process, and Machine Control claim were gone afterward.
+
+The available Machine Control inventory exposed only a Linux controller; no
+macOS controller testbed was available. The same command-driven diagnostic and
+pure TypeScript path are enabled on Darwin, but no macOS native result is
+claimed. Windows controllers fail explicitly before workspace mutation. This
+records the unavailable coordinate as the gate requires rather than inferring
+it from Linux.
 
 ## Codex Subscription Authentication Feasibility Spike
 

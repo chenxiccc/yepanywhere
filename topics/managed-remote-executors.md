@@ -7,12 +7,13 @@
 
 Topic: managed-remote-executors
 
-Status: product direction with its Gate A injectable-runtime foundation
-implemented and accepted. YA's released SSH Remote Executors remain
-Claude-family process transports that assume a matching remote checkout and
-sync Claude transcripts with `rsync`. YA does not yet carry the new runner over
-SSH, prepare managed remote workspaces, run a production Codex target session,
-or fetch remote session heads into controller-owned tracking refs.
+Status: product direction with its Gate A injectable runtime and Gate B
+manual-SSH/disposable-workspace foundations implemented and accepted. YA's
+released SSH Remote Executors remain Claude-family process transports that
+assume a matching remote checkout and sync Claude transcripts with `rsync`.
+The new carrier and workspace service remain diagnostic-only: YA does not yet
+run a production Codex target session, publish managed placement, persist a
+managed execution coordinate, or fetch remote heads into user-project refs.
 
 The staged implementation and research gates are tracked in
 [`docs/tactical/119-managed-ssh-executor-baseline.md`](../docs/tactical/119-managed-ssh-executor-baseline.md).
@@ -196,6 +197,27 @@ quoting, bounded stderr, cancellation, and child cleanup retain or strengthen
 the current SSH executor's security behavior. YA never weakens the user's SSH
 policy to make target setup easier.
 
+The implemented diagnostic adapter uses a byte-clean non-PTY SSH child for
+each bounded inspection or transfer and for the one owned runner lease. It
+passes only `-T`, `BatchMode=yes`, and a bounded connection timeout before the
+literal configured alias. It never supplies a host-key bypass or expands SSH
+configuration for logs. The controller child environment is an allowlist of
+system, locale, temporary-directory, and SSH-agent coordinates; provider keys,
+OAuth values, YA settings, and unrelated controller state are absent even when
+the SSH configuration names a broad `SendEnv` policy. Inspection is read-only.
+Artifact mutation is refused until the observed Linux platform, target
+architecture, Node version, managed root, and cache state match the selected
+artifact.
+
+Runner installation verifies the controller file first. A warm lookup verifies
+the target file by size and SHA-256 without retransmission. A cold transfer is
+bounded by the manifest size, stays in a private incoming directory, and is
+atomically published only after target-side verification. Interrupted staging
+is removed. The long-lived carrier distinguishes exit before the controller
+observes launch acceptance from uncertainty afterward; only an observed
+cooperative shutdown plus exit zero is clean. EOF, SIGHUP, SIGTERM, timeout,
+and output-bound cleanup use bounded escalation and leave no ownerless timer.
+
 ## Runner Injection And Ownership
 
 The runner is a versioned artifact produced from YA's existing provider
@@ -233,8 +255,8 @@ installation occurs below a private temporary directory, verifies the same
 bytes through Node, and atomically publishes a digest-named private cache
 entry. A cache hit is trusted only after re-verification. The selected Gate A
 artifact and installer probe work without a YA checkout, dependency tree,
-pnpm, `tsx`, or target package-manager mutation. The eventual SSH adapter,
-bounded cache reclamation, and production Codex launch remain later gates.
+pnpm, `tsx`, or target package-manager mutation. Bounded cache reclamation and
+production Codex launch remain later gates.
 
 Runner cache retention is bounded by artifact digest and may be reclaimed when
 unused. Session processes, output buffers, reconnect state, and target Git
@@ -321,6 +343,21 @@ target agent commits on session branch
 The controller invokes both transfer directions using the SSH access it
 already possesses. The target never pushes to GitHub/GitLab, needs no upstream
 SSH key or repository token, and receives no forwarded controller credential.
+
+The implemented Gate B service proves this shape only with disposable
+repositories. It records the exact source `HEAD` and dirty counts, creates a
+UUID-named private target anchor/branch/worktree plus identity and writer-lease
+markers, and verifies target identity, branch, cwd, and `HEAD` before returning.
+The source push and result fetch use ordinary Git-over-SSH with the same
+non-interactive SSH policy as the runner carrier. The fetch destination must be
+a service-created bare repository carrying the Gate B fixture marker, so this
+foundation cannot write a user project's objects or refs.
+
+Cleanup rechecks target head and dirty counts. It retains dirty,
+committed-but-unfetched, or concurrently advanced state; otherwise it deletes
+only the marker-verified UUID workspace after a verified fetch. Explicit
+discard is the only override. Observations happen only when called—there is no
+workspace poller or ref watcher.
 
 Every workspace record binds at least:
 
