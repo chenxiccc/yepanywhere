@@ -59,6 +59,10 @@ import {
   DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
   type SessionScrollBehaviorMode,
 } from "../lib/sessionScrollBehavior";
+import {
+  deriveVisibleSessionScrollCursor,
+  getLatestSeenTurnRenderKey,
+} from "../lib/sessionScrollCursor";
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
   findFallbackRenderAnchorRow,
@@ -203,193 +207,6 @@ function getVisibleTurnEndTimestampMs(
   }
 
   return timestampMs;
-}
-
-interface CompletedTurnCursor {
-  id: string;
-  timestampMs?: number;
-  endRenderItemId: string;
-}
-
-function getCompletedTurnCursors(
-  groups: readonly RenderTurnGroup[],
-  turnActive: boolean,
-): CompletedTurnCursor[] {
-  const completed: CompletedTurnCursor[] = [];
-  let userPrompt: RenderItem | null = null;
-  let assistantEnd: RenderItem | null = null;
-
-  const finishPendingTurn = (isActiveTail: boolean) => {
-    if (!userPrompt || !assistantEnd || isActiveTail) {
-      return;
-    }
-    const timestampMs = getLatestMessageTimestampMs(
-      assistantEnd.sourceMessages,
-    );
-    completed.push({
-      id: userPrompt.id,
-      ...(timestampMs !== null ? { timestampMs } : {}),
-      endRenderItemId: assistantEnd.id,
-    });
-  };
-
-  for (const group of groups) {
-    if (group.isUserPrompt) {
-      finishPendingTurn(false);
-      userPrompt =
-        group.items.find((item) => item.type === "user_prompt") ?? null;
-      assistantEnd = null;
-      continue;
-    }
-    if (!group.isStandalone && userPrompt) {
-      assistantEnd =
-        getLastTimestampedRenderItem(group.items) ??
-        group.items[group.items.length - 1] ??
-        assistantEnd;
-    }
-  }
-  finishPendingTurn(turnActive);
-  return completed;
-}
-
-function getVisibleCompletedTurnCursor(
-  scrollContainer: HTMLElement,
-  groups: readonly RenderTurnGroup[],
-  rowsById: ReadonlyMap<string, HTMLElement>,
-  turnActive: boolean,
-): Omit<CompletedTurnCursor, "endRenderItemId"> | null {
-  const containerRect = scrollContainer.getBoundingClientRect();
-  let visible: CompletedTurnCursor | null = null;
-  for (const cursor of getCompletedTurnCursors(groups, turnActive)) {
-    const row = rowsById.get(cursor.endRenderItemId);
-    if (!row) {
-      continue;
-    }
-    const rowRect = row.getBoundingClientRect();
-    if (
-      rowRect.bottom >= containerRect.top &&
-      rowRect.bottom <= containerRect.bottom
-    ) {
-      visible = cursor;
-    }
-  }
-  if (!visible) {
-    return null;
-  }
-  return {
-    id: visible.id,
-    ...(visible.timestampMs !== undefined
-      ? { timestampMs: visible.timestampMs }
-      : {}),
-  };
-}
-
-interface SeenTurnCursor {
-  id: string;
-  timestampMs?: number;
-  items: RenderItem[];
-}
-
-function getSeenTurnCursors(
-  groups: readonly RenderTurnGroup[],
-): SeenTurnCursor[] {
-  const turns: SeenTurnCursor[] = [];
-  let current: SeenTurnCursor | null = null;
-
-  for (const group of groups) {
-    if (group.isUserPrompt) {
-      if (current) {
-        turns.push(current);
-      }
-      const prompt =
-        group.items.find((item) => item.type === "user_prompt") ?? null;
-      if (!prompt) {
-        current = null;
-        continue;
-      }
-      const timestampMs = getLatestMessageTimestampMs(prompt.sourceMessages);
-      current = {
-        id: prompt.id,
-        ...(timestampMs !== null ? { timestampMs } : {}),
-        items: [prompt],
-      };
-      continue;
-    }
-    if (!group.isStandalone && current) {
-      current.items.push(...group.items);
-    }
-  }
-  if (current) {
-    turns.push(current);
-  }
-  return turns;
-}
-
-function getVisibleSeenTurnCursor(
-  scrollContainer: HTMLElement,
-  groups: readonly RenderTurnGroup[],
-  rowsById: ReadonlyMap<string, HTMLElement>,
-  allItems: readonly RenderItem[],
-): {
-  seenTurn: NonNullable<SessionRouteScrollSnapshot["seenTurn"]>;
-  anchor: NonNullable<SessionRouteScrollSnapshot["anchor"]>;
-} | null {
-  const containerRect = scrollContainer.getBoundingClientRect();
-  let visible: {
-    turn: SeenTurnCursor;
-    item: RenderItem;
-    activityIndex: number;
-    rowTop: number;
-  } | null = null;
-
-  for (const turn of getSeenTurnCursors(groups)) {
-    for (
-      let activityIndex = 0;
-      activityIndex < turn.items.length;
-      activityIndex += 1
-    ) {
-      const item = turn.items[activityIndex];
-      if (!item) {
-        continue;
-      }
-      const row = rowsById.get(item.id);
-      if (!row) {
-        continue;
-      }
-      const rowRect = row.getBoundingClientRect();
-      if (
-        rowRect.bottom > containerRect.top &&
-        rowRect.top < containerRect.bottom
-      ) {
-        visible = { turn, item, activityIndex, rowTop: rowRect.top };
-      }
-    }
-  }
-  if (!visible) {
-    return null;
-  }
-
-  const { activityIndex, item, rowTop, turn } = visible;
-  const itemIndex = allItems.findIndex((candidate) => candidate.id === item.id);
-  const previousId = itemIndex > 0 ? allItems[itemIndex - 1]?.id : undefined;
-  const nextId = itemIndex >= 0 ? allItems[itemIndex + 1]?.id : undefined;
-  const itemTimestampMs = getLatestMessageTimestampMs(item.sourceMessages);
-  return {
-    seenTurn: {
-      id: turn.id,
-      ...(turn.timestampMs !== undefined
-        ? { timestampMs: turn.timestampMs }
-        : {}),
-      activityIndex,
-    },
-    anchor: {
-      id: item.id,
-      topOffset: rowTop - containerRect.top,
-      ...(previousId ? { previousId } : {}),
-      ...(nextId ? { nextId } : {}),
-      ...(itemTimestampMs !== null ? { timestampMs: itemTimestampMs } : {}),
-    },
-  };
 }
 
 function getMiddleVisibleTimestampMs(
@@ -2133,14 +1950,10 @@ export const MessageList = memo(function MessageList({
     },
     [],
   );
-  const latestSeenTurnRenderKey = useMemo(() => {
-    const cursors = getSeenTurnCursors(turnGroups);
-    const latest = cursors[cursors.length - 1];
-    const latestItem = latest?.items[latest.items.length - 1];
-    return latest
-      ? `${latest.id}:${latest.items.length}:${latestItem?.id}`
-      : null;
-  }, [turnGroups]);
+  const latestSeenTurnRenderKey = useMemo(
+    () => getLatestSeenTurnRenderKey(turnGroups),
+    [turnGroups],
+  );
   const updateScrollPositionTimestamp = useCallback(() => {
     const content = containerRef.current;
     const container = content?.parentElement;
@@ -2185,28 +1998,24 @@ export const MessageList = memo(function MessageList({
           rowsById.set(id, row);
         }
       }
-      const visibleSeenTurn = getVisibleSeenTurnCursor(
-        container,
-        turnGroupsRef.current,
+      const cursor = deriveVisibleSessionScrollCursor({
+        scrollContainer: container,
+        groups: turnGroupsRef.current,
         rowsById,
-        displayRenderItemsRef.current,
-      );
-      const anchor = visibleSeenTurn?.anchor ?? fallbackAnchor;
-      const completedTurn =
-        getVisibleCompletedTurnCursor(
-          container,
-          turnGroupsRef.current,
-          rowsById,
-          turnActiveRef.current,
-        ) ?? undefined;
+        allItems: displayRenderItemsRef.current,
+        turnActive: turnActiveRef.current,
+      });
+      const anchor = cursor.anchor ?? fallbackAnchor;
       return {
         atBottom,
         scrollTop: container.scrollTop,
         scrollHeight: container.scrollHeight,
         clientHeight: container.clientHeight,
         ...(anchor ? { anchor } : {}),
-        ...(completedTurn ? { completedTurn } : {}),
-        ...(visibleSeenTurn ? { seenTurn: visibleSeenTurn.seenTurn } : {}),
+        ...(cursor.completedTurn
+          ? { completedTurn: cursor.completedTurn }
+          : {}),
+        ...(cursor.seenTurn ? { seenTurn: cursor.seenTurn } : {}),
         following: shouldAutoScrollRef.current,
         updatedAtMs: Date.now(),
       };

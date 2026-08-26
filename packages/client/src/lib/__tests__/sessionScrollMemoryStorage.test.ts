@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../clientSummaryStore";
 import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
 import {
   clearSessionScrollMemory,
   createSessionScrollMemoryStorageKey,
+  isSessionScrollMemoryStorageKey,
   readSessionScrollMemory,
   selectFurthestSessionScrollMemory,
   writeSessionScrollMemory,
@@ -46,6 +47,8 @@ describe("sessionScrollMemoryStorage", () => {
     localStorage.clear();
   });
 
+  afterEach(() => vi.restoreAllMocks());
+
   it("keeps split-screen sessions in independent storage entries", () => {
     const first = snapshot({ id: "turn-1", timestampMs: 100 });
     const secondReference = { ...reference, sessionId: "session-b" };
@@ -79,6 +82,52 @@ describe("sessionScrollMemoryStorage", () => {
     expect(readSessionScrollMemory(reference)).toEqual(sameTurn);
     expect(writeSessionScrollMemory(reference, newer)?.written).toBe(true);
     expect(readSessionScrollMemory(reference)).toEqual(newer);
+  });
+
+  it("keeps an interleaved farther observation from another tab", () => {
+    const farther = snapshot({ id: "turn-2", timestampMs: 200 });
+    const nearer = snapshot({ id: "turn-1", timestampMs: 100 });
+    const setItem = localStorage.setItem.bind(localStorage);
+    let interleaved = false;
+    vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+      setItem(key, value);
+      const stored = JSON.parse(value) as SessionRouteScrollSnapshot;
+      if (
+        !interleaved &&
+        key.includes(":observation:") &&
+        stored.completedTurn?.id === "turn-2"
+      ) {
+        interleaved = true;
+        writeSessionScrollMemory(reference, nearer);
+      }
+    });
+
+    writeSessionScrollMemory(reference, farther);
+
+    expect(interleaved).toBe(true);
+    expect(readSessionScrollMemory(reference)).toEqual(farther);
+  });
+
+  it("compacts immutable observations to a bounded winning entry", () => {
+    for (let index = 1; index <= 12; index += 1) {
+      writeSessionScrollMemory(
+        reference,
+        snapshot({ id: `turn-${index}`, timestampMs: index * 100 }),
+      );
+    }
+    const sessionKey = createSessionScrollMemoryStorageKey(reference);
+    const observationKeys = Array.from(
+      { length: localStorage.length },
+      (_, index) => localStorage.key(index),
+    ).filter((key) => key?.startsWith(`${sessionKey}:observation:`));
+
+    expect(observationKeys).toHaveLength(1);
+    expect(readSessionScrollMemory(reference)?.completedTurn?.id).toBe(
+      "turn-12",
+    );
+    expect(
+      isSessionScrollMemoryStorageKey(reference, observationKeys[0]!),
+    ).toBe(true);
   });
 
   it("does not move the resume point backward when the reader scrolls up", () => {

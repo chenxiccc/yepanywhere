@@ -267,6 +267,12 @@ split-screen viewing advances both independently. Exact DOM pixel geometry
 remains an in-tab hint; the content anchor and follow state survive reload.
 Cross-device/server sharing is not yet part of this contract.
 
+Concurrent tabs publish independently keyed immutable observations rather than
+overwriting one shared snapshot. Readers merge those observations by the same
+furthest-seen ordering, and opportunistic cleanup retains a winning observation
+before removing dominated ones. An interleaved nearer write therefore cannot
+erase a farther cursor.
+
 The retained anchor remains authoritative while the initial transcript is
 still growing asynchronously. Before the reader takes control, every observed
 height change reapplies that anchor so an early browser clamp cannot strand the

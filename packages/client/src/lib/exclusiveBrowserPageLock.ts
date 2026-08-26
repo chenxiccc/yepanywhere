@@ -18,6 +18,7 @@ export class ExclusiveBrowserPageLock {
   private pendingKey: string | null = null;
   private pendingAcquisition: Promise<boolean> | null = null;
   private releaseOwnership: (() => void) | null = null;
+  private acquisitionGeneration = 0;
 
   constructor(private readonly namePrefix: string) {}
 
@@ -31,11 +32,17 @@ export class ExclusiveBrowserPageLock {
       return this.pendingKey === key ? this.pendingAcquisition : false;
     }
 
-    const pendingAcquisition = this.acquireUnowned(key, options);
+    const generation = this.acquisitionGeneration;
+    const pendingAcquisition = this.acquireUnowned(key, options, generation);
     this.pendingKey = key;
     this.pendingAcquisition = pendingAcquisition;
     try {
-      return await pendingAcquisition;
+      const acquired = await pendingAcquisition;
+      return (
+        acquired &&
+        this.acquisitionGeneration === generation &&
+        this.ownedKey === key
+      );
     } finally {
       if (this.pendingAcquisition === pendingAcquisition) {
         this.pendingKey = null;
@@ -47,6 +54,7 @@ export class ExclusiveBrowserPageLock {
   private async acquireUnowned(
     key: string,
     options: { handoffWaitMs?: number; retryIntervalMs?: number },
+    generation: number,
   ): Promise<boolean> {
     const locks = getBrowserTabLockManager();
     if (!locks) return false;
@@ -54,9 +62,16 @@ export class ExclusiveBrowserPageLock {
     const deadline = Date.now() + (options.handoffWaitMs ?? 0);
     const retryIntervalMs = options.retryIntervalMs ?? 20;
     while (true) {
-      const result = await this.tryAcquire(locks, key);
+      if (this.acquisitionGeneration !== generation) return false;
+      const result = await this.tryAcquire(locks, key, generation);
       if (result === "acquired") return true;
-      if (result === "error" || Date.now() >= deadline) return false;
+      if (
+        result === "cancelled" ||
+        result === "error" ||
+        Date.now() >= deadline
+      ) {
+        return false;
+      }
       await delay(Math.min(retryIntervalMs, deadline - Date.now()));
     }
   }
@@ -64,21 +79,20 @@ export class ExclusiveBrowserPageLock {
   private async tryAcquire(
     locks: BrowserTabLockManager,
     key: string,
-  ): Promise<"acquired" | "error" | "unavailable"> {
-    let settleAcquired: (result: "acquired" | "error" | "unavailable") => void =
-      () => undefined;
-    const acquired = new Promise<"acquired" | "error" | "unavailable">(
-      (resolve) => {
-        settleAcquired = resolve;
-      },
-    );
+    generation: number,
+  ): Promise<"acquired" | "cancelled" | "error" | "unavailable"> {
+    type AcquisitionResult = "acquired" | "cancelled" | "error" | "unavailable";
+    let settleAcquired: (result: AcquisitionResult) => void = () => undefined;
+    const acquired = new Promise<AcquisitionResult>((resolve) => {
+      settleAcquired = resolve;
+    });
 
     let releaseLock: () => void = () => undefined;
     const holdLock = new Promise<void>((resolve) => {
       releaseLock = resolve;
     });
     let settled = false;
-    const settle = (value: "acquired" | "error" | "unavailable") => {
+    const settle = (value: AcquisitionResult) => {
       if (settled) return;
       settled = true;
       settleAcquired(value);
@@ -93,6 +107,10 @@ export class ExclusiveBrowserPageLock {
             settle("unavailable");
             return;
           }
+          if (this.acquisitionGeneration !== generation) {
+            settle("cancelled");
+            return;
+          }
           this.ownedKey = key;
           this.releaseOwnership = releaseLock;
           settle("acquired");
@@ -104,6 +122,9 @@ export class ExclusiveBrowserPageLock {
   }
 
   release(): void {
+    this.acquisitionGeneration += 1;
+    this.pendingKey = null;
+    this.pendingAcquisition = null;
     const release = this.releaseOwnership;
     this.releaseOwnership = null;
     this.ownedKey = null;

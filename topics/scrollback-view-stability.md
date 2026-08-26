@@ -210,13 +210,13 @@ as preferences would resolve much of the "is this a bug or intended?" ambiguity:
 Design caution: expose these as a **small set of named modes** (currently
 `live-tail`, `remember-place`, and `no-memory` internally), not
 four orthogonal toggles — orthogonal toggles are 2⁴ states to reason about and
-test, whereas the internal model can stay axis-based. The first hidden policy
-value persists via the existing `UI_KEYS` localStorage pattern already used for
-`sessionThinkingVisible` / `sessionThinkingLatestOnly`; settings UI exposure is
-deferred until the copy and advanced-placement story are settled. This does not
-substitute for fixing the bugs — a broken default is broken under every
-preference — but it clarifies which behaviors are bugs versus legitimately
-user-dependent.
+test, whereas the internal model can stay axis-based. The browser-local policy
+value persists via the existing `UI_KEYS` localStorage pattern and ships as
+a visible, searchable Development setting. Its advanced placement keeps the
+ordinary provider-like default unobtrusive without making the recovery modes
+hard to refind. This does not substitute for fixing the bugs — a broken default
+is broken under every preference — but it clarifies which behaviors are bugs
+versus legitimately user-dependent.
 
 ## Planned improvements
 

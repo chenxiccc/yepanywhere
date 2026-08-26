@@ -9,6 +9,18 @@ import {
   type SessionFileCommentDraft,
 } from "../lib/sessionFileComments";
 
+function removeUnchangedSubmittedDrafts(
+  current: readonly SessionFileCommentDraft[],
+  submitted: readonly SessionFileCommentDraft[],
+): SessionFileCommentDraft[] {
+  const submittedTextById = new Map(
+    submitted.map((draft) => [draft.id, draft.text]),
+  );
+  return current.filter(
+    (draft) => submittedTextById.get(draft.id) !== draft.text,
+  );
+}
+
 export function useSessionFileComments({
   active,
   storageKey,
@@ -131,9 +143,16 @@ export function useSessionFileComments({
         setError(true);
         return false;
       }
-      const remaining = draftsRef.current.filter((item) => item.id !== id);
+      const remaining = removeUnchangedSubmittedDrafts(draftsRef.current, [
+        draft,
+      ]);
       replaceDrafts(remaining);
-      if (activeDraftIdRef.current === id) selectDraft(null);
+      if (
+        activeDraftIdRef.current === id &&
+        !remaining.some((item) => item.id === id)
+      ) {
+        selectDraft(null);
+      }
       const key = storageKeyRef.current;
       if (key) saveSessionFileCommentDrafts(key, remaining);
       setError(false);
@@ -169,9 +188,16 @@ export function useSessionFileComments({
       setError(true);
       return false;
     }
-    const remaining = draftsRef.current.filter((draft) => !ids.has(draft.id));
+    const remaining = removeUnchangedSubmittedDrafts(
+      draftsRef.current,
+      pending,
+    );
     replaceDrafts(remaining);
-    if (activeDraftIdRef.current && ids.has(activeDraftIdRef.current)) {
+    if (
+      activeDraftIdRef.current &&
+      ids.has(activeDraftIdRef.current) &&
+      !remaining.some((draft) => draft.id === activeDraftIdRef.current)
+    ) {
       selectDraft(null);
     }
     const key = storageKeyRef.current;

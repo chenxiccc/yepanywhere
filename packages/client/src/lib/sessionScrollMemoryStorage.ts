@@ -1,8 +1,12 @@
 import type { ClientSummarySourceKey } from "./clientSummaryStore";
 import type { SessionRouteScrollSnapshot } from "./sessionRouteSnapshots";
+import { generateUUID } from "./uuid";
 
 export const SESSION_SCROLL_MEMORY_STORAGE_PREFIX =
   "yep-anywhere-session-scroll-memory-v1:";
+const SESSION_SCROLL_MEMORY_OBSERVATION_SEGMENT = ":observation:";
+let writerId: string | null = null;
+let writerSequence = 0;
 
 export interface SessionScrollMemoryReference {
   sourceKey: ClientSummarySourceKey;
@@ -26,6 +30,25 @@ export function createSessionScrollMemoryStorageKey({
   ]
     .map(encodeKeyPart)
     .join(":")}`;
+}
+
+export function isSessionScrollMemoryStorageKey(
+  reference: SessionScrollMemoryReference,
+  key: string,
+): boolean {
+  const sessionKey = createSessionScrollMemoryStorageKey(reference);
+  return (
+    key === sessionKey ||
+    key.startsWith(`${sessionKey}${SESSION_SCROLL_MEMORY_OBSERVATION_SEGMENT}`)
+  );
+}
+
+function createObservationStorageKey(
+  reference: SessionScrollMemoryReference,
+): string {
+  writerId ??= generateUUID();
+  writerSequence += 1;
+  return `${createSessionScrollMemoryStorageKey(reference)}${SESSION_SCROLL_MEMORY_OBSERVATION_SEGMENT}${writerId}:${writerSequence.toString(36)}`;
 }
 
 function getStorage(): Storage | null {
@@ -123,11 +146,38 @@ export function readSessionScrollMemory(
     return null;
   }
   try {
-    const raw = storage.getItem(createSessionScrollMemoryStorageKey(reference));
-    return raw === null ? null : parseScrollSnapshot(raw);
+    let selected: SessionRouteScrollSnapshot | undefined;
+    for (const entry of readStoredSnapshots(storage, reference)) {
+      selected = selectFurthestSessionScrollMemory(selected, entry.snapshot);
+    }
+    return selected ?? null;
   } catch {
     return null;
   }
+}
+
+interface StoredScrollSnapshot {
+  key: string;
+  snapshot: SessionRouteScrollSnapshot;
+}
+
+function readStoredSnapshots(
+  storage: Storage,
+  reference: SessionScrollMemoryReference,
+): StoredScrollSnapshot[] {
+  const entries: StoredScrollSnapshot[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key || !isSessionScrollMemoryStorageKey(reference, key)) {
+      continue;
+    }
+    const raw = storage.getItem(key);
+    const snapshot = raw === null ? null : parseScrollSnapshot(raw);
+    if (snapshot) {
+      entries.push({ key, snapshot });
+    }
+  }
+  return entries;
 }
 
 function getSeenTurn(snapshot: SessionRouteScrollSnapshot) {
@@ -214,15 +264,16 @@ export function selectFurthestSessionScrollMemory(
 ): SessionRouteScrollSnapshot | undefined {
   if (!left) return right ?? undefined;
   if (!right) return left;
-  const turnOrder = compareSeenTurns(left, right);
-  if (turnOrder !== 0) {
-    return turnOrder > 0 ? left : right;
-  }
-  const positionOrder = comparePositionsWithinTurn(left, right);
-  if (positionOrder !== 0) {
-    return positionOrder > 0 ? left : right;
-  }
-  return left;
+  return compareSessionScrollMemory(left, right) >= 0 ? left : right;
+}
+
+function compareSessionScrollMemory(
+  left: SessionRouteScrollSnapshot,
+  right: SessionRouteScrollSnapshot,
+): number {
+  return (
+    compareSeenTurns(left, right) || comparePositionsWithinTurn(left, right)
+  );
 }
 
 export interface WriteSessionScrollMemoryResult {
@@ -244,16 +295,56 @@ export function writeSessionScrollMemory(
   }
 
   try {
-    const key = createSessionScrollMemoryStorageKey(reference);
-    const raw = storage.getItem(key);
-    const stored = raw === null ? null : parseScrollSnapshot(raw);
-    const selected =
+    const stored = readSessionScrollMemory(reference);
+    const selectedBeforeWrite =
       selectFurthestSessionScrollMemory(stored, candidate) ?? candidate;
-    if (selected === stored) {
-      return { snapshot: stored, written: false };
+    const candidateAdvanced =
+      stored === null || compareSessionScrollMemory(candidate, stored) > 0;
+    const observationKey = createObservationStorageKey(reference);
+    storage.setItem(observationKey, JSON.stringify(selectedBeforeWrite));
+
+    let entries = readStoredSnapshots(storage, reference);
+    if (entries.length === 0) {
+      storage.setItem(observationKey, JSON.stringify(selectedBeforeWrite));
+      entries = [{ key: observationKey, snapshot: selectedBeforeWrite }];
     }
-    storage.setItem(key, JSON.stringify(selected));
-    return { snapshot: selected, written: true };
+    let winner = entries[0]!;
+    for (const entry of entries.slice(1)) {
+      const positionOrder = compareSessionScrollMemory(
+        entry.snapshot,
+        winner.snapshot,
+      );
+      if (
+        positionOrder > 0 ||
+        (positionOrder === 0 && entry.key.localeCompare(winner.key) > 0)
+      ) {
+        winner = entry;
+      }
+    }
+
+    const sessionKey = createSessionScrollMemoryStorageKey(reference);
+    if (winner.key === sessionKey) {
+      const durableKey = createObservationStorageKey(reference);
+      storage.setItem(durableKey, JSON.stringify(winner.snapshot));
+      winner = { key: durableKey, snapshot: winner.snapshot };
+    }
+    for (const entry of entries) {
+      if (
+        entry.key !== winner.key &&
+        entry.key.startsWith(
+          `${sessionKey}${SESSION_SCROLL_MEMORY_OBSERVATION_SEGMENT}`,
+        )
+      ) {
+        storage.removeItem(entry.key);
+      }
+    }
+
+    return {
+      snapshot: winner.snapshot,
+      written:
+        candidateAdvanced &&
+        compareSessionScrollMemory(candidate, winner.snapshot) >= 0,
+    };
   } catch {
     return { snapshot: candidate, written: false };
   }

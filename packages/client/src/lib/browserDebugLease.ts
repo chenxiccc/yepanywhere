@@ -424,11 +424,11 @@ export class BrowserDebugLeaseController {
       this.finishPersistedLease(persistedLease);
       return;
     }
-    if (
-      !(await this.pageOwnership.acquire(persistedLease.leaseId, {
-        handoffWaitMs: PAGE_LOCK_RELOAD_HANDOFF_MS,
-      }))
-    ) {
+    const ownsPage = await this.pageOwnership.acquire(persistedLease.leaseId, {
+      handoffWaitMs: PAGE_LOCK_RELOAD_HANDOFF_MS,
+    });
+    if (!ownsPage || this.persistedLease?.leaseId !== persistedLease.leaseId) {
+      this.pageOwnership.release();
       this.finishPersistedLease(persistedLease);
       return;
     }
@@ -642,6 +642,7 @@ export class BrowserDebugLeaseController {
     this.pollGeneration += 1;
     this.pollAbortController?.abort();
     this.pollAbortController = null;
+    this.pageOwnership.release();
     this.lease = null;
     this.sourceFetch = null;
     this.cleanupInstrumentation?.();

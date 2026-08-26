@@ -203,7 +203,9 @@ With Comment on:
   empty, but retains it as a draft when it has text;
 - `Enter` sends the active nonempty comment immediately to the current session;
   `Shift+Enter` inserts a newline. This send does not clear, submit, quote,
-  attach, or otherwise consume the main composer state;
+  attach, or otherwise consume the main composer state. The editor remains
+  editable during the request; success clears only the submitted snapshot, so
+  text changed while that request was in flight remains as an unsent draft;
 - editor blur saves nonempty drafts in browser-local storage scoped by source,
   session, project, and file. Moving focus outside the viewer, minimizing or
   closing it, or turning Comment off sends all remaining nonempty drafts in

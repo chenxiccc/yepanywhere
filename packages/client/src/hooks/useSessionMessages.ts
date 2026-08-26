@@ -71,6 +71,7 @@ import type {
 } from "../lib/sessionRouteSnapshots";
 import {
   createSessionScrollMemoryStorageKey,
+  isSessionScrollMemoryStorageKey,
   readSessionScrollMemory,
   selectFurthestSessionScrollMemory,
   writeSessionScrollMemory,
@@ -1410,7 +1411,10 @@ export function useSessionMessages(
       }
     };
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === scrollMemoryStorageKey) {
+      if (
+        event.key === null ||
+        isSessionScrollMemoryStorageKey(scrollMemoryReference, event.key)
+      ) {
         reconcileDeviceScrollMemory();
       }
     };

@@ -65,6 +65,9 @@ the control immediately closes the tab-local lease, clears its live warning,
 and sends a best-effort server revocation; server confirmation is not a
 prerequisite for the client to stop polling or accepting commands. The control
 remains visible while active even if its stored toolbar preference changes.
+Local close also invalidates a pending reload-handoff lock acquisition. A late
+lock result is released without restoring controller authority,
+instrumentation, warning state, or polling.
 Its timer performs the same local close at expiry. Selecting another YA session
 in the same tab preserves the active control, controller authority, original
 expiry, instrumentation, and poll; the lease is tab-scoped rather than owned by
