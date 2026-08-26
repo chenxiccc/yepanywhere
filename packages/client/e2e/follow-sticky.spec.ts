@@ -59,10 +59,18 @@ async function clickSidebarSession(page: Page, sessionPath: string) {
 async function readSessionScrollMemory(page: Page, targetSessionId: string) {
   return page.evaluate(
     ({ prefix, targetSessionId }) => {
-      const suffix = `:${encodeURIComponent(targetSessionId)}`;
+      const encodedSessionId = encodeURIComponent(targetSessionId);
       for (let index = 0; index < localStorage.length; index += 1) {
         const key = localStorage.key(index);
-        if (key?.startsWith(prefix) && key.endsWith(suffix)) {
+        if (!key?.startsWith(prefix)) continue;
+        const parts = key.slice(prefix.length).split(":");
+        const isSessionKey = parts.length === 3;
+        const isObservationKey =
+          parts.length === 6 && parts[3] === "observation";
+        if (
+          parts[2] === encodedSessionId &&
+          (isSessionKey || isObservationKey)
+        ) {
           const raw = localStorage.getItem(key);
           return raw ? JSON.parse(raw) : null;
         }
