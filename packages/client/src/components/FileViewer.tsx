@@ -141,6 +141,8 @@ interface FileViewerProps {
   onClose?: () => void;
   /** Temporarily return the modal viewer to the session toolbar. */
   onMinimize?: () => void;
+  /** Existing managed modal that owns nested media parking. */
+  parentViewerId?: string;
   /** If true, renders as standalone page layout instead of modal content */
   standalone?: boolean;
   /** Line number to scroll to and highlight (1-indexed) */
@@ -547,6 +549,7 @@ export const FileViewer = memo(function FileViewer({
   openInNewTabUrl,
   onClose,
   onMinimize,
+  parentViewerId,
   standalone = false,
   lineNumber,
   lineEnd,
@@ -1887,6 +1890,9 @@ export const FileViewer = memo(function FileViewer({
           mediaType={localMediaModal.mediaType}
           mediaSource={mediaSource}
           dismissOnBack
+          parentViewerId={
+            localMediaModal.mediaType === "image" ? parentViewerId : undefined
+          }
           onClose={closeLocalMediaModal}
         />
       ) : null}

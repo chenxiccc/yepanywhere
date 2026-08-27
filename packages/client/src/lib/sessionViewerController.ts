@@ -27,7 +27,7 @@ export type FileViewerRegistration = FileViewerBase &
   (
     | { onClose: () => void; renderContent?: never }
     | {
-        onClose?: never;
+        onClose?: () => void;
         renderContent: (inactive: boolean) => ReactNode;
       }
   );

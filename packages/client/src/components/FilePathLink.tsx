@@ -551,6 +551,7 @@ export function FileViewerModal({
           openInNewTabUrl={openInNewTabUrl}
           onClose={close}
           onMinimize={publicShareContext === null ? minimize : undefined}
+          parentViewerId={managedViewerId}
         />
       </dialog>
     </div>

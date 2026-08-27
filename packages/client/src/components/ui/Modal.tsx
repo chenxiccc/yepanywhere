@@ -39,6 +39,8 @@ export interface ModalAnchorRect {
 interface ModalProps {
   title: ReactNode;
   actions?: ReactNode;
+  headerActionsClassName?: string;
+  headerClassName?: string;
   children: ReactNode;
   onClose: () => void;
   onMinimize?: () => void;
@@ -267,6 +269,8 @@ export function useModalBackGesture(
 export function Modal({
   title,
   actions,
+  headerActionsClassName,
+  headerClassName,
   children,
   onClose,
   onMinimize,
@@ -396,17 +400,25 @@ export function Modal({
           isAnchored ? (anchorStyle ?? { visibility: "hidden" }) : undefined
         }
       >
-        <div className="modal-header">
+        <div
+          className={`modal-header${headerClassName ? ` ${headerClassName}` : ""}`}
+        >
           <span className="modal-title">{title}</span>
           <span
-            className="modal-header-actions"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.375rem",
-              marginLeft: "auto",
-              flexShrink: 0,
-            }}
+            className={`modal-header-actions${
+              headerActionsClassName ? ` ${headerActionsClassName}` : ""
+            }`}
+            style={
+              headerActionsClassName
+                ? undefined
+                : {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.375rem",
+                    marginLeft: "auto",
+                    flexShrink: 0,
+                  }
+            }
           >
             {actions}
             {onMinimize && (

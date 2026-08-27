@@ -10,10 +10,16 @@ import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../i18n";
+import {
+  clearCurrentSessionViewer,
+  presentSessionViewer,
+  useSessionViewerController,
+} from "../../lib/sessionViewerController";
 import { ImageViewer } from "../ImageViewer";
 import imageViewerStyles from "../ImageViewer.module.css";
 import { LocalFileModal, LocalMediaModal } from "../LocalMediaModal";
 import localMediaStyles from "../LocalMediaModal.module.css";
+import { SessionViewerProvider } from "../SessionManagedViewer";
 
 const originalCreateObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
   URL,
@@ -54,8 +60,18 @@ function restoreObjectProperty(
   }
 }
 
+function MediaViewerControllerProbe() {
+  const viewer = useSessionViewerController();
+  return viewer ? (
+    <button type="button" onClick={viewer.restore}>
+      Restore image viewer
+    </button>
+  ) : null;
+}
+
 describe("LocalMediaModal loading transitions", () => {
   afterEach(() => {
+    act(() => clearCurrentSessionViewer());
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -432,6 +448,7 @@ describe("LocalFileModal project paths", () => {
 
 describe("LocalMediaModal", () => {
   afterEach(() => {
+    act(() => clearCurrentSessionViewer());
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -485,6 +502,14 @@ describe("LocalMediaModal", () => {
     });
     expect(downloadLink.getAttribute("href")).toBe("blob:local-media-image");
     expect(downloadLink.getAttribute("download")).toBe("plot.png");
+    expect(
+      screen
+        .getByRole("toolbar", { name: "Image view controls" })
+        .closest(".modal-header"),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Close image viewer" }),
+    ).toBeNull();
 
     expect(
       screen.getByRole("dialog").querySelector(`.${imageViewerStyles.viewer}`),
@@ -642,7 +667,6 @@ describe("LocalMediaModal", () => {
         <ImageViewer
           fileName="plot.png"
           navigation={navigationModel}
-          onClose={() => {}}
           url="blob:local-media-image"
         />
       </I18nProvider>,
@@ -694,7 +718,6 @@ describe("LocalMediaModal", () => {
           initialNavigationChrome="position"
           keyboardNavigationSequence={1}
           navigation={navigationModel}
-          onClose={() => {}}
           url="blob:local-media-image"
         />
       </I18nProvider>,
@@ -718,7 +741,7 @@ describe("LocalMediaModal", () => {
     expect(hasClass(position, imageViewerStyles.visible)).toBe(true);
   });
 
-  it("dismisses the image viewer only from explicit controls or Escape", async () => {
+  it("dismisses through the shared Back, Backspace, Escape, and close paths", async () => {
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: vi.fn(() => "blob:local-media-image"),
@@ -756,14 +779,122 @@ describe("LocalMediaModal", () => {
     fireEvent.keyDown(stage, { key: "Enter" });
     expect(onClose).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close image viewer" }));
+    window.history.replaceState({}, "");
+    window.dispatchEvent(new PopStateEvent("popstate", { state: {} }));
     expect(onClose).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(document, { key: "Backspace" });
     expect(onClose).toHaveBeenCalledTimes(2);
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(3);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(4);
+  });
+
+  it("parks a path-backed image in the session viewer controller", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:local-media-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const onClose = vi.fn();
+
+    render(
+      <I18nProvider>
+        <SessionViewerProvider sessionId="session-1">
+          <LocalMediaModal
+            path="/tmp/plot.png"
+            mediaType="image"
+            mediaSource={{
+              fetchBlob: async () => new Blob(["png"], { type: "image/png" }),
+            }}
+            onClose={onClose}
+          />
+          <MediaViewerControllerProbe />
+        </SessionViewerProvider>
+      </I18nProvider>,
+    );
+
+    await screen.findByRole("img", { name: "plot.png" });
+    fireEvent.click(screen.getByRole("button", { name: "100%" }));
+    const stage = screen
+      .getByRole("dialog")
+      .querySelector<HTMLElement>(`.${imageViewerStyles.stage}`);
+    expect(stage && hasClass(stage, imageViewerStyles.zoom)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Minimize" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore image viewer" }),
+    );
+    expect(screen.getByRole("img", { name: "plot.png" })).toBeTruthy();
+    expect(stage && hasClass(stage, imageViewerStyles.zoom)).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("button", { name: "Restore image viewer" }),
+    ).toBeNull();
+  });
+
+  it("parks a nested image with its existing parent viewer", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:local-media-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const onClose = vi.fn();
+    const parentOnClose = vi.fn();
+    act(() => {
+      presentSessionViewer({
+        id: "parent-viewer",
+        kind: "file",
+        sessionId: "session-1",
+        label: "docs/guide.md",
+        filePath: "docs/guide.md",
+        lineSuffix: "",
+        onClose: parentOnClose,
+      });
+    });
+
+    render(
+      <I18nProvider>
+        <SessionViewerProvider sessionId="session-1">
+          <LocalMediaModal
+            path="/tmp/plot.png"
+            parentViewerId="parent-viewer"
+            mediaType="image"
+            mediaSource={{
+              fetchBlob: async () => new Blob(["png"], { type: "image/png" }),
+            }}
+            onClose={onClose}
+          />
+          <MediaViewerControllerProbe />
+        </SessionViewerProvider>
+      </I18nProvider>,
+    );
+
+    await screen.findByRole("img", { name: "plot.png" });
+    fireEvent.click(screen.getByRole("button", { name: "Minimize" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore image viewer" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(parentOnClose).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Restore image viewer" }),
+    ).toBeTruthy();
   });
 
   it("fits vector sources to the stage instead of stopping at their declared size", () => {
@@ -773,7 +904,6 @@ describe("LocalMediaModal", () => {
         <I18nProvider>
           <ImageViewer
             fileName={vector ? "figure.svg" : "plot.png"}
-            onClose={() => {}}
             url="blob:local-media-image"
             vector={vector}
           />

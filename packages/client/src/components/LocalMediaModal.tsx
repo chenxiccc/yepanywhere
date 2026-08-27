@@ -10,6 +10,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -33,6 +34,12 @@ import {
 } from "../lib/renderedFileClipboard";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { toSourceTransportApiPath } from "../lib/sourceTransportPaths";
+import {
+  clearSessionViewer,
+  minimizeSessionViewer,
+  presentSessionViewer,
+} from "../lib/sessionViewerController";
+import { useFileViewerController } from "../lib/fileViewerController";
 import {
   getAbsoluteFilePath,
   getPathBasename,
@@ -63,6 +70,7 @@ import {
   type ImageViewerNavigationInput,
 } from "./ImageViewer";
 import styles from "./LocalMediaModal.module.css";
+import { useSessionViewerSessionId } from "./SessionManagedViewer";
 import { Modal } from "./ui/Modal";
 
 export interface LocalMediaSource {
@@ -78,6 +86,8 @@ interface LocalMediaModalProps {
   path: string;
   /** Semantic source path. Null means the image has no filesystem identity. */
   filePath?: string | null;
+  /** Existing viewer that owns this nested modal's park/restore lifecycle. */
+  parentViewerId?: string;
   mediaType: LocalResourceMediaType;
   mediaSource?: LocalMediaSource;
   imageNavigation?: ImageViewerNavigation;
@@ -398,17 +408,110 @@ function renderInlinePreview(
  * Modal for viewing local media files (images and videos).
  * Fetches the file via the local-image API with proper auth handling.
  */
-export function LocalMediaModal({
+export function LocalMediaModal(props: LocalMediaModalProps) {
+  const {
+    dismissOnBack,
+    filePath,
+    imageNavigation,
+    mediaSource,
+    mediaType,
+    onClose,
+    parentViewerId,
+    path,
+  } = props;
+  const sessionId = useSessionViewerSessionId();
+  const managedViewerId = useId();
+  const mountedRef = useRef(true);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const semanticFilePath = filePath === undefined ? path : filePath;
+  const managed = Boolean(
+    !parentViewerId && sessionId && mediaType === "image" && semanticFilePath,
+  );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const closeSource = useCallback(() => {
+    if (mountedRef.current) onCloseRef.current();
+  }, []);
+
+  useEffect(() => {
+    if (!managed || !sessionId || !semanticFilePath) return;
+    presentSessionViewer({
+      id: managedViewerId,
+      kind: "file",
+      sessionId,
+      label: semanticFilePath,
+      briefLabel: getFileName(semanticFilePath),
+      filePath: semanticFilePath,
+      lineSuffix: "",
+      onClose: closeSource,
+      renderContent: (inactive) => (
+        <LocalMediaModalView
+          path={path}
+          filePath={filePath}
+          mediaType={mediaType}
+          mediaSource={mediaSource}
+          imageNavigation={imageNavigation}
+          dismissOnBack={dismissOnBack}
+          managedViewerId={managedViewerId}
+          ownsManagedViewer
+          inactive={inactive}
+          onClose={closeSource}
+        />
+      ),
+    });
+  }, [
+    closeSource,
+    dismissOnBack,
+    filePath,
+    imageNavigation,
+    managed,
+    managedViewerId,
+    mediaSource,
+    mediaType,
+    path,
+    semanticFilePath,
+    sessionId,
+  ]);
+
+  return managed ? null : (
+    <LocalMediaModalView {...props} managedViewerId={parentViewerId} />
+  );
+}
+
+function LocalMediaModalView({
   path,
   filePath,
   mediaType,
   mediaSource,
   imageNavigation,
-  dismissOnBack,
+  dismissOnBack = true,
+  managedViewerId,
+  ownsManagedViewer = false,
+  inactive = false,
   onClose,
-}: LocalMediaModalProps) {
+}: LocalMediaModalProps & {
+  managedViewerId?: string;
+  ownsManagedViewer?: boolean;
+  inactive?: boolean;
+}) {
   const { t } = useI18n();
   const transport = useCurrentSourceRuntime().transport;
+  const publishedViewer = useFileViewerController();
+  const minimized = Boolean(
+    inactive ||
+      (managedViewerId &&
+        publishedViewer?.id === managedViewerId &&
+        publishedViewer.minimized),
+  );
+  const [imageToolbarHost, setImageToolbarHost] =
+    useState<HTMLSpanElement | null>(null);
   const [displayedMedia, setDisplayedMedia] =
     useState<DisplayedLocalMedia | null>(null);
   const [loading, setLoading] = useState(true);
@@ -427,6 +530,15 @@ export function LocalMediaModal({
   const requestedFileName = getFileName(path);
   const semanticFilePath = filePath === undefined ? path : filePath;
   const openImageInNewTabLabel = t("fileViewerOpenImageNewTab" as never);
+  const close = useCallback(() => {
+    if (managedViewerId && ownsManagedViewer) {
+      clearSessionViewer(managedViewerId);
+    }
+    onClose();
+  }, [managedViewerId, onClose, ownsManagedViewer]);
+  const minimize = useCallback(() => {
+    if (managedViewerId) minimizeSessionViewer(managedViewerId);
+  }, [managedViewerId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -568,7 +680,21 @@ export function LocalMediaModal({
             (displayedMedia?.fileName ?? requestedFileName)
           )
         }
-        onClose={onClose}
+        actions={
+          imageModalActive ? (
+            <span
+              className={styles.imageToolbarHost}
+              ref={setImageToolbarHost}
+            />
+          ) : undefined
+        }
+        headerClassName={imageModalActive ? styles.imageHeader : undefined}
+        headerActionsClassName={
+          imageModalActive ? styles.imageHeaderActions : undefined
+        }
+        onClose={close}
+        onMinimize={managedViewerId ? minimize : undefined}
+        minimized={minimized}
         closeOnBackGesture={dismissOnBack}
         closeOnBackspace={dismissOnBack}
         variant={imageModalActive ? "image-viewer" : undefined}
@@ -589,7 +715,7 @@ export function LocalMediaModal({
               onNavigationInput={(input) => {
                 imageNavigationInputRef.current = input;
               }}
-              onClose={onClose}
+              toolbarHost={imageToolbarHost}
               url={displayedImage.url}
               vector={displayedImage.vector}
             />

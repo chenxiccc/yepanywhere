@@ -176,13 +176,16 @@ both must not duplicate document state or let the two controls disagree.
 
 ## Managed detail viewers
 
-Expanded Bash/Ran, Edit, Write, Grep, Web, and WriteStdin details and the
-provider-child transcript selector participate in the same `open`, `parked`,
-and `closed` state model and use the same composer controller. Their controller
-label describes the detail rather than a file; the file-only right-click
-copy-path action is not present. Provider-child detail additionally retains its
-selected child and loaded transcript across parking, and its header count can
-restore the same viewer.
+Expanded Bash/Ran, Edit, Write, Grep, Web, and WriteStdin details, the
+provider-child transcript selector, and path-backed full image viewers
+participate in the same `open`, `parked`, and `closed` state model and use the
+same composer controller. An image uses its semantic path as file identity and
+retains its decoded bytes and fit/zoom position across parking; pathless media
+does not manufacture a file controller. A detail controller label describes the
+detail rather than a file, and the file-only right-click copy-path action is not
+present. Provider-child detail additionally retains its selected child and
+loaded transcript across parking, and its header count can restore the same
+viewer.
 
 The session owns one managed-panel host beside the message list, inside the same
 session metadata and agent-content providers as the transcript. A tool row or

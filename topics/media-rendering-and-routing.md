@@ -394,14 +394,23 @@ full-size inspection.
 
 The shared image viewer uses the useful viewport rather than the generic modal
 preview ceiling. Selecting a thumbnail enters one maximized viewer state.
-Activating the modal **×** or visible **Close** control, or pressing Escape,
-returns to the prior transcript/gallery state. Clicking or tapping the image
-stage never dismisses the viewer. Toolbar controls remain operable without
+Activating the modal **×**, pressing Escape or an unmodified Backspace, or
+using browser Back/back-swipe returns to the prior transcript/gallery state.
+The header has no second text-labelled Close action. Clicking or tapping the
+image stage never dismisses the viewer. Toolbar controls remain operable without
 dismissing it. When a turn gallery supplies context, previous/next buttons and
 the Left/Right arrow keys move through eligible images in original transcript
 order and wrap at either end. The viewer shows the source-order position in
 reserved space outside the image stage, even when compact packing visually
 reorders the thumbnails.
+
+In an authenticated session, a path-backed image viewer participates in the
+shared managed-viewer state. Its header minimize control parks the same mounted
+image and its fit/zoom position into the bottom composer controller; restore
+does not reload or reconstruct it. Pathless media and public-share viewers do
+not manufacture a file identity or parking control. An image opened from an
+already managed file viewer parks that existing viewer rather than replacing
+it, so closing or navigating Back from the image returns to the mounted parent.
 
 The previous/next buttons and position are transient viewer chrome. They appear
 briefly when the viewer opens. Fine-pointer movement over the image stage shows
@@ -434,9 +443,12 @@ practical touch targets; tapping the stage reveals them and full-screen
 horizontal swipe navigation is not required.
 
 The viewer header exposes the basename as a link to the fetched full-resolution
-image, and its explicit **Download** action saves those same fetched bytes under
-that basename. Both use the relay-safe object URL; neither navigates the browser
-to a bare API route.
+image. When viewport width permits, Fit, 1:1, zoom, **Download**, minimize, and
+the single **×** close action occupy that same title row. At phone width the
+image controls move together to a second header row while minimize and close
+remain beside the title. **Download** saves the fetched bytes under the
+basename. The title link and Download both use the relay-safe object URL;
+neither navigates the browser to a bare API route.
 
 The compact-gallery goals, in priority order, are:
 

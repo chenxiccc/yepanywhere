@@ -1,11 +1,3 @@
-/* Kept first to preserve the source order it had in renderers.css, where this
-   rule lived inside the shared 600px block alongside the modal shell. */
-@media (max-width: 600px) {
-  .close {
-    display: none;
-  }
-}
-
 .viewer {
   display: grid;
   width: 100%;
@@ -18,6 +10,14 @@
   grid-template-rows: auto minmax(0, 1fr) 1.75rem;
 }
 
+.viewer.toolbarPortaled {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.viewer.hasNavigation.toolbarPortaled {
+  grid-template-rows: minmax(0, 1fr) 1.75rem;
+}
+
 .toolbar {
   display: flex;
   min-width: 0;
@@ -28,9 +28,14 @@
   background: var(--bg-secondary);
 }
 
+.headerToolbar {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .control,
-.download,
-.close {
+.download {
   min-width: 2rem;
   min-height: 2rem;
   box-sizing: border-box;
@@ -49,7 +54,6 @@
 
 .control:hover,
 .download:hover,
-.close:hover,
 .control[aria-pressed="true"] {
   border-color: var(--accent-color);
   color: var(--text-primary);
