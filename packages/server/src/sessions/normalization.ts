@@ -66,9 +66,19 @@ interface CodexToolUseConversion {
 
 const CODEX_CONTEXT_COMPACTED_DEDUPE_WINDOW_MS = 5000;
 const CODEX_PROVIDER_FORK_TURN_ID = Symbol("codexProviderForkTurnId");
+const CODEX_NORMALIZATION_SOURCE = Symbol("codexNormalizationSource");
 
 type MessageWithCodexForkTurnId = Message & {
   [CODEX_PROVIDER_FORK_TURN_ID]?: string;
+};
+
+interface CodexNormalizationSource {
+  source: object;
+  entries: readonly CodexSessionEntry[];
+}
+
+type CodexEntriesWithNormalizationSource = CodexSessionEntry[] & {
+  [CODEX_NORMALIZATION_SOURCE]?: CodexNormalizationSource;
 };
 
 /** Read server-only Codex turn identity retained during rollout normalization. */
@@ -91,13 +101,48 @@ function attachCodexProviderForkTurnId(
   });
 }
 const codexMessageCache = new WeakMap<
-  CodexSessionEntry[],
+  object,
   {
     length: number;
+    firstEntry: CodexSessionEntry | undefined;
     lastEntry: CodexSessionEntry | undefined;
     messages: Message[];
   }
 >();
+
+/**
+ * Preserve one normalization identity across defensive copies of an accepted
+ * reader snapshot. Structurally mutated copies stop matching its entry sequence.
+ */
+export function tagCodexEntriesNormalizationSource(
+  entries: CodexSessionEntry[],
+  source: object,
+  sourceEntries: readonly CodexSessionEntry[],
+): CodexSessionEntry[] {
+  Object.defineProperty(entries, CODEX_NORMALIZATION_SOURCE, {
+    configurable: false,
+    enumerable: false,
+    value: {
+      source,
+      entries: sourceEntries,
+    } satisfies CodexNormalizationSource,
+    writable: false,
+  });
+  return entries;
+}
+
+function getCodexMessageCacheKey(entries: CodexSessionEntry[]): object {
+  const tagged = (entries as CodexEntriesWithNormalizationSource)[
+    CODEX_NORMALIZATION_SOURCE
+  ];
+  if (tagged && tagged.entries.length === entries.length) {
+    for (let index = 0; index < entries.length; index += 1) {
+      if (tagged.entries[index] !== entries[index]) return entries;
+    }
+    return tagged.source;
+  }
+  return entries;
+}
 
 // Keyed by the reader's cache-stable entries array (claude-transcript-cache):
 // an unchanged transcript skips DAG rebuild + per-message conversion, and
@@ -307,11 +352,14 @@ function convertCodexEntries(
   entries: CodexSessionEntry[],
   sessionId: string,
 ): Message[] {
-  const cached = codexMessageCache.get(entries);
+  const cacheKey = getCodexMessageCacheKey(entries);
+  const cached = codexMessageCache.get(cacheKey);
+  const firstEntry = entries[0];
   const lastEntry = entries[entries.length - 1];
   if (
     cached &&
     cached.length === entries.length &&
+    cached.firstEntry === firstEntry &&
     cached.lastEntry === lastEntry
   ) {
     return cached.messages;
@@ -452,8 +500,9 @@ function convertCodexEntries(
     }
   }
 
-  codexMessageCache.set(entries, {
+  codexMessageCache.set(cacheKey, {
     length: entries.length,
+    firstEntry,
     lastEntry,
     messages,
   });

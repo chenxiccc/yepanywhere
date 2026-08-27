@@ -89,6 +89,14 @@ the source check, bounded file read, parse, and cache publication. The retained
 flat entry array is internal to the reader: only the owner mutates it, and
 callers receive array copies.
 
+Array-copy isolation must not discard exact-snapshot normalization reuse.
+Copies issued from one accepted retained snapshot share a normalization
+identity, so repeated detail projections reuse the same normalized messages.
+An append, replacement, invalidation, or caller-side structural mutation
+changes the entry sequence and must not reuse that projection. A caller can
+therefore mutate its private array without poisoning the reader's retained
+entries or making a different snapshot appear unchanged.
+
 Plain-JSONL cold and incremental reads consume exactly the byte count from the
 source stat used for that pass. Bytes appended after that observation belong to
 a later pass. A short read fails rather than publishing entries under a byte

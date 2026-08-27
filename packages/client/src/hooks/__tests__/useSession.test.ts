@@ -28,6 +28,7 @@ const apiMocks = vi.hoisted(() => ({
 
 const sessionMessagesMock = vi.hoisted(() => ({
   messages: [] as Array<Record<string, unknown>>,
+  loading: false,
   provider: "codex",
   sessionUpdatedAt: "2026-04-24T00:00:00.000Z",
   reconciledSessionUpdatedAt: "2026-04-24T00:00:00.000Z",
@@ -171,7 +172,7 @@ vi.mock("../useSessionMessages", () => ({
       toolUseToAgent: new Map(),
       markdownAugments: {},
       applyFinalMarkdownAugment,
-      loading: false,
+      loading: sessionMessagesMock.loading,
       sessionLoadProgress: {
         stage: "complete",
         messageCount: sessionMessagesMock.messages.length,
@@ -270,6 +271,7 @@ describe("useSession completion reconciliation", () => {
     sessionStreamHandler = null;
     streamingContentOptions = undefined;
     sessionMessagesMock.messages = [];
+    sessionMessagesMock.loading = false;
     sessionMessagesMock.provider = "codex";
     sessionMessagesMock.sessionUpdatedAt = "2026-04-24T00:00:00.000Z";
     sessionMessagesMock.reconciledSessionUpdatedAt = "2026-04-24T00:00:00.000Z";
@@ -432,6 +434,18 @@ describe("useSession completion reconciliation", () => {
     });
 
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not duplicate the pending initial load when the watch opens", () => {
+    sessionMessagesMock.loading = true;
+    renderHook(() => useSession(PROJECT_ID, "sess-1", undefined));
+
+    act(() => {
+      sessionWatchOptions?.onOpen?.();
+      sessionWatchOptions?.onReconnect?.();
+    });
+
+    expect(fetchNewMessages).not.toHaveBeenCalled();
   });
 
   it("surfaces deferred effort configuration failures", () => {

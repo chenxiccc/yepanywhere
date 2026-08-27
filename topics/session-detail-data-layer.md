@@ -175,8 +175,11 @@ ensuring that a file event, reconnect, or liveness heartbeat observed during a
 slow transcript read is eventually reconciled.
 
 The focused session watch requests catch-up on its initial open as well as
-after a reconnect. The initial read and watch subscription therefore do not
-leave an unobserved interval between snapshot hydration and live observation.
+after a reconnect, except while initial snapshot hydration is still pending.
+The pending snapshot already closes the pre-watch interval; another full-tail
+read at watch-open or reconnect only duplicates that work. Once hydration has
+settled, watch-open and reconnect catch-up resume normally. File-change demand
+observed during hydration still reaches the serialized trailing-read path.
 
 A provider-progress heartbeat compares its progress timestamp with the session
 timestamp from the last REST transcript response successfully applied to the

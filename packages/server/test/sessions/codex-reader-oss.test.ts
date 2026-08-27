@@ -1626,6 +1626,22 @@ describe("CodexSessionReader - OSS Support", () => {
       "test-project" as UrlProjectId,
     );
     expect(retained?.data.session.entries).toEqual(first?.data.session.entries);
+    expect(retained).not.toBeNull();
+    if (!retained) throw new Error("Expected the retained detail read");
+    expect(normalizeSession(retained).messages).toBe(normalized.messages);
+
+    const reordered = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(reordered).not.toBeNull();
+    if (!reordered) throw new Error("Expected a reorderable detail read");
+    const reorderedEntries = reordered.data.session.entries;
+    [reorderedEntries[1], reorderedEntries[2]] = [
+      reorderedEntries[2],
+      reorderedEntries[1],
+    ];
+    expect(normalizeSession(reordered).messages).not.toBe(normalized.messages);
     expect(rangeSpy).toHaveBeenCalledTimes(1);
   });
 

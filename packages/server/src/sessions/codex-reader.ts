@@ -67,7 +67,10 @@ import {
   isCodexUserMessageEventEntry,
   isCodexUserResponseEntry,
 } from "./codex-user-turn-provenance.js";
-import { normalizeSession } from "./normalization.js";
+import {
+  normalizeSession,
+  tagCodexEntriesNormalizationSource,
+} from "./normalization.js";
 import { SummaryParserClient } from "./summary-parser-worker-client.js";
 import type {
   SummaryParserWorkerMode,
@@ -209,6 +212,7 @@ interface CodexEntryCache {
   size: number;
   entries: CodexSessionEntry[];
   partialLine: string;
+  normalizationSource: object;
 }
 
 interface CodexEntryReadOwner {
@@ -1436,7 +1440,11 @@ export class CodexSessionReader implements ISessionReader {
           parsedEntries: cached.entries.length,
           dedupedEntries: cached.entries.length,
         });
-        return cached.entries.slice();
+        return tagCodexEntriesNormalizationSource(
+          cached.entries.slice(),
+          cached.normalizationSource,
+          cached.entries,
+        );
       }
 
       if (!shouldWriteCache) {
@@ -1476,7 +1484,11 @@ export class CodexSessionReader implements ISessionReader {
 
       const refreshed = await promise;
       if (refreshed && this.entryCache.get(sessionId) === refreshed) {
-        return refreshed.entries.slice();
+        return tagCodexEntriesNormalizationSource(
+          refreshed.entries.slice(),
+          refreshed.normalizationSource,
+          refreshed.entries,
+        );
       }
     }
   }
@@ -1531,6 +1543,7 @@ export class CodexSessionReader implements ISessionReader {
       cached.partialLine = parsed.partialLine;
       cached.size = stats.size;
       cached.mtimeMs = stats.mtimeMs;
+      cached.normalizationSource = {};
       this.cacheAgentMappingsFromEntries(
         sessionId,
         filePath,
@@ -1572,6 +1585,7 @@ export class CodexSessionReader implements ISessionReader {
       size: stats.size,
       entries: parsed.entries,
       partialLine: parsed.partialLine,
+      normalizationSource: {},
     };
     this.entryCache.set(sessionId, refreshed);
     const cacheStoreMs = Date.now() - cacheStoreStartedAt;

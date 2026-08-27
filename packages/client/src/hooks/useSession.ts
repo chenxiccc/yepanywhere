@@ -1714,9 +1714,11 @@ export function useSession(
     {
       onChange: handleSessionWatchChange,
       onOpen: () => {
+        if (messagesLoadingRef.current) return;
         throttledFetch({ route: "focused-session-watch-open" });
       },
       onReconnect: () => {
+        if (messagesLoadingRef.current) return;
         throttledFetch({ route: "focused-session-watch-reconnect" });
       },
     },
