@@ -736,6 +736,8 @@ export function GitStatusPage() {
   const {
     gitStatus: statusMetadata,
     untrackedFiles: legacyUntrackedFiles,
+    untrackedLoading,
+    untrackedError,
     loading: statusLoading,
     error: statusError,
     refetch,
@@ -974,6 +976,8 @@ export function GitStatusPage() {
                       supportsCompleteFilesystemScan
                     }
                     untrackedFiles={untrackedFiles}
+                    untrackedLoading={untrackedLoading}
+                    untrackedError={untrackedError}
                     supportsLastEditor={supportsLastEditor}
                     gitActions={gitActions}
                     reviewComments={reviewComments}
@@ -1041,6 +1045,8 @@ function GitStatusContent({
   supportsWorkingTreeSections,
   supportsCompleteFilesystemScan,
   untrackedFiles,
+  untrackedLoading,
+  untrackedError,
   supportsLastEditor,
   gitActions,
   reviewComments,
@@ -1059,6 +1065,8 @@ function GitStatusContent({
   supportsWorkingTreeSections: boolean;
   supportsCompleteFilesystemScan: boolean;
   untrackedFiles: GitUntrackedFileListResult | null;
+  untrackedLoading: boolean;
+  untrackedError: Error | null;
   supportsLastEditor: boolean;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
@@ -1202,6 +1210,8 @@ function GitStatusContent({
             supportsWorkingTreeFiles && !supportsWorkingTreeSections
           }
           untrackedFiles={untrackedFiles}
+          untrackedLoading={untrackedLoading}
+          untrackedError={untrackedError}
           initialWorkingTreePath={worktreeFile}
           onBrowseHistory={handleBrowseHistory}
           onBlameFile={handleBlameFile}
@@ -1221,6 +1231,8 @@ function GitStatusContent({
             supportsWorkingTreeFiles && !supportsWorkingTreeSections
           }
           untrackedFiles={untrackedFiles}
+          untrackedLoading={untrackedLoading}
+          untrackedError={untrackedError}
           initialSha={commitSha}
           initialPath={commitFile}
           initialBlame={commitBlame}

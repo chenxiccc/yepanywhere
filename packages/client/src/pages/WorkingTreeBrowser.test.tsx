@@ -155,6 +155,81 @@ describe("WorkingTreeBrowser", () => {
     expect(getGitDiff).not.toHaveBeenCalled();
   });
 
+  it("keeps the workbench visible while untracked files load", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            isClean: true,
+            files: [],
+            recentCommits: [],
+          }}
+          isWideScreen={false}
+          supportsUntrackedCache
+          untrackedFiles={null}
+          untrackedLoading
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("working-tree-browser")).toBeDefined();
+    expect(await screen.findByText("gitStatusLoading")).toBeDefined();
+    expect(screen.queryByText("gitStatusWorkingTreeClean")).toBeNull();
+  });
+
+  it("keeps the workbench visible when untracked loading fails", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            isClean: true,
+            files: [],
+            recentCommits: [],
+          }}
+          isWideScreen={false}
+          supportsUntrackedCache
+          untrackedFiles={null}
+          untrackedError={new Error("untracked inventory unavailable")}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("working-tree-browser")).toBeDefined();
+    expect(
+      await screen.findByText(
+        "gitStatusErrorPrefix untracked inventory unavailable",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("gitStatusLoading")).toBeNull();
+    expect(screen.queryByText("gitStatusWorkingTreeClean")).toBeNull();
+  });
+
   it("merges staged and unstaged layers into one reviewable Changes row", async () => {
     getGitDiff.mockResolvedValue({
       diffHtml:

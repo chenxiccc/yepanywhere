@@ -336,11 +336,14 @@ The same capability owns
 `GET /api/projects/:projectId/git?untracked=cache`. Cache-backed polling asks Git
 for tracked/staged state with untracked enumeration disabled, then merges the
 retained untracked snapshot. One root request is shared in flight, so a polling
-tick cannot overlap it. Background replacement retains the current file corpus,
-selected row, mounted detail, scroll/view state, and explicit folder/outline
-disclosures until replacement data is ready. A changed compact-folder corpus
-adds or removes available groups without resetting choices for groups that
-remain.
+tick cannot overlap it. The tracked/staged response mounts the workbench
+immediately; until the first untracked snapshot arrives, an inline loading or
+error state replaces any premature clean-tree claim. Untracked rows then enrich
+the mounted corpus in place. Retention expiry, eviction, a file update, and every
+background check keep the last successful mounted corpus, selected row, detail,
+scroll/view state, and explicit folder/outline disclosures visible until
+replacement data is ready. A changed compact-folder corpus adds or removes
+available groups without resetting choices for groups that remain.
 
 The route-mounted status owner refreshes early when a managed process in the
 selected project reaches idle or waiting-for-input, coalescing completion events

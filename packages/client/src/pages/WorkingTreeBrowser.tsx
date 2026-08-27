@@ -227,6 +227,8 @@ export function WorkingTreeBrowser({
   isWideScreen,
   supportsUntrackedCache = false,
   untrackedFiles = null,
+  untrackedLoading = false,
+  untrackedError = null,
   initialWorkingTreePath,
   embeddedInHistory = false,
   onBackToRevisions,
@@ -245,6 +247,8 @@ export function WorkingTreeBrowser({
   isWideScreen: boolean;
   supportsUntrackedCache?: boolean;
   untrackedFiles?: GitUntrackedFileListResult | null;
+  untrackedLoading?: boolean;
+  untrackedError?: Error | null;
   /** One-shot deep link to a dirty file from a session Edit block. */
   initialWorkingTreePath?: string;
   /** Let Commits place these same files/diff in its revision-detail columns. */
@@ -948,9 +952,13 @@ export function WorkingTreeBrowser({
   const historyParentLink = openHistory ? (
     <CommitHistoryParentLink onClick={openHistory} t={t} />
   ) : null;
+  const untrackedCacheIncomplete =
+    supportsUntrackedCache && untrackedFiles === null;
+  const untrackedCacheLoading = untrackedCacheIncomplete && untrackedLoading;
   if (
     (status.isClean || currentFiles.length === 0) &&
-    !hasRetainedEditorTarget
+    !hasRetainedEditorTarget &&
+    !untrackedCacheIncomplete
   ) {
     return (
       <div className={rootClassName} data-testid="working-tree-browser">
@@ -1035,6 +1043,16 @@ export function WorkingTreeBrowser({
                   loaded: untrackedFolderScan.loaded,
                   total: untrackedFolderScan.total,
                 })}
+              </span>
+            )}
+            {untrackedCacheLoading && (
+              <span className={styles.scanProgress} role="status">
+                {t("gitStatusLoading")}
+              </span>
+            )}
+            {untrackedCacheIncomplete && untrackedError && (
+              <span className={styles.scanProgress} role="alert">
+                {t("gitStatusErrorPrefix")} {untrackedError.message}
               </span>
             )}
             {supportsUntrackedCache && untrackedFiles?.truncated && (

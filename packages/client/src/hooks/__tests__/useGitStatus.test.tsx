@@ -5,10 +5,14 @@ import type {
   GitUntrackedFileListResult,
 } from "@yep-anywhere/shared";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
-import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
+import {
+  asClientSummarySourceKey,
+  resetClientSummaryStoreForTests,
+} from "../../lib/clientSummaryStore";
 import {
   clearRouteRetention,
   resetRouteRetentionForTests,
+  writeRouteRetention,
 } from "../../lib/routeRetention";
 import { useGitStatus } from "../useGitStatus";
 
@@ -224,7 +228,7 @@ describe("useGitStatus", () => {
     expect(second.result.current.loading).toBe(false);
   });
 
-  it("recovers when a mounted status payload is evicted", async () => {
+  it("keeps mounted status visible while an evicted payload recovers", async () => {
     const firstStatus = gitStatus([
       {
         path: "a.ts",
@@ -257,13 +261,82 @@ describe("useGitStatus", () => {
       await Promise.resolve();
     });
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
-    expect(rendered.result.current.gitStatus).toBeNull();
-    expect(rendered.result.current.loading).toBe(true);
+    expect(rendered.result.current.gitStatus).toEqual(firstStatus);
+    expect(rendered.result.current.loading).toBe(false);
 
     recovery.resolve(recoveredStatus);
     await settle();
     expect(rendered.result.current.gitStatus).toEqual(recoveredStatus);
     expect(rendered.result.current.loading).toBe(false);
+  });
+
+  it("keeps mounted status visible when eviction recovery fails", async () => {
+    const firstStatus = gitStatus([
+      {
+        path: "a.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    mocks.getGitStatus
+      .mockResolvedValueOnce(firstStatus)
+      .mockRejectedValueOnce(new Error("status unavailable"));
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", { poll: false }),
+    );
+    await settle();
+
+    act(() => clearRouteRetention());
+    await settle();
+
+    expect(rendered.result.current.gitStatus).toEqual(firstStatus);
+    expect(rendered.result.current.loading).toBe(false);
+    expect(rendered.result.current.error).toBeNull();
+  });
+
+  it("keeps mounted status visible when retention expires", async () => {
+    const firstStatus = gitStatus([
+      {
+        path: "a.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    const recovery = deferred<GitStatusInfo>();
+    mocks.getGitStatus
+      .mockResolvedValueOnce(firstStatus)
+      .mockReturnValueOnce(recovery.promise);
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", { poll: false }),
+    );
+    await settle();
+
+    vi.setSystemTime(60_001);
+    act(() => {
+      writeRouteRetention(
+        {
+          sourceKey: asClientSummarySourceKey("host:other"),
+          routeId: "other-route",
+        },
+        { value: true },
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mocks.getGitStatus).toHaveBeenCalledTimes(2);
+    expect(rendered.result.current.gitStatus).toEqual(firstStatus);
+    expect(rendered.result.current.loading).toBe(false);
+
+    recovery.resolve(gitStatus([]));
+    await settle();
   });
 
   it("can retain status without installing a polling interval", async () => {
@@ -347,7 +420,8 @@ describe("useGitStatus", () => {
     });
     await settle();
 
-    expect(rendered.result.current.gitStatus).toBeNull();
+    expect(rendered.result.current.gitStatus).toEqual(gitStatus([]));
+    expect(rendered.result.current.loading).toBe(false);
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -396,7 +470,8 @@ describe("useGitStatus", () => {
       clearRouteRetention();
     });
     await settle();
-    expect(rendered.result.current.gitStatus).toBeNull();
+    expect(rendered.result.current.gitStatus).toEqual(firstStatus);
+    expect(rendered.result.current.loading).toBe(false);
     expect(mocks.getGitStatus).toHaveBeenCalledTimes(1);
 
     // Visible but unfocused is not yet attention: still no recovery.
@@ -539,6 +614,76 @@ describe("useGitStatus", () => {
         linesDeleted: null,
       },
     ]);
+  });
+
+  it("renders tracked status while untracked enrichment is still loading", async () => {
+    const tracked = gitStatus([
+      {
+        path: "src/tracked.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    const untracked = deferred<GitUntrackedFileListResult>();
+    mocks.getGitStatus.mockResolvedValue(tracked);
+    mocks.listGitUntrackedFiles.mockReturnValue(untracked.promise);
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", {
+        poll: false,
+        useUntrackedCache: true,
+      }),
+    );
+    await settle();
+
+    expect(rendered.result.current.gitStatus).toEqual(tracked);
+    expect(rendered.result.current.loading).toBe(false);
+    expect(rendered.result.current.untrackedLoading).toBe(true);
+
+    untracked.resolve({
+      files: ["root.txt"],
+      folders: [],
+      total: 1,
+      refreshedAt: "2026-08-18T00:00:00.000Z",
+      truncated: false,
+      limit: 500,
+    });
+    await settle();
+    expect(rendered.result.current.untrackedLoading).toBe(false);
+  });
+
+  it("keeps tracked status visible when untracked enrichment fails", async () => {
+    const tracked = gitStatus([
+      {
+        path: "src/tracked.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ]);
+    mocks.getGitStatus.mockResolvedValue(tracked);
+    mocks.listGitUntrackedFiles.mockRejectedValue(
+      new Error("untracked inventory unavailable"),
+    );
+
+    const rendered = renderHook(() =>
+      useGitStatus("project-a", {
+        poll: false,
+        useUntrackedCache: true,
+      }),
+    );
+    await settle();
+
+    expect(rendered.result.current.gitStatus).toEqual(tracked);
+    expect(rendered.result.current.loading).toBe(false);
+    expect(rendered.result.current.error).toBeNull();
+    expect(rendered.result.current.untrackedLoading).toBe(false);
+    expect(rendered.result.current.untrackedError).toEqual(
+      new Error("untracked inventory unavailable"),
+    );
   });
 
   it("omits untracked rows without launching the legacy inventory request", async () => {

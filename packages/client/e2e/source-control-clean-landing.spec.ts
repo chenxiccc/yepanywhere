@@ -255,6 +255,40 @@ test("clean Changes landing and latest-commit preference stay distinct", async (
   await capture(page, "source-control-clean-mobile-375x812.png");
 });
 
+test("retention eviction preserves the mounted workbench", async ({
+  page,
+  baseURL,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await installPageAttention(page);
+  const statusRequests = countGitStatusRequests(page);
+  await openSourceControl(page, baseURL);
+  await expect(
+    page.getByText("Working tree clean", { exact: true }),
+  ).toBeVisible();
+  await expect.poll(statusRequests.settled).toBe(true);
+
+  await setPageAttention(page, "hidden", false);
+  await page.evaluate(() => {
+    const retention = window.__YA_ROUTE_RETENTION__;
+    if (!retention) {
+      throw new Error("Route retention developer API was not published");
+    }
+    retention.clear();
+  });
+  await expect(
+    page.getByText("Working tree clean", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Loading...", { exact: true })).toHaveCount(0);
+  await capture(page, "source-control-retention-desktop-1000x600.png");
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(
+    page.getByText("Working tree clean", { exact: true }),
+  ).toBeVisible();
+  await capture(page, "source-control-retention-mobile-375x812.png");
+});
+
 test("status refresh follows route and page attention", async ({
   page,
   context,
@@ -273,12 +307,16 @@ test("status refresh follows route and page attention", async ({
   expect(statusRequests()).toBe(initialRequests);
   await page.clock.fastForward(25_000);
   await expect.poll(statusRequests).toBeGreaterThan(initialRequests);
+  await expect.poll(statusRequests.settled).toBe(true);
 
   await page.evaluate(() => {
     history.pushState(null, "", "/sessions");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   await expect(page).toHaveURL(/\/sessions$/);
+  await expect(
+    page.getByText("Working tree clean", { exact: true }),
+  ).toHaveCount(0);
   const requestsAfterLeaving = statusRequests();
   await page.clock.fastForward(60_000);
   expect(statusRequests()).toBe(requestsAfterLeaving);

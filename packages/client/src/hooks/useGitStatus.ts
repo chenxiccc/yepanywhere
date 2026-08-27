@@ -109,18 +109,50 @@ export function useGitStatus(
   const ready = useRemoteReady();
   const useUntrackedCache = options.useUntrackedCache === true;
   const omitUntracked = options.omitUntracked === true;
+  const queryKey = useMemo(
+    () =>
+      createClientQueryKey({
+        endpoint: useUntrackedCache
+          ? "git-status:cached-untracked"
+          : omitUntracked
+            ? "git-status:no-untracked"
+            : "git-status",
+        projectId: projectId ?? null,
+      }),
+    [omitUntracked, projectId, useUntrackedCache],
+  );
   const statusSnapshot = useGitStatusSnapshot(
     sourceKey,
     projectId,
     useUntrackedCache,
     omitUntracked,
   );
+  const snapshotIdentity = `${sourceKey}\0${queryKey}`;
+  const mountedStatusSnapshotRef = useRef<{
+    identity: string;
+    value: GitStatusInfo | null;
+  }>({ identity: snapshotIdentity, value: statusSnapshot });
+  if (mountedStatusSnapshotRef.current.identity !== snapshotIdentity) {
+    mountedStatusSnapshotRef.current = {
+      identity: snapshotIdentity,
+      value: statusSnapshot,
+    };
+  } else if (statusSnapshot !== null) {
+    mountedStatusSnapshotRef.current.value = statusSnapshot;
+  }
+  const mountedStatusSnapshot =
+    statusSnapshot ?? mountedStatusSnapshotRef.current.value;
   const [untrackedFiles, setUntrackedFiles] =
     useState<GitUntrackedFileListResult | null>(null);
+  const [untrackedLoading, setUntrackedLoading] = useState(false);
   const gitStatus = useMemo(
     () =>
-      mergeCachedUntracked(statusSnapshot, untrackedFiles, useUntrackedCache),
-    [statusSnapshot, untrackedFiles, useUntrackedCache],
+      mergeCachedUntracked(
+        mountedStatusSnapshot,
+        untrackedFiles,
+        useUntrackedCache,
+      ),
+    [mountedStatusSnapshot, untrackedFiles, useUntrackedCache],
   );
   const [statusLoading, setStatusLoading] = useState(
     () => Boolean(projectId) && gitStatus === null,
@@ -139,18 +171,6 @@ export function useGitStatus(
     queryKey: "",
     present: false,
   });
-  const queryKey = useMemo(
-    () =>
-      createClientQueryKey({
-        endpoint: useUntrackedCache
-          ? "git-status:cached-untracked"
-          : omitUntracked
-            ? "git-status:no-untracked"
-            : "git-status",
-        projectId: projectId ?? null,
-      }),
-    [omitUntracked, projectId, useUntrackedCache],
-  );
 
   gitStatusRef.current = gitStatus;
   untrackedFilesRef.current = untrackedFiles;
@@ -171,14 +191,16 @@ export function useGitStatus(
     untrackedRequestSequenceRef.current += 1;
     untrackedInFlightRef.current = null;
     setUntrackedFiles(null);
+    setUntrackedLoading(false);
     setUntrackedError(null);
   }, [omitUntracked, projectId, sourceKey, useUntrackedCache]);
 
   useEffect(() => {
     void sourceKey;
+    void queryKey;
     setStatusError(null);
-    setStatusLoading(Boolean(projectId) && statusSnapshot === null);
-  }, [projectId, sourceKey, statusSnapshot]);
+    setStatusLoading(Boolean(projectId) && gitStatusRef.current === null);
+  }, [projectId, queryKey, sourceKey]);
 
   useEffect(() => {
     if (!projectId) {
@@ -198,7 +220,10 @@ export function useGitStatus(
         return;
       }
       const requestId = ++untrackedRequestSequenceRef.current;
-      if (!background) setUntrackedError(null);
+      if (!background || untrackedFilesRef.current === null) {
+        setUntrackedError(null);
+      }
+      if (untrackedFilesRef.current === null) setUntrackedLoading(true);
       const existingRequest = untrackedInFlightRef.current;
       const request = existingRequest ?? api.listGitUntrackedFiles(projectId);
       if (!existingRequest) untrackedInFlightRef.current = request;
@@ -209,6 +234,7 @@ export function useGitStatus(
           requestId === untrackedRequestSequenceRef.current
         ) {
           setUntrackedFiles(result);
+          setUntrackedLoading(false);
           setUntrackedError(null);
         }
       } catch (err) {
@@ -222,6 +248,12 @@ export function useGitStatus(
           );
         }
       } finally {
+        if (
+          mountedRef.current &&
+          requestId === untrackedRequestSequenceRef.current
+        ) {
+          setUntrackedLoading(false);
+        }
         if (untrackedInFlightRef.current === request) {
           untrackedInFlightRef.current = null;
         }
@@ -241,8 +273,9 @@ export function useGitStatus(
       if (!projectId || !ready) return;
 
       const requestId = ++requestSequenceRef.current;
-      const hasSnapshot = gitStatusRef.current !== null;
-      if (!background && !hasSnapshot) {
+      const hasPayload = statusSnapshotRef.current !== null;
+      const hasVisibleStatus = gitStatusRef.current !== null;
+      if (!background && !hasVisibleStatus) {
         setStatusLoading(true);
       }
       if (!background) {
@@ -285,7 +318,7 @@ export function useGitStatus(
         const settlement = await ensureClientQuery({
           sourceKey,
           key: queryKey,
-          force: force || !hasSnapshot,
+          force: force || !hasPayload,
           meta,
           fetcher,
           applySnapshot,
@@ -300,7 +333,7 @@ export function useGitStatus(
         if (!mountedRef.current || requestId !== requestSequenceRef.current) {
           return;
         }
-        if (!background || !gitStatusRef.current) {
+        if (gitStatusRef.current === null) {
           setStatusError(err instanceof Error ? err : new Error(String(err)));
         }
       } finally {
@@ -497,16 +530,13 @@ export function useGitStatus(
     ]);
   }, [fetchStatus, fetchUntrackedFiles]);
 
-  const waitingForUntracked =
-    useUntrackedCache &&
-    statusSnapshot?.isGitRepo === true &&
-    untrackedFiles === null &&
-    untrackedError === null;
   return {
     gitStatus,
     untrackedFiles,
-    loading: statusLoading || waitingForUntracked,
-    error: statusError ?? untrackedError,
+    untrackedLoading,
+    untrackedError,
+    loading: statusLoading,
+    error: statusError,
     refetch,
   };
 }
@@ -517,7 +547,7 @@ function mergeCachedUntracked(
   enabled: boolean,
 ): GitStatusInfo | null {
   if (!enabled || status?.isGitRepo === false) return status;
-  if (!status || !untracked) return null;
+  if (!status || !untracked) return status;
 
   const untrackedRows: GitFileChange[] = [
     ...untracked.files.map((path) => ({

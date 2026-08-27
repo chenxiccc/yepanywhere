@@ -48,6 +48,8 @@ export function CommitBrowser({
   isWideScreen,
   supportsUntrackedCache = false,
   untrackedFiles = null,
+  untrackedLoading = false,
+  untrackedError = null,
   initialSha,
   initialPath,
   initialBlame = false,
@@ -71,6 +73,8 @@ export function CommitBrowser({
   isWideScreen: boolean;
   supportsUntrackedCache?: boolean;
   untrackedFiles?: GitUntrackedFileListResult | null;
+  untrackedLoading?: boolean;
+  untrackedError?: Error | null;
   /** Direct commit selection, e.g. from an asynchronously populated blame hash. */
   initialSha?: string;
   /** Direct file selection within the initial commit. */
@@ -384,6 +388,8 @@ export function CommitBrowser({
             isWideScreen={isWideScreen}
             supportsUntrackedCache={supportsUntrackedCache}
             untrackedFiles={untrackedFiles}
+            untrackedLoading={untrackedLoading}
+            untrackedError={untrackedError}
             embeddedInHistory
             onBackToRevisions={
               !showRevisionPane
