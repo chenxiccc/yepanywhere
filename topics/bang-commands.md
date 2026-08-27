@@ -248,8 +248,9 @@ keeps the submitted draft intact so the user can correct or retry it.
   revision — history records stay immutable and the composer remains the
   single editing surface. Keyboard path: Ctrl+ArrowUp cycles back through
   this session's prior bang commands (newest first, deduplicated),
-  Ctrl+ArrowDown forward; any divergent edit resets the cycle. The same
-  shortcut is expected to be useful beyond bang commands; general composer
+  Ctrl+ArrowDown forward, but only from a text-and-attachment-empty composer or
+  an active `!!` draft; any divergent edit resets the cycle. The same shortcut
+  is expected to be useful beyond bang commands; general composer
   message-history recall is a natural later extension.
 - **Re-run.** Runs the unchanged command as a new block at the current
   tail; the old block stays as the record of what was true then.

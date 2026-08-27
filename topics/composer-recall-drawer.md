@@ -75,7 +75,9 @@ reversal is surfaced in that topic and the commit for kzahel's review.
 
 - **Trigger.** Ctrl+Up in the composer, always (no bang gating). Optional
   later: a click affordance near the collapse (down-arrow) toggle, mainly
-  for touch keyboards with no Ctrl+Up.
+  for touch keyboards with no Ctrl+Up. A completed or still-uploading
+  attachment disables both triggers: recall must not replace text while
+  silently retaining a non-empty attachment draft.
 - **Source, context-sensitive.** Normal draft → prior *user turns*. `!!`
   draft → prior *bang commands*. Same prefix-match mechanism over both, so
   the old bang Ctrl+Up cycling becomes the `!!`-context case of one menu.

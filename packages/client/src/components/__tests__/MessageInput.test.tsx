@@ -614,6 +614,14 @@ function expectSubmission(
   });
 }
 
+const TEST_ATTACHMENT = {
+  id: "attachment-1",
+  originalName: "notes.txt",
+  path: "/workspace/notes.txt",
+  mimeType: "text/plain",
+  size: 5,
+};
+
 const toolbarVisibility: MessageInputToolbarViewProps["visibility"] = {
   modeSelector: false,
   steerNow: true,
@@ -1836,6 +1844,17 @@ describe("MessageInput", () => {
       expect(document.querySelector(".composer-recall-menu")).toBeNull();
     });
 
+    it("does not open over an attachment-only draft", () => {
+      const textarea = renderMessageInput(vi.fn(), {
+        attachments: [TEST_ATTACHMENT],
+        turnRecall,
+      });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+
     it("moves the selection with Arrow keys and drafts on Enter", () => {
       const textarea = renderMessageInput(vi.fn(), {
         turnRecall,
@@ -1980,6 +1999,26 @@ describe("MessageInput", () => {
         fireEvent.focus(textarea);
         act(() => viewport.setHeight(480));
         fireEvent.change(textarea, { target: { value: "de" } });
+
+        expect(
+          document.querySelector(
+            ".message-input-keyboard-compact .composer-recall-open",
+          ),
+        ).toBeNull();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it("hides the mobile keyboard recall button when an attachment is present", () => {
+      const viewport = installMobileKeyboardViewport();
+      try {
+        const textarea = renderMessageInput(vi.fn(), {
+          attachments: [TEST_ATTACHMENT],
+          turnRecall,
+        });
+        fireEvent.focus(textarea);
+        act(() => viewport.setHeight(480));
 
         expect(
           document.querySelector(
@@ -3354,6 +3393,24 @@ describe("MessageInput", () => {
     expect(onRecallLastSubmission).toHaveBeenCalledTimes(1);
   });
 
+  it("does not accept an empty-draft suggestion over an attachment", () => {
+    const onDismissPromptSuggestion = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        attachments: [TEST_ATTACHMENT],
+        promptSuggestion: "Suggested follow-up",
+        onDismissPromptSuggestion,
+      },
+    ) as HTMLTextAreaElement;
+
+    expect(screen.queryByText("Suggested follow-up")).toBeNull();
+    fireEvent.keyDown(textarea, { key: "Tab" });
+
+    expect(textarea.value).toBe("");
+    expect(onDismissPromptSuggestion).not.toHaveBeenCalled();
+  });
+
   it("shows slash suggestions from a leading slash token", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),
@@ -3367,6 +3424,21 @@ describe("MessageInput", () => {
 
     expect(screen.getByRole("menuitem", { name: "/compact" })).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "/goal" })).toBeNull();
+  });
+
+  it("keeps root slash completion closed when a draft has an attachment", () => {
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        attachments: [TEST_ATTACHMENT],
+        slashCommands: ["compact", "goal"].map(createClientSlashCommand),
+        onCustomCommand: vi.fn(() => false),
+      },
+    );
+
+    fireEvent.change(textarea, { target: { value: "/co" } });
+
+    expect(screen.queryByRole("menuitem", { name: "/compact" })).toBeNull();
   });
 
   it("accepts a typed slash suggestion into the composer", () => {
@@ -6047,6 +6119,24 @@ describe("MessageInput bang commands", () => {
     );
   });
 
+  it("sends an attachment-only draft when bang commands are available", () => {
+    const onSend = vi.fn();
+    const support = bangSupport();
+    const textarea = renderMessageInput(undefined, {
+      onSend,
+      bangSupport: support,
+      attachments: [TEST_ATTACHMENT],
+    });
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).toHaveBeenCalledWith(
+      "",
+      expect.objectContaining({ deliveryIntent: "direct" }),
+    );
+    expect(support.onRun).not.toHaveBeenCalled();
+  });
+
   it("keeps a bang draft when the server rejects the run", async () => {
     const onSend = vi.fn();
     const support = bangSupport({
@@ -6140,6 +6230,17 @@ describe("MessageInput bang commands", () => {
     expect((textarea as HTMLTextAreaElement).value).toBe("!!ls");
     fireEvent.keyDown(textarea, { key: "ArrowDown", ctrlKey: true });
     expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
+  });
+
+  it("does not treat an attachment-only draft as empty bang history", () => {
+    const textarea = renderMessageInput(undefined, {
+      attachments: [TEST_ATTACHMENT],
+      bangSupport: bangSupport({ history: ["git status"] }),
+    }) as HTMLTextAreaElement;
+
+    fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+
+    expect(textarea.value).toBe("");
   });
 
   const bangMenuLabels = () =>

@@ -24,6 +24,11 @@ Desktop clipboard paste reads file items from the existing textarea paste
 event and hands them to the normal pending-attachment pipeline. It does not
 interpret arbitrary clipboard HTML as an attachment.
 
+An accepted attachment is composer content even when the text field is blank.
+A completed attachment can be sent without accompanying text. Completed or
+still-uploading attachments make empty-draft affordances inactive; an upload
+that is still in progress does not become sendable until it completes.
+
 An installed browser progressive web app (PWA) advertises an Android image
 share target. Its service worker accepts at most eight `image/*` files and at
 most 64 MiB across one share. A rejected or non-image share is not persisted.

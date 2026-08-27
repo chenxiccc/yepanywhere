@@ -7,6 +7,7 @@ import {
   collectComposerAttachmentsForSubmission,
   createComposerDraftAttachmentState,
   getComposerTransferReplacement,
+  hasComposerDraftContent,
   materializeComposerAttachmentsForSubmission,
   splitComposerAttachmentsForSubmission,
   uploadComposerAttachmentFile,
@@ -36,6 +37,13 @@ const uploadedFile: UploadedFile = {
 };
 
 describe("session composer submission helpers", () => {
+  it("counts completed and pending attachments as draft content", () => {
+    expect(hasComposerDraftContent("", 0)).toBe(false);
+    expect(hasComposerDraftContent("  ", 0)).toBe(false);
+    expect(hasComposerDraftContent("message", 0)).toBe(true);
+    expect(hasComposerDraftContent("", 1)).toBe(true);
+  });
+
   it("builds transfer and slash-command draft text without changing spacing rules", () => {
     expect(
       getComposerTransferReplacement(" existing  ", "  addition "),

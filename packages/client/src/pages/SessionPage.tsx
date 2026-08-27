@@ -172,6 +172,7 @@ import {
   collectComposerAttachmentsForSubmission as collectComposerAttachmentsForSubmissionHelper,
   createComposerDraftAttachmentState,
   getComposerTransferReplacement,
+  hasComposerDraftContent,
   materializeComposerAttachmentsForSubmission,
   splitComposerAttachmentsForSubmission,
   type PreparedComposerSubmission,
@@ -2018,7 +2019,10 @@ function SessionPageContent({
     }
 
     const outgoingText = outgoingTextFor(slashTurn.text);
-    if (!outgoingText) {
+    if (
+      outgoingText === null ||
+      !hasComposerDraftContent(outgoingText, attachmentsRef.current.length)
+    ) {
       return null;
     }
 

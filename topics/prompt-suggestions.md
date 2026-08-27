@@ -40,7 +40,9 @@ composer rather than the message list.
 - The client intercepts `prompt_suggestion` messages and keeps them out of the
   message list.
 - Suggestions must not appear while the composer is already non-empty unless
-  the UI makes the replacement/append behavior explicit.
+  the UI makes the replacement/append behavior explicit. Completed or
+  still-uploading attachments make the composer non-empty even when its text
+  field is blank.
 - A simulated suggestion request must not run during active-turn steering in a
   way that competes with the user's live input path.
 - Provider-specific wording or hints in a native suggestion message must not

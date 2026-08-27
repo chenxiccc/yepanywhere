@@ -24,6 +24,13 @@ export interface ComposerTransferReplacement {
   nextDraft: string;
 }
 
+export function hasComposerDraftContent(
+  text: string,
+  attachmentCount = 0,
+): boolean {
+  return text.trim().length > 0 || attachmentCount > 0;
+}
+
 export function getComposerTransferReplacement(
   currentDraft: string,
   text: string,

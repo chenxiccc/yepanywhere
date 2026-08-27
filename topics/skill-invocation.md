@@ -74,11 +74,12 @@ not be reinterpreted as confirmed skills.
 
 Typed completion is available only for a root invocation draft: the text before
 the `/` or `$` is empty or whitespace, and the caret is at the end of the
-composer. Enter or Tab may accept a visible completion in that state. Completion
-stays entirely inactive while editing inside a draft, after intervening text,
-or when text follows the caret, so those keys retain their normal composer
-behavior. Invocation recognition and provider translation still inspect exact
-tokens throughout the submitted text.
+composer. The draft must also have no completed or still-uploading attachment.
+Enter or Tab may accept a visible completion in that state. Completion stays
+entirely inactive while editing inside a draft, after intervening text, when an
+attachment is present, or when text follows the caret, so those keys retain
+their normal composer behavior. Invocation recognition and provider
+translation still inspect exact tokens throughout the submitted text.
 
 Selecting a typed completion replaces that root invocation token. Selecting a
 skill from the launcher appends it when no completion token is active. Both use
