@@ -345,6 +345,13 @@ interface JsonRpcNotification {
   params?: unknown;
 }
 
+interface CodexNotificationReceipt {
+  sequence: number;
+  receivedAtMs: number;
+  queuedAhead: number;
+  source: "provider" | "synthetic";
+}
+
 interface JsonRpcServerRequest extends JsonRpcNotification {
   id: JsonRpcId;
 }
@@ -394,6 +401,25 @@ function getCodexNotificationTurnId(
   // produced for that live turn. Keeping this structural avoids silently
   // missing a newly added item/delta notification method.
   return typeof params.turnId === "string" ? params.turnId : null;
+}
+
+function getCodexNotificationTurnStartedAt(
+  notification: JsonRpcNotification,
+): number | null {
+  if (
+    (notification.method !== "turn/started" &&
+      notification.method !== "turn/completed") ||
+    !notification.params ||
+    typeof notification.params !== "object"
+  ) {
+    return null;
+  }
+  const turn = (notification.params as Record<string, unknown>).turn;
+  if (!turn || typeof turn !== "object") return null;
+  const startedAt = (turn as Record<string, unknown>).startedAt;
+  return typeof startedAt === "number" && Number.isFinite(startedAt)
+    ? startedAt
+    : null;
 }
 
 function getCodexActiveTurnMismatchId(error: unknown): string | null {
@@ -654,6 +680,10 @@ class AsyncQueue<T> {
   }> = [];
   private closedError: Error | null = null;
 
+  get size(): number {
+    return this.items.length;
+  }
+
   push(item: T): void {
     if (this.closedError) return;
     const waiter = this.waiters.shift();
@@ -723,6 +753,11 @@ class CodexAppServerClient {
   private process: ChildProcess | null = null;
   private stdoutBuffer = "";
   private closePromise: Promise<void> | null = null;
+  private notificationReceiptSequence = 0;
+  private readonly notificationReceipts = new WeakMap<
+    JsonRpcNotification,
+    CodexNotificationReceipt
+  >();
 
   /** OS PID of the spawned app-server child process */
   get pid(): number | undefined {
@@ -761,6 +796,16 @@ class CodexAppServerClient {
 
   get isClosed(): boolean {
     return this.closed;
+  }
+
+  get lastNotificationReceiptSequence(): number {
+    return this.notificationReceiptSequence;
+  }
+
+  getNotificationReceipt(
+    notification: JsonRpcNotification,
+  ): CodexNotificationReceipt | null {
+    return this.notificationReceipts.get(notification) ?? null;
   }
 
   setServerRequestHandler(handler: AppServerRequestHandler): void {
@@ -882,7 +927,7 @@ class CodexAppServerClient {
       }
 
       this.recordRawProviderEvent(`codex:notification:${method}`);
-      this.notifications.push(notification);
+      this.enqueueNotification(notification, "provider");
       return;
     }
 
@@ -983,11 +1028,25 @@ class CodexAppServerClient {
   }
 
   injectNotification(notification: JsonRpcNotification): void {
-    this.notifications.push(notification);
+    this.enqueueNotification(notification, "synthetic");
   }
 
   async nextNotification(signal?: AbortSignal): Promise<JsonRpcNotification> {
     return await this.notifications.shift(signal);
+  }
+
+  private enqueueNotification(
+    notification: JsonRpcNotification,
+    source: CodexNotificationReceipt["source"],
+  ): void {
+    const receipt = {
+      sequence: ++this.notificationReceiptSequence,
+      receivedAtMs: Date.now(),
+      queuedAhead: this.notifications.size,
+      source,
+    } satisfies CodexNotificationReceipt;
+    this.notificationReceipts.set(notification, receipt);
+    this.notifications.push(notification);
   }
 
   async close(): Promise<void> {
@@ -1020,14 +1079,17 @@ class CodexAppServerClient {
     this.pendingRequests.clear();
 
     // Emit a terminal error notification so consumers can surface it.
-    this.notifications.push({
-      method: "error",
-      params: {
-        error: { message: error.message },
-        willRetry: false,
-        codexProcessExit: true,
+    this.enqueueNotification(
+      {
+        method: "error",
+        params: {
+          error: { message: error.message },
+          willRetry: false,
+          codexProcessExit: true,
+        },
       },
-    });
+      "synthetic",
+    );
     this.notifications.close(error);
     this.process = null;
   }
@@ -2305,6 +2367,7 @@ export class CodexProvider implements AgentProvider {
       const consumeTurn = async function* (
         provider: CodexProvider,
         turn: CodexThreadTurn,
+        notificationBarrierSequence: number,
       ): AsyncGenerator<
         SDKMessage,
         { overloadError: SDKMessage | null },
@@ -2318,6 +2381,35 @@ export class CodexProvider implements AgentProvider {
         let turnComplete = turn.status !== "inProgress";
         let emittedTurnError = false;
         let overloadError: SDKMessage | null = null;
+        let suppressedPreTurnNotifications: {
+          count: number;
+          firstSequence: number;
+          lastSequence: number;
+          firstTurnId: string;
+          lastTurnId: string;
+          firstMethod: string;
+          lastMethod: string;
+          firstStartedAt: number | null;
+          lastStartedAt: number | null;
+          maxQueueAgeMs: number;
+          maxQueuedAhead: number;
+        } | null = null;
+
+        const logSuppressedPreTurnNotifications = (reason: string): void => {
+          if (!suppressedPreTurnNotifications) return;
+          log.warn(
+            {
+              sessionId,
+              expectedTurnId: runtimeState.activeTurnId ?? activeTurnId,
+              expectedTurnStartedAt: turn.startedAt,
+              notificationBarrierSequence,
+              ...suppressedPreTurnNotifications,
+              reason,
+            },
+            "Suppressed stale Codex notifications queued before turn start",
+          );
+          suppressedPreTurnNotifications = null;
+        };
 
         while (!turnComplete && !signal.aborted) {
           const notification = await appServer.nextNotification(signal);
@@ -2326,6 +2418,65 @@ export class CodexProvider implements AgentProvider {
           ) {
             continue;
           }
+          const notificationReceipt =
+            appServer.getNotificationReceipt(notification);
+          const currentActiveTurnId: string =
+            runtimeState.activeTurnId ?? activeTurnId;
+          const observedTurnId = getCodexNotificationTurnId(
+            notification,
+            runtimeState.threadId,
+          );
+          const queuedBeforeTurnStart =
+            notificationReceipt !== null &&
+            notificationReceipt.sequence <= notificationBarrierSequence;
+          if (
+            observedTurnId &&
+            observedTurnId !== currentActiveTurnId &&
+            queuedBeforeTurnStart
+          ) {
+            const queueAgeMs = Math.max(
+              0,
+              Date.now() - notificationReceipt.receivedAtMs,
+            );
+            const startedAt = getCodexNotificationTurnStartedAt(notification);
+            if (suppressedPreTurnNotifications) {
+              suppressedPreTurnNotifications.count += 1;
+              suppressedPreTurnNotifications.lastSequence =
+                notificationReceipt.sequence;
+              suppressedPreTurnNotifications.lastTurnId = observedTurnId;
+              suppressedPreTurnNotifications.lastMethod = notification.method;
+              suppressedPreTurnNotifications.lastStartedAt = startedAt;
+              suppressedPreTurnNotifications.maxQueueAgeMs = Math.max(
+                suppressedPreTurnNotifications.maxQueueAgeMs,
+                queueAgeMs,
+              );
+              suppressedPreTurnNotifications.maxQueuedAhead = Math.max(
+                suppressedPreTurnNotifications.maxQueuedAhead,
+                notificationReceipt.queuedAhead,
+              );
+            } else {
+              suppressedPreTurnNotifications = {
+                count: 1,
+                firstSequence: notificationReceipt.sequence,
+                lastSequence: notificationReceipt.sequence,
+                firstTurnId: observedTurnId,
+                lastTurnId: observedTurnId,
+                firstMethod: notification.method,
+                lastMethod: notification.method,
+                firstStartedAt: startedAt,
+                lastStartedAt: startedAt,
+                maxQueueAgeMs: queueAgeMs,
+                maxQueuedAhead: notificationReceipt.queuedAhead,
+              };
+            }
+            continue;
+          }
+          if (observedTurnId) {
+            logSuppressedPreTurnNotifications(
+              "turn-scoped notification reached",
+            );
+          }
+
           logRawNotification(notification);
           if (notification.method === "skills/changed") {
             skillInventory.stale = true;
@@ -2346,7 +2497,6 @@ export class CodexProvider implements AgentProvider {
             } as SDKMessage);
             continue;
           }
-          const currentActiveTurnId = runtimeState.activeTurnId ?? activeTurnId;
           failureTrace.activeTurnId = currentActiveTurnId;
 
           if (notification.method === "thread/tokenUsage/updated") {
@@ -2362,10 +2512,6 @@ export class CodexProvider implements AgentProvider {
             provider.describeNotificationForFailureTrace(notification),
           );
 
-          const observedTurnId = getCodexNotificationTurnId(
-            notification,
-            runtimeState.threadId,
-          );
           if (observedTurnId && observedTurnId !== runtimeState.activeTurnId) {
             log.warn(
               {
@@ -2373,6 +2519,17 @@ export class CodexProvider implements AgentProvider {
                 expectedTurnId: runtimeState.activeTurnId,
                 actualTurnId: observedTurnId,
                 notificationMethod: notification.method,
+                notificationBarrierSequence,
+                notificationReceiptSequence:
+                  notificationReceipt?.sequence ?? null,
+                notificationQueueAgeMs: notificationReceipt
+                  ? Math.max(0, Date.now() - notificationReceipt.receivedAtMs)
+                  : null,
+                notificationQueuedAhead:
+                  notificationReceipt?.queuedAhead ?? null,
+                notificationSource: notificationReceipt?.source ?? null,
+                notificationTurnStartedAt:
+                  getCodexNotificationTurnStartedAt(notification),
               },
               "Resynchronized Codex turn id from provider notification",
             );
@@ -2434,6 +2591,7 @@ export class CodexProvider implements AgentProvider {
             turnComplete = true;
           }
         }
+        logSuppressedPreTurnNotifications("turn consumption ended");
         runtimeState.activeTurnId = null;
         failureTrace.activeTurnId = null;
 
@@ -2558,6 +2716,8 @@ export class CodexProvider implements AgentProvider {
             runtimeState.turnEffortOverride,
             message.uuid,
           );
+          let notificationBarrierSequence =
+            appServer.lastNotificationReceiptSequence;
           let turnResult = await appServer.request<TurnStartResponse>(
             "turn/start",
             turnStartParams,
@@ -2577,7 +2737,11 @@ export class CodexProvider implements AgentProvider {
           );
           let overloadRetryAttempt = 0;
           while (!signal.aborted) {
-            const { overloadError } = yield* consumeTurn(this, turnResult.turn);
+            const { overloadError } = yield* consumeTurn(
+              this,
+              turnResult.turn,
+              notificationBarrierSequence,
+            );
             if (!overloadError) break;
 
             overloadRetryAttempt += 1;
@@ -2630,6 +2794,8 @@ export class CodexProvider implements AgentProvider {
               runtimeState.workspaceWriteSandboxPolicy,
               runtimeState.turnEffortOverride,
             );
+            notificationBarrierSequence =
+              appServer.lastNotificationReceiptSequence;
             turnResult = await appServer.request<TurnStartResponse>(
               "turn/start",
               retryTurnStartParams,

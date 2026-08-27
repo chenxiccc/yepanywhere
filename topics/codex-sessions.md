@@ -55,6 +55,23 @@ limit and explicitly says V2 ignores it. The Providers caption must retain that
 limitation; YA must not imply that the setting constrains Codex V2 or Codex OSS
 without a separately verified control.
 
+## App-server notification correlation
+
+YA stamps every app-server notification at the stdout boundary with a
+monotonic receipt sequence, receipt time, queue depth, and provider/synthetic
+source. Immediately before each `turn/start`, including an overload retry, it
+captures the latest receipt sequence as that turn's queue barrier.
+
+A turn-scoped notification whose different turn id was already received at or
+before that barrier is stale backlog. YA suppresses it rather than replacing
+the active turn or publishing old content as fresh activity. Consecutive stale
+records produce one structured aggregate warning. A different turn id received
+after the barrier remains eligible to replace the submission id because Codex
+Core can report an active id that differs from the `turn/start` response; that
+resynchronization warning includes the receipt sequence, barrier, queue age,
+queued-ahead count, source, and provider-reported start time. This boundary is
+sequence-based rather than a timing heuristic.
+
 ## Read Surfaces
 
 There are two main YA surfaces over the same rollout tree:

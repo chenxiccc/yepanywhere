@@ -1404,17 +1404,75 @@ describe("CodexProvider app-server lifecycle", () => {
         expectedTurnId: "turn-active",
       });
       expect(warn).toHaveBeenCalledWith(
-        {
+        expect.objectContaining({
           component: "codex-provider",
           sessionId: "thread-race",
           expectedTurnId: "turn-submission",
           actualTurnId: "turn-active",
           notificationMethod: "turn/plan/updated",
-        },
+          notificationSource: "provider",
+        }),
         "Resynchronized Codex turn id from provider notification",
       );
     } finally {
       await session?.abort();
+      await consume?.catch(() => undefined);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("suppresses stale turn notifications queued before a new turn", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-stale-turn-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-stale-turn",
+      buildFakeCodexAppServerWithStaleTurnBacklog(logPath),
+    );
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "start after stale notifications" },
+        effort: "low",
+      });
+      const messages: Array<Record<string, unknown>> = [];
+      consume = (async () => {
+        for await (const message of session?.iterator ?? []) {
+          messages.push(message);
+          if (message.type === "result") break;
+        }
+      })();
+
+      await consume;
+
+      expect(JSON.stringify(messages)).not.toContain("stale turn marker");
+      expect(JSON.stringify(messages)).toContain("current turn marker");
+      const suppressionWarnings = warn.mock.calls.filter(
+        ([, message]) =>
+          message ===
+          "Suppressed stale Codex notifications queued before turn start",
+      );
+      expect(suppressionWarnings).toHaveLength(1);
+      expect(suppressionWarnings[0]?.[0]).toMatchObject({
+        sessionId: "thread-stale-backlog",
+        expectedTurnId: "turn-current",
+        count: 2,
+        firstTurnId: "turn-old",
+        lastTurnId: "turn-old",
+        firstMethod: "turn/plan/updated",
+        lastMethod: "turn/completed",
+        reason: "turn-scoped notification reached",
+      });
+    } finally {
+      session?.abort();
       await consume?.catch(() => undefined);
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -2284,6 +2342,107 @@ function handleMessage(message) {
           },
         });
       }
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerWithStaleTurnBacklog(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function notify(method, params) {
+  write({ method, params });
+}
+
+function logRequest(message) {
+  appendFileSync(logPath, JSON.stringify({
+    id: message.id,
+    method: message.method,
+    params: message.params,
+  }) + "\\n");
+}
+
+function completedTurn(id) {
+  return {
+    id,
+    items: [],
+    status: "completed",
+    error: null,
+    startedAt: 1,
+    completedAt: 2,
+    durationMs: 1,
+  };
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "skills/list":
+      respond(message.id, { data: [] });
+      break;
+    case "thread/start":
+      notify("turn/plan/updated", {
+        threadId: "thread-stale-backlog",
+        turnId: "turn-old",
+        explanation: null,
+        plan: [{ step: "stale turn marker", status: "completed" }],
+      });
+      notify("turn/completed", {
+        threadId: "thread-stale-backlog",
+        turn: completedTurn("turn-old"),
+      });
+      respond(message.id, {
+        thread: { id: "thread-stale-backlog" },
+        model: "gpt-5.4-mini",
+        reasoningEffort: "low",
+      });
+      break;
+    case "turn/start":
+      respond(message.id, {
+        turn: { id: "turn-current", status: "inProgress", error: null },
+      });
+      notify("turn/plan/updated", {
+        threadId: "thread-stale-backlog",
+        turnId: "turn-current",
+        explanation: null,
+        plan: [{ step: "current turn marker", status: "completed" }],
+      });
+      notify("turn/completed", {
+        threadId: "thread-stale-backlog",
+        turn: completedTurn("turn-current"),
+      });
       break;
     default:
       respond(message.id, {});
