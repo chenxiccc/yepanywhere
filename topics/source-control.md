@@ -174,6 +174,10 @@ grow until the inter-pane gap and splitter handles would cease to remain fully
 visible and operable; do not reserve an unrelated minimum width for the detail
 pane. The user naturally stops after exposing as much path text as desired,
 and the still-visible splitter is the recovery path from an extreme choice.
+Pointer drag reflows the panes live but coalesces high-frequency movement to at
+most one width update per animation frame; releasing the pointer commits the
+final width.
+
 A content-derived natural maximum is optional, not required. If added, compute
 it from the widest untruncated row in the **complete file corpus**, including
 status, count, and menu affordances—not only rows currently mounted in the

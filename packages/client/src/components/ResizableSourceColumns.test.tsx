@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ResizableSourceColumns,
   calculateSourceAutoFilesWidth,
@@ -118,5 +118,61 @@ describe("Source Control file-pane resize bound", () => {
       "316px",
     );
     expect(handle.getAttribute("title")).toBe("sourceHideRevisionPane");
+  });
+
+  it("coalesces pointer moves to one animation-frame update", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const rendered = render(
+      <ResizableSourceColumns
+        layout="history"
+        className="commit-browser-columns"
+        t={(key) => key}
+      >
+        <div>pane contents</div>
+      </ResizableSourceColumns>,
+    );
+    const root = rendered.container.querySelector<HTMLElement>(
+      ".commit-browser-columns",
+    )!;
+    const handle = screen.getAllByRole("separator", {
+      name: "sourceResizeRevisionPane",
+    })[0]!;
+
+    fireEvent(
+      handle,
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        clientX: 300,
+      }),
+    );
+    fireEvent(
+      window,
+      new MouseEvent("pointermove", { bubbles: true, clientX: 316 }),
+    );
+    fireEvent(
+      window,
+      new MouseEvent("pointermove", { bubbles: true, clientX: 332 }),
+    );
+
+    expect(frames).toHaveLength(1);
+    expect(root.style.getPropertyValue("--source-revision-column-width")).toBe(
+      "300px",
+    );
+    frames[0]!(0);
+    expect(root.style.getPropertyValue("--source-revision-column-width")).toBe(
+      "332px",
+    );
+    fireEvent(
+      window,
+      new MouseEvent("pointerup", { bubbles: true, clientX: 332 }),
+    );
+    expect(root.style.getPropertyValue("--source-revision-column-width")).toBe(
+      "332px",
+    );
   });
 });

@@ -122,6 +122,9 @@ export function ResizableSourceColumns({
   const previousRevisionPaneVisibleRef = useRef(revisionPaneVisible);
   const lastRevisionWidthRef = useRef(300);
   const dragMovedRef = useRef(false);
+  const dragFrameRef = useRef<number | null>(null);
+  const pendingDragClientXRef = useRef<number | null>(null);
+  const liveDragWidthsRef = useRef<Widths | null>(null);
   const ignoreNextClickRef = useRef(false);
   const defaultFilesWidth =
     initialFilesWidth ?? (layout === "history" ? 340 : DEFAULT_FILES_WIDTH);
@@ -220,34 +223,81 @@ export function ResizableSourceColumns({
 
   useEffect(() => {
     if (!dragging) return;
-    const handlePointerMove = (event: globalThis.PointerEvent) => {
-      const delta = event.clientX - dragging.startX;
-      if (Math.abs(delta) > 3) dragMovedRef.current = true;
+    const root = rootRef.current;
+    if (!root) return;
+    const applyPointerPosition = (clientX: number) => {
+      const delta = clientX - dragging.startX;
+      let nextWidths: Widths;
       if (dragging.boundary === "revisions") {
         const revisions = clamp(
           dragging.startWidths.revisions + delta,
           REVISION_MIN,
           REVISION_MAX,
         );
+        const files = layoutMetrics
+          ? Math.min(
+              dragging.startWidths.files,
+              calculateSourceFilesMaxWidth({
+                layout,
+                containerWidth: layoutMetrics.containerWidth,
+                revisionWidth: revisions,
+                gapWidth: layoutMetrics.gapWidth,
+                handleWidth: layoutMetrics.handleWidth,
+              }),
+            )
+          : dragging.startWidths.files;
+        nextWidths = { revisions, files };
         if (revisions > 0) lastRevisionWidthRef.current = revisions;
-        setRevisionsCollapsed(revisions === 0);
-        setWidths({ ...dragging.startWidths, revisions });
-        return;
-      }
-      setWidths({
-        ...dragging.startWidths,
-        files: clamp(
+        root.classList.toggle(styles.revisionsHidden!, revisions === 0);
+        root.style.setProperty(
+          "--source-revision-column-width",
+          `${revisions}px`,
+        );
+        root.style.setProperty("--source-files-column-width", `${files}px`);
+      } else {
+        const files = clamp(
           dragging.startWidths.files + delta,
           FILES_MIN,
           filesMax ?? dragging.startWidths.files,
-        ),
-      });
+        );
+        nextWidths = { ...dragging.startWidths, files };
+        root.style.setProperty("--source-files-column-width", `${files}px`);
+      }
+      liveDragWidthsRef.current = nextWidths;
+    };
+    const flushPointerMove = () => {
+      dragFrameRef.current = null;
+      const clientX = pendingDragClientXRef.current;
+      pendingDragClientXRef.current = null;
+      if (clientX !== null) applyPointerPosition(clientX);
+    };
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      const delta = event.clientX - dragging.startX;
+      if (Math.abs(delta) > 3) dragMovedRef.current = true;
+      pendingDragClientXRef.current = event.clientX;
+      if (dragFrameRef.current !== null) return;
+      if (typeof window.requestAnimationFrame !== "function") {
+        flushPointerMove();
+        return;
+      }
+      dragFrameRef.current = window.requestAnimationFrame(flushPointerMove);
     };
     const handlePointerUp = () => {
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
+      flushPointerMove();
+      const nextWidths = liveDragWidthsRef.current ?? dragging.startWidths;
+      setWidths(nextWidths);
+      if (dragging.boundary === "revisions") {
+        setRevisionsCollapsed(nextWidths.revisions === 0);
+      }
       ignoreNextClickRef.current = dragMovedRef.current;
       window.setTimeout(() => {
         ignoreNextClickRef.current = false;
       }, 0);
+      liveDragWidthsRef.current = null;
       setDragging(null);
     };
     window.addEventListener("pointermove", handlePointerMove);
@@ -255,12 +305,18 @@ export function ResizableSourceColumns({
     window.addEventListener("pointercancel", handlePointerUp, { once: true });
     document.body.classList.add("source-pane-resizing");
     return () => {
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
+      pendingDragClientXRef.current = null;
+      liveDragWidthsRef.current = null;
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
       document.body.classList.remove("source-pane-resizing");
     };
-  }, [dragging, filesMax]);
+  }, [dragging, filesMax, layout, layoutMetrics]);
 
   const setBoundaryWidth = (boundary: Boundary, next: number) => {
     const value = clamp(
@@ -279,13 +335,16 @@ export function ResizableSourceColumns({
     if (event.button !== 0) return;
     event.preventDefault();
     dragMovedRef.current = false;
+    pendingDragClientXRef.current = null;
+    const startWidths =
+      boundary === "revisions"
+        ? { ...widths, revisions: revisionWidth }
+        : widths;
+    liveDragWidthsRef.current = startWidths;
     setDragging({
       boundary,
       startX: event.clientX,
-      startWidths:
-        boundary === "revisions"
-          ? { ...widths, revisions: revisionWidth }
-          : widths,
+      startWidths,
     });
   };
 
