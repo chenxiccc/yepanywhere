@@ -108,9 +108,9 @@ as the ask/reply flow in [`ask-session.md`](ask-session.md):
   queued requests to an idle project (`project-queue.md`).
 - **File-based intake**: the request-intake half of the boss design
   overlaps the recorded missing feature in
-  `gaps/at-session-launching.md` (YA launching due `at/` queue jobs);
-  a boss wanting YA-driven intake should extend that design rather
-  than invent a second file-watch convention.
+  `gaps/yacron-scheduler.md` (durable future prompts through yacron); a boss
+  wanting YA-driven intake should extend that design rather than invent a
+  second scheduler or file-watch convention.
 
 ## Authority and ownership boundaries
 

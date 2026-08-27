@@ -334,6 +334,8 @@
   fallback.
 - at-session-launching - Opt-in scanner that launches due at/ queue jobs
   across projects through at-queue.
+- yacron - A generally running local scheduler and agent CLI for durable future
+  prompts targeting existing or fresh YA sessions through the provider host.
 - mobile-ime-delivery - Android IME-safe composer delivery and the default-off
   preference for retaining keyboard focus afterward.
 - server-cache-concurrency-safety - Per-key async ownership, bounded source

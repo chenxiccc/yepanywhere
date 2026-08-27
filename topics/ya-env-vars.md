@@ -133,6 +133,11 @@ environments. These are trusted child-session outputs, not operator inputs.
 have it at launch, while a new session receives it later through the session
 environment bridge.
 
+`AGENT_PROJECT_ROOT` is proposed, not implemented, by
+[`yacron.md`](yacron.md#ya-session-environment) as the canonical absolute
+launch-project root published beside the session id. It uses `AGENT_*` because
+the value is addressed to agent tools; it is not a YA config input.
+
 `YEP_SESSION_WAKE_URL` and `YEP_SESSION_WAKE_TOKEN` are current compatibility
 outputs for canonical `AGENT_SESSION_WAKE_URL` and
 `AGENT_SESSION_WAKE_TOKEN`, not operator inputs. The URL is an opaque,

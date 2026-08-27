@@ -300,8 +300,11 @@ Recommended first policies:
 Unscheduling prevents future materialization but does not cancel a run already
 pending or active. Cancelling that run is a separate explicit action.
 
-The YA server owns scheduling. It must not rely on an open browser tab, and it
-must not implement routines through provider-native cron/loop features:
+The YA server instance owns Routine activation semantics and run history. If
+the proposed [yacron](yacron.md) service becomes the concrete schedule owner,
+YA adapts Routine activations to that generally running service rather than
+maintaining a second timer engine. Routine scheduling must not rely on an open
+browser tab or use provider-native cron/loop features:
 
 - provider-native cron is not portable across providers;
 - it can keep a provider process retained between runs;
@@ -391,6 +394,8 @@ revision and server-local activation facts that produced it.
 
 ## Related Topics
 
+- [yacron](yacron.md) — proposed headless local owner for durable deadlines,
+  occurrences, and provider-host dispatch.
 - [architecture-mandates](architecture-mandates.md) — bounded ownership of
   global background work.
 - [project-queue](project-queue.md) — durable project-idle dispatch for
