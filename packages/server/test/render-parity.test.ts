@@ -957,7 +957,7 @@ describe("Render Parity Harness", () => {
             type: "custom_tool_call",
             call_id: callId,
             name: "exec",
-            input: `const r = await tools.view_image({ path: ${JSON.stringify(imagePath)} }); image(r.image_url);`,
+            input: `const r = await tools.view_image({ path: ${JSON.stringify(imagePath)}, detail: "original" }); image(r.image_url);`,
             ...metadata,
           },
         },

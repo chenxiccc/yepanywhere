@@ -68,6 +68,15 @@ function getToolBlock(
 
 function getToolUseFingerprint(block: Record<string, unknown>): string | null {
   if (typeof block.name !== "string") return null;
+  if (block.name === "ViewImage") {
+    const input = block.input;
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      return null;
+    const path = (input as { path?: unknown }).path;
+    if (typeof path !== "string") return null;
+    // Codex's live imageView omits outer-only view options such as detail.
+    return `${block.name}:${stableStringify({ path })}`;
+  }
   return `${block.name}:${stableStringify(block.input)}:${stableStringify(
     block._displayActions,
   )}`;

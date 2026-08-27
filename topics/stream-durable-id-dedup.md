@@ -240,10 +240,13 @@ turn — `call_id` is globally unique, so no turn scoping is needed:
   code-mode image inspection as an `imageView` thread item while rollout stores
   the enclosing `custom_tool_call`. Both representations canonicalize to
   `ViewImage`; ephemeral correlation metadata lets the client pair exact
-  same-turn name/path matches and adopt the outer `call_*` identity. The tool
-  result and its media stay under that one canonical parent, so live overlap
-  and persisted reload each render exactly one visible image row. Repeated
-  views remain distinct because pairing is one-to-one and turn-scoped.
+  same-turn name/path matches and adopt the outer `call_*` identity. Matching
+  deliberately ignores view options such as `detail` because Codex includes
+  them only in the durable outer call, not in the live `imageView` item. The
+  tool result and its media stay under that one canonical parent, so live
+  overlap and persisted reload each render exactly one visible image row.
+  Repeated views remain distinct because pairing is one-to-one and
+  turn-scoped.
 - Checklist exception (verified against Codex 0.146.0): app-server emits
   `turn/plan/updated` with the full plan but no item/call id, while code-mode
   rollout stores the enclosing `custom_tool_call` (ordinary tool mode uses a
