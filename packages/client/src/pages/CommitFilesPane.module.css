@@ -65,24 +65,24 @@
 }
 
 @media (min-width: 1100px) {
-  .pathVisibleColumn {
+  .desktopColumn {
     display: flex;
     overflow: visible;
     flex-direction: column;
   }
 
-  .pathVisibleColumn > :global(.source-detail-banner),
-  .pathVisibleColumn > .selectedPath {
+  .desktopColumn > :global(.source-detail-banner),
+  .desktopColumn > .selectedPath {
     flex-shrink: 0;
   }
 
-  .pathVisibleColumn > .body {
+  .desktopColumn > .body {
     min-height: 0;
     max-height: 40%;
     overflow-y: auto;
   }
 
-  .pathVisibleColumn > :global(.commit-file-list) {
+  .desktopColumn > :global(.commit-file-list) {
     min-height: 0;
     flex: 1 1 auto;
     overflow-y: auto;

@@ -208,7 +208,7 @@ export function CommitFilesPane({
       <div
         className={[
           "commit-files-column",
-          selectedDisplayPath && !messageView ? styles.pathVisibleColumn : "",
+          isWideScreen ? styles.desktopColumn : "",
         ]
           .filter(Boolean)
           .join(" ")}

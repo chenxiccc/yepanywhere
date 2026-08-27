@@ -603,17 +603,26 @@ test("reviews collapsed commit files with bracket navigation", async ({
       ),
     )
     .toBe(true);
+  await message.focus();
+  await message.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await page.keyboard.press("ArrowDown");
+  expect(await pageScroller.evaluate((element) => element.scrollTop)).toBe(
+    pageScrollTop,
+  );
+  await expect(selectedRevision).toBeInViewport();
+  await expect(page.locator(".git-diff-preview-pane")).toBeInViewport();
 
   await expect(message).toBeVisible();
 
   const filePaths = page.locator(
     "button[data-source-file-item] [data-source-path]",
   );
-  await expect(filePaths).toHaveCount(5);
-  const orderedPaths = await filePaths.evaluateAll((paths) =>
-    paths.map((path) => path.getAttribute("data-source-path") ?? ""),
+  const groupedFilePaths = page.locator(
+    'button[data-source-file-item] [data-source-path^="src/grouped/"]',
   );
-  const firstPath = orderedPaths[0]!;
+  const firstPath = "src/grouped/modified.ts";
   const groupedFiles = page.getByRole("button", {
     name: /^Collapse src\/grouped\/ \(3 files\)$/,
   });
@@ -625,22 +634,35 @@ test("reviews collapsed commit files with bracket navigation", async ({
   await page.keyboard.press("ArrowLeft");
   await expect(groupedFiles).toBeFocused();
   await page.keyboard.press("ArrowLeft");
-  await expect(filePaths).toHaveCount(2);
+  await expect(groupedFilePaths).toHaveCount(0);
 
   await message.click();
   await expect(
     page.locator(".git-diff-preview-body:has(.commit-message-view)"),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: /^Expand src\/grouped\/ \(3 files\)$/,
+    }),
+  ).toBeInViewport();
+  await expect(selectedRevision).toBeInViewport();
+  expect(await pageScroller.evaluate((element) => element.scrollTop)).toBe(
+    pageScrollTop,
+  );
   await page.keyboard.press("]");
   const selectedPath = page.locator("[data-source-selected-path]");
   await expect(selectedPath).toHaveAttribute(
     "data-source-selected-path",
     firstPath,
   );
-  await expect(filePaths).toHaveCount(5);
   await expect(
     page.locator("button[data-source-file-item]").first(),
   ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(filePaths).toHaveCount(5);
+  const orderedPaths = await filePaths.evaluateAll((paths) =>
+    paths.map((path) => path.getAttribute("data-source-path") ?? ""),
+  );
 
   const diffBody = page.locator(".git-diff-preview-body");
   await expect

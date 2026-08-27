@@ -573,11 +573,12 @@ activation opens the verbatim message only when the release did not complete a
 selection, while Enter and Space remain keyboard activation. Phone detail keeps
 the full subject above its compact full-message action. **‹ Commit history** is
 styled as an actionable parent link rather than a full-width section label.
-Once a file is selected on desktop, a long message card scrolls within a bounded
-part of the files pane so the file outline remains visible. Moving keyboard
-focus to a file reveals it only within that outline's scrollport; it must not
-scroll the outer Source Control page or move the selected revision and diff
-workbench offscreen.
+On desktop, a long message card scrolls within a bounded part of the files pane
+before file selection and while the full-message view is open, so the file
+outline remains visible throughout review entry. Moving keyboard focus to a
+file reveals it only within that outline's scrollport; it must not scroll the
+outer Source Control page or move the selected revision and diff workbench
+offscreen.
 
 Source lists support Up/Down selection, Escape return, and `/` to focus search
 when focus is outside an editor. Once desktop commit history has loaded, its
