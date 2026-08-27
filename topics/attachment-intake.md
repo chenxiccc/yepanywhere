@@ -28,6 +28,11 @@ An accepted attachment is composer content even when the text field is blank.
 A completed attachment can be sent without accompanying text. Completed or
 still-uploading attachments make empty-draft affordances inactive; an upload
 that is still in progress does not become sendable until it completes.
+Direct start, resume, and queue APIs apply the same content rule. A current
+client connected to an older server without
+`attachment-only-session-messages` retains the draft and asks for a server
+update or accompanying text instead of sending a request that server will
+reject.
 
 An installed browser progressive web app (PWA) advertises an Android image
 share target. Its service worker accepts at most eight `image/*` files and at
@@ -78,3 +83,5 @@ web path.
   otherwise New Session opens in the same relay context.
 - Desktop file paste and PWA share intake converge on the same pending-file
   behavior.
+- Direct start, resume, and queue requests accept empty text with a completed
+  attachment; an older server receives no such unsupported request.

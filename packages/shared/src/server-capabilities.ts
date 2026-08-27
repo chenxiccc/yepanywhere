@@ -964,6 +964,32 @@ export const SERVER_CAPABILITIES = {
         "Older clients must not receive expected long-idle evidence through the legacy response or alert-oriented live event.",
     },
   },
+  attachmentOnlySessionMessages: {
+    id: CAPABILITY_ID_ALLOCATIONS.attachmentOnlySessionMessages.id,
+    name: "attachment-only-session-messages",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Direct session start, resume, and queue routes accept an empty text field when the submitted message contains an uploaded attachment.",
+    clientFallback:
+      "Keep the attachment draft and require text instead of sending an empty-message request to an older server.",
+    serverContract: {
+      routes: [
+        "POST /api/projects/:projectId/sessions",
+        "POST /api/sessions",
+        "POST /api/projects/:projectId/sessions/:sessionId/resume",
+        "POST /api/sessions/:sessionId/messages",
+      ],
+      requestFields: ["message", "attachments"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers reject an empty message before inspecting attachments, so current clients need a permanent gate for attachment-only submission.",
+    },
+  },
   gitLiveWorktreeSetting: {
     id: CAPABILITY_ID_ALLOCATIONS.gitLiveWorktreeSetting.id,
     name: "git-live-worktree-setting",
@@ -2018,6 +2044,8 @@ export const CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY =
   SERVER_CAPABILITIES.cacheMissBillingIgnoreAfter.name;
 export const CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY =
   SERVER_CAPABILITIES.cacheMissBillingExpectedExpiry.name;
+export const ATTACHMENT_ONLY_SESSION_MESSAGES_CAPABILITY =
+  SERVER_CAPABILITIES.attachmentOnlySessionMessages.name;
 export const GIT_INCOMING_COMMITS_CAPABILITY =
   SERVER_CAPABILITIES.gitIncomingCommits.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =

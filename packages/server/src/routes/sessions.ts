@@ -366,6 +366,14 @@ interface StartSessionBody {
   workstreamId?: string;
 }
 
+function hasSessionMessageContent(body: StartSessionBody): boolean {
+  return (
+    typeof body.message === "string" &&
+    (body.message.length > 0 ||
+      (Array.isArray(body.attachments) && body.attachments.length > 0))
+  );
+}
+
 interface CreateSessionBody {
   mode?: PermissionMode;
   model?: string;
@@ -3517,7 +3525,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: modeError }, 400);
     }
 
-    if (!body.message) {
+    if (!hasSessionMessageContent(body)) {
       return c.json({ error: "Message is required" }, 400);
     }
     const { executor, error: executorError } = parseOptionalExecutor(
@@ -3806,7 +3814,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: modeError }, 400);
     }
 
-    if (!body.message) {
+    if (!hasSessionMessageContent(body)) {
       return c.json({ error: "Message is required" }, 400);
     }
     const { executor, error: executorError } = parseOptionalExecutor(
@@ -4039,7 +4047,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: modeError }, 400);
     }
 
-    if (!body.message) {
+    if (!hasSessionMessageContent(body)) {
       return c.json({ error: "Message is required" }, 400);
     }
     const parsedBodyExecutor = parseOptionalExecutor(body.executor);
@@ -6345,7 +6353,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: modeError }, 400);
     }
 
-    if (!body.message) {
+    if (!hasSessionMessageContent(body)) {
       return c.json({ error: "Message is required" }, 400);
     }
 

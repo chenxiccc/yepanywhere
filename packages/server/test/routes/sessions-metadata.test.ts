@@ -360,6 +360,46 @@ describe("Sessions metadata route", () => {
     });
   });
 
+  it("queues an attachment without accompanying text", async () => {
+    const attachment = {
+      id: "attachment-only",
+      originalName: "trace.txt",
+      name: "attachment-only-trace.txt",
+      path: "/tmp/attachment-only-trace.txt",
+      size: 24,
+      mimeType: "text/plain",
+    };
+    const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          isTerminated: false,
+          noteInputIntent: vi.fn(),
+          primeSupportedCommandsForMessage: vi.fn(async () => {}),
+          deferMessage,
+          waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
+          getDeferredQueueSummary: vi.fn(() => []),
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "",
+        attachments: [attachment],
+        deferred: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(deferMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "", attachments: [attachment] }),
+      { promoteIfReady: true, placement: undefined },
+    );
+  });
+
   it("retains recovered work when a deferred-message response adds live work", async () => {
     await withSessionQueuePersistence(
       async (sessionQueuePersistenceService) => {

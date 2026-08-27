@@ -796,6 +796,7 @@
   "sessionUploading": "Uploading...",
   "sessionSendFailed": "Failed to send message: {message}",
   "sessionQueueFailed": "Failed to queue message: {message}",
+  "attachmentOnlyRequiresServerUpdate": "Update this YA server to send an attachment without accompanying text.",
   "sessionDraftAttachmentsUnavailable": "Draft attachments were no longer available.",
   "sessionThinkingChangeFailed": "Failed to change thinking: {message}",
   "sessionDeferredCancelFailed": "Failed to cancel queued message: {message}",

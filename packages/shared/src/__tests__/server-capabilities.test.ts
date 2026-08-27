@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ATTACHMENT_ONLY_SESSION_MESSAGES_CAPABILITY,
   CAPABILITY_ID_ALLOCATIONS,
   CAPABILITY_ID_ENCODING_VERSION,
   CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
@@ -347,6 +348,31 @@ describe("server capability advertisements", () => {
         CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
       ),
     ).toBe(false);
+  });
+
+  it("assigns attachment-only messages to permanent capability ID 50", () => {
+    expect(CAPABILITY_ID_ALLOCATIONS.attachmentOnlySessionMessages.id).toBe(50);
+    expect(
+      serverHasCapability(
+        { current: "0.7.2" },
+        ATTACHMENT_ONLY_SESSION_MESSAGES_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.7.1" },
+        ATTACHMENT_ONLY_SESSION_MESSAGES_CAPABILITY,
+      ),
+    ).toBe(false);
+
+    const sourceAdvertisement = encodeVersionedServerCapabilities(
+      [ATTACHMENT_ONLY_SESSION_MESSAGES_CAPABILITY],
+      "0.7.0-741-gabcdef",
+    );
+    expect(sourceAdvertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [[1, 2 ** 18]],
+    });
   });
 
   it("assigns the live worktree setting to permanent capability ID 44", () => {

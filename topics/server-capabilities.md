@@ -168,6 +168,15 @@ its limit, and the legacy live event never carries it. Existing capability
 meanings and older behavior remain unchanged. It is version-implied from
 `0.7.2`.
 
+`attachment-only-session-messages` owns empty-text submissions that carry at
+least one uploaded attachment across direct session start, detached start,
+resume, and live queue routes. Stable releases `v0.7.0` (2026-07-25) and
+`v0.6.2` (2026-07-11) reject these requests before inspecting attachments.
+Without permanent ID 50, a current client retains the attachment draft,
+explains that the server must be updated or text added, and makes no empty-text
+request. Text-bearing attachment sends keep their existing behavior. It is
+version-implied from `0.7.2`.
+
 `project-code-names` owns the additive `codeName` field on project list,
 detail, and create responses; `PATCH /api/projects/:projectId/code-name`; and
 the `project-code-names-changed` invalidation event. The ordinary optional
@@ -393,9 +402,10 @@ the same ledger:
 | 47 | server | 0.7.2 | `git-file-revision` |
 | 48 | server | 0.7.2 | `codex-stream-durable-id-alignment` |
 | 49 | server | 0.7.2 | `cache-miss-billing-expected-expiry` |
+| 50 | server | 0.7.2 | `attachment-only-session-messages` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 50; retired rows stay in the ledger as reserved IDs.
+ID 51; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

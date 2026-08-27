@@ -131,6 +131,7 @@ import {
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { toBrowserAppHref } from "../lib/appHref";
+import { requiresAttachmentOnlyServerUpdate } from "../lib/attachmentSubmission";
 import { storeUploadedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import {
   useActiveProjectSessionIds,
@@ -2221,6 +2222,17 @@ function SessionPageContent({
     }
     const preserveComposer = options.preserveComposer === true;
     const { outgoingText, slashCommand } = prepared;
+    if (
+      !preserveComposer &&
+      requiresAttachmentOnlyServerUpdate({
+        version: versionInfo,
+        text: outgoingText,
+        attachmentCount: attachmentsRef.current.length,
+      })
+    ) {
+      showToast(t("attachmentOnlyRequiresServerUpdate"), "error");
+      return false;
+    }
     const thinking = prepared.thinking ?? getImplicitComposerThinking();
     // Display preference for thinking rows; sent for compatibility while the
     // server requests provider summaries independently.
@@ -2721,6 +2733,16 @@ function SessionPageContent({
       return;
     }
     const { outgoingText, slashCommand } = prepared;
+    if (
+      requiresAttachmentOnlyServerUpdate({
+        version: versionInfo,
+        text: outgoingText,
+        attachmentCount: attachmentsRef.current.length,
+      })
+    ) {
+      showToast(t("attachmentOnlyRequiresServerUpdate"), "error");
+      return;
+    }
     const thinking = prepared.thinking ?? getImplicitComposerThinking();
     // Display preference for thinking rows; sent for compatibility while the
     // server requests provider summaries independently.

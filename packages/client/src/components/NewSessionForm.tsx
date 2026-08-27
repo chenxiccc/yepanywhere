@@ -127,6 +127,7 @@ import {
   hasAttachmentNavigationRisk,
   useAttachmentNavigationGuard,
 } from "../lib/attachmentNavigationGuard";
+import { requiresAttachmentOnlyServerUpdate } from "../lib/attachmentSubmission";
 import {
   serverSupportsProjectQueue,
   shouldShowProjectQueueAffordance,
@@ -2054,6 +2055,16 @@ export function NewSessionForm({
         deliverySpeechPrefix && hasContent
           ? prependSpeechMessagePrefix(finalMessage, deliverySpeechPrefix)
           : finalMessage.trim();
+      if (
+        requiresAttachmentOnlyServerUpdate({
+          version: versionInfo,
+          text: finalMessage,
+          attachmentCount: pendingFiles.length,
+        })
+      ) {
+        showToast(t("attachmentOnlyRequiresServerUpdate"), "error");
+        return;
+      }
       const trimmedProjectInput = normalizeProjectInput(projectInput);
       const actionAtMs = Date.now();
       const clientTimestamp = getServerClockTimestamp(actionAtMs);
@@ -2375,6 +2386,7 @@ export function NewSessionForm({
       speechMessagePrefix,
       supportsSessionSandboxing,
       t,
+      versionInfo,
     ],
   );
 

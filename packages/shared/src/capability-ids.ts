@@ -318,6 +318,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "cache-miss-billing-expected-expiry",
     introducedIn: "0.7.2",
   },
+  attachmentOnlySessionMessages: {
+    id: 50,
+    direction: "server",
+    name: "attachment-only-session-messages",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [
