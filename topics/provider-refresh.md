@@ -163,6 +163,34 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current no-op refresh, 2026-08-27:
+
+- Installed Codex is `0.150.1`; the official `rust-v0.150.1` source is commit
+  `90854393966b21e9ebfd21b122334eb09a20c93d`. Root compatibility is recorded
+  through `0.150.1`, while `expectedVersion` remains `0.150.0` because the
+  checked-in app-server protocol subset did not change.
+- The patch makes Codex's retained-image compaction budget stable and enabled
+  by default. Provider-native `thread/compact/start` can now trim older retained
+  images when they exceed the remote-compaction token budget. YA already
+  delegates that operation to Codex and neither sets nor interprets the feature,
+  so no provider-control or transcript change is required.
+- The current account's no-token `model/list` still returns the eight
+  YA-recognized models and only metadata the dynamic catalog already preserves.
+  Sol currently advertises `priority` rather than the additional `ultrafast`
+  tier observed during the 0.150.0 refresh; this account/server-side catalog
+  variation requires no fallback change.
+- A new YA session launched by the already-running provider host reports
+  0.150.1, confirming that each fresh worker resolves the installed Codex
+  executable without a host restart. Today's three sampled rollouts contain
+  3,191 entries across 0.150.0 and 0.150.1; all 23 authored user turns retain
+  provenance, with no malformed lines or audit exceptions.
+- The project-local Codex reference checkout remains dirty and was preserved.
+  The exact release tags were compared in the librarian cache instead.
+
+Status: Codex 0.150.1 app-server, model-catalog, provider-native compaction, and
+persisted-transcript compatibility is refreshed with no YA runtime source
+change.
+
 Current source refresh, 2026-08-26:
 
 - Installed Codex is `0.150.0`; the official `rust-v0.150.0` source is commit
