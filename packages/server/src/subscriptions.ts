@@ -198,6 +198,63 @@ export function createSessionSubscription(
   let activeFinalizations = 0;
   const finalizationGenerations = new Map<string, number>();
   const finalizationQueue: FinalizationJob[] = [];
+  let finalizationOverflow: {
+    startedAtMs: number;
+    droppedCount: number;
+    firstDroppedId: string;
+    lastDroppedId: string;
+    maxQueueDepth: number;
+  } | null = null;
+
+  const recordFinalizationOverflow = (dropped: FinalizationJob): void => {
+    if (finalizationOverflow) {
+      finalizationOverflow.droppedCount += 1;
+      finalizationOverflow.lastDroppedId = dropped.id;
+      finalizationOverflow.maxQueueDepth = Math.max(
+        finalizationOverflow.maxQueueDepth,
+        finalizationQueue.length,
+      );
+      return;
+    }
+    finalizationOverflow = {
+      startedAtMs: Date.now(),
+      droppedCount: 1,
+      firstDroppedId: dropped.id,
+      lastDroppedId: dropped.id,
+      maxQueueDepth: maxQueuedFinalizations,
+    };
+    getLogger().warn(
+      {
+        component: "session-subscription",
+        sessionId: process.sessionId,
+        projectId: process.projectId,
+        subscription: options?.logLabel ?? null,
+        maxQueuedFinalizations,
+        activeFinalizations,
+        queuedFinalizationsBeforeDrop: maxQueuedFinalizations,
+        firstDroppedId: dropped.id,
+      },
+      "Finalized-message augmentation queue saturated; dropping optional enrichment",
+    );
+  };
+
+  const finishFinalizationOverflow = (reason: string): void => {
+    if (!finalizationOverflow) return;
+    getLogger().warn(
+      {
+        component: "session-subscription",
+        sessionId: process.sessionId,
+        projectId: process.projectId,
+        subscription: options?.logLabel ?? null,
+        maxQueuedFinalizations,
+        elapsedMs: Math.max(0, Date.now() - finalizationOverflow.startedAtMs),
+        ...finalizationOverflow,
+        reason,
+      },
+      "Finalized-message augmentation queue saturation ended",
+    );
+    finalizationOverflow = null;
+  };
 
   const settleDroppedFinalization = (job: FinalizationJob): void => {
     if (finalizationGenerations.get(job.id) === job.generation) {
@@ -247,6 +304,9 @@ export function createSessionSubscription(
           drainFinalizations();
         });
     }
+    if (finalizationQueue.length === 0) {
+      finishFinalizationOverflow("queue_drained");
+    }
   };
 
   const scheduleFinalization = (
@@ -267,11 +327,7 @@ export function createSessionSubscription(
         const dropped = finalizationQueue.shift();
         if (dropped) {
           settleDroppedFinalization(dropped);
-          options?.onError?.(
-            new Error(
-              `Finalized-message augmentation queue exceeded ${maxQueuedFinalizations} items`,
-            ),
-          );
+          recordFinalizationOverflow(dropped);
         }
       }
       finalizationQueue.push({
@@ -284,11 +340,12 @@ export function createSessionSubscription(
     });
   };
 
-  const clearQueuedFinalizations = (): void => {
+  const clearQueuedFinalizations = (reason: string): void => {
     for (const job of finalizationQueue.splice(0)) {
       settleDroppedFinalization(job);
     }
     finalizationGenerations.clear();
+    finishFinalizationOverflow(reason);
   };
 
   const emitStatus = (state: Process["state"]) => {
@@ -434,7 +491,7 @@ export function createSessionSubscription(
             providerRuntimeStatus: process.getProviderRuntimeStatus(),
           });
           completed = true;
-          clearQueuedFinalizations();
+          clearQueuedFinalizations("session_complete");
           clearInterval(heartbeatInterval);
           break;
       }
@@ -506,7 +563,7 @@ export function createSessionSubscription(
   return {
     cleanup: () => {
       completed = true;
-      clearQueuedFinalizations();
+      clearQueuedFinalizations("subscription_cleanup");
       clearInterval(heartbeatInterval);
       unsubscribe();
       unregisterLiveDeltaSubscriber?.();

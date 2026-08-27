@@ -13,6 +13,7 @@ import {
   createSessionSubscription,
 } from "../src/subscriptions.js";
 import type { StreamAugmenter } from "../src/augments/index.js";
+import { getLogger } from "../src/logging/logger.js";
 import type { SessionQueuePersistenceService } from "../src/services/SessionQueuePersistenceService.js";
 import type { Process } from "../src/supervisor/Process.js";
 import type { ProcessEvent, ProcessState } from "../src/supervisor/types.js";
@@ -550,6 +551,72 @@ describe("createSessionSubscription", () => {
       "gateway-assistant-2",
       "gateway-assistant-1",
     ]);
+  });
+
+  it("aggregates optional-enrichment queue saturation", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+    let releaseFinalizers: (() => void) | undefined;
+    const finalizerGate = new Promise<void>((resolve) => {
+      releaseFinalizers = resolve;
+    });
+    const subscription = createSessionSubscription(process, emit, {
+      logLabel: "saturation-test",
+      createAugmenter: async () =>
+        stubAugmenter(async () => {
+          await finalizerGate;
+        }),
+    });
+
+    const deliveries = Array.from({ length: 140 }, (_, index) =>
+      fireEvent({
+        type: "message",
+        message: {
+          type: "assistant",
+          uuid: `saturated-${index}`,
+          message: { role: "assistant", content: `message ${index}` },
+        },
+      } as ProcessEvent),
+    );
+
+    expect(events.filter(([type]) => type === "message")).toHaveLength(140);
+    const startedWarnings = warn.mock.calls.filter(
+      ([, message]) =>
+        message ===
+        "Finalized-message augmentation queue saturated; dropping optional enrichment",
+    );
+    expect(startedWarnings).toHaveLength(1);
+    expect(startedWarnings[0]?.[0]).toMatchObject({
+      component: "session-subscription",
+      sessionId: "sess-1",
+      subscription: "saturation-test",
+      maxQueuedFinalizations: 128,
+      queuedFinalizationsBeforeDrop: 128,
+      firstDroppedId: "saturated-4",
+    });
+
+    subscription.cleanup();
+    releaseFinalizers?.();
+    await Promise.all(deliveries);
+
+    const endedWarnings = warn.mock.calls.filter(
+      ([, message]) =>
+        message === "Finalized-message augmentation queue saturation ended",
+    );
+    expect(endedWarnings).toHaveLength(1);
+    expect(endedWarnings[0]?.[0]).toMatchObject({
+      component: "session-subscription",
+      sessionId: "sess-1",
+      subscription: "saturation-test",
+      droppedCount: 8,
+      firstDroppedId: "saturated-4",
+      lastDroppedId: "saturated-11",
+      maxQueueDepth: 128,
+      reason: "subscription_cleanup",
+    });
   });
 
   it("publishes only the latest enrichment generation for a stable message id", async () => {

@@ -125,6 +125,9 @@ optional await:
 - retain one FIFO lane only for mutable streaming-coordinator state;
 - run finalized-message work independently with at most four active and 128
   queued items;
+- when that optional queue saturates, keep raw messages visible, drop only the
+  oldest queued enrichment, and log one start plus one aggregate end record for
+  the saturation episode rather than one error per dropped item;
 - coalesce queued same-id snapshots and publish only the latest generation;
 - publish one atomic same-id enriched message, followed by the equivalent
   compatibility `markdown-augment` event;
@@ -173,8 +176,9 @@ detailed transcript once per intermediate snapshot.
 
 Focused regressions in `packages/server/test/subscriptions.test.ts` prove raw
 order while the first finalizer is blocked, independent later finalization,
-latest-generation suppression, atomic enriched-message/event order, immediate
-completion, replay cloning, cleanup, and no post-teardown publication.
+latest-generation suppression, bounded saturation logging, atomic
+enriched-message/event order, immediate completion, replay cloning, cleanup,
+and no post-teardown publication.
 `packages/server/test/render-parity.test.ts` covers multiple text blocks as well
 as provider render parity. Session-detail reducer, selector, snapshot, and hook
 tests cover final-Markdown ownership and restoration. The active-process route
