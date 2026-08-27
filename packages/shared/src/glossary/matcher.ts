@@ -1,4 +1,7 @@
-import { normalizeGlossarySource } from "./normalization.js";
+import {
+  normalizeGlossaryCaseText,
+  normalizeGlossarySource,
+} from "./normalization.js";
 import type { GlossaryArtifact, GlossaryMatch } from "./types.js";
 
 interface Candidate extends GlossaryMatch {
@@ -91,6 +94,7 @@ export function matchGlossaryText(
   }
   const normalized = normalizeGlossarySource(text);
   const candidates: Candidate[] = [];
+  const caseFormSets = new Map<number, Set<string>>();
   let state = 0;
 
   for (let index = 0; index < normalized.chars.length; index += 1) {
@@ -120,6 +124,15 @@ export function matchGlossaryText(
       const start = normalized.starts[normalizedStart];
       const end = normalized.ends[index];
       if (start === undefined || end === undefined) continue;
+      const matchedText = text.slice(start, end);
+      if (terminal.caseSensitiveForms?.length) {
+        let caseForms = caseFormSets.get(terminalIndex);
+        if (!caseForms) {
+          caseForms = new Set(terminal.caseSensitiveForms);
+          caseFormSets.set(terminalIndex, caseForms);
+        }
+        if (!caseForms.has(normalizeGlossaryCaseText(matchedText))) continue;
+      }
       candidates.push({
         alternativeOrder: terminal.alternativeOrder,
         definitionText: terminal.definitionText,
@@ -129,7 +142,7 @@ export function matchGlossaryText(
         rowOrder: terminal.rowOrder,
         start,
         terminalIndex,
-        visibleCodePoints: Array.from(text.slice(start, end)).length,
+        visibleCodePoints: Array.from(matchedText).length,
       });
     }
   }

@@ -515,7 +515,7 @@ export function TooltipLayer() {
       setEnlarged(true);
       void writeClipboardText(target.dataset.tooltip ?? target.title);
     };
-    const onClick = (event: MouseEvent) => {
+    const onPointerActivate = (event: MouseEvent) => {
       const target = glossaryTarget(event.target);
       if (!target || hasSelectedText()) return;
       event.preventDefault();
@@ -578,13 +578,15 @@ export function TooltipLayer() {
     // Glossary terms also appear inside dialogs whose click boundaries stop
     // bubbling. Capture activation so the same term interaction works in
     // file-viewer modals and ordinary rendered prose.
-    document.addEventListener("click", onClick, true);
+    document.addEventListener("click", onPointerActivate, true);
+    document.addEventListener("contextmenu", onPointerActivate, true);
     document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     return () => {
-      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("click", onPointerActivate, true);
+      document.removeEventListener("contextmenu", onPointerActivate, true);
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("focusin", onFocusIn);

@@ -95,4 +95,32 @@ describe("annotateGlossaryHtml", () => {
     );
     expect(result.changed).toBe(false);
   });
+
+  it("renders only case-eligible glossary matches", () => {
+    const caseArtifact = compileGlossaryArtifact(
+      [
+        {
+          termMarkdown: "**YA**",
+          definitionMarkdown: "Yep Anywhere.",
+          glossaryDirectory: "",
+          glossaryOrder: 0,
+          rowOrder: 0,
+        },
+      ],
+      "source-case",
+    );
+    if (!caseArtifact.ok) throw new Error(caseArtifact.diagnostic.message);
+
+    const result = annotateGlossaryHtml(
+      "<p>YA Ya ya</p>",
+      caseArtifact.artifact,
+    );
+    const template = document.createElement("template");
+    template.innerHTML = result.html;
+    const terms = template.content.querySelectorAll("[data-glossary-term]");
+
+    expect(terms).toHaveLength(1);
+    expect(terms[0]?.textContent).toBe("YA");
+    expect(template.content.textContent).toBe("YA Ya ya");
+  });
 });

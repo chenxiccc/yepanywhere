@@ -1318,6 +1318,38 @@ describe("TooltipLayer", () => {
     expect(term.getAttribute("data-tooltip")).toBeNull();
   });
 
+  it("reveals and copies a glossary definition on secondary click", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <>
+        <TooltipLayer />
+        <span
+          data-glossary-term="true"
+          data-tooltip="oracle — Best published system."
+          role="button"
+          tabIndex={0}
+        >
+          oracle
+        </span>
+      </>,
+    );
+    const term = screen.getByRole("button", { name: "oracle" });
+
+    expect(fireEvent.contextMenu(term, { clientX: 20, clientY: 30 })).toBe(
+      false,
+    );
+
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip.textContent).toBe("oracle — Best published system.");
+    expect(tooltip.classList).toContain(styles.glossary);
+    expect(tooltip.classList).toContain(styles.enlarged);
+    expect(writeText).toHaveBeenCalledWith("oracle — Best published system.");
+  });
+
   it("isolates glossary pointer and keyboard activation from enclosing actions", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

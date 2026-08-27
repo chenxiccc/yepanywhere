@@ -270,10 +270,21 @@ describe("glossary phrase compilation", () => {
     );
   });
 
+  it("prefixes the first-listed case only when the definition needs it", () => {
+    const prefixed = compile([row("**YA**, **ya**", "Yep Anywhere")]);
+    const selfLabelled = compile([row("**YA**, **ya**", "YA is Yep Anywhere")]);
+
+    expect(prefixed.terminals[0]?.definitionText).toBe("YA: Yep Anywhere");
+    expect(selfLabelled.terminals[0]?.definitionText).toBe(
+      "YA is Yep Anywhere",
+    );
+  });
+
   it("round-trips a versioned JSON artifact", () => {
     const artifact = compile([row("**serialized term**")]);
     const restored = JSON.parse(JSON.stringify(artifact)) as GlossaryArtifact;
     expect(restored.version).toBe(GLOSSARY_ARTIFACT_VERSION);
+    expect(restored.version).toBe(2);
     expect(matchGlossaryText("A serialized term.", restored)).toHaveLength(1);
   });
 
@@ -342,8 +353,52 @@ describe("compiled glossary matching", () => {
     );
   });
 
+  it("matches all-caps glossary entries only against all-caps text", () => {
+    const artifact = compile([row("**YA**", "Yep Anywhere")]);
+    const text = "YA Ya ya";
+
+    expect(
+      matchGlossaryText(text, artifact).map((match) =>
+        text.slice(match.start, match.end),
+      ),
+    ).toEqual(["YA"]);
+  });
+
+  it("uses a lowercase alternative to opt into case-insensitive matching", () => {
+    const artifact = compile([row("**YA**, **ya**", "Yep Anywhere")]);
+    const text = "YA Ya ya";
+
+    expect(
+      matchGlossaryText(text, artifact).map((match) =>
+        text.slice(match.start, match.end),
+      ),
+    ).toEqual(["YA", "Ya", "ya"]);
+  });
+
+  it("matches mixed case exactly plus initial capitalization", () => {
+    const artifact = compile([row("**eBay**", "Marketplace")]);
+    const text = "eBay EBay ebay EBAY";
+
+    expect(artifact.terminals[0]?.caseSensitiveForms).toEqual(["EBay", "eBay"]);
+    expect(
+      matchGlossaryText(text, artifact).map((match) =>
+        text.slice(match.start, match.end),
+      ),
+    ).toEqual(["eBay", "EBay"]);
+  });
+
+  it("keeps legacy artifacts case-insensitive", () => {
+    const artifact = compile([row("**eBay**", "Marketplace")]);
+    artifact.version = 1;
+    for (const terminal of artifact.terminals) {
+      delete terminal.caseSensitiveForms;
+    }
+
+    expect(matchGlossaryText("eBay EBay ebay EBAY", artifact)).toHaveLength(4);
+  });
+
   it("uses one context-independent Unicode fold for compile and match", () => {
-    const artifact = compile([row("**ΟΣ**", "Greek sigma")]);
+    const artifact = compile([row("**ος**", "Greek sigma")]);
     const text = "ΟΣ ος οσ";
     const matchedText = matchGlossaryText(text, artifact).map((match) =>
       text.slice(match.start, match.end),

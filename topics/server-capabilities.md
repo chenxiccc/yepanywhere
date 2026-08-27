@@ -208,6 +208,16 @@ Without either capability, the existing provider-command fallback remains.
 The already-advertised done capability and older capable behavior remain
 unchanged.
 
+`glossary-tooltips` owns artifact version 2's additive
+`terminals[].caseSensitiveForms` field and its lowercase-insensitive,
+all-caps-exact, and mixed-case matching semantics. The ordinary optional
+corpus `v0.7.0` and `v0.6.2` lacks the glossary route and capability entirely;
+without permanent ID 10, the client requests no artifact and renders ordinary
+prose. A version-1 artifact from a briefly advertised source-ahead server lacks
+the field, so the current matcher preserves its legacy case-insensitive
+behavior. The Maintainer approved correcting this capability before its first
+stable release on 2026-08-27; `introducedIn` remains `0.7.1`.
+
 `serverHasCapability` accepts release implication, encoding-1 IDs, and both
 legacy representations. This union keeps old installed servers usable without
 making a new capability depend on its textual name.

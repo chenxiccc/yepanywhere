@@ -1,4 +1,4 @@
-export const GLOSSARY_ARTIFACT_VERSION = 1 as const;
+export const GLOSSARY_ARTIFACT_VERSION = 2 as const;
 
 export const GLOSSARY_LIMITS = {
   maxIncludeDepth: 16,
@@ -57,6 +57,8 @@ export interface GlossaryDefinitionContribution {
 }
 
 export interface GlossaryArtifactTerminal {
+  /** Empty means case-insensitive; absent is a legacy v1 terminal. */
+  caseSensitiveForms?: string[];
   codePointLength: number;
   definitionText: string;
   normalizedForm: string;
@@ -74,7 +76,7 @@ export interface GlossaryArtifactNode {
 }
 
 export interface GlossaryArtifact {
-  version: typeof GLOSSARY_ARTIFACT_VERSION;
+  version: 1 | typeof GLOSSARY_ARTIFACT_VERSION;
   sourceVersion: string;
   nodes: GlossaryArtifactNode[];
   terminals: GlossaryArtifactTerminal[];

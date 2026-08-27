@@ -153,12 +153,13 @@ is the fallback when neither side fits.
 
 Plain text tooltips retain familiar tooltip geometry: a compact monochrome
 surface with maximum black/white contrast and polarity opposite the active
-light or dark color scheme, a visible border and modest shadow, UI font, tight
-unzoomed line spacing, and no decorative animation. The ordinary themed
-tooltip is one pixel larger than the compact `--font-size-xs` UI token; the
-secondary-click enlargement still advances to `--font-size-sm`. Multiline
-content preserves line breaks. Content taller than the viewport-relative cap
-scrolls inside the tooltip rather than being clipped.
+light or dark color scheme, a visible border and modest shadow, 500-weight UI
+text for legible glyph strokes, tight unzoomed line spacing, and no decorative
+animation. The ordinary themed tooltip is one pixel larger than the compact
+`--font-size-xs` UI token; its enlarged treatment advances to half a pixel above
+`--font-size-sm`. Glossary text retains its additional one-pixel offset in both
+states. Multiline content preserves line breaks. Content taller than the
+viewport-relative cap scrolls inside the tooltip rather than being clipped.
 
 The shared layer consumes both legacy static `title=` hints and explicit
 `data-tooltip` hints. New and pointer-computed producers assign exactly one
@@ -244,15 +245,15 @@ internal scroll position: the tooltip rectangle, word wrapping, and underlying
 page position remain fixed, including at the tooltip's scroll boundary. A non-
 overflowing tooltip does not consume wheel input.
 
-Explicit glossary-term activation begins in the same enlarged treatment because
-the activation expresses reading intent; passive pointer hover remains compact.
-Glossary context adds one pixel to both corresponding text sizes, without
-changing ordinary themed tooltips. Long definitions use the shared tooltip's
-contained scrolling. Because primary activation already copies the exact
-definition, the activated definition does not intercept a secondary click or
-touch long-press; the browser keeps those gestures for text selection and its
-normal context menu. Tapping or selecting inside the tooltip does not dismiss
-it; Escape or activation outside the term and tooltip does.
+Explicit primary or secondary glossary-term activation begins in the same
+enlarged treatment and copies the exact definition because activation expresses
+reading intent; passive pointer hover remains compact. Glossary context adds one
+pixel to both corresponding text sizes, without changing ordinary themed
+tooltips. Long definitions use the shared tooltip's contained scrolling. The
+activated definition itself does not intercept a secondary click or touch
+long-press; the browser keeps those gestures for text selection and its normal
+context menu. Tapping or selecting inside the tooltip does not dismiss it;
+Escape or activation outside the term and tooltip does.
 
 Rich explanatory tooltips may retain structured content while using the same
 dwell/warmth coordinator and the same keyboard-visible versus pointer-generated
@@ -316,6 +317,9 @@ not the surface into a card.
   ordinary browser tooltips.
 - Touch activation of a session row or Recent Sessions link navigates without
   opening, warming, or leaving behind a session preview or text tooltip.
+- Primary or secondary activation of a glossary term reveals and copies its
+  enlarged definition; an existing text selection wins, and secondary-clicking
+  inside the activated definition remains browser-owned.
 - Secondary-click inside passive tooltip bounds copies/enlarges the presented
   text while respecting existing-selection and app-context-menu exclusions. A
   producer's zoom-only headline/detail replaces the compact hint only after

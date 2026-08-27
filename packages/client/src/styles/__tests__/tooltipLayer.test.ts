@@ -29,6 +29,8 @@ describe("themed tooltip CSS contract", () => {
       /\.interactive\s*\{([^}]*)\}/.exec(tooltipCss)?.[1] ?? "";
     const enlargedDeclarations =
       /\.enlarged\s*\{([^}]*)\}/.exec(tooltipCss)?.[1] ?? "";
+    const glossaryEnlargedDeclarations =
+      /\.glossary\.enlarged\s*\{([^}]*)\}/.exec(tooltipCss)?.[1] ?? "";
     const richRootDeclarations =
       /^\.tooltipVisible\s*\{([^}]*)\}/m.exec(riskCss)?.[1] ?? "";
     const richDeclarations =
@@ -41,12 +43,19 @@ describe("themed tooltip CSS contract", () => {
     expect(declarations).toMatch(/pointer-events:\s*none\s*;/);
     expect(declarations).toMatch(/user-select:\s*none\s*;/);
     expect(declarations).toMatch(/max-width:\s*min\(520px,/);
+    expect(declarations).toMatch(/font-weight:\s*500\s*;/);
     expect(interactiveDeclarations).toMatch(/pointer-events:\s*auto\s*;/);
     expect(interactiveDeclarations).toMatch(/user-select:\s*text\s*;/);
     expect(enlargedDeclarations).toMatch(
       /max-width:\s*min\(calc\(520px \+ 4\.25em\),/,
     );
     expect(enlargedDeclarations).toMatch(/max-height:\s*min\(/);
+    expect(enlargedDeclarations).toMatch(
+      /font-size:\s*calc\(var\(--font-size-sm\) \+ 0\.5px\)\s*;/,
+    );
+    expect(glossaryEnlargedDeclarations).toMatch(
+      /font-size:\s*calc\(var\(--font-size-sm\) \+ 1\.5px\)\s*;/,
+    );
     expect(richRootDeclarations).toMatch(/z-index:\s*2147483647\s*;/);
     expect(richDeclarations).toMatch(/z-index:\s*2147483647\s*;/);
     expect(hovercardDeclarations).toMatch(/z-index:\s*2147483647\s*;/);

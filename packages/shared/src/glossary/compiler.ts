@@ -3,7 +3,10 @@ import {
   parseGlossaryInline,
   splitGlossaryAlternatives,
 } from "./markdown.js";
-import { normalizeGlossaryText } from "./normalization.js";
+import {
+  normalizeGlossaryCaseText,
+  normalizeGlossaryText,
+} from "./normalization.js";
 import {
   GLOSSARY_ARTIFACT_VERSION,
   GLOSSARY_LIMITS,
@@ -23,6 +26,7 @@ interface PhraseToken {
 
 interface ExpandedPhrase {
   canonicalLabel: string;
+  caseSensitiveForms: string[];
   form: string;
   requiredBoldCodePoints: number;
 }
@@ -34,8 +38,22 @@ interface WorkingTerminal {
     requiredBoldCodePoints: number;
     rowOrder: number;
   }>;
+  caseSensitiveForms: Set<string> | null;
   contributions: GlossaryDefinitionContribution[];
   normalizedForm: string;
+}
+
+function sentenceInitialCaseForm(text: string): string {
+  let offset = 0;
+  for (const char of text) {
+    const uppercase = char.toUpperCase();
+    if (uppercase !== char) {
+      return `${text.slice(0, offset)}${uppercase}${text.slice(offset + char.length)}`;
+    }
+    if (char.toLowerCase() !== char) return text;
+    offset += char.length;
+  }
+  return text;
 }
 
 function fail(
@@ -117,6 +135,7 @@ function expandPhrase(
 
   const forms = new Map<string, ExpandedPhrase>();
   const parsed = phraseTokens(markdown);
+  const caseInsensitive = canonicalLabel.toLowerCase() === canonicalLabel;
   const parsedVariants = parsed.hasBoldHyphen
     ? [parsed, phraseTokens(markdown, true)]
     : [parsed];
@@ -140,12 +159,23 @@ function expandPhrase(
         optionalPosition += 1;
         return include;
       });
-      const form = normalizeGlossaryText(
-        selected.map((token) => token.text).join(" "),
-      );
+      const selectedText = selected.map((token) => token.text).join(" ");
+      const form = normalizeGlossaryText(selectedText);
       if (!form) continue;
+      const caseForm = normalizeGlossaryCaseText(selectedText);
+      const caseSensitiveForms = caseInsensitive
+        ? []
+        : Array.from(new Set([caseForm, sentenceInitialCaseForm(caseForm)]));
+      const existing = forms.get(form);
+      if (existing) {
+        existing.caseSensitiveForms = Array.from(
+          new Set([...existing.caseSensitiveForms, ...caseSensitiveForms]),
+        );
+        continue;
+      }
       forms.set(form, {
         canonicalLabel,
+        caseSensitiveForms,
         form,
         requiredBoldCodePoints: parsedVariant.hasBold
           ? parsedVariant.requiredBoldCodePoints
@@ -168,13 +198,30 @@ function comparePrecedence(
   );
 }
 
+function definitionStartsWithLabel(definition: string, label: string): boolean {
+  const normalizedDefinition = normalizeGlossaryText(definition);
+  const normalizedLabel = normalizeGlossaryText(label);
+  if (!normalizedDefinition.startsWith(normalizedLabel)) return false;
+  const next = Array.from(
+    normalizedDefinition.slice(normalizedLabel.length),
+  )[0];
+  return (
+    next === undefined ||
+    (!/[-\u2010\u2011]/u.test(next) && /[\p{White_Space}\p{P}]/u.test(next))
+  );
+}
+
 function formatDefinitionText(
   contributions: readonly GlossaryDefinitionContribution[],
 ): string {
   return contributions
-    .map(
-      (contribution) =>
-        `${contribution.canonicalLabel}: ${contribution.definition}`,
+    .map((contribution) =>
+      definitionStartsWithLabel(
+        contribution.definition,
+        contribution.canonicalLabel,
+      )
+        ? contribution.definition
+        : `${contribution.canonicalLabel}: ${contribution.definition}`,
     )
     .join("\n\n");
 }
@@ -286,10 +333,20 @@ export function compileGlossaryArtifact(
         if (!terminal) {
           terminal = {
             alternatives: [],
+            caseSensitiveForms:
+              phrase.caseSensitiveForms.length === 0
+                ? null
+                : new Set(phrase.caseSensitiveForms),
             contributions: [],
             normalizedForm: phrase.form,
           };
           working.set(phrase.form, terminal);
+        } else if (phrase.caseSensitiveForms.length === 0) {
+          terminal.caseSensitiveForms = null;
+        } else if (terminal.caseSensitiveForms) {
+          for (const caseForm of phrase.caseSensitiveForms) {
+            terminal.caseSensitiveForms.add(caseForm);
+          }
         }
         terminal.alternatives.push({
           alternativeOrder,
@@ -336,6 +393,9 @@ export function compileGlossaryArtifact(
     if (!precedence) continue;
     terminals.push({
       alternativeOrder: precedence.alternativeOrder,
+      caseSensitiveForms: terminal.caseSensitiveForms
+        ? [...terminal.caseSensitiveForms].sort()
+        : [],
       codePointLength: Array.from(terminal.normalizedForm).length,
       contributions: terminal.contributions,
       definitionText: formatDefinitionText(terminal.contributions),

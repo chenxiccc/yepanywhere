@@ -164,12 +164,15 @@ The canonical label for a match is the complete comma-separated alternative
 that produced it, stripped of Markdown emphasis but retaining its optional
 qualifiers. One concrete surface form maps to one tooltip string. Each
 distinct source row that produces that form contributes one paragraph made
-from its canonical label and definition flattened to plain text; several
-entries, including conflicts within one glossary, are concatenated as
-consecutive paragraphs in governing-closure order. Directory paths remain
-artifact metadata and are not added to the user-visible definition text.
-Duplicate expansions from the same row contribute only once. Reference columns
-are excluded from tooltip text even when a reference creates an include edge.
+from its definition flattened to plain text. When the definition does not
+already begin with the canonical label at a phrase boundary, the paragraph is
+prefixed with `label: `; case-equivalent alternatives use their first-listed
+spelling for that label. Several entries, including conflicts within one
+glossary, are concatenated as consecutive paragraphs in governing-closure
+order. Directory paths remain artifact metadata and are not added to the
+user-visible definition text. Duplicate expansions from the same row
+contribute only once. Reference columns are excluded from tooltip text even
+when a reference creates an include edge.
 
 ## Match semantics
 
@@ -181,6 +184,16 @@ point, so compatibility expansion, combining marks, and folded case still map
 back to exact annotation offsets. Punctuation is literal: punctuation and
 spacing inside a declared phrase are consumed by that phrase and do not break
 it.
+
+Each authored alternative selects its case policy before optional-token and
+hyphen expansion. An all-lowercase alternative matches case-insensitively. An
+all-caps alternative matches its exact case. A mixed-case alternative matches
+its exact case plus the form produced by uppercasing its first cased character,
+allowing sentence-initial capitalization without having to determine sentence
+structure. If any explicit lowercase alternative contributes the same
+normalized concrete form, that shared form is case-insensitive. Authors can
+therefore write `YA, ya` to admit all casing while keeping `YA` alone exact.
+
 Hyphen-minus, Unicode hyphen, and non-breaking hyphen are word characters at
 phrase edges. Hyphenated and space-separated forms are therefore distinct
 unless the term cell declares both as comma-separated alternatives or derives
@@ -242,19 +255,18 @@ Holding any pointer button suppresses passive tooltip activation. A native
 selection drag crossing a glossary term therefore remains one uninterrupted
 text-selection gesture; the term explicitly retains `user-select: text`.
 
-Primary activation—tap or click—reveals the same tooltip text and copies that
-exact text to the clipboard. Touch activation therefore has an explicit YA
-surface even when the browser cannot reveal a native title reliably. The
-activation surface must not navigate. An activated definition uses the shared
-tooltip's enlarged treatment immediately and scrolls within its viewport cap
-when long; passive pointer hover remains compact. Both glossary treatments are
-one pixel larger than the corresponding ordinary themed tooltip treatment so
-definitions remain readable with compact UI metrics. Its secondary click and
-touch long-press stay browser-owned for text selection because activation
-already copied the exact definition. Secondary-clicking the term itself instead
-dismisses the revealed definition, so the browser's menu is not covered by the
-enlarged box sitting at that same position. Keyboard focus reveals the
-definition; Enter or Space performs the same reveal-and-copy action. A
+Primary activation—tap or click—and secondary-clicking the term reveal the same
+tooltip text and copy that exact text to the clipboard. Touch activation
+therefore has an explicit YA surface even when the browser cannot reveal a
+native title reliably. The activation surface must not navigate. An activated
+definition uses the shared tooltip's enlarged treatment immediately and scrolls
+within its viewport cap when long; passive pointer hover remains compact. Both
+glossary treatments are one pixel larger than the corresponding ordinary
+themed tooltip treatment so definitions remain readable with compact UI
+metrics. A secondary click or touch long-press inside the activated definition
+stays browser-owned for text selection because activation already copied the
+exact definition. Keyboard focus reveals the definition; Enter or Space
+performs the same reveal-and-copy action. A
 non-collapsed text selection wins over activation so selecting prose does not
 unexpectedly write to the clipboard. Successful pointer or keyboard activation
 owns that event at the shared tooltip coordinator and stops it before an
@@ -296,12 +308,18 @@ Compilation proceeds conceptually as follows:
 2. Expand the present/absent choices into finite literal surface forms, then
    clone forms containing bold ASCII hyphens with those hyphens replaced by
    spaces. No form contains a wildcard or consumes undeclared intervening text.
-3. Deduplicate the forms and insert them into one trie, attaching ordered
-   definition paragraphs and overlap-precedence metadata to terminal nodes.
+3. Deduplicate the forms and insert them into one trie, attaching accepted case
+   forms, ordered definition paragraphs, and overlap-precedence metadata to
+   terminal nodes.
 4. Compile failure links so one forward scan recognizes a form beginning at
    any eligible boundary without restarting a phrase loop at each character.
 5. Serialize the trie transitions, failure links, terminal metadata, and
    source-version identity.
+
+Artifact version 2 adds the accepted case forms. A legacy version-1 terminal
+without that metadata retains the original case-insensitive behavior, so a
+new client remains usable with a briefly advertised source-ahead server from
+before this pre-release correction.
 
 The automaton scan performs amortized constant transition work per normalized
 code point plus one visit per emitted terminal candidate. Let `n` be normalized
@@ -617,9 +635,9 @@ Grammar and matcher tests cover:
   two-optional-token cap, comma alternatives, and escaped commas;
 - independently present/absent optional tokens, rejection of a third optional
   token, and rejection of arbitrary gaps;
-- contextual Unicode case, compatibility and combining normalization, whitespace,
-  literal delimiter punctuation, phrase-edge boundaries, and stable source
-  offsets;
+- lowercase-insensitive, all-caps-exact, mixed-case and explicit-alternative
+  matching; compatibility and combining normalization; whitespace, literal
+  delimiter punctuation, phrase-edge boundaries, and stable source offsets;
 - fenced/indented table-shaped examples and matches spanning ordinary inline
   formatting;
 - same-form definitions within and across glossaries, concatenated paragraph

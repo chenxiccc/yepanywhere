@@ -22,7 +22,10 @@ function isAscii(text: string): boolean {
   return true;
 }
 
-function normalizeAsciiSource(text: string): NormalizedGlossarySource {
+function normalizeAsciiSource(
+  text: string,
+  foldCase: boolean,
+): NormalizedGlossarySource {
   const chars: string[] = [];
   const starts: number[] = [];
   const ends: number[] = [];
@@ -45,7 +48,7 @@ function normalizeAsciiSource(text: string): NormalizedGlossarySource {
     }
 
     chars.push(
-      codePoint >= 0x41 && codePoint <= 0x5a
+      foldCase && codePoint >= 0x41 && codePoint <= 0x5a
         ? String.fromCharCode(codePoint + 0x20)
         : text[index]!,
     );
@@ -134,18 +137,19 @@ function sourceGraphemes(text: string): Iterable<SourceGrapheme> {
   return graphemeSegmenter?.segment(text) ?? fallbackGraphemes(text);
 }
 
-function foldGrapheme(grapheme: string): string {
-  return grapheme.normalize("NFKC").toLowerCase().replaceAll("ς", "σ");
+function normalizeGrapheme(grapheme: string, foldCase: boolean): string {
+  const normalized = grapheme.normalize("NFKC");
+  return foldCase ? normalized.toLowerCase().replaceAll("ς", "σ") : normalized;
 }
 
-/** Normalize glossary text with source offsets for every emitted code point. */
-export function normalizeGlossarySource(
+function normalizeGlossarySourceWithCase(
   text: string,
+  foldCase: boolean,
 ): NormalizedGlossarySource {
   // Node 20's Intl.Segmenter has pathological scaling on long ASCII input.
   // ASCII code units are already individual graphemes, except CRLF; collapsing
   // adjacent whitespace gives CRLF the same normalized value and source span.
-  if (isAscii(text)) return normalizeAsciiSource(text);
+  if (isAscii(text)) return normalizeAsciiSource(text, foldCase);
 
   const chars: string[] = [];
   const starts: number[] = [];
@@ -171,7 +175,7 @@ export function normalizeGlossarySource(
     }
 
     flushWhitespace();
-    for (const char of foldGrapheme(part.segment)) {
+    for (const char of normalizeGrapheme(part.segment, foldCase)) {
       chars.push(char);
       starts.push(start);
       ends.push(end);
@@ -181,6 +185,17 @@ export function normalizeGlossarySource(
   return { chars, ends, starts };
 }
 
+/** Normalize glossary text with source offsets for every emitted code point. */
+export function normalizeGlossarySource(
+  text: string,
+): NormalizedGlossarySource {
+  return normalizeGlossarySourceWithCase(text, true);
+}
+
 export function normalizeGlossaryText(text: string): string {
   return normalizeGlossarySource(text).chars.join("").trim();
+}
+
+export function normalizeGlossaryCaseText(text: string): string {
+  return normalizeGlossarySourceWithCase(text, false).chars.join("").trim();
 }
