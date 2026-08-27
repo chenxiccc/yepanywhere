@@ -72,9 +72,14 @@
   }
 
   .pathVisibleColumn > :global(.source-detail-banner),
-  .pathVisibleColumn > .body,
   .pathVisibleColumn > .selectedPath {
     flex-shrink: 0;
+  }
+
+  .pathVisibleColumn > .body {
+    min-height: 0;
+    max-height: 40%;
+    overflow-y: auto;
   }
 
   .pathVisibleColumn > :global(.commit-file-list) {

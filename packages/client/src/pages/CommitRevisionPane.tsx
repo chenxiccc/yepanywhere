@@ -4,6 +4,8 @@ import {
   type MouseEvent,
   type RefObject,
   useCallback,
+  useLayoutEffect,
+  useRef,
 } from "react";
 import {
   SourceRowMenuTrigger,
@@ -13,7 +15,10 @@ import {
 } from "../components/SourceContextMenu";
 import { SearchMatchText } from "../components/SearchMatchText";
 import { SourceShortcutHelp } from "../components/SourceShortcutHelp";
-import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
+import {
+  handleSourceListKeyDown,
+  suppressSourceKeyboardTooltips,
+} from "../hooks/useSourceKeyboard";
 import { writeClipboardText } from "../lib/clipboard";
 import type { CommitSearchMatch } from "../lib/commitSearchIndex";
 import { findTextMatch } from "../lib/searchMatch";
@@ -93,6 +98,8 @@ export function CommitRevisionPane({
   t: TranslationFn;
 }) {
   const revisionMenu = useSourceContextMenu(t);
+  const revisionListRef = useRef<HTMLOListElement>(null);
+  const initialRevisionFocusPending = useRef(true);
   const revisionMenuActions = useCallback(
     (key: string, commit?: GitRecentCommit): SourceContextMenuAction[] => {
       const index = displayedKeys.indexOf(key);
@@ -170,6 +177,23 @@ export function CommitRevisionPane({
     workingTreeMenuActions,
     () => onOpenRevision(WORKING_TREE_KEY),
   );
+  useLayoutEffect(() => {
+    if (loadingList) {
+      initialRevisionFocusPending.current = true;
+      return;
+    }
+    if (!isWideScreen || !initialRevisionFocusPending.current || !selectedKey) {
+      return;
+    }
+    const selectedRevision =
+      revisionListRef.current?.querySelector<HTMLElement>(
+        ".commit-list-item.selected",
+      );
+    if (!selectedRevision) return;
+    initialRevisionFocusPending.current = false;
+    suppressSourceKeyboardTooltips();
+    selectedRevision.focus({ preventScroll: true });
+  }, [isWideScreen, loadingList, selectedKey]);
   return (
     <>
       <div className="commit-list-column">
@@ -220,7 +244,11 @@ export function CommitRevisionPane({
           </div>
         ) : (
           <>
-            <ol className="commit-list" onKeyDown={handleSourceListKeyDown}>
+            <ol
+              ref={revisionListRef}
+              className="commit-list"
+              onKeyDown={handleSourceListKeyDown}
+            >
               {showWorkingTreeRevision && (
                 <li
                   className={`commit-list-row commit-list-working-tree ${sourceRowMenuSurface}`}

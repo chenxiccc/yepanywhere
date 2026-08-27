@@ -19,6 +19,13 @@ const longSearchLine =
   "prefix/that/is/intentionally/long/enough/to/be/truncated/while/searching/ZebraNeedle/and/a/long/trailing/suffix/for/the/source/control/result";
 const tooltipFixtureName =
   "modified_keyboard_navigation_filename_long_enough_for_path_tooltip.ts";
+const outlineOrderProcessorPath = "src/interleaved/name-postprocessor.json";
+const outlineOrderReadmePath = "src/interleaved/Generic/README.md";
+const tallCommitBody = Array.from(
+  { length: 24 },
+  (_, index) =>
+    `Review paragraph ${index + 1} keeps enough prose in the selected commit to exceed the files pane height.`,
+).join("\n\n");
 
 test.use({ serviceWorkers: "block" });
 
@@ -138,7 +145,13 @@ async function openSourceControl(page: Page, baseURL: string) {
 
 function prepareBrowsingFixture() {
   const groupedDirectory = join(sourceControlProjectPath, "src", "grouped");
+  const interleavedDirectory = join(
+    sourceControlProjectPath,
+    "src",
+    "interleaved",
+  );
   mkdirSync(groupedDirectory, { recursive: true });
+  mkdirSync(join(interleavedDirectory, "Generic"), { recursive: true });
   const headSubject = execFileSync("git", ["log", "-1", "--format=%s"], {
     cwd: sourceControlProjectPath,
     encoding: "utf8",
@@ -159,7 +172,15 @@ function prepareBrowsingFixture() {
       join(groupedDirectory, tooltipFixtureName),
       "export const tooltipFixture = true;\n",
     );
-    execFileSync("git", ["add", "src/grouped"], {
+    writeFileSync(
+      join(sourceControlProjectPath, outlineOrderProcessorPath),
+      "{}\n",
+    );
+    writeFileSync(
+      join(sourceControlProjectPath, outlineOrderReadmePath),
+      "# Nested fixture\n",
+    );
+    execFileSync("git", ["add", "src/grouped", "src/interleaved"], {
       cwd: sourceControlProjectPath,
     });
     execFileSync(
@@ -173,7 +194,7 @@ function prepareBrowsingFixture() {
         "-m",
         "Add grouped browser fixture",
         "-m",
-        "Review grouped source files with keyboard navigation.",
+        tallCommitBody,
       ],
       { cwd: sourceControlProjectPath },
     );
@@ -557,12 +578,38 @@ test("reviews collapsed commit files with bracket navigation", async ({
   const message = page.getByRole("button", {
     name: /^Add grouped browser fixture/,
   });
+  const selectedRevision = page.locator(".commit-list-item.selected");
+  await page.reload();
+  await expect(selectedRevision).toBeVisible();
+  await expect(selectedRevision).toBeFocused();
+  const pageScroller = page.locator(".page-scroll-container");
+  const pageScrollTop = await pageScroller.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.keyboard.press("Enter");
+  await expect(
+    page.locator("button[data-source-file-item]").first(),
+  ).toBeFocused();
+  expect(await pageScroller.evaluate((element) => element.scrollTop)).toBe(
+    pageScrollTop,
+  );
+  await expect(selectedRevision).toBeInViewport();
+  await expect(page.locator(".git-diff-preview-pane")).toBeInViewport();
+  await expect(message).toBeInViewport();
+  await expect
+    .poll(() =>
+      message.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+
   await expect(message).toBeVisible();
 
   const filePaths = page.locator(
     "button[data-source-file-item] [data-source-path]",
   );
-  await expect(filePaths).toHaveCount(3);
+  await expect(filePaths).toHaveCount(5);
   const orderedPaths = await filePaths.evaluateAll((paths) =>
     paths.map((path) => path.getAttribute("data-source-path") ?? ""),
   );
@@ -578,7 +625,7 @@ test("reviews collapsed commit files with bracket navigation", async ({
   await page.keyboard.press("ArrowLeft");
   await expect(groupedFiles).toBeFocused();
   await page.keyboard.press("ArrowLeft");
-  await expect(filePaths).toHaveCount(0);
+  await expect(filePaths).toHaveCount(2);
 
   await message.click();
   await expect(
@@ -590,7 +637,7 @@ test("reviews collapsed commit files with bracket navigation", async ({
     "data-source-selected-path",
     firstPath,
   );
-  await expect(filePaths).toHaveCount(3);
+  await expect(filePaths).toHaveCount(5);
   await expect(
     page.locator("button[data-source-file-item]").first(),
   ).toBeFocused();
@@ -648,6 +695,24 @@ test("reviews collapsed commit files with bracket navigation", async ({
   );
   await expect(selectedPath).toContainText(tooltipPath);
   await expect(diffBody.locator("[data-diff-line]").first()).toBeVisible();
+
+  await page
+    .locator(
+      `button[data-source-file-item]:has([data-source-path="${outlineOrderReadmePath}"])`,
+    )
+    .click();
+  await page.keyboard.press("[");
+  await expect(selectedPath).toHaveAttribute(
+    "data-source-selected-path",
+    outlineOrderProcessorPath,
+  );
+  await expect(
+    page.locator(
+      `button[data-source-file-item]:has([data-source-path="${outlineOrderProcessorPath}"])`,
+    ),
+  ).toBeFocused();
+  await expect(diffBody.locator("[data-diff-line]").first()).toBeVisible();
+
   const selectedPathBox = selectedPath.locator("span").first();
   const [pathBounds, diffBounds] = await Promise.all([
     selectedPathBox.boundingBox(),

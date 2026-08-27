@@ -8,6 +8,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
+import { sourceOutlineDisplayOrder } from "../components/SourceFileOutline";
 import { useCommitSearchIndex } from "../hooks/useCommitSearchIndex";
 import type { TranslationFn } from "../i18n";
 
@@ -328,7 +329,10 @@ export function useCommitBrowserModel({
   ]);
 
   const selectedFiles = useMemo(
-    () => (compareToHead ? (comparison?.files ?? []) : (detail?.files ?? [])),
+    () =>
+      sourceOutlineDisplayOrder(
+        compareToHead ? (comparison?.files ?? []) : (detail?.files ?? []),
+      ),
     [compareToHead, comparison?.files, detail?.files],
   );
 
@@ -347,7 +351,10 @@ export function useCommitBrowserModel({
           )
         : undefined;
       return (
-        linkedFile?.path ?? retainedFile?.path ?? selectedFiles[0]?.path ?? null
+        linkedFile?.path ??
+        retainedFile?.path ??
+        selectedFiles.find((file) => !file.path.endsWith("/"))?.path ??
+        null
       );
     });
   }, [

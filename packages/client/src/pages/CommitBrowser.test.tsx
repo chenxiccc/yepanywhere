@@ -719,6 +719,13 @@ describe("CommitBrowser", () => {
     const workingTreeRow = document.querySelector(".commit-list-working-tree");
     expect(workingTreeRow?.textContent).toContain("sourceUncommitted");
     expect(workingTreeRow?.textContent).toContain("sourceChangedFileCount");
+    const workingTreeLink = workingTreeRow?.querySelector("a");
+    await waitFor(() => expect(document.activeElement).toBe(workingTreeLink));
+    fireEvent.keyDown(workingTreeLink!, { key: "Enter" });
+    const workingTreeFile = await findSourcePath("src/dirty.ts");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(workingTreeFile.closest("button")),
+    );
     await waitFor(() =>
       expect(getGitDiff).toHaveBeenCalledWith(
         "p1",
@@ -1470,7 +1477,7 @@ describe("CommitBrowser", () => {
 
     const commit = await screen.findByText("first commit");
     const commitRow = commit.closest("a")!;
-    act(() => commitRow.focus());
+    await waitFor(() => expect(document.activeElement).toBe(commitRow));
     fireEvent.keyDown(commitRow, { key: "Enter" });
 
     const firstFilePath = await findSourcePath("src/x.ts");
@@ -1604,6 +1611,72 @@ describe("CommitBrowser", () => {
     );
     expect(document.activeElement).toBe(
       sourcePath("src/first.ts")?.closest("button"),
+    );
+  });
+
+  it("steps through files in rendered outline order", async () => {
+    primeApis();
+    const readmePath = "RegressionTests/resources/Privacy/Generic/README.md";
+    const processorPath =
+      "RegressionTests/resources/Privacy/name-postprocessor.json";
+    getGitCommit.mockResolvedValue({
+      hash: SHA,
+      shortHash: "aaaaaaa",
+      subject: "first commit",
+      authorName: "Dev",
+      authorDate: "2026-07-26T00:00:00Z",
+      body: "message body",
+      files: [
+        {
+          path: readmePath,
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+        {
+          path: processorPath,
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    const message = await screen.findByTitle("sourceShowFullMessage");
+    await findSourcePath(processorPath);
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector("[data-source-selected-path]")
+          ?.getAttribute("data-source-selected-path"),
+      ).toBe(processorPath),
+    );
+
+    fireEvent.click(message);
+    fireEvent.keyDown(window, { key: "[" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        sourcePath(processorPath)?.closest("button"),
+      ),
+    );
+    fireEvent.keyDown(window, { key: "]" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        sourcePath(readmePath)?.closest("button"),
+      ),
+    );
+    fireEvent.keyDown(window, { key: "[" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        sourcePath(processorPath)?.closest("button"),
+      ),
     );
   });
 

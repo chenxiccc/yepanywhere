@@ -8,7 +8,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SourceFileOutline, type SourceOutlineItem } from "./SourceFileOutline";
+import {
+  SourceFileOutline,
+  type SourceOutlineItem,
+  sourceOutlineDisplayOrder,
+} from "./SourceFileOutline";
 
 const t = (key: string) => key;
 
@@ -51,6 +55,18 @@ function TestOutline({
 }
 
 describe("SourceFileOutline", () => {
+  it("reports the same file order that its path tree renders", () => {
+    const readme = item("RegressionTests/resources/Privacy/Generic/README.md");
+    const processor = item(
+      "RegressionTests/resources/Privacy/name-postprocessor.json",
+    );
+
+    expect(sourceOutlineDisplayOrder([readme, processor])).toEqual([
+      processor,
+      readme,
+    ]);
+  });
+
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
@@ -245,5 +261,43 @@ describe("SourceFileOutline", () => {
         ),
       ).not.toBeNull(),
     );
+  });
+
+  it("reveals requested focus only inside the outline scrollport", async () => {
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    const renderOutline = (focusRequest: number) => (
+      <SourceFileOutline
+        items={[item("a.ts")]}
+        scopeKey="contained-focus"
+        activeItemId="a.ts"
+        focusRequest={focusRequest}
+        style={{ overflowY: "auto" }}
+        renderFile={(entry, visiblePath, pathProps) => (
+          <li key={entry.id}>
+            <button type="button" data-source-list-item>
+              <span {...pathProps}>{visiblePath}</span>
+            </button>
+          </li>
+        )}
+        t={t}
+      />
+    );
+    const rendered = render(renderOutline(0));
+    const list = screen.getByRole("list");
+    const row = screen.getByRole("button");
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 100,
+    } as DOMRect);
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
+      top: 120,
+      bottom: 150,
+    } as DOMRect);
+
+    rendered.rerender(renderOutline(1));
+
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(list.scrollTop).toBe(50);
   });
 });

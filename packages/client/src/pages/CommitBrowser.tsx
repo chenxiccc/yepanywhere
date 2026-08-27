@@ -115,6 +115,8 @@ export function CommitBrowser({
   const restoreMobileListScrollRef = useRef(false);
   const [showBlame, setShowBlame] = useState(initialBlame);
   const [fileFocusRequest, setFileFocusRequest] = useState(0);
+  const [workingTreeFileFocusRequest, setWorkingTreeFileFocusRequest] =
+    useState(0);
   const [pendingFileListCommit, setPendingFileListCommit] = useState<
     string | null
   >(null);
@@ -237,7 +239,11 @@ export function CommitBrowser({
   const enterRevision = useCallback(
     (key: string) => {
       openRevision(key);
-      if (key !== WORKING_TREE_KEY) setPendingFileListCommit(key);
+      if (key === WORKING_TREE_KEY) {
+        setWorkingTreeFileFocusRequest((current) => current + 1);
+      } else {
+        setPendingFileListCommit(key);
+      }
     },
     [openRevision],
   );
@@ -321,11 +327,7 @@ export function CommitBrowser({
                 file.path === selectedPath || file.origPath === selectedPath,
             );
         const nextIndex =
-          currentIndex < 0
-            ? event.key === "]"
-              ? 0
-              : files.length - 1
-            : currentIndex + (event.key === "]" ? 1 : -1);
+          currentIndex < 0 ? 0 : currentIndex + (event.key === "]" ? 1 : -1);
         const nextFile = files[nextIndex];
         if (!nextFile) return;
         event.preventDefault();
@@ -490,6 +492,7 @@ export function CommitBrowser({
             inventoryLoading={inventoryLoading}
             inventoryError={inventoryError}
             embeddedInHistory
+            fileFocusRequest={workingTreeFileFocusRequest}
             onBackToRevisions={
               !showRevisionPane
                 ? onBrowseHistory

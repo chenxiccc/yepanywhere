@@ -573,14 +573,20 @@ activation opens the verbatim message only when the release did not complete a
 selection, while Enter and Space remain keyboard activation. Phone detail keeps
 the full subject above its compact full-message action. **‹ Commit history** is
 styled as an actionable parent link rather than a full-width section label.
+Once a file is selected on desktop, a long message card scrolls within a bounded
+part of the files pane so the file outline remains visible. Moving keyboard
+focus to a file reveals it only within that outline's scrollport; it must not
+scroll the outer Source Control page or move the selected revision and diff
+workbench offscreen.
 
 Source lists support Up/Down selection, Escape return, and `/` to focus search
-when focus is outside an editor. Enter on a commit row enters that commit's file
-outline at its first selectable file once the detail is available. In a commit
-file outline, Enter expands every structural path group when any is collapsed;
-otherwise it collapses every group except the selected file's ancestors, which
-keeps the focused file mounted. It does not activate the file row's pointer
-action.
+when focus is outside an editor. Once desktop commit history has loaded, its
+selected commit or Working tree row owns initial keyboard focus instead of the
+application sidebar. Enter on that revision row enters its file outline at the
+first selectable file once the detail is available. In a commit file outline,
+Enter expands every structural path group when any is collapsed; otherwise it
+collapses every group except the selected file's ancestors, which keeps the
+focused file mounted. It does not activate the file row's pointer action.
 
 In a file outline, Up/Down traverse the visible rows; Right expands a collapsed
 group or enters its first child, while Left collapses an expanded group or
@@ -588,10 +594,10 @@ returns to its parent. Left/Right on a leaf is still consumed rather than
 scrolling a neighboring pane. These keys apply only while an outline row owns
 focus, so a focused source scroller keeps native arrow-key scrolling.
 Unmodified `[` and `]` select, reveal, and visibly focus the previous or next
-file diff from the commit's underlying selectable-file order. `]` from
-commit-message view selects the first file (`[` the last); the outline expands
-the target's ancestors, so collapsed path groups and unmounted rows cannot
-block either transition.
+file diff in the same depth-first order shown by the path outline. Either key
+from commit-message view enters at the first file; the outline expands the
+target's ancestors, so collapsed path groups and unmounted rows cannot block
+either transition.
 The files pane shows the selected file's complete display path in a sticky
 tooltip-style box even when its grouped row is collapsed. At desktop width its
 right edge stays inside the files pane while the box may grow left over the
