@@ -25,6 +25,13 @@ Intercepting or monkey-patching `console` to silence output is allowed
 but dispreferred; interception is for measurement infrastructure
 (ClientLogCollector), not suppression.
 
+ClientLogCollector must not amplify the failure it is observing. Its IndexedDB
+schema upgrade repairs a missing `entries` store, and a current-version database
+that is still malformed falls back to the existing bounded in-memory buffer.
+Every asynchronous write and flush handles storage rejection internally; an
+unhandled-rejection listener never reports its own failed persistence as a new
+unhandled rejection.
+
 ## Measurement and ratchet
 
 - `pnpm console:scan` (`scripts/find-console-chatter.mjs`): advisory

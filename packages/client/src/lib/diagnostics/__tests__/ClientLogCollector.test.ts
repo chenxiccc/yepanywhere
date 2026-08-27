@@ -19,6 +19,29 @@ vi.mock("../../../api/client", () => ({
 
 import { fetchJSON } from "../../../api/client";
 
+const CLIENT_LOG_DB_NAME = "yep-anywhere-client-logs";
+const CLIENT_LOG_STORE_NAME = "entries";
+
+async function deleteClientLogDatabase(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(CLIENT_LOG_DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("Client log database is open"));
+  });
+}
+
+async function createEmptyClientLogDatabase(version: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(CLIENT_LOG_DB_NAME, version);
+    request.onsuccess = () => {
+      request.result.close();
+      resolve();
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
 describe("ClientLogCollector", () => {
   let collector: ClientLogCollector;
   let transport: FakeSourceTransport;
@@ -29,7 +52,8 @@ describe("ClientLogCollector", () => {
   let testWarn: typeof console.warn;
   let testError: typeof console.error;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await deleteClientLogDatabase();
     origLog = console.log;
     origWarn = console.warn;
     origError = console.error;
@@ -59,13 +83,14 @@ describe("ClientLogCollector", () => {
     collector = new ClientLogCollector();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     collector.stop();
     console.log = origLog;
     console.warn = origWarn;
     console.error = origError;
     resetSourceRuntimeRegistryForTests();
     resetClientSummaryStoreForTests();
+    await deleteClientLogDatabase();
   });
 
   it("captures console messages and flushes with deviceId", async () => {
@@ -148,5 +173,50 @@ describe("ClientLogCollector", () => {
 
     await new Promise((r) => setTimeout(r, 10));
     expect(fetchJSON).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs an empty version-one database", async () => {
+    await createEmptyClientLogDatabase(1);
+
+    await collector.start();
+    collector.record("info", "[RepairTest]", "repair marker");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await collector.flush();
+
+    const body = JSON.parse(
+      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
+    );
+    expect(
+      body.entries.some(
+        (entry: { message: string }) => entry.message === "repair marker",
+      ),
+    ).toBe(true);
+
+    collector.stop();
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(CLIENT_LOG_DB_NAME);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    expect(db.version).toBe(2);
+    expect(db.objectStoreNames.contains(CLIENT_LOG_STORE_NAME)).toBe(true);
+    db.close();
+  });
+
+  it("falls back when a current database is missing its store", async () => {
+    await createEmptyClientLogDatabase(2);
+
+    await collector.start();
+    collector.record("info", "[FallbackTest]", "fallback marker");
+    await collector.flush();
+
+    const body = JSON.parse(
+      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
+    );
+    expect(
+      body.entries.some(
+        (entry: { message: string }) => entry.message === "fallback marker",
+      ),
+    ).toBe(true);
   });
 });

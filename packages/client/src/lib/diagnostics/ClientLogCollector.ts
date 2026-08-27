@@ -20,7 +20,7 @@ export interface LogEntry {
 }
 
 const DB_NAME = "yep-anywhere-client-logs";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "entries";
 const MAX_ENTRIES = 2000;
 const FLUSH_BATCH_SIZE = 500;
@@ -68,14 +68,20 @@ export class ClientLogCollector {
 
     try {
       const db = await openDatabase(DB_NAME, DB_VERSION, (db) => {
-        db.createObjectStore(STORE_NAME, {
-          keyPath: "id",
-          autoIncrement: true,
-        });
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+        }
       });
       if (!this._started) {
         db.close();
         return;
+      }
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.close();
+        throw new Error("Client log database is missing its entries store");
       }
       this._db = db;
     } catch {
@@ -135,6 +141,8 @@ export class ClientLogCollector {
     this._flushing = true;
     try {
       await this._doFlush();
+    } catch {
+      if (this._started) this._enableMemoryFallback();
     } finally {
       this._flushing = false;
     }
@@ -190,18 +198,39 @@ export class ClientLogCollector {
     };
 
     if (this._useMemoryFallback || !this._db) {
-      this._memoryBuffer.push(entry);
-      if (this._memoryBuffer.length > MAX_ENTRIES) {
-        this._memoryBuffer = this._memoryBuffer.slice(-MAX_ENTRIES);
-      }
+      this._bufferEntry(entry);
       this._scheduleFlush();
       return;
     }
 
-    putEntry(this._db, STORE_NAME, entry).then(() => {
-      this._trimEntries();
+    void this._persistEntry(entry);
+  }
+
+  private async _persistEntry(entry: LogEntry): Promise<void> {
+    try {
+      if (!this._db) throw new Error("Client log database is unavailable");
+      await putEntry(this._db, STORE_NAME, entry);
+      await this._trimEntries();
       this._scheduleFlush();
-    });
+    } catch {
+      if (!this._started) return;
+      this._enableMemoryFallback(entry);
+      this._scheduleFlush();
+    }
+  }
+
+  private _enableMemoryFallback(entry?: LogEntry): void {
+    this._db?.close();
+    this._db = null;
+    this._useMemoryFallback = true;
+    if (entry) this._bufferEntry(entry);
+  }
+
+  private _bufferEntry(entry: LogEntry): void {
+    this._memoryBuffer.push(entry);
+    if (this._memoryBuffer.length > MAX_ENTRIES) {
+      this._memoryBuffer = this._memoryBuffer.slice(-MAX_ENTRIES);
+    }
   }
 
   private _scheduleFlush(): void {

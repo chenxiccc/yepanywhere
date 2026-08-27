@@ -36,5 +36,24 @@ route DOM, and capture page errors, computed root/layer visibility and geometry,
 the session-detail store snapshot, and the deployed client generation before
 choosing the owning mechanism.
 
+## 2026-08-27 direct-tab recurrence and diagnostic amplifier
+
+An existing direct tab also remained entirely blank after `reyep --full` until
+a manual browser reload; it showed neither the app frame nor `Loading...`.
+Browser diagnostics had been enabled before the restart. After reload, the
+authorized tab exposed a malformed version-1 `yep-anywhere-client-logs`
+IndexedDB database with no object stores. Each attempted log write rejected,
+and the global unhandled-rejection listener tried to persist that rejection
+through the same broken store, producing thousands of recursive diagnostic
+events. Disabling collection reduced event-sequence growth from thousands per
+second to two events over the next two seconds.
+
+ClientLogCollector now repairs the missing store through a version-2 upgrade,
+validates the opened schema, catches asynchronous storage failures, and falls
+back to its bounded in-memory buffer. This removes a demonstrated main-thread
+and logging amplifier. It does not prove that the collector created the
+pre-reload whole-shell blank state: the inspected DOM was already healthy after
+manual reload, so this gap remains open for a trace captured before recovery.
+
 Found 2026-08-26 while diagnosing a blank hosted session after manual server
 reload.
