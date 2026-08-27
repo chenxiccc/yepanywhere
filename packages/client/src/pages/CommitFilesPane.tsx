@@ -5,11 +5,13 @@ import type {
   ReviewSiteStateSummary,
 } from "@yep-anywhere/shared";
 import {
+  Fragment,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ChangesetFileFilter } from "../components/ChangesetFileFilter";
@@ -31,7 +33,10 @@ import {
   sourceFileDisplayPath,
   useChangesetFileFilter,
 } from "../hooks/useChangesetFileFilter";
-import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
+import {
+  handleSourceListKeyDown,
+  type SourcePageDirection,
+} from "../hooks/useSourceKeyboard";
 import { writeClipboardText } from "../lib/clipboard";
 import { reflowCommitMessage } from "../lib/reflowCommitMessage";
 import type { TranslationFn } from "../i18n";
@@ -57,6 +62,7 @@ export function CommitFilesPane({
   messageView,
   selectedFiles,
   selectedPath,
+  fileFocusRequest,
   fileCommentCount,
   reviewStatesByPath = EMPTY_REVIEW_STATES,
   revisionNavigation,
@@ -64,6 +70,7 @@ export function CommitFilesPane({
   onToggleComparison,
   onCompareFileToHead,
   onShowMessage,
+  onPageDiff,
   onFocusFile,
   onFilteredSelectionChange,
   onActivateFile,
@@ -84,6 +91,7 @@ export function CommitFilesPane({
   messageView: boolean;
   selectedFiles: GitFileChange[];
   selectedPath: string | null;
+  fileFocusRequest: number;
   fileCommentCount: ReadonlyMap<string, number>;
   reviewStatesByPath?: ReadonlyMap<string, ReviewSiteStateSummary[]>;
   revisionNavigation: ReactNode;
@@ -91,6 +99,7 @@ export function CommitFilesPane({
   onToggleComparison: () => void;
   onCompareFileToHead?: (file: GitFileChange) => void;
   onShowMessage: () => void;
+  onPageDiff: (direction: SourcePageDirection) => void;
   onFocusFile: (file: GitFileChange) => void;
   onFilteredSelectionChange: (file: GitFileChange | null) => void;
   onActivateFile: (file: GitFileChange) => void;
@@ -100,8 +109,18 @@ export function CommitFilesPane({
   t: TranslationFn;
 }) {
   const [fileQuery, setFileQuery] = useState("");
+  const handledFileFocusRequest = useRef(0);
   const fileMenu = useSourceContextMenu(t);
-  const filteredFiles = useChangesetFileFilter(selectedFiles, fileQuery);
+  const queryFilteredFiles = useChangesetFileFilter(selectedFiles, fileQuery);
+  const revealRequestedFile =
+    fileFocusRequest > handledFileFocusRequest.current &&
+    Boolean(fileQuery) &&
+    Boolean(selectedPath) &&
+    !queryFilteredFiles.some((file) => file.path === selectedPath);
+  const filteredFiles = revealRequestedFile
+    ? selectedFiles
+    : queryFilteredFiles;
+  const effectiveFileQuery = revealRequestedFile ? "" : fileQuery;
   const outlineItems = useMemo(
     () =>
       filteredFiles.map((file) => ({
@@ -113,6 +132,18 @@ export function CommitFilesPane({
       })),
     [filteredFiles],
   );
+  const selectedDisplayPath = useMemo(() => {
+    const selectedFile = selectedFiles.find(
+      (file) => file.path === selectedPath || file.origPath === selectedPath,
+    );
+    return selectedFile ? sourceFileDisplayPath(selectedFile) : null;
+  }, [selectedFiles, selectedPath]);
+
+  useEffect(() => {
+    if (fileFocusRequest <= handledFileFocusRequest.current) return;
+    handledFileFocusRequest.current = fileFocusRequest;
+    if (revealRequestedFile) setFileQuery("");
+  }, [fileFocusRequest, revealRequestedFile]);
 
   useEffect(() => {
     if (!isWideScreen || loading) return;
@@ -174,7 +205,15 @@ export function CommitFilesPane({
 
   return (
     <>
-      <div className="commit-files-column" ref={columnRef}>
+      <div
+        className={[
+          "commit-files-column",
+          selectedDisplayPath && !messageView ? styles.pathVisibleColumn : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        ref={columnRef}
+      >
         {onBack && <CommitHistoryParentLink onClick={onBack} t={t} />}
         <div className="source-detail-banner">
           {revisionNavigation}
@@ -282,12 +321,31 @@ export function CommitFilesPane({
                   : t("sourceShowFullMessage")}
               </div>
             )}
+            {selectedDisplayPath && !messageView && (
+              <div
+                className={styles.selectedPath}
+                data-source-selected-path={selectedDisplayPath}
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span className={styles.selectedPathBox}>
+                  <WrappingSourcePath path={selectedDisplayPath} />
+                </span>
+              </div>
+            )}
             <SourceFileOutline
               className="commit-file-list"
               items={outlineItems}
               scopeKey={`${selectedSha}:${compareToHead ? "to-head" : "commit"}`}
-              query={fileQuery}
-              onKeyDown={handleSourceListKeyDown}
+              query={effectiveFileQuery}
+              activeItemId={selectedPath}
+              focusRequest={fileFocusRequest}
+              toggleAllOnEnter
+              onKeyDown={(event) =>
+                handleSourceListKeyDown(event, {
+                  onPage: onPageDiff,
+                })
+              }
               renderFile={(item, visiblePath, pathProps) => {
                 const file = item.value;
                 const count = fileCommentCount.get(file.path) ?? 0;
@@ -306,6 +364,7 @@ export function CommitFilesPane({
                       }`}
                       disabled={isFolder}
                       data-source-list-item
+                      data-source-file-item
                       onFocus={() => {
                         if (isWideScreen && !isFolder) onFocusFile(file);
                       }}
@@ -316,7 +375,7 @@ export function CommitFilesPane({
                       <SourceFileStatusBadge status={file.status} t={t} />
                       <SourceFilePath
                         {...pathProps}
-                        query={fileQuery}
+                        query={effectiveFileQuery}
                         fullPath={item.displayPath}
                       >
                         {visiblePath}
@@ -377,6 +436,20 @@ export function CommitFilesPane({
       {fileMenu.menu}
     </>
   );
+}
+
+function WrappingSourcePath({ path }: { path: string }) {
+  const segments = path.split("/");
+  return segments.map((segment, index) => (
+    <Fragment key={`${index}:${segment}`}>
+      {segment}
+      {index < segments.length - 1 && (
+        <>
+          /<wbr />
+        </>
+      )}
+    </Fragment>
+  ));
 }
 
 export function formatCommitDateTime(iso: string): string {

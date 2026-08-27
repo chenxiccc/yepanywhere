@@ -92,6 +92,8 @@ export interface GitDiffPreviewHandle {
   jumpToNextHunk: () => boolean;
   /** Move to the previous rendered diff hunk, wrapping at the start. */
   jumpToPreviousHunk: () => boolean;
+  /** Scroll the rendered diff by one viewport without moving keyboard focus. */
+  scrollByPage: (direction: -1 | 1) => void;
 }
 
 interface HunkNavigationHandlers {
@@ -291,6 +293,15 @@ export const GitDiffPreview = forwardRef<
     () => ({
       jumpToNextHunk: () => hunkNavigationRef.current?.next() ?? false,
       jumpToPreviousHunk: () => hunkNavigationRef.current?.previous() ?? false,
+      scrollByPage: (direction) => {
+        const body = bodyRef.current;
+        if (!body) return;
+        const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
+        body.scrollTop = Math.min(
+          maxScrollTop,
+          Math.max(0, body.scrollTop + direction * body.clientHeight),
+        );
+      },
     }),
     [],
   );

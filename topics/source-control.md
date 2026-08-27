@@ -174,7 +174,6 @@ grow until the inter-pane gap and splitter handles would cease to remain fully
 visible and operable; do not reserve an unrelated minimum width for the detail
 pane. The user naturally stops after exposing as much path text as desired,
 and the still-visible splitter is the recovery path from an extreme choice.
-
 A content-derived natural maximum is optional, not required. If added, compute
 it from the widest untruncated row in the **complete file corpus**, including
 status, count, and menu affordances—not only rows currently mounted in the
@@ -571,11 +570,39 @@ selection, while Enter and Space remain keyboard activation. Phone detail keeps
 the full subject above its compact full-message action. **‹ Commit history** is
 styled as an actionable parent link rather than a full-width section label.
 
-Source lists support Up/Down selection, Enter drill-in, Escape return, and `/`
-to focus search when focus is outside an editor. Diff navigation supports
-previous/next hunk and a visible current-hunk indicator. Browser shortcuts must
-not copy native GitHub Desktop accelerators that collide with browser tabs,
-Find, or the address bar.
+Source lists support Up/Down selection, Escape return, and `/` to focus search
+when focus is outside an editor. Enter on a commit row enters that commit's file
+outline at its first selectable file once the detail is available. In a commit
+file outline, Enter expands every structural path group when any is collapsed;
+otherwise it collapses every group except the selected file's ancestors, which
+keeps the focused file mounted. It does not activate the file row's pointer
+action.
+
+In a file outline, Up/Down traverse the visible rows; Right expands a collapsed
+group or enters its first child, while Left collapses an expanded group or
+returns to its parent. Left/Right on a leaf is still consumed rather than
+scrolling a neighboring pane. These keys apply only while an outline row owns
+focus, so a focused source scroller keeps native arrow-key scrolling.
+Unmodified `[` and `]` select, reveal, and visibly focus the previous or next
+file diff from the commit's underlying selectable-file order. `]` from
+commit-message view selects the first file (`[` the last); the outline expands
+the target's ancestors, so collapsed path groups and unmounted rows cannot
+block either transition.
+The files pane shows the selected file's complete display path in a sticky
+tooltip-style box even when its grouped row is collapsed. At desktop width its
+right edge stays inside the files pane while the box may grow left over the
+revision pane; it never covers the diff. It prefers wrapping after path
+separators and may break an individually overlong segment rather than truncate
+the identity.
+
+Unmodified Page Up/Page Down scrolls the adjacent commit diff by one viewport
+without moving focus, whether invoked from its changed-file list or source
+scroller. Commit-file bracket/page navigation dismisses any visible tooltip;
+fresh pointer movement may reveal hover detail again. Other source-list row
+navigation and Enter likewise dismiss the current tooltip and suppress a
+destination focus reveal. Diff navigation supports previous/next hunk and a
+visible current-hunk indicator. Browser shortcuts must not copy native GitHub
+Desktop accelerators that collide with browser tabs, Find, or the address bar.
 
 Unified/Split and full-context controls stay in the diff pane. **Hide removed
 lines** loads that same full-context projection, suppresses every old-side

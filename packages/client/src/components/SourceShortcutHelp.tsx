@@ -35,7 +35,9 @@ export function SourceShortcutHelp({ t }: { t: TranslationFn }) {
 
   const shortcuts = [
     ["/", t("sourceShortcutSearch")],
-    ["↑ ↓", t("sourceShortcutNavigate")],
+    ["↑ ↓ ← →", t("sourceShortcutNavigate")],
+    ["[ ]", t("sourceShortcutFileDiffs")],
+    ["PgUp PgDn", t("sourceShortcutScrollDiff")],
     ["Enter", t("sourceShortcutOpen")],
     ["Esc", t("sourceShortcutBack")],
     ["N P", t("sourceShortcutHunks")],

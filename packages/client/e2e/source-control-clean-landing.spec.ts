@@ -17,6 +17,8 @@ const projectId = Buffer.from(sourceControlProjectPath).toString("base64url");
 const cleanLandingKey = "yep-anywhere-source-control-clean-landing";
 const longSearchLine =
   "prefix/that/is/intentionally/long/enough/to/be/truncated/while/searching/ZebraNeedle/and/a/long/trailing/suffix/for/the/source/control/result";
+const tooltipFixtureName =
+  "modified_keyboard_navigation_filename_long_enough_for_path_tooltip.ts";
 
 test.use({ serviceWorkers: "block" });
 
@@ -144,11 +146,18 @@ function prepareBrowsingFixture() {
   if (headSubject !== "Add grouped browser fixture") {
     writeFileSync(
       join(groupedDirectory, "modified.ts"),
-      "export const value = 1;\n",
+      `${Array.from(
+        { length: 160 },
+        (_, index) => `export const reviewLine${index + 1} = ${index + 1};`,
+      ).join("\n")}\n`,
     );
     writeFileSync(
       join(groupedDirectory, "unchanged.ts"),
       "export const stable = true;\n",
+    );
+    writeFileSync(
+      join(groupedDirectory, tooltipFixtureName),
+      "export const tooltipFixture = true;\n",
     );
     execFileSync("git", ["add", "src/grouped"], {
       cwd: sourceControlProjectPath,
@@ -163,6 +172,8 @@ function prepareBrowsingFixture() {
         "commit",
         "-m",
         "Add grouped browser fixture",
+        "-m",
+        "Review grouped source files with keyboard navigation.",
       ],
       { cwd: sourceControlProjectPath },
     );
@@ -520,7 +531,7 @@ test("groups semantic file sections and keeps current-content browsing distinct"
   await expect(inclusive).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByRole("button", {
-      name: /^(?:Collapse|Expand) src\/grouped\/ \(2 files\)$/,
+      name: /^(?:Collapse|Expand) src\/grouped\/ \(3 files\)$/,
     }),
   ).toBeVisible();
   await capture(page, "source-control-browsing-range-desktop-1000x600.png");
@@ -528,6 +539,157 @@ test("groups semantic file sections and keeps current-content browsing distinct"
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(inclusive).toBeVisible();
   await capture(page, "source-control-browsing-range-mobile-375x812.png");
+});
+
+test("reviews collapsed commit files with bracket navigation", async ({
+  page,
+  baseURL,
+}) => {
+  prepareBrowsingFixture();
+  await page.setViewportSize({ width: 1200, height: 600 });
+  await openSourceControl(page, baseURL);
+  await page.getByRole("button", { name: "Commit history" }).click();
+  await page
+    .getByText("Add grouped browser fixture", { exact: true })
+    .first()
+    .click();
+
+  const message = page.getByRole("button", {
+    name: /^Add grouped browser fixture/,
+  });
+  await expect(message).toBeVisible();
+
+  const filePaths = page.locator(
+    "button[data-source-file-item] [data-source-path]",
+  );
+  await expect(filePaths).toHaveCount(3);
+  const orderedPaths = await filePaths.evaluateAll((paths) =>
+    paths.map((path) => path.getAttribute("data-source-path") ?? ""),
+  );
+  const firstPath = orderedPaths[0]!;
+  const groupedFiles = page.getByRole("button", {
+    name: /^Collapse src\/grouped\/ \(3 files\)$/,
+  });
+  await groupedFiles.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    page.locator("button[data-source-file-item]").first(),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(groupedFiles).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(filePaths).toHaveCount(0);
+
+  await message.click();
+  await expect(
+    page.locator(".git-diff-preview-body:has(.commit-message-view)"),
+  ).toBeVisible();
+  await page.keyboard.press("]");
+  const selectedPath = page.locator("[data-source-selected-path]");
+  await expect(selectedPath).toHaveAttribute(
+    "data-source-selected-path",
+    firstPath,
+  );
+  await expect(filePaths).toHaveCount(3);
+  await expect(
+    page.locator("button[data-source-file-item]").first(),
+  ).toBeFocused();
+
+  const diffBody = page.locator(".git-diff-preview-body");
+  await expect
+    .poll(() =>
+      diffBody.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  const beforePage = await diffBody.evaluate((element) => element.scrollTop);
+  await page.keyboard.press("PageDown");
+  await expect
+    .poll(() => diffBody.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(beforePage);
+  await expect(selectedPath).toHaveAttribute(
+    "data-source-selected-path",
+    firstPath,
+  );
+
+  const tooltipFile = page.locator(
+    `button[data-source-file-item]:has([data-source-path="src/grouped/${tooltipFixtureName}"])`,
+  );
+  await tooltipFile.click();
+  await diffBody.hover({ position: { x: 10, y: 10 } });
+  await page.waitForTimeout(120);
+  await tooltipFile.hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    `src/grouped/${tooltipFixtureName}`,
+  );
+  const tooltipPath = `src/grouped/${tooltipFixtureName}`;
+  const tooltipIndex = orderedPaths.indexOf(tooltipPath);
+  const stepKey = tooltipIndex < orderedPaths.length - 1 ? "]" : "[";
+  const returnKey = stepKey === "]" ? "[" : "]";
+  const steppedPath = orderedPaths[tooltipIndex + (stepKey === "]" ? 1 : -1)]!;
+  await page.keyboard.press(stepKey);
+  await expect(selectedPath).toHaveAttribute(
+    "data-source-selected-path",
+    steppedPath,
+  );
+  await expect(
+    page.locator(
+      `button[data-source-file-item]:has([data-source-path="${steppedPath}"])`,
+    ),
+  ).toBeFocused();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.waitForTimeout(150);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.keyboard.press(returnKey);
+  await expect(selectedPath).toHaveAttribute(
+    "data-source-selected-path",
+    tooltipPath,
+  );
+  await expect(selectedPath).toContainText(tooltipPath);
+  await expect(diffBody.locator("[data-diff-line]").first()).toBeVisible();
+  const selectedPathBox = selectedPath.locator("span").first();
+  const [pathBounds, diffBounds] = await Promise.all([
+    selectedPathBox.boundingBox(),
+    diffBody.boundingBox(),
+  ]);
+  expect(pathBounds).not.toBeNull();
+  expect(diffBounds).not.toBeNull();
+  if (pathBounds && diffBounds) {
+    expect(pathBounds.x + pathBounds.width).toBeLessThanOrEqual(
+      diffBounds.x + 0.5,
+    );
+  }
+  await capture(page, "source-control-keyboard-review-desktop-1200x600.png");
+
+  await page.setViewportSize({ width: 1000, height: 600 });
+  const responsiveDialog = page.getByRole("dialog");
+  await expect(responsiveDialog).toBeVisible();
+  await responsiveDialog.getByRole("button", { name: "Close" }).click();
+  await expect(responsiveDialog).toBeHidden();
+  const shortcutHelp = page.getByRole("button", {
+    name: "Keyboard shortcuts",
+  });
+  await shortcutHelp.click();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "Previous or next file diff",
+  );
+  await expect(page.getByRole("tooltip")).toContainText("Scroll diff by page");
+  await capture(page, "source-control-keyboard-desktop-1000x600.png");
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await openSourceControl(page, baseURL);
+  await page.getByRole("button", { name: "Commit history" }).click();
+  await page
+    .getByText("Add grouped browser fixture", { exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("button", {
+      name: /^(?:Collapse|Expand) src\/grouped\/ \(3 files\)$/,
+    }),
+  ).toBeVisible();
+  await capture(page, "source-control-keyboard-mobile-375x812.png");
 });
 
 async function expectMatchInsidePreview(

@@ -87,7 +87,13 @@ Keyboard-visible focus uses the same configured delay. Pointer-generated focus,
 including touch focus, does not open a tooltip after activation. Escape,
 primary click, blur, and a deliberate pointer departure dismiss the tooltip.
 Other keystrokes, including modifier combinations used to capture a screenshot,
-leave a visible tooltip alone unless they edit a composer. Every composer edit
+leave a visible tooltip alone unless they edit a composer or navigate a Source
+Control list. Unmodified Up/Down in row-navigating lists and unmodified
+Left/Right/Enter in the file outline, and unmodified `[`/`]`/Page Up/Page Down
+in selected-commit review dismiss the current tooltip and suppress an immediate
+focus reveal so source content stays unobscured. The commit files pane's
+persistent selected-path box is file identity, not a hover tooltip. It may grow
+left over the revision pane but never right over the source diff. Every composer edit
 dismisses visible YA-rendered text, rich, and session-preview tooltips, cancels
 their pending reveals, clears tooltip warmth, and suppresses new pointer/focus
 activation for 100 ms after the latest edit. Suppression never schedules an
@@ -284,7 +290,9 @@ not the surface into a card.
   pointer-generated focus while retaining their activation-to-dialog path.
 - Once visible, a tooltip survives same-target pointer motion, transcript
   follow-scroll, scroll-generated pointer boundary events, and non-Escape
-  keystrokes that do not edit a composer. Composer edits dismiss every
+  keystrokes that neither edit a composer nor navigate a Source Control list.
+  Source-list navigation dismisses the current tooltip and does not open one on
+  destination focus. Composer edits dismiss every
   YA-rendered tooltip owner and suppress pending/new reveals for 100 ms after
   the latest edit; nothing reopens without a later pointer/focus event.
 - Exact visible-content hints are absent only when every measurable exact-text

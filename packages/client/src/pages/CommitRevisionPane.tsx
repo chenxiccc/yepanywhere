@@ -1,5 +1,10 @@
 import type { GitRecentCommit, GitStatusInfo } from "@yep-anywhere/shared";
-import { type MouseEvent, type RefObject, useCallback } from "react";
+import {
+  type KeyboardEvent,
+  type MouseEvent,
+  type RefObject,
+  useCallback,
+} from "react";
 import {
   SourceRowMenuTrigger,
   sourceRowMenuSurface,
@@ -45,6 +50,7 @@ export function CommitRevisionPane({
   onSearchQueryChange,
   onSearchIndexRequested,
   onOpenRevision,
+  onEnterRevision,
   revisionHref,
   onFocusRevision,
   onLoadMore,
@@ -78,6 +84,7 @@ export function CommitRevisionPane({
   onSearchQueryChange: (query: string) => void;
   onSearchIndexRequested: () => void;
   onOpenRevision: (key: string) => void;
+  onEnterRevision: (key: string) => void;
   revisionHref: (key: string) => string;
   onFocusRevision: (key: string) => void;
   onLoadMore: () => void;
@@ -232,6 +239,14 @@ export function CommitRevisionPane({
                       if (isWideScreen) onFocusRevision(WORKING_TREE_KEY);
                     }}
                     {...workingTreeTargetProps}
+                    onKeyDown={(event) => {
+                      workingTreeTargetProps.onKeyDown(event);
+                      handleRevisionEnter(
+                        event,
+                        WORKING_TREE_KEY,
+                        onEnterRevision,
+                      );
+                    }}
                     onClick={(event) => {
                       if (isModifiedLinkActivation(event)) return;
                       event.preventDefault();
@@ -310,6 +325,14 @@ export function CommitRevisionPane({
                         if (isWideScreen) onFocusRevision(commit.hash);
                       }}
                       {...targetProps}
+                      onKeyDown={(event) => {
+                        targetProps.onKeyDown(event);
+                        handleRevisionEnter(
+                          event,
+                          commit.hash,
+                          onEnterRevision,
+                        );
+                      }}
                       onClick={(event) => {
                         if (isModifiedLinkActivation(event)) return;
                         event.preventDefault();
@@ -398,6 +421,25 @@ export function CommitRevisionPane({
       {revisionMenu.menu}
     </>
   );
+}
+
+function handleRevisionEnter(
+  event: KeyboardEvent<HTMLAnchorElement>,
+  key: string,
+  onEnterRevision: (key: string) => void,
+): void {
+  if (
+    event.defaultPrevented ||
+    event.key !== "Enter" ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  ) {
+    return;
+  }
+  event.preventDefault();
+  if (!event.repeat) onEnterRevision(key);
 }
 
 function isModifiedLinkActivation(
