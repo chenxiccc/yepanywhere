@@ -12,9 +12,10 @@ current/existing/fresh-session targets, layered global/project configuration,
 and optional YA management surfaces.
 
 The earlier solution sketched here — a YA scanner coupled directly to
-`scripts/at-queue` — is superseded. `at/` is prior art and a possible inert
-project-file import/source mode, not yacron's required state or dispatch
-protocol. It may be retired if yacron covers its useful cases.
+`scripts/at-queue` — is superseded. `at/` is prior art and a possible explicit
+point-in-time import/export format, not yacron's required state or dispatch
+protocol. Exported files stay inert until an explicit import-as-of-now
+operation. It may be retired if yacron covers its useful cases.
 
 Why not fixed in place: this needs a durable provider-host service lifecycle,
 new control operations, headless session creation, persistence/reconciliation,

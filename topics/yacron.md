@@ -223,6 +223,27 @@ store under the user's yacron data area. Clients change that state through the
 service API. The storage technology is an implementation detail; the important
 first-version rule is one writer and one revision truth.
 
+Returning a schedule id is a durability acknowledgment. Before the service
+returns that id, it has committed the entry and every fact needed to reconstruct
+it after a crash. On restart, yacron rebuilds its in-memory scheduling set from
+that authoritative store. The resulting set is complete and exact for every
+acknowledged mutation; restart does not scan known project directories for
+stray entry files or reconcile changes made outside the service API.
+
+Project files are a secondary, explicit point-in-time interchange and recovery
+surface. A future export may produce native-shell-searchable files suitable for
+off-machine backup or an intentional Git commit. An explicit import-as-of-now
+operation may then create or revise service-owned entries, with conflicts shown
+for resolution. After import, later edits, pulls, checkouts, or deletions of
+those files are inert until another explicit import. There is no watched source
+mode and no promise that filesystem state continuously mirrors live schedules.
+
+The primary machine-loss path should be a coordinated backup of full YA state,
+including the authoritative yacron store. YA does not yet provide a meaningful
+live full-state snapshot; [`gaps/live-full-state-backup.md`](../gaps/live-full-state-backup.md)
+tracks that separate recovery requirement. Exported project files remain useful
+when the central YA data area was not backed up.
+
 Configuration is simpler and intentionally visible:
 
 - global defaults come from a file conceptually at
@@ -309,17 +330,18 @@ Hono server, browser client, relay, or web UI.
 - **Early preparation:** optionally resume/prepare a provider shortly before
   the due time, without sending the turn early. This is explicit and default-
   off because it may consume resources or begin billing.
-- **Committed project entries:** an `at/`-inspired source mode could keep due-
-  later instructions as project files. Files remain inert until an explicit
-  CLI activation pins their content revision; clone/pull never schedules work.
+- **Project-file import/export:** an `at/`-inspired format could export due-later
+  instructions as searchable or intentionally committed project files. They
+  are point-in-time recovery artifacts, not a watched scheduling source; only
+  an explicit import-as-of-now operation can change live service state.
 - **Outside-YA callers:** local endpoint discovery plus explicit project and
   target arguments could let another harness use yacron when its CLI is on
   PATH. Lack of a YA session marker must never trigger origin guessing.
 - **Routines:** YA Routines can later use yacron as their sole deadline/run
   engine while retaining their separate reusable-source and user-activation
   semantics. A raw yacron entry need not become a Routine.
-- **`at/` migration:** `at/` is prior art or an import source, not a dependency.
-  It can be retired if yacron proves sufficient.
+- **`at/` migration:** `at/` is prior art or an explicit point-in-time import
+  source, not a dependency. It can be retired if yacron proves sufficient.
 
 ## Design decisions
 
