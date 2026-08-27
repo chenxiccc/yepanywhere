@@ -229,6 +229,9 @@ export function WorkingTreeBrowser({
   untrackedFiles = null,
   untrackedLoading = false,
   untrackedError = null,
+  inventoryPending = false,
+  inventoryLoading = false,
+  inventoryError = null,
   initialWorkingTreePath,
   embeddedInHistory = false,
   onBackToRevisions,
@@ -249,6 +252,9 @@ export function WorkingTreeBrowser({
   untrackedFiles?: GitUntrackedFileListResult | null;
   untrackedLoading?: boolean;
   untrackedError?: Error | null;
+  inventoryPending?: boolean;
+  inventoryLoading?: boolean;
+  inventoryError?: Error | null;
   /** One-shot deep link to a dirty file from a session Edit block. */
   initialWorkingTreePath?: string;
   /** Let Commits place these same files/diff in its revision-detail columns. */
@@ -954,11 +960,18 @@ export function WorkingTreeBrowser({
   ) : null;
   const untrackedCacheIncomplete =
     supportsUntrackedCache && untrackedFiles === null;
-  const untrackedCacheLoading = untrackedCacheIncomplete && untrackedLoading;
+  const effectiveInventoryPending =
+    inventoryPending || untrackedCacheIncomplete;
+  const effectiveInventoryLoading =
+    (inventoryPending && inventoryLoading) ||
+    (untrackedCacheIncomplete && untrackedLoading);
+  const effectiveInventoryError =
+    (inventoryPending ? inventoryError : null) ??
+    (untrackedCacheIncomplete ? untrackedError : null);
   if (
     (status.isClean || currentFiles.length === 0) &&
     !hasRetainedEditorTarget &&
-    !untrackedCacheIncomplete
+    !effectiveInventoryPending
   ) {
     return (
       <div className={rootClassName} data-testid="working-tree-browser">
@@ -1045,14 +1058,14 @@ export function WorkingTreeBrowser({
                 })}
               </span>
             )}
-            {untrackedCacheLoading && (
+            {effectiveInventoryLoading && (
               <span className={styles.scanProgress} role="status">
                 {t("gitStatusLoading")}
               </span>
             )}
-            {untrackedCacheIncomplete && untrackedError && (
+            {effectiveInventoryPending && effectiveInventoryError && (
               <span className={styles.scanProgress} role="alert">
-                {t("gitStatusErrorPrefix")} {untrackedError.message}
+                {t("gitStatusErrorPrefix")} {effectiveInventoryError.message}
               </span>
             )}
             {supportsUntrackedCache && untrackedFiles?.truncated && (
@@ -1233,7 +1246,7 @@ export function WorkingTreeBrowser({
               </>
             )}
           </div>
-          {listEntries.length === 0 && (
+          {listEntries.length === 0 && !effectiveInventoryPending && (
             <div className="git-status-empty">{t("sourceNoMatches")}</div>
           )}
         </div>

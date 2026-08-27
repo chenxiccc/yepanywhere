@@ -50,6 +50,9 @@ export function CommitBrowser({
   untrackedFiles = null,
   untrackedLoading = false,
   untrackedError = null,
+  inventoryPending = false,
+  inventoryLoading = false,
+  inventoryError = null,
   initialSha,
   initialPath,
   initialBlame = false,
@@ -75,6 +78,9 @@ export function CommitBrowser({
   untrackedFiles?: GitUntrackedFileListResult | null;
   untrackedLoading?: boolean;
   untrackedError?: Error | null;
+  inventoryPending?: boolean;
+  inventoryLoading?: boolean;
+  inventoryError?: Error | null;
   /** Direct commit selection, e.g. from an asynchronously populated blame hash. */
   initialSha?: string;
   /** Direct file selection within the initial commit. */
@@ -390,6 +396,9 @@ export function CommitBrowser({
             untrackedFiles={untrackedFiles}
             untrackedLoading={untrackedLoading}
             untrackedError={untrackedError}
+            inventoryPending={inventoryPending}
+            inventoryLoading={inventoryLoading}
+            inventoryError={inventoryError}
             embeddedInHistory
             onBackToRevisions={
               !showRevisionPane

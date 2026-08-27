@@ -289,6 +289,34 @@ test("retention eviction preserves the mounted workbench", async ({
   await capture(page, "source-control-retention-mobile-375x812.png");
 });
 
+test("unfocused cold load keeps the static workbench mounted", async ({
+  page,
+  baseURL,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await installPageAttention(page, {
+    visibility: "visible",
+    focused: false,
+  });
+  await openSourceControl(page, baseURL);
+
+  await expect(page.getByTestId("working-tree-browser")).toBeVisible();
+  await expect(page.locator(".page-content-inner > .loading")).toHaveCount(0);
+  await expect(page.getByText("Loading...", { exact: true })).toBeVisible();
+  await expect(page.getByText("No matches.", { exact: true })).toHaveCount(0);
+  await capture(page, "source-control-unfocused-load-desktop-1000x600.png");
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByTestId("working-tree-browser")).toBeVisible();
+  await capture(page, "source-control-unfocused-load-mobile-375x812.png");
+
+  await setPageAttention(page, "visible", true);
+  await expect(
+    page.getByText("Working tree clean", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Loading...", { exact: true })).toHaveCount(0);
+});
+
 test("status refresh follows route and page attention", async ({
   page,
   context,

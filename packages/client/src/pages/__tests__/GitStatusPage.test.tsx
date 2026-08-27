@@ -124,6 +124,9 @@ vi.mock("../WorkingTreeBrowser", async () => {
       status: GitStatusInfo;
       initialWorkingTreePath?: string;
       ignoreWhitespace?: boolean;
+      inventoryPending?: boolean;
+      inventoryLoading?: boolean;
+      inventoryError?: Error | null;
       supportsLastEditor?: boolean;
       onToggleIgnoreWhitespace?: () => void;
       onBrowseHistory?: () => void;
@@ -949,6 +952,43 @@ describe("GitStatusPage source header", () => {
       { tracked: true, untracked: true, ignored: false },
       true,
       true,
+    );
+  });
+
+  it("mounts static status while the live inventory waits for attention", async () => {
+    mocks.documentAttentive = false;
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+          GIT_LIVE_WORKTREE_SETTING_CAPABILITY,
+          GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    mocks.useProjectWorktree.mockReturnValue({
+      loading: true,
+      error: null,
+      generation: null,
+      headSha: null,
+      baseSha: null,
+      files: [],
+      directories: [],
+      truncated: false,
+    });
+
+    renderPage();
+
+    await screen.findByTestId("working-tree-browser");
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        inventoryPending: true,
+        inventoryLoading: true,
+        inventoryError: null,
+      }),
     );
   });
 

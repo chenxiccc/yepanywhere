@@ -338,12 +338,15 @@ for tracked/staged state with untracked enumeration disabled, then merges the
 retained untracked snapshot. One root request is shared in flight, so a polling
 tick cannot overlap it. The tracked/staged response mounts the workbench
 immediately; until the first untracked snapshot arrives, an inline loading or
-error state replaces any premature clean-tree claim. Untracked rows then enrich
-the mounted corpus in place. Retention expiry, eviction, a file update, and every
-background check keep the last successful mounted corpus, selected row, detail,
-scroll/view state, and explicit folder/outline disclosures visible until
-replacement data is ready. A changed compact-folder corpus adds or removes
-available groups without resetting choices for groups that remain.
+error state replaces any premature clean-tree or empty-corpus claim. When live
+monitoring defers its first snapshot until the document receives attention, the
+available static status still mounts this workbench instead of a page-level
+loader. Untracked rows then enrich the mounted corpus in place. Retention expiry,
+eviction, a file update, and every background check keep the last successful
+mounted corpus, selected row, detail, scroll/view state, and explicit
+folder/outline disclosures visible until replacement data is ready. A changed
+compact-folder corpus adds or removes available groups without resetting choices
+for groups that remain.
 
 The route-mounted status owner refreshes early when a managed process in the
 selected project reaches idle or waiting-for-input, coalescing completion events

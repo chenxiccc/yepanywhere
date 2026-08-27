@@ -188,6 +188,41 @@ describe("WorkingTreeBrowser", () => {
     expect(screen.getByTestId("working-tree-browser")).toBeDefined();
     expect(await screen.findByText("gitStatusLoading")).toBeDefined();
     expect(screen.queryByText("gitStatusWorkingTreeClean")).toBeNull();
+    expect(screen.queryByText("sourceNoMatches")).toBeNull();
+  });
+
+  it("keeps the workbench visible while live inventory waits for attention", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            isClean: true,
+            files: [],
+            recentCommits: [],
+          }}
+          isWideScreen={false}
+          inventoryPending
+          inventoryLoading
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("working-tree-browser")).toBeDefined();
+    expect(await screen.findByText("gitStatusLoading")).toBeDefined();
+    expect(screen.queryByText("gitStatusWorkingTreeClean")).toBeNull();
   });
 
   it("keeps the workbench visible when untracked loading fails", async () => {

@@ -771,13 +771,10 @@ export function GitStatusPage() {
   const untrackedFiles = supportsWorkingTreeSections
     ? null
     : legacyUntrackedFiles;
-  const loading =
-    statusLoading || (liveWorktreeEnabled && liveWorktree.loading);
-  const error =
-    statusError ??
-    (liveWorktreeEnabled && liveWorktree.generation === null
-      ? liveWorktree.error
-      : null);
+  const liveInventoryPending =
+    liveWorktreeEnabled && liveWorktree.generation === null;
+  const loading = statusLoading;
+  const error = statusError;
   const reviewComments = useProjectReviewComments(
     supportsSourceReview ? effectiveProjectId : undefined,
   );
@@ -978,6 +975,13 @@ export function GitStatusPage() {
                     untrackedFiles={untrackedFiles}
                     untrackedLoading={untrackedLoading}
                     untrackedError={untrackedError}
+                    inventoryPending={liveInventoryPending}
+                    inventoryLoading={
+                      liveInventoryPending && liveWorktree.loading
+                    }
+                    inventoryError={
+                      liveInventoryPending ? liveWorktree.error : null
+                    }
                     supportsLastEditor={supportsLastEditor}
                     gitActions={gitActions}
                     reviewComments={reviewComments}
@@ -1047,6 +1051,9 @@ function GitStatusContent({
   untrackedFiles,
   untrackedLoading,
   untrackedError,
+  inventoryPending,
+  inventoryLoading,
+  inventoryError,
   supportsLastEditor,
   gitActions,
   reviewComments,
@@ -1067,6 +1074,9 @@ function GitStatusContent({
   untrackedFiles: GitUntrackedFileListResult | null;
   untrackedLoading: boolean;
   untrackedError: Error | null;
+  inventoryPending: boolean;
+  inventoryLoading: boolean;
+  inventoryError: Error | null;
   supportsLastEditor: boolean;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
@@ -1212,6 +1222,9 @@ function GitStatusContent({
           untrackedFiles={untrackedFiles}
           untrackedLoading={untrackedLoading}
           untrackedError={untrackedError}
+          inventoryPending={inventoryPending}
+          inventoryLoading={inventoryLoading}
+          inventoryError={inventoryError}
           initialWorkingTreePath={worktreeFile}
           onBrowseHistory={handleBrowseHistory}
           onBlameFile={handleBlameFile}
@@ -1233,6 +1246,9 @@ function GitStatusContent({
           untrackedFiles={untrackedFiles}
           untrackedLoading={untrackedLoading}
           untrackedError={untrackedError}
+          inventoryPending={inventoryPending}
+          inventoryLoading={inventoryLoading}
+          inventoryError={inventoryError}
           initialSha={commitSha}
           initialPath={commitFile}
           initialBlame={commitBlame}
