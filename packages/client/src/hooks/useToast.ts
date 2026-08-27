@@ -13,8 +13,16 @@ export interface Toast {
   action?: ToastAction;
 }
 
-const TOAST_TIMEOUT_MS = 3000;
+const TOAST_TIMEOUT_MS = 4500;
 const ACTION_TOAST_TIMEOUT_MS = 7000;
+const ERROR_TOAST_TIMEOUT_MS = 12_000;
+
+export function getToastDurationMs(
+  toast: Pick<Toast, "type" | "action">,
+): number {
+  if (toast.type === "error") return ERROR_TOAST_TIMEOUT_MS;
+  return toast.action ? ACTION_TOAST_TIMEOUT_MS : TOAST_TIMEOUT_MS;
+}
 
 export function useToast() {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -24,8 +32,7 @@ export function useToast() {
       const id = generateUUID();
       setToasts((prev) => [...prev, { id, message, type, action }]);
 
-      // Action toasts stay readable long enough to use the action.
-      const timeout = action ? ACTION_TOAST_TIMEOUT_MS : TOAST_TIMEOUT_MS;
+      const timeout = getToastDurationMs({ type, action });
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, timeout);

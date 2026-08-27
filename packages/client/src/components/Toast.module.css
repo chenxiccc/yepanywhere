@@ -79,36 +79,10 @@
 }
 
 @keyframes fadeOut {
-  0% {
+  0%,
+  75% {
     opacity: 1;
     transform: translateY(0);
-  }
-  10% {
-    opacity: 0.976;
-  }
-  20% {
-    opacity: 0.905;
-  }
-  30% {
-    opacity: 0.794;
-  }
-  40% {
-    opacity: 0.655;
-  }
-  50% {
-    opacity: 0.5;
-  }
-  60% {
-    opacity: 0.345;
-  }
-  70% {
-    opacity: 0.206;
-  }
-  80% {
-    opacity: 0.095;
-  }
-  90% {
-    opacity: 0.024;
   }
   100% {
     opacity: 0;

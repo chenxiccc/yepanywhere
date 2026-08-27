@@ -60,6 +60,16 @@ measured demand exceeds available width, and on any >1px widening resets to
 is history-free and identical from either direction, so restore is
 reverse-of-removal by construction — form 1 above.
 
+## Transient Feedback Lifetime
+
+In-page toasts remain click-to-dismiss alerts. Success and informational
+feedback uses a 4.5-second lifetime, or seven seconds when it includes an
+action. Error feedback remains for 12 seconds because it commonly carries the
+only explanation for a failed operation. The toast stays fully opaque for the
+first 75% of its lifetime and fades only near removal, so nominal lifetime and
+readable lifetime do not diverge. One duration resolver owns both the removal
+timer and CSS animation value.
+
 ## Desktop Sidebar Display Modes
 
 The desktop sidebar has three browser-persisted display modes. Expanded mode

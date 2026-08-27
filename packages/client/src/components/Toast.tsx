@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { Toast as ToastType } from "../hooks/useToast";
+import { getToastDurationMs, type Toast as ToastType } from "../hooks/useToast";
 import styles from "./Toast.module.css";
 
 interface Props {
@@ -24,7 +24,7 @@ export function ToastContainer({ toasts, onDismiss }: Props) {
           className={`${styles.toast} ${TOAST_TYPE_CLASS[toast.type]}`}
           style={
             {
-              "--toast-fade-duration": toast.action ? "7s" : "4.5s",
+              "--toast-fade-duration": `${getToastDurationMs(toast) / 1000}s`,
             } as CSSProperties
           }
           onClick={() => onDismiss(toast.id)}

@@ -7,7 +7,11 @@ import {
   useState,
 } from "react";
 import { ToastContainer } from "../components/Toast";
-import type { Toast, ToastAction } from "../hooks/useToast";
+import {
+  type Toast,
+  type ToastAction,
+  getToastDurationMs,
+} from "../hooks/useToast";
 import { generateUUID } from "../lib/uuid";
 
 interface ToastContextValue {
@@ -25,11 +29,6 @@ interface ToastProviderProps {
   children: ReactNode;
 }
 
-// Keep in sync with the --toast-fade-duration values and animation fallback
-// owned by Toast.tsx / Toast.module.css.
-const TOAST_TIMEOUT_MS = 4500;
-const ACTION_TOAST_TIMEOUT_MS = 7000;
-
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -38,8 +37,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
       const id = generateUUID();
       setToasts((prev) => [...prev, { id, message, type, action }]);
 
-      // Action toasts stay readable long enough to use the action.
-      const timeout = action ? ACTION_TOAST_TIMEOUT_MS : TOAST_TIMEOUT_MS;
+      const timeout = getToastDurationMs({ type, action });
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, timeout);
