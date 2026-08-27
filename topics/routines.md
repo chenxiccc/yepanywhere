@@ -302,9 +302,9 @@ pending or active. Cancelling that run is a separate explicit action.
 
 The YA server instance owns Routine activation semantics and run history. If
 the proposed [yacron](yacron.md) service becomes the concrete schedule owner,
-YA adapts Routine activations to that generally running service rather than
-maintaining a second timer engine. Routine scheduling must not rely on an open
-browser tab or use provider-native cron/loop features:
+YA adapts Routine activations to the selected integrated or standalone state
+owner rather than maintaining a second timer engine. Routine scheduling must
+not rely on an open browser tab or use provider-native cron/loop features:
 
 - provider-native cron is not portable across providers;
 - it can keep a provider process retained between runs;
@@ -395,7 +395,7 @@ revision and server-local activation facts that produced it.
 ## Related Topics
 
 - [yacron](yacron.md) — proposed headless local owner for durable deadlines,
-  occurrences, and provider-host dispatch.
+  occurrences, and capability-advertised provider/harness dispatch.
 - [architecture-mandates](architecture-mandates.md) — bounded ownership of
   global background work.
 - [project-queue](project-queue.md) — durable project-idle dispatch for

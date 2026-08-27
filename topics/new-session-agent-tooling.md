@@ -27,8 +27,8 @@ per-session credential precedent;
 per-session provider-state redirection precedent;
 [`ask-session.md`](ask-session.md) — the first planned consumer of the
 capability fragment and PATH scripts;
-[`yacron.md`](yacron.md) — a proposed scheduled-prompt consumer that also
-requires the launch project marker;
+[`yacron.md`](yacron.md) — its proposed provider-host-integrated variant is a
+scheduled-prompt consumer that also requires the launch project marker;
 [`vanilla-defaults.md`](vanilla-defaults.md).
 
 ## PATH, authority, and tool advertisement

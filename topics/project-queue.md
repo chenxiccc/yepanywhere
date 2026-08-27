@@ -14,6 +14,11 @@ a proposed lane-aware extension where Project Queue items can target a
 specific lane — the canonical main checkout or a separate lane checkout —
 instead of waiting for the whole project.
 
+The candidate replacement for Hono's in-memory launch callback lives in
+[Project Queue sketches](project-queue.sketches.md#provider-host-yacron-launch-requests).
+It requires provider-host-integrated yacron and preserves this topic's complete
+idle predicate; standalone yacron is explicitly ineligible.
+
 ## Core Semantics
 
 - Project Queue items are persisted on the server. Clients must not mirror the
@@ -166,31 +171,6 @@ detection of all outside provider activity.
   new quiet window, while the destination immediately inherits every live
   blocker. This keeps transcript location, process launch directory, and the
   user's explicit working-project classification as separate facts.
-
-### Candidate provider-host launch request
-
-The [yacron proposal](yacron.md#dispatch-subscriptions) identifies a smaller
-shared primitive beneath both products: a durable provider-service launch/join
-request with an explicit exclusive-project-session/recent-activity policy and a
-retained subscription. A caller can subscribe before a future session has an
-id; the `session-ready` event reports whether the provider started, rejoined,
-or reused a session, why it was requested, and its final canonical YA session
-id/metadata.
-
-The current Hono `WorkerQueue` handoff associates deferred launches through
-one-shot in-memory `onStarted`, `onFailed`, and `onRetryableFailure` callbacks.
-That is a real recovery seam even though it is not proven to explain every
-observed failure to launch a Project Queue session.
-
-Project Queue could instead submit one durable request as soon as an item is
-the selected head of its project queue. The request owner performs the quiet
-wait and atomic project reservation, bundles launch/rejoin with the initial
-prompt, then retains the final canonical session id/metadata and prompt-
-acceptance receipt. Hono can reconnect by request id after reload rather than
-reconstructing a lost callback. The request may be served by the provider host
-or a separate yacron service; Project Queue keeps its backlog ordering,
-pause/retry, and UI semantics. This is proposed architecture, not a claim about
-current ownership or implementation.
 
 ## UI Semantics
 

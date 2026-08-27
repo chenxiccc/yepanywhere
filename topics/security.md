@@ -54,15 +54,22 @@ read-only in Settings; it still does not create an agent sandbox. See
 [`docs/tactical/018-file-access-scoping.md`](../docs/tactical/018-file-access-scoping.md).
 
 The separate **Sandbox session / Project writes only** launch option is the
-current host-enforced boundary. On supported local Linux Claude-family and
-Codex sessions, Bubblewrap prevents ordinary persistent writes outside the
+intended host-enforced boundary. On supported local Linux Claude-family and
+Codex sessions, Bubblewrap prevents direct persistent writes outside the
 canonical project and YA-owned private state. It is default-off, permits reads
-outside the project and network access, does not claim general hostile-code or
-confidentiality isolation, and fails closed when requested but unavailable.
-Unsupported providers, non-Linux hosts, and SSH executors cannot use it. Even
-an enforced sandbox limits one provider process; it does not reduce the
-authority of an authenticated operator who may create another unsandboxed
-session. See [`session-sandboxing.md`](session-sandboxing.md).
+outside the project and network access, and does not claim general hostile-code
+or confidentiality isolation. Unsupported providers, non-Linux hosts, and SSH
+executors cannot use it.
+
+The current Linux backend nevertheless shares the host network. A confined
+agent can reach YA's privileged localhost control plane and, on an ordinary
+open local server, ask an unsandboxed session or API route to perform the
+outside write. This defeats the stated filesystem-integrity boundary rather
+than merely exercising an excluded network-confidentiality risk. Until
+[`gaps/session-sandbox-localhost-control-plane.md`](../gaps/session-sandbox-localhost-control-plane.md)
+is fixed, treat the option as direct-write defense in depth, not as containment
+against adversarial provider code. See
+[`session-sandboxing.md`](session-sandboxing.md).
 
 Agent-authored active documents are therefore significant defense-in-depth
 hardening—important, but not a new general trust boundary—specifically for a
@@ -349,8 +356,9 @@ creation means full server-account authority.
   records the proposed content-aware redaction layer for public transcript
   output.
 - [`session-sandboxing.md`](session-sandboxing.md) defines the implemented
-  Linux project-write boundary and the additional admission work a
-  future interactive “locked to this session” share would require.
+  Linux project-write mechanism, its open localhost control-plane breach, and
+  the additional admission work a future interactive “locked to this session”
+  share would require.
 - [`relay-client-mux.md`](relay-client-mux.md) keeps each host's authentication
   and encryption independent while sharing a physical relay connection.
 - [`managed-runner-execution-targets.md`](managed-runner-execution-targets.md)

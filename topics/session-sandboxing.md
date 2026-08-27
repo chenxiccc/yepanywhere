@@ -8,9 +8,15 @@
 
 Topic: session-sandboxing
 
-Status: **implemented Linux v1 contract.** Local Claude-family and Codex
-sessions use trusted Bubblewrap; other providers, remote executors, and
-non-Linux hosts fail an enabled launch before provider work begins.
+Status: **Linux v1 mechanism implemented, security contract currently
+breached.** Local Claude-family and Codex sessions use trusted Bubblewrap, but
+the shared host network leaves privileged localhost YA routes reachable from
+the confined process. Until
+[`gaps/session-sandbox-localhost-control-plane.md`](../gaps/session-sandbox-localhost-control-plane.md)
+is fixed, **Project writes only** prevents direct outside-project filesystem
+writes but is not an effective boundary against an adversarial agent. Other
+providers, remote executors, and non-Linux hosts still fail an enabled launch
+before provider work begins.
 
 See also:
 
@@ -507,9 +513,14 @@ interface SessionSandboxEnforcement {
 - YA host enforcement vs. provider-reported policy; and
 - local vs. remote execution host.
 
-Agents and Process Info may show **Project writes only** only for `enforced`.
-They should show setup failure rather than an unlocked process row, because a
-requested confined session must never launch unlocked.
+The current implementation incorrectly treats the mount/namespace probe as
+sufficient for `available` and `enforced`; it does not probe privileged
+localhost re-entry. While the localhost control-plane gap remains open, agents
+and Process Info must not present that state as an effective adversarial
+boundary. Closing the gap requires the availability probe and enforcement
+evidence to cover the network/IPC restriction as well as the filesystem mount.
+A requested confined session must never launch with only part of the claimed
+boundary.
 
 The server persists the requested level, project-scoped state key, canonical
 project path, and effective backend status. It does not expose or persist the
@@ -672,7 +683,9 @@ dropped capability set, a new terminal session, parent-death coupling, and
 sanitized broker environment variables. The argument set is exercised against
 Rocky 8's Bubblewrap 0.4.0. Each provider launch opens and identity-checks the
 project directory, mounts that descriptor rather than resolving the pathname
-again, and changes to the project only after the mount is installed.
+again, and changes to the project only after the mount is installed. It also
+currently shares the host network; that unresolved control-plane escape is why
+the mechanism does not yet satisfy the full contract above.
 
 ## Backend Integration Gate
 

@@ -128,10 +128,10 @@ section below for what would have to change at higher fan-out.
   host/worker protocols, stable same-user discovery, headless bootstrap,
   attach-or-start recovery, bounded session turns, receipts, and the
   authenticated Hono adapter.
-- [`topics/yacron.md`](topics/yacron.md) — proposal for a generally running,
-  headless local scheduler and agent CLI that dispatch future prompts through
-  the provider host into existing or fresh YA sessions, with a retained
-  launch/rejoin subscription usable by Project Queue.
+- [`topics/yacron.md`](topics/yacron.md) — proposal for a generally running
+  scheduler/CLI with provider-host-integrated and standalone variants. Only the
+  integrated variant owns YA queues, atomic project admission, canonical
+  session dispatch, and the retained launch request usable by Project Queue.
 - [`topics/provider-installation-updates.md`](topics/provider-installation-updates.md)
   — shared installation-family lifecycle for provider update mutation,
   runtime leases, verified generations, and catalog/cache convergence.
