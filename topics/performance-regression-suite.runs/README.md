@@ -96,6 +96,16 @@ idle release, share metadata/full responses, memory, and teardown. This is a
 runtime-host/public-share baseline, not provider adapter or internet-relay
 evidence.
 
+## 2026-08-28 system-observed sprint
+
+[Full report](20260828-system-observed-sprint.md). The first frozen +25%
+offered-load sprint established reusable semantic-action cohort and
+long-session browser traces but selected no production candidate. Its weighted
+screen remained invalid because the specialized cohort did not collect every
+frozen browser/leak quality. Long-transcript structure and cached cross-session
+remount remain the measured implementation fronts; the ordered sidebar trace
+does not causally distinguish elapsed idle time from appended activity.
+
 ## Current use
 
 The canonical topic retains only conclusions that still govern driver design,

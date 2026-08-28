@@ -75,6 +75,19 @@ excludes deliberate multi-file/multi-page fan-out. Its cache proof leaves the
 selected route before refresh so a one-session ring cannot create a false
 same-route result.
 
+An interaction trace is a separate observation mode from the cache proof. It
+may keep the measured route mounted, change Conversation View, type without
+submitting, scroll, disclose older history, and reveal tooltip or hover-card
+surfaces without first navigating away to prove cache behavior. A trace that
+mixes those modes is invalid because the cache proof's route departure changes
+the DOM whose interaction cost the trace intends to measure.
+
+The `sidebar-switch` interaction trace is diagnostic rather than primary-score
+evidence. It alternates two cached session routes and labels fresh, elapsed-idle,
+and post-activity phases. Because those phases execute in order, an apparent
+phase difference is not a causal activity-versus-time attribution until an
+interleaved or separately randomized control reproduces it.
+
 ### Built client
 
 The built-client driver prepares one production build before host sampling and
@@ -99,6 +112,15 @@ relay, verifies bounded chunk metadata, drives the configured reader herd
 through the legacy full-response route, and samples forced-GC memory. The
 provider adapter/SDK, provider transcript writer, and internet relay remain
 outside this simulation.
+
+A cohort run may launch several isolated specialized-contract lanes under one
+parent lease to model concurrent offered load. Each lane still owns its server,
+browser, fixture, ports, app data, process group, and semantic action. The
+parent records one host window and performs the authoritative final marker-family
+sweep. Cohort endpoint samples remain valid only for the qualities that the
+specialized driver actually observes; they cannot be substituted for missing
+browser frame, leak-slope, tooltip, or browser-startup-memory terms in a
+multi-quality score.
 
 Routine server/browser/built-client runs use an in-process post-provider mock
 and disable provider discovery. They cannot support claims about provider
