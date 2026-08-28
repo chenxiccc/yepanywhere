@@ -445,11 +445,12 @@ async function measureProjectionTransition(page) {
   await resetInteractionProbe(page);
   const startedAtMs = await page.evaluate(() => performance.now());
   await button.click();
-  await page.waitForFunction(
-    (priorRows) =>
-      document.querySelectorAll("[data-render-id]").length > priorRows,
-    beforeRows,
-  );
+  await page
+    .getByRole("button", {
+      exact: true,
+      name: "Show Conversation view and condense routine activity",
+    })
+    .waitFor({ state: "visible" });
   await twoAnimationFrames(page);
   const outcome = await page.evaluate((start) => {
     window.__yaPerfInteraction.rowObserver?.disconnect();
@@ -465,7 +466,10 @@ async function measureProjectionTransition(page) {
   const result = {
     afterRows: await page.locator("[data-render-id]").count(),
     beforeRows,
-    firstRowChangeMs: round(outcome.firstRowChangeMs),
+    firstRowChangeMs:
+      outcome.firstRowChangeMs === null
+        ? null
+        : round(outcome.firstRowChangeMs),
     longTasks: summarizeLongTasks(probe.longTasks),
     nextPaintMs: round(outcome.nextPaintMs),
   };
