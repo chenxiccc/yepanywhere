@@ -72,8 +72,10 @@ Acceptance for the first vertical slice:
 
 This seam supports `gaps/full-stack-degradation-injection.md` and the
 code-growth-regularized load-capacity sketch in
-`~/agents/topics/perf.sketches.md`. It was not implemented during the survey
-work because the action schema, first executor boundary, anchor digest, and
-harness fixture format require a focused client/performance slice.
+`~/agents/topics/perf.sketches.md`. Its first intended consumer is the bounded
+`gaps/system-observed-performance-sprint.md`, which must not begin until this
+gap closes. The seam was not implemented during the survey work because the
+action schema, first executor boundary, anchor digest, and harness fixture
+format require a focused client/performance slice.
 
 Found 2026-08-28 while designing log-based client/server performance replay.
