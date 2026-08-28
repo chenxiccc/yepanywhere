@@ -44,6 +44,7 @@ test("core validates scenario shape and creates exact-size fixture text", () => 
       {
         ...scenario,
         browserSettings: { "yep-anywhere-theme": "verydark" },
+        browserViewport: { height: 600, width: 1000 },
         interactionTrace: {
           enabled: true,
           hoverCardDelayMs: 240,

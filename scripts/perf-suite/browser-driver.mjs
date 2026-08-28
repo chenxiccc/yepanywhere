@@ -713,7 +713,7 @@ export async function measureBrowserMode({
   try {
     for (const cacheBudgetMiB of orderedBudgets) {
       const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 },
+        viewport: scenario.browserViewport ?? { width: 1280, height: 800 },
       });
       await context.addInitScript(
         ({ budget, interactionTrace, settings }) => {

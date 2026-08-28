@@ -103,6 +103,19 @@ export function validateScenario(scenario, name) {
       `scenarios.${name}.browserWorkingSetSessions`,
     );
   }
+  if (
+    scenario.browserViewport !== undefined &&
+    (typeof scenario.browserViewport !== "object" ||
+      scenario.browserViewport === null ||
+      !Number.isInteger(scenario.browserViewport.width) ||
+      scenario.browserViewport.width <= 0 ||
+      !Number.isInteger(scenario.browserViewport.height) ||
+      scenario.browserViewport.height <= 0)
+  ) {
+    throw new Error(
+      `scenarios.${name}.browserViewport must have positive integer dimensions`,
+    );
+  }
   for (const field of ["streamChunks", "streamChunkBytes", "idleReapSeconds"]) {
     if (scenario[field] !== undefined) {
       requirePositiveInteger(scenario[field], `scenarios.${name}.${field}`);
