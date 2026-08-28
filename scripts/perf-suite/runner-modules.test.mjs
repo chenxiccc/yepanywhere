@@ -3,11 +3,17 @@ import http from "node:http";
 import path from "node:path";
 import test from "node:test";
 import { performance } from "node:perf_hooks";
-import { aggregateRuns } from "./aggregation.mjs";
-import { waitWithTimeout } from "./browser-driver.mjs";
+import { aggregateBrowserRuns, aggregateRuns } from "./aggregation.mjs";
+import {
+  summarizeInteractionTrials,
+  waitWithTimeout,
+} from "./browser-driver.mjs";
 import { measureServerUsefulReadiness } from "./built-client-driver.mjs";
 import { deterministicPayload, validateScenario } from "./core.mjs";
-import { harnessSourceFiles } from "./process-fixture.mjs";
+import {
+  assertLiveCohortParent,
+  harnessSourceFiles,
+} from "./process-fixture.mjs";
 import {
   evaluateMetricTargets,
   evaluateRatchets,
@@ -32,6 +38,84 @@ test("core validates scenario shape and creates exact-size fixture text", () => 
   assert.throws(
     () => validateScenario({ ...scenario, repetitions: 0 }, "unit"),
     /positive integer/,
+  );
+  assert.doesNotThrow(() =>
+    validateScenario(
+      {
+        ...scenario,
+        browserSettings: { "yep-anywhere-theme": "verydark" },
+        interactionTrace: {
+          enabled: true,
+          hoverCardDelayMs: 240,
+          tooltipDelayMs: 80,
+        },
+      },
+      "unit",
+    ),
+  );
+  assert.throws(
+    () =>
+      validateScenario(
+        { ...scenario, browserSettings: { invalid: true } },
+        "unit",
+      ),
+    /browserSettings must be a string-to-string object/,
+  );
+});
+
+test("browser interaction trials retain projection-specific distributions", () => {
+  const trial = (typingMs, scrollMs, missedFraction) => ({
+    conversation: {
+      scroll: { frameP95Ms: scrollMs, missedFrameFraction: missedFraction },
+      typing: { keyToFrameP95Ms: typingMs },
+    },
+    full: {
+      scroll: {
+        frameP95Ms: scrollMs * 2,
+        missedFrameFraction: missedFraction * 2,
+      },
+      typing: { keyToFrameP95Ms: typingMs * 2 },
+    },
+    hoverCard: { workAfterDelayMs: 3 },
+    olderHistory: { nextPaintMs: 30 },
+    projectionTransition: { nextPaintMs: 20 },
+    tooltip: { workAfterDelayMs: 2 },
+  });
+  const aggregate = summarizeInteractionTrials([
+    trial(10, 16, 0.1),
+    trial(14, 18, 0.2),
+  ]);
+  assert.equal(aggregate.conversation.typingKeyToFrameP95.p95Ms, 14);
+  assert.equal(aggregate.full.scrollMissedFrameFraction.medianMs, 0.2);
+
+  const browserAggregate = aggregateBrowserRuns([
+    {
+      browser: {
+        modes: [
+          {
+            cacheBudgetMiB: 256,
+            interactionTrace: { aggregate },
+            profiles: {},
+            telemetry: [],
+            warmCacheTelemetry: [],
+            latency: {
+              appendedLiveFinalHighlight: { p95Ms: 1 },
+              appendedLiveTail: { p95Ms: 1 },
+              coldFinalHighlight: { p95Ms: 1 },
+              coldTail: { p95Ms: 1 },
+              warmFinalHighlight: { p95Ms: 1 },
+              warmTail: { p95Ms: 1 },
+            },
+          },
+        ],
+      },
+    },
+  ]);
+  assert.equal(
+    browserAggregate["256"][
+      "interaction.conversation.typingKeyToFrameP95.p95Ms"
+    ],
+    14,
   );
 });
 
@@ -64,6 +148,29 @@ test("browser driver deadlines settle and reject independently", async () => {
   await assert.rejects(
     waitWithTimeout(new Promise(() => {}), 5, "unit browser wait"),
     /unit browser wait timed out/,
+  );
+});
+
+test("cohort admission requires a matching live parent lease", () => {
+  const marker = "ya-perf-suite-cohort-unit-1";
+  assert.doesNotThrow(() =>
+    assertLiveCohortParent(marker, {
+      expectedMarker: marker,
+      parentPid: "123",
+      signal(pid, signal) {
+        assert.equal(pid, 123);
+        assert.equal(signal, 0);
+      },
+    }),
+  );
+  assert.throws(
+    () =>
+      assertLiveCohortParent(marker, {
+        expectedMarker: "ya-perf-suite-cohort-other",
+        parentPid: "123",
+        signal() {},
+      }),
+    /does not match/,
   );
 });
 
@@ -159,6 +266,7 @@ test("harness identity covers every extracted implementation module", () => {
     "process-fixture.mjs",
     "ratchet-evaluation.mjs",
     "request-clients.mjs",
+    "run-cohort.mjs",
     "run.mjs",
     "server-driver.mjs",
     "specialized-driver.mjs",

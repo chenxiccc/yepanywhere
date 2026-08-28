@@ -26,6 +26,7 @@ import {
   summarizeHostWindow,
 } from "./host-profile.mjs";
 import {
+  assertLiveCohortParent,
   gitIsAncestor,
   gitRevision,
   harnessIdentity,
@@ -113,7 +114,13 @@ async function main() {
   if (ratchets.schemaVersion !== 1)
     throw new Error("Unsupported ratchet schemaVersion");
 
-  await requireCleanPerfHost();
+  const cohortParentMarker = options["cohort-parent-marker"];
+  if (cohortParentMarker) {
+    assertLiveCohortParent(cohortParentMarker);
+    console.log(`SWEEP-PREFLIGHT: admitted by ${cohortParentMarker}`);
+  } else {
+    await requireCleanPerfHost();
+  }
 
   const revision = await gitRevision(checkout);
   const harness = await harnessIdentity(
@@ -131,8 +138,11 @@ async function main() {
     options.driver === "built-client"
       ? await prepareBuiltClientCheckout(checkout, revision)
       : null;
+  const runMarkerPrefix = cohortParentMarker
+    ? `${cohortParentMarker}-lane-`
+    : PERF_RUN_MARKER_PREFIX;
   const runMarker =
-    `${PERF_RUN_MARKER_PREFIX}${process.pid}-${Date.now()}-` +
+    `${runMarkerPrefix}${process.pid}-${Date.now()}-` +
     createHash("sha256")
       .update(`${options.driver}:${options.scenario}:${revision}`)
       .digest("hex")

@@ -44,6 +44,7 @@ const HARNESS_SOURCE_URLS = [
   "ratchet-evaluation.mjs",
   "ratchet-targets.mjs",
   "request-clients.mjs",
+  "run-cohort.mjs",
   "run.mjs",
   "server-driver.mjs",
   "simulated-provider-worker.mjs",
@@ -144,6 +145,35 @@ export async function requireCleanPerfHost() {
     throw new Error(
       "Another YA perf run or its debris is present; inspect it before measuring",
     );
+  }
+}
+
+export function assertLiveCohortParent(
+  marker,
+  {
+    expectedMarker = process.env.YA_PERF_COHORT_PARENT_MARKER,
+    parentPid = process.env.YA_PERF_COHORT_PARENT_PID,
+    signal = process.kill,
+  } = {},
+) {
+  if (!/^ya-perf-suite-cohort-[a-zA-Z0-9-]+$/.test(marker ?? "")) {
+    throw new Error("cohort parent marker is malformed");
+  }
+  if (expectedMarker !== marker) {
+    throw new Error("cohort parent marker does not match the inherited lease");
+  }
+  const parsedParentPid = Number(parentPid);
+  if (
+    !Number.isSafeInteger(parsedParentPid) ||
+    parsedParentPid <= 0 ||
+    parsedParentPid === process.pid
+  ) {
+    throw new Error("cohort parent PID is invalid");
+  }
+  try {
+    signal(parsedParentPid, 0);
+  } catch (error) {
+    throw new Error("cohort parent process is not live", { cause: error });
   }
 }
 

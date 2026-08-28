@@ -4,7 +4,7 @@ import process from "node:process";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import { sampleChromiumProcessMemory } from "./browser-memory.mjs";
-import { assertCount, summarize } from "./core.mjs";
+import { assertCount, round, summarize } from "./core.mjs";
 import { wait } from "./process-fixture.mjs";
 import {
   clientTelemetry,
@@ -26,6 +26,502 @@ export function waitWithTimeout(promise, timeoutMs, description) {
       throw new Error(`${description} timed out after ${timeoutMs} ms`);
     }),
   ]);
+}
+
+function summarizeLongTasks(tasks) {
+  return {
+    count: tasks.length,
+    maxMs: round(Math.max(0, ...tasks.map((task) => task.durationMs))),
+    totalMs: round(tasks.reduce((total, task) => total + task.durationMs, 0)),
+  };
+}
+
+function summarizeInteractionMetric(trials, select) {
+  const values = trials
+    .map(select)
+    .filter((value) => typeof value === "number" && Number.isFinite(value));
+  return values.length > 0 ? summarize(values) : null;
+}
+
+export function summarizeInteractionTrials(trials) {
+  return {
+    conversation: {
+      typingKeyToFrameP95: summarizeInteractionMetric(
+        trials,
+        (trial) => trial.conversation.typing.keyToFrameP95Ms,
+      ),
+      scrollFrameP95: summarizeInteractionMetric(
+        trials,
+        (trial) => trial.conversation.scroll.frameP95Ms,
+      ),
+      scrollMissedFrameFraction: summarizeInteractionMetric(
+        trials,
+        (trial) => trial.conversation.scroll.missedFrameFraction,
+      ),
+    },
+    full: {
+      typingKeyToFrameP95: summarizeInteractionMetric(
+        trials,
+        (trial) => trial.full.typing.keyToFrameP95Ms,
+      ),
+      scrollFrameP95: summarizeInteractionMetric(
+        trials,
+        (trial) => trial.full.scroll.frameP95Ms,
+      ),
+      scrollMissedFrameFraction: summarizeInteractionMetric(
+        trials,
+        (trial) => trial.full.scroll.missedFrameFraction,
+      ),
+    },
+    hoverCardWorkAfterDelay: summarizeInteractionMetric(
+      trials,
+      (trial) => trial.hoverCard.workAfterDelayMs,
+    ),
+    olderHistoryNextPaint: summarizeInteractionMetric(
+      trials,
+      (trial) => trial.olderHistory?.nextPaintMs,
+    ),
+    projectionNextPaint: summarizeInteractionMetric(
+      trials,
+      (trial) => trial.projectionTransition.nextPaintMs,
+    ),
+    tooltipWorkAfterDelay: summarizeInteractionMetric(
+      trials,
+      (trial) => trial.tooltip.workAfterDelayMs,
+    ),
+  };
+}
+
+async function twoAnimationFrames(page) {
+  return page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+}
+
+async function resetInteractionProbe(page) {
+  await page.evaluate(() => {
+    window.__yaPerfInteraction.keySamples = [];
+    window.__yaPerfInteraction.longTasks = [];
+  });
+}
+
+async function interactionProbeResult(page) {
+  return page.evaluate(() => ({
+    keySamples: window.__yaPerfInteraction.keySamples,
+    longTasks: window.__yaPerfInteraction.longTasks,
+  }));
+}
+
+async function recordSemanticMeasurement(page, name, valueMs) {
+  await page.evaluate(
+    ({ measurementName, measurementValueMs }) => {
+      const harness = window.__YA_SEMANTIC_UI_ACTIONS__;
+      if (harness?.kind !== "semantic-ui-action-harness") return;
+      harness.recordMeasurement({
+        side: "client",
+        name: measurementName,
+        valueMs: measurementValueMs,
+      });
+    },
+    { measurementName: name, measurementValueMs: valueMs },
+  );
+}
+
+async function collectInteractionState(
+  page,
+  cdp,
+  { collectGarbage = false } = {},
+) {
+  if (collectGarbage) {
+    await cdp.send("HeapProfiler.collectGarbage");
+    await twoAnimationFrames(page);
+  }
+  const metrics = await cdp.send("Performance.getMetrics");
+  const byName = Object.fromEntries(
+    metrics.metrics.map((metric) => [metric.name, metric.value]),
+  );
+  return page.evaluate((cdpMetrics) => {
+    const harness = window.__YA_SEMANTIC_UI_ACTIONS__;
+    return {
+      bodyTextLength: document.body?.innerText.length ?? 0,
+      domElements: document.querySelectorAll("*").length,
+      renderRows: document.querySelectorAll("[data-render-id]").length,
+      heap: performance.memory
+        ? {
+            totalBytes: performance.memory.totalJSHeapSize,
+            usedBytes: performance.memory.usedJSHeapSize,
+          }
+        : null,
+      cdp: {
+        documents: cdpMetrics.Documents,
+        eventListeners: cdpMetrics.JSEventListeners,
+        jsHeapTotalBytes: cdpMetrics.JSHeapTotalSize,
+        jsHeapUsedBytes: cdpMetrics.JSHeapUsedSize,
+        layoutObjects: cdpMetrics.LayoutObjects,
+        nodes: cdpMetrics.Nodes,
+      },
+      semantic:
+        harness?.kind === "semantic-ui-action-harness"
+          ? {
+              actions: harness.snapshot().actions.length,
+              divergences: harness.snapshot().divergences.length,
+              measurements: harness.snapshot().measurements.length,
+              observedAnchorCount: harness.snapshot().observedAnchorCount,
+              observedEvents: harness.snapshot().observedEvents.length,
+            }
+          : null,
+    };
+  }, byName);
+}
+
+async function measureComposerTyping(page, label) {
+  const composer = page.locator("[data-composer-input]");
+  await composer.fill("");
+  await composer.focus();
+  await resetInteractionProbe(page);
+  const startedAtMs = await page.evaluate(() => performance.now());
+  await composer.pressSequentially(
+    "draft-1 The quick brown fox keeps composer input responsive.",
+    { delay: 5 },
+  );
+  await twoAnimationFrames(page);
+  const finishedAtMs = await page.evaluate(() => performance.now());
+  const probe = await interactionProbeResult(page);
+  await composer.fill("");
+  const dispatch = probe.keySamples.map((sample) => sample.dispatchMs);
+  const keyToFrame = probe.keySamples.map((sample) => sample.keyToFrameMs);
+  if (dispatch.length === 0 || keyToFrame.length === 0) {
+    throw new Error("composer typing produced no key-to-frame samples");
+  }
+  const result = {
+    dispatchP95Ms: summarize(dispatch).p95Ms,
+    elapsedMs: round(finishedAtMs - startedAtMs),
+    keySamples: keyToFrame.length,
+    keyToFrameMaxMs: round(Math.max(0, ...keyToFrame)),
+    keyToFrameP50Ms: summarize(keyToFrame).medianMs,
+    keyToFrameP95Ms: summarize(keyToFrame).p95Ms,
+    longTasks: summarizeLongTasks(probe.longTasks),
+  };
+  await recordSemanticMeasurement(
+    page,
+    `performance-sprint.${label}.typing-key-to-frame-p95`,
+    result.keyToFrameP95Ms,
+  );
+  return result;
+}
+
+async function measureTranscriptScroll(page, label) {
+  await resetInteractionProbe(page);
+  const result = await page.evaluate(async () => {
+    const list = document.querySelector(".message-list");
+    const scroll = list?.parentElement;
+    if (!(scroll instanceof HTMLElement)) {
+      throw new Error("message-list scroll owner was not available");
+    }
+    const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    if (maximum === 0) {
+      throw new Error("message-list scroll owner had no scroll range");
+    }
+    const startingScrollTop = scroll.scrollTop;
+    const frameIntervals = [];
+    let priorFrameAt = null;
+    const stepTo = async (target) => {
+      for (let step = 1; step <= 120; step += 1) {
+        const frameAt = await new Promise((resolve) =>
+          requestAnimationFrame(resolve),
+        );
+        if (priorFrameAt !== null) frameIntervals.push(frameAt - priorFrameAt);
+        priorFrameAt = frameAt;
+        scroll.scrollTop =
+          startingScrollTop + (target - startingScrollTop) * (step / 120);
+      }
+    };
+    await stepTo(0);
+    const topScrollTop = scroll.scrollTop;
+    priorFrameAt = null;
+    for (let step = 1; step <= 120; step += 1) {
+      const frameAt = await new Promise((resolve) =>
+        requestAnimationFrame(resolve),
+      );
+      if (priorFrameAt !== null) frameIntervals.push(frameAt - priorFrameAt);
+      priorFrameAt = frameAt;
+      scroll.scrollTop = maximum * (step / 120);
+    }
+    scroll.scrollTop = startingScrollTop;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    return {
+      finalScrollTop: scroll.scrollTop,
+      frameIntervals,
+      maximum,
+      startingScrollTop,
+      topScrollTop,
+    };
+  });
+  const probe = await interactionProbeResult(page);
+  if (result.frameIntervals.length === 0) {
+    throw new Error("transcript scroll produced no animation-frame samples");
+  }
+  const missedFrames = result.frameIntervals.filter(
+    (duration) => duration > 20,
+  ).length;
+  const measurement = {
+    finalScrollTop: round(result.finalScrollTop),
+    frameCount: result.frameIntervals.length,
+    frameMaxMs: round(Math.max(...result.frameIntervals)),
+    frameP50Ms: summarize(result.frameIntervals).medianMs,
+    frameP95Ms: summarize(result.frameIntervals).p95Ms,
+    longTasks: summarizeLongTasks(probe.longTasks),
+    maximumScrollTop: round(result.maximum),
+    missedFrameFraction: round(missedFrames / result.frameIntervals.length),
+    missedFrames,
+    restoredStartingEdge:
+      Math.abs(result.finalScrollTop - result.startingScrollTop) <= 1,
+    reachedTop: result.topScrollTop <= 1,
+  };
+  await recordSemanticMeasurement(
+    page,
+    `performance-sprint.${label}.scroll-frame-p95`,
+    measurement.frameP95Ms,
+  );
+  return measurement;
+}
+
+async function markFirstVisibleTarget(page, selector, marker) {
+  const found = await page.evaluate(
+    ({ candidateSelector, markerAttribute }) => {
+      const candidate = [...document.querySelectorAll(candidateSelector)].find(
+        (element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            getComputedStyle(element).visibility !== "hidden"
+          );
+        },
+      );
+      if (!candidate) return false;
+      candidate.setAttribute(markerAttribute, "true");
+      return true;
+    },
+    { candidateSelector: selector, markerAttribute: marker },
+  );
+  if (!found)
+    throw new Error(`no visible interaction target matched ${selector}`);
+  return page.locator(`[${marker}="true"]`);
+}
+
+async function measureTooltip(page, configuredDelayMs) {
+  await page.mouse.move(2, 2);
+  await page.waitForSelector("#ya-global-tooltip", { state: "detached" });
+  const target = await markFirstVisibleTarget(
+    page,
+    '[data-tooltip]:not([data-tooltip=""]):not(.session-list-item *)',
+    "data-ya-perf-tooltip-target",
+  );
+  await resetInteractionProbe(page);
+  const startedAtMs = await page.evaluate(() => performance.now());
+  await target.hover();
+  await page.waitForSelector("#ya-global-tooltip", { state: "visible" });
+  const visibleAtMs = await page.evaluate(() => performance.now());
+  const probe = await interactionProbeResult(page);
+  const totalMs = round(visibleAtMs - startedAtMs);
+  await page.mouse.move(2, 2);
+  await page.waitForSelector("#ya-global-tooltip", { state: "detached" });
+  await page.waitForTimeout(configuredDelayMs * 6 + 50);
+  const result = {
+    configuredDelayMs,
+    longTasks: summarizeLongTasks(probe.longTasks),
+    totalMs,
+    workAfterDelayMs: round(Math.max(0, totalMs - configuredDelayMs)),
+  };
+  await recordSemanticMeasurement(
+    page,
+    "performance-sprint.tooltip-work-after-delay",
+    result.workAfterDelayMs,
+  );
+  return result;
+}
+
+async function measureSessionHoverCard(page, configuredDelayMs) {
+  const target = await markFirstVisibleTarget(
+    page,
+    ".session-list-item",
+    "data-ya-perf-hover-card-target",
+  );
+  await page.mouse.move(2, 2);
+  await page.waitForSelector("[data-session-hovercard-id]", {
+    state: "detached",
+  });
+  await resetInteractionProbe(page);
+  const startedAtMs = await page.evaluate(() => performance.now());
+  await target.hover();
+  await page.waitForSelector("[data-session-hovercard-id]", {
+    state: "visible",
+  });
+  const visibleAtMs = await page.evaluate(() => performance.now());
+  const providerBadgeVisible = await page
+    .locator("[data-session-hovercard-id] .provider-badge")
+    .isVisible();
+  if (!providerBadgeVisible) {
+    throw new Error("SessionHoverCard omitted its provider/model badge");
+  }
+  const probe = await interactionProbeResult(page);
+  const totalMs = round(visibleAtMs - startedAtMs);
+  await page.mouse.move(2, 2);
+  await page.waitForSelector("[data-session-hovercard-id]", {
+    state: "detached",
+  });
+  const result = {
+    configuredDelayMs,
+    longTasks: summarizeLongTasks(probe.longTasks),
+    providerBadgeVisible,
+    totalMs,
+    workAfterDelayMs: round(Math.max(0, totalMs - configuredDelayMs)),
+  };
+  await recordSemanticMeasurement(
+    page,
+    "performance-sprint.hover-card-work-after-delay",
+    result.workAfterDelayMs,
+  );
+  return result;
+}
+
+async function measureProjectionTransition(page) {
+  const button = page.getByRole("button", {
+    exact: true,
+    name: "Show the full activity transcript",
+  });
+  if ((await button.count()) !== 1) {
+    throw new Error("Conversation View transition control was not unique");
+  }
+  const beforeRows = await page.locator("[data-render-id]").count();
+  await page.evaluate(() => {
+    window.__yaPerfInteraction.rowChangeAtMs = null;
+    window.__yaPerfInteraction.rowObserver?.disconnect();
+    window.__yaPerfInteraction.rowObserver = new MutationObserver(() => {
+      const rows = document.querySelectorAll("[data-render-id]").length;
+      if (rows !== window.__yaPerfInteraction.rowCountBefore) {
+        window.__yaPerfInteraction.rowChangeAtMs ??= performance.now();
+      }
+    });
+    window.__yaPerfInteraction.rowCountBefore =
+      document.querySelectorAll("[data-render-id]").length;
+    const messageList = document.querySelector(".message-list");
+    if (messageList) {
+      window.__yaPerfInteraction.rowObserver.observe(messageList, {
+        childList: true,
+        subtree: true,
+      });
+    }
+  });
+  await resetInteractionProbe(page);
+  const startedAtMs = await page.evaluate(() => performance.now());
+  await button.click();
+  await page.waitForFunction(
+    (priorRows) =>
+      document.querySelectorAll("[data-render-id]").length > priorRows,
+    beforeRows,
+  );
+  await twoAnimationFrames(page);
+  const outcome = await page.evaluate((start) => {
+    window.__yaPerfInteraction.rowObserver?.disconnect();
+    return {
+      firstRowChangeMs:
+        window.__yaPerfInteraction.rowChangeAtMs === null
+          ? null
+          : window.__yaPerfInteraction.rowChangeAtMs - start,
+      nextPaintMs: performance.now() - start,
+    };
+  }, startedAtMs);
+  const probe = await interactionProbeResult(page);
+  const result = {
+    afterRows: await page.locator("[data-render-id]").count(),
+    beforeRows,
+    firstRowChangeMs: round(outcome.firstRowChangeMs),
+    longTasks: summarizeLongTasks(probe.longTasks),
+    nextPaintMs: round(outcome.nextPaintMs),
+  };
+  await recordSemanticMeasurement(
+    page,
+    "performance-sprint.projection-next-paint",
+    result.nextPaintMs,
+  );
+  return result;
+}
+
+async function measureOlderHistoryDisclosure(page) {
+  const button = page.getByRole("button", {
+    exact: true,
+    name: "Load older messages",
+  });
+  if ((await button.count()) === 0) return null;
+  const beforeRows = await page.locator("[data-render-id]").count();
+  await resetInteractionProbe(page);
+  const startedAtMs = await page.evaluate(() => performance.now());
+  await button.click();
+  await page.waitForFunction(
+    (priorRows) =>
+      document.querySelectorAll("[data-render-id]").length !== priorRows,
+    beforeRows,
+  );
+  await twoAnimationFrames(page);
+  const finishedAtMs = await page.evaluate(() => performance.now());
+  const probe = await interactionProbeResult(page);
+  const result = {
+    afterRows: await page.locator("[data-render-id]").count(),
+    beforeRows,
+    longTasks: summarizeLongTasks(probe.longTasks),
+    nextPaintMs: round(finishedAtMs - startedAtMs),
+  };
+  await recordSemanticMeasurement(
+    page,
+    "performance-sprint.older-history-next-paint",
+    result.nextPaintMs,
+  );
+  return result;
+}
+
+async function measureBrowserInteractionTrace(page, trace) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Performance.enable");
+  try {
+    const initial = await collectInteractionState(page, cdp, {
+      collectGarbage: true,
+    });
+    const conversation = {
+      typing: await measureComposerTyping(page, "conversation"),
+      scroll: await measureTranscriptScroll(page, "conversation"),
+    };
+    const tooltip = await measureTooltip(page, trace.tooltipDelayMs);
+    const hoverCard = await measureSessionHoverCard(
+      page,
+      trace.hoverCardDelayMs,
+    );
+    const projectionTransition = await measureProjectionTransition(page);
+    const full = {
+      typing: await measureComposerTyping(page, "full"),
+      scroll: await measureTranscriptScroll(page, "full"),
+    };
+    const olderHistory = await measureOlderHistoryDisclosure(page);
+    const final = await collectInteractionState(page, cdp, {
+      collectGarbage: true,
+    });
+    return {
+      conversation,
+      final,
+      full,
+      hoverCard,
+      initial,
+      olderHistory,
+      projectionTransition,
+      tooltip,
+    };
+  } finally {
+    await cdp.detach();
+  }
 }
 
 export async function runCacheRefreshProof({
@@ -220,7 +716,10 @@ export async function measureBrowserMode({
         viewport: { width: 1280, height: 800 },
       });
       await context.addInitScript(
-        ({ budget }) => {
+        ({ budget, interactionTrace, settings }) => {
+          for (const [key, value] of Object.entries(settings)) {
+            localStorage.setItem(key, value);
+          }
           localStorage.setItem("yep-anywhere-glossary-hints-enabled", "true");
           localStorage.setItem(
             "yep-anywhere-session-transcript-cache-enabled",
@@ -237,6 +736,52 @@ export async function measureBrowserMode({
           window.__yaPerfTelemetry = [];
           window.__yaPerfMarks = [];
           window.__yaPerfNavigationStartMs = 0;
+          if (interactionTrace?.enabled) {
+            window.__YA_SEMANTIC_UI_ACTIONS__ = {
+              schemaVersion: 1,
+              gather: true,
+              replay: true,
+            };
+            window.__yaPerfInteraction = {
+              keySamples: [],
+              longTasks: [],
+              rowChangeAtMs: null,
+              rowCountBefore: 0,
+              rowObserver: null,
+            };
+            new PerformanceObserver((entries) => {
+              for (const entry of entries.getEntries()) {
+                window.__yaPerfInteraction.longTasks.push({
+                  durationMs: entry.duration,
+                  startTime: entry.startTime,
+                });
+              }
+            }).observe({ type: "longtask", buffered: true });
+            window.addEventListener(
+              "keydown",
+              (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) return;
+                if (
+                  !(
+                    target.matches("textarea, input") ||
+                    target.isContentEditable
+                  )
+                ) {
+                  return;
+                }
+                const receivedAtMs = performance.now();
+                const dispatchMs = Math.max(0, receivedAtMs - event.timeStamp);
+                requestAnimationFrame(() => {
+                  window.__yaPerfInteraction.keySamples.push({
+                    dispatchMs,
+                    keyToFrameMs: Math.max(0, performance.now() - receivedAtMs),
+                  });
+                });
+              },
+              true,
+            );
+          }
           performance.setResourceTimingBufferSize(5000);
           window.__YA_RELOAD_PERF_PROBE__ = {
             mark(name, detail) {
@@ -273,7 +818,11 @@ export async function measureBrowserMode({
             return originalFetch(input, init);
           };
         },
-        { budget: cacheBudgetMiB },
+        {
+          budget: cacheBudgetMiB,
+          interactionTrace: scenario.interactionTrace ?? null,
+          settings: scenario.browserSettings ?? {},
+        },
       );
 
       const pages = [];
@@ -551,6 +1100,24 @@ export async function measureBrowserMode({
           );
           delete mode.liveMilestones;
           delete mode.liveProfiles;
+        }
+        if (scenario.interactionTrace?.enabled) {
+          await Promise.all(
+            livePages.map(async ({ mode, pages }) => {
+              const trials = await Promise.all(
+                pages.map((page) =>
+                  measureBrowserInteractionTrace(
+                    page,
+                    scenario.interactionTrace,
+                  ),
+                ),
+              );
+              mode.interactionTrace = {
+                aggregate: summarizeInteractionTrials(trials),
+                trials,
+              };
+            }),
+          );
         }
         await captureProcessMemory("appended");
       },

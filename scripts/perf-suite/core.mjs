@@ -11,6 +11,7 @@ const DEFAULT_RATCHETS_PATH = new URL("./ratchets.json", import.meta.url);
 export function parseArgs(argv) {
   const options = {
     checkout: null,
+    "cohort-parent-marker": null,
     config: DEFAULT_CONFIG_PATH,
     driver: "server",
     "fixture-repository": null,
@@ -26,6 +27,7 @@ export function parseArgs(argv) {
       console.log(
         "Usage: node run.mjs --checkout PATH --scenario NAME " +
           "[--driver server|browser|built-client|specialized] " +
+          "[--cohort-parent-marker MARKER] " +
           "[--fixture-repository PATH] [--label LABEL] [--config FILE] " +
           "[--ratchets FILE] [--output FILE] [--history FILE]",
       );
@@ -112,6 +114,34 @@ export function validateScenario(scenario, name) {
   ) {
     throw new Error(
       `scenarios.${name}.streamDelayMs must be a nonnegative integer`,
+    );
+  }
+  if (scenario.browserSettings !== undefined) {
+    if (
+      !scenario.browserSettings ||
+      typeof scenario.browserSettings !== "object" ||
+      Array.isArray(scenario.browserSettings) ||
+      Object.entries(scenario.browserSettings).some(
+        ([key, value]) => key.length === 0 || typeof value !== "string",
+      )
+    ) {
+      throw new Error(
+        `scenarios.${name}.browserSettings must be a string-to-string object`,
+      );
+    }
+  }
+  if (
+    scenario.interactionTrace !== undefined &&
+    (typeof scenario.interactionTrace !== "object" ||
+      scenario.interactionTrace === null ||
+      scenario.interactionTrace.enabled !== true ||
+      !Number.isInteger(scenario.interactionTrace.tooltipDelayMs) ||
+      scenario.interactionTrace.tooltipDelayMs < 0 ||
+      !Number.isInteger(scenario.interactionTrace.hoverCardDelayMs) ||
+      scenario.interactionTrace.hoverCardDelayMs < 0)
+  ) {
+    throw new Error(
+      `scenarios.${name}.interactionTrace must enable nonnegative integer delays`,
     );
   }
 }
