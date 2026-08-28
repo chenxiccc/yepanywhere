@@ -38,14 +38,22 @@ async function openRenderedMarkdown(page: Page) {
   return preview;
 }
 
-async function textPoint(locator: Locator, horizontal: "start" | "end") {
+async function textPoint(
+  locator: Locator,
+  horizontal: "start" | "middle" | "end",
+) {
   return locator.evaluate((element, edge) => {
     const text = document
       .createTreeWalker(element, NodeFilter.SHOW_TEXT)
       .nextNode() as Text | null;
     if (!text) throw new Error("Expected rendered Markdown text");
     const range = document.createRange();
-    const offset = edge === "start" ? 0 : text.data.length;
+    const offset =
+      edge === "start"
+        ? 0
+        : edge === "middle"
+          ? Math.floor(text.data.length / 2)
+          : text.data.length;
     range.setStart(text, offset);
     range.setEnd(text, offset);
     const rect = range.getBoundingClientRect();
@@ -332,4 +340,66 @@ test("keeps selection actions out of an upward pointer drag", async ({
   await page.mouse.up();
   await expect(page.getByRole("button", { name: "Quote reply" })).toBeVisible();
   await expect(page.locator("[data-composer-input]")).toHaveValue("");
+});
+
+test("starts a new selection when dragging inside selected viewer text", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  const preview = await openRenderedMarkdown(page);
+  const paragraph = preview.getByText(
+    "Viewer context remains available while reviewing this file.",
+    { exact: true },
+  );
+  const heading = preview.getByRole("heading", {
+    name: "Scroll clearance specimen",
+  });
+  await paragraph.evaluate((element) => {
+    const selection = document.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  await expect(page.getByRole("button", { name: "Quote reply" })).toBeVisible();
+  const start = await textPoint(paragraph, "middle");
+  const end = await textPoint(heading, "end");
+  await page.evaluate(() => {
+    document.documentElement.dataset.selectionDragStarts = "0";
+    document.documentElement.dataset.selectionPointerCancels = "0";
+    document.addEventListener(
+      "dragstart",
+      () => {
+        document.documentElement.dataset.selectionDragStarts = "1";
+      },
+      { once: true },
+    );
+    document.addEventListener(
+      "pointercancel",
+      () => {
+        document.documentElement.dataset.selectionPointerCancels = "1";
+      },
+      { once: true },
+    );
+  });
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 12 });
+  await page.mouse.up();
+
+  const outcome = await page.evaluate(() => ({
+    dragStarts: Number(document.documentElement.dataset.selectionDragStarts),
+    pointerCancels: Number(
+      document.documentElement.dataset.selectionPointerCancels,
+    ),
+    selection: document.getSelection()?.toString() ?? "",
+  }));
+  expect(outcome.dragStarts).toBe(0);
+  expect(outcome.pointerCancels).toBe(0);
+  expect(outcome.selection).toContain("Scroll clearance specimen");
+  expect(outcome.selection).not.toBe(
+    "Viewer context remains available while reviewing this file.",
+  );
 });

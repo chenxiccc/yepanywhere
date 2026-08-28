@@ -88,6 +88,12 @@ stable component identity, and lower update cadence.
   bookkeeping and schedule one trailing position read. Transcript-position
   context is measured after 200 ms of scroll rest, indexes rendered rows once,
   and must not publish intermediate positions through session-page React state.
+- Selection-action geometry always reads the latest native range. Pointer drags
+  defer placement until release. Non-pointer range-change, resize, and scroll
+  bursts use a bounded leading/latest cadence: the first scan is immediate,
+  then at most one latest scan is pending per interval. Browser events must
+  never enqueue a geometry scan for every intermediate selection or viewport
+  position.
 - Ordinary session-composer edits are local to the composer. They must not
   render `MessageList`, `RenderItemComponent`, `MessageAge`, or historical
   transcript rows, regardless of transcript size or whether the edit crosses

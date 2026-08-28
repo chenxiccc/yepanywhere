@@ -20,6 +20,7 @@ import {
 import { createCommentAnchor, type CommentAnchor } from "../lib/commentAnchors";
 
 const TRANSCRIPT_SELECTION_ACTIVE_CLASS = "session-transcript-selection-active";
+const SELECTION_ACTION_UPDATE_INTERVAL_MS = 50;
 
 export type FloatingActionPlacement = "above" | "after" | "before" | "below";
 
@@ -423,6 +424,18 @@ export function useSelectionActionCapture({
       return;
     }
 
+    const rootDocument = containerRef.current?.ownerDocument ?? document;
+    const rootWindow = rootDocument.defaultView ?? window;
+    let rateLimitTimer: number | undefined;
+    let rateLimitedUpdateQueued = false;
+
+    const cancelRateLimitedUpdate = () => {
+      rateLimitedUpdateQueued = false;
+      if (rateLimitTimer === undefined) return;
+      rootWindow.clearTimeout(rateLimitTimer);
+      rateLimitTimer = undefined;
+    };
+
     const updateSelectionActions = (pointerEnd?: PointerEnd) => {
       if (selectionPointerStartedRef.current && !pointerEnd) {
         setState(null);
@@ -450,6 +463,32 @@ export function useSelectionActionCapture({
         ),
       );
     };
+    const startRateLimitWindow = () => {
+      rateLimitTimer = rootWindow.setTimeout(() => {
+        rateLimitTimer = undefined;
+        if (!rateLimitedUpdateQueued) return;
+        rateLimitedUpdateQueued = false;
+        updateSelectionActions();
+        startRateLimitWindow();
+      }, SELECTION_ACTION_UPDATE_INTERVAL_MS);
+    };
+    const scheduleRateLimitedUpdate = () => {
+      if (rateLimitTimer !== undefined) {
+        rateLimitedUpdateQueued = true;
+        return;
+      }
+      updateSelectionActions();
+      startRateLimitWindow();
+    };
+    const scheduleViewportUpdate = () => {
+      const selection = rootDocument.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        cancelRateLimitedUpdate();
+        setState(null);
+        return;
+      }
+      scheduleRateLimitedUpdate();
+    };
     const handlePointerDown = (event: PointerEvent) => {
       const root = containerRef.current;
       if (
@@ -457,8 +496,10 @@ export function useSelectionActionCapture({
         event.target.closest('[data-selection-action-cluster="true"]')
       ) {
         selectionPointerStartedRef.current = false;
+        cancelRateLimitedUpdate();
         return;
       }
+      cancelRateLimitedUpdate();
       if (!root || !getQuoteSelectionRootForTarget(root, event.target)) {
         selectionPointerStartedRef.current = false;
         return;
@@ -470,7 +511,9 @@ export function useSelectionActionCapture({
       const selectionPointerStarted = selectionPointerStartedRef.current;
       selectionPointerStartedRef.current = false;
       if (!selectionPointerStarted) return;
-      window.setTimeout(() => {
+      cancelRateLimitedUpdate();
+      rootWindow.setTimeout(() => {
+        cancelRateLimitedUpdate();
         updateSelectionActions({
           clientX: event.clientX,
           clientY: event.clientY,
@@ -479,22 +522,44 @@ export function useSelectionActionCapture({
     };
     const handlePointerCancel = () => {
       selectionPointerStartedRef.current = false;
+      cancelRateLimitedUpdate();
     };
-    const updateFromSelectionRange = () => updateSelectionActions();
+    const updateFromSelectionRange = () => {
+      if (selectionPointerStartedRef.current) {
+        cancelRateLimitedUpdate();
+        setState(null);
+        return;
+      }
+      const selection = rootDocument.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        cancelRateLimitedUpdate();
+        setState(null);
+        return;
+      }
+      scheduleRateLimitedUpdate();
+    };
 
-    document.addEventListener("selectionchange", updateFromSelectionRange);
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("pointercancel", handlePointerCancel, true);
-    document.addEventListener("pointerup", handlePointerUp, true);
-    window.addEventListener("resize", updateFromSelectionRange);
-    window.addEventListener("scroll", updateFromSelectionRange, true);
+    rootDocument.addEventListener("selectionchange", updateFromSelectionRange);
+    rootDocument.addEventListener("pointerdown", handlePointerDown, true);
+    rootDocument.addEventListener("pointercancel", handlePointerCancel, true);
+    rootDocument.addEventListener("pointerup", handlePointerUp, true);
+    rootWindow.addEventListener("resize", scheduleViewportUpdate);
+    rootWindow.addEventListener("scroll", scheduleViewportUpdate, true);
     return () => {
-      document.removeEventListener("selectionchange", updateFromSelectionRange);
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("pointercancel", handlePointerCancel, true);
-      document.removeEventListener("pointerup", handlePointerUp, true);
-      window.removeEventListener("resize", updateFromSelectionRange);
-      window.removeEventListener("scroll", updateFromSelectionRange, true);
+      cancelRateLimitedUpdate();
+      rootDocument.removeEventListener(
+        "selectionchange",
+        updateFromSelectionRange,
+      );
+      rootDocument.removeEventListener("pointerdown", handlePointerDown, true);
+      rootDocument.removeEventListener(
+        "pointercancel",
+        handlePointerCancel,
+        true,
+      );
+      rootDocument.removeEventListener("pointerup", handlePointerUp, true);
+      rootWindow.removeEventListener("resize", scheduleViewportUpdate);
+      rootWindow.removeEventListener("scroll", scheduleViewportUpdate, true);
     };
   }, [actionCount, captureSnapshot, containerRef, getActionCount, inert]);
 

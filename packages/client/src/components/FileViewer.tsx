@@ -728,6 +728,30 @@ export const FileViewer = memo(function FileViewer({
     },
     [],
   );
+  const handleViewerBodyMouseDownCapture = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (
+        event.button !== 0 ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            "button, input, textarea, select, a[href], [contenteditable='true']",
+          ))
+      ) {
+        return;
+      }
+      const selection = event.currentTarget.ownerDocument.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        return;
+      }
+      const selectionBelongsToViewer =
+        (selection.anchorNode !== null &&
+          event.currentTarget.contains(selection.anchorNode)) ||
+        (selection.focusNode !== null &&
+          event.currentTarget.contains(selection.focusNode));
+      if (selectionBelongsToViewer) selection.removeAllRanges();
+    },
+    [],
+  );
   const commentModeSupported = Boolean(
     sendSessionViewerComment &&
       sessionMetadata &&
@@ -1850,6 +1874,7 @@ export const FileViewer = memo(function FileViewer({
         tabIndex={-1}
         {...(commentMode ? { [SESSION_FILE_COMMENT_MODE_ATTR]: "true" } : {})}
         onClick={handleViewerBodyClick}
+        onMouseDownCapture={handleViewerBodyMouseDownCapture}
         onPointerDown={handleViewerBodyPointerDown}
       >
         {commentEditor &&

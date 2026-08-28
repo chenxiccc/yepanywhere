@@ -197,10 +197,14 @@ export function useSelectionActionPresentation({
         : enabledSelectionActions,
     [enabledSelectionActions],
   );
+  const actionCountForSnapshot = useCallback(
+    (snapshot: SelectionActionSnapshot) => actionsForSnapshot(snapshot).length,
+    [actionsForSnapshot],
+  );
 
   const capture = useSelectionActionCapture({
     actionCount: enabledSelectionActions.length,
-    getActionCount: (snapshot) => actionsForSnapshot(snapshot).length,
+    getActionCount: actionCountForSnapshot,
     containerRef,
     inert,
   });

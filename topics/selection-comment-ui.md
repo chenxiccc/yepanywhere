@@ -32,7 +32,8 @@ exact formatted-source selection and activity-overlay placement landed
 session-file Markdown block clicks and live-drag deferral landed
 2026-08-20; viewer toolbar select-all landed 2026-08-22; collapsed-preview
 selection and live-tail suspension landed 2026-08-23; session-file inline
-Comment mode landed 2026-08-25.**
+Comment mode landed 2026-08-25; selection-event coalescing and file-viewer
+reselection landed 2026-08-28.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -87,7 +88,11 @@ The early Phase 1 gaps were fixed 2026-06-23, verified in the running app.
   collision-aware local placement. A pointer drag does not render or reposition
   the cluster while the button remains pressed; the final range produces one
   stable placement after release. Presses on the cluster itself remain exempt
-  so its controls can consume their preserved selection snapshot.
+  so its controls can consume their preserved selection snapshot. Non-pointer
+  range-change bursts place the first position immediately, then discard
+  intermediate positions and place at most the latest range once per bounded
+  interval. Resize and scroll bursts follow the same leading/latest cadence
+  instead of queuing one placement for every browser event.
 - **Activity-detail placement uses the selected range — fixed 2026-08-14.**
   For a selection inside a tall expanded Bash/Edit/Read-style detail surface,
   the below/above candidates and fallback-space ranking are anchored to the
@@ -145,7 +150,8 @@ menu.
    semantic rich text, or open a same-project new-session composer. A control
    press preserves a snapshot of the selected source snippets and DOM ranges,
    so the action remains valid when the native highlight collapses during the
-   press.
+   press. The cluster never replays intermediate positions from a burst of
+   selection, resize, or scroll events; it reflects the latest usable range.
 3. **Context menu over selected text.** Right-clicking inside a non-empty,
    registered selection opens direct **Copy text**, **Copy source**, **Quote
    reply**, and **New session** rows, omitting actions whose destination is not
@@ -182,7 +188,9 @@ menu.
    Ordinary primary clicks only focus or select viewer content; neither the
    paragraph layer nor selection actions may turn that click into a quote or
    composer focus transfer. Links and other interactive controls retain their
-   own actions.
+   own actions. A primary mouse drag that begins inside an existing viewer
+   selection starts a fresh native text selection rather than dragging the old
+   selected text.
 
 ### Session-file Comment mode
 

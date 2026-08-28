@@ -1,14 +1,117 @@
 // @vitest-environment jsdom
 
+import { act, renderHook } from "@testing-library/react";
+import type { RefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { registerMarkdownCopySource } from "../lib/markdownSelectionCopy";
 import {
   placeSelectionActions,
   type SelectionActionSnapshot,
+  useSelectionActionCapture,
 } from "./useSelectionActionCapture";
 
 afterEach(() => {
+  document.getSelection()?.removeAllRanges();
   document.body.replaceChildren();
+  vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe("useSelectionActionCapture", () => {
+  it("rate-limits range and viewport geometry updates", () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: false,
+    } as MediaQueryList);
+    const root = document.createElement("div");
+    const sourceElement = document.createElement("p");
+    const textNode = document.createTextNode("Selectable text");
+    sourceElement.append(textNode);
+    root.append(sourceElement);
+    document.body.append(root);
+    Object.defineProperties(root, {
+      clientHeight: { configurable: true, value: 400 },
+      clientWidth: { configurable: true, value: 600 },
+    });
+    root.getBoundingClientRect = () =>
+      ({
+        bottom: 400,
+        height: 400,
+        left: 0,
+        right: 600,
+        top: 0,
+        width: 600,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const rangeRect = {
+      bottom: 120,
+      height: 20,
+      left: 100,
+      right: 220,
+      top: 100,
+      width: 120,
+      x: 100,
+      y: 100,
+      toJSON: () => ({}),
+    } as DOMRect;
+    range.getBoundingClientRect = vi.fn(() => rangeRect);
+    range.getClientRects = () => {
+      const rects = [rangeRect];
+      return Object.assign(rects, {
+        item: (index: number) => rects[index] ?? null,
+      });
+    };
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const unregister = registerMarkdownCopySource(
+      sourceElement,
+      "Selectable text",
+    );
+    const containerRef = { current: root } as RefObject<HTMLDivElement>;
+    const { result, unmount } = renderHook(() =>
+      useSelectionActionCapture({
+        actionCount: 1,
+        containerRef,
+        inert: false,
+      }),
+    );
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+      document.dispatchEvent(new Event("selectionchange"));
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    expect(result.current.state?.snapshot.snippets).toMatchObject([
+      { markdown: "Selectable text" },
+    ]);
+    expect(range.getBoundingClientRect).toHaveBeenCalledTimes(1);
+
+    act(() => vi.advanceTimersByTime(50));
+
+    expect(range.getBoundingClientRect).toHaveBeenCalledTimes(2);
+
+    act(() => vi.advanceTimersByTime(50));
+
+    act(() => {
+      window.dispatchEvent(new Event("scroll"));
+      window.dispatchEvent(new Event("scroll"));
+      window.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(range.getBoundingClientRect).toHaveBeenCalledTimes(3);
+
+    act(() => vi.advanceTimersByTime(50));
+
+    expect(range.getBoundingClientRect).toHaveBeenCalledTimes(4);
+    unmount();
+    unregister();
+  });
 });
 
 describe("placeSelectionActions", () => {
