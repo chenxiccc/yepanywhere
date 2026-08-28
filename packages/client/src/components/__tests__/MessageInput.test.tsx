@@ -1137,6 +1137,7 @@ describe("MessageInput", () => {
       {
         onProjectQueue,
         onProjectQueueNewSession,
+        projectQueueBlocked: false,
         onAttach,
         projectId: "project-1",
         sessionId: "session-1",
@@ -1184,6 +1185,11 @@ describe("MessageInput", () => {
           ".message-input-keyboard-project-queue-slot .project-queue-mode",
         ),
       ).toBeTruthy();
+      expect(
+        screen
+          .getByRole("button", { name: "Queue for Project Queue" })
+          .getAttribute("data-project-queue-state"),
+      ).toBe("unblocked");
       expect(
         document.querySelector(
           ".message-input-keyboard-project-queue-new-session-slot .project-queue-new-session-button",
@@ -5048,6 +5054,19 @@ describe("MessageInput", () => {
       "deferred",
     );
     expect(onProjectQueue).not.toHaveBeenCalled();
+  });
+
+  it("marks the current-session Project Queue action unblocked", () => {
+    renderMessageInput(vi.fn(), {
+      onProjectQueue: vi.fn(),
+      projectQueueBlocked: false,
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "Queue for Project Queue" })
+        .getAttribute("data-project-queue-state"),
+    ).toBe("unblocked");
   });
 
   it("shows only the Project Queue new-session action when current-session queueing is unavailable", () => {

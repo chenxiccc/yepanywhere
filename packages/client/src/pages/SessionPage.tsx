@@ -183,7 +183,7 @@ import { isLegacyCodexSetupText } from "../lib/codexLegacySetup";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import {
   serverSupportsProjectQueue,
-  shouldShowProjectQueueAffordance,
+  getProjectQueueAffordanceState,
 } from "../lib/projectQueueVisibility";
 import { createSessionDraftStorageKey } from "../lib/sessionDraftStorage";
 import {
@@ -716,17 +716,17 @@ function SessionPageContent({
       }),
     [projectQueueItemsForProject, projectQueues.mutatingItemId, sessionId, t],
   );
-  const showProjectQueueAction =
-    supportsProjectQueue &&
-    shouldShowProjectQueueAffordance({
-      projectId,
-      currentSessionId: sessionId,
-      currentSessionBlocksProjectQueue,
-      currentSessionHasSessionQueueBacklog: deferredMessages.length > 0,
-      activeProjectSessionIds,
-      projectQueueBlockingCount,
-      projectQueueItemCount,
-    });
+  const projectQueueAffordanceState = supportsProjectQueue
+    ? getProjectQueueAffordanceState({
+        projectId,
+        currentSessionBlocksProjectQueue,
+        currentSessionHasSessionQueueBacklog: deferredMessages.length > 0,
+        activeProjectSessionIds,
+        projectQueueBlockingCount,
+        projectQueueItemCount,
+      })
+    : "unavailable";
+  const showProjectQueueAction = projectQueueAffordanceState !== "unavailable";
 
   // Session connection bar state for active session update streams
   const { connectionState } = useActivityBusState();
@@ -5688,6 +5688,7 @@ function SessionPageContent({
                     ? handleProjectQueueNewSession
                     : undefined
                 }
+                projectQueueBlocked={projectQueueAffordanceState === "blocked"}
                 primaryActionKind={
                   mainComposerForAside ? "send" : primaryComposerAction
                 }

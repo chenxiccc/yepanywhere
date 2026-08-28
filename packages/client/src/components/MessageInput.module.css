@@ -2,6 +2,10 @@
   overflow: hidden;
 }
 
+.projectQueueUnblocked {
+  --project-queue-button-bg: var(--app-yep-green-dark);
+}
+
 @media (max-width: 600px) {
   .collapsedWithLeadingMicrophone.collapsedWithLeadingMicrophone
     :global(.speech-draft-field)

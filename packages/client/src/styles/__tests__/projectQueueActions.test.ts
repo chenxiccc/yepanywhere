@@ -4,6 +4,14 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const stylesheetUrl = new URL("../index.css", import.meta.url);
+const messageInputStylesheetUrl = new URL(
+  "../../components/MessageInput.module.css",
+  import.meta.url,
+);
+const toolbarStylesheetUrl = new URL(
+  "../../components/MessageInputToolbar.module.css",
+  import.meta.url,
+);
 const deliveryGlyphStylesheetUrl = new URL(
   "../../components/DeliveryGlyph.module.css",
   import.meta.url,
@@ -100,6 +108,20 @@ describe("Project Queue action CSS contract", () => {
     expect(declarations).toMatch(
       /color:\s*var\(--project-queue-new-session-action-bg\)\s*;/,
     );
+  });
+
+  it("uses dark green when current-session delivery is unblocked", async () => {
+    for (const stylesheet of [
+      messageInputStylesheetUrl,
+      toolbarStylesheetUrl,
+    ]) {
+      const css = await readFile(stylesheet, "utf8");
+      const declarations = getRuleDeclarations(css, ".projectQueueUnblocked");
+
+      expect(declarations).toMatch(
+        /--project-queue-button-bg:\s*var\(--app-yep-green-dark\)\s*;/,
+      );
+    }
   });
 
   it("optically centers text arrows in a shared glyph envelope", async () => {

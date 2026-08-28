@@ -308,6 +308,8 @@ export interface MessageInputToolbarProps {
   onProjectQueue?: () => void;
   /** Queue the draft as a new session after the project becomes idle. */
   onProjectQueueNewSession?: () => void;
+  /** Whether Project Queue delivery must wait behind known project work. */
+  projectQueueBlocked?: boolean;
   /** Steer the current turn. Used as the alternate action when Enter queues. */
   onSteer?: () => void;
   primaryActionKind?: "send" | "steer" | "queue";
@@ -678,6 +680,7 @@ interface ToolbarProjectQueueControl {
   onProjectQueue?: () => void;
   onProjectQueueNewSession?: () => void;
   canSend?: boolean;
+  blocked?: boolean;
   tooltip?: string;
   newSessionTooltip?: string;
 }
@@ -1444,7 +1447,15 @@ export function MessageInputToolbarView({
               type="button"
               onClick={projectQueue.onProjectQueue}
               disabled={disabled}
-              className={classNameFor("projectQueue")}
+              className={classNameFor(
+                "projectQueue",
+                projectQueue.blocked === false
+                  ? (toolbarModuleStyles.projectQueueUnblocked ?? "")
+                  : "",
+              )}
+              data-project-queue-state={
+                projectQueue.blocked === false ? "unblocked" : "blocked"
+              }
               aria-label={deliveryLabel(t("toolbarProjectQueueLabel"))}
               title={deliveryTooltip(projectQueue.tooltip)}
               role={menu ? "menuitem" : undefined}
@@ -2744,6 +2755,7 @@ export function MessageInputToolbar({
   onQueue,
   onProjectQueue,
   onProjectQueueNewSession,
+  projectQueueBlocked = true,
   onSteer,
   primaryActionKind,
   sendOverride,
@@ -3660,6 +3672,7 @@ export function MessageInputToolbar({
                 onProjectQueue,
                 onProjectQueueNewSession,
                 canSend,
+                blocked: projectQueueBlocked,
                 tooltip: onProjectQueue
                   ? showProjectQueueShortcut
                     ? t("toolbarProjectQueueTooltipWithShortcut")
