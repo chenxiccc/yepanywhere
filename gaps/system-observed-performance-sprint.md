@@ -178,6 +178,20 @@ and Linux `perf`/flamegraphs on an appropriate isolated host. Ordinary
 profiling and already-available per-subsystem expense logs are fully valid
 discovery methods.
 
+External resource-pressure drivers are also valid source-independent knobs. A
+helper may occupy and continually touch a declared amount of physical memory
+or consume a declared CPU/core share. Prefer cgroup/container controls such as
+`memory.high`/`memory.max`, `cpu.max`, and `cpuset.cpus` when they can constrain
+the server and harness-launched browser process trees independently. Treat
+server pressure as the primary sweep and client pressure as a separately
+declared axis. If the client cannot be isolated safely on the server host, run
+it on another host through an SSH tunnel/remote forward and record both host
+capacity keys. For every pressure leg, record the configured limit or helper
+demand plus realized available RAM, reclaim/swap/pressure evidence, CPU
+occupancy, and throttling. A shared-host helper is allowed only when it cannot
+interfere with unowned workloads; ambient or unmeasured contention remains
+diagnostic rather than acceptance-grade evidence.
+
 Slowdown injection from `gaps/full-stack-degradation-injection.md` is optional
 and is not a prerequisite for this sprint. If used, follow
 `~/agents/topics/perf.md`: read the architecture and owning code first, state a
