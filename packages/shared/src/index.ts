@@ -568,6 +568,7 @@ export {
   SYNTHETIC_TERMINATE_COMMAND_CAPABILITY,
   SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
   PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY,
+  PUBLIC_FILE_SHARES_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
@@ -845,10 +846,14 @@ export {
 } from "./public-shares.js";
 
 export type {
+  CreatePublicFileShareRequest,
+  CreatePublicFileShareResponse,
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
   FreezePublicSharesResponse,
   FreezePublicSessionLiveSharesResponse,
+  PublicFileShareListResponse,
+  PublicFileShareManagementItem,
   PublicSessionShareMetadata,
   PublicShareLinkedFileMode,
   PublicShareSessionChunksMetadata,

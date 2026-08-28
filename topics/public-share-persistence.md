@@ -60,6 +60,13 @@ share-owned chunks whose cursor cannot change meaning; a byte range into a
 provider transcript, mutable source file, or ordinary JSON response is not a
 valid frozen boundary.
 
+A **live file grant** is a compact bearer authorization for one normalized
+project-relative root file. It retains no session state, transcript, file body,
+revision body, project root, or authorized-asset manifest. Direct render assets
+are authorized from the bounded current root source at request time, so both
+content and the one-level reference set remain live. This is intentionally not
+an immutable file or revision share.
+
 ## Complete frozen capture
 
 Live serving keeps its incremental session loader. Every operation that can
@@ -111,6 +118,7 @@ YA app data owns one public-share directory with two storage classes:
 ```text
 public-shares/
 ├─ grants.<implementation-owned>       compact; no transcript bodies
+├─ file-grants.json                    compact live-file grants
 ├─ cleanup.<implementation-owned>      pending share-state collection journal
 ├─ shares/
 │  └─ <opaque-share-state-id>/         independently openable
@@ -128,6 +136,13 @@ grant file's size is proportional to valid-link metadata and it contains no
 transcript or project-file bytes. It is intentionally not organized by
 session; management filters that bounded control data without touching state
 directories.
+
+Dedicated live-file grants use a separate atomic `file-grants.json` in the same
+owner-only app-data directory. It is proportional only to valid file-link
+metadata. Public-share readiness and lifecycle cover both compact stores:
+startup opens both before reporting ready, disable commits revocation in both,
+and re-enable cannot resurrect either store after interrupted cleanup. The
+session grant index does not acquire a file target or path field.
 
 The grant store is the sole source of truth for valid URLs and supports direct
 secret-hash lookup, authenticated inventory, and per-session filtering. A
@@ -535,6 +550,13 @@ hash, transcript body, project root, or authorized path set. A URL is absent for
 legacy hash-only grants. One-link revocation and explicitly confirmed global
 revocation commit grant invalidation before best-effort content collection; a
 cleanup failure remains visible as `cleanupPending`.
+
+Authenticated live-file management is deliberately target-local rather than a
+new mixed global inventory. Exact project-id and normalized-path lookup returns
+only compact metadata for that file; opaque-id revocation deletes one file
+grant. Creation verifies the current root is readable before committing bearer
+authority. Global disable and revoke-all span both grant stores, while session
+filters, freezes, and revision collection remain session-only.
 
 Selective live-link freezing is independently gated by the permanent indexed
 `public-share-management-freeze` capability. Its authenticated batch route

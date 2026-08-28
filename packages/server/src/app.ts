@@ -133,6 +133,7 @@ import { createProjectsRoutes } from "./routes/projects.js";
 import { createProjectSessionDefaultsRoutes } from "./routes/project-session-defaults.js";
 import { createProvidersRoutes } from "./routes/providers.js";
 import { createCodexUpdateRoutes } from "./routes/codex-updates.js";
+import { createPublicFileShareRoutes } from "./routes/public-file-shares.js";
 import {
   createPublicSharePublicRoutes,
   createPublicShareRoutes,
@@ -2475,6 +2476,7 @@ export function createApp(options: AppOptions): AppResult {
     };
 
     app.route("/api/public-shares", createPublicShareRoutes(publicShareDeps));
+    app.route("/api", createPublicFileShareRoutes(publicShareDeps));
     app.route(
       "/api",
       createPublicShareManagementRoutes({

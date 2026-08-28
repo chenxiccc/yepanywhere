@@ -23,6 +23,7 @@ import {
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   PROJECT_CODE_NAMES_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
+  PUBLIC_FILE_SHARES_CAPABILITY,
   PROVIDER_HOST_CONTROL_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
@@ -191,6 +192,10 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(
       PROJECT_SESSION_DEFAULTS_CAPABILITY,
     );
+  });
+
+  it("advertises live public file shares", () => {
+    expect(getServerCapabilities()).toContain(PUBLIC_FILE_SHARES_CAPABILITY);
   });
 
   it("advertises provider-host control only while registered", () => {

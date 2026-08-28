@@ -24,6 +24,7 @@ export function PublicShareFilePage() {
   const filePath = searchParams.get("path") ?? "";
   const projectId = searchParams.get("projectId");
   const relayUsername = searchParams.get("h") ?? "";
+  const standaloneFile = searchParams.get("standalone") === "1";
   const viewerId = searchParams.get("viewerId") ?? undefined;
   const lineNumber = parsePositiveInteger(searchParams.get("line"));
   const lineEnd = parsePositiveInteger(searchParams.get("lineEnd"));
@@ -53,9 +54,17 @@ export function PublicShareFilePage() {
       relayUrl: relayConfig.url,
       relayUsername,
       secret,
+      standaloneFile,
       viewerId,
     };
-  }, [projectId, relayConfig.url, relayUsername, secret, viewerId]);
+  }, [
+    projectId,
+    relayConfig.url,
+    relayUsername,
+    secret,
+    standaloneFile,
+    viewerId,
+  ]);
 
   const shareHref = useMemo(() => {
     if (!secret) {
@@ -79,11 +88,13 @@ export function PublicShareFilePage() {
 
   const content = (
     <div className="file-page">
-      <div className="file-page-nav">
-        <Link to={shareHref} className="file-page-back-link">
-          <span>{t("publicShareBackToShare" as never)}</span>
-        </Link>
-      </div>
+      {!standaloneFile && (
+        <div className="file-page-nav">
+          <Link to={shareHref} className="file-page-back-link">
+            <span>{t("publicShareBackToShare" as never)}</span>
+          </Link>
+        </div>
+      )}
       <div className="file-page-content">
         {source ? (
           <FileViewer

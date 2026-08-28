@@ -241,6 +241,41 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace source and installed servers whose management surface supports revocation but not exact live-link freezing.",
     },
   },
+  publicFileShares: {
+    id: CAPABILITY_ID_ALLOCATIONS.publicFileShares.id,
+    name: "public-file-shares",
+    kind: "permanent",
+    area: "remoteAccess",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server creates, lists, and revokes live bearer-link grants for one project file and its bounded render assets.",
+    clientFallback:
+      "Hide file-share controls and make no public-file-share request.",
+    serverContract: {
+      routes: [
+        "GET /api/public-file-shares",
+        "POST /api/public-file-shares",
+        "DELETE /api/public-file-shares/:shareId",
+      ],
+      routeModules: ["packages/server/src/routes/public-file-shares.ts"],
+      requestFields: [
+        "publicFileShare.projectId",
+        "publicFileShare.path",
+        "publicFileShare.title",
+      ],
+      responseFields: [
+        "publicFileShares.items",
+        "publicFileShare.url",
+        "publicFileShare.shareId",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers that have session shares but no standalone file-grant registry.",
+    },
+  },
   glossaryTooltips: {
     id: CAPABILITY_ID_ALLOCATIONS.glossaryTooltips.id,
     name: "glossary-tooltips",
@@ -1984,6 +2019,8 @@ export const PUBLIC_SHARE_MANAGEMENT_CAPABILITY =
   SERVER_CAPABILITIES.publicShareManagement.name;
 export const PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY =
   SERVER_CAPABILITIES.publicShareManagementFreeze.name;
+export const PUBLIC_FILE_SHARES_CAPABILITY =
+  SERVER_CAPABILITIES.publicFileShares.name;
 export const IDLE_REAP_HOURS_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.idleReapHoursSetting.name;
 export const SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY =

@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type FileContentResponse, toUrlProjectId } from "@yep-anywhere/shared";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "../../api/client";
 import { setInlineMediaExpandedPreference } from "../../hooks/useInlineMedia";
 import { I18nProvider } from "../../i18n";
 import {
@@ -52,6 +53,8 @@ describe("PublicShareFilePage", () => {
   });
 
   it("uses the shared file viewer and embedded Markdown media", async () => {
+    const getVersion = vi.spyOn(api, "getVersion");
+    const getPublicShareStatus = vi.spyOn(api, "getPublicShareStatus");
     const projectRoot = "/local/graehl/yepanywhere";
     const projectId = toUrlProjectId(projectRoot);
     const imagePath = `${projectRoot}/docs/diagram.png`;
@@ -81,6 +84,7 @@ describe("PublicShareFilePage", () => {
       path: "docs/guide.md",
       projectId,
       r: "wss://relay.graehl.org/ws",
+      standalone: "1",
       viewerId: "viewer-token-1",
     });
 
@@ -98,6 +102,9 @@ describe("PublicShareFilePage", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Guide" })).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "Back to public share" }),
+    ).toBeNull();
     expect(screen.queryByAltText("diagram.png")).toBeNull();
     fireEvent.click(
       await screen.findByRole("button", { name: "Expand image" }),
@@ -111,11 +118,14 @@ describe("PublicShareFilePage", () => {
       "/share/share-secret/file",
     );
     expect(mediaLink.getAttribute("href")).toContain("viewerId=viewer-token-1");
+    expect(mediaLink.getAttribute("href")).toContain("standalone=1");
     expect(fetchPublicShareJsonViaRelayMock).toHaveBeenCalledWith(
       expect.objectContaining({
         path: expect.stringContaining("viewerId=viewer-token-1"),
       }),
     );
     expect(fetchPublicShareBlobViaRelayMock).not.toHaveBeenCalled();
+    expect(getVersion).not.toHaveBeenCalled();
+    expect(getPublicShareStatus).not.toHaveBeenCalled();
   });
 });

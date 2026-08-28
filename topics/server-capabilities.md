@@ -74,6 +74,14 @@ omit file-revision chrome and make no metadata request. Existing capability
 meanings and older capable behavior remain unchanged. It is version-implied
 from `0.7.2`.
 
+`public-file-shares` owns authenticated exact-file list, create, and revoke
+routes plus the dedicated live-file grant semantics on existing public file
+reads. The ordinary optional-feature corpus is `v0.7.0` (2026-07-25) and
+`v0.6.2` (2026-07-11); both lack these routes and permanent ID 51. Without it,
+the client hides the File Viewer share action and makes no file-share request;
+session sharing and existing public file reads keep their prior behavior. It is
+version-implied from `0.7.2`.
+
 `codex-stream-durable-id-alignment` owns the meaning of existing Codex
 `message.uuid` values across streamed `session-message` events and REST session
 detail rows. The core corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0` lacks
@@ -413,9 +421,10 @@ the same ledger:
 | 48 | server | 0.7.2 | `codex-stream-durable-id-alignment` |
 | 49 | server | 0.7.2 | `cache-miss-billing-expected-expiry` |
 | 50 | server | 0.7.2 | `attachment-only-session-messages` |
+| 51 | server | 0.7.2 | `public-file-shares` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 51; retired rows stay in the ledger as reserved IDs.
+ID 52; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

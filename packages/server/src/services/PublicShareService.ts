@@ -6,6 +6,7 @@ import {
   isPublicShareSessionTransferSizeWithinLimits,
   type AppSession,
   type FreezePublicSessionLiveSharesResponse,
+  type PublicFileShareManagementItem,
   type PublicShareSessionChunksMetadata,
   type PublicSessionShareMetadata,
   type PublicSessionSharePublicMetadata,
@@ -24,6 +25,10 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { createLruSet, refreshLruSet } from "../lib/lruCollections.js";
+import {
+  PublicFileShareStore,
+  type PublicFileShareGrant,
+} from "./PublicFileShareStore.js";
 import {
   type PublicShareGrant,
   type PublicShareLinkedFileMode,
@@ -112,6 +117,13 @@ export interface CreatePublicShareOptions {
   initialPrompt?: string | null;
   capture?: PublicShareCapture;
   buildPublicUrl?: (secret: string) => string;
+}
+
+export interface CreatePublicFileShareOptions {
+  projectId: UrlProjectId;
+  path: string;
+  title?: string | null;
+  buildPublicUrl: (secret: string) => string;
 }
 
 function normalizeGrantText(
@@ -296,6 +308,7 @@ function summarizeRecords(
 
 export class PublicShareService {
   private readonly store: PublicShareStore;
+  private readonly fileStore: PublicFileShareStore;
   private readonly viewerTelemetry = new Map<
     string,
     Map<string, ViewerTelemetryRecord>
@@ -305,32 +318,101 @@ export class PublicShareService {
 
   constructor(options: PublicShareServiceOptions) {
     this.store = new PublicShareStore(options.dataDir);
+    this.fileStore = new PublicFileShareStore(options.dataDir);
   }
 
   async initialize(enabled = true): Promise<void> {
-    await this.store.initialize(enabled);
+    const results = await Promise.allSettled([
+      this.fileStore.initialize(enabled),
+      this.store.initialize(enabled),
+    ]);
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (rejected) throw rejected.reason;
     console.log(
-      `[public-shares] Loaded ${this.store.getAllGrants().length} grant(s)`,
+      `[public-shares] Loaded ${this.store.getAllGrants().length} session grant(s) and ${this.fileStore.getAllGrants().length} file grant(s)`,
     );
   }
 
   async disableAndRevoke(): Promise<number> {
-    const revokedCount = await this.store.disable();
+    const results = await Promise.allSettled([
+      this.store.disable(),
+      this.fileStore.disable(),
+    ]);
     this.viewerTelemetry.clear();
     this.viewerTelemetryByRecency.clear();
-    return revokedCount;
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (rejected) throw rejected.reason;
+    return results.reduce(
+      (total, result) =>
+        total + (result.status === "fulfilled" ? result.value : 0),
+      0,
+    );
   }
 
   async enable(): Promise<void> {
-    await this.store.enable();
+    await Promise.all([this.fileStore.enable(), this.store.enable()]);
   }
 
   getReadiness(): { state: PublicShareStoreReadiness; error: string | null } {
-    return this.store.getReadiness();
+    const sessionReadiness = this.store.getReadiness();
+    if (sessionReadiness.state !== "ready") return sessionReadiness;
+    return this.fileStore.getReadiness();
   }
 
   getValidShareCount(): number {
-    return this.store.getAllGrants().length;
+    return (
+      this.store.getAllGrants().length + this.fileStore.getAllGrants().length
+    );
+  }
+
+  getPublicFileShares(
+    projectId: UrlProjectId,
+    path: string,
+  ): PublicFileShareManagementItem[] {
+    return this.fileStore
+      .getAllGrants()
+      .filter((grant) => grant.projectId === projectId && grant.path === path)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map((grant) => ({
+        shareId: grant.shareId,
+        url: grant.url,
+        title: grant.title,
+        createdAt: grant.createdAt,
+        updatedAt: grant.updatedAt,
+      }));
+  }
+
+  async createFileShare(options: CreatePublicFileShareOptions): Promise<{
+    secret: string;
+    secretBits: number;
+    record: PublicFileShareGrant;
+  }> {
+    const { secret, secretHash } = this.createUniqueSecret();
+    const record = await this.fileStore.createGrant({
+      secretHash,
+      publicUrl: options.buildPublicUrl(secret),
+      projectId: options.projectId,
+      path: options.path,
+      title: normalizeGrantText(options.title, PUBLIC_SHARE_TITLE_MAX_LENGTH),
+    });
+    return { secret, secretBits: PUBLIC_SHARE_SECRET_BITS, record };
+  }
+
+  getFileRecordBySecret(secret: string): PublicFileShareGrant | null {
+    if (!isValidSecret(secret)) return null;
+    const secretHash = hashSecret(secret);
+    const record = this.fileStore.getGrantBySecretHash(secretHash);
+    return record && timingSafeStringEqual(record.secretHash, secretHash)
+      ? record
+      : null;
+  }
+
+  async revokeFileShare(shareId: string): Promise<boolean> {
+    return await this.fileStore.revokeShare(shareId);
   }
 
   isCleanupPending(): boolean {
@@ -534,8 +616,7 @@ export class PublicShareService {
       throw new Error("Frozen shares require a complete session capture");
     }
 
-    const secret = randomBytes(PUBLIC_SHARE_SECRET_BYTES).toString("base64url");
-    const secretHash = hashSecret(secret);
+    const { secret, secretHash } = this.createUniqueSecret();
     const publicUrl = options.buildPublicUrl?.(secret);
     const { grant: record } = await this.store.createGrant({
       secretHash,
@@ -614,10 +695,18 @@ export class PublicShareService {
   }
 
   async revokeAllShares(): Promise<number> {
-    const revokedRecords = await this.store.revokeMatching(() => true);
+    const results = await Promise.allSettled([
+      this.store.revokeMatching(() => true),
+      this.fileStore.revokeAll(),
+    ]);
     this.viewerTelemetry.clear();
     this.viewerTelemetryByRecency.clear();
-    return revokedRecords.length;
+    const [sessionResult, fileResult] = results;
+    if (sessionResult.status === "rejected") throw sessionResult.reason;
+    if (fileResult.status === "rejected") throw fileResult.reason;
+    const revokedRecords = sessionResult.value;
+    const revokedFileCount = fileResult.value;
+    return revokedRecords.length + revokedFileCount;
   }
 
   async freezeSessionLiveShares(
@@ -1099,5 +1188,21 @@ export class PublicShareService {
       if (!oldest) return;
       this.removeViewerTelemetry(oldest.secretHash, oldest.viewerId);
     }
+  }
+
+  private createUniqueSecret(): { secret: string; secretHash: string } {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const secret = randomBytes(PUBLIC_SHARE_SECRET_BYTES).toString(
+        "base64url",
+      );
+      const secretHash = hashSecret(secret);
+      if (
+        !this.store.getGrantBySecretHash(secretHash) &&
+        !this.fileStore.getGrantBySecretHash(secretHash)
+      ) {
+        return { secret, secretHash };
+      }
+    }
+    throw new Error("Unable to allocate a unique public share secret");
   }
 }

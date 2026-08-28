@@ -1,6 +1,8 @@
 import {
   fromUrlProjectId,
   isUrlProjectId,
+  PUBLIC_FILE_SHARES_CAPABILITY,
+  serverHasCapability,
   type FileContentResponse,
   type GitFileDiffMode,
 } from "@yep-anywhere/shared";
@@ -26,11 +28,13 @@ import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useSessionViewerComment } from "../contexts/SessionViewerCommentContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useFileVersionControl } from "../hooks/useFileVersionControl";
+import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useQuoteReplyButtonMode } from "../hooks/useQuoteReplyButtonMode";
 import { useSelectionActions } from "../hooks/useMessageListSelectionQuote";
 import { useRegisterQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useSessionFileComments } from "../hooks/useSessionFileComments";
+import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import {
@@ -83,6 +87,7 @@ import {
   type FileViewSelection,
 } from "./FileDiffViewLinks";
 import { FileRevisionLink } from "./FileRevisionLink";
+import { PublicFileShareModal } from "./PublicFileShareModal";
 import {
   FilePathContextMenu,
   type FileViewPresentation,
@@ -601,6 +606,7 @@ export const FileViewer = memo(function FileViewer({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [fileShareAnchor, setFileShareAnchor] = useState<DOMRect | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [commentMode, setCommentMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -1726,6 +1732,9 @@ export const FileViewer = memo(function FileViewer({
             {copied ? <CheckIcon /> : <CopyIcon />}
           </button>
         )}
+        {publicShareContext === null &&
+          source === DEFAULT_FILE_VIEWER_SOURCE &&
+          !diffActive && <PublicFileShareButton onOpen={setFileShareAnchor} />}
         {publicShareContext === null && (
           <button
             type="button"
@@ -1815,6 +1824,15 @@ export const FileViewer = memo(function FileViewer({
   return (
     <div className={viewerClass} onBlurCapture={handleViewerBlur}>
       {header}
+      {fileShareAnchor && (
+        <PublicFileShareModal
+          anchorRect={fileShareAnchor}
+          filePath={filePath}
+          projectId={projectId}
+          title={fileName}
+          onClose={() => setFileShareAnchor(null)}
+        />
+      )}
       {contextMenu && (
         <FilePathContextMenu
           x={contextMenu.x}
@@ -2030,6 +2048,51 @@ function CopyIcon() {
     >
       <rect x="5" y="5" width="9" height="9" rx="1.5" />
       <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+    </svg>
+  );
+}
+
+function PublicFileShareButton({
+  onOpen,
+}: {
+  onOpen: (anchor: DOMRect) => void;
+}) {
+  const { t } = useI18n();
+  const { version } = useVersion();
+  const { status } = usePublicShareStatus();
+  if (
+    status?.canCreate !== true ||
+    !serverHasCapability(version, PUBLIC_FILE_SHARES_CAPABILITY)
+  ) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      className="file-viewer-action"
+      onClick={(event) => onOpen(event.currentTarget.getBoundingClientRect())}
+      title={t("fileViewerSharePublicly")}
+      aria-label={t("fileViewerSharePublicly")}
+    >
+      <PublicLinkIcon />
+    </button>
+  );
+}
+
+function PublicLinkIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m8 12 4-4M6.5 14.5l-1 1a2.8 2.8 0 0 1-4-4l3-3a2.8 2.8 0 0 1 4 0M13.5 5.5l1-1a2.8 2.8 0 1 1 4 4l-3 3a2.8 2.8 0 0 1-4 0" />
     </svg>
   );
 }

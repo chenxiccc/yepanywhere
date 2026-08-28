@@ -55,6 +55,31 @@ export interface CreatePublicSessionShareResponse {
   linkedFileMode?: PublicShareLinkedFileMode;
 }
 
+export interface CreatePublicFileShareRequest {
+  projectId: UrlProjectId;
+  path: string;
+  title?: string;
+}
+
+export interface CreatePublicFileShareResponse {
+  url: string;
+  shareId: string;
+  createdAt: string;
+  secretBits: number;
+}
+
+export interface PublicFileShareManagementItem {
+  shareId: string;
+  url: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicFileShareListResponse {
+  items: PublicFileShareManagementItem[];
+}
+
 export interface PublicSessionShareSessionStatusResponse {
   storageState?: PublicShareStorageState;
   storageError?: string | null;

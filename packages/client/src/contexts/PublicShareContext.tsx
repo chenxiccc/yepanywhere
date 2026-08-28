@@ -15,6 +15,7 @@ export interface PublicShareContextValue {
   relayUrl: string;
   relayUsername: string;
   secret: string;
+  standaloneFile?: boolean;
   viewerId?: string;
 }
 
@@ -142,6 +143,9 @@ export function buildPublicShareFileHref(
   }
   if (context.viewerId) {
     url.searchParams.set("viewerId", context.viewerId);
+  }
+  if (context.standaloneFile) {
+    url.searchParams.set("standalone", "1");
   }
   const lineNumber = options.lineNumber ?? normalized.lineNumber;
   if (lineNumber !== undefined) {

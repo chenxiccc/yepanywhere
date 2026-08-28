@@ -10,6 +10,8 @@ import type {
   ClientDefaults,
   CodexReasoningSummary,
   ConnectionsResponse,
+  CreatePublicFileShareRequest,
+  CreatePublicFileShareResponse,
   CreateProjectWorkstreamRequest,
   CreateProjectWorkstreamResponse,
   CreateProjectQueueItemRequest,
@@ -33,6 +35,7 @@ import type {
   ProjectQueueResponse,
   ProjectSessionDefaultsResponse,
   ProjectWorkstreamsResponse,
+  PublicFileShareListResponse,
   PublicShareManagementListResponse,
   PublicShareStorageState,
   WorkstreamCheckoutPreviewResponse,
@@ -1698,6 +1701,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getPublicFileShares: (projectId: UrlProjectId, path: string) => {
+    const params = new URLSearchParams({ projectId, path });
+    return fetchJSON<PublicFileShareListResponse>(
+      `/public-file-shares?${params}`,
+    );
+  },
+
+  createPublicFileShare: (body: CreatePublicFileShareRequest) =>
+    fetchJSON<CreatePublicFileShareResponse>("/public-file-shares", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  revokePublicFileShare: (shareId: string) =>
+    fetchJSON<RevokePublicShareResponse>(
+      `/public-file-shares/${encodeURIComponent(shareId)}`,
+      { method: "DELETE" },
+    ),
 
   revokePublicSessionShares: (projectId: string, sessionId: string) =>
     fetchJSON<RevokePublicSessionSharesResponse>(

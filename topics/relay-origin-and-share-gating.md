@@ -23,6 +23,11 @@ snapshot; it does not revoke the bearer capability. Possessors include a party
 who observes the public share secret in transit through an authorized
 public-share transport.
 
+A dedicated public file share is a separate bearer grant for one current
+project-relative file. It does not depend on a session grant or reveal a
+session identity. The grant remains valid until revoked, while the served root
+file and its allowed render assets remain live project content.
+
 Client fatal-render diagnostics capture only a route identity: query and hash
 are omitted, and the secret segment in `/share/:secret` and
 `/remote/share/:secret` is replaced. The same redacted identity is used for
@@ -69,6 +74,14 @@ retained complete public URL so the owner can copy and reshare that existing
 authorization. It never returns a standalone bearer secret, its hash, a
 transcript body, or a project filesystem path. Legacy hash-only grants have no
 recoverable URL and remain non-copyable.
+
+Dedicated file grants use an exact-target authenticated management route. Its
+list requires the project id and normalized project-relative path already held
+by File Viewer and returns only opaque share ids, retained URLs, optional
+titles, and timestamps. It never provides a project-wide file-share inventory
+or path-existence oracle. The owner can create, copy, and revoke these links in
+File Viewer; the server-wide kill switch revokes file and session links
+together.
 
 Owner management does not depend on link-creation readiness. Missing relay
 credentials, disabled Remote Access, or a disconnected relay may prevent a new
@@ -199,6 +212,23 @@ the read-only trust boundary remains explicit. Inside that boundary, shared UI
 code should still carry the normal file-viewer shell, spacing, rendered
 Markdown behavior, local-media modal, copy affordances, and line/source toggle
 behavior where those affordances are read-only.
+
+A dedicated live file share authorizes exactly its root file. When that root is
+a bounded Markdown, MDX, Quarto Markdown, or HTML source, it also authorizes
+directly referenced SVG, raster-image, and supported video assets one level
+deep. It never authorizes another linked document, a nested asset referenced by
+an asset, a project scan, source-control data, or an app-data attachment. Each
+asset request rereads the current root before authorizing the target, so editing
+the root immediately removes stale references and admits current ones. Root and
+asset responses keep the existing no-store and active-content hardening.
+
+The File Viewer creation action is visible only for the ordinary live working
+file when Public Read-Only Share can currently create links and the server has
+the permanent `public-file-shares` capability. It is absent from diffs,
+historical projections, and public views. A client without the capability makes
+no file-share management request. File links reuse the established public-share
+relay registration and secret-only `/public-api/shares/:secret/files` reads;
+they do not add a relay protocol or registration mode.
 
 The same architecture rule applies to the public session viewport: an
 independent unauthenticated shell can be safer, but transcript rows, rendered

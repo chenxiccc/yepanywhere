@@ -389,7 +389,7 @@ function isPathInsideDirectory(filePath: string, directory: string): boolean {
   );
 }
 
-function normalizePublicShareProjectFilePath(
+export function normalizePublicShareProjectFilePath(
   rawPath: string,
   projectRoot: string,
   dataDir?: string,
@@ -749,6 +749,56 @@ async function publicShareSessionMentionsRenderAsset(
   return false;
 }
 
+async function publicFileShareMentionsRenderAsset(
+  deps: PublicSharePublicRoutesDeps,
+  fileShare: NonNullable<
+    ReturnType<PublicShareService["getFileRecordBySecret"]>
+  >,
+  relativePath: string,
+  projectRoot: string,
+): Promise<boolean> {
+  if (
+    !deps.fetchProjectFile ||
+    !hasPublicShareExtension(
+      fileShare.path,
+      PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS,
+    ) ||
+    !hasPublicShareExtension(relativePath, PUBLIC_SHARE_RENDER_ASSET_EXTENSIONS)
+  ) {
+    return false;
+  }
+
+  try {
+    const response = await deps.fetchProjectFile(
+      fileShare.projectId,
+      fileShare.path,
+      { raw: false },
+    );
+    if (!response.ok) return false;
+    const source = (await response.json()) as FileContentResponse;
+    if (
+      typeof source.content !== "string" ||
+      source.contentTruncated ||
+      source.metadata.size > MAX_PUBLIC_SHARE_TRANSITIVE_SOURCE_BYTES ||
+      Buffer.byteLength(source.content, "utf8") >
+        MAX_PUBLIC_SHARE_TRANSITIVE_SOURCE_BYTES
+    ) {
+      return false;
+    }
+    return extractLocalRenderReferences(source.content).some(
+      (reference) =>
+        normalizeRenderReferencePath(
+          reference,
+          fileShare.path,
+          projectRoot,
+          fileShare.projectId,
+        ) === relativePath,
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildDirectPublicSharePresentation(
   session: AppSession,
   projectRoot: string,
@@ -854,27 +904,33 @@ async function servePublicShareProjectFile(
     return notFound(c);
   }
   const record = deps.publicShareService.getRecordBySecret(secret);
-  if (!record) {
+  const fileShare = record
+    ? null
+    : deps.publicShareService.getFileRecordBySecret(secret);
+  if (!record && !fileShare) {
     return notFound(c);
   }
   const viewerId = c.req.query("viewerId");
-  const representationUnavailable = selectedRepresentationUnavailable(
-    c,
-    deps,
-    record,
-    viewerId,
-  );
-  if (representationUnavailable) return representationUnavailable;
-  if (
-    viewerId &&
-    deps.publicShareService.isViewerDisconnected(record, viewerId)
-  ) {
-    return notFound(c);
+  if (record) {
+    const representationUnavailable = selectedRepresentationUnavailable(
+      c,
+      deps,
+      record,
+      viewerId,
+    );
+    if (representationUnavailable) return representationUnavailable;
+    if (
+      viewerId &&
+      deps.publicShareService.isViewerDisconnected(record, viewerId)
+    ) {
+      return notFound(c);
+    }
   }
 
+  const projectId = record?.source.projectId ?? fileShare!.projectId;
   let projectRoot: string;
   try {
-    projectRoot = decodeProjectId(record.source.projectId);
+    projectRoot = decodeProjectId(projectId);
   } catch {
     return notFound(c);
   }
@@ -886,40 +942,59 @@ async function servePublicShareProjectFile(
   const relativePath = normalizePublicShareProjectFilePath(
     rawPath,
     projectRoot,
-    deps.dataDir,
+    record ? deps.dataDir : undefined,
   );
   if (!relativePath) {
     return c.json({ error: "Invalid file path" }, 400);
   }
 
-  let authorized = false;
-  const viewerHasSnapshot = Boolean(
-    viewerId && deps.publicShareService.hasViewerSnapshot(record, viewerId),
-  );
-  if (record.mode === "frozen" || viewerHasSnapshot) {
-    const presentation = await deps.publicShareService.getFrozenPresentation(
-      record,
-      viewerId,
-    );
-    authorized = presentation?.authorizedPaths.includes(relativePath) ?? false;
-  } else {
-    const shareResponse = await loadLivePublicShareResponse(deps, record);
-    if (shareResponse) {
-      const directPresentation = buildDirectPublicSharePresentation(
-        shareResponse.session,
+  let authorized: boolean;
+  if (fileShare) {
+    authorized =
+      relativePath === fileShare.path ||
+      (await publicFileShareMentionsRenderAsset(
+        deps,
+        fileShare,
+        relativePath,
         projectRoot,
-        record.source.projectId,
-        deps.dataDir,
+      ));
+  } else {
+    if (!record) return notFound(c);
+    const sessionRecord = record;
+    authorized = false;
+    const viewerHasSnapshot = Boolean(
+      viewerId &&
+        deps.publicShareService.hasViewerSnapshot(sessionRecord, viewerId),
+    );
+    if (sessionRecord.mode === "frozen" || viewerHasSnapshot) {
+      const presentation = await deps.publicShareService.getFrozenPresentation(
+        sessionRecord,
+        viewerId,
       );
       authorized =
-        directPresentation.authorizedPaths.includes(relativePath) ||
-        (await publicShareSessionMentionsRenderAsset(
+        presentation?.authorizedPaths.includes(relativePath) ?? false;
+    } else {
+      const shareResponse = await loadLivePublicShareResponse(
+        deps,
+        sessionRecord,
+      );
+      if (shareResponse) {
+        const directPresentation = buildDirectPublicSharePresentation(
           shareResponse.session,
-          relativePath,
           projectRoot,
-          record.source.projectId,
+          sessionRecord.source.projectId,
           deps.dataDir,
-        ));
+        );
+        authorized =
+          directPresentation.authorizedPaths.includes(relativePath) ||
+          (await publicShareSessionMentionsRenderAsset(
+            shareResponse.session,
+            relativePath,
+            projectRoot,
+            sessionRecord.source.projectId,
+            deps.dataDir,
+          ));
+      }
     }
   }
   if (!authorized) {
@@ -948,17 +1023,14 @@ async function servePublicShareProjectFile(
   const attachmentPath = deps.dataDir
     ? canonicalizeManagedAttachmentPath(relativePath, deps.dataDir)
     : null;
-  const frozenProjectRoot = attachmentPath
-    ? undefined
-    : await deps.publicShareService.getFrozenProjectRoot(record, viewerId);
-  const response = await deps.fetchProjectFile(
-    record.source.projectId,
-    relativePath,
-    {
-      ...fileOptions,
-      ...(frozenProjectRoot ? { projectRoot: frozenProjectRoot } : {}),
-    },
-  );
+  const frozenProjectRoot =
+    !record || attachmentPath
+      ? undefined
+      : await deps.publicShareService.getFrozenProjectRoot(record, viewerId);
+  const response = await deps.fetchProjectFile(projectId, relativePath, {
+    ...fileOptions,
+    ...(frozenProjectRoot ? { projectRoot: frozenProjectRoot } : {}),
+  });
 
   if (options.raw) {
     const headers = createUntrustedFileResponseHeaders({

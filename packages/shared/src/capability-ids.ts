@@ -324,6 +324,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "attachment-only-session-messages",
     introducedIn: "0.7.2",
   },
+  publicFileShares: {
+    id: 51,
+    direction: "server",
+    name: "public-file-shares",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [
