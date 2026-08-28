@@ -2841,8 +2841,6 @@
   "publicFileShareEmpty": "No public links for this file yet.",
   "publicFileShareCopy": "Copy public file link",
   "publicFileShareRevoke": "Revoke public file link",
-  "publicFileShareConfirmRevoke": "Confirm revoke",
-  "publicFileShareRevokeConfirm": "Click revoke again to invalidate this link immediately.",
   "publicFileShareRevoked": "Public file link revoked.",
   "publicFileShareLoadFailed": "Could not load public file links.",
   "publicFileShareCreateFailed": "Could not create the public file link.",

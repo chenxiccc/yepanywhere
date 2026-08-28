@@ -115,23 +115,6 @@
   width: 100%;
 }
 
-.error,
-.notice {
-  border-radius: 6px;
-  font-size: 0.78rem;
-  padding: 7px 8px;
-}
-
-.error {
-  background: color-mix(in srgb, var(--error-color) 10%, transparent);
-  color: var(--error-color);
-}
-
-.notice {
-  background: color-mix(in srgb, var(--app-yep-green) 10%, transparent);
-  color: var(--text-secondary);
-}
-
 .inventory {
   display: grid;
   gap: 8px;
@@ -145,100 +128,6 @@
 
 .inventoryHeading strong {
   font-size: 0.83rem;
-}
-
-.inventoryHeading span,
-.empty,
-.rowMain span {
-  color: var(--text-secondary);
-  font-size: 0.74rem;
-}
-
-.empty {
-  border: 1px dashed var(--border-color);
-  border-radius: 8px;
-  padding: 14px;
-  text-align: center;
-}
-
-.list {
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  display: grid;
-  max-height: min(240px, 35vh);
-  overflow-y: auto;
-}
-
-.row {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 10px;
-}
-
-.row + .row {
-  border-top: 1px solid var(--border-color);
-}
-
-.rowMain {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.rowMain strong {
-  font-size: 0.8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rowActions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 6px;
-}
-
-.iconButton {
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-primary);
-  cursor: pointer;
-  display: inline-flex;
-  height: 30px;
-  justify-content: center;
-  padding: 5px;
-  width: 30px;
-}
-
-.iconButton:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.iconButton:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-
-.iconButton svg {
-  height: 15px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.6;
-  width: 15px;
-}
-
-.revoke {
-  color: var(--error-color);
-}
-
-.confirmRevoke {
-  background: color-mix(in srgb, var(--error-color) 75%, #320d12);
-  border-color: color-mix(in srgb, var(--error-color) 70%, #fff);
-  color: #fff;
 }
 
 @media (max-width: 599px) {

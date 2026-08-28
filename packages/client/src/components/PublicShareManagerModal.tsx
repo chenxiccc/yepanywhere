@@ -13,6 +13,19 @@ import { useRetainedVersionInfo } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { writeClipboardTextLater } from "../lib/clipboard";
+import {
+  PublicShareConfirmIcon,
+  PublicShareFeedback,
+  PublicShareFilterIcon,
+  PublicShareFreezeIcon,
+  PublicShareInventoryCount,
+  PublicShareInventoryEmpty,
+  PublicShareInventoryList,
+  PublicShareInventoryMeta,
+  PublicShareInventoryRow,
+  PublicSharePlusIcon,
+  PublicShareRevokeIcon,
+} from "./PublicShareInventory";
 import { Modal, type ModalAnchorRect } from "./ui/Modal";
 import styles from "./SessionShareModal.module.css";
 
@@ -663,7 +676,7 @@ function SourcePublicShareManagerModal({
                         onClick={() => setScopeFilter(scopeOption)}
                       >
                         <span className={styles.filterIcon}>
-                          <ShareFilterIcon kind={scopeOption} />
+                          <PublicShareFilterIcon kind={scopeOption} />
                         </span>
                         <span>{optionLabel}</span>
                       </button>
@@ -687,9 +700,9 @@ function SourcePublicShareManagerModal({
                         {operationWorking?.endsWith(categoryKey) ? (
                           "…"
                         ) : pending ? (
-                          <ConfirmIcon />
+                          <PublicShareConfirmIcon />
                         ) : (
-                          <RevokeIcon />
+                          <PublicShareRevokeIcon />
                         )}
                       </button>
                     </div>
@@ -758,7 +771,7 @@ function SourcePublicShareManagerModal({
                       onClick={() => toggleModeFilter(modeOption)}
                     >
                       <span className={styles.filterIcon}>
-                        <ShareFilterIcon kind={modeOption} />
+                        <PublicShareFilterIcon kind={modeOption} />
                       </span>
                       <span>{typeLabel}</span>
                     </button>
@@ -775,7 +788,7 @@ function SourcePublicShareManagerModal({
                           type: typeLabel,
                         })}
                       >
-                        <PlusIcon />
+                        <PublicSharePlusIcon />
                       </button>
                     )}
                     {modeOption === "live" && selectiveFreezeAvailable && (
@@ -801,9 +814,9 @@ function SourcePublicShareManagerModal({
                         {freezeWorking ? (
                           "…"
                         ) : pendingFreeze ? (
-                          <ConfirmIcon />
+                          <PublicShareConfirmIcon />
                         ) : (
-                          <FreezeIcon />
+                          <PublicShareFreezeIcon />
                         )}
                       </button>
                     )}
@@ -829,9 +842,9 @@ function SourcePublicShareManagerModal({
                       {revokeWorking ? (
                         "…"
                       ) : pendingRevoke ? (
-                        <ConfirmIcon />
+                        <PublicShareConfirmIcon />
                       ) : (
-                        <RevokeIcon />
+                        <PublicShareRevokeIcon />
                       )}
                     </button>
                   </div>
@@ -842,139 +855,90 @@ function SourcePublicShareManagerModal({
 
           <div className={styles.managerMain}>
             {operationError && (
-              <div className={styles.error} role="alert">
+              <PublicShareFeedback tone="error">
                 {operationError}
-              </div>
+              </PublicShareFeedback>
             )}
             {notice && (
-              <div className={styles.notice} role="status">
-                {notice}
-              </div>
+              <PublicShareFeedback tone="notice">{notice}</PublicShareFeedback>
             )}
             {inventoryError ? (
-              <div className={styles.error} role="alert">
+              <PublicShareFeedback tone="error">
                 {inventoryError}
-              </div>
+              </PublicShareFeedback>
             ) : inventoryLoading && items.length === 0 ? (
-              <div className={styles.empty} role="status">
+              <PublicShareInventoryEmpty loading>
                 {t("publicShareManagementLoading")}
-              </div>
+              </PublicShareInventoryEmpty>
             ) : items.length === 0 ? (
-              <div className={styles.empty}>
+              <PublicShareInventoryEmpty>
                 {t("publicShareManagementEmpty")}
-              </div>
+              </PublicShareInventoryEmpty>
             ) : (
-              <div className={styles.list} role="list">
+              <PublicShareInventoryList>
                 {items.map((item) => {
                   const bytes = formatShareBytes(item.snapshotBytes);
+                  const modeLabel =
+                    item.mode === "live"
+                      ? t("publicShareLiveBadge")
+                      : t("publicShareFrozenBadge");
+                  const modeIconLabel =
+                    item.mode === "live"
+                      ? t("publicShareLiveBadge")
+                      : t("publicShareManagementModeReadOnly");
                   return (
-                    <div
-                      className={`${styles.row} ${
-                        highlightedShareId === item.shareId
-                          ? styles.rowHighlighted
-                          : ""
-                      }`}
-                      role="listitem"
+                    <PublicShareInventoryRow
                       key={item.shareId}
+                      title={item.title ?? t("publicShareUntitled")}
+                      mode={item.mode}
+                      modeLabel={modeIconLabel}
+                      highlighted={highlightedShareId === item.shareId}
+                      warning={
+                        item.mode === "frozen" && item.linkedFileMode === "live"
+                          ? t("publicShareFrozenLinkedFilesLiveWarning")
+                          : undefined
+                      }
+                      copyAction={{
+                        label: item.url
+                          ? t("publicShareManagementCopy")
+                          : t("publicShareManagementCopyUnavailable"),
+                        disabled: !item.url || operationInvalidationDisabled,
+                        onClick: () => void copyManagedShare(item),
+                      }}
+                      freezeAction={
+                        item.mode === "live" && selectiveFreezeAvailable
+                          ? {
+                              label: t("publicShareManagementFreezeOne"),
+                              disabled: mutationsDisabled,
+                              working:
+                                operationWorking === `freeze:${item.shareId}`,
+                              onClick: () => void freezeManagedShare(item),
+                            }
+                          : undefined
+                      }
+                      revokeAction={{
+                        label: t("publicShareManagementRevokeOne"),
+                        disabled: mutationsDisabled,
+                        working: operationWorking === `revoke:${item.shareId}`,
+                        onClick: () => void revokeManagedShare(item),
+                      }}
                     >
-                      <div className={styles.rowMain}>
-                        <strong>
-                          {item.title ?? t("publicShareUntitled")}
-                        </strong>
-                        <span className={styles.rowMeta}>
-                          {item.projectName ??
-                            t("publicShareManagementUnknownProject")}
-                          {" · "}
-                          {item.mode === "live"
-                            ? t("publicShareLiveBadge")
-                            : t("publicShareFrozenBadge")}
-                          {bytes ? ` · ${bytes}` : ""}
-                        </span>
-                        <span className={styles.rowMeta}>
-                          {new Date(item.createdAt).toLocaleString()}
-                          {` · ${t("publicShareActiveViewers", {
-                            count: item.activeViewerCount,
-                          })}`}
-                        </span>
-                        {item.mode === "frozen" &&
-                          item.linkedFileMode === "live" && (
-                            <span className={styles.warning}>
-                              {t("publicShareFrozenLinkedFilesLiveWarning")}
-                            </span>
-                          )}
-                      </div>
-                      <div className={styles.rowActions}>
-                        <span
-                          className={`${styles.rowTypeIcon} ${
-                            item.mode === "live" ? styles.rowTypeIconLive : ""
-                          }`}
-                          title={
-                            item.mode === "live"
-                              ? t("publicShareLiveBadge")
-                              : t("publicShareManagementModeReadOnly")
-                          }
-                          aria-label={
-                            item.mode === "live"
-                              ? t("publicShareLiveBadge")
-                              : t("publicShareManagementModeReadOnly")
-                          }
-                          role="img"
-                        >
-                          <ShareFilterIcon kind={item.mode} />
-                        </span>
-                        <button
-                          type="button"
-                          className={styles.iconButton}
-                          disabled={!item.url || operationInvalidationDisabled}
-                          onClick={() => void copyManagedShare(item)}
-                          title={
-                            item.url
-                              ? t("publicShareManagementCopy")
-                              : t("publicShareManagementCopyUnavailable")
-                          }
-                          aria-label={
-                            item.url
-                              ? t("publicShareManagementCopy")
-                              : t("publicShareManagementCopyUnavailable")
-                          }
-                        >
-                          <CopyIcon />
-                        </button>
-                        {item.mode === "live" && selectiveFreezeAvailable && (
-                          <button
-                            type="button"
-                            className={`${styles.iconButton} ${styles.iconButtonFreeze}`}
-                            disabled={mutationsDisabled}
-                            onClick={() => void freezeManagedShare(item)}
-                            title={t("publicShareManagementFreezeOne")}
-                            aria-label={t("publicShareManagementFreezeOne")}
-                          >
-                            {operationWorking === `freeze:${item.shareId}` ? (
-                              "…"
-                            ) : (
-                              <FreezeIcon />
-                            )}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className={`${styles.iconButton} ${styles.iconButtonDanger}`}
-                          disabled={mutationsDisabled}
-                          onClick={() => void revokeManagedShare(item)}
-                          title={t("publicShareManagementRevokeOne")}
-                          aria-label={t("publicShareManagementRevokeOne")}
-                        >
-                          {operationWorking === `revoke:${item.shareId}` ? (
-                            "…"
-                          ) : (
-                            <RevokeIcon />
-                          )}
-                        </button>
-                      </div>
-                    </div>
+                      <PublicShareInventoryMeta>
+                        {item.projectName ??
+                          t("publicShareManagementUnknownProject")}
+                        {` · ${modeLabel}`}
+                        {bytes ? ` · ${bytes}` : ""}
+                      </PublicShareInventoryMeta>
+                      <PublicShareInventoryMeta>
+                        {new Date(item.createdAt).toLocaleString()}
+                        {` · ${t("publicShareActiveViewers", {
+                          count: item.activeViewerCount,
+                        })}`}
+                      </PublicShareInventoryMeta>
+                    </PublicShareInventoryRow>
                   );
                 })}
-              </div>
+              </PublicShareInventoryList>
             )}
 
             {!inventoryError && cursor && (
@@ -990,9 +954,9 @@ function SourcePublicShareManagerModal({
               </button>
             )}
             {!inventoryError && (
-              <div className={styles.count}>
+              <PublicShareInventoryCount>
                 {t("publicShareManagementCount", { count: total })}
-              </div>
+              </PublicShareInventoryCount>
             )}
           </div>
         </div>
@@ -1010,134 +974,5 @@ function SourcePublicShareManagerModal({
         )}
       </div>
     </Modal>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="5" y="5" width="9" height="9" rx="1.5" />
-      <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M8 3v10M3 8h10" />
-    </svg>
-  );
-}
-
-function RevokeIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="m4 4 8 8M12 4l-8 8" />
-    </svg>
-  );
-}
-
-function FreezeIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="7" width="10" height="7" rx="1.5" />
-      <path d="M5.5 7V4.75a2.5 2.5 0 0 1 5 0V7M8 10v1.5" />
-    </svg>
-  );
-}
-
-function ConfirmIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m3 8.5 3.2 3.2L13 4.8" />
-    </svg>
-  );
-}
-
-function ShareFilterIcon({
-  kind,
-}: {
-  kind: "all" | "project" | "session" | PublicSessionShareMode;
-}) {
-  const paths = {
-    all: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" />
-      </>
-    ),
-    project: <path d="M3 6.5h7l2 2h9v10.5H3zM3 6.5V5h7l2 2" />,
-    session: (
-      <>
-        <rect x="3" y="4" width="18" height="14" rx="3" />
-        <path d="m8 21 4-3h5M7 9h10M7 13h7" />
-      </>
-    ),
-    frozen: (
-      <>
-        <rect x="5" y="10" width="14" height="11" rx="2" />
-        <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
-      </>
-    ),
-    live: (
-      <>
-        <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
-        <path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13" />
-      </>
-    ),
-  };
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {paths[kind]}
-    </svg>
   );
 }

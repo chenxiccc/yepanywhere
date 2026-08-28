@@ -67,7 +67,8 @@ describe("PublicFileShareModal", () => {
     });
   });
 
-  it("requires a second click before revoking a link", async () => {
+  it("confirms before revoking a link", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.mocked(api.getPublicFileShares).mockResolvedValue({
       items: [
         {
@@ -92,15 +93,11 @@ describe("PublicFileShareModal", () => {
     const revoke = await screen.findByRole("button", {
       name: "Revoke public file link",
     });
+    expect(screen.getByRole("img", { name: "Live" })).toBeTruthy();
     fireEvent.click(revoke);
-    expect(api.revokePublicFileShare).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(
-        "Click revoke again to invalidate this link immediately.",
-      ),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Confirm revoke" }));
+    expect(window.confirm).toHaveBeenCalledWith(
+      "Revoke this public link? Anyone using it will immediately lose access.",
+    );
     await waitFor(() => {
       expect(api.revokePublicFileShare).toHaveBeenCalledWith("share-one");
     });
